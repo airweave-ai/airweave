@@ -655,7 +655,6 @@ class StubConfig(SourceConfig):
         ge=0,
         le=100,
     )
-
     inject_special_tokens: bool = Field(
         default=False,
         title="Inject Special Tokens",
@@ -694,6 +693,27 @@ class StubConfig(SourceConfig):
             except ValueError as e:
                 raise ValueError("Weight must be a valid integer") from e
         return value
+
+
+class FileStubConfig(SourceConfig):
+    """File stub source configuration for testing file converters.
+
+    Generates one of each file type: born-digital PDF, scanned PDF, PPTX, DOCX.
+    """
+
+    seed: int = Field(
+        default=42,
+        title="Random Seed",
+        description="Random seed for reproducible content generation",
+    )
+    custom_content_prefix: Optional[str] = Field(
+        default=None,
+        title="Custom Content Prefix",
+        description=(
+            "Optional string to embed in all generated files. "
+            "Useful as a tracking token for search assertions."
+        ),
+    )
 
 
 class TrelloConfig(SourceConfig):

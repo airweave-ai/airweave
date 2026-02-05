@@ -619,6 +619,28 @@ class StubSource(BaseSource):
 
         return filepath
 
+    async def _create_binary_file(self, content: bytes, extension: str, name: str) -> str:
+        """Create a temporary binary file with content.
+
+        Args:
+            content: Binary file content.
+            extension: File extension (e.g. '.pdf', '.pptx').
+            name: Base filename.
+
+        Returns:
+            Path to the created file.
+        """
+        if self._temp_dir is None:
+            self._temp_dir = tempfile.mkdtemp(prefix="stub_source_")
+
+        filename = f"{name}{extension}"
+        filepath = os.path.join(self._temp_dir, filename)
+
+        with open(filepath, "wb") as f:
+            f.write(content)
+
+        return filepath
+
     async def _generate_small_entity(
         self, index: int, breadcrumbs: List[Breadcrumb]
     ) -> SmallStubEntity:

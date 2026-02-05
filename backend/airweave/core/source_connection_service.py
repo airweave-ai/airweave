@@ -1473,13 +1473,16 @@ class SourceConnectionService:
         # Import the source module dynamically
         module_name = class_name.replace("Source", "").lower()
 
-        # Handle special cases
+        # Handle special cases where the module name contains underscores
+        # that get lost when lowercasing the class name.
         if module_name.startswith("google") and len(module_name) > 6:
             module_name = "google_" + module_name[6:]
         elif module_name.startswith("outlook") and len(module_name) > 7:
             module_name = "outlook_" + module_name[7:]
         elif module_name.startswith("zoho") and len(module_name) > 4:
             module_name = "zoho_" + module_name[4:]
+        elif module_name == "filestub":
+            module_name = "file_stub"
 
         module = __import__(f"airweave.platform.sources.{module_name}", fromlist=[class_name])
         return getattr(module, class_name)

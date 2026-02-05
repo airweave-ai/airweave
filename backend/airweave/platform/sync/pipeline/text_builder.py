@@ -321,10 +321,10 @@ class TextualRepresentationBuilder:
             raise EntityProcessingError(f"Unsupported file type: {ext}")
 
         converter_map = {
-            # Mistral OCR - Documents
-            ".pdf": converters.mistral_converter,
-            ".docx": converters.mistral_converter,
-            ".pptx": converters.mistral_converter,
+            # Documents - Text extraction + Mistral OCR fallback
+            ".pdf": converters.pdf_converter,
+            ".docx": converters.docx_converter,
+            ".pptx": converters.pptx_converter,
             # Mistral OCR - Images
             ".jpg": converters.mistral_converter,
             ".jpeg": converters.mistral_converter,
