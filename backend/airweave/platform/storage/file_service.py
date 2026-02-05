@@ -218,7 +218,7 @@ class FileService:
         )
 
         if not should_download:
-            logger.info(f"Skipping download of {entity.name}: {skip_reason}")
+            logger.debug(f"Skipping download of {entity.name}: {skip_reason}")
             raise FileSkippedException(reason=skip_reason, filename=entity.name)
 
         file_uuid = str(uuid4())
