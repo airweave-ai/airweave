@@ -3,7 +3,7 @@
 This module exports all Pydantic schemas for the spotlight search module.
 """
 
-from .answer import SpotlightAnswer, SpotlightCitation
+from .answer import SpotlightAnswer
 from .collection_metadata import (
     SpotlightCollectionMetadata,
     SpotlightEntityTypeMetadata,
@@ -40,7 +40,6 @@ from .state import SpotlightCurrentIteration, SpotlightState
 __all__ = [
     # Answer
     "SpotlightAnswer",
-    "SpotlightCitation",
     # Collection metadata
     "SpotlightCollectionMetadata",
     "SpotlightEntityTypeMetadata",

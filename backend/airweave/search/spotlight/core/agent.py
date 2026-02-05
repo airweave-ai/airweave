@@ -22,6 +22,7 @@ from airweave.search.spotlight.builders import (
     SpotlightCollectionMetadataBuilder,
     SpotlightStateBuilder,
 )
+from airweave.search.spotlight.core.composer import SpotlightComposer
 from airweave.search.spotlight.core.embedder import SpotlightEmbedder
 from airweave.search.spotlight.core.evaluator import SpotlightEvaluator
 from airweave.search.spotlight.core.planner import SpotlightPlanner
@@ -132,13 +133,15 @@ class SpotlightAgent:
             state.iteration_number += 1
             state.current_iteration = SpotlightCurrentIteration()
 
-        # TODO: state.current_iteration: plan, compiled_query, search_results, evaluation
-        # , history -> answer
+        # Compose final answer
+        composer = SpotlightComposer(
+            llm=self.services.llm,
+            tokenizer=self.services.tokenizer,
+            logger=self.ctx.logger,
+        )
+        answer: SpotlightAnswer = await composer.compose(state)
 
         return SpotlightResponse(
             results=state.current_iteration.search_results.results,
-            answer=SpotlightAnswer(
-                text="",
-                citations=[],
-            ),
+            answer=answer,
         )
