@@ -121,9 +121,9 @@ export function EventTypeBadge({ eventType }: { eventType: string }) {
 }
 
 /**
- * Get summary from event payload
+ * Get summary from message payload
  */
-export function getEventSummary(payload: Record<string, unknown>): string {
+export function getMessageSummary(payload: Record<string, unknown>): string {
   // Try to build a meaningful summary from the payload
   const collectionName = payload.collection_name as string | undefined;
   const sourceType = payload.source_type as string | undefined;

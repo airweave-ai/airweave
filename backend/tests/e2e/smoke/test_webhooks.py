@@ -1,8 +1,8 @@
-"""E2E tests for Events API and Webhook functionality.
+"""E2E tests for Webhooks API functionality.
 
 These tests cover two distinct concepts:
-- **Events (Messages)**: Records of what happened in the system (sync.pending, sync.completed, etc.)
-- **Webhooks (Subscriptions)**: Endpoints that receive event notifications at configured URLs
+- **Messages**: Records of what happened in the system (sync.pending, sync.completed, etc.)
+- **Subscriptions**: Endpoints that receive event notifications at configured URLs
 
 Tests use the stub connector for fast execution while testing the full flow including Svix integration.
 
@@ -47,7 +47,7 @@ async def wait_for_sync_completed_message(
 
     while time.time() - start_time < timeout:
         response = await api_client.get(
-            "/events/messages", params={"event_types": ["sync.completed"]}
+            "/webhooks/messages", params={"event_types": ["sync.completed"]}
         )
         if response.status_code == 200:
             messages = response.json()
@@ -82,7 +82,7 @@ async def webhook_subscription(
 ) -> AsyncGenerator[Dict, None]:
     """Create a webhook subscription for sync.completed events."""
     response = await api_client.post(
-        "/events/subscriptions",
+        "/webhooks/subscriptions",
         json={
             "url": unique_webhook_url,
             "event_types": ["sync.completed"],
@@ -95,7 +95,7 @@ async def webhook_subscription(
 
     # Cleanup
     try:
-        await api_client.delete(f"/events/subscriptions/{subscription['id']}")
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
     except Exception:
         pass
 
@@ -107,7 +107,7 @@ async def webhook_subscription_all_events(
 ) -> AsyncGenerator[Dict, None]:
     """Create a webhook subscription for all sync event types."""
     response = await api_client.post(
-        "/events/subscriptions",
+        "/webhooks/subscriptions",
         json={
             "url": unique_webhook_url,
             "event_types": [
@@ -126,23 +126,23 @@ async def webhook_subscription_all_events(
 
     # Cleanup
     try:
-        await api_client.delete(f"/events/subscriptions/{subscription['id']}")
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
     except Exception:
         pass
 
 
 # =============================================================================
-# EVENTS TESTS - Testing the Events API (messages)
+# WEBHOOK MESSAGES TESTS - Testing the Messages API
 # =============================================================================
 
 
 @pytest.mark.asyncio
-class TestEventsMessages:
-    """Tests for event messages - the record of what events occurred."""
+class TestWebhookMessages:
+    """Tests for webhook messages - the record of what events occurred."""
 
     async def test_get_messages_returns_list(self, api_client: httpx.AsyncClient):
-        """Test that GET /events/messages returns a list."""
-        response = await api_client.get("/events/messages")
+        """Test that GET /webhooks/messages returns a list."""
+        response = await api_client.get("/webhooks/messages")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
 
@@ -151,7 +151,7 @@ class TestEventsMessages:
     ):
         """Test filtering messages by event type."""
         response = await api_client.get(
-            "/events/messages", params={"event_types": ["sync.completed"]}
+            "/webhooks/messages", params={"event_types": ["sync.completed"]}
         )
         assert response.status_code == 200
         messages = response.json()
@@ -166,10 +166,10 @@ class TestEventsMessages:
         api_client: httpx.AsyncClient,
         collection: Dict,
     ):
-        """Test that event messages are created when syncs occur."""
+        """Test that webhook messages are created when syncs occur."""
         # Get initial message count
         initial_response = await api_client.get(
-            "/events/messages", params={"event_types": ["sync.completed"]}
+            "/webhooks/messages", params={"event_types": ["sync.completed"]}
         )
         initial_count = len(initial_response.json()) if initial_response.status_code == 200 else 0
 
@@ -200,7 +200,7 @@ class TestEventsMessages:
 
 @pytest.mark.asyncio
 @pytest.mark.svix
-class TestEventTypes:
+class TestWebhookEventTypes:
     """Tests for different event types (sync.pending, sync.running, sync.completed, etc.)."""
 
     async def test_event_payload_structure(
@@ -277,7 +277,7 @@ class TestWebhookSubscriptions:
 
     async def test_list_subscriptions(self, api_client: httpx.AsyncClient):
         """Test listing all webhook subscriptions."""
-        response = await api_client.get("/events/subscriptions")
+        response = await api_client.get("/webhooks/subscriptions")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
 
@@ -286,7 +286,7 @@ class TestWebhookSubscriptions:
     ):
         """Test creating a webhook subscription."""
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": ["sync.completed"],
@@ -298,7 +298,7 @@ class TestWebhookSubscriptions:
         assert subscription["url"].rstrip("/") == unique_webhook_url.rstrip("/")
 
         # Cleanup
-        await api_client.delete(f"/events/subscriptions/{subscription['id']}")
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
 
     async def test_create_subscription_multiple_event_types(
         self, api_client: httpx.AsyncClient, unique_webhook_url: str
@@ -307,7 +307,7 @@ class TestWebhookSubscriptions:
         event_types = ["sync.completed", "sync.failed", "sync.running"]
 
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": event_types,
@@ -317,14 +317,14 @@ class TestWebhookSubscriptions:
         subscription = response.json()
 
         # Cleanup
-        await api_client.delete(f"/events/subscriptions/{subscription['id']}")
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
 
     async def test_get_subscription_by_id(
         self, api_client: httpx.AsyncClient, webhook_subscription: Dict
     ):
         """Test getting a specific subscription with its delivery attempts."""
         response = await api_client.get(
-            f"/events/subscriptions/{webhook_subscription['id']}"
+            f"/webhooks/subscriptions/{webhook_subscription['id']}"
         )
         assert response.status_code == 200
         data = response.json()
@@ -339,7 +339,7 @@ class TestWebhookSubscriptions:
         """Test updating a subscription URL."""
         new_url = f"https://example.com/webhook/updated-{uuid.uuid4().hex[:8]}"
         response = await api_client.patch(
-            f"/events/subscriptions/{webhook_subscription['id']}",
+            f"/webhooks/subscriptions/{webhook_subscription['id']}",
             json={"url": new_url},
         )
         assert response.status_code == 200
@@ -352,7 +352,7 @@ class TestWebhookSubscriptions:
         """Test deleting a webhook subscription returns the deleted object."""
         # Create a subscription to delete
         create_response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": ["sync.completed"],
@@ -362,7 +362,7 @@ class TestWebhookSubscriptions:
 
         # Delete it
         delete_response = await api_client.delete(
-            f"/events/subscriptions/{subscription['id']}"
+            f"/webhooks/subscriptions/{subscription['id']}"
         )
         assert delete_response.status_code == 200
 
@@ -381,7 +381,7 @@ class TestWebhookSubscriptions:
         # Create a subscription with specific event types
         event_types = ["sync.completed", "sync.failed"]
         create_response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": event_types,
@@ -392,7 +392,7 @@ class TestWebhookSubscriptions:
 
         # Delete and verify all fields are returned
         delete_response = await api_client.delete(
-            f"/events/subscriptions/{subscription['id']}"
+            f"/webhooks/subscriptions/{subscription['id']}"
         )
         assert delete_response.status_code == 200
         deleted = delete_response.json()
@@ -409,7 +409,7 @@ class TestWebhookSubscriptions:
     ):
         """Test deleting a non-existent subscription returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
-        response = await api_client.delete(f"/events/subscriptions/{fake_id}")
+        response = await api_client.delete(f"/webhooks/subscriptions/{fake_id}")
         assert response.status_code == 404
 
     async def test_get_subscription_with_secret(
@@ -417,7 +417,7 @@ class TestWebhookSubscriptions:
     ):
         """Test retrieving a subscription with include_secret=true."""
         response = await api_client.get(
-            f"/events/subscriptions/{webhook_subscription['id']}",
+            f"/webhooks/subscriptions/{webhook_subscription['id']}",
             params={"include_secret": True},
         )
         assert response.status_code == 200
@@ -432,7 +432,7 @@ class TestWebhookSubscriptions:
     ):
         """Test retrieving a subscription without include_secret (default)."""
         response = await api_client.get(
-            f"/events/subscriptions/{webhook_subscription['id']}"
+            f"/webhooks/subscriptions/{webhook_subscription['id']}"
         )
         assert response.status_code == 200
         data = response.json()
@@ -452,7 +452,7 @@ class TestWebhookDisableEnable:
 
         # Disable the subscription
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
         assert response.status_code == 200
@@ -460,7 +460,7 @@ class TestWebhookDisableEnable:
         assert updated["disabled"] is True
 
         # Verify it's disabled when fetching
-        get_response = await api_client.get(f"/events/subscriptions/{subscription_id}")
+        get_response = await api_client.get(f"/webhooks/subscriptions/{subscription_id}")
         assert get_response.status_code == 200
         assert get_response.json()["disabled"] is True
 
@@ -472,13 +472,13 @@ class TestWebhookDisableEnable:
 
         # First disable it
         await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
 
         # Now enable it
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": False},
         )
         assert response.status_code == 200
@@ -493,7 +493,7 @@ class TestWebhookDisableEnable:
         new_url = f"https://example.com/webhook/updated-{uuid.uuid4().hex[:8]}"
 
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={
                 "url": new_url,
                 "disabled": True,
@@ -504,7 +504,7 @@ class TestWebhookDisableEnable:
         assert updated["url"].rstrip("/") == new_url.rstrip("/")
         assert updated["disabled"] is True
 
-    async def test_enable_subscription_via_patch(
+    async def test_enable_subscription_via_patch_2(
         self, api_client: httpx.AsyncClient, webhook_subscription: Dict
     ):
         """Test enabling a subscription via PATCH with disabled=false."""
@@ -512,13 +512,13 @@ class TestWebhookDisableEnable:
 
         # First disable it
         await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
 
         # Enable via PATCH
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": False},
         )
         assert response.status_code == 200
@@ -537,7 +537,7 @@ class TestWebhookDisableEnable:
 
         # First disable it
         await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
 
@@ -545,7 +545,7 @@ class TestWebhookDisableEnable:
         recover_since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": False, "recover_since": recover_since},
         )
         assert response.status_code == 200
@@ -560,7 +560,7 @@ class TestWebhookDisableEnable:
 
         # Enable when already enabled - should succeed
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": False},
         )
         assert response.status_code == 200
@@ -585,7 +585,7 @@ class TestWebhookRecovery:
         subscription_id = webhook_subscription["id"]
 
         response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/recover",
+            f"/webhooks/subscriptions/{subscription_id}/recover",
             json={},
         )
         assert response.status_code == 422
@@ -601,7 +601,7 @@ class TestWebhookRecovery:
         since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
         response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/recover",
+            f"/webhooks/subscriptions/{subscription_id}/recover",
             json={"since": since},
         )
         assert response.status_code == 200
@@ -618,7 +618,7 @@ class TestWebhookRecovery:
         until = datetime.now(timezone.utc).isoformat()
 
         response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/recover",
+            f"/webhooks/subscriptions/{subscription_id}/recover",
             json={
                 "since": since,
                 "until": until,
@@ -637,7 +637,7 @@ class TestWebhookRecovery:
         since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
         response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/recover",
+            f"/webhooks/subscriptions/{subscription_id}/recover",
             json={"since": since},
         )
         assert response.status_code == 200
@@ -655,12 +655,12 @@ class TestSubscriptionStatusInList:
         """Test that listing subscriptions includes the disabled field."""
         # First disable the subscription
         await api_client.patch(
-            f"/events/subscriptions/{webhook_subscription['id']}",
+            f"/webhooks/subscriptions/{webhook_subscription['id']}",
             json={"disabled": True},
         )
 
         # List all subscriptions
-        response = await api_client.get("/events/subscriptions")
+        response = await api_client.get("/webhooks/subscriptions")
         assert response.status_code == 200
         subscriptions = response.json()
 
@@ -678,7 +678,7 @@ class TestSubscriptionStatusInList:
     ):
         """Test that newly created subscriptions are enabled by default."""
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": ["sync.completed"],
@@ -691,7 +691,7 @@ class TestSubscriptionStatusInList:
         assert subscription.get("disabled", False) is False
 
         # Cleanup
-        await api_client.delete(f"/events/subscriptions/{subscription['id']}")
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
 
 
 # =============================================================================
@@ -708,7 +708,7 @@ class TestSubscriptionValidation:
     ):
         """Test creating subscription with invalid URL format returns 422."""
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": "not-a-valid-url",
                 "event_types": ["sync.completed"],
@@ -724,7 +724,7 @@ class TestSubscriptionValidation:
         Expected: 422 validation error - a subscription with no events is meaningless.
         """
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": [],
@@ -737,7 +737,7 @@ class TestSubscriptionValidation:
     ):
         """Test creating subscription with duplicate event types."""
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": ["sync.completed", "sync.completed", "sync.failed"],
@@ -746,7 +746,7 @@ class TestSubscriptionValidation:
         # Should succeed - duplicates should be deduplicated or allowed
         assert response.status_code == 200
         subscription = response.json()
-        await api_client.delete(f"/events/subscriptions/{subscription['id']}")
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
 
     async def test_create_subscription_with_http_url(
         self, api_client: httpx.AsyncClient
@@ -756,14 +756,14 @@ class TestSubscriptionValidation:
         Expected: 200 - HTTP URLs should be allowed for local development/testing.
         """
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": f"http://example.com/webhook/{uuid.uuid4().hex[:8]}",
                 "event_types": ["sync.completed"],
             },
         )
         assert response.status_code == 200
-        await api_client.delete(f"/events/subscriptions/{response.json()['id']}")
+        await api_client.delete(f"/webhooks/subscriptions/{response.json()['id']}")
 
     async def test_create_subscription_with_localhost_url(
         self, api_client: httpx.AsyncClient
@@ -773,21 +773,21 @@ class TestSubscriptionValidation:
         Expected: 200 - localhost should be allowed for local development.
         """
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": "http://localhost:8080/webhook",
                 "event_types": ["sync.completed"],
             },
         )
         assert response.status_code == 200
-        await api_client.delete(f"/events/subscriptions/{response.json()['id']}")
+        await api_client.delete(f"/webhooks/subscriptions/{response.json()['id']}")
 
     async def test_create_subscription_missing_url(
         self, api_client: httpx.AsyncClient
     ):
         """Test creating subscription without URL field."""
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "event_types": ["sync.completed"],
             },
@@ -799,7 +799,7 @@ class TestSubscriptionValidation:
     ):
         """Test creating subscription without event_types field."""
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
             },
@@ -811,7 +811,7 @@ class TestSubscriptionValidation:
     ):
         """Test updating subscription with invalid URL format."""
         response = await api_client.patch(
-            f"/events/subscriptions/{webhook_subscription['id']}",
+            f"/webhooks/subscriptions/{webhook_subscription['id']}",
             json={"url": "not-a-valid-url"},
         )
         assert response.status_code == 422
@@ -829,7 +829,7 @@ class TestSubscriptionSecretValidation:
         custom_secret = "whsec_" + "a" * 32
 
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": ["sync.completed"],
@@ -841,12 +841,12 @@ class TestSubscriptionSecretValidation:
             subscription = response.json()
             # Verify we can retrieve the secret via include_secret param
             secret_response = await api_client.get(
-                f"/events/subscriptions/{subscription['id']}",
+                f"/webhooks/subscriptions/{subscription['id']}",
                 params={"include_secret": True},
             )
             assert secret_response.status_code == 200
             assert secret_response.json().get("secret") is not None
-            await api_client.delete(f"/events/subscriptions/{subscription['id']}")
+            await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
 
     async def test_create_subscription_with_short_secret(
         self, api_client: httpx.AsyncClient, unique_webhook_url: str
@@ -856,7 +856,7 @@ class TestSubscriptionSecretValidation:
         Expected: 422 validation error.
         """
         response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": ["sync.completed"],
@@ -881,7 +881,7 @@ class TestNonExistentResources:
         Expected: 404 Not Found.
         """
         fake_id = "ep_nonexistent123456789"
-        response = await api_client.get(f"/events/subscriptions/{fake_id}")
+        response = await api_client.get(f"/webhooks/subscriptions/{fake_id}")
         assert response.status_code == 404
 
     async def test_delete_non_existent_subscription(
@@ -892,7 +892,7 @@ class TestNonExistentResources:
         Expected: 404 Not Found (or 200 for idempotent delete).
         """
         fake_id = "ep_nonexistent123456789"
-        response = await api_client.delete(f"/events/subscriptions/{fake_id}")
+        response = await api_client.delete(f"/webhooks/subscriptions/{fake_id}")
         assert response.status_code in [200, 404]
 
     async def test_update_non_existent_subscription(
@@ -904,7 +904,7 @@ class TestNonExistentResources:
         """
         fake_id = "ep_nonexistent123456789"
         response = await api_client.patch(
-            f"/events/subscriptions/{fake_id}",
+            f"/webhooks/subscriptions/{fake_id}",
             json={"disabled": True},
         )
         assert response.status_code == 404
@@ -918,7 +918,7 @@ class TestNonExistentResources:
         """
         fake_id = "ep_nonexistent123456789"
         response = await api_client.patch(
-            f"/events/subscriptions/{fake_id}",
+            f"/webhooks/subscriptions/{fake_id}",
             json={"disabled": False},
         )
         assert response.status_code == 404
@@ -933,7 +933,7 @@ class TestNonExistentResources:
         fake_id = "ep_nonexistent123456789"
         since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         response = await api_client.post(
-            f"/events/subscriptions/{fake_id}/recover",
+            f"/webhooks/subscriptions/{fake_id}/recover",
             json={"since": since},
         )
         assert response.status_code == 404
@@ -947,7 +947,7 @@ class TestNonExistentResources:
         """
         fake_id = "ep_nonexistent123456789"
         response = await api_client.get(
-            f"/events/subscriptions/{fake_id}",
+            f"/webhooks/subscriptions/{fake_id}",
             params={"include_secret": True},
         )
         assert response.status_code == 404
@@ -960,7 +960,7 @@ class TestNonExistentResources:
         Expected: 404 Not Found.
         """
         fake_id = "msg_nonexistent123456789"
-        response = await api_client.get(f"/events/messages/{fake_id}")
+        response = await api_client.get(f"/webhooks/messages/{fake_id}")
         assert response.status_code == 404
 
     async def test_get_attempts_non_existent_message(
@@ -972,7 +972,7 @@ class TestNonExistentResources:
         """
         fake_id = "msg_nonexistent123456789"
         response = await api_client.get(
-            f"/events/messages/{fake_id}",
+            f"/webhooks/messages/{fake_id}",
             params={"include_attempts": True},
         )
         assert response.status_code == 404
@@ -993,7 +993,7 @@ class TestRecoveryEdgeCases:
         future_date = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
 
         response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/recover",
+            f"/webhooks/subscriptions/{subscription_id}/recover",
             json={"since": future_date},
         )
         assert response.status_code in [200, 422]
@@ -1010,7 +1010,7 @@ class TestRecoveryEdgeCases:
         until = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
         response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/recover",
+            f"/webhooks/subscriptions/{subscription_id}/recover",
             json={"since": since, "until": until},
         )
         assert response.status_code == 200
@@ -1026,7 +1026,7 @@ class TestRecoveryEdgeCases:
         old_date = (datetime.now(timezone.utc) - timedelta(days=365 * 2)).isoformat()
 
         response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/recover",
+            f"/webhooks/subscriptions/{subscription_id}/recover",
             json={"since": old_date},
         )
         assert response.status_code == 422
@@ -1042,7 +1042,7 @@ class TestRecoveryEdgeCases:
         subscription_id = webhook_subscription["id"]
 
         response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/recover",
+            f"/webhooks/subscriptions/{subscription_id}/recover",
             json={"since": "not-a-date"},
         )
         assert response.status_code == 422
@@ -1060,11 +1060,11 @@ class TestDisableEnableEdgeCases:
 
         # Disable twice
         await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
         assert response.status_code == 200
@@ -1079,20 +1079,20 @@ class TestDisableEnableEdgeCases:
         for _ in range(5):
             # Disable
             response = await api_client.patch(
-                f"/events/subscriptions/{subscription_id}",
+                f"/webhooks/subscriptions/{subscription_id}",
                 json={"disabled": True},
             )
             assert response.status_code == 200
 
             # Enable
             response = await api_client.patch(
-                f"/events/subscriptions/{subscription_id}",
+                f"/webhooks/subscriptions/{subscription_id}",
                 json={"disabled": False},
             )
             assert response.status_code == 200
 
         # Final state should be enabled
-        get_response = await api_client.get(f"/events/subscriptions/{subscription_id}")
+        get_response = await api_client.get(f"/webhooks/subscriptions/{subscription_id}")
         assert get_response.json()["disabled"] is False
 
     async def test_patch_with_empty_body(
@@ -1102,7 +1102,7 @@ class TestDisableEnableEdgeCases:
         subscription_id = webhook_subscription["id"]
 
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={},
         )
         # Should succeed as a no-op
@@ -1117,13 +1117,13 @@ class TestDisableEnableEdgeCases:
 
         # Disable
         await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
 
         # Enable via PATCH with disabled=false
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": False},
         )
         assert response.status_code == 200
@@ -1145,7 +1145,7 @@ class TestSubscriptionUpdateEdgeCases:
         new_url = f"https://example.com/webhook/new-{uuid.uuid4().hex[:8]}"
 
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"url": new_url},
         )
         assert response.status_code == 200
@@ -1158,7 +1158,7 @@ class TestSubscriptionUpdateEdgeCases:
         subscription_id = webhook_subscription["id"]
 
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"event_types": ["sync.failed", "sync.cancelled"]},
         )
         assert response.status_code == 200
@@ -1171,7 +1171,7 @@ class TestSubscriptionUpdateEdgeCases:
         new_url = f"https://example.com/webhook/all-{uuid.uuid4().hex[:8]}"
 
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={
                 "url": new_url,
                 "event_types": ["sync.pending", "sync.running"],
@@ -1194,7 +1194,7 @@ class TestSubscriptionUpdateEdgeCases:
         await asyncio.sleep(0.1)
 
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
         assert response.status_code == 200
@@ -1212,7 +1212,7 @@ class TestSubscriptionUpdateEdgeCases:
         original_created_at = webhook_subscription.get("created_at")
 
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
         assert response.status_code == 200
@@ -1231,7 +1231,7 @@ class TestMessageQueryEdgeCases:
     ):
         """Test getting messages with empty event_types filter."""
         response = await api_client.get(
-            "/events/messages",
+            "/webhooks/messages",
             params={"event_types": []},
         )
         # Should return all messages or handle gracefully
@@ -1242,7 +1242,7 @@ class TestMessageQueryEdgeCases:
     ):
         """Test getting messages filtered by multiple event types."""
         response = await api_client.get(
-            "/events/messages",
+            "/webhooks/messages",
             params={"event_types": ["sync.completed", "sync.failed", "sync.running"]},
         )
         assert response.status_code == 200
@@ -1265,7 +1265,7 @@ class TestConcurrentOperations:
         # Fire multiple updates concurrently
         tasks = [
             api_client.patch(
-                f"/events/subscriptions/{subscription_id}",
+                f"/webhooks/subscriptions/{subscription_id}",
                 json={"disabled": i % 2 == 0},
             )
             for i in range(5)
@@ -1285,7 +1285,7 @@ class TestConcurrentOperations:
         """
         # Create a subscription
         create_response = await api_client.post(
-            "/events/subscriptions",
+            "/webhooks/subscriptions",
             json={
                 "url": unique_webhook_url,
                 "event_types": ["sync.completed"],
@@ -1295,11 +1295,11 @@ class TestConcurrentOperations:
         subscription_id = subscription["id"]
 
         # Delete it
-        await api_client.delete(f"/events/subscriptions/{subscription_id}")
+        await api_client.delete(f"/webhooks/subscriptions/{subscription_id}")
 
         # Try to update - should return 404
         response = await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
+            f"/webhooks/subscriptions/{subscription_id}",
             json={"disabled": True},
         )
         assert response.status_code == 404
@@ -1313,7 +1313,7 @@ class TestListOperationsEdgeCases:
         self, api_client: httpx.AsyncClient, webhook_subscription: Dict
     ):
         """Test that list subscriptions returns correct structure for each item."""
-        response = await api_client.get("/events/subscriptions")
+        response = await api_client.get("/webhooks/subscriptions")
         assert response.status_code == 200
         subscriptions = response.json()
 
@@ -1328,7 +1328,7 @@ class TestListOperationsEdgeCases:
         self, api_client: httpx.AsyncClient
     ):
         """Test that list messages returns correct structure."""
-        response = await api_client.get("/events/messages")
+        response = await api_client.get("/webhooks/messages")
         assert response.status_code == 200
         messages = response.json()
 

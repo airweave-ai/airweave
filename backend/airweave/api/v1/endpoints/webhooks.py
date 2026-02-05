@@ -1,7 +1,7 @@
-"""Events API endpoints for webhook subscriptions and event messages.
+"""Webhooks API endpoints for webhook subscriptions and messages.
 
 This module provides endpoints for managing webhook subscriptions and
-retrieving event messages sent to those webhooks. Webhooks allow you to
+retrieving messages sent to those webhooks. Webhooks allow you to
 receive real-time notifications when events occur in Airweave, such as
 sync job completions or failures.
 
@@ -16,17 +16,17 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from airweave.analytics import business_events
 from airweave.api import deps
 from airweave.api.context import ApiContext
-from airweave.schemas.events import (
+from airweave.schemas.webhooks import (
     CreateSubscriptionRequest,
     DeliveryAttempt,
-    EventMessage,
-    EventMessageWithAttempts,
     NotFoundErrorResponse,
     PatchSubscriptionRequest,
     RateLimitErrorResponse,
     RecoverMessagesRequest,
     RecoveryTask,
     ValidationErrorResponse,
+    WebhookMessage,
+    WebhookMessageWithAttempts,
     WebhookSubscription,
 )
 from airweave.webhooks.service import WebhooksError
@@ -42,18 +42,18 @@ def _raise_for_error(error: WebhooksError | None) -> None:
 
 @router.get(
     "/messages",
-    response_model=List[EventMessage],
+    response_model=List[WebhookMessage],
     summary="List Messages",
-    description="""Retrieve all event messages for your organization.
+    description="""Retrieve all webhook messages for your organization.
 
-Event messages represent webhook payloads that were sent (or attempted to be sent)
+Webhook messages represent payloads that were sent (or attempted to be sent)
 to your subscribed endpoints. Each message contains the event type, payload data,
 and delivery status information.
 
 Use the `event_types` query parameter to filter messages by specific event types,
 such as `sync.completed` or `sync.failed`.""",
     responses={
-        200: {"model": List[EventMessage], "description": "List of event messages"},
+        200: {"model": List[WebhookMessage], "description": "List of webhook messages"},
         422: {"model": ValidationErrorResponse, "description": "Validation Error"},
         429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
     },
@@ -66,18 +66,18 @@ async def get_messages(
         "Accepts multiple values, e.g., `?event_types=sync.completed&event_types=sync.failed`.",
         json_schema_extra={"example": ["sync.completed", "sync.failed"]},
     ),
-) -> List[EventMessage]:
-    """Retrieve event messages for the current organization."""
+) -> List[WebhookMessage]:
+    """Retrieve webhook messages for the current organization."""
     messages, error = await webhooks_service.get_messages(ctx.organization, event_types=event_types)
     _raise_for_error(error)
-    return [EventMessage.from_svix(msg) for msg in messages]
+    return [WebhookMessage.from_svix(msg) for msg in messages]
 
 
 @router.get(
     "/messages/{message_id}",
-    response_model=EventMessageWithAttempts,
+    response_model=WebhookMessageWithAttempts,
     summary="Get Message",
-    description="""Retrieve a specific event message by its ID.
+    description="""Retrieve a specific webhook message by its ID.
 
 Returns the full message details including the event type, payload data,
 timestamp, and delivery channel information. Use this to inspect the
@@ -87,7 +87,7 @@ Use `include_attempts=true` to also retrieve delivery attempts for this message,
 which include HTTP response codes, response bodies, and timestamps for debugging
 delivery failures.""",
     responses={
-        200: {"model": EventMessageWithAttempts, "description": "Event message details"},
+        200: {"model": WebhookMessageWithAttempts, "description": "Webhook message details"},
         404: {"model": NotFoundErrorResponse, "description": "Message Not Found"},
         422: {"model": ValidationErrorResponse, "description": "Validation Error"},
         429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
@@ -105,8 +105,8 @@ async def get_message(
         "the HTTP response code, response body, and timestamp.",
     ),
     ctx: ApiContext = Depends(deps.get_context),
-) -> EventMessageWithAttempts:
-    """Retrieve a specific event message by ID."""
+) -> WebhookMessageWithAttempts:
+    """Retrieve a specific webhook message by ID."""
     message, error = await webhooks_service.get_message(ctx.organization, message_id)
     _raise_for_error(error)
 
@@ -118,7 +118,7 @@ async def get_message(
         _raise_for_error(attempts_error)
         attempts = [DeliveryAttempt.from_svix(a) for a in (attempts_list or [])]
 
-    return EventMessageWithAttempts.from_svix(message, attempts=attempts)
+    return WebhookMessageWithAttempts.from_svix(message, attempts=attempts)
 
 
 @router.get(

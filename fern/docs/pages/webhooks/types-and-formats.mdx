@@ -1,11 +1,11 @@
 ---
 title: Types & Formats
 description: Event payload structures and delivery format
-edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/events/types-and-formats.mdx
-slug: events/types-and-formats
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/webhooks/types-and-formats.mdx
+slug: webhooks/types-and-formats
 ---
 
-This page documents the structure of webhook payloads, delivery headers, and the data models used throughout the Events API.
+This page documents the structure of webhook payloads, delivery headers, and the data models used throughout the Webhooks API.
 
 ## Event Types
 
@@ -165,7 +165,7 @@ When you create or retrieve a subscription, you'll see this structure:
 | `created_at` | ISO 8601 | When the subscription was created |
 | `updated_at` | ISO 8601 | When the subscription was last modified |
 
-## Event Message
+## Webhook Message
 
 When retrieving messages via the API, each message has this structure:
 
@@ -238,10 +238,10 @@ Failed deliveries are retried with exponential backoff:
 | 4 | 30 minutes |
 | 5 | 2 hours |
 
-After 5 failed attempts, the message is marked as failed. You can manually recover failed messages using the [recover endpoint](/events/setup#recovering-failed-messages).
+After 5 failed attempts, the message is marked as failed. You can manually recover failed messages using the [recover endpoint](/webhooks/setup#recovering-failed-messages).
 
 ## Next Steps
 
-<Card title="Setup Guide" icon="wrench" href="/events/setup">
+<Card title="Setup Guide" icon="wrench" href="/webhooks/setup">
   Learn how to create subscriptions, verify signatures, and handle events in your application.
 </Card>

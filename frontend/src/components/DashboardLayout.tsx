@@ -239,8 +239,8 @@ const DashboardLayout = () => {
     location.pathname.startsWith('/auth-providers'),
     [location.pathname]);
 
-  const isEventsActive = useMemo(() =>
-    location.pathname === '/events',
+  const isWebhooksActive = useMemo(() =>
+    location.pathname === '/webhooks',
     [location.pathname]);
 
   // Fully memoized SidebarContent component
@@ -348,14 +348,14 @@ const DashboardLayout = () => {
             </NavItem>
           </div>
 
-          {/* Events Section */}
+          {/* Webhooks Section */}
           <div>
             <NavItem
-              to="/events"
-              isActive={isEventsActive}
+              to="/webhooks"
+              isActive={isWebhooksActive}
               icon={<Webhook className="mr-2 h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />}
             >
-              Events
+              Webhooks
               <span className="ml-1.5 text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wide">beta</span>
             </NavItem>
           </div>
@@ -368,7 +368,7 @@ const DashboardLayout = () => {
         <UserProfileDropdown />
       </div>
     </div>
-  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, isEventsActive, currentOrganization?.id, sourceConnectionsAllowed, entitiesAllowed, isCheckingUsage, usageCheckDetails]);
+  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, isWebhooksActive, currentOrganization?.id, sourceConnectionsAllowed, entitiesAllowed, isCheckingUsage, usageCheckDetails]);
 
   // Main component render
   return (

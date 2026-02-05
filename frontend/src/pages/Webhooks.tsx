@@ -10,15 +10,15 @@ import {
   type Message,
 } from "@/hooks/use-webhooks";
 import {
-  EventsList,
-  EventDetail,
+  MessagesList,
+  MessageDetail,
   WebhooksTab,
   CreateWebhookModal,
   EditWebhookModal,
 } from "@/components/webhooks";
 
 /**
- * Logs Tab - Split pane view showing event logs
+ * Logs Tab - Split pane view showing webhook message logs
  */
 function LogsTab() {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
@@ -46,7 +46,7 @@ function LogsTab() {
     <div className="flex h-[calc(100vh-240px)] min-h-[400px] border rounded-lg overflow-hidden">
       {/* Left - List */}
       <div className="w-[380px] shrink-0 border-r">
-        <EventsList
+        <MessagesList
           messages={filteredMessages}
           selectedId={selectedMessage?.id ?? null}
           onSelect={setSelectedMessage}
@@ -71,7 +71,7 @@ function LogsTab() {
           </Button>
         </div>
         <div className="flex-1 overflow-hidden">
-          <EventDetail message={selectedMessage} />
+          <MessageDetail message={selectedMessage} />
         </div>
       </div>
     </div>
@@ -79,9 +79,9 @@ function LogsTab() {
 }
 
 /**
- * Events Page - Main page for webhooks and event logs
+ * Webhooks Page - Main page for webhooks and message logs
  */
-const EventsPage = () => {
+const WebhooksPage = () => {
   const {
     data: subscriptions = [],
     isLoading: isLoadingSubscriptions,
@@ -121,7 +121,7 @@ const EventsPage = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-2xl sm:text-3xl font-bold">
-          Events
+          Webhooks
           <span className="ml-2 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide align-middle">beta</span>
         </h1>
         <Button onClick={() => setCreateModalOpen(true)} size="sm" className="h-8">
@@ -132,7 +132,7 @@ const EventsPage = () => {
       <p className="text-sm text-muted-foreground mb-4">
         Get notified when syncs complete or fail.{" "}
         <a
-          href="https://docs.airweave.ai/events"
+          href="https://docs.airweave.ai/webhooks"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center text-primary hover:underline"
@@ -182,4 +182,4 @@ const EventsPage = () => {
   );
 };
 
-export default EventsPage;
+export default WebhooksPage;

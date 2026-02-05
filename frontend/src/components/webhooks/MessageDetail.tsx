@@ -96,7 +96,7 @@ function JsonSyntax({ data }: { data: unknown }) {
   );
 }
 
-interface EventDetailProps {
+interface MessageDetailProps {
   message: Message | null;
 }
 
@@ -210,7 +210,7 @@ function DeliveryAttempts({
   );
 }
 
-export function EventDetail({ message }: EventDetailProps) {
+export function MessageDetail({ message }: MessageDetailProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -222,7 +222,7 @@ export function EventDetail({ message }: EventDetailProps) {
   if (!message) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-xs text-muted-foreground/50">Select an event</p>
+        <p className="text-xs text-muted-foreground/50">Select a message</p>
       </div>
     );
   }

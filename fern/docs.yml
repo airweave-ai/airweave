@@ -29,14 +29,14 @@ navigation:
     path: docs/pages/search.mdx
   - page: MCP Server
     path: docs/pages/mcp-server.mdx
-  - section: Events
+  - section: Webhooks
     contents:
     - page: Overview
-      path: docs/pages/events/overview.mdx
+      path: docs/pages/webhooks/overview.mdx
     - page: Types & Formats
-      path: docs/pages/events/types-and-formats.mdx
+      path: docs/pages/webhooks/types-and-formats.mdx
     - page: Setup Guide
-      path: docs/pages/events/setup.mdx
+      path: docs/pages/webhooks/setup.mdx
   - page: Add New Connector
     path: docs/pages/add-new-source.mdx
   - page: Rate Limits
@@ -175,16 +175,16 @@ navigation:
     contents:
     - GET /sources
     - GET /sources/{short_name}
-  - section: Events
+  - section: Webhooks
     contents:
-    - GET /events/messages
-    - GET /events/messages/{message_id}
-    - GET /events/subscriptions
-    - GET /events/subscriptions/{subscription_id}
-    - POST /events/subscriptions
-    - PATCH /events/subscriptions/{subscription_id}
-    - POST /events/subscriptions/{subscription_id}/recover
-    - DELETE /events/subscriptions/{subscription_id}
+    - GET /webhooks/messages
+    - GET /webhooks/messages/{message_id}
+    - GET /webhooks/subscriptions
+    - GET /webhooks/subscriptions/{subscription_id}
+    - POST /webhooks/subscriptions
+    - PATCH /webhooks/subscriptions/{subscription_id}
+    - POST /webhooks/subscriptions/{subscription_id}/recover
+    - DELETE /webhooks/subscriptions/{subscription_id}
   snippets:
     python: airweave-sdk
     typescript: '@airweave/sdk'

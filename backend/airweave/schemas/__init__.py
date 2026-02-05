@@ -57,17 +57,6 @@ from .errors import (
     ValidationErrorDetail,
     ValidationErrorResponse,
 )
-from .events import (
-    # Request schemas
-    CreateSubscriptionRequest,
-    # Response schemas
-    DeliveryAttempt,
-    EventMessage,
-    PatchSubscriptionRequest,
-    RecoverMessagesRequest,
-    RecoveryTask,
-    WebhookSubscription,
-)
 from .integration_credential import (
     IntegrationCredential,
     IntegrationCredentialCreate,
@@ -183,6 +172,17 @@ from .user import (
     UserOrganization,
     UserUpdate,
     UserWithOrganizations,
+)
+from .webhooks import (
+    # Request schemas
+    CreateSubscriptionRequest,
+    # Response schemas
+    DeliveryAttempt,
+    PatchSubscriptionRequest,
+    RecoverMessagesRequest,
+    RecoveryTask,
+    WebhookMessage,
+    WebhookSubscription,
 )
 
 # Rebuild models to resolve forward references

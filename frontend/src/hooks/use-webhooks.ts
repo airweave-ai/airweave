@@ -95,7 +95,7 @@ export const webhookKeys = {
  * Fetch all webhook subscriptions
  */
 async function fetchSubscriptions(): Promise<Subscription[]> {
-  const response = await apiClient.get("/events/subscriptions");
+  const response = await apiClient.get("/webhooks/subscriptions");
   if (!response.ok) {
     throw new Error(`Failed to fetch subscriptions: ${response.status}`);
   }
@@ -116,8 +116,8 @@ async function fetchSubscription(
     params.set("include_secret", "true");
   }
   const url = params.toString()
-    ? `/events/subscriptions/${id}?${params}`
-    : `/events/subscriptions/${id}`;
+    ? `/webhooks/subscriptions/${id}?${params}`
+    : `/webhooks/subscriptions/${id}`;
   const response = await apiClient.get(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch subscription: ${response.status}`);
@@ -136,8 +136,8 @@ async function fetchMessage(id: string, includeAttempts = false): Promise<Messag
     params.set("include_attempts", "true");
   }
   const url = params.toString()
-    ? `/events/messages/${id}?${params}`
-    : `/events/messages/${id}`;
+    ? `/webhooks/messages/${id}?${params}`
+    : `/webhooks/messages/${id}`;
   const response = await apiClient.get(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch message: ${response.status}`);
@@ -149,7 +149,7 @@ async function fetchMessage(id: string, includeAttempts = false): Promise<Messag
  * Fetch all messages (events)
  */
 async function fetchMessages(): Promise<Message[]> {
-  const response = await apiClient.get("/events/messages");
+  const response = await apiClient.get("/webhooks/messages");
   if (!response.ok) {
     throw new Error(`Failed to fetch messages: ${response.status}`);
   }
@@ -160,7 +160,7 @@ async function fetchMessages(): Promise<Message[]> {
  * Create a new subscription
  */
 async function createSubscription(data: CreateSubscriptionRequest): Promise<Subscription> {
-  const response = await apiClient.post("/events/subscriptions", data);
+  const response = await apiClient.post("/webhooks/subscriptions", data);
   if (!response.ok) {
     throw new Error(`Failed to create subscription: ${response.status}`);
   }
@@ -174,7 +174,7 @@ async function updateSubscription(
   id: string,
   data: UpdateSubscriptionRequest
 ): Promise<Subscription> {
-  const response = await apiClient.patch(`/events/subscriptions/${id}`, data);
+  const response = await apiClient.patch(`/webhooks/subscriptions/${id}`, data);
   if (!response.ok) {
     throw new Error(`Failed to update subscription: ${response.status}`);
   }
@@ -185,7 +185,7 @@ async function updateSubscription(
  * Delete a subscription
  */
 async function deleteSubscription(id: string): Promise<void> {
-  const response = await apiClient.delete(`/events/subscriptions/${id}`);
+  const response = await apiClient.delete(`/webhooks/subscriptions/${id}`);
   if (!response.ok) {
     throw new Error(`Failed to delete subscription: ${response.status}`);
   }
@@ -198,7 +198,7 @@ async function recoverFailedMessages(
   id: string,
   data: RecoverMessagesRequest
 ): Promise<RecoverOut> {
-  const response = await apiClient.post(`/events/subscriptions/${id}/recover`, data);
+  const response = await apiClient.post(`/webhooks/subscriptions/${id}/recover`, data);
   if (!response.ok) {
     throw new Error(`Failed to recover messages: ${response.status}`);
   }

@@ -1,7 +1,7 @@
-"""Event and webhook subscription schemas.
+"""Webhook subscription and message schemas.
 
-This module defines Pydantic schemas for the Events API, which handles webhook
-subscriptions and event message management. Webhooks allow you to receive
+This module defines Pydantic schemas for the Webhooks API, which handles webhook
+subscriptions and message management. Webhooks allow you to receive
 real-time notifications when events occur in Airweave.
 
 All response models use snake_case field names for consistency with the webhook
@@ -39,8 +39,8 @@ __all__ = [
 # payloads delivered to user endpoints. They wrap Svix library types.
 
 
-class EventMessage(BaseModel):
-    """An event message that was sent (or attempted) to webhook subscribers.
+class WebhookMessage(BaseModel):
+    """A webhook message that was sent (or attempted) to webhook subscribers.
 
     The payload contains the actual event data matching the webhook delivery format.
     """
@@ -79,8 +79,8 @@ class EventMessage(BaseModel):
     def from_svix(
         cls,
         msg: MessageOut,
-    ) -> "EventMessage":
-        """Convert a Svix MessageOut to our EventMessage.
+    ) -> "WebhookMessage":
+        """Convert a Svix MessageOut to our WebhookMessage.
 
         Uses event_id (our UUID) as the primary id field.
         """
@@ -119,8 +119,8 @@ class EventMessage(BaseModel):
     }
 
 
-class EventMessageWithAttempts(EventMessage):
-    """An event message with delivery attempts."""
+class WebhookMessageWithAttempts(WebhookMessage):
+    """A webhook message with delivery attempts."""
 
     delivery_attempts: Optional[List["DeliveryAttempt"]] = Field(
         default=None,
@@ -130,8 +130,8 @@ class EventMessageWithAttempts(EventMessage):
     @classmethod
     def from_svix(
         cls, msg: MessageOut, attempts: Optional[List["DeliveryAttempt"]] = None
-    ) -> "EventMessageWithAttempts":
-        """Convert a Svix MessageOut to an EventMessageWithAttempts."""
+    ) -> "WebhookMessageWithAttempts":
+        """Convert a Svix MessageOut to a WebhookMessageWithAttempts."""
         return cls(
             id=msg.id,
             event_type=msg.event_type,

@@ -1,8 +1,8 @@
 ---
 title: Setup Guide
 description: Create webhooks and start receiving events
-edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/events/setup.mdx
-slug: events/setup
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/webhooks/setup.mdx
+slug: webhooks/setup
 ---
 
 This guide walks you through setting up webhook subscriptions, handling incoming events, verifying signatures, and managing your event delivery.
@@ -13,7 +13,7 @@ Register your endpoint to start receiving events:
 
 <CodeBlocks>
 ```bash title="cURL"
-curl -X POST 'https://api.airweave.ai/events/subscriptions' \
+curl -X POST 'https://api.airweave.ai/webhooks/subscriptions' \
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -26,7 +26,7 @@ curl -X POST 'https://api.airweave.ai/events/subscriptions' \
 import requests
 
 response = requests.post(
-    "https://api.airweave.ai/events/subscriptions",
+    "https://api.airweave.ai/webhooks/subscriptions",
     headers={"x-api-key": "YOUR_API_KEY"},
     json={
         "url": "https://your-server.com/webhooks/airweave",
@@ -38,7 +38,7 @@ print(f"Subscription ID: {subscription['id']}")
 ```
 
 ```javascript title="Node.js"
-const response = await fetch("https://api.airweave.ai/events/subscriptions", {
+const response = await fetch("https://api.airweave.ai/webhooks/subscriptions", {
   method: "POST",
   headers: {
     "x-api-key": "YOUR_API_KEY",
@@ -149,7 +149,7 @@ Every webhook delivery is signed. Verify signatures to ensure requests actually 
 First, retrieve your subscription's signing secret:
 
 ```bash
-curl -X GET 'https://api.airweave.ai/events/subscriptions/{subscription_id}?include_secret=true' \
+curl -X GET 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}?include_secret=true' \
   -H 'x-api-key: YOUR_API_KEY'
 ```
 
@@ -245,14 +245,14 @@ function verifySignature(payload, headers, secret) {
 ### List All Subscriptions
 
 ```bash
-curl -X GET 'https://api.airweave.ai/events/subscriptions' \
+curl -X GET 'https://api.airweave.ai/webhooks/subscriptions' \
   -H 'x-api-key: YOUR_API_KEY'
 ```
 
 ### Get a Specific Subscription
 
 ```bash
-curl -X GET 'https://api.airweave.ai/events/subscriptions/{subscription_id}' \
+curl -X GET 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}' \
   -H 'x-api-key: YOUR_API_KEY'
 ```
 
@@ -264,7 +264,7 @@ Change the URL, event types, or disable/enable delivery:
 
 <CodeBlocks>
 ```bash title="cURL"
-curl -X PATCH 'https://api.airweave.ai/events/subscriptions/{subscription_id}' \
+curl -X PATCH 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}' \
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -275,7 +275,7 @@ curl -X PATCH 'https://api.airweave.ai/events/subscriptions/{subscription_id}' \
 
 ```python title="Python"
 response = requests.patch(
-    f"https://api.airweave.ai/events/subscriptions/{subscription_id}",
+    f"https://api.airweave.ai/webhooks/subscriptions/{subscription_id}",
     headers={"x-api-key": "YOUR_API_KEY"},
     json={
         "event_types": ["sync.completed", "sync.failed", "sync.running"],
@@ -290,7 +290,7 @@ response = requests.patch(
 Temporarily pause delivery without deleting:
 
 ```bash
-curl -X PATCH 'https://api.airweave.ai/events/subscriptions/{subscription_id}' \
+curl -X PATCH 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}' \
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{"disabled": true}'
@@ -301,7 +301,7 @@ curl -X PATCH 'https://api.airweave.ai/events/subscriptions/{subscription_id}' \
 Re-enable a disabled subscription, optionally recovering missed messages:
 
 ```bash
-curl -X PATCH 'https://api.airweave.ai/events/subscriptions/{subscription_id}' \
+curl -X PATCH 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}' \
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -317,7 +317,7 @@ The `recover_since` parameter is optional. If provided, Airweave will retry all 
 Permanently remove a subscription:
 
 ```bash
-curl -X DELETE 'https://api.airweave.ai/events/subscriptions/{subscription_id}' \
+curl -X DELETE 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}' \
   -H 'x-api-key: YOUR_API_KEY'
 ```
 
@@ -325,28 +325,28 @@ curl -X DELETE 'https://api.airweave.ai/events/subscriptions/{subscription_id}' 
 This action cannot be undone. Pending deliveries will be cancelled.
 </Warning>
 
-## Retrieving Event History
+## Retrieving Message History
 
 ### Get All Messages
 
-Retrieve recent event messages sent to your organization:
+Retrieve recent webhook messages sent to your organization:
 
 ```bash
-curl -X GET 'https://api.airweave.ai/events/messages' \
+curl -X GET 'https://api.airweave.ai/webhooks/messages' \
   -H 'x-api-key: YOUR_API_KEY'
 ```
 
 ### Filter by Event Type
 
 ```bash
-curl -X GET 'https://api.airweave.ai/events/messages?event_types=sync.completed&event_types=sync.failed' \
+curl -X GET 'https://api.airweave.ai/webhooks/messages?event_types=sync.completed&event_types=sync.failed' \
   -H 'x-api-key: YOUR_API_KEY'
 ```
 
 ### Get a Specific Message
 
 ```bash
-curl -X GET 'https://api.airweave.ai/events/messages/{message_id}' \
+curl -X GET 'https://api.airweave.ai/webhooks/messages/{message_id}' \
   -H 'x-api-key: YOUR_API_KEY'
 ```
 
@@ -355,7 +355,7 @@ curl -X GET 'https://api.airweave.ai/events/messages/{message_id}' \
 See exactly what happened during delivery:
 
 ```bash
-curl -X GET 'https://api.airweave.ai/events/messages/{message_id}?include_attempts=true' \
+curl -X GET 'https://api.airweave.ai/webhooks/messages/{message_id}?include_attempts=true' \
   -H 'x-api-key: YOUR_API_KEY'
 ```
 
@@ -364,7 +364,7 @@ curl -X GET 'https://api.airweave.ai/events/messages/{message_id}?include_attemp
 If your endpoint was down or had issues, you can replay failed messages:
 
 ```bash
-curl -X POST 'https://api.airweave.ai/events/subscriptions/{subscription_id}/recover' \
+curl -X POST 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}/recover' \
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -420,11 +420,11 @@ A complete sample application demonstrating webhook handling, signature verifica
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="API Reference" icon="book" href="/api-reference/events/get-events-messages">
-    Explore the full Events API documentation with request/response examples.
+  <Card title="API Reference" icon="book" href="/api-reference/webhooks/get-webhooks-messages">
+    Explore the full Webhooks API documentation with request/response examples.
   </Card>
 
-  <Card title="Types & Formats" icon="code" href="/events/types-and-formats">
+  <Card title="Types & Formats" icon="code" href="/webhooks/types-and-formats">
     Review the detailed payload structures and delivery format.
   </Card>
 </CardGroup>

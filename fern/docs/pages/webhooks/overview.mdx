@@ -1,19 +1,19 @@
 ---
-title: Events Overview
+title: Webhooks Overview
 description: Real-time notifications for sync lifecycle events via webhooks
-edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/events/overview.mdx
-slug: events/overview
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/webhooks/overview.mdx
+slug: webhooks/overview
 ---
 
 <Warning>
 **Beta Feature**
 
-The Events API is currently in beta. The API is stable but may receive enhancements based on feedback.
+The Webhooks API is currently in beta. The API is stable but may receive enhancements based on feedback.
 </Warning>
 
-## What are Events?
+## What are Webhooks?
 
-Events are real-time notifications that Airweave sends when things happen in your organization. Instead of constantly polling the API to check if a sync completed, you register a webhook endpoint and Airweave pushes updates to you the moment they occur.
+Webhooks are real-time notifications that Airweave sends when things happen in your organization. Instead of constantly polling the API to check if a sync completed, you register a webhook endpoint and Airweave pushes updates to you the moment they occur.
 
 This is the foundation for building reactive integrations—trigger downstream workflows, update dashboards, send alerts, or sync state with external systems automatically.
 
@@ -111,11 +111,11 @@ Your server responds with `200 OK` to acknowledge receipt.
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Types & Formats" icon="code" href="/events/types-and-formats">
+  <Card title="Types & Formats" icon="code" href="/webhooks/types-and-formats">
     Learn the detailed structure of event payloads and delivery format.
   </Card>
 
-  <Card title="Setup Guide" icon="wrench" href="/events/setup">
+  <Card title="Setup Guide" icon="wrench" href="/webhooks/setup">
     Create your first webhook subscription and start receiving events.
   </Card>
 </CardGroup>

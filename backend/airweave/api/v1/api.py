@@ -13,7 +13,6 @@ from airweave.api.v1.endpoints import (
     embedding_models,
     entities,
     entity_counts,
-    events,
     file_retrieval,
     health,
     organizations,
@@ -26,6 +25,7 @@ from airweave.api.v1.endpoints import (
     transformers,
     usage,
     users,
+    webhooks,
 )
 from airweave.core.config import settings
 
@@ -59,7 +59,7 @@ api_router.include_router(transformers.router, prefix="/transformers", tags=["tr
 api_router.include_router(file_retrieval.router, prefix="/files", tags=["files"])
 api_router.include_router(s3.router, prefix="/s3", tags=["s3"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
-api_router.include_router(events.router, prefix="/events", tags=["events"])
+api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 
 # Only include cursor development endpoints if LOCAL_CURSOR_DEVELOPMENT is enabled
 if settings.LOCAL_CURSOR_DEVELOPMENT:

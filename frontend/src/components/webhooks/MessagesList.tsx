@@ -1,10 +1,10 @@
 import { Input } from "@/components/ui/input";
 import { Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatTime, getEventSummary } from "./shared";
+import { formatTime, getMessageSummary } from "./shared";
 import type { Message } from "@/hooks/use-webhooks";
 
-interface EventsListProps {
+interface MessagesListProps {
   messages: Message[];
   selectedId: string | null;
   onSelect: (message: Message) => void;
@@ -13,14 +13,14 @@ interface EventsListProps {
   onSearchChange: (query: string) => void;
 }
 
-export function EventsList({
+export function MessagesList({
   messages,
   selectedId,
   onSelect,
   isLoading,
   searchQuery,
   onSearchChange,
-}: EventsListProps) {
+}: MessagesListProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Search */}
@@ -29,7 +29,7 @@ export function EventsList({
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
           <Input
             type="text"
-            placeholder="Search events..."
+            placeholder="Search messages..."
             className="pl-8 h-8 text-xs bg-transparent border-0 focus-visible:ring-0 placeholder:text-muted-foreground/50"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
@@ -46,14 +46,14 @@ export function EventsList({
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-xs text-muted-foreground/60">
-              {searchQuery ? "No results" : "No events"}
+              {searchQuery ? "No results" : "No messages"}
             </p>
           </div>
         ) : (
           <div className="divide-y divide-border/40">
             {messages.map((message) => {
               const isSelected = selectedId === message.id;
-              const summary = getEventSummary(message.payload);
+              const summary = getMessageSummary(message.payload);
 
               return (
                 <div

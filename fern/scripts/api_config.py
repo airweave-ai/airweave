@@ -20,12 +20,12 @@ INCLUDED_ENDPOINTS = {
     "/source-connections/{source_connection_id}/run/": {"post": True},
     "/source-connections/{source_connection_id}/jobs/": {"get": True},
     "/source-connections/{source_connection_id}/jobs/{job_id}/cancel/": {"post": True},
-    # Events
-    "/events/messages/": {"get": True},
-    "/events/messages/{message_id}/": {"get": True},
-    "/events/subscriptions/": {"get": True, "post": True},
-    "/events/subscriptions/{subscription_id}/": {"get": True, "patch": True, "delete": True},
-    "/events/subscriptions/{subscription_id}/recover/": {"post": True},
+    # Webhooks
+    "/webhooks/messages/": {"get": True},
+    "/webhooks/messages/{message_id}/": {"get": True},
+    "/webhooks/subscriptions/": {"get": True, "post": True},
+    "/webhooks/subscriptions/{subscription_id}/": {"get": True, "patch": True, "delete": True},
+    "/webhooks/subscriptions/{subscription_id}/recover/": {"post": True},
 }
 
 # API group descriptions for documentation
@@ -33,7 +33,7 @@ API_GROUPS = {
     "Sources": "API endpoints for discovering available data source connectors and their configuration requirements",
     "Collections": "API endpoints for managing collections - logical groups of data sources that provide unified search capabilities",
     "Source Connections": "API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections",
-    "Events": "API endpoints for managing webhook subscriptions and event messages. Subscribe to events like sync completions to receive real-time notifications at your webhook URL",
+    "Webhooks": "API endpoints for managing webhook subscriptions and messages. Subscribe to events like sync completions to receive real-time notifications at your webhook URL",
 }
 
 
