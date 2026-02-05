@@ -2,6 +2,7 @@
 
 from typing import Protocol
 
+from airweave.search.spotlight.schemas.compiled_query import SpotlightCompiledQuery
 from airweave.search.spotlight.schemas.plan import SpotlightPlan
 from airweave.search.spotlight.schemas.query_embeddings import SpotlightQueryEmbeddings
 from airweave.search.spotlight.schemas.search_result import SpotlightSearchResults
@@ -11,7 +12,8 @@ class SpotlightVectorDBInterface(Protocol):
     """Interface for vector database operations.
 
     Vector databases compile search plans into DB-specific queries and execute them.
-    The compiled query is stored as a string in the state for debugging/transparency.
+    The compiled query contains both the raw query (for execution) and a display
+    version (for logging/history, without embeddings).
     """
 
     async def compile_query(
@@ -19,11 +21,8 @@ class SpotlightVectorDBInterface(Protocol):
         plan: SpotlightPlan,
         embeddings: SpotlightQueryEmbeddings,
         collection_id: str,
-    ) -> str:
-        """Compile plan and embeddings into a DB-specific query string.
-
-        The returned string format is implementation-specific (e.g., JSON for Vespa).
-        It should be self-contained and executable by execute_query().
+    ) -> SpotlightCompiledQuery:
+        """Compile plan and embeddings into a DB-specific query.
 
         Args:
             plan: Search plan with queries, filters, strategy, pagination.
@@ -31,18 +30,22 @@ class SpotlightVectorDBInterface(Protocol):
             collection_id: Collection readable ID for tenant filtering.
 
         Returns:
-            DB-specific query as a string (e.g., JSON-serialized YQL + params).
+            SpotlightCompiledQuery with:
+            - vector_db: Name of the vector database
+            - display: Human-readable query (no embeddings)
+            - raw: Full query for execution (via .raw property)
         """
         ...
 
     async def execute_query(
         self,
-        compiled_query: str,
+        compiled_query: SpotlightCompiledQuery,
     ) -> SpotlightSearchResults:
         """Execute a compiled query and return search results.
 
         Args:
-            compiled_query: The string returned by compile_query().
+            compiled_query: The SpotlightCompiledQuery from compile_query().
+                Uses compiled_query.raw for the actual query execution.
 
         Returns:
             Search results container, ordered by relevance.

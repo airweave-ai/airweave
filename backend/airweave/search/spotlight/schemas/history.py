@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from airweave.search.spotlight.external.tokenizer.interface import SpotlightTokenizerInterface
 
+from .compiled_query import SpotlightCompiledQuery
 from .evaluation import SpotlightEvaluation
 from .plan import SpotlightPlan
 
@@ -32,7 +33,7 @@ class SpotlightHistoryIteration(BaseModel):
     """
 
     plan: SpotlightPlan = Field(..., description="Plan used for this iteration.")
-    compiled_query: str = Field(..., description="The compiled query.")
+    compiled_query: SpotlightCompiledQuery = Field(..., description="The compiled query.")
     evaluation: SpotlightEvaluation = Field(
         ..., description="Evaluation of the results from this iteration."
     )
@@ -55,7 +56,8 @@ class SpotlightHistoryIteration(BaseModel):
             self.plan.to_md(),
             "",
             "**Compiled Query:**",
-            f"```\n{self.compiled_query}\n```",
+            "",
+            self.compiled_query.to_md(),
             "",
             self.evaluation.to_md(),
         ]

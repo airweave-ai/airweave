@@ -91,3 +91,17 @@ Examples:
 - "Zero results - the entity_type filter may be wrong. Try without the filter or use a different type"
 
 Leave empty if stopping with sufficient results.
+
+## Handling Truncation
+
+If you see a message like *"Additional results truncated to fit context window"* or
+*"X of Y results shown"*, it means some results were cut off due to token limits.
+
+When truncation occurs:
+- **If you have enough to answer**: Stop - you don't need to see everything
+- **If you need more visibility**: Advise the Planner to reduce the `limit` (e.g., from 30 to 10)
+  so fewer, more complete results fit in the context window
+- **Don't request more results** when truncation is happening - that makes it worse
+
+Example advice for truncation: "Results were truncated. Reduce limit to 10 so we can see
+complete results, and add a filter to narrow down to the most relevant entity types."

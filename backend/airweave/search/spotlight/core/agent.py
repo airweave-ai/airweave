@@ -29,6 +29,7 @@ from airweave.search.spotlight.core.planner import SpotlightPlanner
 from airweave.search.spotlight.schemas import (
     SpotlightAnswer,
     SpotlightCollectionMetadata,
+    SpotlightCompiledQuery,
     SpotlightCurrentIteration,
     SpotlightEvaluation,
     SpotlightHistory,
@@ -88,7 +89,7 @@ class SpotlightAgent:
             state.current_iteration.query_embeddings = embeddings
 
             # Compile query
-            compiled_query: str = await self.services.vector_db.compile_query(
+            compiled_query: SpotlightCompiledQuery = await self.services.vector_db.compile_query(
                 plan=state.current_iteration.plan,
                 embeddings=state.current_iteration.query_embeddings,
                 collection_id=state.collection_metadata.collection_id,

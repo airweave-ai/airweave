@@ -112,7 +112,9 @@ For each search plan, you must specify:
 3. **Result Count** (`limit`, `offset`): How many results to fetch and pagination offset.
    - **Prefer more results over fewer** - it's better to return too many than miss something
    - Consider that results must fit in the evaluator's context window (~80,000 tokens)
+   - Results that don't fit in context get truncated - the evaluator won't see them
    - Start with generous limits (20-50) and only reduce if feedback says results are too noisy
+   - If the Evaluator advises "reduce limit due to truncation", comply
 
 4. **Retrieval Strategy** (`retrieval_strategy`): One of:
    - `semantic`: Dense vector similarity (best for natural language, conceptual queries)

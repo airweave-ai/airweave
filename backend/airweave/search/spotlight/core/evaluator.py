@@ -202,9 +202,7 @@ class SpotlightEvaluator:
 {ci.plan.to_md()}
 
 **Compiled Query:**
-```
-{ci.compiled_query}
-```
+{ci.compiled_query.to_md()}
 """
 
     def _calculate_dynamic_budgets(self, static_tokens: int) -> tuple[int, int]:

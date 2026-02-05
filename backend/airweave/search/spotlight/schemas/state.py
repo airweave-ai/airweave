@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from .collection_metadata import SpotlightCollectionMetadata
+from .compiled_query import SpotlightCompiledQuery
 from .evaluation import SpotlightEvaluation
 from .history import SpotlightHistory
 from .plan import SpotlightPlan
@@ -19,7 +20,9 @@ class SpotlightCurrentIteration(BaseModel):
     query_embeddings: Optional[SpotlightQueryEmbeddings] = Field(
         default=None, description="Query embeddings."
     )
-    compiled_query: Optional[str] = Field(None, description="The compiled query.")
+    compiled_query: Optional[SpotlightCompiledQuery] = Field(
+        None, description="The compiled query."
+    )
     search_results: Optional[SpotlightSearchResults] = Field(
         default=None, description="Search results."
     )

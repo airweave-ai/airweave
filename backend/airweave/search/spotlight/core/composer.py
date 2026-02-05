@@ -85,6 +85,9 @@ class SpotlightComposer:
         prompt_tokens = self._tokenizer.count_tokens(prompt)
         self._logger.debug(f"[Composer] Total prompt: {prompt_tokens:,} tokens")
 
+        # Log full prompt for debugging
+        self._logger.debug(f"[Composer] Full prompt:\n{prompt}")
+
         answer = await self._llm.structured_output(prompt, SpotlightAnswer)
 
         # Log the answer
@@ -212,9 +215,7 @@ This is iteration **{state.iteration_number}** (final).
 
 ### Compiled Query
 
-```
-{ci.compiled_query}
-```
+{ci.compiled_query.to_md()}
 
 ### Evaluation
 

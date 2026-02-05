@@ -9,6 +9,7 @@ from .collection_metadata import (
     SpotlightEntityTypeMetadata,
     SpotlightSourceMetadata,
 )
+from .compiled_query import SpotlightCompiledQuery
 from .database import (
     SpotlightCollection,
     SpotlightEntityCount,
@@ -44,6 +45,8 @@ __all__ = [
     "SpotlightCollectionMetadata",
     "SpotlightEntityTypeMetadata",
     "SpotlightSourceMetadata",
+    # Compiled query
+    "SpotlightCompiledQuery",
     # Database (internal schemas for database layer)
     "SpotlightCollection",
     "SpotlightEntityCount",

@@ -23,6 +23,7 @@ from airweave.search.spotlight.external.vector_database.vespa.config import (
 from airweave.search.spotlight.external.vector_database.vespa.filter_translator import (
     FilterTranslator,
 )
+from airweave.search.spotlight.schemas.compiled_query import SpotlightCompiledQuery
 from airweave.search.spotlight.schemas.plan import SpotlightPlan
 from airweave.search.spotlight.schemas.query_embeddings import (
     SpotlightQueryEmbeddings,
@@ -112,7 +113,7 @@ class VespaVectorDB:
         plan: SpotlightPlan,
         embeddings: SpotlightQueryEmbeddings,
         collection_id: str,
-    ) -> str:
+    ) -> SpotlightCompiledQuery:
         """Compile plan and embeddings into Vespa query.
 
         Args:
@@ -121,7 +122,7 @@ class VespaVectorDB:
             collection_id: Collection readable ID for tenant filtering.
 
         Returns:
-            JSON string: {"yql": "...", "params": {...}}
+            SpotlightCompiledQuery with raw (full) and display (no embeddings) versions.
 
         Raises:
             FilterTranslationError: If filters reference non-filterable fields.
@@ -129,30 +130,36 @@ class VespaVectorDB:
         yql = self._build_yql(plan, collection_id)
         params = self._build_params(plan, embeddings)
 
-        compiled = {"yql": yql, "params": params}
+        # Raw query for execution (includes embeddings)
+        raw_query = {"yql": yql, "params": params}
+
+        # Display params: exclude embedding vectors (they can be huge)
+        display_params = {k: v for k, v in params.items() if not k.startswith("input.query(")}
+        display_query = f"YQL:\n{yql}\n\nParams:\n{json.dumps(display_params, indent=2)}"
 
         # Log summary
         self._logger.debug(
             f"[VespaVectorDB] Compiled query: YQL={len(yql)} chars, params={len(params)} keys"
         )
-
-        # Log readable breakdown
         self._logger.debug(f"[VespaVectorDB] YQL:\n{yql}")
-        params_for_log = {k: v for k, v in params.items() if not k.startswith("input.query(")}
-        self._logger.debug(f"[VespaVectorDB] Params: {json.dumps(params_for_log, indent=2)}")
+        self._logger.debug(f"[VespaVectorDB] Params (no embeddings): {display_params}")
 
-        return json.dumps(compiled)
+        return SpotlightCompiledQuery(
+            vector_db="vespa",
+            display=display_query,
+            raw=raw_query,
+        )
 
     async def execute_query(
         self,
-        compiled_query: str,
+        compiled_query: SpotlightCompiledQuery,
     ) -> SpotlightSearchResults:
         """Execute compiled query against Vespa.
 
         Runs the query in a thread pool since pyvespa is synchronous.
 
         Args:
-            compiled_query: JSON string from compile_query().
+            compiled_query: SpotlightCompiledQuery from compile_query().
 
         Returns:
             Search results container, ordered by relevance.
@@ -160,10 +167,10 @@ class VespaVectorDB:
         Raises:
             RuntimeError: If query execution fails.
         """
-        # Parse compiled query
-        compiled = json.loads(compiled_query)
-        yql = compiled["yql"]
-        params = compiled["params"]
+        # Extract raw query (includes embeddings)
+        raw = compiled_query.raw
+        yql = raw["yql"]
+        params = raw["params"]
 
         # Merge YQL into params (pyvespa expects all in one dict)
         query_params = {**params, "yql": yql}
