@@ -585,6 +585,28 @@ class TodoistConfig(SourceConfig):
     pass
 
 
+class SupabaseConfig(SourceConfig):
+    """Supabase configuration schema."""
+
+    tables: str = Field(
+        default="*",
+        title="Tables",
+        description="Comma-separated list of tables to sync, or '*' for all tables",
+    )
+    page_size: int = Field(
+        default=1000,
+        title="Page Size",
+        description="Number of records to fetch per API request (max 1000)",
+        ge=1,
+        le=1000,
+    )
+    respect_rls: bool = Field(
+        default=True,
+        title="Respect RLS",
+        description="Skip tables protected by Row Level Security policies instead of failing",
+    )
+
+
 class StubConfig(SourceConfig):
     """Stub source configuration schema for testing.
 

@@ -804,6 +804,60 @@ class StubAuthConfig(AuthConfig):
     )
 
 
+class SupabaseAuthConfig(AuthConfig):
+    """Supabase authentication credentials schema.
+
+    Supabase uses API key authentication for accessing the PostgREST API.
+    """
+
+    project_url: str = Field(
+        title="Project URL",
+        description="Your Supabase project URL (e.g., https://abc123.supabase.co)",
+        min_length=10,
+    )
+    api_key: str = Field(
+        title="API Key",
+        description=(
+            "Supabase API key (anon key for public access or "
+            "service_role key for full access)"
+        ),
+        min_length=20,
+    )
+
+    @field_validator("project_url")
+    @classmethod
+    def validate_project_url(cls, v: str) -> str:
+        """Validate Supabase project URL format."""
+        if not v or not v.strip():
+            raise ValueError("Project URL is required")
+        v = v.strip()
+
+        # Must start with https://
+        if not v.startswith("https://"):
+            raise ValueError("Project URL must start with https://")
+
+        # Should end with .supabase.co
+        if not v.endswith(".supabase.co") and not v.endswith(".supabase.co/"):
+            raise ValueError("Project URL should end with .supabase.co (e.g., https://abc123.supabase.co)")
+
+        return v.rstrip("/")
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate Supabase API key."""
+        if not v or not v.strip():
+            raise ValueError("API key is required")
+        v = v.strip()
+
+        # Check for common placeholder values
+        placeholder_values = ["your-api-key", "xxx", "api-key-here", "paste-here", "placeholder"]
+        if any(placeholder in v.lower() for placeholder in placeholder_values):
+            raise ValueError("Please enter your actual API key, not a placeholder value")
+
+        return v
+
+
 class SnapshotAuthConfig(BaseConfig):
     """Optional authentication for blob storage access.
 
