@@ -16,8 +16,9 @@ from airweave.analytics.contextual_service import (
 from airweave.analytics.service import analytics
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
+from airweave.core import container as container_mod
 from airweave.core.config import settings
-from airweave.core.container import Container, container
+from airweave.core.container import Container
 from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import NotFoundException, RateLimitExceededException
 from airweave.core.guard_rail_service import GuardRailService
@@ -588,6 +589,7 @@ def _extract_headers_from_request(request: Request) -> RequestHeaders:
 
 def get_container() -> Container:
     """Get the DI container. Initialized at startup."""
-    if container is None:
+    c = container_mod.container
+    if c is None:
         raise RuntimeError("Container not initialized. Call initialize_container() first.")
-    return container
+    return c
