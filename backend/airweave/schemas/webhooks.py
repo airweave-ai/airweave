@@ -9,10 +9,11 @@ payloads that are delivered to your endpoints.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
-from svix.api import EndpointOut, MessageAttemptOut, MessageOut
+
+from airweave.domains.webhooks.types import EventType, SyncEventPayload
 
 # Import shared error response models
 from airweave.schemas.errors import (
@@ -21,8 +22,17 @@ from airweave.schemas.errors import (
     ValidationErrorDetail,
     ValidationErrorResponse,
 )
-from airweave.webhooks.constants.event_types import EventType
-from airweave.webhooks.schemas import SyncEventPayload
+
+if TYPE_CHECKING:
+    from airweave.domains.webhooks.types import (
+        DeliveryAttempt as DomainDeliveryAttempt,
+    )
+    from airweave.domains.webhooks.types import (
+        EventMessage as DomainEventMessage,
+    )
+    from airweave.domains.webhooks.types import (
+        Subscription as DomainSubscription,
+    )
 
 # Re-export for backwards compatibility
 __all__ = [
@@ -36,7 +46,7 @@ __all__ = [
 # Unified Response Models (snake_case)
 # =============================================================================
 # These models provide a consistent snake_case API that matches the webhook
-# payloads delivered to user endpoints. They wrap Svix library types.
+# payloads delivered to user endpoints. They wrap domain types.
 
 
 class WebhookMessage(BaseModel):
@@ -76,21 +86,15 @@ class WebhookMessage(BaseModel):
     )
 
     @classmethod
-    def from_svix(
-        cls,
-        msg: MessageOut,
-    ) -> "WebhookMessage":
-        """Convert a Svix MessageOut to our WebhookMessage.
-
-        Uses event_id (our UUID) as the primary id field.
-        """
+    def from_domain(cls, msg: "DomainEventMessage") -> "WebhookMessage":
+        """Convert a domain EventMessage to API response."""
         return cls(
             id=msg.id,
             event_type=msg.event_type,
             payload=SyncEventPayload(**msg.payload),
             timestamp=msg.timestamp,
             channels=msg.channels,
-            tags=msg.tags,
+            tags=None,
         )
 
     model_config = {
@@ -128,17 +132,17 @@ class WebhookMessageWithAttempts(WebhookMessage):
     )
 
     @classmethod
-    def from_svix(
-        cls, msg: MessageOut, attempts: Optional[List["DeliveryAttempt"]] = None
+    def from_domain(
+        cls, msg: "DomainEventMessage", attempts: Optional[List["DeliveryAttempt"]] = None
     ) -> "WebhookMessageWithAttempts":
-        """Convert a Svix MessageOut to a WebhookMessageWithAttempts."""
+        """Convert a domain EventMessage to API response with attempts."""
         return cls(
             id=msg.id,
             event_type=msg.event_type,
             payload=SyncEventPayload(**msg.payload),
             timestamp=msg.timestamp,
             channels=msg.channels,
-            tags=msg.tags,
+            tags=None,
             delivery_attempts=attempts,
         )
 
@@ -200,25 +204,21 @@ class WebhookSubscription(BaseModel):
     )
 
     @classmethod
-    def from_svix(
+    def from_domain(
         cls,
-        endpoint: EndpointOut,
+        sub: "DomainSubscription",
         delivery_attempts: Optional[List["DeliveryAttempt"]] = None,
         secret: Optional[str] = None,
     ) -> "WebhookSubscription":
-        """Convert a Svix EndpointOut to our WebhookSubscription.
-
-        Uses uid (our UUID) as the primary id field.
-        Note: Svix stores event type filters in `channels`, not `filter_types`.
-        """
+        """Convert a domain Subscription to API response."""
         return cls(
-            id=endpoint.uid or endpoint.id,  # Prefer our UUID, fallback to Svix ID
-            url=endpoint.url,
-            filter_types=endpoint.channels,  # Svix uses channels for event type filtering
-            disabled=endpoint.disabled or False,
-            description=endpoint.description,
-            created_at=endpoint.created_at,
-            updated_at=endpoint.updated_at,
+            id=sub.id,
+            url=sub.url,
+            filter_types=sub.event_types,
+            disabled=sub.disabled,
+            description=None,
+            created_at=sub.created_at,
+            updated_at=sub.updated_at,
             delivery_attempts=delivery_attempts,
             secret=secret,
         )
@@ -286,33 +286,31 @@ class DeliveryAttempt(BaseModel):
         description="When this delivery attempt occurred (ISO 8601 format, UTC)",
         json_schema_extra={"example": "2024-03-15T09:45:33Z"},
     )
+    url: Optional[str] = Field(
+        default=None,
+        description="The URL that was called",
+    )
 
     @classmethod
-    def from_svix(
-        cls,
-        attempt: MessageAttemptOut,
-        message_event_id: Optional[str] = None,
-        endpoint_uid: Optional[str] = None,
-    ) -> "DeliveryAttempt":
-        """Convert a Svix MessageAttemptOut to our DeliveryAttempt.
-
-        Args:
-            attempt: The Svix attempt object.
-            message_event_id: Our UUID for the message (if known).
-            endpoint_uid: Our UUID for the endpoint (if known).
-        """
-        # Map Svix status enum to string
-        status_map = {0: "success", 1: "pending", 2: "failed"}
-        status_str = status_map.get(attempt.status, "unknown")
+    def from_domain(cls, attempt: "DomainDeliveryAttempt") -> "DeliveryAttempt":
+        """Convert a domain DeliveryAttempt to API response."""
+        # Derive status from response code
+        if attempt.response_status_code >= 200 and attempt.response_status_code < 300:
+            status = "success"
+        elif attempt.response_status_code == 0:
+            status = "pending"
+        else:
+            status = "failed"
 
         return cls(
-            id=attempt.id,  # Attempts don't have custom IDs, use Svix's
-            message_id=message_event_id or attempt.msg_id,
-            endpoint_id=endpoint_uid or attempt.endpoint_id,
+            id=attempt.id,
+            message_id=attempt.message_id,
+            endpoint_id=attempt.endpoint_id,
             response=attempt.response,
             response_status_code=attempt.response_status_code,
-            status=status_str,
+            status=status,
             timestamp=attempt.timestamp,
+            url=attempt.url,
         )
 
     model_config = {

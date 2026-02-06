@@ -1,12 +1,8 @@
 """Webhooks API endpoints for webhook subscriptions and messages.
 
 This module provides endpoints for managing webhook subscriptions and
-retrieving messages sent to those webhooks. Webhooks allow you to
-receive real-time notifications when events occur in Airweave, such as
-sync job completions or failures.
-
-All response models use snake_case field names for consistency with the
-webhook payloads delivered to your endpoints.
+retrieving event messages sent to those webhooks. Uses protocol-based
+dependency injection via the DI container.
 """
 
 from typing import List
@@ -16,6 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from airweave.analytics import business_events
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Container
+from airweave.domains.webhooks import WebhooksError
 from airweave.schemas.webhooks import (
     CreateSubscriptionRequest,
     DeliveryAttempt,
@@ -29,15 +27,8 @@ from airweave.schemas.webhooks import (
     WebhookMessageWithAttempts,
     WebhookSubscription,
 )
-from airweave.webhooks.service import WebhooksError
-from airweave.webhooks.service import service as webhooks_service
 
 router = APIRouter()
-
-
-def _raise_for_error(error: WebhooksError | None) -> None:
-    if error:
-        raise HTTPException(status_code=error.status_code, detail=error.message)
 
 
 @router.get(
@@ -60,6 +51,7 @@ such as `sync.completed` or `sync.failed`.""",
 )
 async def get_messages(
     ctx: ApiContext = Depends(deps.get_context),
+    c: Container = Depends(deps.get_container),
     event_types: List[str] | None = Query(
         default=None,
         description="Filter messages by event type(s). "
@@ -67,10 +59,13 @@ async def get_messages(
         json_schema_extra={"example": ["sync.completed", "sync.failed"]},
     ),
 ) -> List[WebhookMessage]:
-    """Retrieve webhook messages for the current organization."""
-    messages, error = await webhooks_service.get_messages(ctx.organization, event_types=event_types)
-    _raise_for_error(error)
-    return [WebhookMessage.from_svix(msg) for msg in messages]
+    """Retrieve event messages for the current organization."""
+    try:
+        messages = await c.webhook_admin.get_messages(ctx.organization.id, event_types=event_types)
+    except WebhooksError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
+
+    return [WebhookMessage.from_domain(msg) for msg in messages]
 
 
 @router.get(
@@ -105,20 +100,21 @@ async def get_message(
         "the HTTP response code, response body, and timestamp.",
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    c: Container = Depends(deps.get_container),
 ) -> WebhookMessageWithAttempts:
-    """Retrieve a specific webhook message by ID."""
-    message, error = await webhooks_service.get_message(ctx.organization, message_id)
-    _raise_for_error(error)
+    """Retrieve a specific event message by ID."""
+    try:
+        admin = c.webhook_admin
+        message = await admin.get_message(ctx.organization.id, message_id)
 
-    attempts = None
-    if include_attempts:
-        attempts_list, attempts_error = await webhooks_service.get_message_attempts_by_message(
-            ctx.organization, message_id
-        )
-        _raise_for_error(attempts_error)
-        attempts = [DeliveryAttempt.from_svix(a) for a in (attempts_list or [])]
+        attempts = None
+        if include_attempts:
+            attempts_list = await admin.get_message_attempts(ctx.organization.id, message_id)
+            attempts = [DeliveryAttempt.from_domain(a) for a in attempts_list]
+    except WebhooksError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
-    return WebhookMessageWithAttempts.from_svix(message, attempts=attempts)
+    return WebhookMessageWithAttempts.from_domain(message, attempts=attempts)
 
 
 @router.get(
@@ -138,11 +134,15 @@ your webhook configuration or find a specific subscription.""",
 )
 async def get_subscriptions(
     ctx: ApiContext = Depends(deps.get_context),
+    c: Container = Depends(deps.get_container),
 ) -> List[WebhookSubscription]:
     """List all webhook subscriptions for the organization."""
-    endpoints, error = await webhooks_service.get_endpoints(ctx.organization)
-    _raise_for_error(error)
-    return [WebhookSubscription.from_svix(ep) for ep in endpoints]
+    try:
+        subscriptions = await c.webhook_admin.list_subscriptions(ctx.organization.id)
+    except WebhooksError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
+
+    return [WebhookSubscription.from_domain(sub) for sub in subscriptions]
 
 
 @router.get(
@@ -176,29 +176,26 @@ async def get_subscription(
         "Keep this secret secure and use it to verify the 'svix-signature' header.",
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    c: Container = Depends(deps.get_container),
 ) -> WebhookSubscription:
     """Retrieve a specific webhook subscription with delivery attempts."""
-    endpoint, error = await webhooks_service.get_endpoint(ctx.organization, subscription_id)
-    _raise_for_error(error)
+    try:
+        admin = c.webhook_admin
+        subscription = await admin.get_subscription(ctx.organization.id, subscription_id)
 
-    # Fetch delivery attempts
-    message_attempts, attempts_error = await webhooks_service.get_message_attempts_by_endpoint(
-        ctx.organization, subscription_id
-    )
-    _raise_for_error(attempts_error)
-    delivery_attempts = [DeliveryAttempt.from_svix(a) for a in (message_attempts or [])]
+        # Fetch delivery attempts
+        attempts_list = await admin.get_subscription_attempts(ctx.organization.id, subscription_id)
+        delivery_attempts = [DeliveryAttempt.from_domain(a) for a in attempts_list]
 
-    # Optionally fetch secret
-    secret = None
-    if include_secret:
-        secret_out, secret_error = await webhooks_service.get_endpoint_secret(
-            ctx.organization, subscription_id
-        )
-        _raise_for_error(secret_error)
-        secret = secret_out.key
+        # Optionally fetch secret
+        secret = None
+        if include_secret:
+            secret = await admin.get_subscription_secret(ctx.organization.id, subscription_id)
+    except WebhooksError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
-    return WebhookSubscription.from_svix(
-        endpoint, delivery_attempts=delivery_attempts, secret=secret
+    return WebhookSubscription.from_domain(
+        subscription, delivery_attempts=delivery_attempts, secret=secret
     )
 
 
@@ -226,22 +223,27 @@ matching events occur. Each request includes a signature header for verification
 async def create_subscription(
     request: CreateSubscriptionRequest,
     ctx: ApiContext = Depends(deps.get_context),
+    c: Container = Depends(deps.get_container),
 ) -> WebhookSubscription:
     """Create a new webhook subscription."""
-    endpoint, error = await webhooks_service.create_endpoint(
-        ctx.organization, str(request.url), request.event_types, request.secret
-    )
-    _raise_for_error(error)
+    event_type_strs = [e.value for e in request.event_types]
+
+    try:
+        subscription = await c.webhook_admin.create_subscription(
+            ctx.organization.id, str(request.url), event_type_strs, request.secret
+        )
+    except WebhooksError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
     # Track webhook subscription creation
     business_events.track_webhook_subscription_created(
         ctx=ctx,
-        endpoint_id=endpoint.id,
+        endpoint_id=subscription.id,
         url=str(request.url),
-        event_types=[e.value for e in request.event_types],
+        event_types=event_type_strs,
     )
 
-    return WebhookSubscription.from_svix(endpoint)
+    return WebhookSubscription.from_domain(subscription)
 
 
 @router.delete(
@@ -269,20 +271,21 @@ async def delete_subscription(
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    c: Container = Depends(deps.get_container),
 ) -> WebhookSubscription:
     """Delete a webhook subscription permanently."""
-    # Fetch the subscription before deleting
-    endpoint, get_error = await webhooks_service.get_endpoint(ctx.organization, subscription_id)
-    _raise_for_error(get_error)
-
-    # Delete the subscription
-    error = await webhooks_service.delete_endpoint(ctx.organization, subscription_id)
-    _raise_for_error(error)
+    try:
+        admin = c.webhook_admin
+        # Fetch the subscription before deleting
+        subscription = await admin.get_subscription(ctx.organization.id, subscription_id)
+        await admin.delete_subscription(ctx.organization.id, subscription_id)
+    except WebhooksError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
     # Track webhook subscription deletion
     business_events.track_webhook_subscription_deleted(ctx=ctx, endpoint_id=subscription_id)
 
-    return WebhookSubscription.from_svix(endpoint)
+    return WebhookSubscription.from_domain(subscription)
 
 
 @router.patch(
@@ -319,28 +322,35 @@ async def patch_subscription(
     ),
     request: PatchSubscriptionRequest = ...,
     ctx: ApiContext = Depends(deps.get_context),
+    c: Container = Depends(deps.get_container),
 ) -> WebhookSubscription:
     """Update an existing webhook subscription."""
     url = str(request.url) if request.url else None
-    endpoint, error = await webhooks_service.patch_endpoint(
-        ctx.organization,
-        subscription_id,
-        url,
-        request.event_types,
-        disabled=request.disabled,
-    )
-    _raise_for_error(error)
+    event_type_strs = [e.value for e in request.event_types] if request.event_types else None
 
-    # If re-enabling (disabled=False) and recovery was requested, trigger it
-    if request.disabled is False and request.recover_since:
-        _, recover_error = await webhooks_service.recover_failed_messages(
-            ctx.organization,
+    try:
+        admin = c.webhook_admin
+        subscription = await admin.update_subscription(
+            ctx.organization.id,
             subscription_id,
-            since=request.recover_since,
+            url,
+            event_type_strs,
+            disabled=request.disabled,
         )
-        if recover_error:
-            # Log but don't fail - endpoint is already updated
-            pass
+
+        # If re-enabling (disabled=False) and recovery was requested, trigger it
+        if request.disabled is False and request.recover_since:
+            try:
+                await admin.recover_messages(
+                    ctx.organization.id,
+                    subscription_id,
+                    since=request.recover_since,
+                )
+            except WebhooksError:
+                # Log but don't fail - subscription is already updated
+                pass
+    except WebhooksError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
     # Track webhook subscription update
     business_events.track_webhook_subscription_updated(
@@ -348,10 +358,10 @@ async def patch_subscription(
         endpoint_id=subscription_id,
         url_changed=request.url is not None,
         event_types_changed=request.event_types is not None,
-        new_event_types=[e.value for e in request.event_types] if request.event_types else None,
+        new_event_types=event_type_strs,
     )
 
-    return WebhookSubscription.from_svix(endpoint)
+    return WebhookSubscription.from_domain(subscription)
 
 
 @router.post(
@@ -384,18 +394,17 @@ async def recover_failed_messages(
     ),
     request: RecoverMessagesRequest = ...,
     ctx: ApiContext = Depends(deps.get_context),
+    c: Container = Depends(deps.get_container),
 ) -> RecoveryTask:
     """Retry failed message deliveries for a subscription."""
-    result, error = await webhooks_service.recover_failed_messages(
-        ctx.organization,
-        subscription_id,
-        since=request.since,
-        until=request.until,
-    )
-    _raise_for_error(error)
+    try:
+        result = await c.webhook_admin.recover_messages(
+            ctx.organization.id,
+            subscription_id,
+            since=request.since,
+            until=request.until,
+        )
+    except WebhooksError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
-    # Map Svix status to string
-    status_map = {0: "running", 1: "completed"}
-    status_str = status_map.get(result.status, "unknown")
-
-    return RecoveryTask(id=result.id, status=status_str)
+    return RecoveryTask(id=result.id, status=result.status)

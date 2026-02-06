@@ -14,8 +14,11 @@ import traceback
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from airweave.core.protocols import EventBus
 
 from temporalio import activity
 
@@ -29,7 +32,7 @@ class RunSyncActivity:
     """Execute a sync job.
 
     Dependencies:
-        webhook_sender: Publish sync lifecycle events (RUNNING, COMPLETED, FAILED, CANCELLED)
+        event_bus: Publish sync lifecycle events (RUNNING, COMPLETED, FAILED, CANCELLED)
 
     Inputs:
         sync_dict, sync_job_dict, collection_dict, connection_dict, ctx_dict
@@ -39,10 +42,10 @@ class RunSyncActivity:
     existing workflows. Future: migrate to IDs-only.
     """
 
-    webhook_sender: Any  # -> WebhookSender protocol
+    event_bus: "EventBus"
 
     @activity.defn(name="run_sync_activity")
-    async def run(
+    async def run(  # noqa: C901
         self,
         sync_dict: Dict[str, Any],
         sync_job_dict: Dict[str, Any],
@@ -67,7 +70,6 @@ class RunSyncActivity:
         from airweave import crud, schemas
         from airweave.api.context import ApiContext
         from airweave.core.logging import LoggerConfigurator
-        from airweave.core.shared_models import SyncJobStatus
         from airweave.db.session import get_db_context
         from airweave.platform.temporal.worker_metrics import worker_metrics
 
@@ -145,14 +147,20 @@ class RunSyncActivity:
                 )
             )
 
-            # Publish RUNNING webhook
-            running_sync_job = sync_job.model_copy(update={"status": SyncJobStatus.RUNNING})
-            await self.webhook_sender.publish_event_sync(
-                source_connection_id=sync.source_connection_id,
-                organisation=organization,
-                sync_job=running_sync_job,
-                collection=collection,
-                source_type=connection.short_name,
+            # Publish RUNNING event
+            from airweave.core.events.sync import SyncLifecycleEvent
+
+            await self.event_bus.publish(
+                SyncLifecycleEvent.running(
+                    organization_id=organization.id,
+                    source_connection_id=sync.source_connection_id,
+                    sync_job_id=sync_job.id,
+                    sync_id=sync.id,
+                    collection_id=collection.id,
+                    source_type=connection.short_name,
+                    collection_name=collection.name,
+                    collection_readable_id=collection.readable_id,
+                )
             )
 
             # Track timing for stack trace dumps
@@ -170,7 +178,8 @@ class RunSyncActivity:
                     current_time = time.time()
                     elapsed_seconds = int(current_time - heartbeat_start_time)
 
-                    # Dump stack trace for long-running syncs (every 5 minutes after initial 5 minutes)
+                    # Dump stack trace for long-running syncs
+                    # (every 10 minutes after initial 10 minutes)
                     if (
                         elapsed_seconds > 600
                         and (current_time - last_stack_dump_time) >= stack_dump_interval
@@ -193,13 +202,13 @@ class RunSyncActivity:
                                 if hasattr(coro, "cr_frame") and coro.cr_frame:
                                     frame = coro.cr_frame
                                     stack_traces.append(f"\nTask: {task_name}")
-                                    stack_traces.append(
-                                        f"  at {frame.f_code.co_filename}:{frame.f_lineno} in {frame.f_code.co_name}"
-                                    )
+                                    loc = f"{frame.f_code.co_filename}:{frame.f_lineno}"
+                                    stack_traces.append(f"  at {loc} in {frame.f_code.co_name}")
 
                         stack_trace_str = "".join(stack_traces)
                         ctx.logger.debug(
-                            f"[STACK_TRACE_DUMP] sync={sync.id} sync_job={sync_job.id} elapsed={elapsed_seconds}s",
+                            f"[STACK_TRACE_DUMP] sync={sync.id} "
+                            f"sync_job={sync_job.id} elapsed={elapsed_seconds}s",
                             extra={
                                 "elapsed_seconds": elapsed_seconds,
                                 "sync_id": str(sync.id),
@@ -212,23 +221,19 @@ class RunSyncActivity:
                     ctx.logger.debug("HEARTBEAT: Sync in progress")
                     activity.heartbeat("Sync in progress")
 
-                # Fetch updated sync_job with metrics for COMPLETED webhook
-                async with get_db_context() as db:
-                    updated_sync_job_model = await crud.sync_job.get(db, id=sync_job.id, ctx=ctx)
-                    if updated_sync_job_model:
-                        completed_sync_job = schemas.SyncJob.model_validate(
-                            updated_sync_job_model, from_attributes=True
-                        )
-                        completed_sync_job = completed_sync_job.model_copy(
-                            update={"status": SyncJobStatus.COMPLETED}
-                        )
-                        await self.webhook_sender.publish_event_sync(
-                            source_connection_id=sync.source_connection_id,
-                            organisation=organization,
-                            sync_job=completed_sync_job,
-                            collection=collection,
-                            source_type=connection.short_name,
-                        )
+                # Publish COMPLETED event
+                await self.event_bus.publish(
+                    SyncLifecycleEvent.completed(
+                        organization_id=organization.id,
+                        source_connection_id=sync.source_connection_id,
+                        sync_job_id=sync_job.id,
+                        sync_id=sync.id,
+                        collection_id=collection.id,
+                        source_type=connection.short_name,
+                        collection_name=collection.name,
+                        collection_readable_id=collection.readable_id,
+                    )
+                )
                 ctx.logger.info(f"\n\nCompleted sync activity for job {sync_job.id}\n\n")
 
             except asyncio.CancelledError:
@@ -239,16 +244,18 @@ class RunSyncActivity:
 
             except Exception as e:
                 ctx.logger.error(f"Failed sync activity for job {sync_job.id}: {e}")
-                failed_sync_job = sync_job.model_copy(
-                    update={"status": SyncJobStatus.FAILED, "error": str(e)}
-                )
-                await self.webhook_sender.publish_event_sync(
-                    organisation=organization,
-                    source_connection_id=sync.source_connection_id,
-                    sync_job=failed_sync_job,
-                    collection=collection,
-                    source_type=connection.short_name,
-                    error=str(e),
+                await self.event_bus.publish(
+                    SyncLifecycleEvent.failed(
+                        organization_id=organization.id,
+                        source_connection_id=sync.source_connection_id,
+                        sync_job_id=sync_job.id,
+                        sync_id=sync.id,
+                        collection_id=collection.id,
+                        source_type=connection.short_name,
+                        collection_name=collection.name,
+                        collection_readable_id=collection.readable_id,
+                        error=str(e),
+                    )
                 )
                 raise
 
@@ -331,16 +338,19 @@ class RunSyncActivity:
             )
             ctx.logger.debug(f"\n\n[ACTIVITY] Updated job {sync_job.id} to CANCELLED\n\n")
 
-            cancelled_sync_job = sync_job.model_copy(
-                update={"status": SyncJobStatus.CANCELLED, "error": "Workflow was cancelled"}
-            )
-            await self.webhook_sender.publish_event_sync(
-                source_connection_id=sync.source_connection_id,
-                organisation=organization,
-                sync_job=cancelled_sync_job,
-                collection=collection,
-                source_type=connection.short_name,
-                error="Workflow was cancelled",
+            from airweave.core.events.sync import SyncLifecycleEvent
+
+            await self.event_bus.publish(
+                SyncLifecycleEvent.cancelled(
+                    organization_id=organization.id,
+                    source_connection_id=sync.source_connection_id,
+                    sync_job_id=sync_job.id,
+                    sync_id=sync.id,
+                    collection_id=collection.id,
+                    source_type=connection.short_name,
+                    collection_name=collection.name,
+                    collection_readable_id=collection.readable_id,
+                )
             )
         except Exception as status_err:
             ctx.logger.error(f"Failed to update job {sync_job.id} to CANCELLED: {status_err}")
@@ -446,12 +456,12 @@ class CreateSyncJobActivity:
     """Create a new sync job record.
 
     Dependencies:
-        webhook_sender: Publish PENDING event when job is created
+        event_bus: Publish PENDING event when job is created
 
     Returns sync job dict or {"_orphaned": True} if sync was deleted.
     """
 
-    webhook_sender: Any  # -> WebhookSender protocol
+    event_bus: "EventBus"
 
     @activity.defn(name="create_sync_job_activity")
     async def run(
@@ -548,8 +558,8 @@ class CreateSyncJobActivity:
 
             ctx.logger.info(f"Created sync job {sync_job_id} for sync {sync_id}")
 
-            # Publish PENDING webhook event
-            await self._publish_pending_webhook(db, sync_id, organization, sync_job, crud, ctx)
+            # Publish PENDING lifecycle event
+            await self._publish_pending_event(db, sync_id, organization, sync_job, crud, ctx)
 
             sync_job_schema = schemas.SyncJob.model_validate(sync_job)
             return sync_job_schema.model_dump(mode="json")
@@ -596,9 +606,9 @@ class CreateSyncJobActivity:
         )
         raise Exception(f"Timeout waiting for running jobs to complete after {max_wait_time}s")
 
-    async def _publish_pending_webhook(self, db, sync_id, organization, sync_job, crud, ctx):
-        """Publish PENDING webhook event."""
-        from airweave import schemas
+    async def _publish_pending_event(self, db, sync_id, organization, sync_job, crud, ctx):
+        """Publish PENDING lifecycle event."""
+        from airweave.core.events.sync import SyncLifecycleEvent
 
         try:
             source_conn = await crud.source_connection.get_by_sync_id(
@@ -608,19 +618,20 @@ class CreateSyncJobActivity:
                 connection = await crud.connection.get(db=db, id=source_conn.connection_id, ctx=ctx)
                 collection = await crud.collection.get(db=db, id=source_conn.collection_id, ctx=ctx)
                 if connection and collection:
-                    collection_schema = schemas.Collection.model_validate(
-                        collection, from_attributes=True
+                    await self.event_bus.publish(
+                        SyncLifecycleEvent.pending(
+                            organization_id=organization.id,
+                            source_connection_id=source_conn.id,
+                            sync_job_id=sync_job.id,
+                            sync_id=UUID(sync_id),
+                            collection_id=collection.id,
+                            source_type=connection.short_name,
+                            collection_name=collection.name,
+                            collection_readable_id=collection.readable_id,
+                        )
                     )
-                    sync_job_schema = schemas.SyncJob.model_validate(sync_job)
-                    await self.webhook_sender.publish_event_sync(
-                        organisation=organization,
-                        sync_job=sync_job_schema,
-                        collection=collection_schema,
-                        source_type=connection.short_name,
-                        source_connection_id=source_conn.id,
-                    )
-        except Exception as webhook_err:
-            ctx.logger.warning(f"Failed to publish pending webhook: {webhook_err}")
+        except Exception as event_err:
+            ctx.logger.warning(f"Failed to publish pending event: {event_err}")
 
 
 # =============================================================================

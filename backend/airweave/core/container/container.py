@@ -16,43 +16,37 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    # Protocol imports will go here once core/protocols/ is created
-    # from airweave.core.protocols.messaging import EventMessageStore, WebhookSender
-    pass
+    from airweave.core.protocols import (
+        EventBus,
+        WebhookAdmin,
+        WebhookPublisher,
+    )
 
 
 @dataclass(frozen=True)
 class Container:
     """Immutable container holding all protocol implementations.
 
-    This is just a typed bag of dependencies. Construction logic lives
-    in the factory module.
-
     Usage:
-    ------
         # Production: use the global container built by factory
         from airweave.core.container import container
-        store = container.event_message_store
+        await container.event_bus.publish(SyncLifecycleEvent(...))
 
         # Testing: construct directly with fakes
+        from airweave.adapters.event_bus import FakeEventBus
         test_container = Container(
-            event_message_store=FakeEventMessageStore(),
-            webhook_sender=FakeWebhookSender(),
+            event_bus=FakeEventBus(),
+            webhook_publisher=FakeWebhookPublisher(),
+            webhook_admin=FakeWebhookAdmin(),
         )
-
-    Attributes:
-    -----------
-        event_message_store: Read event messages and delivery attempts (Svix)
-        webhook_sender: Publish sync events to webhook subscribers (Svix)
     """
 
-    # -----------------------------------------------------------------
-    # Protocol implementations
-    # Type hints will be Protocol types once core/protocols/ exists
-    # -----------------------------------------------------------------
+    # Event bus for domain event fan-out
+    event_bus: "EventBus"
 
-    event_message_store: Any  # -> EventMessageStore
-    webhook_sender: Any  # -> WebhookSender
+    # Webhook protocols (Svix-backed)
+    webhook_publisher: "WebhookPublisher"  # Internal: publish sync events
+    webhook_admin: "WebhookAdmin"  # External API: subscriptions + history
 
     # -----------------------------------------------------------------
     # Convenience methods
@@ -63,7 +57,7 @@ class Container:
 
         Useful for partial overrides in tests:
 
-            modified = container.replace(webhook_sender=FakeWebhookSender())
+            modified = container.replace(webhook_publisher=FakeWebhookPublisher())
 
         Args:
             **changes: Dependency name -> new implementation

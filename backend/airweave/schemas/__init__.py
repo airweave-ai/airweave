@@ -182,6 +182,7 @@ from .webhooks import (
     RecoverMessagesRequest,
     RecoveryTask,
     WebhookMessage,
+    WebhookMessageWithAttempts,
     WebhookSubscription,
 )
 

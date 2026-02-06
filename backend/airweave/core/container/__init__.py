@@ -15,19 +15,20 @@ Usage:
     store = container.event_message_store
 
     # In FastAPI deps.py
-    def get_webhook_sender() -> WebhookSender:
-        return container.webhook_sender
+    def get_container() -> Container:
+        return container
 
     # In Temporal worker.py
     activities = [
-        RunSyncActivity(webhook_sender=container.webhook_sender),
+        RunSyncActivity(webhook_publisher=container.webhook_publisher),
     ]
 
     # In tests (construct directly with fakes, don't use global)
     from airweave.core.container import Container
     test_container = Container(
-        event_message_store=FakeEventMessageStore(),
-        webhook_sender=FakeWebhookSender(),
+        event_bus=FakeEventBus(),
+        webhook_publisher=FakeWebhookPublisher(),
+        webhook_admin=FakeWebhookAdmin(),
     )
 
 Module structure:

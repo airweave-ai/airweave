@@ -29,7 +29,7 @@ def create_activities() -> list:
     )
 
     # Get dependencies from container (attribute access, not method call)
-    webhook_sender = container.webhook_sender
+    event_bus = container.event_bus
 
     logger.debug("Wiring activities with container dependencies")
 
@@ -37,8 +37,8 @@ def create_activities() -> list:
     # The .run method is what Temporal calls
     return [
         # Sync activities
-        RunSyncActivity(webhook_sender=webhook_sender).run,
-        CreateSyncJobActivity(webhook_sender=webhook_sender).run,
+        RunSyncActivity(event_bus=event_bus).run,
+        CreateSyncJobActivity(event_bus=event_bus).run,
         MarkSyncJobCancelledActivity().run,
         CleanupStuckSyncJobsActivity().run,
         # Cleanup
