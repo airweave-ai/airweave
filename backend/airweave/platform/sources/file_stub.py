@@ -141,25 +141,28 @@ class ContentGenerator:
         pdf.set_auto_page_break(auto=True, margin=15)
 
         pdf.add_page()
-        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_font("Helvetica", "B", 22)
         title = self.generate_title()
-        pdf.cell(0, 12, title, new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(5)
+        pdf.cell(0, 14, title, new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(6)
 
         if self.custom_content_prefix:
-            pdf.set_font("Helvetica", size=11)
-            pdf.multi_cell(0, 7, self.custom_content_prefix)
-            pdf.ln(5)
+            pdf.set_font("Helvetica", size=14)
+            pdf.multi_cell(0, 9, self.custom_content_prefix)
+            pdf.ln(6)
 
-        num_sections = self.rng.randint(2, 4)
+        num_sections = self.rng.randint(4, 7)
         for i in range(num_sections):
             section_title = f"Section {i + 1}: {self.generate_title()}"
-            pdf.set_font("Helvetica", "B", 13)
-            pdf.cell(0, 10, section_title, new_x="LMARGIN", new_y="NEXT")
-            pdf.set_font("Helvetica", size=10)
-            paragraph = self._generate_paragraph(self.rng.randint(4, 7))
-            pdf.multi_cell(0, 6, paragraph)
-            pdf.ln(4)
+            pdf.set_font("Helvetica", "B", 16)
+            pdf.cell(0, 12, section_title, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", size=13)
+            num_paragraphs = self.rng.randint(2, 3)
+            for _ in range(num_paragraphs):
+                paragraph = self._generate_paragraph(self.rng.randint(6, 10))
+                pdf.multi_cell(0, 8, paragraph)
+                pdf.ln(4)
+            pdf.ln(5)
 
         page_count = pdf.page
         return bytes(pdf.output()), page_count
@@ -183,7 +186,7 @@ class ContentGenerator:
 
         # Page dimensions in points (A4-ish)
         page_w_pt, page_h_pt = 595, 842
-        dpi = 150
+        dpi = 300
         img_w = int(page_w_pt * dpi / 72)
         img_h = int(page_h_pt * dpi / 72)
 
@@ -195,45 +198,46 @@ class ContentGenerator:
             draw = ImageDraw.Draw(img)
 
             # Use the default font (always available)
+            # At 300 DPI: 67px ≈ 16pt, 54px ≈ 13pt
             try:
-                font = ImageFont.truetype("Helvetica", size=24)
+                font = ImageFont.truetype("Helvetica", size=67)
             except (IOError, OSError):
                 font = ImageFont.load_default()
             try:
-                small_font = ImageFont.truetype("Helvetica", size=16)
+                small_font = ImageFont.truetype("Helvetica", size=54)
             except (IOError, OSError):
                 small_font = ImageFont.load_default()
 
-            y = 60
+            y = 120
 
             # Title
             if page_idx == 0:
                 title = self.generate_title()
-                draw.text((60, y), title, fill=(0, 0, 0), font=font)
-                y += 50
+                draw.text((120, y), title, fill=(0, 0, 0), font=font)
+                y += 100
 
                 # Embed the tracking token prominently
                 if self.custom_content_prefix:
-                    draw.text((60, y), self.custom_content_prefix, fill=(0, 0, 0), font=font)
-                    y += 50
+                    draw.text((120, y), self.custom_content_prefix, fill=(0, 0, 0), font=font)
+                    y += 100
 
             # Section heading
             section_title = f"Section {page_idx + 1}: {self.generate_title()}"
-            draw.text((60, y), section_title, fill=(0, 0, 0), font=font)
-            y += 45
+            draw.text((120, y), section_title, fill=(0, 0, 0), font=font)
+            y += 90
 
             # Body text lines
             for _ in range(self.rng.randint(8, 15)):
                 line = self._generate_sentence(self.rng.randint(6, 12))
                 # Truncate to fit page width
-                draw.text((60, y), line[:90], fill=(30, 30, 30), font=small_font)
-                y += 25
-                if y > img_h - 80:
+                draw.text((120, y), line[:80], fill=(30, 30, 30), font=small_font)
+                y += 70
+                if y > img_h - 160:
                     break
 
             # Save image to temp file for fpdf
             img_buf = io.BytesIO()
-            img.save(img_buf, format="JPEG", quality=85)
+            img.save(img_buf, format="JPEG", quality=95)
             img_buf.seek(0)
 
             # Write temp jpeg file (fpdf needs a path)
