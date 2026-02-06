@@ -127,7 +127,10 @@ class MistralOcrClient:
             chunk: The chunk to process.
 
         Returns:
-            An :class:`OcrResult` with the markdown content (or None on failure).
+            An :class:`OcrResult` with the markdown content.
+
+        Raises:
+            Exception: If OCR fails after retries (propagates the underlying error).
         """
         file_name = os.path.basename(chunk.chunk_path)
 
@@ -167,7 +170,7 @@ class MistralOcrClient:
 
         except Exception as exc:
             logger.error(f"OCR failed for {file_name}: {exc}")
-            return OcrResult(chunk=chunk, markdown=None, error=str(exc))
+            raise
 
     # ------------------------------------------------------------------
     # Batch OCR with bounded concurrency
@@ -186,31 +189,37 @@ class MistralOcrClient:
             return []
 
         semaphore = asyncio.Semaphore(self._concurrency)
-        results: list[Optional[OcrResult]] = [None] * len(chunks)
+        results: list[OcrResult | Exception] = [None] * len(chunks)  # type: ignore[assignment]
 
         async def _process_one(idx: int, chunk: FileChunk) -> None:
             async with semaphore:
                 results[idx] = await self.ocr_chunk(chunk)
 
+        # Use return_exceptions=True so we attempt ALL chunks before raising.
         await asyncio.gather(
             *[_process_one(i, c) for i, c in enumerate(chunks)],
             return_exceptions=True,
         )
 
-        # Handle any exceptions that slipped through
+        # Separate successes from failures
         final_results: list[OcrResult] = []
+        failed: list[str] = []
+
         for i, r in enumerate(results):
-            if r is None:
-                # Task failed entirely
-                final_results.append(OcrResult(chunk=chunks[i], markdown=None, error="Task failed"))
-            elif isinstance(r, Exception):
-                final_results.append(OcrResult(chunk=chunks[i], markdown=None, error=str(r)))
+            file_name = os.path.basename(chunks[i].chunk_path)
+            if isinstance(r, Exception):
+                failed.append(f"{file_name}: {r}")
+            elif r is None:
+                failed.append(f"{file_name}: task did not complete")
             else:
                 final_results.append(r)
 
-        succeeded = sum(1 for r in final_results if r.markdown is not None)
-        logger.debug(f"OCR batch complete: {succeeded}/{len(chunks)} succeeded")
+        if failed:
+            raise SyncFailureError(
+                f"OCR failed for {len(failed)}/{len(chunks)} chunks: " + "; ".join(failed)
+            )
 
+        logger.debug(f"OCR batch complete: {len(final_results)}/{len(chunks)} succeeded")
         return final_results
 
     # ------------------------------------------------------------------

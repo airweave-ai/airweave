@@ -248,8 +248,8 @@ async def synced_file_stub() -> SyncedFileStubContext:
         results: List[AirweaveSearchResult] = []
         print(f"Searching for: {tracking_string}")
 
-        for attempt in range(10):  # up to ~50s total
-            wait_secs = 3 if attempt < 3 else 5
+        for attempt in range(8):  # up to ~30s for indexing lag
+            wait_secs = 3 if attempt < 4 else 5
             await asyncio.sleep(wait_secs)
             results = await _do_search(
                 client, collection_readable_id, tracking_string
