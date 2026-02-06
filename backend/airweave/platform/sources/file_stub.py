@@ -86,6 +86,43 @@ AUTHORS = [
 ]
 
 
+def _load_truetype_font(size: int):
+    """Load a truetype font that works across platforms.
+
+    Tries common system font paths for macOS, Linux (Debian/Ubuntu), and
+    Windows.  Falls back to Pillow's built-in ``load_default(size=...)``
+    (requires Pillow >= 10.1) so CI environments always get a real
+    sized font instead of a tiny bitmap.
+    """
+    from PIL import ImageFont
+
+    # Common TrueType font paths by platform
+    _FONT_CANDIDATES = [
+        # macOS
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        # Linux (Debian/Ubuntu packages: fonts-dejavu-core, fonts-liberation)
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        # Windows
+        "C:\\Windows\\Fonts\\arial.ttf",
+    ]
+
+    for path in _FONT_CANDIDATES:
+        try:
+            return ImageFont.truetype(path, size=size)
+        except (IOError, OSError):
+            continue
+
+    # Pillow >= 10.1 supports load_default(size=...)
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        # Pillow < 10.1: load_default() ignores size, but it's the last resort
+        return ImageFont.load_default()
+
+
 class ContentGenerator:
     """Deterministic content generator for file stubs."""
 
@@ -179,7 +216,7 @@ class ContentGenerator:
             Tuple of (pdf_bytes, page_count).
         """
         from fpdf import FPDF
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
 
         pdf = FPDF()
         pdf.set_auto_page_break(auto=False)
@@ -197,16 +234,12 @@ class ContentGenerator:
             img = Image.new("RGB", (img_w, img_h), color=(255, 255, 255))
             draw = ImageDraw.Draw(img)
 
-            # Use the default font (always available)
             # At 300 DPI: 67px ≈ 16pt, 54px ≈ 13pt
-            try:
-                font = ImageFont.truetype("Helvetica", size=67)
-            except (IOError, OSError):
-                font = ImageFont.load_default()
-            try:
-                small_font = ImageFont.truetype("Helvetica", size=54)
-            except (IOError, OSError):
-                small_font = ImageFont.load_default()
+            # Try common system fonts across platforms (macOS, Linux, Windows).
+            # Pillow's load_default() returns a tiny bitmap font that ignores
+            # size, so we MUST find a real truetype font for OCR-readable text.
+            font = _load_truetype_font(size=67)
+            small_font = _load_truetype_font(size=54)
 
             y = 120
 
