@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import aiofiles
 from httpx import HTTPStatusError, ReadTimeout, TimeoutException
@@ -86,8 +86,15 @@ class MistralOcrClient:
     # Rate-limited + retried API call wrapper
     # ------------------------------------------------------------------
 
-    async def _api_call(self, coro: Any, operation_name: str = "ocr") -> Any:
-        """Execute an async SDK coroutine with rate-limiting and retry."""
+    async def _api_call(self, coro_fn: Callable[[], Any], operation_name: str = "ocr") -> Any:
+        """Execute an async SDK call with rate-limiting and retry.
+
+        Args:
+            coro_fn: A zero-argument callable that returns a fresh coroutine
+                     on each invocation. This ensures retries create a new
+                     coroutine instead of re-awaiting a consumed one.
+            operation_name: Label used in log messages.
+        """
 
         @retry(
             retry=retry_if_exception_type(
@@ -101,7 +108,7 @@ class MistralOcrClient:
         )
         async def _inner() -> Any:
             await self._rate_limiter.acquire()
-            return await coro
+            return await coro_fn()
 
         try:
             return await _inner()
@@ -131,7 +138,7 @@ class MistralOcrClient:
 
             # 2. Upload file to get file_id
             file_resp = await self._api_call(
-                self._client.files.upload_async(
+                lambda: self._client.files.upload_async(
                     file={"file_name": file_name, "content": content},
                     purpose="ocr",
                 ),
@@ -142,7 +149,7 @@ class MistralOcrClient:
             from mistralai.models import FileChunk as MistralFileChunk
 
             ocr_resp = await self._api_call(
-                self._client.ocr.process_async(
+                lambda: self._client.ocr.process_async(
                     model="mistral-ocr-latest",
                     document=MistralFileChunk(file_id=file_resp.id),
                 ),
@@ -235,7 +242,7 @@ class MistralOcrClient:
         """Best-effort deletion of uploaded file from Mistral."""
         try:
             await self._api_call(
-                self._client.files.delete_async(file_id=file_id),
+                lambda: self._client.files.delete_async(file_id=file_id),
                 operation_name=f"delete_{file_id[:8]}",
             )
         except Exception:
