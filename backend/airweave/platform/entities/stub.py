@@ -388,6 +388,136 @@ class LargeStubFileEntity(FileEntity):
         return f"stub://file/large/{self.stub_id}"
 
 
+class PdfStubFileEntity(FileEntity):
+    """PDF stub file entity (~5-20 KB).
+
+    Represents: PDF documents with extractable text content.
+    Generated as real binary PDF files using fpdf2.
+    """
+
+    stub_id: str = AirweaveField(
+        ...,
+        description="Unique identifier for the stub PDF file",
+        is_entity_id=True,
+    )
+    file_name: str = AirweaveField(
+        ...,
+        description="Name of the PDF file",
+        is_name=True,
+        embeddable=True,
+    )
+    description: str = AirweaveField(
+        default="",
+        description="Description of the PDF contents",
+        embeddable=True,
+    )
+    file_extension: str = AirweaveField(
+        default=".pdf",
+        description="File extension",
+        embeddable=True,
+    )
+    summary: str = AirweaveField(
+        default="",
+        description="Summary of the document",
+        embeddable=True,
+    )
+    author: str = AirweaveField(
+        default="",
+        description="Author of the document",
+        embeddable=True,
+    )
+    page_count: int = AirweaveField(
+        default=1,
+        description="Number of pages in the PDF",
+        embeddable=False,
+    )
+    created_at: Optional[datetime] = AirweaveField(
+        None,
+        description="When the file was created",
+        is_created_at=True,
+    )
+    modified_at: Optional[datetime] = AirweaveField(
+        None,
+        description="When the file was last modified",
+        is_updated_at=True,
+    )
+    sequence_number: int = AirweaveField(
+        default=0,
+        description="Sequence number for ordering",
+        embeddable=False,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Placeholder URL for the PDF file."""
+        return f"stub://file/pdf/{self.stub_id}"
+
+
+class PptxStubFileEntity(FileEntity):
+    """PPTX stub file entity (~10-30 KB).
+
+    Represents: PowerPoint presentations with extractable text content.
+    Generated as real binary PPTX files using python-pptx.
+    """
+
+    stub_id: str = AirweaveField(
+        ...,
+        description="Unique identifier for the stub PPTX file",
+        is_entity_id=True,
+    )
+    file_name: str = AirweaveField(
+        ...,
+        description="Name of the PPTX file",
+        is_name=True,
+        embeddable=True,
+    )
+    description: str = AirweaveField(
+        default="",
+        description="Description of the presentation contents",
+        embeddable=True,
+    )
+    file_extension: str = AirweaveField(
+        default=".pptx",
+        description="File extension",
+        embeddable=True,
+    )
+    summary: str = AirweaveField(
+        default="",
+        description="Summary of the presentation",
+        embeddable=True,
+    )
+    author: str = AirweaveField(
+        default="",
+        description="Author of the presentation",
+        embeddable=True,
+    )
+    slide_count: int = AirweaveField(
+        default=1,
+        description="Number of slides in the presentation",
+        embeddable=False,
+    )
+    created_at: Optional[datetime] = AirweaveField(
+        None,
+        description="When the file was created",
+        is_created_at=True,
+    )
+    modified_at: Optional[datetime] = AirweaveField(
+        None,
+        description="When the file was last modified",
+        is_updated_at=True,
+    )
+    sequence_number: int = AirweaveField(
+        default=0,
+        description="Sequence number for ordering",
+        embeddable=False,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Placeholder URL for the PPTX file."""
+        return f"stub://file/pptx/{self.stub_id}"
+
+
 class CodeStubFileEntity(CodeFileEntity):
     """Code stub file entity (~2-10 KB).
 

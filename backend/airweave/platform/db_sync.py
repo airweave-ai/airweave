@@ -170,7 +170,8 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
         are any issues.
     """
     # Internal source files that should only be loaded when ENABLE_INTERNAL_SOURCES=true
-    internal_source_files = {"snapshot.py", "stub.py"}
+    # TODO: use decorator
+    internal_source_files = {"snapshot.py", "stub.py", "file_stub.py"}
 
     components = {
         "sources": [],

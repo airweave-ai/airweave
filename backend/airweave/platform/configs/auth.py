@@ -804,6 +804,19 @@ class StubAuthConfig(AuthConfig):
     )
 
 
+class FileStubAuthConfig(AuthConfig):
+    """File stub source authentication credentials schema.
+
+    Like StubAuthConfig, this is a placeholder for consistency.
+    """
+
+    stub_key: str = Field(
+        default="file-stub",
+        title="File Stub Key",
+        description="Placeholder field (any value works)",
+    )
+
+
 class SnapshotAuthConfig(BaseConfig):
     """Optional authentication for blob storage access.
 

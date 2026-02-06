@@ -246,6 +246,35 @@ async def _create_filter_collection(client: httpx.AsyncClient) -> Dict:
     if not await wait_for_sync(client, stub_connection["id"]):
         pytest.fail("Stub sync did not complete within timeout")
 
+    # Verify stub data is actually searchable (not just sync status = active).
+    # Under parallel test load, indexing can lag behind sync completion.
+    stub_verified = False
+    for attempt in range(10):  # up to ~40s (first 4 at 3s, rest at 5s)
+        wait_secs = 3 if attempt < 4 else 5
+        await asyncio.sleep(wait_secs)
+        verify_resp = await client.post(
+            f"/collections/{readable_id}/search",
+            json={
+                "query": "stub",
+                "expand_query": False,
+                "interpret_filters": False,
+                "rerank": False,
+                "generate_answer": False,
+                "limit": 5,
+            },
+            timeout=60,
+        )
+        if verify_resp.status_code == 200:
+            verify_data = verify_resp.json()
+            if verify_data.get("results") and len(verify_data["results"]) > 0:
+                stub_verified = True
+                print(f"✓ Stub sync verified: {len(verify_data['results'])} chunks found (attempt {attempt + 1})")
+                break
+        print(f"  [stub verify] attempt {attempt + 1}: no results yet, retrying...")
+
+    if not stub_verified:
+        print("⚠ Stub sync completed but data not searchable after retries")
+
     # --------------------------------------------------------------------------
     # Source 2: Stripe (optional - only if credentials available)
     # --------------------------------------------------------------------------
@@ -270,37 +299,34 @@ async def _create_filter_collection(client: httpx.AsyncClient) -> Dict:
 
             # Wait for stripe sync
             if await wait_for_sync(client, stripe_connection["id"], max_wait_time=300):
-                # Give Vespa/Qdrant time to index the data
-                await asyncio.sleep(10)
+                # Verify Stripe data is actually searchable (retry loop)
+                for attempt in range(6):
+                    await asyncio.sleep(5)
+                    verify_response = await client.post(
+                        f"/collections/{readable_id}/search",
+                        json={
+                            "query": "customer OR invoice OR payment OR product",
+                            "expand_query": False,
+                            "interpret_filters": False,
+                            "rerank": False,
+                            "generate_answer": False,
+                            "filter": {"must": [{"key": "source_name", "match": {"value": "stripe"}}]},
+                        },
+                        timeout=60,
+                    )
+                    if verify_response.status_code == 200:
+                        verify_data = verify_response.json()
+                        if verify_data.get("results") and len(verify_data["results"]) > 0:
+                            has_stripe = True
+                            print(f"✓ Stripe sync verified: {len(verify_data['results'])} chunks found (attempt {attempt + 1})")
+                            break
+                    print(f"  [stripe verify] attempt {attempt + 1}: no results yet, retrying...")
 
-                # Verify Stripe actually has data (empty test accounts will sync but produce nothing)
-                verify_response = await client.post(
-                    f"/collections/{readable_id}/search",
-                    json={
-                        "query": "customer OR invoice OR payment OR product",
-                        "expand_query": False,
-                        "interpret_filters": False,
-                        "rerank": False,
-                        "generate_answer": False,
-                        "filter": {"must": [{"key": "source_name", "match": {"value": "stripe"}}]},
-                    },
-                    timeout=60,
-                )
-                if verify_response.status_code == 200:
-                    verify_data = verify_response.json()
-                    if verify_data.get("results") and len(verify_data["results"]) > 0:
-                        has_stripe = True
-                        print(f"✓ Stripe sync verified: {len(verify_data['results'])} chunks found")
-                    else:
-                        print("⚠ Stripe sync completed but no data indexed (empty test account?)")
-                else:
-                    print(f"⚠ Stripe verification search failed: {verify_response.status_code}")
+                if not has_stripe:
+                    print("⚠ Stripe sync completed but no data indexed (empty test account?)")
             else:
                 # Stripe sync timed out, but we can still run stub-only tests
                 print("⚠ Stripe sync timed out")
-
-    # Give Vespa additional time to index stub data
-    await asyncio.sleep(5)
 
     result = {
         "collection": collection,
@@ -379,6 +405,7 @@ async def do_search(
     readable_id: str,
     query: str,
     filter_dict: dict = None,
+
 ) -> dict:
     """Execute a search with optional filter."""
     payload = {

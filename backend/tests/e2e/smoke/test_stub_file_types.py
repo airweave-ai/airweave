@@ -234,18 +234,44 @@ async def synced_file_stub() -> SyncedFileStubContext:
         sync_status = job.get("status", "").lower()
         print(f"Sync finished: status={sync_status}")
 
-        # ── give indexing a moment ────────────────────────────────────
-        await asyncio.sleep(5)
-
-        # ── broad search for tracking string ──────────────────────────
+        # ── wait for indexing and search for tracking string ─────────
+        # OCR entities (ScannedPdfFileStubEntity) can take longer to
+        # process and index, especially under parallel test load.
+        # Retry the search until all 4 expected entity types appear,
+        # or we exhaust retries (fall through with whatever we have).
+        expected_types = {
+            "PdfFileStubEntity",
+            "ScannedPdfFileStubEntity",
+            "PptxFileStubEntity",
+            "DocxFileStubEntity",
+        }
+        results: List[AirweaveSearchResult] = []
         print(f"Searching for: {tracking_string}")
-        results = await _do_search(
-            client, collection_readable_id, tracking_string
-        )
-        print(
-            f"Search returned {len(results)} results  "
-            f"(types: {', '.join({r.system_metadata.entity_type for r in results})})"
-        )
+
+        for attempt in range(8):  # up to ~30s for indexing lag
+            wait_secs = 3 if attempt < 4 else 5
+            await asyncio.sleep(wait_secs)
+            results = await _do_search(
+                client, collection_readable_id, tracking_string
+            )
+            found_types = {r.system_metadata.entity_type for r in results}
+            missing = expected_types - found_types
+            if not missing:
+                print(
+                    f"Search returned {len(results)} results  "
+                    f"(types: {', '.join(sorted(found_types))}) — all types found (attempt {attempt + 1})"
+                )
+                break
+            print(
+                f"  [search] attempt {attempt + 1}: {len(results)} results, "
+                f"missing types: {missing}, retrying..."
+            )
+        else:
+            found_types = {r.system_metadata.entity_type for r in results}
+            print(
+                f"Search returned {len(results)} results  "
+                f"(types: {', '.join(sorted(found_types))}) — some types still missing after retries"
+            )
 
         ctx = SyncedFileStubContext(
             client=client,
