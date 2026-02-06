@@ -20,6 +20,14 @@ from aiohttp import web
 
 from airweave.core.config import settings
 from airweave.core.logging import logger
+from airweave.platform.sync.async_helpers import get_active_thread_count
+from airweave.platform.temporal.prometheus_metrics import (
+    get_prometheus_metrics,
+)
+from airweave.platform.temporal.prometheus_metrics import (
+    update_worker_metrics as update_prometheus_metrics,
+)
+from airweave.platform.temporal.worker_metrics import worker_metrics
 
 from .config import WorkerConfig
 
@@ -129,15 +137,6 @@ class WorkerControlServer:
 
     async def _collect_prometheus_metrics(self) -> bytes:
         """Collect and format Prometheus metrics."""
-        from airweave.platform.sync.async_helpers import get_active_thread_count
-        from airweave.platform.temporal.prometheus_metrics import (
-            get_prometheus_metrics,
-        )
-        from airweave.platform.temporal.prometheus_metrics import (
-            update_worker_metrics as update_prometheus_metrics,
-        )
-        from airweave.platform.temporal.worker_metrics import worker_metrics
-
         metrics = await worker_metrics.get_metrics_summary()
         connector_metrics = await worker_metrics.get_per_connector_metrics()
         worker_pool_count = await worker_metrics.get_total_active_and_pending_workers()
@@ -163,9 +162,6 @@ class WorkerControlServer:
 
     async def _collect_json_status(self) -> dict:
         """Collect detailed JSON status for debugging."""
-        from airweave.platform.sync.async_helpers import get_active_thread_count
-        from airweave.platform.temporal.worker_metrics import worker_metrics
-
         metrics = await worker_metrics.get_metrics_summary()
         detailed_syncs = await worker_metrics.get_detailed_sync_metrics()
         per_sync_workers = await worker_metrics.get_per_sync_worker_counts()
