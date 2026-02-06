@@ -102,7 +102,11 @@ async def module_collection(module_api_client: httpx.AsyncClient) -> AsyncGenera
 async def composio_auth_provider(
     module_api_client: httpx.AsyncClient, config
 ) -> AsyncGenerator[Dict, None]:
-    """Create Composio auth provider connection for testing."""
+    """Create Composio auth provider connection for testing.
+
+    Uses get-or-create with retry to handle race conditions when multiple
+    pytest-xdist workers try to create the same provider simultaneously.
+    """
     if not config.TEST_COMPOSIO_API_KEY:
         pytest.fail("Composio API key not configured")
 
@@ -114,22 +118,47 @@ async def composio_auth_provider(
         "auth_fields": {"api_key": config.TEST_COMPOSIO_API_KEY},
     }
 
-    # Check if connection already exists
-    response = await module_api_client.get(f"/auth-providers/connections/{provider_readable_id}")
+    # Get-or-create with retry to handle parallel worker race conditions.
+    # Two workers can both GET 404 then both POST, causing a duplicate key error.
+    # On conflict, retry the GET since the other worker already created it.
+    for attempt in range(3):
+        # Check if connection already exists
+        response = await module_api_client.get(
+            f"/auth-providers/connections/{provider_readable_id}"
+        )
 
-    if response.status_code == 200:
-        # Connection already exists, use it
-        provider = response.json()
-        yield provider
-    else:
-        # Create new connection
+        if response.status_code == 200:
+            # Connection already exists, use it
+            yield response.json()
+            return
+
+        # Try to create it
         response = await module_api_client.post("/auth-providers/", json=auth_provider_payload)
 
-        if response.status_code != 200:
-            pytest.fail(f"Failed to create Composio auth provider: {response.text}")
+        if response.status_code == 200:
+            yield response.json()
+            return
 
-        provider = response.json()
-        yield provider
+        # If creation failed due to duplicate key (race condition), retry GET
+        if "UniqueViolation" in response.text or "duplicate key" in response.text:
+            await asyncio.sleep(0.5 * (attempt + 1))
+            continue
+
+        # Some other error — fail immediately
+        pytest.fail(f"Failed to create Composio auth provider: {response.text}")
+
+    # Final fallback: one last GET after all retries
+    response = await module_api_client.get(
+        f"/auth-providers/connections/{provider_readable_id}"
+    )
+    if response.status_code == 200:
+        yield response.json()
+        return
+
+    pytest.fail(
+        f"Failed to get or create Composio auth provider after retries. "
+        f"Last response: {response.status_code} {response.text}"
+    )
 
 
 @pytest_asyncio.fixture(scope="function")
