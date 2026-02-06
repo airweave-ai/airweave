@@ -10,6 +10,10 @@ jobs:
   test-public-api:
     runs-on: ubuntu-latest
     environment: dev
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [0, 1]
 
     steps:
       - name: Verify prerequisites
@@ -154,7 +158,7 @@ jobs:
           echo ""
           echo "Embedding configuration verification complete!"
 
-      - name: Run E2E Smoke Tests
+      - name: Run E2E Smoke Tests (group ${{ matrix.group }})
         env:
           TEST_ENV: local
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -202,30 +206,64 @@ jobs:
           BACKEND_IMAGE: test-backend:latest
         run: |
           cd backend
-          # Exclude api_rate_limit tests (general API rate limiter) from CI
-          # Source rate_limit tests run sequentially after other tests for proper Redis isolation
-          # To run only rate limit tests locally: pytest tests/e2e/smoke -m rate_limit
 
+          # ── Dynamically discover and split test files ──
+          # Both matrix jobs see the same file list. We shuffle deterministically
+          # using the commit SHA so each run gets a different (but reproducible)
+          # distribution, and each job picks its own half.
+          COMMIT_SHA="${GITHUB_SHA:-$(date +%Y%m%d)}"
+          GROUP=${{ matrix.group }}
+
+          # Collect all smoke test files (excluding rate-limit-only files)
+          ALL_FILES=$(find tests/e2e/smoke -maxdepth 1 -name 'test_*.py' \
+            ! -name 'test_rate_limiting.py' \
+            ! -name 'test_source_rate_limiting.py' \
+            | sort)
+
+          # Shuffle deterministically: hash each filename with the commit SHA,
+          # sort by hash, then strip the hash prefix
+          SHUFFLED=$(echo "$ALL_FILES" | while read -r f; do
+            hash=$(echo "${f}${COMMIT_SHA}" | md5sum | cut -c1-8)
+            echo "$hash $f"
+          done | sort | awk '{print $2}')
+
+          TOTAL=$(echo "$SHUFFLED" | wc -l)
+          HALF=$(( (TOTAL + 1) / 2 ))
+
+          if [ "$GROUP" = "0" ]; then
+            TEST_FILES=$(echo "$SHUFFLED" | head -n "$HALF" | tr '\n' ' ')
+          else
+            TEST_FILES=$(echo "$SHUFFLED" | tail -n +"$((HALF + 1))" | tr '\n' ' ')
+          fi
+
+          FILE_COUNT=$(echo "$TEST_FILES" | wc -w)
+          echo "=========================================="
+          echo "Group $GROUP: running $FILE_COUNT / $TOTAL test files"
+          echo "=========================================="
+          echo "$TEST_FILES" | tr ' ' '\n' | grep -v '^$'
+          echo "=========================================="
+
+          WORKERS=2
           MAX_RETRIES=2
 
-          # Run all non-rate-limit tests in parallel first
+          # Run tests for this group
           set +e
-          pytest tests/e2e/smoke -m "not rate_limit and not api_rate_limit" -n 3 -v --tb=short 2>&1 | tee pytest_output.txt
+          pytest $TEST_FILES -m "not rate_limit and not api_rate_limit" -n $WORKERS -v --tb=short 2>&1 | tee pytest_output.txt
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
           if [ $EXIT_CODE -eq 0 ]; then
-            echo "All tests passed!"
+            echo "All tests passed! (group $GROUP)"
             exit 0
           fi
 
           # Count failures from pytest output
           FAILURES=$(grep -oP '\d+(?= failed)' pytest_output.txt | head -1 || echo "0")
-          echo "Detected $FAILURES test failure(s)"
+          echo "Detected $FAILURES test failure(s) in group $GROUP"
 
-          # If 3 or more failures, don't retry
-          if [ "$FAILURES" -ge 5 ]; then
-            echo "5 or more tests failed. Not retrying."
+          # If too many failures, don't retry (likely a real issue, not flakiness)
+          if [ "$FAILURES" -ge 4 ]; then
+            echo "4 or more tests failed in group $GROUP. Not retrying."
             exit 1
           fi
 
@@ -234,17 +272,17 @@ jobs:
           while [ $ATTEMPT -le $MAX_RETRIES ]; do
             echo ""
             echo "=========================================="
-            echo "Retry attempt $ATTEMPT of $MAX_RETRIES (running ONLY failed tests)"
+            echo "Retry attempt $ATTEMPT of $MAX_RETRIES (group $GROUP, ONLY failed tests)"
             echo "=========================================="
             sleep 10
 
             set +e
-            pytest tests/e2e/smoke -m "not rate_limit" --lf -n 3 -v --tb=short 2>&1 | tee pytest_retry_output.txt
+            pytest $TEST_FILES -m "not rate_limit and not api_rate_limit" --lf -n $WORKERS -v --tb=short 2>&1 | tee pytest_retry_output.txt
             EXIT_CODE=${PIPESTATUS[0]}
             set -e
 
             if [ $EXIT_CODE -eq 0 ]; then
-              echo "Failed tests passed on retry!"
+              echo "Failed tests passed on retry! (group $GROUP)"
               exit 0
             fi
 
@@ -252,7 +290,7 @@ jobs:
           done
 
           # If we get here, tests failed after retries
-          echo "Tests failed after $MAX_RETRIES retry attempts"
+          echo "Tests in group $GROUP failed after $MAX_RETRIES retry attempts"
           exit 1
 
       - name: Run Source Rate Limit Tests (Sequential)
@@ -297,9 +335,14 @@ jobs:
           echo "Running source rate limit tests sequentially (no parallelization for Redis isolation)..."
           pytest tests/e2e/smoke -m rate_limit -v --tb=short
 
-      - name: Print service logs on failure
+      - name: Print service logs on failure (group ${{ matrix.group }})
         if: failure()
         run: |
+          echo "=========================================="
+          echo "FAILED GROUP: ${{ matrix.group }}"
+          echo "=========================================="
+
+          echo ""
           echo "=========================================="
           echo "FASTAPI SERVER LOGS (last 200 lines)"
           echo "=========================================="
