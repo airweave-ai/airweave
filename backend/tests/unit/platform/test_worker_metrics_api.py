@@ -152,7 +152,7 @@ async def test_prometheus_metrics_endpoint_running_state(
         "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
     ):
         with patch(
-            "airweave.platform.sync.async_helpers.get_active_thread_count", return_value=25
+            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=25
         ):
             with patch(
                 "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
@@ -203,7 +203,7 @@ async def test_prometheus_metrics_endpoint_draining_state(
         "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
     ):
         with patch(
-            "airweave.platform.sync.async_helpers.get_active_thread_count", return_value=10
+            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=10
         ):
             with patch(
                 "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
@@ -262,7 +262,7 @@ async def test_json_status_endpoint_complete_response(
         "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
     ):
         with patch(
-            "airweave.platform.sync.async_helpers.get_active_thread_count", return_value=42
+            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=42
         ):
             with patch.dict("sys.modules", {"psutil": mock_psutil}):
                 control_server, state = create_control_server(
@@ -325,7 +325,7 @@ async def test_json_status_endpoint_psutil_fallback(
         "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
     ):
         with patch(
-            "airweave.platform.sync.async_helpers.get_active_thread_count", return_value=10
+            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=10
         ):
             with patch.dict("sys.modules", {"psutil": mock_psutil}):
                 control_server, state = create_control_server(test_worker_config, running=True)
@@ -384,7 +384,7 @@ async def test_json_status_endpoint_handles_missing_sync_id(
         "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
     ):
         with patch(
-            "airweave.platform.sync.async_helpers.get_active_thread_count", return_value=0
+            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=0
         ):
             with patch.dict("sys.modules", {"psutil": mock_psutil}):
                 control_server, state = create_control_server(test_worker_config, running=True)
@@ -460,7 +460,7 @@ async def test_connector_metrics_aggregation(
         "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
     ):
         with patch(
-            "airweave.platform.sync.async_helpers.get_active_thread_count", return_value=0
+            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=0
         ):
             with patch(
                 "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
@@ -503,7 +503,7 @@ async def test_thread_pool_metrics_integration(
         # Test various thread pool activity levels
         for thread_count in [0, 25, 50, 100]:
             with patch(
-                "airweave.platform.sync.async_helpers.get_active_thread_count",
+                "airweave.platform.temporal.worker.control_server.get_active_thread_count",
                 return_value=thread_count,
             ):
                 with patch(
@@ -570,7 +570,7 @@ async def test_metrics_endpoint_uses_pod_ordinal(
         "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
     ):
         with patch(
-            "airweave.platform.sync.async_helpers.get_active_thread_count", return_value=0
+            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=0
         ):
             with patch(
                 "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
@@ -620,7 +620,7 @@ async def test_zero_active_syncs_scenario(mock_worker_metrics, mock_settings, te
         "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
     ):
         with patch(
-            "airweave.platform.sync.async_helpers.get_active_thread_count", return_value=0
+            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=0
         ):
             with patch.dict("sys.modules", {"psutil": mock_psutil}):
                 control_server, state = create_control_server(test_worker_config, running=True)
