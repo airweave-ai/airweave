@@ -17,8 +17,8 @@ Requires:
 """
 
 import asyncio
+import random
 import time
-import uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -55,8 +55,25 @@ class AirweaveSearchResult(BaseModel):
     access: Optional[dict] = None
     source_fields: dict = Field(default_factory=dict)
 
-TRACKING_PREFIX = "FILE_STUB_E2E"
+# OCR-friendly word list for tracking tokens (common, unambiguous words)
+_TRACKING_WORDS = [
+    "alpha", "basket", "cherry", "delta", "ember", "falcon", "garden",
+    "harbor", "ivory", "jungle", "kettle", "lemon", "marble", "noble",
+    "orange", "planet", "quiver", "river", "silver", "timber", "umbrella",
+    "violet", "walnut", "yellow", "zenith", "bridge", "candle", "forest",
+    "meadow", "sunset", "copper", "velvet", "crystal", "thunder", "willow",
+]
 SEARCH_LIMIT = 50
+
+
+def _generate_tracking_string() -> str:
+    """Generate an OCR-friendly tracking string using hyphenated real words.
+
+    Produces tokens like ``file-stub-cherry-falcon-river-marble`` which OCR
+    models handle far better than hex strings like ``FILE_STUB_E2E_a1b2c3d4``.
+    """
+    words = random.sample(_TRACKING_WORDS, 4)
+    return "file-stub-" + "-".join(words)
 
 
 # =========================================================================
@@ -178,8 +195,7 @@ async def synced_file_stub() -> SyncedFileStubContext:
     """
     from config import settings
 
-    tracking_id = uuid.uuid4().hex[:12]
-    tracking_string = f"{TRACKING_PREFIX}_{tracking_id}"
+    tracking_string = _generate_tracking_string()
     seed = int(time.time()) % 100_000  # different seed each run
 
     print("\n" + "=" * 70)
