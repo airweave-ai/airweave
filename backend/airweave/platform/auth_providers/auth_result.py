@@ -17,11 +17,14 @@ class AuthResult:
     """Result of auth provider credential fetch.
 
     This makes explicit whether to use credentials directly or via proxy.
+    source_config carries non-secret config fields (e.g., instance_url) that
+    the auth provider extracted alongside credentials.
     """
 
     mode: AuthProviderMode
     credentials: Optional[Any] = None  # Actual credentials (if DIRECT mode)
     proxy_config: Optional[Dict[str, Any]] = None  # Config for proxy (if PROXY mode)
+    source_config: Optional[Dict[str, Any]] = None  # Config fields from auth provider response
 
     @classmethod
     def direct(cls, credentials: Any) -> "AuthResult":

@@ -280,10 +280,15 @@ class TestStorageBackend:
                 assert sync_id, "No sync_id returned from connection"
 
                 # Wait for filesystem writes to complete
-                await asyncio.sleep(2)
-
-                # VERIFY STORAGE - check Docker or local filesystem
-                results = verify_arf_files(sync_id)
+                # Under CI load, file writes can lag behind sync status
+                results = None
+                for attempt in range(6):  # up to ~18s
+                    await asyncio.sleep(3)
+                    results = verify_arf_files(sync_id)
+                    if results.get("arf_dir_exists"):
+                        print(f"ARF files verified (attempt {attempt + 1})")
+                        break
+                    print(f"  [arf verify] attempt {attempt + 1}: files not ready, retrying...")
 
                 # Assert all checks passed
                 assert results["storage_exists"], (

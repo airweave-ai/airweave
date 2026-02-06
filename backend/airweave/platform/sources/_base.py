@@ -509,100 +509,143 @@ class BaseSource:
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generic bounded-concurrency driver.
 
-        Returns:
-            True if the source is healthy/authorized; False otherwise.
+        Uses a fixed pool of ``batch_size`` worker tasks fed by a bounded queue
+        so the total number of asyncio tasks stays at ``batch_size + 1``
+        regardless of how many items are provided.
 
-        Notes:
-            OAuth2-based sources should generally implement this by calling
-            `await self._validate_oauth2(...)` with the appropriate endpoints/
-            credentials from their config.
-        - `items`: async iterator (or iterable) of units of work.
-        - `worker(item)`: async generator yielding 0..N BaseEntity objects for that item.
-        - `batch_size`: max concurrent workers.
-        - `preserve_order`: if True, buffers per-item results and yields in input order.
-        - `stop_on_error`: if True, cancels remaining work on first error.
+        Args:
+            items: Sync or async iterable of units of work.
+            worker: Async generator ``worker(item)`` yielding 0..N BaseEntity.
+            batch_size: Maximum concurrent workers.
+            preserve_order: If True, buffer per-item results and yield in input order.
+            stop_on_error: If True, cancel remaining work on first error.
+            max_queue_size: Backpressure cap on the results queue.
         """
-        results, tasks, total_workers, sentinel = await self._start_entity_workers(
-            items=items,
-            worker=worker,
-            batch_size=batch_size,
-            max_queue_size=max_queue_size,
+        import asyncio as _asyncio
+
+        pool = self._create_bounded_pool(
+            items, worker, batch_size=batch_size, max_queue_size=max_queue_size
         )
 
         try:
             if preserve_order:
                 async for ent in self._drain_results_preserve_order(
-                    results, tasks, total_workers, stop_on_error, sentinel
+                    pool["results"],
+                    pool["all_tasks"],
+                    pool["producer_finished"],
+                    pool["get_total_items"],
+                    stop_on_error,
+                    pool["sentinel"],
                 ):
                     yield ent
             else:
                 async for ent in self._drain_results_unordered(
-                    results, tasks, total_workers, stop_on_error, sentinel
+                    pool["results"],
+                    pool["all_tasks"],
+                    pool["producer_finished"],
+                    pool["get_total_items"],
+                    stop_on_error,
+                    pool["sentinel"],
                 ):
                     yield ent
         finally:
-            # Ensure all tasks are cleaned up even if consumer stops early
-            import asyncio as _asyncio
+            for t in pool["all_tasks"]:
+                t.cancel()
+            await _asyncio.gather(*pool["all_tasks"], return_exceptions=True)
 
-            await _asyncio.gather(*tasks, return_exceptions=True)
-
-    async def _start_entity_workers(
+    def _create_bounded_pool(  # noqa: C901
         self,
         items: Union[Iterable[Any], AsyncIterable[Any]],
         worker: Callable[[Any], AsyncIterable[BaseEntity]],
         *,
         batch_size: int,
         max_queue_size: int,
-    ):
-        """Spin up worker tasks and return (results_queue, tasks, total_workers, sentinel)."""
+    ) -> Dict[str, Any]:
+        """Create a bounded producer + fixed worker pool.
+
+        Returns a dict with keys: results, all_tasks, producer_finished,
+        get_total_items, sentinel.
+        """
         import asyncio as _asyncio
 
-        semaphore = _asyncio.Semaphore(batch_size)
         results: _asyncio.Queue = _asyncio.Queue(maxsize=max_queue_size)
+        items_queue: _asyncio.Queue = _asyncio.Queue(maxsize=batch_size)
         sentinel = object()
+        items_done = object()
+        producer_finished = _asyncio.Event()
+        total_items_cell: list[int] = [0]
 
-        async def run_worker(idx: int, item: Any) -> None:
-            await semaphore.acquire()
+        async def _producer() -> None:
             try:
-                agen = worker(item)
-                if not hasattr(agen, "__aiter__"):
-                    raise TypeError("worker(item) must return an async iterator (async generator).")
-                async for entity in agen:
-                    await results.put((idx, entity, None))
-            except BaseException as e:  # propagate cancellation & capture other errors
-                await results.put((idx, None, e))
+                idx = 0
+                if hasattr(items, "__aiter__"):
+                    async for item in items:  # type: ignore[union-attr]
+                        await items_queue.put((idx, item))
+                        idx += 1
+                        total_items_cell[0] = idx
+                else:
+                    for item in items:  # type: ignore[union-attr]
+                        await items_queue.put((idx, item))
+                        idx += 1
+                        total_items_cell[0] = idx
             finally:
-                await results.put((idx, sentinel, None))  # signal completion for idx
-                semaphore.release()
+                await items_queue.put(items_done)
+                producer_finished.set()
+                # Wake up drain if it's blocked on an empty results queue
+                # (e.g. 0 items). The drain treats None as a no-op wake-up.
+                await results.put(None)
 
-        tasks: list[_asyncio.Task] = []
-        idx = 0
+        async def _pool_worker() -> None:
+            while True:
+                msg = await items_queue.get()
+                if msg is items_done:
+                    await items_queue.put(items_done)
+                    return
+                idx, item = msg
+                try:
+                    agen = worker(item)
+                    if not hasattr(agen, "__aiter__"):
+                        raise TypeError(
+                            "worker(item) must return an async iterator (async generator)."
+                        )
+                    async for entity in agen:
+                        await results.put((idx, entity, None))
+                except BaseException as e:
+                    await results.put((idx, None, e))
+                finally:
+                    await results.put((idx, sentinel, None))
 
-        if hasattr(items, "__aiter__"):
-            async for item in items:  # type: ignore[truthy-bool]
-                tasks.append(_asyncio.create_task(run_worker(idx, item)))
-                idx += 1
-        else:
-            for item in items:  # type: ignore[arg-type]
-                tasks.append(_asyncio.create_task(run_worker(idx, item)))
-                idx += 1
+        producer_task = _asyncio.create_task(_producer())
+        pool_tasks = [_asyncio.create_task(_pool_worker()) for _ in range(batch_size)]
 
-        return results, tasks, idx, sentinel
+        return {
+            "results": results,
+            "all_tasks": [producer_task] + pool_tasks,
+            "producer_finished": producer_finished,
+            "get_total_items": lambda: total_items_cell[0],
+            "sentinel": sentinel,
+        }
 
     async def _drain_results_unordered(
         self,
         results,
         tasks,
-        total_workers: int,
+        producer_finished,
+        get_total_items: Callable[[], int],
         stop_on_error: bool,
         sentinel: object,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Yield results as they arrive; stop early on error if requested."""
-        done_workers = 0
-        while done_workers < total_workers:
-            i, payload, err = await results.get()
+        done_items = 0
+        while True:
+            if producer_finished.is_set() and done_items >= get_total_items():
+                break
+            msg = await results.get()
+            if msg is None:
+                continue  # producer-done wake-up
+            i, payload, err = msg
             if payload is sentinel:
-                done_workers += 1
+                done_items += 1
                 continue
             if err:
                 self.logger.error(f"Worker {i} error: {err}", exc_info=True)
@@ -617,7 +660,8 @@ class BaseSource:
         self,
         results,
         tasks,
-        total_workers: int,
+        producer_finished,
+        get_total_items: Callable[[], int],
         stop_on_error: bool,
         sentinel: object,
     ) -> AsyncGenerator[BaseEntity, None]:
@@ -625,20 +669,24 @@ class BaseSource:
         buffers: Dict[int, list[BaseEntity]] = {}
         finished: set[int] = set()
         next_idx = 0
-        done_workers = 0
+        done_items = 0
 
-        while done_workers < total_workers:
-            i, payload, err = await results.get()
+        while True:
+            if producer_finished.is_set() and done_items >= get_total_items():
+                break
+            msg = await results.get()
+            if msg is None:
+                continue  # producer-done wake-up
+            i, payload, err = msg
             if payload is sentinel:
                 finished.add(i)
-                done_workers += 1
+                done_items += 1
             elif err:
                 self.logger.error(f"Worker {i} error: {err}", exc_info=True)
                 if stop_on_error:
                     for t in tasks:
                         t.cancel()
                     raise err
-                # We'll still wait for this worker's sentinel to preserve ordering.
             else:
                 buffers.setdefault(i, []).append(payload)  # type: ignore[arg-type]
 

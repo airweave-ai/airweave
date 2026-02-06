@@ -175,30 +175,33 @@ async def test_sync_with_special_tokens_inject_flag(
 
         assert status == "active", f"Expected active status, got: {status}"
 
-        # Step 5: Verify entities are searchable (optional but good to confirm)
-        # Give Vespa/Qdrant a moment to index
-        await asyncio.sleep(3)
+        # Step 5: Verify entities are searchable
+        # Under parallel test load, indexing can lag behind sync completion
+        result_count = 0
+        for attempt in range(8):  # up to ~30s (first 3 at 3s, rest at 5s)
+            wait_secs = 3 if attempt < 3 else 5
+            await asyncio.sleep(wait_secs)
 
-        search_response = await client.post(
-            f"/collections/{collection_readable_id}/search",
-            json={
-                "query": "test content",
-                "limit": 10,
-                "expand_query": False,
-                "interpret_filters": False,
-                "rerank": False,
-                "generate_answer": False,
-            },
-            timeout=60,
-        )
+            search_response = await client.post(
+                f"/collections/{collection_readable_id}/search",
+                json={
+                    "query": "test content",
+                    "limit": 10,
+                    "expand_query": False,
+                    "interpret_filters": False,
+                    "rerank": False,
+                    "generate_answer": False,
+                },
+                timeout=60,
+            )
 
-        assert search_response.status_code == 200, (
-            f"Search failed: {search_response.text}"
-        )
-
-        results = search_response.json()
-        result_count = len(results.get("results", []))
-        print(f"Search returned {result_count} results")
+            if search_response.status_code == 200:
+                results = search_response.json()
+                result_count = len(results.get("results", []))
+                if result_count > 0:
+                    print(f"Search returned {result_count} results (attempt {attempt + 1})")
+                    break
+            print(f"  [search verify] attempt {attempt + 1}: no results yet, retrying...")
 
         # We should have some indexed content
         assert result_count > 0, (

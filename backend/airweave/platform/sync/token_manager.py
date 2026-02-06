@@ -255,19 +255,18 @@ class TokenManager:
         )
 
         try:
-            # Get the runtime auth fields required by the source (excluding BYOC fields)
+            # Get the runtime auth fields required by the source
             from airweave.core.auth_provider_service import auth_provider_service
 
-            source_auth_config_fields = (
-                await auth_provider_service.get_runtime_auth_fields_for_source(
-                    self.db, self.source_short_name
-                )
+            auth_fields = await auth_provider_service.get_runtime_auth_fields_for_source(
+                self.db, self.source_short_name
             )
 
             # Get fresh credentials from auth provider instance
             fresh_credentials = await self.auth_provider_instance.get_creds_for_source(
                 source_short_name=self.source_short_name,
-                source_auth_config_fields=source_auth_config_fields,
+                source_auth_config_fields=auth_fields.all_fields,
+                optional_fields=auth_fields.optional_fields,
             )
 
             # Extract access token
