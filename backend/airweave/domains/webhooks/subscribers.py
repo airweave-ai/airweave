@@ -13,45 +13,19 @@ logger = logging.getLogger(__name__)
 class WebhookEventSubscriber:
     """Forwards domain events to external webhook endpoints.
 
-    Subscribes to all events (``*``) and delegates payload construction
-    to each event's ``to_webhook_payload()`` method.  The ``event_type``
-    string (e.g. ``sync.completed``, ``source_connection.created``)
-    determines the Svix channel, so endpoint-level filtering is handled
-    by the infrastructure, not by this subscriber.
+    Subscribes to all events (``*``) and delegates directly to the
+    :class:`WebhookPublisher`.  The publisher (adapter) is responsible
+    for serializing the event; this subscriber just routes.
     """
 
     EVENT_PATTERNS = ["*"]
 
     def __init__(self, publisher: "WebhookPublisher") -> None:
-        """Initialize with a webhook publisher.
-
-        Args:
-            publisher: Protocol for publishing events to external endpoints.
-        """
+        """Initialize with a webhook publisher."""
         self._publisher = publisher
 
     async def handle(self, event: "DomainEvent") -> None:
-        """Handle any domain event by forwarding to webhooks.
-
-        Args:
-            event: Any domain event that satisfies the DomainEvent protocol.
-        """
+        """Forward a domain event to the webhook publisher."""
         event_type = str(event.event_type)
-
-        # All domain events must implement to_webhook_payload()
-        if not hasattr(event, "to_webhook_payload"):
-            logger.warning(
-                f"WebhookEventSubscriber: event '{event_type}' has no "
-                f"to_webhook_payload() method, skipping"
-            )
-            return
-
-        payload = event.to_webhook_payload()
-
         logger.debug(f"WebhookEventSubscriber: forwarding '{event_type}' to webhook publisher")
-
-        await self._publisher.publish_event(
-            org_id=event.organization_id,
-            event_type=event_type,
-            payload=payload,
-        )
+        await self._publisher.publish_event(event)

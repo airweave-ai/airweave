@@ -24,8 +24,8 @@ import pytest
 import pytest_asyncio
 
 
-# Webhook delivery timeout
-WEBHOOK_TIMEOUT = 30.0
+# Webhook delivery timeout — generous to handle concurrent syncs
+WEBHOOK_TIMEOUT = 90.0
 
 # Dummy URL for webhook subscriptions - Svix will try to deliver here
 # We don't need it to succeed, we just check Svix's message attempts

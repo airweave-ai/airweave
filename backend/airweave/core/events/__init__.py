@@ -1,17 +1,21 @@
 """Domain events for the event bus."""
 
-from airweave.core.events.base import BaseDomainEvent
-from airweave.core.events.collection import CollectionEventType, CollectionLifecycleEvent
-from airweave.core.events.source_connection import (
+from airweave.core.events.base import DomainEvent
+from airweave.core.events.collection import CollectionLifecycleEvent
+from airweave.core.events.enums import (
+    CollectionEventType,
+    EventType,
     SourceConnectionEventType,
-    SourceConnectionLifecycleEvent,
+    SyncEventType,
 )
-from airweave.core.events.sync import SyncEventType, SyncLifecycleEvent
+from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
+from airweave.core.events.sync import SyncLifecycleEvent
 
 __all__ = [
-    "BaseDomainEvent",
     "CollectionEventType",
     "CollectionLifecycleEvent",
+    "DomainEvent",
+    "EventType",
     "SourceConnectionEventType",
     "SourceConnectionLifecycleEvent",
     "SyncEventType",

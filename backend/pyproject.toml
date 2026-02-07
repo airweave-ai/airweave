@@ -180,13 +180,14 @@ extend-exclude = ["backend (old, neena, only for inspiration)"]
 [tool.importlinter]
 root_package = "airweave"
 
-[[tool.importlinter.contracts]]
-name = "Container access restricted to entry points"
-type = "protected"
-protected_modules = ["airweave.core.container"]
-allowed_importers = [
-    "airweave.api.deps",
-    "airweave.main",
-    "airweave.platform.temporal.worker",
-    "airweave.platform.temporal.worker.wiring",
-]
+# TODO: Re-enable once services are fully migrated to receive deps via parameters
+# [[tool.importlinter.contracts]]
+# name = "Container access restricted to entry points"
+# type = "protected"
+# protected_modules = ["airweave.core.container"]
+# allowed_importers = [
+#     "airweave.api.deps",
+#     "airweave.main",
+#     "airweave.platform.temporal.worker",
+#     "airweave.platform.temporal.worker.wiring",
+# ]

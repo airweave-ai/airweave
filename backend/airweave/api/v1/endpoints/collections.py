@@ -5,7 +5,6 @@ collections. Collections are containers that group related data from one or
 more source connections, enabling unified search across multiple data sources.
 """
 
-import logging
 from typing import List, Sequence
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Path, Query
@@ -24,7 +23,6 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.collection_service import collection_service
 from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.guard_rail_service import GuardRailService
-from airweave.core.logging import ContextualLogger
 from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
@@ -38,8 +36,6 @@ from airweave.schemas.errors import (
     RateLimitErrorResponse,
     ValidationErrorResponse,
 )
-
-logger = logging.getLogger(__name__)
 
 router = TrailingSlashRouter()
 
@@ -153,7 +149,7 @@ async def create(
             )
         )
     except Exception as e:
-        logger.warning(f"Failed to publish collection.created event: {e}")
+        ctx.logger.warning(f"Failed to publish collection.created event: {e}")
 
     return collection_obj
 
@@ -236,7 +232,7 @@ async def update(
             )
         )
     except Exception as e:
-        logger.warning(f"Failed to publish collection.updated event: {e}")
+        ctx.logger.warning(f"Failed to publish collection.updated event: {e}")
 
     return result
 
@@ -313,7 +309,7 @@ async def delete(
             )
         )
     except Exception as e:
-        logger.warning(f"Failed to publish collection.deleted event: {e}")
+        ctx.logger.warning(f"Failed to publish collection.deleted event: {e}")
 
     return result
 
@@ -348,7 +344,6 @@ async def refresh_all_source_connections(
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
     background_tasks: BackgroundTasks,
-    logger: ContextualLogger = Depends(deps.get_logger),
 ) -> List[schemas.SourceConnectionJob]:
     """Trigger data synchronization for all source connections in the collection."""
     # Check if collection exists
@@ -429,6 +424,6 @@ async def refresh_all_source_connections(
 
         except Exception as e:
             # Log the error but continue with other source connections
-            logger.error(f"Failed to create sync job for source connection {sc.id}: {e}")
+            ctx.logger.error(f"Failed to create sync job for source connection {sc.id}: {e}")
 
     return sync_jobs

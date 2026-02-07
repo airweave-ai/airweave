@@ -4,25 +4,13 @@ These events are published during source connection lifecycle transitions
 and consumed by webhooks, analytics, realtime, etc.
 """
 
-from enum import Enum
 from uuid import UUID
 
-from airweave.core.events.base import BaseDomainEvent
+from airweave.core.events.base import DomainEvent
+from airweave.core.events.enums import SourceConnectionEventType
 
 
-class SourceConnectionEventType(str, Enum):
-    """Strongly-typed source connection event types.
-
-    Extends str so it satisfies the DomainEvent.event_type protocol (str)
-    and works transparently with fnmatch pattern matching in the event bus.
-    """
-
-    CREATED = "source_connection.created"
-    AUTH_COMPLETED = "source_connection.auth_completed"
-    DELETED = "source_connection.deleted"
-
-
-class SourceConnectionLifecycleEvent(BaseDomainEvent):
+class SourceConnectionLifecycleEvent(DomainEvent):
     """Event published during source connection lifecycle transitions.
 
     Published when a source connection:

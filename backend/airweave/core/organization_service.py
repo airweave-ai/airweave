@@ -19,7 +19,6 @@ from airweave.db.unit_of_work import UnitOfWork
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models import Organization, User, UserOrganization
 from airweave.schemas.api_key import APIKeyCreate
-from airweave.webhooks.service import service as webhooks_service
 
 if settings.STRIPE_ENABLED:
     from airweave.billing.service import billing_service
@@ -245,8 +244,8 @@ class OrganizationService:
                 await context_cache.invalidate_user(owner_user.email)
                 logger.debug(f"Invalidated user cache for {owner_user.email}")
 
-                # Create organization for webhooks
-                await webhooks_service.create_organization(organization)
+                # Svix organization is created lazily on first webhook use
+                # (via _auto_create_org in SvixAdapter), no explicit call needed.
 
                 return organization
 
@@ -749,8 +748,12 @@ class OrganizationService:
             if affected_user_emails:
                 logger.debug(f"Invalidated user cache for {len(affected_user_emails)} users")
 
-            # Delete organization from webhooks service
-            await webhooks_service.delete_organization(org)
+            # Delete organization from webhooks (Svix application cleanup)
+            # TODO: delete this after DI is implemented for OrganizationService
+            from airweave.core.container import container
+
+            if container is not None:
+                await container.webhook_admin.delete_organization(org.id)
 
             logger.info(f"Successfully deleted organization: {org.name}")
             return True

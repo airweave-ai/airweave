@@ -4,25 +4,13 @@ These events are published during collection lifecycle transitions
 and consumed by webhooks, analytics, realtime, etc.
 """
 
-from enum import Enum
 from uuid import UUID
 
-from airweave.core.events.base import BaseDomainEvent
+from airweave.core.events.base import DomainEvent
+from airweave.core.events.enums import CollectionEventType
 
 
-class CollectionEventType(str, Enum):
-    """Strongly-typed collection event types.
-
-    Extends str so it satisfies the DomainEvent.event_type protocol (str)
-    and works transparently with fnmatch pattern matching in the event bus.
-    """
-
-    CREATED = "collection.created"
-    UPDATED = "collection.updated"
-    DELETED = "collection.deleted"
-
-
-class CollectionLifecycleEvent(BaseDomainEvent):
+class CollectionLifecycleEvent(DomainEvent):
     """Event published during collection lifecycle transitions.
 
     Published when a collection is:

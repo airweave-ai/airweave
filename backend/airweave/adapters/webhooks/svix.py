@@ -10,7 +10,7 @@ import time
 import uuid
 from datetime import datetime
 from functools import wraps
-from typing import Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Callable, Optional, TypeVar
 
 import jwt
 from svix.api import (
@@ -40,12 +40,18 @@ from airweave.domains.webhooks.types import (
     WebhooksError,
 )
 
+if TYPE_CHECKING:
+    from airweave.core.protocols.event_bus import DomainEvent
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
 # 10 years in seconds
 TOKEN_DURATION_SECONDS = 24 * 365 * 10 * 60 * 60
+
+# Default org identifier for self-hosted Svix JWT auth
+SVIX_ORG_ID = "org_23rb8YdGqMT0qIzpgGwdXfHirMu"
 
 
 def _generate_token(signing_secret: str) -> str:
@@ -57,7 +63,7 @@ def _generate_token(signing_secret: str) -> str:
             "exp": now + TOKEN_DURATION_SECONDS,
             "nbf": now,
             "iss": "svix-server",
-            "sub": "org_23rb8YdGqMT0qIzpgGwdXfHirMu",
+            "sub": SVIX_ORG_ID,
         },
         signing_secret,
         algorithm="HS256",
@@ -154,23 +160,32 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
         await self._svix.application.create(ApplicationIn(name=str(org_id), uid=str(org_id)))
 
     # -------------------------------------------------------------------------
+    # Organization lifecycle
+    # -------------------------------------------------------------------------
+
+    async def delete_organization(self, org_id: uuid.UUID) -> None:
+        """Delete a Svix application (organization) and all its data.
+
+        Best-effort: logs errors rather than raising.
+        """
+        try:
+            await self._svix.application.delete(str(org_id))
+        except Exception as e:
+            logger.error(f"Failed to delete Svix application for org {org_id}: {e}")
+
+    # -------------------------------------------------------------------------
     # WebhookPublisher
     # -------------------------------------------------------------------------
 
-    async def publish_event(
-        self,
-        org_id: uuid.UUID,
-        event_type: str,
-        payload: dict,
-    ) -> None:
+    async def publish_event(self, event: "DomainEvent") -> None:
         """Publish a domain event to webhook subscribers.
 
-        Generic: accepts any event_type and pre-built payload dict.
-        The event bus subscriber is responsible for building the payload
-        from domain events; this adapter just delivers it to Svix.
+        Serializes the event to a flat JSON dict for Svix delivery.
         """
+        event_type = str(event.event_type)
         try:
-            await self._publish_internal(org_id, event_type, payload)
+            payload = event.model_dump(mode="json")
+            await self._publish_internal(event.organization_id, event_type, payload)
         except Exception as e:
             logger.error(f"Failed to publish webhook event '{event_type}': {e}")
 

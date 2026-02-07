@@ -13,38 +13,9 @@ Usage:
     event_bus.subscribe("sync.*", analytics_handler)
 """
 
-from datetime import datetime
 from typing import Awaitable, Callable, Protocol, runtime_checkable
-from uuid import UUID
 
-
-@runtime_checkable
-class DomainEvent(Protocol):
-    """Base protocol for all domain events.
-
-    Concrete events are frozen dataclasses that carry domain-specific data.
-    The bus only cares about these three fields for routing and metadata.
-    Subscribers type-narrow to the concrete event class they expect.
-    """
-
-    @property
-    def event_type(self) -> str:
-        """Dot-separated event identifier (e.g., 'sync.completed').
-
-        Convention: {domain}.{action} — used for pattern matching.
-        """
-        ...
-
-    @property
-    def timestamp(self) -> datetime:
-        """When the event occurred (UTC)."""
-        ...
-
-    @property
-    def organization_id(self) -> UUID:
-        """Organization this event belongs to."""
-        ...
-
+from airweave.core.events.base import DomainEvent
 
 # Type alias for event handlers (async callables that receive a DomainEvent)
 EventHandler = Callable[[DomainEvent], Awaitable[None]]

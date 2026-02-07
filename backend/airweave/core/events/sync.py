@@ -4,30 +4,14 @@ These events are published during sync lifecycle transitions
 and consumed by webhooks, analytics, realtime, etc.
 """
 
-import dataclasses
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
 from typing import Optional
 from uuid import UUID
 
-
-class SyncEventType(str, Enum):
-    """Strongly-typed sync event types.
-
-    Extends str so it satisfies the DomainEvent.event_type protocol (str)
-    and works transparently with fnmatch pattern matching in the event bus.
-    """
-
-    PENDING = "sync.pending"
-    RUNNING = "sync.running"
-    COMPLETED = "sync.completed"
-    FAILED = "sync.failed"
-    CANCELLED = "sync.cancelled"
+from airweave.core.events.base import DomainEvent
+from airweave.core.events.enums import SyncEventType
 
 
-@dataclass(frozen=True)
-class SyncLifecycleEvent:
+class SyncLifecycleEvent(DomainEvent):
     """Event published during sync lifecycle transitions.
 
     Published when a sync job transitions to:
@@ -43,16 +27,13 @@ class SyncLifecycleEvent:
     - RealtimeSubscriber: Pushes to Redis PubSub for UI updates
     """
 
-    # Event metadata
     event_type: SyncEventType
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Identifiers
-    organization_id: UUID = field(default=None)  # type: ignore[assignment]
-    sync_id: UUID = field(default=None)  # type: ignore[assignment]
-    sync_job_id: UUID = field(default=None)  # type: ignore[assignment]
-    collection_id: UUID = field(default=None)  # type: ignore[assignment]
-    source_connection_id: UUID = field(default=None)  # type: ignore[assignment]
+    sync_id: UUID
+    sync_job_id: UUID
+    collection_id: UUID
+    source_connection_id: UUID
 
     # Context
     source_type: str = ""  # e.g., "slack", "notion"
@@ -68,21 +49,6 @@ class SyncLifecycleEvent:
 
     # Error info (for failed events)
     error: Optional[str] = None
-
-    def to_webhook_payload(self) -> dict:
-        """Serialize to a JSON-safe dict for webhook delivery."""
-        result = {}
-        for f in dataclasses.fields(self):
-            value = getattr(self, f.name)
-            if isinstance(value, UUID):
-                result[f.name] = str(value)
-            elif isinstance(value, datetime):
-                result[f.name] = value.isoformat()
-            elif isinstance(value, Enum):
-                result[f.name] = value.value
-            else:
-                result[f.name] = value
-        return result
 
     @classmethod
     def pending(
