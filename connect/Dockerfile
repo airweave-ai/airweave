@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 WORKDIR /app/connect
 
 # Copy connect app files
@@ -16,7 +16,7 @@ COPY frontend/src/components/icons/apps/ /app/frontend/src/components/icons/apps
 RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Runtime stage
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 # Install wget for healthcheck
