@@ -895,6 +895,7 @@ class SourceConnectionHelpers:
         # Build and return the complete response
         return schemas.SourceConnection(
             id=source_conn.id,
+            organization_id=source_conn.organization_id,
             name=source_conn.name,
             description=source_conn.description,
             short_name=source_conn.short_name,

@@ -16,7 +16,6 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Path, Query, Response
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -30,7 +29,6 @@ from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
-from airweave.models.source_connection import SourceConnection as SourceConnectionModel
 from airweave.schemas.errors import (
     ConflictErrorResponse,
     NotFoundErrorResponse,
@@ -99,29 +97,17 @@ async def oauth_callback(
         from airweave.core.config import settings
 
         redirect_url = settings.app_url
-
-    connection_id = source_conn.id
-
-    # Publish source_connection.auth_completed event
-    # OAuth callback has no ApiContext, so fetch organization_id from DB
     try:
-        row = await db.execute(
-            select(SourceConnectionModel.organization_id).where(
-                SourceConnectionModel.id == connection_id
+        await event_bus.publish(
+            SourceConnectionLifecycleEvent.auth_completed(
+                organization_id=source_conn.organization_id,
+                source_connection_id=source_conn.id,
+                source_type=source_conn.short_name,
+                collection_readable_id=source_conn.readable_collection_id,
             )
         )
-        org_id = row.scalar_one_or_none()
-        if org_id:
-            await event_bus.publish(
-                SourceConnectionLifecycleEvent.auth_completed(
-                    organization_id=org_id,
-                    source_connection_id=connection_id,
-                    source_type=source_conn.short_name,
-                    collection_readable_id=source_conn.readable_collection_id,
-                )
-            )
     except Exception as e:
-        logger.warning(f"Failed to publish source_connection.auth_completed event: {e}")
+        logger.error(f"Failed to publish source_connection.auth_completed event: {e}")
 
     # Parse the redirect URL to preserve existing query parameters
     from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -131,7 +117,7 @@ async def oauth_callback(
 
     # Add success parameters (using frontend-expected param names)
     query_params["status"] = ["success"]
-    query_params["source_connection_id"] = [str(connection_id)]
+    query_params["source_connection_id"] = [str(source_conn.id)]
 
     # Reconstruct the URL with all query parameters
     new_query = urlencode(query_params, doseq=True)
