@@ -10,17 +10,14 @@ Design principles:
 - Testing: construct directly with fakes
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from airweave.core.protocols import (
-        EventBus,
-        WebhookAdmin,
-        WebhookPublisher,
-    )
+from airweave.core.protocols import (
+    EventBus,
+    WebhookAdmin,
+    WebhookPublisher,
+)
 
 
 @dataclass(frozen=True)
@@ -39,20 +36,25 @@ class Container:
             webhook_publisher=FakeWebhookPublisher(),
             webhook_admin=FakeWebhookAdmin(),
         )
+
+        # FastAPI endpoints: use Inject() to pull individual protocols
+        from airweave.api.deps import Inject
+        async def my_endpoint(event_bus: EventBus = Inject(EventBus)):
+            await event_bus.publish(...)
     """
 
     # Event bus for domain event fan-out
-    event_bus: "EventBus"
+    event_bus: EventBus
 
     # Webhook protocols (Svix-backed)
-    webhook_publisher: "WebhookPublisher"  # Internal: publish sync events
-    webhook_admin: "WebhookAdmin"  # External API: subscriptions + history
+    webhook_publisher: WebhookPublisher  # Internal: publish sync events
+    webhook_admin: WebhookAdmin  # External API: subscriptions + history
 
     # -----------------------------------------------------------------
     # Convenience methods
     # -----------------------------------------------------------------
 
-    def replace(self, **changes: Any) -> Container:
+    def replace(self, **changes: Any) -> "Container":
         """Create a new container with some dependencies replaced.
 
         Useful for partial overrides in tests:
