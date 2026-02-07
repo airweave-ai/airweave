@@ -51,6 +51,8 @@ navigation:
       path: docs/pages/framework-integrations/google-antigravity.mdx
     - page: Pipedream
       path: docs/pages/framework-integrations/pipedream.mdx
+    - page: Sim
+      path: docs/pages/framework-integrations/sim.mdx
   - section: Authentication
     contents:
     - section: Auth Providers

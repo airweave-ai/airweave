@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml/badge.svg" alt="Ruff"></a>
+  <a href="https://github.com/airweave-ai/airweave/actions/workflows/code-quality.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/code-quality.yml/badge.svg" alt="Code Quality"></a>
   <a href="https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml/badge.svg" alt="ESLint"></a>
   <a href="https://github.com/airweave-ai/airweave/actions/workflows/test-public-api.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/test-public-api.yml/badge.svg" alt="System Tests"></a>
   <a href="https://pepy.tech/projects/airweave-sdk"><img src="https://static.pepy.tech/badge/airweave-sdk" alt="PyPI Downloads"></a>

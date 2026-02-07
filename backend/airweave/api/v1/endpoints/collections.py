@@ -25,6 +25,8 @@ from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
+from airweave.core.logging import ContextualLogger
+from airweave.core.shared_models import ActionType, SyncJobStatus
 from airweave.core.source_connection_service import source_connection_service
 from airweave.core.source_connection_service_helpers import source_connection_helpers
 from airweave.core.sync_service import sync_service
@@ -291,6 +293,20 @@ async def delete(
         .distinct()
     )
     sync_ids = [row[0] for row in sync_id_rows if row[0]]
+
+    # Cancel any running Temporal workflows before deletion to prevent FK violations.
+    # Without this, CASCADE-deleting sync rows while a worker is still writing entities
+    # causes ForeignKeyViolationError on the entity table.
+    for sync_id in sync_ids:
+        latest_job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=sync_id)
+        if latest_job and latest_job.status in [SyncJobStatus.PENDING, SyncJobStatus.RUNNING]:
+            try:
+                await temporal_service.cancel_sync_job_workflow(str(latest_job.id), ctx)
+                ctx.logger.info(f"Cancelled job {latest_job.id} before collection deletion")
+            except Exception as e:
+                ctx.logger.warning(
+                    f"Failed to cancel job {latest_job.id} during collection deletion: {e}"
+                )
 
     # Clean up all external data (schedules, destinations, ARF)
     await cleanup_service.cleanup_collection(db, collection_schema, sync_ids, ctx)
