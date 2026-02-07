@@ -47,15 +47,16 @@ describe("SyncProgressIndicator", () => {
     expect(getByTextContent("160 synced")).toBeInTheDocument();
   });
 
-  it("includes baseCount in total", () => {
+  it("shows checkmark when sync is complete", () => {
     const progress: SyncProgressUpdate = {
       ...baseProgress,
       entities_inserted: 50,
+      is_complete: true,
     };
 
-    render(<SyncProgressIndicator progress={progress} baseCount={200} />);
+    render(<SyncProgressIndicator progress={progress} />);
 
-    expect(getByTextContent("250 synced")).toBeInTheDocument();
+    expect(getByTextContent("50 synced")).toBeInTheDocument();
   });
 
   it("formats large numbers with locale separators", () => {

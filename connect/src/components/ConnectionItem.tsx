@@ -56,7 +56,6 @@ export function ConnectionItem({
           {syncProgress ? (
             <SyncProgressIndicator
               progress={syncProgress}
-              baseCount={connection.entity_count}
               isReconnecting={isSseReconnecting}
             />
           ) : (
