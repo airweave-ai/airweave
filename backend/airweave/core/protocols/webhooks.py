@@ -1,14 +1,14 @@
 """Webhook protocols.
 
 Two protocols based on consumer needs:
-- WebhookPublisher: Internal use (sync domain publishes events)
+- WebhookPublisher: Internal use (event bus subscriber publishes events)
 - WebhookAdmin: External API (users manage subscriptions, view history)
 
 All WebhookAdmin methods raise WebhooksError on failure.
 """
 
 from datetime import datetime
-from typing import Optional, Protocol
+from typing import Optional, Protocol, runtime_checkable
 from uuid import UUID
 
 from airweave.domains.webhooks.types import (
@@ -19,29 +19,26 @@ from airweave.domains.webhooks.types import (
 )
 
 
+@runtime_checkable
 class WebhookPublisher(Protocol):
-    """Publish sync events to webhook subscribers.
+    """Publish domain events to external webhook subscribers.
 
-    Used by sync domain / event bus subscriber. Internal only.
+    Generic interface: accepts any event_type string and payload dict.
+    The event bus subscriber builds the payload from domain events;
+    the adapter just delivers it.
     """
 
-    async def publish_sync_event(
+    async def publish_event(
         self,
         org_id: UUID,
-        source_connection_id: UUID,
-        sync_job_id: UUID,
-        sync_id: UUID,
-        collection_id: UUID,
-        collection_name: str,
-        collection_readable_id: str,
-        source_type: str,
-        status: str,
-        error: Optional[str] = None,
+        event_type: str,
+        payload: dict,
     ) -> None:
-        """Publish a sync lifecycle event to all subscribed webhooks."""
+        """Publish an event to all subscribed webhook endpoints."""
         ...
 
 
+@runtime_checkable
 class WebhookAdmin(Protocol):
     """Manage webhook subscriptions and view message history.
 

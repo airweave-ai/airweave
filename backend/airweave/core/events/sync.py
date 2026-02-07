@@ -4,6 +4,7 @@ These events are published during sync lifecycle transitions
 and consumed by webhooks, analytics, realtime, etc.
 """
 
+import dataclasses
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -67,6 +68,21 @@ class SyncLifecycleEvent:
 
     # Error info (for failed events)
     error: Optional[str] = None
+
+    def to_webhook_payload(self) -> dict:
+        """Serialize to a JSON-safe dict for webhook delivery."""
+        result = {}
+        for f in dataclasses.fields(self):
+            value = getattr(self, f.name)
+            if isinstance(value, UUID):
+                result[f.name] = str(value)
+            elif isinstance(value, datetime):
+                result[f.name] = value.isoformat()
+            elif isinstance(value, Enum):
+                result[f.name] = value.value
+            else:
+                result[f.name] = value
+        return result
 
     @classmethod
     def pending(

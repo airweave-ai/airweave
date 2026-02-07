@@ -5,6 +5,7 @@ collections. Collections are containers that group related data from one or
 more source connections, enabling unified search across multiple data sources.
 """
 
+import logging
 from typing import List, Sequence
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Path, Query
@@ -14,14 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.examples import (
     create_collection_list_response,
     create_job_list_response,
 )
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.collection_service import collection_service
+from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.logging import ContextualLogger
+from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
 from airweave.core.source_connection_service_helpers import source_connection_helpers
@@ -34,6 +38,8 @@ from airweave.schemas.errors import (
     RateLimitErrorResponse,
     ValidationErrorResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = TrailingSlashRouter()
 
@@ -122,6 +128,7 @@ async def create(
     collection: schemas.CollectionCreate,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    event_bus: EventBus = Inject(EventBus),
 ) -> schemas.Collection:
     """Create a new collection."""
     # Create the collection
@@ -134,6 +141,19 @@ async def create(
             "collection_name": collection_obj.name,
         },
     )
+
+    # Publish collection.created event
+    try:
+        await event_bus.publish(
+            CollectionLifecycleEvent.created(
+                organization_id=ctx.organization.id,
+                collection_id=collection_obj.id,
+                collection_name=collection_obj.name,
+                collection_readable_id=collection_obj.readable_id,
+            )
+        )
+    except Exception as e:
+        logger.warning(f"Failed to publish collection.created event: {e}")
 
     return collection_obj
 
@@ -197,12 +217,28 @@ async def update(
     ),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    event_bus: EventBus = Inject(EventBus),
 ) -> schemas.Collection:
     """Update a collection's properties."""
     db_obj = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
     if db_obj is None:
         raise HTTPException(status_code=404, detail="Collection not found")
-    return await crud.collection.update(db, db_obj=db_obj, obj_in=collection, ctx=ctx)
+    result = await crud.collection.update(db, db_obj=db_obj, obj_in=collection, ctx=ctx)
+
+    # Publish collection.updated event
+    try:
+        await event_bus.publish(
+            CollectionLifecycleEvent.updated(
+                organization_id=ctx.organization.id,
+                collection_id=result.id,
+                collection_name=result.name,
+                collection_readable_id=result.readable_id,
+            )
+        )
+    except Exception as e:
+        logger.warning(f"Failed to publish collection.updated event: {e}")
+
+    return result
 
 
 @router.delete(
@@ -232,12 +268,18 @@ async def delete(
     ),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    event_bus: EventBus = Inject(EventBus),
 ) -> schemas.Collection:
     """Delete a collection and all associated data."""
     # Find the collection
     db_obj = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
     if db_obj is None:
         raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Capture info before deletion for the event
+    collection_id = db_obj.id
+    collection_name = db_obj.name
+    collection_readable_id = db_obj.readable_id
 
     # Convert to schema for cleanup service
     collection_schema = schemas.Collection.model_validate(db_obj, from_attributes=True)
@@ -258,7 +300,22 @@ async def delete(
     await cleanup_service.cleanup_collection(db, collection_schema, sync_ids, ctx)
 
     # Delete the collection - CASCADE will handle all child objects
-    return await crud.collection.remove(db, id=db_obj.id, ctx=ctx)
+    result = await crud.collection.remove(db, id=db_obj.id, ctx=ctx)
+
+    # Publish collection.deleted event
+    try:
+        await event_bus.publish(
+            CollectionLifecycleEvent.deleted(
+                organization_id=ctx.organization.id,
+                collection_id=collection_id,
+                collection_name=collection_name,
+                collection_readable_id=collection_readable_id,
+            )
+        )
+    except Exception as e:
+        logger.warning(f"Failed to publish collection.deleted event: {e}")
+
+    return result
 
 
 @router.post(

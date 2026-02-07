@@ -31,15 +31,13 @@ from svix.exceptions import HttpError as SvixHttpError
 from svix.exceptions import HTTPValidationError as SvixValidationError
 
 from airweave.core.config import settings
-from airweave.core.datetime_utils import utc_now_naive
+from airweave.core.protocols.webhooks import WebhookAdmin, WebhookPublisher
 from airweave.domains.webhooks.types import (
     DeliveryAttempt,
     EventMessage,
     RecoveryTask,
     Subscription,
-    SyncEventPayload,
     WebhooksError,
-    event_type_from_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -144,7 +142,7 @@ def _to_attempt(attempt: MessageAttemptOut) -> DeliveryAttempt:
 # ---------------------------------------------------------------------------
 
 
-class SvixAdapter:
+class SvixAdapter(WebhookPublisher, WebhookAdmin):
     """Svix adapter implementing WebhookPublisher and WebhookAdmin."""
 
     def __init__(self) -> None:
@@ -159,52 +157,32 @@ class SvixAdapter:
     # WebhookPublisher
     # -------------------------------------------------------------------------
 
-    async def publish_sync_event(
+    async def publish_event(
         self,
         org_id: uuid.UUID,
-        source_connection_id: uuid.UUID,
-        sync_job_id: uuid.UUID,
-        sync_id: uuid.UUID,
-        collection_id: uuid.UUID,
-        collection_name: str,
-        collection_readable_id: str,
-        source_type: str,
-        status: str,
-        error: Optional[str] = None,
+        event_type: str,
+        payload: dict,
     ) -> None:
-        """Publish a sync lifecycle event."""
-        event_type = event_type_from_status(status)
-        if event_type is None:
-            return
+        """Publish a domain event to webhook subscribers.
 
-        payload = SyncEventPayload(
-            event_type=event_type,
-            job_id=sync_job_id,
-            collection_readable_id=collection_readable_id,
-            collection_name=collection_name,
-            source_connection_id=source_connection_id,
-            source_type=source_type,
-            status=status,
-            timestamp=utc_now_naive(),
-            error=error,
-        )
-
+        Generic: accepts any event_type and pre-built payload dict.
+        The event bus subscriber is responsible for building the payload
+        from domain events; this adapter just delivers it to Svix.
+        """
         try:
-            await self._publish_internal(org_id, event_type.value, payload)
+            await self._publish_internal(org_id, event_type, payload)
         except Exception as e:
-            logger.error(f"Failed to publish webhook event: {e}")
+            logger.error(f"Failed to publish webhook event '{event_type}': {e}")
 
     @_auto_create_org
-    async def _publish_internal(
-        self, org_id: uuid.UUID, event_type: str, payload: SyncEventPayload
-    ) -> None:
+    async def _publish_internal(self, org_id: uuid.UUID, event_type: str, payload: dict) -> None:
         await self._svix.message.create(
             str(org_id),
             MessageIn(
                 event_type=event_type,
                 channels=[event_type],
                 event_id=str(uuid.uuid4()),
-                payload=payload.to_dict(),
+                payload=payload,
             ),
         )
 
