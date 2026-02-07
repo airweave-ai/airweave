@@ -1,20 +1,20 @@
 import NumberFlow from "@number-flow/react";
-import { AlertCircle, Loader2, WifiOff } from "lucide-react";
+import { AlertCircle, Check, Loader2, WifiOff } from "lucide-react";
 import type { SyncProgressUpdate } from "../lib/types";
 
 interface SyncProgressIndicatorProps {
   progress: SyncProgressUpdate;
-  baseCount?: number;
   isReconnecting?: boolean;
 }
 
 export function SyncProgressIndicator({
   progress,
-  baseCount = 0,
   isReconnecting = false,
 }: SyncProgressIndicatorProps) {
+  // SSE progress is the authoritative source during active syncs.
+  // Don't add baseCount -- the connection list's entity_count overlaps
+  // with the SSE totals and causes double-counting when the query refetches.
   const totalProcessed =
-    baseCount +
     progress.entities_inserted +
     progress.entities_updated +
     progress.entities_kept +
@@ -40,6 +40,20 @@ export function SyncProgressIndicator({
       >
         <WifiOff size={12} className="animate-pulse" />
         <span>Reconnecting...</span>
+      </p>
+    );
+  }
+
+  if (progress.is_complete) {
+    return (
+      <p
+        className="flex items-center gap-1.5 text-xs"
+        style={{ color: "var(--connect-success)" }}
+      >
+        <Check size={12} />
+        <span className="tabular-nums">
+          <NumberFlow value={totalProcessed} /> synced
+        </span>
       </p>
     );
   }
