@@ -18,6 +18,14 @@ from .database import (
     SpotlightSourceConnection,
 )
 from .evaluation import SpotlightEvaluation
+from .events import (
+    SpotlightDoneEvent,
+    SpotlightErrorEvent,
+    SpotlightEvaluatingEvent,
+    SpotlightEvent,
+    SpotlightPlanningEvent,
+    SpotlightSearchingEvent,
+)
 from .filter import SpotlightFilterCondition, SpotlightFilterGroup, SpotlightFilterOperator
 from .history import SpotlightHistory, SpotlightHistoryIteration
 from .plan import SpotlightPlan, SpotlightSearchQuery
@@ -55,6 +63,13 @@ __all__ = [
     "SpotlightSourceConnection",
     # Evaluation
     "SpotlightEvaluation",
+    # Events
+    "SpotlightDoneEvent",
+    "SpotlightErrorEvent",
+    "SpotlightEvaluatingEvent",
+    "SpotlightEvent",
+    "SpotlightPlanningEvent",
+    "SpotlightSearchingEvent",
     # Filter
     "SpotlightFilterCondition",
     "SpotlightFilterGroup",
