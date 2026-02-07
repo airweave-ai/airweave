@@ -1,5 +1,7 @@
 """Evaluation schema for spotlight search."""
 
+from __future__ import annotations
+
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -66,3 +68,20 @@ class SpotlightEvaluation(BaseModel):
             lines.append(f"- Advice for next iteration: {self.advice}")
 
         return "\n".join(lines)
+
+    @classmethod
+    def render_md(cls, evaluation: Optional[SpotlightEvaluation]) -> str:
+        """Render evaluation as markdown, handling None case.
+
+        Use this instead of to_md() when the evaluation may be absent
+        (e.g., direct mode skips evaluation).
+
+        Args:
+            evaluation: The evaluation, or None if unavailable.
+
+        Returns:
+            Markdown string.
+        """
+        if evaluation is None:
+            return "*(No evaluation available.)*"
+        return evaluation.to_md()

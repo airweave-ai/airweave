@@ -9,7 +9,10 @@ from airweave.core.logging import ContextualLogger
 from airweave.search.spotlight.external.llm.interface import SpotlightLLMInterface
 from airweave.search.spotlight.external.tokenizer.interface import SpotlightTokenizerInterface
 from airweave.search.spotlight.schemas.answer import SpotlightAnswer
+from airweave.search.spotlight.schemas.evaluation import SpotlightEvaluation
+from airweave.search.spotlight.schemas.filter import format_filter_groups_md
 from airweave.search.spotlight.schemas.history import SpotlightHistory
+from airweave.search.spotlight.schemas.request import SpotlightSearchMode
 from airweave.search.spotlight.schemas.search_result import SpotlightSearchResults
 from airweave.search.spotlight.schemas.state import SpotlightState
 
@@ -138,8 +141,10 @@ class SpotlightComposer:
             raise ValueError("Composer requires compiled_query in current_iteration")
         if ci.search_results is None:
             raise ValueError("Composer requires search_results in current_iteration")
-        if ci.evaluation is None:
-            raise ValueError("Composer requires evaluation in current_iteration")
+        # Evaluation is only available in agentic mode (direct mode skips evaluation)
+        is_direct = state.mode == SpotlightSearchMode.DIRECT
+        if ci.evaluation is None and not is_direct:
+            raise ValueError("Composer requires evaluation in current_iteration for agentic mode")
 
         # Build static part (without results and history)
         static_prompt = self._build_static_prompt(state)
@@ -152,9 +157,7 @@ class SpotlightComposer:
         results_section = SpotlightSearchResults.build_results_section(
             ci.search_results, self._tokenizer, results_budget
         )
-        history_section = SpotlightHistory.build_history_section(
-            state.history, self._tokenizer, history_budget
-        )
+        history_section = SpotlightHistory.render_md(state.history, self._tokenizer, history_budget)
 
         return f"""{static_prompt}
 
@@ -181,6 +184,7 @@ class SpotlightComposer:
             The static prompt string.
         """
         ci = state.current_iteration
+
         return f"""# Airweave Overview
 
 {self._airweave_overview}
@@ -193,9 +197,11 @@ class SpotlightComposer:
 
 ## Context for This Answer
 
-### User Query
+### User Request
 
-{state.user_query}
+User query: {state.user_query}
+User filter: {format_filter_groups_md(state.user_filter)}
+Mode: {state.mode.value}
 
 ### Collection Information
 
@@ -219,7 +225,7 @@ This is iteration **{state.iteration_number}** (final).
 
 ### Evaluation
 
-{ci.evaluation.to_md()}
+{SpotlightEvaluation.render_md(ci.evaluation)}
 """
 
     def _calculate_dynamic_budgets(self, static_tokens: int) -> tuple[int, int]:

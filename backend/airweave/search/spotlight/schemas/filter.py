@@ -5,7 +5,7 @@ Pydantic automatically validates all filter inputs.
 """
 
 from enum import Enum
-from typing import List, Union
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -134,3 +134,20 @@ class SpotlightFilterGroup(BaseModel):
         """
         conditions_md = " AND ".join(c.to_md() for c in self.conditions)
         return f"({conditions_md})"
+
+
+def format_filter_groups_md(filter_groups: Optional[List[SpotlightFilterGroup]]) -> str:
+    """Format a list of filter groups as readable markdown.
+
+    Renders filter groups using their to_md() methods, joined with OR.
+    Used by prompt builders to display user filters in LLM context.
+
+    Args:
+        filter_groups: Filter groups to format, or None/empty for no filters.
+
+    Returns:
+        Markdown string representing the filter groups, or "None" if empty.
+    """
+    if not filter_groups:
+        return "None"
+    return " OR ".join(group.to_md() for group in filter_groups)

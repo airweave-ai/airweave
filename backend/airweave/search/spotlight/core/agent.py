@@ -1,25 +1,19 @@
-"""Spotlight search agent."""
+"""Spotlight search agent.
 
-# NOTE: to_md()
-# NOTE: where to deal with context window
-
-# TODO: add type hints in each step
-
-# X collection_readable_id -> create collection metadata -> collection_metadata
-# X user_query, collection_metadata -> initaliaze state -> state
-# X state.collection_metadata.to_md(), state.user_query, state.history.to_md() -> planner -> plan
-# TODO: add user filters to plan (tell the evaluator that these can not be adjusted)
-# X state.current_iteration.plan.query, state.current_iteration.plan.retrieval_strategy -> embed
-# state.current_iteration.plan, query_embeddings, collection_id -> vector_db.compile_query()
-# state.current_iteration.compiled_query -> vector_db.execute_query() -> search_results
-# state context -> evaluator -> evaluation
-
-# final_results = state.current_iteration.search_results
-# composer -> answer
+Flow:
+  collection_readable_id -> build collection metadata
+  user request + collection_metadata -> initialize state
+  state -> planner -> plan (LLM filters only)
+  plan + user_filter -> complete_plan (combined filters for execution)
+  complete_plan -> compile_query -> execute_query -> search_results
+  state context -> evaluator -> evaluation (loop or stop)
+  final state -> composer -> answer
+"""
 
 from airweave.api.context import ApiContext
 from airweave.search.spotlight.builders import (
     SpotlightCollectionMetadataBuilder,
+    SpotlightCompletePlanBuilder,
     SpotlightStateBuilder,
 )
 from airweave.search.spotlight.core.composer import SpotlightComposer
@@ -40,6 +34,7 @@ from airweave.search.spotlight.schemas import (
     SpotlightResponse,
     SpotlightState,
 )
+from airweave.search.spotlight.schemas.request import SpotlightSearchMode
 from airweave.search.spotlight.schemas.search_result import SpotlightSearchResults
 from airweave.search.spotlight.services import SpotlightServices
 
@@ -77,6 +72,10 @@ class SpotlightAgent:
             plan: SpotlightPlan = await planner.plan(state)
             state.current_iteration.plan = plan
 
+            # Build complete plan (LLM filters + user filters) for execution
+            complete_plan_builder = SpotlightCompletePlanBuilder()
+            complete_plan: SpotlightPlan = complete_plan_builder.build(plan, state.user_filter)
+
             # Embed queries based on retrieval strategy
             embedder = SpotlightEmbedder(
                 dense_embedder=self.services.dense_embedder,
@@ -90,7 +89,7 @@ class SpotlightAgent:
 
             # Compile query
             compiled_query: SpotlightCompiledQuery = await self.services.vector_db.compile_query(
-                plan=state.current_iteration.plan,
+                plan=complete_plan,
                 embeddings=state.current_iteration.query_embeddings,
                 collection_id=state.collection_metadata.collection_id,
             )
@@ -101,6 +100,9 @@ class SpotlightAgent:
                 compiled_query
             )
             state.current_iteration.search_results = search_results
+
+            if state.mode == SpotlightSearchMode.DIRECT:
+                break
 
             # Evaluate results
             evaluator = SpotlightEvaluator(

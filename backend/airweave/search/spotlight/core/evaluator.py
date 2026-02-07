@@ -10,6 +10,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.search.spotlight.external.llm.interface import SpotlightLLMInterface
 from airweave.search.spotlight.external.tokenizer.interface import SpotlightTokenizerInterface
 from airweave.search.spotlight.schemas.evaluation import SpotlightEvaluation
+from airweave.search.spotlight.schemas.filter import format_filter_groups_md
 from airweave.search.spotlight.schemas.history import SpotlightHistory
 from airweave.search.spotlight.schemas.search_result import SpotlightSearchResults
 from airweave.search.spotlight.schemas.state import SpotlightState
@@ -145,9 +146,7 @@ class SpotlightEvaluator:
         results_section = SpotlightSearchResults.build_results_section(
             ci.search_results, self._tokenizer, results_budget
         )
-        history_section = SpotlightHistory.build_history_section(
-            state.history, self._tokenizer, history_budget
-        )
+        history_section = SpotlightHistory.render_md(state.history, self._tokenizer, history_budget)
 
         return f"""{static_prompt}
 
@@ -188,9 +187,11 @@ class SpotlightEvaluator:
 
 ## Context for This Evaluation
 
-### User Query
+### User Request
 
-{state.user_query}
+User query: {state.user_query}
+User filter: {format_filter_groups_md(state.user_filter)}
+Mode: {state.mode.value}
 
 ### Collection Information
 

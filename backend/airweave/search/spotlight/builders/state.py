@@ -27,6 +27,8 @@ class SpotlightStateBuilder:
         """
         return SpotlightState(
             user_query=request.query,
+            user_filter=request.filter,
+            mode=request.mode,
             collection_metadata=collection_metadata,
             iteration_number=0,
             current_iteration=SpotlightCurrentIteration(

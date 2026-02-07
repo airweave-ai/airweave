@@ -95,16 +95,16 @@ class SpotlightHistory(BaseModel):
         )
 
     @classmethod
-    def build_history_section(
+    def render_md(
         cls,
         history: SpotlightHistory | None,
         tokenizer: SpotlightTokenizerInterface,
         budget: int,
     ) -> str:
-        """Build history markdown within token budget, handling None case.
+        """Render history as markdown within token budget, handling None case.
 
-        This is the main entry point for planner/evaluator to get history markdown.
-        Handles the case where history is None (first iteration).
+        This is the main entry point for planner/evaluator/composer to get history
+        markdown. Handles the case where history is None (first iteration).
 
         Args:
             history: The history object, or None if first iteration.

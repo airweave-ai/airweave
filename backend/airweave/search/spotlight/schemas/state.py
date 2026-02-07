@@ -4,6 +4,9 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from airweave.search.spotlight.schemas.filter import SpotlightFilterGroup
+from airweave.search.spotlight.schemas.request import SpotlightSearchMode
+
 from .collection_metadata import SpotlightCollectionMetadata
 from .compiled_query import SpotlightCompiledQuery
 from .evaluation import SpotlightEvaluation
@@ -33,6 +36,12 @@ class SpotlightState(BaseModel):
     """Spotlight state schema."""
 
     user_query: str = Field(..., description="The user query.")
+    user_filter: list[SpotlightFilterGroup] = Field(
+        default_factory=list, description="The user filter."
+    )
+    mode: SpotlightSearchMode = Field(
+        default=SpotlightSearchMode.AGENTIC, description="The search mode."
+    )
 
     collection_metadata: SpotlightCollectionMetadata = Field(
         ..., description="The collection metadata."

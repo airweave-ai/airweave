@@ -9,6 +9,7 @@ from pathlib import Path
 from airweave.core.logging import ContextualLogger
 from airweave.search.spotlight.external.llm.interface import SpotlightLLMInterface
 from airweave.search.spotlight.external.tokenizer.interface import SpotlightTokenizerInterface
+from airweave.search.spotlight.schemas.filter import format_filter_groups_md
 from airweave.search.spotlight.schemas.history import SpotlightHistory
 from airweave.search.spotlight.schemas.plan import SpotlightPlan
 from airweave.search.spotlight.schemas.state import SpotlightState
@@ -77,7 +78,7 @@ class SpotlightPlanner:
         prompt = self._build_prompt(state)
 
         # Log only the dynamic parts (not static airweave_overview and planner_task)
-        history_section = SpotlightHistory.build_history_section(
+        history_section = SpotlightHistory.render_md(
             state.history, self._tokenizer, self._calculate_history_budget(0)
         )
         self._log_dynamic_context(state, history_section)
@@ -129,7 +130,7 @@ class SpotlightPlanner:
         budget_for_history = self._calculate_history_budget(static_tokens)
 
         # Build history section with budget
-        history_section = SpotlightHistory.build_history_section(
+        history_section = SpotlightHistory.render_md(
             state.history, self._tokenizer, budget_for_history
         )
 
@@ -164,9 +165,11 @@ class SpotlightPlanner:
 
 ## Context for This Search
 
-### User Query
+### User Request
 
-{state.user_query}
+User query: {state.user_query}
+User filter: {format_filter_groups_md(state.user_filter)}
+Mode: {state.mode.value}
 
 ### Collection Information
 
