@@ -49,18 +49,19 @@ class SpotlightLoggingEmitter:
         prefix = "[Spotlight:Event]"
 
         if isinstance(event, SpotlightPlanningEvent):
-            self._ctx.logger.info(f"{prefix} Planning (iter {event.iteration}): {event.reasoning}")
+            self._ctx.logger.info(
+                f"{prefix} Planning (iter {event.iteration}): {event.plan.reasoning}"
+            )
         elif isinstance(event, SpotlightSearchingEvent):
             self._ctx.logger.info(
                 f"{prefix} Search (iter {event.iteration}): "
                 f"{event.result_count} results in {event.duration_ms}ms"
             )
         elif isinstance(event, SpotlightEvaluatingEvent):
-            self._ctx.logger.info(
-                f"{prefix} Evaluation (iter {event.iteration}): {event.reasoning}"
-            )
-            if event.advice:
-                self._ctx.logger.info(f"{prefix} Advice: {event.advice}")
+            ev = event.evaluation
+            self._ctx.logger.info(f"{prefix} Evaluation (iter {event.iteration}): {ev.reasoning}")
+            if ev.advice:
+                self._ctx.logger.info(f"{prefix} Advice: {ev.advice}")
         elif isinstance(event, SpotlightDoneEvent):
             result_count = len(event.response.results)
             self._ctx.logger.info(f"{prefix} Done: {result_count} results")

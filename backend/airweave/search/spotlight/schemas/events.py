@@ -3,26 +3,30 @@
 Typed events emitted during spotlight search to give users transparency
 into the agent's reasoning process. Each event has a `type` literal
 discriminator for clean JSON serialization and frontend consumption.
+
+Planning and evaluating events carry the full plan/evaluation objects
+so consumers (frontend, evals, scripts) can pick out whatever they need.
 """
 
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
+from airweave.search.spotlight.schemas.evaluation import SpotlightEvaluation
+from airweave.search.spotlight.schemas.plan import SpotlightPlan
 from airweave.search.spotlight.schemas.response import SpotlightResponse
 
 
 class SpotlightPlanningEvent(BaseModel):
     """Emitted after the planner generates a search plan.
 
-    Shows the agent's reasoning about what to search for and why.
+    Contains the full plan so consumers can access reasoning, query,
+    strategy, filters, limit, offset -- whatever they need.
     """
 
     type: Literal["planning"] = "planning"
     iteration: int = Field(..., description="Current iteration number (0-indexed).")
-    reasoning: str = Field(..., description="The planner's reasoning for this search plan.")
-    query: str = Field(..., description="The primary search query chosen.")
-    strategy: str = Field(..., description="Retrieval strategy (semantic, keyword, hybrid).")
+    plan: SpotlightPlan = Field(..., description="The full search plan.")
 
 
 class SpotlightSearchingEvent(BaseModel):
@@ -42,16 +46,13 @@ class SpotlightSearchingEvent(BaseModel):
 class SpotlightEvaluatingEvent(BaseModel):
     """Emitted after the evaluator assesses search results.
 
-    Shows the agent's assessment and, if continuing, what it will try next.
+    Contains the full evaluation so consumers can access reasoning,
+    should_continue, advice, result_summaries -- whatever they need.
     """
 
     type: Literal["evaluating"] = "evaluating"
     iteration: int = Field(..., description="Current iteration number (0-indexed).")
-    reasoning: str = Field(..., description="The evaluator's assessment of the results.")
-    should_continue: bool = Field(..., description="Whether the agent will search again.")
-    advice: Optional[str] = Field(
-        default=None, description="Guidance for the next iteration (if continuing)."
-    )
+    evaluation: SpotlightEvaluation = Field(..., description="The full evaluation.")
 
 
 class SpotlightDoneEvent(BaseModel):

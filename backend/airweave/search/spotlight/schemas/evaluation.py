@@ -21,7 +21,10 @@ class SpotlightEvaluation(BaseModel):
 
     reasoning: str = Field(
         description=(
-            "Brief evaluation. Don't restate the user query or what was already tried. "
+            "Your assessment as natural inner monologue — think out loud. "
+            "e.g. 'Hmm, these are all feedback docs — nothing about trading here...', "
+            "'Okay, the top two results answer the question nicely...' "
+            "Don't restate the user query or what was already tried. "
             "Focus on: what the results contain, what's missing, why continue or stop."
         )
     )
@@ -35,7 +38,9 @@ class SpotlightEvaluation(BaseModel):
     advice: Optional[str] = Field(
         default=None,
         description=(
-            "Short, actionable guidance for the planner. "
+            "What to try next, as natural inner monologue. "
+            "e.g. 'Maybe I should try just searching for the word trading on its own...', "
+            "'Let me drop the filters and go broader...' "
             "Only suggest sources and entity types that exist in the collection metadata. "
             "Focus on what to change (filters, strategy, query terms), and what was wrong. "
             "Leave empty if stopping with sufficient results."

@@ -18,7 +18,6 @@ class SpotlightSearchQuery(BaseModel):
     )
     variations: list[str] = Field(
         default_factory=list,
-        max_length=4,
         description="Additional query variations for semantic search only. "
         "Useful for paraphrases, synonyms, or alternative phrasings.",
     )
@@ -59,9 +58,14 @@ class SpotlightPlan(BaseModel):
     reasoning: str = Field(
         ...,
         description=(
-            "Brief reasoning for this plan. Don't restate the user query or collection info. "
+            "Your reasoning as natural inner monologue — think out loud. "
+            "e.g. 'Let me try a hybrid search here since the query is broad...', "
+            "'Hmm, the keyword search missed it — maybe the document uses different wording...' "
+            "Don't restate the user query or collection info. "
             "Focus on: what changed from the last iteration, why this approach, "
-            "what you expect to find. Be incremental, not exhaustive."
+            "what you expect to find. Be incremental, not exhaustive. "
+            "On iteration 2+: the advice from your previous evaluation already explains the "
+            "direction — do NOT repeat it. Only add what's new about this specific plan."
         ),
     )
 

@@ -108,9 +108,7 @@ class SpotlightAgent:
             await self.emitter.emit(
                 SpotlightPlanningEvent(
                     iteration=state.iteration_number,
-                    reasoning=plan.reasoning,
-                    query=plan.query.primary,
-                    strategy=plan.retrieval_strategy.value,
+                    plan=plan,
                 )
             )
 
@@ -174,9 +172,7 @@ class SpotlightAgent:
             await self.emitter.emit(
                 SpotlightEvaluatingEvent(
                     iteration=state.iteration_number,
-                    reasoning=evaluation.reasoning,
-                    should_continue=evaluation.should_continue,
-                    advice=evaluation.advice,
+                    evaluation=evaluation,
                 )
             )
 
