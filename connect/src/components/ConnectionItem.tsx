@@ -53,7 +53,7 @@ export function ConnectionItem({
           >
             {connection.name}
           </p>
-          {syncProgress ? (
+          {syncProgress && connection.status === "syncing" ? (
             <SyncProgressIndicator
               progress={syncProgress}
               isReconnecting={isSseReconnecting}

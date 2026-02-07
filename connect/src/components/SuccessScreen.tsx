@@ -65,6 +65,13 @@ export function SuccessScreen({
     queryKey: ["source-connections"],
     queryFn: () => apiClient.getSourceConnections(),
     enabled: session.mode !== "connect",
+    // Poll every 5s while any connection is syncing to catch external state
+    // changes (cancellation, completion) that SSE might miss
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.some((c) => c.status === "syncing")) return 5000;
+      return false;
+    },
   });
 
   const deleteMutation = useMutation({
@@ -227,11 +234,11 @@ export function SuccessScreen({
           session.mode === "connect"
             ? null
             : () => {
-                setView("connections");
-                queryClient.invalidateQueries({
-                  queryKey: ["source-connections"],
-                });
-              }
+              setView("connections");
+              queryClient.invalidateQueries({
+                queryKey: ["source-connections"],
+              });
+            }
         }
         onSelectSource={handleSelectSource}
       />
