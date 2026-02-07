@@ -37,6 +37,7 @@ from airweave.domains.webhooks.types import (
     EventMessage,
     RecoveryTask,
     Subscription,
+    WebhookPublishError,
     WebhooksError,
 )
 
@@ -181,13 +182,16 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
         """Publish a domain event to webhook subscribers.
 
         Serializes the event to a flat JSON dict for Svix delivery.
+        Wraps infrastructure errors in WebhookPublishError so the event
+        bus sees a domain exception — never raw Svix/HTTP internals.
         """
         event_type = str(event.event_type)
         try:
             payload = event.model_dump(mode="json")
             await self._publish_internal(event.organization_id, event_type, payload)
-        except Exception as e:
-            logger.error(f"Failed to publish webhook event '{event_type}': {e}")
+            logger.info(f"Published webhook event '{event_type}' for org {event.organization_id}")
+        except Exception as exc:
+            raise WebhookPublishError(event_type, exc) from exc
 
     @_auto_create_org
     async def _publish_internal(self, org_id: uuid.UUID, event_type: str, payload: dict) -> None:

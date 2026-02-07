@@ -100,3 +100,17 @@ class WebhooksError(Exception):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+
+
+class WebhookPublishError(Exception):
+    """Failed to publish a domain event to webhook subscribers.
+
+    Raised by WebhookPublisher implementations when event delivery fails.
+    Caught by the event bus — never reaches domain or sync code.
+    """
+
+    def __init__(self, event_type: str, cause: Exception) -> None:
+        """Initialize with the event type that failed and the underlying cause."""
+        self.event_type = event_type
+        self.cause = cause
+        super().__init__(f"Failed to publish webhook event '{event_type}': {cause}")
