@@ -51,7 +51,10 @@ export function useAirweaveConnect(
   // Derive expected origin from connectUrl for secure postMessage
   const expectedOrigin = getExpectedOrigin(connectUrl);
 
-  // Store callbacks in refs to avoid re-creating message handler
+  // Store callbacks and getSessionToken in refs to avoid re-creating message handler
+  const getSessionTokenRef = useRef(getSessionToken);
+  getSessionTokenRef.current = getSessionToken;
+
   const callbacksRef = useRef({
     onSuccess,
     onError,
@@ -115,22 +118,29 @@ export function useAirweaveConnect(
           }
           break;
 
-        case "REQUEST_TOKEN":
-          if (sessionTokenRef.current) {
-            sendToIframe({
-              type: "TOKEN_RESPONSE",
-              requestId: data.requestId,
-              token: sessionTokenRef.current,
-              theme: themeRef.current,
+        case "REQUEST_TOKEN": {
+          // Re-fetch token from the customer's backend to handle expiry/refresh
+          const requestId = data.requestId;
+          getSessionTokenRef
+            .current()
+            .then((token) => {
+              sessionTokenRef.current = token;
+              sendToIframe({
+                type: "TOKEN_RESPONSE",
+                requestId,
+                token,
+                theme: themeRef.current,
+              });
+            })
+            .catch(() => {
+              sendToIframe({
+                type: "TOKEN_ERROR",
+                requestId,
+                error: "Failed to refresh session token",
+              });
             });
-          } else {
-            sendToIframe({
-              type: "TOKEN_ERROR",
-              requestId: data.requestId,
-              error: "No session token available",
-            });
-          }
           break;
+        }
 
         case "STATUS_CHANGE":
           setStatus(data.status);
