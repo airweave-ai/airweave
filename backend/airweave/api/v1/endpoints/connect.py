@@ -41,8 +41,10 @@ from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.config import settings
+from airweave.core.exceptions import RateLimitExceededException
 from airweave.core.logging import logger
 from airweave.core.pubsub import core_pubsub
+from airweave.core.rate_limiter_service import RateLimiter
 from airweave.core.shared_models import AuthMethod
 from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
@@ -149,7 +151,7 @@ async def _build_session_context(
         headers=RequestHeaders(request_id=request_id),
     )
 
-    return ApiContext(
+    ctx = ApiContext(
         request_id=request_id,
         organization=org,
         user=None,
@@ -161,6 +163,17 @@ async def _build_session_context(
         logger=session_logger,
         analytics=analytics_service,
     )
+
+    # Enforce rate limiting using the org's billing plan (same limits as API key auth)
+    try:
+        await RateLimiter.check_rate_limit(ctx)
+    except RateLimitExceededException:
+        raise
+    except Exception as e:
+        # Fail open on unexpected errors (Redis down, etc.) - same pattern as deps.py
+        session_logger.error(f"Connect rate limit check failed: {e}. Allowing request.")
+
+    return ctx
 
 
 async def _build_source_schema(
