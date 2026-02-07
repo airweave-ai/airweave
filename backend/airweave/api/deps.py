@@ -111,3 +111,75 @@ async def get_user_from_token(token: str, db: AsyncSession) -> Optional[schemas.
         return schemas.User.model_validate(user)
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Connect Session
+# ---------------------------------------------------------------------------
+
+
+def extract_bearer_token(authorization: str) -> str:
+    """Extract token from Bearer authorization header.
+
+    Args:
+        authorization: Authorization header value (e.g., "Bearer <token>")
+
+    Returns:
+        The extracted token string
+
+    Raises:
+        HTTPException: If authorization header doesn't start with "Bearer "
+    """
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header format")
+    return authorization[7:]
+
+
+async def get_connect_session(
+    authorization: str = Header(..., alias="Authorization"),
+) -> schemas.ConnectSessionContext:
+    """Validate connect session token and return session context.
+
+    This dependency is used for endpoints that authenticate via short-lived
+    connect session tokens instead of API keys or Auth0.
+
+    Args:
+        authorization: Authorization header containing "Bearer <session_token>"
+
+    Returns:
+        ConnectSessionContext with decoded session data
+
+    Raises:
+        HTTPException: If token is missing, malformed, invalid, or expired
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    from airweave.platform.auth.state import verify_state
+    from airweave.schemas.connect_session import ConnectSessionContext, ConnectSessionMode
+
+    token = extract_bearer_token(authorization)
+
+    try:
+        payload = verify_state(token, max_age_seconds=10 * 60)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e)) from e
+
+    mode_str = payload.get("mode", "all")
+    try:
+        mode = ConnectSessionMode(mode_str)
+    except ValueError:
+        mode = ConnectSessionMode.ALL
+
+    try:
+        return ConnectSessionContext(
+            session_id=uuid.UUID(payload["sid"]),
+            organization_id=uuid.UUID(payload["oid"]),
+            collection_id=payload["cid"],
+            allowed_integrations=payload.get("int"),
+            mode=mode,
+            end_user_id=payload.get("uid"),
+            expires_at=datetime.fromtimestamp(payload["ts"] + 600, tz=timezone.utc),
+        )
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=401, detail="Invalid session token payload") from e

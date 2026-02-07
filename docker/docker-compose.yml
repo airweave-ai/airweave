@@ -118,6 +118,29 @@ services:
       retries: 3
     restart: on-failure
 
+  connect:
+    container_name: airweave-connect
+    # Use pre-built image of latest release, or override with CONNECT_IMAGE env var for testing
+    image: ${CONNECT_IMAGE:-ghcr.io/airweave-ai/airweave-connect:latest}
+    # Profile: only start if explicitly enabled with --profile connect
+    # Connect widget for embedded iframe integrations
+    profiles:
+      - connect
+    ports:
+      - "${CONNECT_LOCAL_DEVELOPMENT_PORT:-8082}:8082"
+    environment:
+      - API_URL=http://localhost:8001
+      - PORT=8082
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8082" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: on-failure
+
   text2vec-transformers:
     container_name: airweave-embeddings
     image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2

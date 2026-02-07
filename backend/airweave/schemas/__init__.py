@@ -24,6 +24,12 @@ from .collection import (
     CollectionRecord,
     CollectionUpdate,
 )
+from .connect_session import (
+    ConnectSessionContext,
+    ConnectSessionCreate,
+    ConnectSessionMode,
+    ConnectSessionResponse,
+)
 from .connection import Connection, ConnectionCreate, ConnectionInDBBase, ConnectionUpdate
 from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
 from .entity_count import EntityCount as EntityCountSchema

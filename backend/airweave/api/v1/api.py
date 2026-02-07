@@ -9,6 +9,7 @@ from airweave.api.v1.endpoints import (
     billing,
     browse_tree,
     collections,
+    connect,
     entities,
     entity_counts,
     file_retrieval,
@@ -54,3 +55,4 @@ api_router.include_router(
     tags=["browse-tree"],
 )
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+api_router.include_router(connect.router, prefix="/connect", tags=["connect"])
