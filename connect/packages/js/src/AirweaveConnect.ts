@@ -212,20 +212,25 @@ export class AirweaveConnect {
         break;
 
       case "REQUEST_TOKEN":
-        if (this.sessionToken) {
-          this.sendToIframe({
-            type: "TOKEN_RESPONSE",
-            requestId: data.requestId,
-            token: this.sessionToken,
-            theme: this.config.theme,
+        // Re-fetch token from the customer's backend to handle expiry/refresh
+        this.config
+          .getSessionToken()
+          .then((token) => {
+            this.sessionToken = token;
+            this.sendToIframe({
+              type: "TOKEN_RESPONSE",
+              requestId: data.requestId,
+              token,
+              theme: this.config.theme,
+            });
+          })
+          .catch(() => {
+            this.sendToIframe({
+              type: "TOKEN_ERROR",
+              requestId: data.requestId,
+              error: "Failed to refresh session token",
+            });
           });
-        } else {
-          this.sendToIframe({
-            type: "TOKEN_ERROR",
-            requestId: data.requestId,
-            error: "No session token available",
-          });
-        }
         break;
 
       case "STATUS_CHANGE":
