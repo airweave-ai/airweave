@@ -186,7 +186,7 @@ async def create(
             )
         )
     except Exception as e:
-        logger.warning(f"Failed to publish source_connection.created event: {e}")
+        ctx.logger.warning(f"Failed to publish source_connection.created event: {e}")
 
     return result
 
@@ -368,7 +368,7 @@ async def delete(
             )
         )
     except Exception as e:
-        logger.warning(f"Failed to publish source_connection.deleted event: {e}")
+        ctx.logger.warning(f"Failed to publish source_connection.deleted event: {e}")
 
     return result
 

@@ -1562,7 +1562,7 @@ class SourceConnectionService:
                     organization_id=ctx.organization.id,
                     source_connection_id=source_connection_schema.id,
                     sync_job_id=sync_job_schema.id,
-                    sync_id=source_conn.sync_id,
+                    sync_id=source_connection_schema.sync_id,
                     collection_id=collection_schema.id,
                     source_type=connection_schema.short_name,
                     collection_name=collection_schema.name,
