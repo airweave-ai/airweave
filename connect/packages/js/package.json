@@ -1,0 +1,63 @@
+{
+  "name": "@airweave/connect-js",
+  "version": "0.1.0",
+  "description": "Vanilla JavaScript SDK for Airweave Connect",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "unpkg": "./dist/index.iife.js",
+  "jsdelivr": "./dist/index.iife.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "tsc && vite build",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "airweave-connect": "*"
+  },
+  "devDependencies": {
+    "airweave-connect": "file:../..",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^3.2.4",
+    "jsdom": "^27.0.0"
+  },
+  "keywords": [
+    "airweave",
+    "connect",
+    "javascript",
+    "vanilla",
+    "integrations",
+    "oauth",
+    "iframe"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/airweave-ai/airweave"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -14,6 +14,7 @@ SCRIPT_NAME="./$(basename "$0")"
 NONINTERACTIVE="${NONINTERACTIVE:-}"
 SKIP_LOCAL_EMBEDDINGS="${SKIP_LOCAL_EMBEDDINGS:-}"
 SKIP_FRONTEND="${SKIP_FRONTEND:-}"
+SKIP_CONNECT="${SKIP_CONNECT:-}"
 VERBOSE="${VERBOSE:-}"
 QUIET="${QUIET:-}"
 
@@ -239,6 +240,7 @@ ${BOLD}Options:${RESET}
   --noninteractive          Skip all interactive prompts
   --skip-local-embeddings   Don't start local embeddings service
   --skip-frontend           Don't start frontend UI
+  --skip-connect            Don't start connect widget
 
 ${BOLD}Actions:${RESET}
   --restart                 Restart existing containers (preserves data)
@@ -249,6 +251,7 @@ ${BOLD}Environment variables:${RESET}
   NONINTERACTIVE=1          Same as --noninteractive
   SKIP_LOCAL_EMBEDDINGS=1   Same as --skip-local-embeddings
   SKIP_FRONTEND=1           Same as --skip-frontend
+  SKIP_CONNECT=1            Same as --skip-connect
   VERBOSE=1                 Same as --verbose
   QUIET=1                   Same as --quiet
   NO_COLOR=1                Disable colored output
@@ -280,6 +283,7 @@ while [[ $# -gt 0 ]]; do
         --noninteractive) NONINTERACTIVE=1; shift ;;
         --skip-local-embeddings) SKIP_LOCAL_EMBEDDINGS=1; shift ;;
         --skip-frontend) SKIP_FRONTEND=1; shift ;;
+        --skip-connect) SKIP_CONNECT=1; shift ;;
         --restart) ACTION_RESTART=1; shift ;;
         --recreate) ACTION_RECREATE=1; shift ;;
         --destroy) ACTION_DESTROY=1; shift ;;
@@ -470,6 +474,7 @@ fi
 USE_LOCAL_EMBEDDINGS=true
 USE_FRONTEND=true
 USE_VESPA=true  # Always enabled
+USE_CONNECT=true
 
 # Detect available API keys
 openai_key=$(get_env_value "OPENAI_API_KEY")
@@ -513,6 +518,11 @@ if [[ -z $SKIP_CONTAINER_CREATION ]]; then
         log_note "Skipping frontend (flag set)"
         USE_FRONTEND=false
     fi
+
+    if [[ -n $SKIP_CONNECT ]]; then
+        log_note "Skipping connect widget (flag set)"
+        USE_CONNECT=false
+    fi
 else
     # When reusing existing containers, just set flags based on skip settings
     if [[ -n $openai_key && $openai_key != "your-api-key-here" ]] || [[ -n $SKIP_LOCAL_EMBEDDINGS ]]; then
@@ -520,6 +530,9 @@ else
     fi
     if [[ -n $SKIP_FRONTEND ]]; then
         USE_FRONTEND=false
+    fi
+    if [[ -n $SKIP_CONNECT ]]; then
+        USE_CONNECT=false
     fi
 fi
 
@@ -531,6 +544,7 @@ if [[ -z $SKIP_CONTAINER_CREATION ]]; then
     compose_args=(-f docker/docker-compose.yml)
     [[ $USE_LOCAL_EMBEDDINGS == true ]] && compose_args+=(--profile local-embeddings)
     [[ $USE_FRONTEND == true ]] && compose_args+=(--profile frontend)
+    [[ $USE_CONNECT == true ]] && compose_args+=(--profile connect)
     [[ $USE_VESPA == true ]] && compose_args+=(--profile vespa)
 
     if ! $COMPOSE_CMD "${compose_args[@]}" up -d; then
@@ -626,6 +640,17 @@ if [[ $USE_FRONTEND == true ]]; then
     fi
 else
     log_info "Frontend UI     Skipped"
+fi
+
+if [[ $USE_CONNECT == true ]]; then
+    if curl -sf http://localhost:8082 >/dev/null 2>&1; then
+        log_success "Connect Widget  http://localhost:8082"
+    else
+        log_error "Connect Widget  Not responding"
+        services_healthy=false
+    fi
+else
+    log_info "Connect Widget  Skipped"
 fi
 
 subsection "Other services:"
