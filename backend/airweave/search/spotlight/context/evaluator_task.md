@@ -43,9 +43,8 @@ Consider:
 - Further searching is unlikely to improve results
 - We've tried multiple strategies without improvement (check history)
 - Results are good enough even if not perfect
-- **The data doesn't exist**: A keyword search for the core terms returned 0 results.
-  Keyword search is exact - if the word isn't found, it's not in the collection.
-  Don't keep retrying variations of the same terms.
+- **Don't keep the user waiting**: If 10+ iterations have passed with no meaningful progress,
+  stop and return what you have rather than continuing indefinitely
 
 ## When Uncertain
 
