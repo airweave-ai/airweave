@@ -6,11 +6,7 @@ These tests cover two distinct concepts:
 
 Tests use the stub connector for fast execution while testing the full flow including Svix integration.
 
-Test Categories:
-- Tests WITHOUT @pytest.mark.svix: Test API functionality only
-- Tests WITH @pytest.mark.svix: Require Svix to be running, but use Svix's API to verify delivery
-
-These svix tests are skipped in CI because they require Svix to be running locally.
+Tests use the stub connector for fast execution while testing the full flow including Svix integration.
 """
 
 import asyncio
@@ -172,7 +168,6 @@ class TestWebhookMessages:
         for msg in messages:
             assert msg["event_type"] == "sync.completed"
 
-    @pytest.mark.svix
     async def test_messages_created_after_sync(
         self,
         api_client: httpx.AsyncClient,
@@ -211,7 +206,6 @@ class TestWebhookMessages:
 
 
 @pytest.mark.asyncio
-@pytest.mark.svix
 class TestWebhookEventTypes:
     """Tests for different event types (sync.pending, sync.running, sync.completed, etc.)."""
 
