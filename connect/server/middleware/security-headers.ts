@@ -6,28 +6,40 @@ import { defineEventHandler } from "h3";
  * CRITICAL: Connect is designed to be embedded in iframes, so we MUST NOT
  * set X-Frame-Options: DENY or restrictive frame-ancestors.
  *
- * The frame-ancestors directive allows embedding from:
- * - Airweave frontend apps (dev, staging, production)
- * - localhost for development
+ * CSP directives are built from environment variables so they work across
+ * Docker Compose, infra-core (Helm), and self-hosted (helm-charts) deployments.
+ *
+ * Environment variables:
+ * - API_URL: Backend API URL (used in connect-src). Default: http://localhost:8001
+ * - CSP_FRAME_ANCESTORS: Space-separated origins allowed to embed this widget.
+ *   Default: * (all origins, since auth is session-token based, not origin based)
+ * - CSP_ADDITIONAL_CONNECT_SRC: Space-separated extra origins for connect-src.
  */
+
+// Build CSP directives once at startup (env vars don't change at runtime)
+const apiUrl = process.env.API_URL || "http://localhost:8001";
+const frameAncestors = process.env.CSP_FRAME_ANCESTORS || "*";
+const additionalConnectSrc = process.env.CSP_ADDITIONAL_CONNECT_SRC || "";
+
+const connectSrcParts = ["'self'", apiUrl];
+if (additionalConnectSrc) {
+  connectSrcParts.push(...additionalConnectSrc.split(" ").filter(Boolean));
+}
+
+const csp = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'`,
+  `connect-src ${connectSrcParts.join(" ")}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "font-src 'self' data:",
+  "base-uri 'self'",
+  "form-action 'self'",
+  `frame-ancestors ${frameAncestors}`,
+].join("; ");
+
 export default defineEventHandler((event) => {
   const headers = event.node.res;
-
-  // Content Security Policy
-  // - frame-ancestors: Allow iframe embedding from Airweave apps and localhost
-  // - connect-src: Allow API calls to backend endpoints
-  const csp = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
-    "connect-src 'self' http://localhost:8001 https://api.dev-airweave.com https://api.stg-airweave.com https://api.airweave.ai",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https:",
-    "font-src 'self' data:",
-    "base-uri 'self'",
-    "form-action 'self'",
-    // CRITICAL: Allow iframe embedding from Airweave frontend apps
-    "frame-ancestors https://app.dev-airweave.com https://app.stg-airweave.com https://app.airweave.ai https://localhost:* http://localhost:*",
-  ].join("; ");
 
   headers.setHeader("Content-Security-Policy", csp);
 
@@ -40,6 +52,6 @@ export default defineEventHandler((event) => {
   headers.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.setHeader(
     "Permissions-Policy",
-    "geolocation=(), microphone=(), camera=()"
+    "geolocation=(), microphone=(), camera=()",
   );
 });
