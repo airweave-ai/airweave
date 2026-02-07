@@ -155,33 +155,64 @@ AuthenticationConfig = Union[
 
 
 class SourceConnectionCreate(BaseModel):
-    """Create source connection with nested authentication."""
+    """Create a source connection with authentication configuration.
+
+    Source connections link a data source (e.g., GitHub, Slack) to a collection.
+    The authentication method determines how credentials are provided and whether
+    the connection is created immediately or requires an OAuth flow.
+    """
 
     name: Optional[str] = Field(
         None,
         min_length=4,
         max_length=42,
-        description="Connection name (defaults to '{Source Name} Connection')",
+        description=(
+            "Display name for the connection. "
+            "If not provided, defaults to '{Source Name} Connection'."
+        ),
+        json_schema_extra={"example": "My GitHub Connection"},
     )
-    short_name: str = Field(..., description="Source identifier (e.g., 'slack', 'github')")
-    readable_collection_id: str = Field(..., description="Collection readable ID")
-    description: Optional[str] = Field(None, max_length=255, description="Connection description")
-    config: Optional[Dict[str, Any]] = Field(None, description="Source-specific configuration")
-    schedule: Optional[ScheduleConfig] = None
+    short_name: str = Field(
+        ...,
+        description="Source type identifier (e.g., 'slack', 'github', 'notion')",
+        json_schema_extra={"example": "github"},
+    )
+    readable_collection_id: str = Field(
+        ...,
+        description="The readable ID of the collection to add this connection to",
+        json_schema_extra={"example": "customer-support-tickets-x7k9m"},
+    )
+    description: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="Optional description of what this connection is used for",
+        json_schema_extra={"example": "Production GitHub repository for documentation"},
+    )
+    config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Source-specific configuration (e.g., repository name, filters)",
+        json_schema_extra={"example": {"repo_name": "airweave-ai/airweave", "branch": "main"}},
+    )
+    schedule: Optional[ScheduleConfig] = Field(
+        None,
+        description="Optional sync schedule configuration",
+    )
     sync_immediately: Optional[bool] = Field(
         None,
         description=(
             "Run initial sync after creation. Defaults to True for direct/token/auth_provider, "
             "False for OAuth browser/BYOC flows (which sync after authentication)"
         ),
+        json_schema_extra={"example": True},
     )
     authentication: Optional[AuthenticationConfig] = Field(
         None,
-        description="Authentication config (defaults to OAuth browser flow for OAuth sources)",
+        description="Authentication configuration. Type is auto-detected from provided fields.",
     )
     redirect_url: Optional[str] = Field(
         None,
         description="URL to redirect to after OAuth flow completes (only used for OAuth flows)",
+        json_schema_extra={"example": "https://app.example.com/connections"},
     )
 
     @model_validator(mode="after")
@@ -198,18 +229,77 @@ class SourceConnectionCreate(BaseModel):
         # If auth is None, service layer handles it (depends on source type)
         return self
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "summary": "Direct auth (API key)",
+                    "value": {
+                        "name": "GitHub Docs Repo",
+                        "short_name": "github",
+                        "readable_collection_id": "documentation-ab123",
+                        "config": {"repo_name": "company/docs", "branch": "main"},
+                        "authentication": {
+                            "credentials": {"personal_access_token": "ghp_xxxxxxxxxxxx"}
+                        },
+                    },
+                },
+                {
+                    "summary": "OAuth browser flow",
+                    "value": {
+                        "name": "Slack Workspace",
+                        "short_name": "slack",
+                        "readable_collection_id": "team-comms-xy789",
+                        "redirect_url": "https://app.example.com/connections",
+                    },
+                },
+                {
+                    "summary": "Auth provider",
+                    "value": {
+                        "name": "Gmail via Composio",
+                        "short_name": "gmail",
+                        "readable_collection_id": "emails-cd456",
+                        "authentication": {"provider_readable_id": "composio-abc123"},
+                    },
+                },
+            ]
+        }
+    }
+
 
 class SourceConnectionUpdate(BaseModel):
-    """Update schema for source connections."""
+    """Update an existing source connection's configuration.
 
-    name: Optional[str] = Field(None, min_length=4, max_length=42)
-    description: Optional[str] = Field(None, max_length=255)
-    config: Optional[Dict[str, Any]] = Field(None, description="Source-specific configuration")
-    schedule: Optional[ScheduleConfig] = None
+    All fields are optional. Only include fields you want to change;
+    omitted fields retain their current values.
+    """
+
+    name: Optional[str] = Field(
+        None,
+        min_length=4,
+        max_length=42,
+        description="Updated display name for the connection",
+        json_schema_extra={"example": "Production GitHub Repo"},
+    )
+    description: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="Updated description",
+        json_schema_extra={"example": "Main production repository"},
+    )
+    config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Updated source-specific configuration",
+        json_schema_extra={"example": {"repo_name": "company/new-repo", "branch": "develop"}},
+    )
+    schedule: Optional[ScheduleConfig] = Field(
+        None,
+        description="Updated sync schedule configuration",
+    )
 
     authentication: Optional[AuthenticationConfig] = Field(
         None,
-        description="Authentication config (defaults to OAuth browser flow for OAuth sources)",
+        description="Updated authentication credentials (direct auth only)",
     )
 
     @model_validator(mode="after")
@@ -228,6 +318,25 @@ class SourceConnectionUpdate(BaseModel):
             raise ValueError("Direct auth can only be updated with authentication")
         return self
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "summary": "Update name",
+                    "value": {"name": "Updated Connection Name"},
+                },
+                {
+                    "summary": "Update config",
+                    "value": {"config": {"repo_name": "company/new-repo", "branch": "main"}},
+                },
+                {
+                    "summary": "Update schedule",
+                    "value": {"schedule": {"cron": "0 */6 * * *"}},
+                },
+            ]
+        }
+    }
+
 
 # ===========================
 # Output Schemas
@@ -243,29 +352,87 @@ class SyncSummary(BaseModel):
 
 
 class SourceConnectionListItem(BaseModel):
-    """Clean source connection for list views."""
+    """Lightweight source connection representation for list views.
+
+    Contains essential fields for display and navigation. For full details
+    including sync history and configuration, use the GET /{id} endpoint.
+    """
 
     # Core fields
-    id: UUID
-    name: str
-    short_name: str
-    readable_collection_id: str
-    created_at: datetime
-    modified_at: datetime
+    id: UUID = Field(
+        ...,
+        description="Unique identifier of the source connection",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
+    )
+    name: str = Field(
+        ...,
+        description="Display name of the connection",
+        json_schema_extra={"example": "GitHub Docs Repo"},
+    )
+    short_name: str = Field(
+        ...,
+        description="Source type identifier",
+        json_schema_extra={"example": "github"},
+    )
+    readable_collection_id: str = Field(
+        ...,
+        description="Collection this connection belongs to",
+        json_schema_extra={"example": "documentation-ab123"},
+    )
+    created_at: datetime = Field(
+        ...,
+        description="When the connection was created (ISO 8601)",
+        json_schema_extra={"example": "2024-03-15T09:30:00Z"},
+    )
+    modified_at: datetime = Field(
+        ...,
+        description="When the connection was last modified (ISO 8601)",
+        json_schema_extra={"example": "2024-03-15T14:22:15Z"},
+    )
 
     # Authentication
-    is_authenticated: bool
+    is_authenticated: bool = Field(
+        ...,
+        description="Whether the connection has valid credentials",
+        json_schema_extra={"example": True},
+    )
 
     # Stats
-    entity_count: int = 0
+    entity_count: int = Field(
+        0,
+        description="Total number of entities synced from this connection",
+        json_schema_extra={"example": 1250},
+    )
 
     # Source configuration
-    federated_search: bool = Field(False, description="Whether this source uses federated search")
+    federated_search: bool = Field(
+        False,
+        description="Whether this source uses federated (real-time) search instead of syncing",
+        json_schema_extra={"example": False},
+    )
 
     # Internal fields for computation (excluded from API response)
     authentication_method: Optional[str] = Field(None, exclude=True)
     is_active: bool = Field(True, exclude=True)
     last_job_status: Optional[str] = Field(None, exclude=True)
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "name": "GitHub Docs Repo",
+                "short_name": "github",
+                "readable_collection_id": "documentation-ab123",
+                "created_at": "2024-03-15T09:30:00Z",
+                "modified_at": "2024-03-15T14:22:15Z",
+                "is_authenticated": True,
+                "entity_count": 1250,
+                "federated_search": False,
+                "auth_method": "direct",
+                "status": "ACTIVE",
+            }
+        }
+    }
 
     @computed_field  # type: ignore[misc]
     @property
@@ -408,54 +575,223 @@ class SourceConnectionSimple(BaseModel):
 
 
 class SourceConnection(BaseModel):
-    """Complete source connection details."""
+    """Complete source connection details including auth, config, sync status, and entities.
 
-    id: UUID
-    name: str
-    description: Optional[str]
-    short_name: str
-    readable_collection_id: str
-    status: SourceConnectionStatus
-    created_at: datetime
-    modified_at: datetime
+    This schema provides full information about a source connection, suitable for
+    detail views and monitoring sync progress.
+    """
+
+    id: UUID = Field(
+        ...,
+        description="Unique identifier of the source connection",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
+    )
+    name: str = Field(
+        ...,
+        description="Display name of the connection",
+        json_schema_extra={"example": "GitHub Docs Repo"},
+    )
+    description: Optional[str] = Field(
+        None,
+        description="Optional description of the connection's purpose",
+        json_schema_extra={"example": "Main documentation repository"},
+    )
+    short_name: str = Field(
+        ...,
+        description="Source type identifier",
+        json_schema_extra={"example": "github"},
+    )
+    readable_collection_id: str = Field(
+        ...,
+        description="Collection this connection belongs to",
+        json_schema_extra={"example": "documentation-ab123"},
+    )
+    status: SourceConnectionStatus = Field(
+        ...,
+        description="Current operational status of the connection",
+        json_schema_extra={"example": "ACTIVE"},
+    )
+    created_at: datetime = Field(
+        ...,
+        description="When the connection was created (ISO 8601)",
+        json_schema_extra={"example": "2024-03-15T09:30:00Z"},
+    )
+    modified_at: datetime = Field(
+        ...,
+        description="When the connection was last modified (ISO 8601)",
+        json_schema_extra={"example": "2024-03-15T14:22:15Z"},
+    )
 
     # Authentication
-    auth: AuthenticationDetails
+    auth: AuthenticationDetails = Field(
+        ...,
+        description="Authentication status and details",
+    )
 
     # Configuration
-    config: Optional[Dict[str, Any]] = None
-    schedule: Optional[ScheduleDetails] = None
+    config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Source-specific configuration values",
+        json_schema_extra={"example": {"repo_name": "company/docs", "branch": "main"}},
+    )
+    schedule: Optional[ScheduleDetails] = Field(
+        None,
+        description="Sync schedule configuration",
+    )
 
     # Sync information
-    sync: Optional[SyncDetails] = None
-    sync_id: Optional[UUID] = Field(None, description="ID of the associated sync")
+    sync: Optional[SyncDetails] = Field(
+        None,
+        description="Sync execution history and statistics",
+    )
+    sync_id: Optional[UUID] = Field(
+        None,
+        description="ID of the associated sync (internal use)",
+        json_schema_extra={"example": "660e8400-e29b-41d4-a716-446655440001"},
+    )
 
     # Entity information
-    entities: Optional[EntitySummary] = None
+    entities: Optional[EntitySummary] = Field(
+        None,
+        description="Summary of synced entities by type",
+    )
 
     # Source configuration
-    federated_search: bool = Field(False, description="Whether this source uses federated search")
+    federated_search: bool = Field(
+        False,
+        description="Whether this source uses federated (real-time) search instead of syncing",
+        json_schema_extra={"example": False},
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "name": "GitHub Docs Repo",
+                "description": "Main documentation repository",
+                "short_name": "github",
+                "readable_collection_id": "documentation-ab123",
+                "status": "ACTIVE",
+                "created_at": "2024-03-15T09:30:00Z",
+                "modified_at": "2024-03-15T14:22:15Z",
+                "auth": {
+                    "method": "direct",
+                    "authenticated": True,
+                    "authenticated_at": "2024-03-15T09:30:00Z",
+                },
+                "config": {"repo_name": "company/docs", "branch": "main"},
+                "schedule": {"cron": "0 */6 * * *", "next_run": "2024-03-15T18:00:00Z"},
+                "sync": {
+                    "total_runs": 15,
+                    "successful_runs": 14,
+                    "failed_runs": 1,
+                    "last_job": {
+                        "id": "770e8400-e29b-41d4-a716-446655440002",
+                        "status": "COMPLETED",
+                        "started_at": "2024-03-15T12:00:00Z",
+                        "completed_at": "2024-03-15T12:05:32Z",
+                        "duration_seconds": 332,
+                        "entities_inserted": 45,
+                        "entities_updated": 12,
+                    },
+                },
+                "entities": {"total_entities": 1250, "by_type": {"file": {"count": 1250}}},
+                "federated_search": False,
+            }
+        }
+    }
 
 
 class SourceConnectionJob(BaseModel):
-    """Individual sync job for a source connection."""
+    """A sync job representing a single synchronization run.
 
-    id: UUID
-    source_connection_id: UUID
-    status: SyncJobStatus
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    duration_seconds: Optional[float] = None
+    Sync jobs track the execution of data synchronization from a source connection.
+    Each job includes timing information, entity counts, and error details if applicable.
+    """
+
+    id: UUID = Field(
+        ...,
+        description="Unique identifier of the sync job",
+        json_schema_extra={"example": "770e8400-e29b-41d4-a716-446655440002"},
+    )
+    source_connection_id: UUID = Field(
+        ...,
+        description="ID of the source connection this job belongs to",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
+    )
+    status: SyncJobStatus = Field(
+        ...,
+        description="Current status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, or CANCELLING",
+        json_schema_extra={"example": "COMPLETED"},
+    )
+    started_at: Optional[datetime] = Field(
+        None,
+        description="When the job started execution (ISO 8601)",
+        json_schema_extra={"example": "2024-03-15T12:00:00Z"},
+    )
+    completed_at: Optional[datetime] = Field(
+        None,
+        description="When the job finished (ISO 8601). Null if still running.",
+        json_schema_extra={"example": "2024-03-15T12:05:32Z"},
+    )
+    duration_seconds: Optional[float] = Field(
+        None,
+        description="Total execution time in seconds. Null if still running.",
+        json_schema_extra={"example": 332.5},
+    )
 
     # Metrics
-    entities_inserted: int = 0
-    entities_updated: int = 0
-    entities_deleted: int = 0
-    entities_failed: int = 0
+    entities_inserted: int = Field(
+        0,
+        description="Number of new entities created during this sync",
+        json_schema_extra={"example": 45},
+    )
+    entities_updated: int = Field(
+        0,
+        description="Number of existing entities updated during this sync",
+        json_schema_extra={"example": 12},
+    )
+    entities_deleted: int = Field(
+        0,
+        description="Number of entities removed during this sync",
+        json_schema_extra={"example": 3},
+    )
+    entities_failed: int = Field(
+        0,
+        description="Number of entities that failed to process",
+        json_schema_extra={"example": 0},
+    )
 
     # Error info
-    error: Optional[str] = None
-    error_details: Optional[Dict[str, Any]] = None
+    error: Optional[str] = Field(
+        None,
+        description="Error message if the job failed",
+        json_schema_extra={"example": None},
+    )
+    error_details: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Additional error context for debugging",
+        json_schema_extra={"example": None},
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "770e8400-e29b-41d4-a716-446655440002",
+                "source_connection_id": "550e8400-e29b-41d4-a716-446655440000",
+                "status": "COMPLETED",
+                "started_at": "2024-03-15T12:00:00Z",
+                "completed_at": "2024-03-15T12:05:32Z",
+                "duration_seconds": 332.5,
+                "entities_inserted": 45,
+                "entities_updated": 12,
+                "entities_deleted": 3,
+                "entities_failed": 0,
+                "error": None,
+                "error_details": None,
+            }
+        }
+    }
 
 
 # ===========================

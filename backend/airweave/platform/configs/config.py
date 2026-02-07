@@ -556,15 +556,19 @@ class StripeConfig(SourceConfig):
 class SalesforceConfig(SourceConfig):
     """Salesforce configuration schema.
 
-    Note: instance_url is automatically extracted from the OAuth response,
-    so users don't need to provide it manually.
+    Note: instance_url is automatically extracted from the OAuth response
+    or from the auth provider's credential blob, so users don't need to
+    provide it manually.
     """
 
     instance_url: Optional[str] = Field(
         default=None,
         title="Salesforce Instance URL",
         description="Your Salesforce instance domain (auto-populated from OAuth response)",
-        json_schema_extra={"exclude_from_ui": True},
+        json_schema_extra={
+            "exclude_from_ui": True,
+            "auth_provider_field": "instance_url",
+        },
     )
 
     @field_validator("instance_url", mode="before")
@@ -655,6 +659,23 @@ class StubConfig(SourceConfig):
         ge=0,
         le=100,
     )
+    inject_special_tokens: bool = Field(
+        default=False,
+        title="Inject Special Tokens",
+        description=(
+            "If true, injects special tokenizer tokens (like <|endoftext|>) into generated "
+            "content. Used for testing chunker/embedder handling of edge cases."
+        ),
+    )
+
+    custom_content_prefix: Optional[str] = Field(
+        default=None,
+        title="Custom Content Prefix",
+        description=(
+            "Optional string to prepend to all generated content. Useful for testing "
+            "specific strings like special tokens or edge case characters."
+        ),
+    )
 
     @field_validator(
         "small_entity_weight",
@@ -676,6 +697,27 @@ class StubConfig(SourceConfig):
             except ValueError as e:
                 raise ValueError("Weight must be a valid integer") from e
         return value
+
+
+class FileStubConfig(SourceConfig):
+    """File stub source configuration for testing file converters.
+
+    Generates one of each file type: born-digital PDF, scanned PDF, PPTX, DOCX.
+    """
+
+    seed: int = Field(
+        default=42,
+        title="Random Seed",
+        description="Random seed for reproducible content generation",
+    )
+    custom_content_prefix: Optional[str] = Field(
+        default=None,
+        title="Custom Content Prefix",
+        description=(
+            "Optional string to embed in all generated files. "
+            "Useful as a tracking token for search assertions."
+        ),
+    )
 
 
 class TrelloConfig(SourceConfig):

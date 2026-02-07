@@ -69,6 +69,14 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.STORAGE_TEST_AZURE_TENANT_ID }}
           # GCP credentials
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.STORAGE_TEST_GCP_CREDENTIALS_JSON }}
+          # Airweave Settings required by transitive import chain (not used by storage tests)
+          FIRST_SUPERUSER: "test@test.com"
+          FIRST_SUPERUSER_PASSWORD: "testpassword"
+          ENCRYPTION_KEY: "test-encryption-key-for-ci-only"
+          STATE_SECRET: "test-state-secret-for-ci-only-must-be-32-chars-long"
+          POSTGRES_HOST: "localhost"
+          POSTGRES_USER: "test"
+          POSTGRES_PASSWORD: "test"
         run: |
           # Write GCP credentials to file
           echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/gcp-creds.json

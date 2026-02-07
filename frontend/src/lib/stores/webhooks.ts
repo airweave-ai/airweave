@@ -1,55 +1,48 @@
 /**
- * Events/Webhooks store for managing webhook subscriptions and event messages
+ * Webhooks store for managing webhook subscriptions and messages
  */
 
 import { create } from 'zustand';
 import { apiClient } from '../api';
 
 /**
- * Event message type based on Svix MessageOut
+ * Webhook message type (snake_case to match API response)
  */
-export interface EventMessage {
+export interface WebhookMessage {
   id: string;
-  eventType: string;
+  event_type: string;
   payload: Record<string, unknown>;
   timestamp: string;
   channels?: string[];
+  delivery_attempts?: MessageAttempt[] | null;
 }
 
 /**
- * Subscription type based on Svix EndpointOut
+ * Subscription type (snake_case to match API response)
  */
 export interface Subscription {
   id: string;
   url: string;
-  channels?: string[];
-  createdAt: string;
-  updatedAt: string;
+  filter_types?: string[] | null;
+  created_at: string;
+  updated_at: string;
   description?: string;
   disabled?: boolean;
+  delivery_attempts?: MessageAttempt[] | null;
+  secret?: string | null;
 }
 
 /**
- * Message attempt type based on Svix MessageAttemptOut
+ * Message attempt type (snake_case to match API response)
  */
 export interface MessageAttempt {
   id: string;
-  url: string;
-  msgId: string;
-  endpointId: string;
-  response: string;
-  responseStatusCode: number;
+  message_id: string;
+  endpoint_id: string;
+  response: string | null;
+  response_status_code: number;
   timestamp: string;
-  status: number;
-  triggerType: number;
-}
-
-/**
- * Subscription with message attempts response type
- */
-export interface SubscriptionWithAttempts {
-  endpoint: Subscription;
-  message_attempts: MessageAttempt[];
+  status: string;
 }
 
 /**
@@ -69,16 +62,9 @@ export interface UpdateSubscriptionRequest {
   event_types?: string[];
 }
 
-/**
- * Subscription secret response type
- */
-export interface SubscriptionSecret {
-  key: string;
-}
-
-interface EventsState {
+interface WebhooksState {
   subscriptions: Subscription[];
-  messages: EventMessage[];
+  messages: WebhookMessage[];
   isLoadingSubscriptions: boolean;
   isLoadingMessages: boolean;
   error: string | null;
@@ -86,16 +72,15 @@ interface EventsState {
   // Actions
   fetchSubscriptions: () => Promise<void>;
   fetchMessages: (eventTypes?: string[]) => Promise<void>;
-  fetchSubscription: (subscriptionId: string) => Promise<SubscriptionWithAttempts>;
+  fetchSubscription: (subscriptionId: string, includeSecret?: boolean) => Promise<Subscription>;
   createSubscription: (request: CreateSubscriptionRequest) => Promise<Subscription>;
   updateSubscription: (subscriptionId: string, request: UpdateSubscriptionRequest) => Promise<Subscription>;
   deleteSubscription: (subscriptionId: string) => Promise<void>;
   deleteSubscriptions: (subscriptionIds: string[]) => Promise<void>;
-  fetchSubscriptionSecret: (subscriptionId: string) => Promise<SubscriptionSecret>;
-  clearEvents: () => void;
+  clearWebhooks: () => void;
 }
 
-export const useEventsStore = create<EventsState>((set, get) => ({
+export const useWebhooksStore = create<WebhooksState>((set, get) => ({
   subscriptions: [],
   messages: [],
   isLoadingSubscriptions: false,
@@ -105,7 +90,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
   fetchSubscriptions: async () => {
     set({ isLoadingSubscriptions: true, error: null });
     try {
-      const response = await apiClient.get('/events/subscriptions');
+      const response = await apiClient.get('/webhooks/subscriptions');
       if (!response.ok) {
         throw new Error(`Failed to fetch subscriptions: ${response.status}`);
       }
@@ -122,7 +107,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
   fetchMessages: async (eventTypes?: string[]) => {
     set({ isLoadingMessages: true, error: null });
     try {
-      let endpoint = '/events/messages';
+      let endpoint = '/webhooks/messages';
       if (eventTypes && eventTypes.length > 0) {
         const params = new URLSearchParams();
         eventTypes.forEach((type) => params.append('event_types', type));
@@ -142,8 +127,15 @@ export const useEventsStore = create<EventsState>((set, get) => ({
     }
   },
 
-  fetchSubscription: async (subscriptionId: string) => {
-    const response = await apiClient.get(`/events/subscriptions/${subscriptionId}`);
+  fetchSubscription: async (subscriptionId: string, includeSecret = false) => {
+    const params = new URLSearchParams();
+    if (includeSecret) {
+      params.set("include_secret", "true");
+    }
+    const url = params.toString()
+      ? `/webhooks/subscriptions/${subscriptionId}?${params}`
+      : `/webhooks/subscriptions/${subscriptionId}`;
+    const response = await apiClient.get(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch subscription: ${response.status}`);
     }
@@ -151,7 +143,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
   },
 
   createSubscription: async (request: CreateSubscriptionRequest) => {
-    const response = await apiClient.post('/events/subscriptions', request);
+    const response = await apiClient.post('/webhooks/subscriptions', request);
     if (!response.ok) {
       throw new Error(`Failed to create subscription: ${response.status}`);
     }
@@ -162,7 +154,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
   },
 
   updateSubscription: async (subscriptionId: string, request: UpdateSubscriptionRequest) => {
-    const response = await apiClient.patch(`/events/subscriptions/${subscriptionId}`, request);
+    const response = await apiClient.patch(`/webhooks/subscriptions/${subscriptionId}`, request);
     if (!response.ok) {
       throw new Error(`Failed to update subscription: ${response.status}`);
     }
@@ -173,7 +165,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
   },
 
   deleteSubscription: async (subscriptionId: string) => {
-    const response = await apiClient.delete(`/events/subscriptions/${subscriptionId}`);
+    const response = await apiClient.delete(`/webhooks/subscriptions/${subscriptionId}`);
     if (!response.ok) {
       throw new Error(`Failed to delete subscription: ${response.status}`);
     }
@@ -185,7 +177,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
     // Delete all subscriptions in parallel
     const results = await Promise.allSettled(
       subscriptionIds.map(id =>
-        apiClient.delete(`/events/subscriptions/${id}`)
+        apiClient.delete(`/webhooks/subscriptions/${id}`)
       )
     );
 
@@ -199,15 +191,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
     get().fetchSubscriptions();
   },
 
-  fetchSubscriptionSecret: async (subscriptionId: string) => {
-    const response = await apiClient.get(`/events/subscriptions/${subscriptionId}/secret`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch subscription secret: ${response.status}`);
-    }
-    return response.json();
-  },
-
-  clearEvents: () => {
+  clearWebhooks: () => {
     set({ subscriptions: [], messages: [], error: null });
   },
 }));

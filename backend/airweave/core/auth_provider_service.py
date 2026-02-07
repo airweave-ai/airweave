@@ -1,8 +1,10 @@
 """Service for managing auth provider operations."""
 
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import List, Optional, Set, Union, get_origin
 
 from fastapi import HTTPException
+from pydantic_core import PydanticUndefined
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
@@ -13,6 +15,25 @@ from airweave.platform.locator import resource_locator
 auth_provider_logger = logger.with_prefix("Auth Provider Service: ").with_context(
     component="auth_provider_service"
 )
+
+
+@dataclass
+class AuthFieldsResponse:
+    """Auth fields required for a source.
+
+    Attributes:
+        all_fields: All auth field names that should be fetched
+        optional_fields: Field names that are optional (can be missing without error)
+    """
+
+    all_fields: List[str]
+    optional_fields: Set[str]
+
+    @property
+    def required_fields(self) -> Set[str]:
+        """Get the set of required (non-optional) fields."""
+        return set(self.all_fields) - self.optional_fields
+
 
 # function to get most recent connection for an auth provider short name
 # function to get credentials of most recent connection
@@ -57,19 +78,20 @@ class AuthProviderService:
 
     async def get_runtime_auth_fields_for_source(
         self, db: AsyncSession, source_short_name: str
-    ) -> List[str]:
+    ) -> AuthFieldsResponse:
         """Get the runtime auth fields required from an auth provider for a source.
 
-        For OAuth sources, this returns the standard OAuth fields (access_token,
-        refresh_token, etc.) that auth providers should provide. BYOC-specific fields
-        like client_id and client_secret are managed by the auth provider internally.
+        Returns all auth config fields along with which ones are optional, so auth
+        providers can skip missing optional fields instead of hard-failing.
 
         Args:
             db: The database session
             source_short_name: The short name of the source
 
         Returns:
-            List of auth field names that should be requested from auth providers
+            AuthFieldsResponse with all field names and optional field names.
+            Auth providers should attempt to fetch all fields but only fail on
+            missing required ones.
 
         Raises:
             HTTPException: If source not found
@@ -81,28 +103,30 @@ class AuthProviderService:
 
         # Check if source has auth_config_class (DIRECT auth sources)
         if source_model.auth_config_class:
-            # Direct auth source - get fields from auth config class
             auth_config_class = resource_locator.get_auth_config(source_model.auth_config_class)
-            runtime_fields = list(auth_config_class.model_fields.keys())
+            all_fields = list(auth_config_class.model_fields.keys())
+
+            # Determine which fields are optional based on Pydantic model metadata
+            optional_fields: Set[str] = set()
+            for name, field_info in auth_config_class.model_fields.items():
+                has_default = field_info.default is not PydanticUndefined
+                is_optional = get_origin(field_info.annotation) is Union
+                if has_default or is_optional:
+                    optional_fields.add(name)
+
             auth_provider_logger.debug(
-                f"Source '{source_short_name}' uses direct auth - "
-                f"returning fields: {runtime_fields}"
+                f"Source '{source_short_name}' auth fields: {all_fields}, "
+                f"optional: {optional_fields}"
             )
+            return AuthFieldsResponse(all_fields=all_fields, optional_fields=optional_fields)
         else:
-            # OAuth source - return standard OAuth fields that auth providers should provide
-            # Auth providers handle the OAuth flow and provide these tokens
+            # Pure OAuth -- all fields are required
             if source_model.oauth_type == "with_refresh":
-                runtime_fields = ["access_token", "refresh_token"]
+                return AuthFieldsResponse(
+                    all_fields=["access_token", "refresh_token"], optional_fields=set()
+                )
             else:
-                # access_only type
-                runtime_fields = ["access_token"]
-
-            auth_provider_logger.debug(
-                f"Source '{source_short_name}' uses OAuth ({source_model.oauth_type}) - "
-                f"returning standard OAuth fields: {runtime_fields}"
-            )
-
-        return runtime_fields
+                return AuthFieldsResponse(all_fields=["access_token"], optional_fields=set())
 
     async def validate_auth_provider_config(
         self,

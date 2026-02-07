@@ -349,16 +349,23 @@ async def get_auth_configuration(
         from airweave.db.session import get_db_context
 
         async with get_db_context() as db:
-            source_auth_config_fields = (
-                await auth_provider_service.get_runtime_auth_fields_for_source(
-                    db, source_connection_data["short_name"]
-                )
+            auth_fields = await auth_provider_service.get_runtime_auth_fields_for_source(
+                db, source_connection_data["short_name"]
             )
+
+        # Build config field mappings from the source config class
+        source_config_field_mappings = _build_source_config_field_mappings(source_connection_data)
 
         auth_result = await auth_provider_instance.get_auth_result(
             source_short_name=source_connection_data["short_name"],
-            source_auth_config_fields=source_auth_config_fields,
+            source_auth_config_fields=auth_fields.all_fields,
+            optional_fields=auth_fields.optional_fields,
+            source_config_field_mappings=source_config_field_mappings or None,
         )
+
+        # Merge any source config from auth provider into config_fields
+        if auth_result.source_config:
+            _merge_source_config(source_connection_data, auth_result.source_config)
 
         if auth_result.requires_proxy:
             logger.info(f"Auth provider requires proxy mode: {auth_result.proxy_config}")
@@ -491,3 +498,56 @@ def wrap_source_with_airweave_client(
         f"AirweaveHttpClient configured for {source.__class__.__name__} "
         f"(feature_flag_enabled={feature_enabled})"
     )
+
+
+def _build_source_config_field_mappings(
+    source_connection_data: dict,
+) -> Dict[str, str]:
+    """Build a mapping of config fields that can be populated by auth providers.
+
+    Introspects the source's config class for fields with `auth_provider_field`
+    in their json_schema_extra, and returns a mapping of config_field_name to
+    the corresponding provider field name.
+
+    Args:
+        source_connection_data: Source connection data dict
+
+    Returns:
+        Dict mapping config field names to provider field names
+    """
+    source_model = source_connection_data.get("source_model")
+    config_class_name = getattr(source_model, "config_class", None) if source_model else None
+    if not config_class_name:
+        return {}
+
+    try:
+        config_class = resource_locator.get_config(config_class_name)
+    except Exception:
+        return {}
+
+    mappings = {}
+    for field_name, field_info in config_class.model_fields.items():
+        extra = field_info.json_schema_extra or {}
+        if "auth_provider_field" in extra:
+            mappings[field_name] = extra["auth_provider_field"]
+
+    return mappings
+
+
+def _merge_source_config(
+    source_connection_data: dict,
+    source_config: Dict[str, Any],
+) -> None:
+    """Merge auth-provider-sourced config into config_fields.
+
+    User-provided values take precedence over auth-provider values.
+
+    Args:
+        source_connection_data: Source connection data dict (mutated in place)
+        source_config: Config values extracted from the auth provider
+    """
+    existing_config = source_connection_data.get("config_fields") or {}
+    for key, value in source_config.items():
+        if key not in existing_config or existing_config[key] is None:
+            existing_config[key] = value
+    source_connection_data["config_fields"] = existing_config

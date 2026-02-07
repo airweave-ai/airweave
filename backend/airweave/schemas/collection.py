@@ -272,19 +272,20 @@ class Collection(CollectionInDBBase):
     model_config = {
         "from_attributes": True,
         "json_schema_extra": {
-            "examples": [
-                {
-                    "id": "550e8400-e29b-41d4-a716-446655440000",
-                    "name": "Finance Data",
-                    "readable_id": "finance-data-ab123",
-                    "created_at": "2024-01-15T09:30:00Z",
-                    "modified_at": "2024-01-15T14:22:15Z",
-                    "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-                    "created_by_email": "admin@company.com",
-                    "modified_by_email": "finance@company.com",
-                    "status": "ACTIVE",
-                }
-            ]
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "name": "Finance Data",
+                "readable_id": "finance-data-ab123",
+                "vector_size": 3072,
+                "embedding_model_name": "text-embedding-3-large",
+                "sync_config": None,
+                "created_at": "2024-01-15T09:30:00Z",
+                "modified_at": "2024-01-15T14:22:15Z",
+                "organization_id": "org12345-6789-abcd-ef01-234567890abc",
+                "created_by_email": "admin@company.com",
+                "modified_by_email": "finance@company.com",
+                "status": "ACTIVE",
+            }
         },
     }
 

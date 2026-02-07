@@ -24,6 +24,7 @@ def source(
     cursor_class: Optional[Type[BaseModel]] = None,
     supports_access_control: bool = False,
     feature_flag: Optional[str] = None,
+    internal: bool = False,
 ) -> Callable[[type], type]:
     """Enhanced source decorator with OAuth type tracking and typed cursor support.
 
@@ -49,6 +50,8 @@ def source(
             Default is False (entities visible to everyone).
         feature_flag: Optional feature flag (from FeatureFlag enum) required to access this source.
             When set, only organizations with this feature enabled can see/use the source.
+        internal: Whether this is an internal/test source (default False). Internal
+            sources are excluded from docs and only loaded when ENABLE_INTERNAL_SOURCES=true.
 
     Example:
         # OAuth source (no auth config)
@@ -110,6 +113,7 @@ def source(
         cls._rate_limit_level = rate_limit_level
         cls._supports_access_control = supports_access_control
         cls._feature_flag = feature_flag
+        cls._internal = internal
 
         # Add validation method if not present
         if not hasattr(cls, "validate"):

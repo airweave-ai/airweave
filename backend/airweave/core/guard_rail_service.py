@@ -234,8 +234,8 @@ class GuardRailService:
                     current_usage=total_usage,
                 )
 
-            self.logger.info(
-                f"\n\nUsage check: {action_type.value} usage={total_usage}, "
+            self.logger.debug(
+                f"Usage check: {action_type.value} usage={total_usage}, "
                 f"requested={amount}, limit={limit}\n\n"
             )
 
@@ -456,7 +456,7 @@ class GuardRailService:
                 )
                 return BillingPeriodStatus.ACTIVE
 
-            self.logger.info(
+            self.logger.debug(
                 f"\n\nRetrieved billing period for organization {self.organization_id}: "
                 f"status={current_period.status}, plan={current_period.plan}, "
                 f"period_id={current_period.id}, "

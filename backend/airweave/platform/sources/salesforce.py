@@ -11,7 +11,7 @@ in entities/salesforce.py.
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -35,7 +35,11 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 @source(
     name="Salesforce",
     short_name="salesforce",
-    auth_methods=[AuthenticationMethod.OAUTH_BROWSER, AuthenticationMethod.OAUTH_BYOC],
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_BYOC,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
     oauth_type=OAuthType.WITH_REFRESH,
     requires_byoc=True,  # Users must bring their own Salesforce OAuth credentials
     auth_config_class="SalesforceAuthConfig",  # This tells factory to pass full dict
@@ -161,6 +165,58 @@ class SalesforceSource(BaseSource):
         response.raise_for_status()
         return response.json()
 
+    async def _get_object_fields(self, client: httpx.AsyncClient, sobject_name: str) -> List[str]:
+        """Get all queryable fields for a Salesforce object.
+
+        Uses the Salesforce Describe API to discover all fields available in the org.
+        Returns ALL fields - we store everything in metadata anyway.
+
+        Args:
+            client: HTTP client
+            sobject_name: Salesforce object API name (e.g., "Contact", "Account")
+
+        Returns:
+            List of all queryable field names
+        """
+        url = f"{self._get_base_url()}/sobjects/{sobject_name}/describe"
+        try:
+            data = await self._get_with_auth(client, url)
+            # Extract field names (only queryable fields)
+            all_fields = [
+                field["name"] for field in data.get("fields", []) if field.get("queryable", True)
+            ]
+            self.logger.info(
+                f"📋 [SALESFORCE] Discovered {len(all_fields)} queryable fields for {sobject_name}"
+            )
+            return all_fields
+        except Exception as e:
+            # If describe fails, fall back to a minimal safe set
+            self.logger.warning(
+                f"⚠️ [SALESFORCE] Failed to describe {sobject_name}, using fallback fields: {e}"
+            )
+            fallback = {
+                "Contact": [
+                    "Id",
+                    "FirstName",
+                    "LastName",
+                    "Name",
+                    "Email",
+                    "CreatedDate",
+                    "LastModifiedDate",
+                ],
+                "Account": ["Id", "Name", "CreatedDate", "LastModifiedDate"],
+                "Opportunity": [
+                    "Id",
+                    "Name",
+                    "Amount",
+                    "CloseDate",
+                    "StageName",
+                    "CreatedDate",
+                    "LastModifiedDate",
+                ],
+            }
+            return fallback.get(sobject_name, ["Id", "Name", "CreatedDate", "LastModifiedDate"])
+
     async def _generate_account_entities(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[BaseEntity, None]:
@@ -169,16 +225,12 @@ class SalesforceSource(BaseSource):
         Uses Salesforce Object Query Language (SOQL) to fetch Account records.
         Paginated, yields SalesforceAccountEntity objects.
         """
-        # Build SOQL query with only core standard fields that exist in all Salesforce editions
-        # Removed fields that may not exist in Developer/Trial orgs to ensure compatibility
-        soql_query = """
-            SELECT Id, Name, AccountNumber, Website, Phone, Fax, Industry,
-                   AnnualRevenue, NumberOfEmployees, Description, Type,
-                   BillingStreet, BillingCity, BillingState, BillingPostalCode, BillingCountry,
-                   ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode, ShippingCountry,
-                   CreatedDate, LastModifiedDate, IsDeleted
-            FROM Account
-        """
+        # Get all queryable fields for Account
+        all_fields = await self._get_object_fields(client, "Account")
+
+        # Build SOQL query with all available fields
+        fields_str = ", ".join(all_fields)
+        soql_query = f"SELECT {fields_str} FROM Account"
 
         url = f"{self._get_base_url()}/query"
         params = {"q": soql_query.strip()}
@@ -263,15 +315,12 @@ class SalesforceSource(BaseSource):
         Uses Salesforce Object Query Language (SOQL) to fetch Contact records.
         Paginated, yields SalesforceContactEntity objects.
         """
-        # Build SOQL query with core standard fields
-        soql_query = """
-            SELECT Id, FirstName, LastName, Name, Email, Phone, MobilePhone, Fax,
-                   Title, Department, AccountId, Account.Name, Birthdate, Description, OwnerId,
-                   CreatedDate, LastModifiedDate, IsDeleted,
-                   MailingStreet, MailingCity, MailingState, MailingPostalCode, MailingCountry,
-                   OtherStreet, OtherCity, OtherState, OtherPostalCode, OtherCountry
-            FROM Contact
-        """
+        # Get all queryable fields for Contact
+        all_fields = await self._get_object_fields(client, "Contact")
+
+        # Build SOQL query with all available fields
+        fields_str = ", ".join(all_fields)
+        soql_query = f"SELECT {fields_str} FROM Contact"
 
         url = f"{self._get_base_url()}/query"
         params = {"q": soql_query.strip()}
@@ -360,7 +409,7 @@ class SalesforceSource(BaseSource):
             # Check for next page
             next_records_url = data.get("nextRecordsUrl")
             if next_records_url:
-                url = f"{self.instance_url}{next_records_url}"
+                url = f"https://{self.instance_url}{next_records_url}"
                 params = None
             else:
                 url = None
@@ -373,14 +422,12 @@ class SalesforceSource(BaseSource):
         Uses Salesforce Object Query Language (SOQL) to fetch Opportunity records.
         Paginated, yields SalesforceOpportunityEntity objects.
         """
-        # Build SOQL query with core standard fields
-        soql_query = """
-            SELECT Id, Name, AccountId, Account.Name, Amount, CloseDate, StageName, Probability,
-                   OwnerId, CreatedDate, LastModifiedDate,
-                   IsDeleted, IsWon, IsClosed,
-                   Description, Type, NextStep
-            FROM Opportunity
-        """
+        # Get all queryable fields for Opportunity
+        all_fields = await self._get_object_fields(client, "Opportunity")
+
+        # Build SOQL query with all available fields
+        fields_str = ", ".join(all_fields)
+        soql_query = f"SELECT {fields_str} FROM Opportunity"
 
         url = f"{self._get_base_url()}/query"
         params = {"q": soql_query.strip()}
@@ -453,7 +500,7 @@ class SalesforceSource(BaseSource):
             # Check for next page
             next_records_url = data.get("nextRecordsUrl")
             if next_records_url:
-                url = f"{self.instance_url}{next_records_url}"
+                url = f"https://{self.instance_url}{next_records_url}"
                 params = None
             else:
                 url = None

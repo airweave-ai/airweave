@@ -50,6 +50,13 @@ from .entity_definition import (
     EntityDefinitionUpdate,
     EntityType,
 )
+from .errors import (
+    ConflictErrorResponse,
+    NotFoundErrorResponse,
+    RateLimitErrorResponse,
+    ValidationErrorDetail,
+    ValidationErrorResponse,
+)
 from .integration_credential import (
     IntegrationCredential,
     IntegrationCredentialCreate,
@@ -165,6 +172,18 @@ from .user import (
     UserOrganization,
     UserUpdate,
     UserWithOrganizations,
+)
+from .webhooks import (
+    # Request schemas
+    CreateSubscriptionRequest,
+    # Response schemas
+    DeliveryAttempt,
+    PatchSubscriptionRequest,
+    RecoverMessagesRequest,
+    RecoveryTask,
+    WebhookMessage,
+    WebhookMessageWithAttempts,
+    WebhookSubscription,
 )
 
 # Rebuild models to resolve forward references

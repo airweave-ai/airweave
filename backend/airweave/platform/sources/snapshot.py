@@ -53,6 +53,7 @@ AZURE_BLOB_URL_PATTERN = re.compile(r"^https://([^.]+)\.blob\.core\.windows\.net
     config_class="SnapshotConfig",
     labels=["Internal", "Replay"],
     supports_continuous=False,
+    internal=True,
 )
 class SnapshotSource(BaseSource):
     """Source that replays entities from raw data captures.
@@ -166,7 +167,8 @@ class SnapshotSource(BaseSource):
             return None
 
         try:
-            # Strip full storage path if present (ARF may store full paths like raw/{sync_id}/files/...)
+            # Strip full storage path if present
+            # (ARF may store full paths like raw/{sync_id}/files/...)
             # Extract just the relative path within the snapshot directory
             if "/" in stored_file_path and "files/" in stored_file_path:
                 # Extract everything from 'files/' onward

@@ -1,7 +1,7 @@
 """Pipedream Auth Provider - provides authentication services for other integrations."""
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import httpx
 from fastapi import HTTPException
@@ -235,13 +235,17 @@ class PipedreamAuthProvider(BaseAuthProvider):
             raise
 
     async def get_creds_for_source(
-        self, source_short_name: str, source_auth_config_fields: List[str]
+        self,
+        source_short_name: str,
+        source_auth_config_fields: List[str],
+        optional_fields: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """Get credentials for a source from Pipedream.
 
         Args:
             source_short_name: The short name of the source to get credentials for
             source_auth_config_fields: The fields required for the source auth config
+            optional_fields: Fields that can be skipped if not available in Pipedream
 
         Returns:
             Credentials dictionary for the source
@@ -262,6 +266,8 @@ class PipedreamAuthProvider(BaseAuthProvider):
             )
 
         self.logger.info(f"📋 [Pipedream] Required auth fields: {source_auth_config_fields}")
+        if optional_fields:
+            self.logger.info(f"📋 [Pipedream] Optional auth fields: {optional_fields}")
         self.logger.info(
             f"🔑 [Pipedream] Using project_id='{self.project_id}', "
             f"account_id='{self.account_id}', environment='{self.environment}'"
@@ -275,7 +281,10 @@ class PipedreamAuthProvider(BaseAuthProvider):
 
             # Extract and map credentials
             found_credentials = self._extract_and_map_credentials(
-                account_data, source_auth_config_fields, source_short_name
+                account_data,
+                source_auth_config_fields,
+                source_short_name,
+                optional_fields=optional_fields,
             )
 
             safe_log_credentials(
@@ -409,25 +418,28 @@ class PipedreamAuthProvider(BaseAuthProvider):
         account_data: Dict[str, Any],
         source_auth_config_fields: List[str],
         source_short_name: str,
+        optional_fields: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """Extract and map credentials from Pipedream account data.
 
         Args:
             account_data: The account data from Pipedream
-            source_auth_config_fields: Required auth fields
+            source_auth_config_fields: Auth fields to fetch
             source_short_name: The source short name
+            optional_fields: Fields that can be skipped if not found in Pipedream
 
         Returns:
             Dictionary with mapped credentials
 
         Raises:
-            HTTPException: If required fields are missing
+            HTTPException: If required (non-optional) fields are missing
         """
         credentials = account_data.get("credentials", {})
-        missing_fields = []
+        missing_required_fields = []
         found_credentials = {}
+        _optional_fields = optional_fields or set()
 
-        self.logger.info("🔍 [Pipedream] Checking for required auth fields...")
+        self.logger.info("🔍 [Pipedream] Checking for auth fields...")
         self.logger.info(f"📦 [Pipedream] Available credential fields: {list(credentials.keys())}")
 
         for airweave_field in source_auth_config_fields:
@@ -448,37 +460,46 @@ class PipedreamAuthProvider(BaseAuthProvider):
                     f"in Pipedream)\n"
                 )
             else:
-                missing_fields.append(airweave_field)
-                self.logger.warning(
-                    f"\n  ❌ Missing field: '{airweave_field}' (looked for "
-                    f"'{pipedream_field}' in Pipedream)\n"
-                )
+                if airweave_field in _optional_fields:
+                    self.logger.info(
+                        f"\n  ⏭️ Skipping optional field: '{airweave_field}' "
+                        f"(not available in Pipedream)\n"
+                    )
+                else:
+                    missing_required_fields.append(airweave_field)
+                    self.logger.warning(
+                        f"\n  ❌ Missing required field: '{airweave_field}' (looked for "
+                        f"'{pipedream_field}' in Pipedream)\n"
+                    )
 
-        if missing_fields:
+        if missing_required_fields:
             available_fields = list(credentials.keys())
             self.logger.error(
                 f"\n❌ [Pipedream] Missing required fields! "
-                f"Required: {source_auth_config_fields}, "
-                f"Missing: {missing_fields}, "
+                f"Required: {[f for f in source_auth_config_fields if f not in _optional_fields]}, "
+                f"Missing: {missing_required_fields}, "
                 f"Available in Pipedream: {available_fields}\n"
             )
             raise HTTPException(
                 status_code=422,
                 detail=f"Missing required auth fields for source '{source_short_name}': "
-                f"{missing_fields}. "
-                f"Required fields: {source_auth_config_fields}. "
+                f"{missing_required_fields}. "
                 f"Available fields in Pipedream credentials: {available_fields}",
             )
 
         self.logger.info(
-            f"\n✅ [Pipedream] Successfully retrieved all {len(found_credentials)} required "
+            f"\n✅ [Pipedream] Successfully retrieved {len(found_credentials)} "
             f"credential fields for source '{source_short_name}'\n"
         )
 
         return found_credentials
 
     async def get_auth_result(
-        self, source_short_name: str, source_auth_config_fields: List[str]
+        self,
+        source_short_name: str,
+        source_auth_config_fields: List[str],
+        optional_fields: Optional[Set[str]] = None,
+        source_config_field_mappings: Optional[Dict[str, str]] = None,
     ) -> AuthResult:
         """Get auth result with explicit mode for Pipedream.
 
@@ -497,13 +518,22 @@ class PipedreamAuthProvider(BaseAuthProvider):
         # Try to get credentials to determine OAuth client type
         try:
             credentials = await self.get_creds_for_source(
-                source_short_name, source_auth_config_fields
+                source_short_name, source_auth_config_fields, optional_fields
             )
             # Custom OAuth client - can use direct access
             self.logger.info(
                 f"Custom OAuth client detected for {source_short_name} - using direct mode"
             )
-            return AuthResult.direct(credentials)
+            result = AuthResult.direct(credentials)
+
+            # Extract source config if mappings provided
+            if source_config_field_mappings:
+                source_config = await self.get_config_for_source(
+                    source_short_name, source_config_field_mappings
+                )
+                result.source_config = source_config or None
+
+            return result
 
         except PipedreamDefaultOAuthException:
             # Default OAuth client - must use proxy

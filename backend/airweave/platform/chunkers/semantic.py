@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from airweave.core.logging import logger
 from airweave.platform.chunkers._base import BaseChunker
+from airweave.platform.chunkers.tiktoken_compat import SafeEncoding
 from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.tokenizers import TikTokenTokenizer, get_tokenizer
@@ -101,9 +102,7 @@ class SemanticChunker(BaseChunker):
             from chonkie import SemanticChunker as ChonkieSemanticChunker
             from chonkie import TokenChunker
 
-            # Get tokenizer - we need the raw tiktoken encoding for Chonkie
-            # (Chonkie's backend detection looks for "tiktoken" in type string,
-            # but our wrapper path contains "tokenizers" which matches first)
+            # Get tokenizer wrapper for our own token counting
             tokenizer = get_tokenizer(self.TOKENIZER)
             self._tiktoken_tokenizer = tokenizer
 
@@ -112,8 +111,9 @@ class SemanticChunker(BaseChunker):
                     f"Chonkie requires tiktoken encoding, got {type(tokenizer).__name__}"
                 )
 
-            # Pass raw tiktoken encoding to Chonkie for proper backend detection
-            raw_encoding = tokenizer.encoding
+            # Wrap the raw encoding to allow special tokens like <|endoftext|>
+            # that may appear in user content (e.g., AI-generated text pasted into Linear)
+            safe_encoding = SafeEncoding(tokenizer.encoding)
 
             # Initialize Chonkie's SemanticChunker
             # NOTE: Uses local embedding model for chunking decisions (fast, no API calls)
@@ -132,9 +132,9 @@ class SemanticChunker(BaseChunker):
                 filter_tolerance=self.FILTER_TOLERANCE,
             )
 
-            # Initialize TokenChunker for fallback
+            # Initialize TokenChunker for fallback (also needs safe encoding)
             self._token_chunker = TokenChunker(
-                tokenizer=raw_encoding,
+                tokenizer=safe_encoding,
                 chunk_size=self.MAX_TOKENS_PER_CHUNK,
                 chunk_overlap=0,
             )

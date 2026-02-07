@@ -114,6 +114,7 @@ def add_tag_display_names(openapi_schema: Dict[str, Any]) -> Dict[str, Any]:
         "collections": "Collections",
         "source-connections": "Source Connections",
         "sources": "Sources",
+        "webhooks": "Webhooks",
     }
 
     # Update existing tags with display names
@@ -188,21 +189,6 @@ def generate_openapi():
             filtered_schema["info"]["description"] += api_groups_desc
         else:
             filtered_schema["info"]["description"] = api_groups_desc
-
-    # Add Fern global headers extension for framework tracking
-    print("Adding Fern global headers for framework tracking...")
-    filtered_schema["x-fern-global-headers"] = [
-        {
-            "header": "X-Framework-Name",
-            "name": "framework_name",
-            "optional": True
-        },
-        {
-            "header": "X-Framework-Version",
-            "name": "framework_version",
-            "optional": True
-        }
-    ]
 
     # Path to fern/definition directory from project root
     fern_dir = project_root / "fern" / "definition"

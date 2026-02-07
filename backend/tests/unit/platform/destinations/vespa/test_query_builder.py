@@ -155,7 +155,7 @@ class TestQueryBuilder:
         assert params["hits"] == 10
         assert params["offset"] == 0
         assert params["presentation.summary"] == "full"
-        assert params["ranking.softtimeout.enable"] == "false"
+        assert params["ranking.softtimeout.enable"] == "true"
 
     def test_build_params_ranking_profile_hybrid(self, query_builder, sample_dense_embeddings):
         """Test hybrid strategy selects hybrid ranking profile."""

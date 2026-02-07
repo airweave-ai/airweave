@@ -1,7 +1,7 @@
 """Dependencies that are used in the API endpoints."""
 
 import uuid
-from typing import Optional, Tuple
+from typing import Optional, Tuple, get_type_hints
 
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi_auth0 import Auth0User
@@ -16,7 +16,9 @@ from airweave.analytics.contextual_service import (
 from airweave.analytics.service import analytics
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
+from airweave.core import container as container_mod
 from airweave.core.config import settings
+from airweave.core.container import Container
 from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import NotFoundException, RateLimitExceededException
 from airweave.core.guard_rail_service import GuardRailService
@@ -578,3 +580,71 @@ def _extract_headers_from_request(request: Request) -> RequestHeaders:
         # Request tracking - use the request_id from middleware, not headers
         request_id=getattr(request.state, "request_id", "unknown"),
     )
+
+
+# ---------------------------------------------------------------------------
+# DI Container
+# ---------------------------------------------------------------------------
+
+
+def get_container() -> Container:
+    """Get the DI container. Initialized at startup."""
+    c = container_mod.container
+    if c is None:
+        raise RuntimeError("Container not initialized. Call initialize_container() first.")
+    return c
+
+
+# ---------------------------------------------------------------------------
+# Protocol Injection
+# ---------------------------------------------------------------------------
+
+# Cache of protocol_type → Container field name, built once at first call.
+_INJECT_CACHE: dict[type, str] = {}
+
+
+def _resolve_field_name(protocol_type: type) -> str:
+    """Find which Container field matches the given protocol type.
+
+    Uses get_type_hints() to introspect the Container dataclass.
+    Result is cached so the lookup happens at most once per protocol type.
+    """
+    if not _INJECT_CACHE:
+        # Populate cache on first call
+        for name, hint in get_type_hints(Container).items():
+            _INJECT_CACHE[hint] = name
+
+    field_name = _INJECT_CACHE.get(protocol_type)
+    if field_name is None:
+        available = list(_INJECT_CACHE.values())
+        raise TypeError(
+            f"No binding for {protocol_type.__name__} in Container. Available fields: {available}"
+        )
+    return field_name
+
+
+def Inject(protocol_type: type):  # noqa: N802 — uppercase to match FastAPI convention
+    """Resolve a protocol implementation from the DI container.
+
+    Works like ``Depends()`` but looks up the implementation by protocol type
+    instead of requiring the caller to know about the Container internals.
+
+    Usage in FastAPI endpoints::
+
+        from airweave.api.deps import Inject
+        from airweave.core.protocols import EventBus, WebhookAdmin
+
+
+        @router.post("/")
+        async def create(
+            event_bus: EventBus = Inject(EventBus),
+            webhook_admin: WebhookAdmin = Inject(WebhookAdmin),
+        ):
+            await event_bus.publish(...)
+    """
+    field_name = _resolve_field_name(protocol_type)
+
+    def _resolve(c: Container = Depends(get_container)):
+        return getattr(c, field_name)
+
+    return Depends(_resolve)

@@ -46,6 +46,25 @@ export function formatFullDate(timestamp: string): string {
 }
 
 /**
+ * Format relative time (e.g., "2m ago", "1h ago")
+ */
+export function formatRelativeTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+
+  if (diffSec < 60) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHour < 24) return `${diffHour}h ago`;
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return formatTimestamp(timestamp);
+}
+
+/**
  * Status Badge Component - minimal pill style
  */
 export function StatusBadge({ statusCode }: { statusCode: number | null }) {
@@ -102,9 +121,9 @@ export function EventTypeBadge({ eventType }: { eventType: string }) {
 }
 
 /**
- * Get summary from event payload
+ * Get summary from message payload
  */
-export function getEventSummary(payload: Record<string, unknown>): string {
+export function getMessageSummary(payload: Record<string, unknown>): string {
   // Try to build a meaningful summary from the payload
   const collectionName = payload.collection_name as string | undefined;
   const sourceType = payload.source_type as string | undefined;

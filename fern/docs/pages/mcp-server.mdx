@@ -1,19 +1,24 @@
 ---
 title: MCP Server
 edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/mcp-server.mdx
-subtitle: Serve your Airweave collection through an MCP server so that clients such as Cursor, Claude or VS Code can query it directly.
+subtitle: Serve your Airweave collection through an MCP server so that AI assistants like Cursor, Claude Desktop, VS Code, or OpenAI can query it directly.
 slug: mcp-server
 ---
 
+The Airweave MCP server implements the [Model Context Protocol](https://modelcontextprotocol.io/) to let AI assistants search your synced data. It supports two deployment modes: **local** (stdio) for desktop AI clients and **hosted** (Streamable HTTP) for cloud platforms.
+
 ### Prerequisites
 
-Before you start you’ll need:
+Before you start you'll need:
 
   - **A collection with data**: at least one source connection must have completed its initial sync. See the [Quickstart](https://docs.airweave.ai/quickstart) if you need to set this up.
   - **An API key**: Create one in the Airweave dashboard under **API Keys**.
 
-### Set-up
+---
 
+## Local mode (Desktop AI clients)
+
+Local mode runs the MCP server as a local process that communicates over stdio. This is the standard setup for desktop AI assistants.
 
 <Tabs>
     <Tab title="Cursor">
@@ -42,7 +47,7 @@ Before you start you’ll need:
 
     <Tab title="Claude Desktop">
       Add the following to your Claude Desktop config file and restart Claude Desktop afterwards.
-      After a restart the search tool will appear in Claude’s composer.
+      After a restart the search tool will appear in Claude's composer.
 
         - **macOS/Linux**: `~/.claude/claude_desktop_config.json`
         - **Windows**: `%APPDATA%\claude\claude_desktop_config.json`
@@ -98,37 +103,172 @@ Before you start you’ll need:
     </Tab>
   </Tabs>
 
-These environment variables can be set:
+### Environment variables (local mode)
 
-  - `AIRWEAVE_API_KEY` (Required): Authenticates the MCP server with the Airweave API so it can run searches on your behalf.
-  - `AIRWEAVE_COLLECTION` (Required): Readable ID of the collection to query. All `search` calls are scoped to this collection.
-  - `AIRWEAVE_BASE_URL` (Optional): Override if you're running a self-hosted Airweave instance (default: `https://api.airweave.ai`).
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AIRWEAVE_API_KEY` | Yes | Authenticates the MCP server with the Airweave API |
+| `AIRWEAVE_COLLECTION` | Yes | Readable ID of the collection to query |
+| `AIRWEAVE_BASE_URL` | No | Override for self-hosted instances (default: `https://api.airweave.ai`) |
 
-### Available tools
+---
 
-The MCP server provides two tools:
+## Hosted mode (Cloud AI platforms)
 
-  - **search**: Enhanced search across all source connections in the collection with full parameter control and optional AI completion.
-  - **get-config**: View current configuration and connection status so you can verify everything is working correctly. No parameters required.
+Hosted mode runs the MCP server as a stateless HTTP service at `https://mcp.airweave.ai/mcp`. This is the setup for cloud-based AI platforms that need a remote MCP endpoint. The server uses the **Streamable HTTP** transport (MCP 2025-03-26).
 
-### Advanced Search Features
+Each request is fully independent -- authentication and collection selection happen per-request via HTTP headers. No sessions or server-side state.
 
-The search tool uses the **POST** endpoint for full control over search parameters.
+<Tabs>
+    <Tab title="OpenAI Agent Builder">
+      In the OpenAI Agent Builder, add a new MCP tool with:
 
-**Available Parameters:**
-- `retrieval_strategy`: Choose between 'hybrid', 'neural', or 'keyword' search (default: 'hybrid')
-- `expand_query`: Generate query variations for better recall (default: true)
-- `interpret_filters`: Extract filters from natural language (default: false)
-- `rerank`: LLM-based result reranking for improved relevance (default: true)
-- `generate_answer`: AI-generated completion from results (default: true)
-- `temporal_relevance`: Recency weighting from 0.0 to 1.0 (default: 0.3)
-- `limit`: Maximum number of results (default: 1000)
-- `offset`: Pagination offset (default: 0)
+      - **URL**: `https://mcp.airweave.ai/mcp`
+      - **Headers**:
+        - `X-API-Key`: Your Airweave API key
+        - `X-Collection-Readable-ID`: Your collection's readable ID
+    </Tab>
 
-**Natural Language Examples:**
-- "Use neural search for semantic similarity" → `retrieval_strategy: "neural"`
-- "Search without expanding the query" → `expand_query: false`
-- "Extract filters from my query" → `interpret_filters: true`
-- "Disable reranking for faster results" → `rerank: false`
-- "Just return results, no AI summary" → `generate_answer: false`
-- "Prioritize recent documents" → `temporal_relevance: 0.8`
+    <Tab title="Any HTTP MCP Client">
+      Send a POST request to the MCP endpoint. The server speaks standard MCP over Streamable HTTP:
+
+      ```bash title="Initialize"
+      curl -X POST https://mcp.airweave.ai/mcp \
+        -H "Content-Type: application/json" \
+        -H "Accept: text/event-stream" \
+        -H "X-API-Key: your-api-key" \
+        -H "X-Collection-Readable-ID: your-collection-id" \
+        -d '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "my-client", "version": "1.0.0"}}, "id": 1}'
+      ```
+    </Tab>
+</Tabs>
+
+### Authentication (hosted mode)
+
+The API key can be provided via either of these methods (checked in order):
+
+| Method | Example |
+|--------|---------|
+| `X-API-Key` header (recommended) | `X-API-Key: your-api-key` |
+| `Authorization` header | `Authorization: Bearer your-api-key` |
+
+### Collection selection (hosted mode)
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Collection-Readable-ID` | No | Collection to search. Falls back to server default if not provided. |
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/mcp` | Main MCP endpoint (Streamable HTTP) |
+| `DELETE` | `/mcp` | Session termination (no-op, returns success) |
+| `GET` | `/health` | Health check |
+| `GET` | `/` | Server info and authentication docs |
+
+---
+
+## Available tools
+
+The MCP server exposes two tools to AI assistants:
+
+### `search-{collection}`
+
+The primary search tool. The tool name includes the collection ID so the AI assistant knows which dataset it's searching (e.g., `search-my-docs`).
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | string | Yes | -- | The search query text |
+| `response_type` | `"raw"` \| `"completion"` | No | `"raw"` | `"raw"` returns results, `"completion"` returns an AI-generated answer |
+| `limit` | number | No | 100 | Maximum results to return (1-1000) |
+| `offset` | number | No | 0 | Results to skip for pagination |
+| `recency_bias` | number | No | -- | Recency weighting from 0.0 to 1.0 |
+| `score_threshold` | number | No | -- | Minimum similarity score (0.0 to 1.0) |
+| `search_method` | `"hybrid"` \| `"neural"` \| `"keyword"` | No | -- | Search strategy |
+| `expansion_strategy` | `"auto"` \| `"llm"` \| `"no_expansion"` | No | -- | Query expansion strategy |
+| `enable_reranking` | boolean | No | -- | Enable LLM-based result reranking |
+| `enable_query_interpretation` | boolean | No | -- | Enable automatic filter extraction from natural language |
+
+<Note>
+The MCP server uses the **legacy** search parameter names for backwards compatibility. These are automatically mapped to the new API parameter names by the SDK. See the [Search documentation](/search) for the mapping between legacy and new parameter names.
+</Note>
+
+**Natural language examples** -- the AI assistant will map these to the correct parameters automatically:
+
+- "Find the first 5 results" → `limit: 5`
+- "Show me results 11-20" → `limit: 10, offset: 10`
+- "Give me a summary" → `response_type: "completion"`
+- "Find the most recent documents" → `recency_bias: 0.8`
+- "Find high-quality results only" → `score_threshold: 0.8`
+- "Use keyword search" → `search_method: "keyword"`
+- "Don't expand my query" → `expansion_strategy: "no_expansion"`
+- "Disable reranking" → `enable_reranking: false`
+
+### `get-config`
+
+Returns the current server configuration: collection ID, base URL, API key status, and available tools. No parameters.
+
+---
+
+## Architecture
+
+```
+AI Assistant (Cursor, Claude, OpenAI, VS Code)
+         │
+         ├── stdio (local mode)
+         │        └── npx airweave-mcp-search
+         │
+         └── HTTP POST (hosted mode)
+                  └── https://mcp.airweave.ai/mcp
+                           │
+                     MCP Server (Node.js)
+                           │
+                     Airweave SDK
+                           │
+                     POST /collections/{id}/search
+                           │
+                     Airweave API
+```
+
+- **Local mode**: One MCP server process per user. API key and collection are set via environment variables. Communication over stdio.
+- **Hosted mode**: Stateless HTTP server. A fresh MCP server instance is created for each request. API key and collection come from request headers.
+
+In both modes, the MCP server is a thin wrapper around the [Airweave SDK](/api-reference). It validates parameters, calls the search API, and formats results for the AI assistant.
+
+---
+
+## Self-hosting
+
+If you're running Airweave on your own infrastructure, point the MCP server at your instance:
+
+**Local mode:**
+
+```json
+{
+  "mcpServers": {
+    "airweave-search": {
+      "command": "npx",
+      "args": ["-y", "airweave-mcp-search"],
+      "env": {
+        "AIRWEAVE_API_KEY": "your-api-key",
+        "AIRWEAVE_COLLECTION": "your-collection-id",
+        "AIRWEAVE_BASE_URL": "https://your-airweave-instance.com"
+      }
+    }
+  }
+}
+```
+
+**Hosted mode (Docker):**
+
+```bash
+docker run -p 8080:8080 \
+  -e AIRWEAVE_COLLECTION=your-default-collection \
+  -e AIRWEAVE_BASE_URL=https://your-airweave-instance.com \
+  your-registry/mcp:latest
+```
+
+The hosted mode Docker image exposes port 8080 with a health check at `/health`.

@@ -16,28 +16,41 @@ from ..constants import (
 )
 
 
+def _is_internal_source(decorator_node):
+    """Check if a @source decorator has internal=True.
+
+    Args:
+        decorator_node: AST node for the decorator
+
+    Returns:
+        bool: True if the decorator has internal=True
+    """
+    if not isinstance(decorator_node, ast.Call):
+        return False
+
+    for keyword in decorator_node.keywords:
+        if keyword.arg == "internal" and isinstance(keyword.value, ast.Constant):
+            return keyword.value.value is True
+
+    return False
+
+
 def get_connectors_from_sources():
     """Get list of connectors from source files by scanning for @source decorator.
 
     This is the improved approach that uses the actual source code as the source of truth
-    instead of relying on icon files.
+    instead of relying on icon files. Internal sources (those with `internal=True` in the
+    @source decorator) are automatically excluded from documentation.
 
     Returns:
         list: List of connector names found in source files
     """
-    # Internal/test sources to exclude from documentation
-    EXCLUDED_SOURCES = {"snapshot", "stub"}
-
     connectors = []
 
     # Scan all Python files in the sources directory
     for source_file in BACKEND_SOURCES_DIR.glob("*.py"):
         # Skip __init__.py and _base.py
         if source_file.name in ["__init__.py", "_base.py"]:
-            continue
-
-        # Skip excluded sources (test/internal)
-        if source_file.stem in EXCLUDED_SOURCES:
             continue
 
         connector_name = source_file.stem
@@ -61,22 +74,30 @@ def get_connectors_from_sources():
                     if not inherits_from_base_source:
                         continue
 
-                    # Check if it has @source decorator
-                    has_source_decorator = any(
-                        (
+                    # Find the @source decorator
+                    source_decorator = None
+                    for decorator in node.decorator_list:
+                        if (
                             isinstance(decorator, ast.Call)
                             and isinstance(decorator.func, ast.Name)
                             and decorator.func.id == "source"
-                        )
-                        or (
-                            isinstance(decorator, ast.Name) and decorator.id == "source"
-                        )
-                        for decorator in node.decorator_list
-                    )
+                        ) or (
+                            isinstance(decorator, ast.Name)
+                            and decorator.id == "source"
+                        ):
+                            source_decorator = decorator
+                            break
 
-                    if has_source_decorator:
-                        connectors.append(connector_name)
-                        break  # Found one source class, move to next file
+                    if source_decorator is None:
+                        continue
+
+                    # Skip internal sources (internal=True in @source decorator)
+                    if _is_internal_source(source_decorator):
+                        print(f"  Skipping internal source: {connector_name}")
+                        break
+
+                    connectors.append(connector_name)
+                    break  # Found one source class, move to next file
 
         except (SyntaxError, UnicodeDecodeError) as e:
             print(f"  Warning: Could not parse {source_file}: {e}")

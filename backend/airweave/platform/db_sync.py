@@ -169,9 +169,6 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
         ImportError: If any module cannot be imported. This ensures the sync process fails if there
         are any issues.
     """
-    # Internal source files that should only be loaded when ENABLE_INTERNAL_SOURCES=true
-    internal_source_files = {"snapshot.py", "stub.py"}
-
     components = {
         "sources": [],
         "destinations": [],
@@ -188,16 +185,6 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
         for filename in files:
             if not filename.endswith(".py") or filename.startswith("_"):
                 continue
-
-            # Skip internal source files when ENABLE_INTERNAL_SOURCES is False
-            is_sources_dir = root.endswith("sources")
-            if is_sources_dir and filename in internal_source_files:
-                if not settings.ENABLE_INTERNAL_SOURCES:
-                    sync_logger.debug(
-                        f"Skipping internal source {filename} "
-                        "(set ENABLE_INTERNAL_SOURCES=true to enable)"
-                    )
-                    continue
 
             relative_path = os.path.relpath(root, PLATFORM_DIR)
             module_path = os.path.join(relative_path, filename[:-3]).replace("/", ".")
@@ -217,6 +204,18 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
                 sync_logger.error(error_msg)
                 # Re-raise the exception to fail the sync process
                 raise ImportError(f"Module import failed: {full_module_name}") from e
+
+    # Filter out internal sources when ENABLE_INTERNAL_SOURCES is False.
+    # This uses the `internal=True` flag from the @source decorator as the single source of truth.
+    if not settings.ENABLE_INTERNAL_SOURCES:
+        internal_sources = [s for s in components["sources"] if s.is_internal()]
+        if internal_sources:
+            sync_logger.debug(
+                f"Skipping {len(internal_sources)} internal source(s) "
+                f"({', '.join(s._short_name for s in internal_sources)}) "
+                "(set ENABLE_INTERNAL_SOURCES=true to enable)"
+            )
+        components["sources"] = [s for s in components["sources"] if not s.is_internal()]
 
     return components
 
@@ -431,10 +430,11 @@ async def _sync_sources(
     """
     sync_logger.info("Syncing sources to database.")
 
-    # Filter out internal sources if ENABLE_INTERNAL_SOURCES is False
+    # Filter out internal sources if ENABLE_INTERNAL_SOURCES is False.
+    # Uses the `internal=True` flag from the @source decorator as the single source of truth.
     filtered_sources = sources
     if not settings.ENABLE_INTERNAL_SOURCES:
-        filtered_sources = [s for s in sources if "Internal" not in getattr(s, "_labels", [])]
+        filtered_sources = [s for s in sources if not s.is_internal()]
         skipped_count = len(sources) - len(filtered_sources)
         if skipped_count > 0:
             sync_logger.info(

@@ -3,30 +3,46 @@ name: Build Application and Push Docker Image
 on:
   push:
     tags: ["v*"]
+
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_BACKEND: ${{ github.repository }}-backend
-  IMAGE_NAME_FRONTEND: ${{ github.repository }}-frontend
 
 jobs:
-  build-and-push-image:
-    runs-on: ubuntu-latest
+  # Build each component on native runners for each platform
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        component:
+          - name: backend
+            context: ./backend
+          - name: frontend
+            context: ./frontend
+          - name: mcp
+            context: ./mcp
+        platform:
+          - runner: ubuntu-latest
+            arch: linux/amd64
+            suffix: amd64
+          - runner: ubuntu-24.04-arm
+            arch: linux/arm64
+            suffix: arm64
+
+    runs-on: ${{ matrix.platform.runner }}
 
     permissions:
       contents: read
       packages: write
-      attestations: write
-      id-token: write
+
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
-
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -35,34 +51,72 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta-backend
+      - name: Extract metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component.name }}
 
-      - name: Build and push Docker image
-        id: push-backend
+      - name: Build and push ${{ matrix.component.name }} (${{ matrix.platform.suffix }})
         uses: docker/build-push-action@v6
         with:
-          context: ./backend
+          context: ${{ matrix.component.context }}
           push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
+          platforms: ${{ matrix.platform.arch }}
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component.name }}:${{ steps.meta.outputs.version }}-${{ matrix.platform.suffix }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Disable provenance to create simple images instead of manifest lists with attestations
+          provenance: false
+          # Cache scope includes version to allow busting corrupt caches
+          cache-from: type=gha,scope=${{ matrix.component.name }}-${{ matrix.platform.suffix }}-v2
+          cache-to: type=gha,mode=max,scope=${{ matrix.component.name }}-${{ matrix.platform.suffix }}-v2
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta-frontend
+  # Merge platform-specific images into multi-arch manifests
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+      matrix:
+        component: [backend, frontend, mcp]
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
 
-      - name: Build and push Docker image
-        id: push-frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
+      - name: Create and push multi-arch manifest
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}"
+
+          echo "Creating manifest for ${IMAGE}:${VERSION}"
+
+          # Use buildx imagetools to create multi-arch manifest from platform images
+          docker buildx imagetools create -t "${IMAGE}:${VERSION}" \
+            "${IMAGE}:${VERSION}-amd64" \
+            "${IMAGE}:${VERSION}-arm64"
+
+          # Also create 'latest' tag for version tags
+          if [[ "${VERSION}" == v* ]]; then
+            docker buildx imagetools create -t "${IMAGE}:latest" \
+              "${IMAGE}:${VERSION}-amd64" \
+              "${IMAGE}:${VERSION}-arm64"
+          fi
