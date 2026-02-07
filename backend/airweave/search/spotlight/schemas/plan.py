@@ -59,8 +59,9 @@ class SpotlightPlan(BaseModel):
     reasoning: str = Field(
         ...,
         description=(
-            "Explain your search plan: why these queries, filters, and strategy? "
-            "What are you trying to find and why do you think this approach will work?"
+            "Brief reasoning for this plan. Don't restate the user query or collection info. "
+            "Focus on: what changed from the last iteration, why this approach, "
+            "what you expect to find. Be incremental, not exhaustive."
         ),
     )
 

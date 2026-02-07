@@ -21,8 +21,8 @@ class SpotlightEvaluation(BaseModel):
 
     reasoning: str = Field(
         description=(
-            "Explain your evaluation: Why are the results sufficient or insufficient? "
-            "What aspects of the query are covered or missing?"
+            "Brief evaluation. Don't restate the user query or what was already tried. "
+            "Focus on: what the results contain, what's missing, why continue or stop."
         )
     )
 
@@ -35,11 +35,9 @@ class SpotlightEvaluation(BaseModel):
     advice: Optional[str] = Field(
         default=None,
         description=(
-            "Guidance for the planner on what to do next. "
-            "If continuing: suggest what to search for "
-            "(e.g., 'Try filtering to just Notion pages'). "
-            "If errors or zero results: analyze what went wrong and how to fix it. "
-            "E.g., 'The filter field does not exist, try without filters'."
+            "Short, actionable guidance for the planner. "
+            "Only suggest sources and entity types that exist in the collection metadata. "
+            "Focus on what to change (filters, strategy, query terms), and what was wrong. "
             "Leave empty if stopping with sufficient results."
         ),
     )

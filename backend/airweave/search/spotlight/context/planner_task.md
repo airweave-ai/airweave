@@ -14,6 +14,10 @@ When creating a plan, consider:
 - **Should results be filtered?** Can you narrow the search space to improve precision?
 - **What retrieval strategy fits best?** Semantic for natural language, keyword for exact terms.
 
+**Important**: Only filter on sources and entity types that exist in the Collection Metadata.
+Your reasoning should be incremental - don't restate the user query or collection info.
+On iteration 2+, focus on what you're changing from the previous attempt and why.
+
 ### What You Will Receive
 
 1. **User Request**
