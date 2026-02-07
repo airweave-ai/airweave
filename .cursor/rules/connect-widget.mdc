@@ -35,8 +35,7 @@ connect/src/
 │   ├── SessionProvider.tsx    # Session context provider
 │   ├── SourceItem.tsx         # Single source in picker
 │   ├── SourcesList.tsx        # Source selection grid
-│   ├── SuccessScreen.tsx      # Main connected state
-│   └── WelcomeView.tsx        # Consent/intro screen (optional feature)
+│   └── SuccessScreen.tsx      # Main connected state
 ├── hooks/
 │   └── useParentMessaging.ts  # iframe ↔ parent communication
 ├── lib/
@@ -105,7 +104,6 @@ const sendToParent = (message) => {
 ```typescript
 // Notify parent of connection changes
 notifyConnectionCreated(connectionId: string);
-notifyConnectionDeleted(connectionId: string);
 notifyStatusChange(status: SessionStatus);
 requestClose(reason: "success" | "cancel" | "error");
 ```
@@ -138,13 +136,12 @@ Theme values are injected as CSS custom properties (`--connect-*`).
 ### 5. View Navigation
 Internal view state managed within `SuccessScreen.tsx`:
 ```typescript
-type NavigateView = "connections" | "sources" | "welcome" | "configure" | "folder-selection";
+type NavigateView = "connections" | "sources" | "configure" | "folder-selection";
 ```
 
 **View flow:**
 - `connections` - List of existing source connections (default for manage mode)
 - `sources` - Source picker grid (default for connect mode)
-- `welcome` - Optional consent/intro screen shown before configure (when `showWelcomeScreen` enabled)
 - `configure` - Source configuration form (auth fields, config fields)
 - `folder-selection` - Optional folder picker shown after OAuth (when `enableFolderSelection` enabled)
 
@@ -154,18 +151,10 @@ Optional features controlled via `ConnectOptions`:
 interface ConnectOptions {
   showConnectionName?: boolean;     // Show name field in configure form (default: false)
   enableFolderSelection?: boolean;  // Show folder picker after OAuth (default: false)
-  showWelcomeScreen?: boolean;      // Show consent screen before configure (default: false)
-  hostApp?: HostAppInfo;            // Host app info for welcome screen
-}
-
-interface HostAppInfo {
-  name: string;      // e.g., "Acme Corp"
-  iconUrl?: string;  // Optional icon URL
 }
 ```
 
 **Related components:**
-- `WelcomeView.tsx` - Consent/intro screen with host app + source icons
 - `FolderSelectionView.tsx` - Wrapper for folder selection UI
 - `FolderTree.tsx` - Hierarchical folder checkbox tree with indeterminate states
 
@@ -296,3 +285,5 @@ export const API_URL = env.API_URL || import.meta.env.VITE_API_URL;
 |----------|---------|-------------|
 | `API_URL` | `http://localhost:8001` | Backend API URL |
 | `PORT` | `8082` | Server port |
+| `CSP_FRAME_ANCESTORS` | `*` | Origins allowed to embed Connect in an iframe |
+| `CSP_ADDITIONAL_CONNECT_SRC` | _(empty)_ | Extra origins for CSP connect-src (space-separated) |
