@@ -35,24 +35,54 @@ DUMMY_WEBHOOK_URL = "https://example.com/webhook"
 
 async def wait_for_sync_completed_message(
     api_client: httpx.AsyncClient,
+    source_connection_id: str | None = None,
     timeout: float = WEBHOOK_TIMEOUT,
 ) -> Dict:
-    """Poll the messages API until a sync.completed message appears."""
+    """Poll the messages API until a sync.completed message appears.
+
+    Also checks sync job status for diagnostics so we can distinguish
+    'sync never completed' from 'Svix publish failed'.
+    """
     start_time = time.time()
     last_message_id = None
+    last_status_log = 0.0
 
     while time.time() - start_time < timeout:
+        # Check for sync.completed messages
         response = await api_client.get(
             "/webhooks/messages", params={"event_types": ["sync.completed"]}
         )
-        print(f"Response during waiting... {response.text}")
         if response.status_code == 200:
             messages = response.json()
             if messages:
-                # Return the most recent message if it's new
                 if messages[0]["id"] != last_message_id:
                     return messages[0]
                 last_message_id = messages[0]["id"] if messages else None
+
+        # Every 10s, log diagnostics: sync job status + all message types
+        elapsed = time.time() - start_time
+        if elapsed - last_status_log >= 10.0:
+            last_status_log = elapsed
+
+            # Check ALL webhook messages (not just sync.completed)
+            all_msgs_resp = await api_client.get("/webhooks/messages")
+            all_msgs = all_msgs_resp.json() if all_msgs_resp.status_code == 200 else []
+            event_types_seen = [m.get("event_type") for m in all_msgs[:10]]
+
+            # Check sync job status if we have a source connection
+            sync_status = "unknown"
+            if source_connection_id:
+                sc_resp = await api_client.get(f"/source-connections/{source_connection_id}")
+                if sc_resp.status_code == 200:
+                    sc_data = sc_resp.json()
+                    sync_status = sc_data.get("status", "unknown")
+
+            print(
+                f"[{elapsed:.0f}s] Waiting for sync.completed | "
+                f"sync_status={sync_status} | "
+                f"all_messages({len(all_msgs)})={event_types_seen} | "
+                f"completed_messages_status={response.status_code}"
+            )
 
         await asyncio.sleep(0.5)
 
@@ -195,9 +225,12 @@ class TestWebhookMessages:
             },
         )
         assert response.status_code == 200
+        sc_id = response.json()["id"]
 
         # Wait for new message to appear
-        message = await wait_for_sync_completed_message(api_client, timeout=WEBHOOK_TIMEOUT)
+        message = await wait_for_sync_completed_message(
+            api_client, source_connection_id=sc_id, timeout=WEBHOOK_TIMEOUT
+        )
 
         # Verify message structure
         assert "id" in message
@@ -217,7 +250,7 @@ class TestWebhookEventTypes:
     ):
         """Test that event payloads contain all required fields."""
         # Trigger a sync
-        await api_client.post(
+        response = await api_client.post(
             "/source-connections",
             json={
                 "name": "Stub Payload Test",
@@ -229,9 +262,13 @@ class TestWebhookEventTypes:
                 "sync_immediately": True,
             },
         )
+        assert response.status_code == 200
+        sc_id = response.json()["id"]
 
         # Wait for message
-        message = await wait_for_sync_completed_message(api_client, timeout=WEBHOOK_TIMEOUT)
+        message = await wait_for_sync_completed_message(
+            api_client, source_connection_id=sc_id, timeout=WEBHOOK_TIMEOUT
+        )
         payload = message.get("payload", {})
 
         # Verify required fields per SyncEventPayload schema
@@ -250,7 +287,7 @@ class TestWebhookEventTypes:
     ):
         """Test that completed events include the job_id in correct format."""
         # Trigger a sync
-        await api_client.post(
+        response = await api_client.post(
             "/source-connections",
             json={
                 "name": "Stub Job ID Test",
@@ -262,9 +299,13 @@ class TestWebhookEventTypes:
                 "sync_immediately": True,
             },
         )
+        assert response.status_code == 200
+        sc_id = response.json()["id"]
 
         # Wait for message
-        message = await wait_for_sync_completed_message(api_client, timeout=WEBHOOK_TIMEOUT)
+        message = await wait_for_sync_completed_message(
+            api_client, source_connection_id=sc_id, timeout=WEBHOOK_TIMEOUT
+        )
         payload = message.get("payload", {})
 
         assert "job_id" in payload
