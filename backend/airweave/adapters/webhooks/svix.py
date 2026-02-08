@@ -185,7 +185,7 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
         Wraps infrastructure errors in WebhookPublishError so the event
         bus sees a domain exception — never raw Svix/HTTP internals.
         """
-        event_type = str(event.event_type)
+        event_type = event.event_type.value
         try:
             payload = event.model_dump(mode="json")
             await self._publish_internal(event.organization_id, event_type, payload)
