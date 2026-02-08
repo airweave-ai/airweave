@@ -216,9 +216,14 @@ class MistralOcrClient:
                 final_results.append(r)
 
         if failed:
-            logger.error(
-                f"OCR failed for {len(failed)}/{len(chunks)} chunks: " + "; ".join(failed)
-            )
+            logger.error(f"OCR failed for {len(failed)}/{len(chunks)} chunks: " + "; ".join(failed))
+
+            # If ALL chunks failed, Mistral is likely down -- fail the sync
+            if len(failed) == len(chunks):
+                raise SyncFailureError(
+                    f"OCR failed for ALL {len(chunks)} chunks (Mistral outage?): "
+                    + "; ".join(failed)
+                )
 
         logger.debug(f"OCR batch complete: {len(final_results)}/{len(chunks)} succeeded")
         return final_results
