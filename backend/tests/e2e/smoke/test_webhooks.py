@@ -271,27 +271,29 @@ class TestWebhookEventTypes:
         )
         payload = message.get("payload", {})
 
-        # Verify required fields per SyncEventPayload schema
+        # Verify required fields per SyncLifecycleEvent schema
         assert "event_type" in payload
-        assert "job_id" in payload
+        assert "sync_job_id" in payload
+        assert "sync_id" in payload
+        assert "collection_id" in payload
         assert "collection_readable_id" in payload
         assert "collection_name" in payload
+        assert "source_connection_id" in payload
         assert "source_type" in payload
-        assert "status" in payload
         assert "timestamp" in payload
 
-    async def test_completed_event_has_job_id(
+    async def test_completed_event_has_sync_job_id(
         self,
         api_client: httpx.AsyncClient,
         collection: Dict,
     ):
-        """Test that completed events include the job_id in correct format."""
+        """Test that completed events include the sync_job_id in correct format."""
         # Trigger a sync
         response = await api_client.post(
             "/source-connections",
             json={
                 "name": "Stub Job ID Test",
-                "description": "Testing job_id presence",
+                "description": "Testing sync_job_id presence",
                 "short_name": "stub",
                 "readable_collection_id": collection["readable_id"],
                 "authentication": {"credentials": {"stub_key": "key"}},
@@ -308,10 +310,10 @@ class TestWebhookEventTypes:
         )
         payload = message.get("payload", {})
 
-        assert "job_id" in payload
-        job_id = payload["job_id"]
+        assert "sync_job_id" in payload
+        sync_job_id = payload["sync_job_id"]
         # UUID format validation
-        assert len(job_id) == 36  # xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        assert len(sync_job_id) == 36  # xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
 
 # =============================================================================
