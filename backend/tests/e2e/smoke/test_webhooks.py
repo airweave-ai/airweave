@@ -45,6 +45,7 @@ async def wait_for_sync_completed_message(
         response = await api_client.get(
             "/webhooks/messages", params={"event_types": ["sync.completed"]}
         )
+        print(f"Response during waiting... {response.text}")
         if response.status_code == 200:
             messages = response.json()
             if messages:
