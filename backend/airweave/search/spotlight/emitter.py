@@ -60,8 +60,6 @@ class SpotlightLoggingEmitter:
         elif isinstance(event, SpotlightEvaluatingEvent):
             ev = event.evaluation
             self._ctx.logger.info(f"{prefix} Evaluation (iter {event.iteration}): {ev.reasoning}")
-            if ev.advice:
-                self._ctx.logger.info(f"{prefix} Advice: {ev.advice}")
         elif isinstance(event, SpotlightDoneEvent):
             result_count = len(event.response.results)
             self._ctx.logger.info(f"{prefix} Done: {result_count} results")

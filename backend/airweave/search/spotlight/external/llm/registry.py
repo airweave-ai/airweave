@@ -77,6 +77,23 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
                 param_value="high",
             ),
         ),
+        LLMModel.ZAI_GLM_4_7: LLMModelSpec(
+            api_model_name="zai-glm-4.7",
+            context_window=131_000,
+            max_output_tokens=40_000,
+            # Using tiktoken o200k_harmony as approximation — the actual GLM tokenizer
+            # isn't publicly documented, but since we only use it for token counting
+            # (budget estimation), a close approximation is sufficient.
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=500,
+            rate_limit_tpm=500_000,
+            # GLM reasoning is enabled by default. disable_reasoning=False keeps it on.
+            reasoning=ReasoningConfig(
+                param_name="disable_reasoning",
+                param_value=False,
+            ),
+        ),
     },
 }
 

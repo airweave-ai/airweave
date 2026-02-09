@@ -11,20 +11,14 @@ class SpotlightEntityTypeMetadata(BaseModel):
     fields: dict[str, str] = Field(..., description="Field names mapped to their descriptions.")
 
     def to_md(self) -> str:
-        """Convert entity type metadata to markdown format."""
-        lines = [
-            f"#### {self.name} ({self.count} entities)",
-            "",
-            "| Field | Description |",
-            "|-------|-------------|",
-        ]
+        """Convert entity type metadata to compact markdown format.
 
-        for field_name, field_desc in sorted(self.fields.items()):
-            # Escape pipe characters in descriptions
-            escaped_desc = field_desc.replace("|", "\\|")
-            lines.append(f"| {field_name} | {escaped_desc} |")
-
-        return "\n".join(lines)
+        Shows entity type name, count, and field names as a comma-separated list.
+        Field descriptions are omitted to save tokens — the field names are
+        self-explanatory enough for the LLM to craft queries and filters.
+        """
+        field_names = ", ".join(sorted(self.fields.keys()))
+        return f"- **{self.name}** ({self.count}) — fields: {field_names}"
 
 
 class SpotlightSourceMetadata(BaseModel):
@@ -37,16 +31,24 @@ class SpotlightSourceMetadata(BaseModel):
     )
 
     def to_md(self) -> str:
-        """Convert source metadata to markdown format."""
+        """Convert source metadata to compact markdown format.
+
+        Skips entity types with 0 entities to reduce prompt size.
+        """
+        # Only show entity types that actually have entities
+        non_empty = [et for et in self.entity_types if et.count > 0]
+        if not non_empty:
+            return f"### {self.short_name}\n{self.description}\n\n*(no entities)*"
+
+        total = sum(et.count for et in non_empty)
         lines = [
-            f"### {self.short_name}",
+            f"### {self.short_name} ({total} entities total)",
             f"{self.description}",
             "",
         ]
 
-        for entity_type in self.entity_types:
+        for entity_type in non_empty:
             lines.append(entity_type.to_md())
-            lines.append("")
 
         return "\n".join(lines)
 

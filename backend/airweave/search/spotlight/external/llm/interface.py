@@ -21,8 +21,17 @@ class SpotlightLLMInterface(Protocol):
         self,
         prompt: str,
         schema: type[T],
+        system_prompt: str,
     ) -> T:
-        """Generate structured output matching the schema."""
+        """Generate structured output matching the schema.
+
+        Args:
+            prompt: The user prompt (dynamic context: collection metadata, results, history).
+            schema: Pydantic model class for the response.
+            system_prompt: System prompt (static instructions: task description, rules).
+                Sent as a system message so the model treats these as higher-priority
+                instructions separate from the user context.
+        """
         ...
 
     async def close(self) -> None:

@@ -38,12 +38,13 @@ from .request import SpotlightRequest
 from .response import SpotlightResponse
 from .retrieval_strategy import SpotlightRetrievalStrategy
 from .search_result import (
+    ResultBrief,
+    ResultBriefEntry,
     SpotlightAccessControl,
     SpotlightBreadcrumb,
     SpotlightSearchResult,
     SpotlightSystemMetadata,
 )
-from .search_result_summary import SpotlightSearchResultSummary
 from .state import SpotlightCurrentIteration, SpotlightState
 
 __all__ = [
@@ -90,12 +91,12 @@ __all__ = [
     # Retrieval strategy
     "SpotlightRetrievalStrategy",
     # Search result
+    "ResultBrief",
+    "ResultBriefEntry",
     "SpotlightAccessControl",
     "SpotlightBreadcrumb",
     "SpotlightSearchResult",
     "SpotlightSystemMetadata",
-    # Search result summary
-    "SpotlightSearchResultSummary",
     # State
     "SpotlightCurrentIteration",
     "SpotlightState",

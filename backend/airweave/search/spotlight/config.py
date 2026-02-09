@@ -22,6 +22,7 @@ class LLMModel(str, Enum):
     """Supported LLM models (global across providers)."""
 
     GPT_OSS_120B = "gpt-oss-120b"
+    ZAI_GLM_4_7 = "zai-glm-4.7"
 
 
 # --- Tokenizer ---
@@ -90,7 +91,7 @@ class SpotlightConfig:
 
     # LLM
     LLM_PROVIDER = LLMProvider.CEREBRAS
-    LLM_MODEL = LLMModel.GPT_OSS_120B
+    LLM_MODEL = LLMModel.ZAI_GLM_4_7
 
     # Tokenizer
     # Note: Must be compatible with the chosen LLM model (validated at startup)

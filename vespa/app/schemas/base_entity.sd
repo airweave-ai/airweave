@@ -97,6 +97,7 @@ schema base_entity {
 
         field airweave_system_metadata_source_name type string {
             indexing: attribute | summary
+            attribute: fast-search
         }
 
         # Chunk index within the parent entity
