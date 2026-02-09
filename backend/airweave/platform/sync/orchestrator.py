@@ -213,7 +213,10 @@ class SyncOrchestrator:
                         await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
                     except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
                         self.sync_context.logger.error(
-                            f"Guard rail check failed: {type(guard_error).__name__}: {str(guard_error)}"
+                            "Guard rail check failed: {type}: {error}".format(
+                                type=type(guard_error).__name__,
+                                error=str(guard_error),
+                            )
                         )
                         stream_error = guard_error
                         # Flush any buffered work so we don't drop it
@@ -556,6 +559,10 @@ class SyncOrchestrator:
         # Save cursor data if it exists (for incremental syncs)
         await self._save_cursor_data()
 
+        # For snapshot sources: update short_name to the original source so that
+        # downstream consumers (search, metadata builders) see the real source.
+        await self._update_snapshot_short_name()
+
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.COMPLETED,
@@ -601,6 +608,55 @@ class SyncOrchestrator:
         self.sync_context.logger.info(
             f"Completed sync job {self.sync_context.sync_job.id} successfully. Stats: {stats}"
         )
+
+    async def _update_snapshot_short_name(self) -> None:
+        """For snapshot sources, update source_connection.short_name to the original source.
+
+        After a successful sync, the snapshot source_connection's short_name is changed
+        from "snapshot" to the original source name (e.g., "github", "gmail"). This makes
+        the source_connection transparent to downstream consumers (search, metadata builders,
+        filters). The original source name is read from the entity's system metadata.
+
+        Re-syncing a completed snapshot is blocked by a guard in SourceBuilder.
+        """
+        if self.sync_context.source_instance._short_name != "snapshot":
+            return
+
+        try:
+            from sqlalchemy import select as sa_select
+
+            from airweave import crud
+            from airweave.models.entity import Entity as EntityModel
+
+            async with get_db_context() as db:
+                # Get the original source_name from any synced entity
+                result = await db.execute(
+                    sa_select(EntityModel.source_name)
+                    .where(EntityModel.sync_id == self.sync_context.sync.id)
+                    .limit(1)
+                )
+                original_source_name = result.scalar_one_or_none()
+
+                if not original_source_name or original_source_name == "snapshot":
+                    self.sync_context.logger.debug(
+                        "[Snapshot] Could not determine original source name, keeping 'snapshot'"
+                    )
+                    return
+
+                # Update source_connection short_name
+                source_connection = await crud.source_connection.get_by_sync_id(
+                    db, sync_id=self.sync_context.sync.id, ctx=self.sync_context.ctx
+                )
+                if source_connection:
+                    source_connection.short_name = original_source_name
+                    await db.commit()
+                    self.sync_context.logger.info(
+                        f"[Snapshot] Updated source_connection short_name: "
+                        f"snapshot → {original_source_name}"
+                    )
+        except Exception as e:
+            # Non-fatal: the metadata builder fallback handles snapshot sources anyway
+            self.sync_context.logger.warning(f"[Snapshot] Failed to update short_name: {e}")
 
     async def _save_cursor_data(self) -> None:
         """Save cursor data to database if it exists."""

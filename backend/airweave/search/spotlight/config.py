@@ -98,8 +98,13 @@ class SpotlightConfig:
     TOKENIZER_ENCODING = TokenizerEncoding.O200K_HARMONY
 
     # Dense embedder
+    # Must match the model used by the sync pipeline's embedder.
+    # The sync pipeline uses text-embedding-3-small for dims <= 1536
+    # and text-embedding-3-large for dims > 1536. Using the wrong model
+    # here produces query embeddings in a different vector space than
+    # the stored document embeddings, making semantic search useless.
     DENSE_EMBEDDER_PROVIDER = DenseEmbedderProvider.OPENAI
-    DENSE_EMBEDDER_MODEL = DenseEmbedderModel.TEXT_EMBEDDING_3_LARGE
+    DENSE_EMBEDDER_MODEL = DenseEmbedderModel.TEXT_EMBEDDING_3_SMALL
 
     # Sparse embedder
     SPARSE_EMBEDDER_PROVIDER = SparseEmbedderProvider.FASTEMBED

@@ -210,12 +210,34 @@ class SourceContextBuilder:
                 f"clean up orphaned schedules."
             )
 
-        # 2. Get Connection only to access integration_credential_id
+        # 2. Guard: snapshot sources that completed have their short_name updated
+        # to the original source (e.g., "github"). Detect this by checking if the
+        # stored config validates as a SnapshotConfig.
+        if source_connection_obj.short_name != "snapshot":
+            from pydantic import ValidationError
+
+            from airweave.platform.configs.config import SnapshotConfig
+
+            try:
+                SnapshotConfig(**(source_connection_obj.config_fields or {}))
+                # Config is a valid SnapshotConfig but short_name is not "snapshot"
+                # → this is a completed snapshot, can't re-sync
+                from airweave.platform.sync.exceptions import SyncFailureError
+
+                raise SyncFailureError(
+                    f"Cannot re-sync a completed snapshot source connection "
+                    f"('{source_connection_obj.name}'). Snapshot data is immutable — "
+                    f"create a new snapshot source connection instead."
+                )
+            except ValidationError:
+                pass  # Not a snapshot config, proceed normally
+
+        # 3. Get Connection only to access integration_credential_id
         connection = await crud.connection.get(db, source_connection_obj.connection_id, ctx)
         if not connection:
             raise NotFoundException("Connection not found")
 
-        # 3. Get Source model using short_name from SourceConnection
+        # 4. Get Source model using short_name from SourceConnection
         source_model = await crud.source.get_by_short_name(db, source_connection_obj.short_name)
         if not source_model:
             raise NotFoundException(f"Source not found: {source_connection_obj.short_name}")

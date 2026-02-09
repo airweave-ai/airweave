@@ -74,7 +74,7 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             rate_limit_tpm=1_000_000,
             reasoning=ReasoningConfig(
                 param_name="reasoning_effort",
-                param_value="medium",
+                param_value="high",
             ),
         ),
     },

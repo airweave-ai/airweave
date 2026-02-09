@@ -400,7 +400,14 @@ class EntityPipeline:
             if entity.airweave_system_metadata is None:
                 entity.airweave_system_metadata = AirweaveSystemMetadata()
 
-            entity.airweave_system_metadata.source_name = sync_context.source_instance._short_name
+            # For snapshot sources, preserve the original source_name from the captured entity
+            # (the entity was reconstructed with its original system metadata intact).
+            # For all other sources, set source_name from the current source instance.
+            is_snapshot = sync_context.source_instance._short_name == "snapshot"
+            if not (is_snapshot and entity.airweave_system_metadata.source_name):
+                entity.airweave_system_metadata.source_name = (
+                    sync_context.source_instance._short_name
+                )
             entity.airweave_system_metadata.entity_type = entity.__class__.__name__
             entity.airweave_system_metadata.sync_id = sync_context.sync.id
             entity.airweave_system_metadata.sync_job_id = sync_context.sync_job.id
