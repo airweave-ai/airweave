@@ -100,6 +100,7 @@ class CerebrasLLM:
         self,
         prompt: str,
         schema: type[T],
+        system_prompt: str,
     ) -> T:
         """Generate structured output matching the schema.
 
@@ -109,8 +110,11 @@ class CerebrasLLM:
         Implements exponential backoff retry on transient failures.
 
         Args:
-            prompt: The prompt text.
+            prompt: The user prompt (dynamic context).
             schema: Pydantic model class for the response.
+            system_prompt: System prompt (static instructions). Sent as a system message
+                before the user message, giving the instructions higher priority in the
+                model's attention.
 
         Returns:
             Parsed response matching schema.
@@ -131,11 +135,16 @@ class CerebrasLLM:
         # Normalize schema for Cerebras compatibility
         schema_json = self._normalize_schema_for_cerebras(schema_json)
 
-        # Build messages (single user message with the prompt)
-        messages = [{"role": "user", "content": prompt}]
+        # Build messages: system (instructions) + user (context)
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
 
         # Count tokens accurately using the tokenizer
-        input_tokens = self._tokenizer.count_tokens(prompt)
+        input_tokens = self._tokenizer.count_tokens(system_prompt) + self._tokenizer.count_tokens(
+            prompt
+        )
 
         # Execute with retry logic
         return await self._execute_with_retry(messages, schema, schema_json, input_tokens)
@@ -230,6 +239,7 @@ class CerebrasLLM:
         response = await self._client.chat.completions.create(
             model=self._model_spec.api_model_name,
             messages=messages,
+            temperature=0.3,
             response_format={
                 "type": "json_schema",
                 "json_schema": {
@@ -246,7 +256,7 @@ class CerebrasLLM:
         # Extract content from response
         content = response.choices[0].message.content
         if not content:
-            raise RuntimeError("Cerebras returned empty response content")
+            raise TimeoutError("Cerebras returned empty response content (retryable)")
 
         # Record actual token usage
         if response.usage:
@@ -335,46 +345,43 @@ class CerebrasLLM:
             {"type": "string"}
         """
         normalized = copy.deepcopy(schema_dict)
-
-        def walk(node: Any) -> None:
-            if isinstance(node, dict):
-                # Handle arrays
-                if node.get("type") == "array":
-                    # Remove minItems/maxItems (not supported)
-                    node.pop("minItems", None)
-                    node.pop("maxItems", None)
-
-                    # If prefixItems exists, set items: false (for tuple schemas)
-                    if "prefixItems" in node:
-                        node["items"] = False
-                    # Remove items: true if present (not supported)
-                    elif node.get("items") is True:
-                        node.pop("items")
-
-                # Handle strings
-                if node.get("type") == "string":
-                    # Remove pattern (regex not supported)
-                    node.pop("pattern", None)
-                    # Remove format (email, date-time, uuid, etc. not supported)
-                    node.pop("format", None)
-
-                # Remove any informational-only fields
-                # (Cerebras may reject unknown fields in strict mode)
-                node.pop("title", None)
-                node.pop("description", None)
-                node.pop("examples", None)
-                node.pop("default", None)
-
-                # Recurse into nested structures
-                for v in node.values():
-                    walk(v)
-
-            elif isinstance(node, list):
-                for v in node:
-                    walk(v)
-
-        walk(normalized)
+        self._walk_schema(normalized)
         return normalized
+
+    def _walk_schema(self, node: Any) -> None:
+        """Recursively walk and normalize all nodes in a JSON schema."""
+        if isinstance(node, dict):
+            self._normalize_schema_node(node)
+            for v in node.values():
+                self._walk_schema(v)
+        elif isinstance(node, list):
+            for v in node:
+                self._walk_schema(v)
+
+    @staticmethod
+    def _normalize_schema_node(node: dict) -> None:
+        """Normalize a single dict node for Cerebras compatibility."""
+        # Handle arrays: remove unsupported constraints
+        if node.get("type") == "array":
+            node.pop("minItems", None)
+            node.pop("maxItems", None)
+            if "prefixItems" in node:
+                node["items"] = False
+            elif node.get("items") is True:
+                node.pop("items")
+
+        # Handle strings: remove unsupported constraints
+        if node.get("type") == "string":
+            node.pop("pattern", None)
+            node.pop("format", None)
+
+        # Remove informational-only fields
+        for key in ("title", "description", "examples", "default"):
+            node.pop(key, None)
+
+        # Cerebras strict mode requires additionalProperties: false on all objects
+        if node.get("type") == "object" and "properties" in node:
+            node["additionalProperties"] = False
 
     async def close(self) -> None:
         """Clean up resources.
