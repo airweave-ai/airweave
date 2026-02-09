@@ -51,6 +51,13 @@ those terms in your search query rather than using filters.
 4. **Embedding**: Each chunk gets a dense embedding (semantic) and sparse embedding (keyword)
 5. **Indexing**: Entities are stored and become searchable
 
+### What Chunking Means for Search
+
+Each chunk is a **separate search result**. A long document (e.g., a 10-page PDF) is split
+into multiple chunks that share the same `original_entity_id`. A search result showing
+chunk 2 of a document means you're seeing one section — other sections exist in sibling
+chunks.
+
 ### Textual Representation
 
 The `textual_representation` field is purpose-built for semantic search. Not all entity fields
