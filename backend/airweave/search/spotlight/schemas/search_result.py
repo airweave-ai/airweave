@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterator, Optional
 
@@ -133,23 +134,28 @@ class SpotlightSearchResult(BaseModel):
     )
 
     def to_md(self) -> str:
-        """Render the full search result as markdown.
+        """Render the search result as markdown for LLM context.
 
-        Includes all fields with nested to_md() calls. Does not truncate any data.
+        Includes base metadata, system metadata, access control, and the FULL
+        textual representation. Omits source-specific fields (already captured
+        in textual_representation) and download URLs (massive S3 pre-signed URLs)
+        to maximize how many results fit in the context window.
 
         Returns:
-            Markdown string with complete result information.
+            Markdown string with essential result information.
         """
         lines = [
             f"### {self.name}",
             "",
             f"**Entity ID:** {self.entity_id}",
             f"**Relevance Score:** {self.relevance_score:.4f}",
-            f"**Web URL:** {self.web_url}",
         ]
 
-        if self.url:
-            lines.append(f"**Download URL:** {self.url}")
+        # Web URL — strip query params from long URLs (S3 pre-signed URLs)
+        web_url_display = self.web_url
+        if len(web_url_display) > 200:
+            web_url_display = web_url_display.split("?")[0]
+        lines.append(f"**Web URL:** {web_url_display}")
 
         # Timestamps
         created = self.created_at.isoformat() if self.created_at else "unknown"
@@ -177,21 +183,53 @@ class SpotlightSearchResult(BaseModel):
 
         lines.append("")
 
-        # Full textual representation (no truncation)
+        # Full textual representation (NEVER truncated)
         lines.append("**Content:**")
         lines.append("```")
         lines.append(self.textual_representation)
         lines.append("```")
 
-        lines.append("")
+        return "\n".join(lines)
 
-        # Source fields (complete JSON, no truncation)
+    def to_full_md(self) -> str:
+        """Render the full search result as markdown including source fields.
+
+        Includes everything from to_md() plus source-specific fields and download URLs.
+        Used for debugging and detailed inspection, NOT for LLM context (too large).
+
+        Returns:
+            Markdown string with complete result information.
+        """
+        lines = [self.to_md()]
+
+        if self.url:
+            lines.append("")
+            # Strip query params from download URLs too
+            url_display = self.url
+            if len(url_display) > 200:
+                url_display = url_display.split("?")[0]
+            lines.append(f"**Download URL:** {url_display}")
+
+        lines.append("")
         lines.append("**Source Fields:**")
         lines.append("```json")
         lines.append(json.dumps(self.source_fields, indent=2, default=str))
         lines.append("```")
 
         return "\n".join(lines)
+
+
+@dataclass
+class ResultsSectionInfo:
+    """Information about the rendered results section.
+
+    Returned by build_results_section so callers (evaluator, composer)
+    know exactly how many results were included vs truncated.
+    """
+
+    markdown: str
+    results_shown: int
+    results_total: int
 
 
 class SpotlightSearchResults(BaseModel):
@@ -232,11 +270,11 @@ class SpotlightSearchResults(BaseModel):
         results: SpotlightSearchResults | None,
         tokenizer: SpotlightTokenizerInterface,
         budget: int,
-    ) -> str:
+    ) -> ResultsSectionInfo:
         """Build results markdown within token budget, handling None case.
 
-        This is the main entry point for the evaluator to get results markdown.
-        Handles the case where results is None (search not yet executed).
+        This is the main entry point for the evaluator/composer to get results
+        markdown. Handles the case where results is None (search not yet executed).
 
         Args:
             results: The results object, or None if search not executed.
@@ -244,12 +282,21 @@ class SpotlightSearchResults(BaseModel):
             budget: Maximum tokens for results content.
 
         Returns:
-            Markdown string with results (or NO_RESULTS_MESSAGE if None/empty).
+            ResultsSectionInfo with markdown, results_shown, and results_total.
         """
         if results is None or len(results) == 0:
-            return NO_RESULTS_MESSAGE
+            return ResultsSectionInfo(
+                markdown=NO_RESULTS_MESSAGE,
+                results_shown=0,
+                results_total=0,
+            )
 
-        return results.to_md_with_budget(tokenizer, budget)
+        markdown, results_shown = results.to_md_with_budget(tokenizer, budget)
+        return ResultsSectionInfo(
+            markdown=markdown,
+            results_shown=results_shown,
+            results_total=len(results),
+        )
 
     def iter_by_relevance(self) -> Iterator[SpotlightSearchResult]:
         """Iterate over results from highest to lowest relevance.
@@ -265,7 +312,7 @@ class SpotlightSearchResults(BaseModel):
         self,
         tokenizer: SpotlightTokenizerInterface,
         budget: int,
-    ) -> str:
+    ) -> tuple[str, int]:
         """Build results markdown within the token budget.
 
         Results are added by relevance (highest first) until budget is exhausted.
@@ -278,7 +325,7 @@ class SpotlightSearchResults(BaseModel):
             budget: Maximum tokens for results content.
 
         Returns:
-            Markdown string with results, potentially truncated.
+            Tuple of (markdown string, number of results included).
         """
         result_parts: list[str] = []
         tokens_used = 0
@@ -301,10 +348,69 @@ class SpotlightSearchResults(BaseModel):
 
         # If we couldn't fit any results, indicate that
         if not result_parts:
-            return RESULTS_FULLY_TRUNCATED_NOTICE
+            return RESULTS_FULLY_TRUNCATED_NOTICE, 0
 
         # Add header with counts
         total = len(self.results)
         header = f"**{results_included} of {total} results shown** (by relevance):\n\n"
 
-        return header + "\n\n---\n\n".join(result_parts)
+        return header + "\n\n---\n\n".join(result_parts), results_included
+
+
+@dataclass
+class ResultBriefEntry:
+    """A single entry in a ResultBrief.
+
+    Contains just enough metadata for the planner to know what was found
+    and to build filters for exploration. Includes parent breadcrumb info
+    so the planner can filter by breadcrumb entity_type, entity_id, or name.
+    """
+
+    name: str
+    source_name: str
+    entity_type: str
+    original_entity_id: str
+    chunk_index: int
+    relevance_score: float
+    breadcrumb_path: str
+    parent_breadcrumb_name: Optional[str] = None
+    parent_breadcrumb_entity_type: Optional[str] = None
+    parent_breadcrumb_entity_id: Optional[str] = None
+
+
+@dataclass
+class ResultBrief:
+    """Deterministic summary of search results for history.
+
+    Built from raw search results without any LLM involvement.
+    Compact (~200 tokens for 10 entries) vs LLM-generated summaries (~800+ tokens).
+    """
+
+    total_count: int
+    entries: list[ResultBriefEntry]
+
+    def to_md(self) -> str:
+        """Render the result brief as markdown for planner history.
+
+        Returns:
+            Compact markdown summary of what was found.
+        """
+        if not self.entries:
+            return "**Results:** 0 found"
+
+        lines = [f"**Results ({self.total_count} found):**"]
+        for i, entry in enumerate(self.entries, 1):
+            parent_info = ""
+            if entry.parent_breadcrumb_name:
+                parent_info = (
+                    f" | parent: {entry.parent_breadcrumb_name} "
+                    f"({entry.parent_breadcrumb_entity_type})"
+                    f" [{entry.parent_breadcrumb_entity_id}]"
+                )
+            lines.append(
+                f"{i}. **{entry.name}** ({entry.entity_type} from {entry.source_name}) "
+                f"— score {entry.relevance_score:.3f}, "
+                f"chunk {entry.chunk_index} of `{entry.original_entity_id}` | "
+                f"path: {entry.breadcrumb_path}{parent_info}"
+            )
+        return "\n".join(lines)
