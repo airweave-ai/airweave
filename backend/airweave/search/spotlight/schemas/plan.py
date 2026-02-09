@@ -36,8 +36,25 @@ class SpotlightSearchQuery(BaseModel):
 
 
 class SpotlightPlan(BaseModel):
-    """Spotlight plan."""
+    """Spotlight plan.
 
+    Field order matters — the model generates JSON fields sequentially.
+    By placing reasoning first, the model must think through the strategy ledger
+    and articulate its plan BEFORE committing to parameters. This prevents
+    post-hoc rationalization.
+    """
+
+    reasoning: str = Field(
+        ...,
+        description=(
+            "Your reasoning as natural inner monologue — think out loud. "
+            "e.g. 'Let me try a hybrid search here since the query is broad...', "
+            "'Hmm, the keyword search missed it — maybe the document uses different wording...' "
+            "Don't restate the user query or collection info. "
+            "Focus on: what changed from the last iteration, why this approach, "
+            "what you expect to find. Be incremental, not exhaustive."
+        ),
+    )
     query: SpotlightSearchQuery = Field(..., description="Search query.")
     filter_groups: List[SpotlightFilterGroup] = Field(
         default_factory=list,
@@ -48,25 +65,18 @@ class SpotlightPlan(BaseModel):
             "Leave empty for no filtering."
         ),
     )
-    limit: int = Field(..., ge=1, description="Maximum number of results to return.")
+    limit: int = Field(..., ge=1, le=200, description="Maximum number of results to return.")
     offset: int = Field(..., ge=0, description="Number of results to skip (for pagination).")
     retrieval_strategy: SpotlightRetrievalStrategy = Field(
         ...,
-        description="The retrieval strategy: 'semantic' for vector similarity, "
-        "'keyword' for BM25 text matching, 'hybrid' for both combined.",
-    )
-    reasoning: str = Field(
-        ...,
-        description=(
-            "Your reasoning as natural inner monologue — think out loud. "
-            "e.g. 'Let me try a hybrid search here since the query is broad...', "
-            "'Hmm, the keyword search missed it — maybe the document uses different wording...' "
-            "Don't restate the user query or collection info. "
-            "Focus on: what changed from the last iteration, why this approach, "
-            "what you expect to find. Be incremental, not exhaustive. "
-            "On iteration 2+: the advice from your previous evaluation already explains the "
-            "direction — do NOT repeat it. Only add what's new about this specific plan."
-        ),
+        description="The retrieval strategy. 'semantic': returns conceptually similar "
+        "chunks even without exact term matches — best for exploration and filter-based "
+        "retrieval (e.g., by original_entity_id, chunk_index, breadcrumbs). 'keyword': "
+        "returns ONLY chunks containing the query terms — precise but will silently "
+        "exclude chunks that match filters but lack the query words. 'hybrid': combines "
+        "both (chunk can match via either) — good default but keyword still influences "
+        "results. ALWAYS use 'semantic' when filtering by original_entity_id or "
+        "chunk_index to get all chunks of a document.",
     )
 
     def to_md(self) -> str:
@@ -78,6 +88,8 @@ class SpotlightPlan(BaseModel):
             Markdown string representing this plan.
         """
         lines = ["**Plan:**"]
+
+        lines.append(f"- Reasoning: {self.reasoning}")
 
         # Query (uses SpotlightSearchQuery.to_md())
         lines.append("**Query:**")
@@ -94,7 +106,5 @@ class SpotlightPlan(BaseModel):
                 lines.append(f"{prefix}{group.to_md()}")
         else:
             lines.append("- Filters: none")
-
-        lines.append(f"- Reasoning: {self.reasoning}")
 
         return "\n".join(lines)

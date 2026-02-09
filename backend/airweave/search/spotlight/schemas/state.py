@@ -29,6 +29,10 @@ class SpotlightCurrentIteration(BaseModel):
     search_results: Optional[SpotlightSearchResults] = Field(
         default=None, description="Search results."
     )
+    search_error: Optional[str] = Field(
+        default=None,
+        description="Error message if the search query failed. None means search succeeded.",
+    )
     evaluation: Optional[SpotlightEvaluation] = Field(default=None, description="Evaluation.")
 
 
@@ -51,3 +55,8 @@ class SpotlightState(BaseModel):
     current_iteration: SpotlightCurrentIteration = Field(..., description="The current iteration.")
 
     history: Optional[SpotlightHistory] = Field(default=None, description="The history.")
+
+    is_consolidation: bool = Field(
+        default=False,
+        description="Whether this is a consolidation pass (final search after exhaustion).",
+    )

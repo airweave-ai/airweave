@@ -22,11 +22,22 @@ class SpotlightPlanningEvent(BaseModel):
 
     Contains the full plan so consumers can access reasoning, query,
     strategy, filters, limit, offset -- whatever they need.
+
+    Also includes history_shown / history_total so consumers can see
+    how much of the search history the planner actually saw.
     """
 
     type: Literal["planning"] = "planning"
     iteration: int = Field(..., description="Current iteration number (0-indexed).")
     plan: SpotlightPlan = Field(..., description="The full search plan.")
+    is_consolidation: bool = Field(
+        default=False,
+        description="Whether this is a consolidation pass (final search after exhaustion).",
+    )
+    history_shown: int = Field(
+        ..., description="Number of detailed history iterations included in the planner prompt."
+    )
+    history_total: int = Field(..., description="Total number of past iterations.")
 
 
 class SpotlightSearchingEvent(BaseModel):
@@ -46,13 +57,25 @@ class SpotlightSearchingEvent(BaseModel):
 class SpotlightEvaluatingEvent(BaseModel):
     """Emitted after the evaluator assesses search results.
 
-    Contains the full evaluation so consumers can access reasoning,
-    should_continue, advice, result_summaries -- whatever they need.
+    Contains the full evaluation (reasoning + should_continue).
+
+    Also includes results_shown / results_total and history_shown / history_total
+    so consumers can see how much context the evaluator actually saw.
     """
 
     type: Literal["evaluating"] = "evaluating"
     iteration: int = Field(..., description="Current iteration number (0-indexed).")
     evaluation: SpotlightEvaluation = Field(..., description="The full evaluation.")
+    results_shown: int = Field(
+        ..., description="Number of search results included in the evaluator prompt."
+    )
+    results_total: int = Field(
+        ..., description="Total number of search results returned by the search engine."
+    )
+    history_shown: int = Field(
+        ..., description="Number of detailed history iterations included in the evaluator prompt."
+    )
+    history_total: int = Field(..., description="Total number of past iterations.")
 
 
 class SpotlightDoneEvent(BaseModel):

@@ -6,45 +6,42 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from .search_result_summary import SpotlightSearchResultSummary
-
 
 class SpotlightEvaluation(BaseModel):
-    """Spotlight evaluation schema."""
+    """Spotlight evaluation schema.
 
-    should_continue: bool = Field(
-        description=(
-            "Whether to continue searching. True if results are insufficient, "
-            "False if results adequately answer the query."
-        )
-    )
+    Field order matters — the model generates JSON fields sequentially.
+    By placing reasoning before should_continue, the model is forced to
+    think through its assessment before deciding whether to continue.
+    This prevents premature stopping based on topical pattern-matching.
+    """
 
     reasoning: str = Field(
         description=(
             "Your assessment as natural inner monologue — think out loud. "
-            "e.g. 'Hmm, these are all feedback docs — nothing about trading here...', "
-            "'Okay, the top two results answer the question nicely...' "
-            "Don't restate the user query or what was already tried. "
-            "Focus on: what the results contain, what's missing, why continue or stop."
+            "Reference specific results by name: what they contain and what's missing. "
+            "Focus on: do the results DIRECTLY ANSWER the question (not just relate to the "
+            "topic), what's missing, and whether to continue or stop."
         )
     )
 
-    result_summaries: list[SpotlightSearchResultSummary] = Field(
-        ...,
-        description="Summary of each search result. Create one summary per result, "
-        "capturing what it contains and whether it's useful for the query.",
+    should_continue: bool = Field(
+        description=(
+            "Whether to continue searching. Set this AFTER writing your reasoning. "
+            "True if no result directly answers the query. "
+            "False ONLY if you can point to a specific passage that answers the question, "
+            "OR if the search space is exhausted."
+        )
     )
 
-    advice: Optional[str] = Field(
-        default=None,
+    answer_found: bool = Field(
         description=(
-            "What to try next, as natural inner monologue. "
-            "e.g. 'Maybe I should try just searching for the word trading on its own...', "
-            "'Let me drop the filters and go broader...' "
-            "Only suggest sources and entity types that exist in the collection metadata. "
-            "Focus on what to change (filters, strategy, query terms), and what was wrong. "
-            "Leave empty if stopping with sufficient results."
-        ),
+            "Whether the current results directly answer the user's query. "
+            "True if you can point to a specific passage that answers the question. "
+            "False if results are only tangentially related, or if the search is exhausted "
+            "without finding a direct answer. This field is used to determine whether "
+            "a final consolidation search is needed."
+        )
     )
 
     def to_md(self) -> str:
@@ -53,22 +50,15 @@ class SpotlightEvaluation(BaseModel):
         Returns:
             Markdown string representing this evaluation.
         """
-        lines = [f"**Results ({len(self.result_summaries)} found):**"]
+        lines = [
+            "**Reasoning:**",
+            self.reasoning,
+        ]
 
-        if self.result_summaries:
-            for i, summary in enumerate(self.result_summaries, 1):
-                lines.append(summary.to_md(i))
-        else:
-            lines.append("No results found.")
-
-        lines.append("")
-        lines.append("**Evaluator Verdict:**")
         verdict = "Continue searching" if self.should_continue else "Search complete"
-        lines.append(f"- Decision: {verdict}")
-        lines.append(f"- Reasoning: {self.reasoning}")
-
-        if self.advice:
-            lines.append(f"- Advice for next iteration: {self.advice}")
+        answer_status = "Yes" if self.answer_found else "No"
+        lines.append(f"\n**Decision:** {verdict}")
+        lines.append(f"**Answer found:** {answer_status}")
 
         return "\n".join(lines)
 

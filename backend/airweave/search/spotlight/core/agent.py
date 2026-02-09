@@ -16,6 +16,7 @@ from airweave.api.context import ApiContext
 from airweave.search.spotlight.builders import (
     SpotlightCollectionMetadataBuilder,
     SpotlightCompletePlanBuilder,
+    SpotlightResultBriefBuilder,
     SpotlightStateBuilder,
 )
 from airweave.search.spotlight.core.composer import SpotlightComposer
@@ -104,11 +105,14 @@ class SpotlightAgent:
             state.current_iteration.plan = plan
             t = self._lap(timings, f"{prefix}/plan", t)
 
-            # Emit planning event
+            # Emit planning event (includes how much history fit in the prompt)
             await self.emitter.emit(
                 SpotlightPlanningEvent(
                     iteration=state.iteration_number,
                     plan=plan,
+                    is_consolidation=state.is_consolidation,
+                    history_shown=planner.history_shown,
+                    history_total=planner.history_total,
                 )
             )
 
@@ -127,35 +131,54 @@ class SpotlightAgent:
             state.current_iteration.query_embeddings = embeddings
             t = self._lap(timings, f"{prefix}/embed", t)
 
-            # Compile query
-            compiled_query: SpotlightCompiledQuery = await self.services.vector_db.compile_query(
-                plan=complete_plan,
-                embeddings=state.current_iteration.query_embeddings,
-                collection_id=state.collection_metadata.collection_id,
-            )
-            state.current_iteration.compiled_query = compiled_query
-            t = self._lap(timings, f"{prefix}/compile", t)
+            # Compile and execute query (gracefully handle search errors)
+            search_error: str | None = None
+            try:
+                compiled_query: SpotlightCompiledQuery = (
+                    await self.services.vector_db.compile_query(
+                        plan=complete_plan,
+                        embeddings=state.current_iteration.query_embeddings,
+                        collection_id=state.collection_metadata.collection_id,
+                    )
+                )
+                state.current_iteration.compiled_query = compiled_query
+                t = self._lap(timings, f"{prefix}/compile", t)
 
-            # Execute query
-            search_results: SpotlightSearchResults = await self.services.vector_db.execute_query(
-                compiled_query
-            )
-            state.current_iteration.search_results = search_results
-            t = self._lap(timings, f"{prefix}/execute", t)
+                search_results: SpotlightSearchResults = (
+                    await self.services.vector_db.execute_query(compiled_query)
+                )
+                state.current_iteration.search_results = search_results
+                t = self._lap(timings, f"{prefix}/execute", t)
+            except Exception as e:
+                search_error = str(e)
+                self.ctx.logger.warning(
+                    f"[SpotlightAgent] Search failed at iteration "
+                    f"{state.iteration_number}: {search_error}"
+                )
+                # Treat as empty results and record the error so the evaluator knows
+                state.current_iteration.search_results = SpotlightSearchResults(results=[])
+                state.current_iteration.search_error = search_error
+                t = self._lap(timings, f"{prefix}/search_error", t)
 
-            # Emit searching event (compile + execute combined for user-facing latency)
-            compile_ms = timings[-2][1]
-            execute_ms = timings[-1][1]
+            # Emit searching event
+            search_ms = timings[-1][1]
             await self.emitter.emit(
                 SpotlightSearchingEvent(
                     iteration=state.iteration_number,
-                    result_count=len(search_results),
-                    duration_ms=compile_ms + execute_ms,
+                    result_count=len(state.current_iteration.search_results),
+                    duration_ms=search_ms,
                 )
             )
 
             if state.mode == SpotlightSearchMode.DIRECT:
                 break
+
+            # Consolidation pass: after search, skip evaluation and break
+            if state.is_consolidation:
+                break
+
+            # Build result brief deterministically (no LLM)
+            result_brief = SpotlightResultBriefBuilder.build(state.current_iteration.search_results)
 
             # Evaluate results
             evaluator = SpotlightEvaluator(
@@ -168,22 +191,39 @@ class SpotlightAgent:
             self.ctx.logger.debug(f"[SpotlightAgent] Evaluation: {evaluation.to_md()}")
             t = self._lap(timings, f"{prefix}/evaluate", t)
 
-            # Emit evaluating event
+            # Emit evaluating event (includes how many results/history fit in the prompt)
             await self.emitter.emit(
                 SpotlightEvaluatingEvent(
                     iteration=state.iteration_number,
                     evaluation=evaluation,
+                    results_shown=evaluator.results_shown,
+                    results_total=evaluator.results_total,
+                    history_shown=evaluator.history_shown,
+                    history_total=evaluator.history_total,
                 )
             )
 
-            if not state.current_iteration.evaluation.should_continue:
+            # Answer found — break cleanly
+            if not evaluation.should_continue and evaluation.answer_found:
                 break
+
+            # Answer NOT found but search exhausted — trigger consolidation.
+            # Don't break: fall through to add this iteration to history, set
+            # consolidation mode, and let the loop do one more plan+search cycle.
+            if not evaluation.should_continue and not evaluation.answer_found:
+                self.ctx.logger.info(
+                    "[SpotlightAgent] Consolidation pass: answer not found, "
+                    "running one more targeted search."
+                )
+                state.is_consolidation = True
 
             # Create history iteration from completed current iteration
             history_iteration = SpotlightHistoryIteration(
                 plan=state.current_iteration.plan,
-                compiled_query=state.current_iteration.compiled_query,
+                result_brief=result_brief,
                 evaluation=state.current_iteration.evaluation,
+                evaluator_results_shown=evaluator.results_shown,
+                search_error=state.current_iteration.search_error,
             )
 
             # Initialize or add to history

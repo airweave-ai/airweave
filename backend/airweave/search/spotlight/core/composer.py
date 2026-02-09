@@ -80,37 +80,29 @@ class SpotlightComposer:
         Returns:
             A SpotlightAnswer with text and citations.
         """
-        prompt = self._build_prompt(state)
+        system_prompt = self._build_system_prompt()
+        user_prompt = self._build_user_prompt(state)
 
-        # Log context info
-        self._log_context(state)
+        system_tokens = self._tokenizer.count_tokens(system_prompt)
+        user_tokens = self._tokenizer.count_tokens(user_prompt)
+        self._logger.debug(
+            f"[Composer] Prompt tokens: system={system_tokens:,}, user={user_tokens:,}, "
+            f"total={system_tokens + user_tokens:,}"
+        )
+        self._logger.debug(
+            f"[Composer] === SYSTEM PROMPT ===\n{system_prompt}\n"
+            f"[Composer] === USER PROMPT ===\n{user_prompt}\n"
+            f"[Composer] === END PROMPTS ==="
+        )
 
-        prompt_tokens = self._tokenizer.count_tokens(prompt)
-        self._logger.debug(f"[Composer] Total prompt: {prompt_tokens:,} tokens")
-
-        # Log full prompt for debugging
-        self._logger.debug(f"[Composer] Full prompt:\n{prompt}")
-
-        answer = await self._llm.structured_output(prompt, SpotlightAnswer)
+        answer = await self._llm.structured_output(
+            user_prompt, SpotlightAnswer, system_prompt=system_prompt
+        )
 
         # Log the answer
         self._log_answer(answer)
 
         return answer
-
-    def _log_context(self, state: SpotlightState) -> None:
-        """Log the context being used for composition."""
-        results = state.current_iteration.search_results
-        result_count = len(results) if results else 0
-        history_count = len(state.history.iterations) if state.history else 0
-
-        self._logger.debug(
-            f"[Composer] Composing answer:\n"
-            f"  - Query: {state.user_query}\n"
-            f"  - Iteration: {state.iteration_number}\n"
-            f"  - Results available: {result_count}\n"
-            f"  - History iterations: {history_count}"
-        )
 
     def _log_answer(self, answer: SpotlightAnswer) -> None:
         """Log the composed answer."""
@@ -122,16 +114,33 @@ class SpotlightComposer:
             f"  - Preview: {text_preview}"
         )
 
-    def _build_prompt(self, state: SpotlightState) -> str:
-        """Build the full prompt for the LLM.
+    def _build_system_prompt(self) -> str:
+        """Build the system prompt (static instructions).
 
-        Budget is split 75/25 between results and history.
+        Contains the airweave overview and composer task description.
+
+        Returns:
+            The system prompt string.
+        """
+        return f"""# Airweave Overview
+
+{self._airweave_overview}
+
+---
+
+{self._composer_task}"""
+
+    def _build_user_prompt(self, state: SpotlightState) -> str:
+        """Build the user prompt (dynamic context + results + history).
+
+        Contains collection metadata, user query, plan, evaluation, search results,
+        and history. Token budget is managed to fit results and history.
 
         Args:
             state: The current spotlight state.
 
         Returns:
-            The complete prompt string.
+            The user prompt string.
         """
         # Validate required fields
         ci = state.current_iteration
@@ -141,61 +150,14 @@ class SpotlightComposer:
             raise ValueError("Composer requires compiled_query in current_iteration")
         if ci.search_results is None:
             raise ValueError("Composer requires search_results in current_iteration")
-        # Evaluation is only available in agentic mode (direct mode skips evaluation)
+        # Evaluation is only available in normal agentic iterations
+        # (direct mode and consolidation pass skip evaluation)
         is_direct = state.mode == SpotlightSearchMode.DIRECT
-        if ci.evaluation is None and not is_direct:
+        if ci.evaluation is None and not is_direct and not state.is_consolidation:
             raise ValueError("Composer requires evaluation in current_iteration for agentic mode")
 
-        # Build static part (without results and history)
-        static_prompt = self._build_static_prompt(state)
-        static_tokens = self._tokenizer.count_tokens(static_prompt)
-
-        # Calculate dynamic budgets (75% results, 25% history)
-        results_budget, history_budget = self._calculate_dynamic_budgets(static_tokens)
-
-        # Build dynamic sections
-        results_section = SpotlightSearchResults.build_results_section(
-            ci.search_results, self._tokenizer, results_budget
-        )
-        history_section = SpotlightHistory.render_md(state.history, self._tokenizer, history_budget)
-
-        return f"""{static_prompt}
-
-### Search Results
-
-{results_section}
-
----
-
-## Search History
-
-{history_section}
-"""
-
-    def _build_static_prompt(self, state: SpotlightState) -> str:
-        """Build the static part of the prompt.
-
-        Includes everything except results and history (which are budget-constrained).
-
-        Args:
-            state: The current spotlight state.
-
-        Returns:
-            The static prompt string.
-        """
-        ci = state.current_iteration
-
-        return f"""# Airweave Overview
-
-{self._airweave_overview}
-
----
-
-{self._composer_task}
-
----
-
-## Context for This Answer
+        # Build context part
+        context_prompt = f"""## Context for This Answer
 
 ### User Request
 
@@ -210,7 +172,17 @@ Mode: {state.mode.value}
 ### Iteration Number
 
 This is iteration **{state.iteration_number}** (final).
-
+{
+            ""
+            if not state.is_consolidation
+            else '''
+**⚠ CONSOLIDATION PASS:** The search loop ended WITHOUT finding a direct answer to the
+user's query. This final iteration was a targeted consolidation search to surface the
+most relevant content found across all iterations. The results below are the BEST
+AVAILABLE material, not a direct answer. Your response should acknowledge that no direct
+answer was found and present what IS available as the most relevant information.
+'''
+        }
 ---
 
 ## Current Iteration (Final)
@@ -221,11 +193,36 @@ This is iteration **{state.iteration_number}** (final).
 
 ### Compiled Query
 
-{ci.compiled_query.to_md()}
+{ci.compiled_query.to_md() if ci.compiled_query else "*(No compiled query available.)*"}
 
 ### Evaluation
 
 {SpotlightEvaluation.render_md(ci.evaluation)}
+"""
+        # Calculate budgets (accounting for system prompt too)
+        system_tokens = self._tokenizer.count_tokens(self._build_system_prompt())
+        context_tokens = self._tokenizer.count_tokens(context_prompt)
+        results_budget, history_budget = self._calculate_dynamic_budgets(
+            system_tokens + context_tokens
+        )
+
+        # Build dynamic sections
+        results_info = SpotlightSearchResults.build_results_section(
+            ci.search_results, self._tokenizer, results_budget
+        )
+        history_info = SpotlightHistory.render_md(state.history, self._tokenizer, history_budget)
+
+        return f"""{context_prompt}
+
+### Search Results
+
+{results_info.markdown}
+
+---
+
+## Search History
+
+{history_info.markdown}
 """
 
     def _calculate_dynamic_budgets(self, static_tokens: int) -> tuple[int, int]:
