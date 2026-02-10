@@ -170,17 +170,36 @@ async def wait_for_sync(
     max_wait_time: int = 180,
     poll_interval: int = 3,
 ) -> bool:
-    """Wait for a source connection sync to complete."""
+    """Wait for a source connection sync job to successfully complete.
+
+    Polls the sync job status until it reaches a terminal state.
+    Returns True only if the sync job completed successfully.
+    Returns False if the job failed, was cancelled, or timed out.
+    """
     elapsed = 0
     while elapsed < max_wait_time:
         await asyncio.sleep(poll_interval)
         elapsed += poll_interval
 
         status_response = await client.get(f"/source-connections/{connection_id}")
-        if status_response.status_code == 200:
-            conn_details = status_response.json()
-            if conn_details.get("status") in ["active", "error"]:
+        if status_response.status_code != 200:
+            continue
+
+        conn_details = status_response.json()
+
+        # Check sync job status (the actual job, not just the connection)
+        sync_info = conn_details.get("sync")
+        if sync_info and sync_info.get("last_job"):
+            job_status = sync_info["last_job"].get("status")
+            if job_status == "completed":
                 return True
+            if job_status in ["failed", "cancelled"]:
+                return False
+
+        # If no job info yet but connection errored, bail out
+        if conn_details.get("status") == "error":
+            return False
+
     return False
 
 

@@ -160,6 +160,11 @@ class SpotlightCollectionMetadataBuilder:
             "A cloud-based CRM application for managing sales processes, marketing "
             "activities, and customer support."
         ),
+        # Internal sources (used for testing and development)
+        "stub": (
+            "An internal test data source that generates deterministic synthetic entities "
+            "for testing and development purposes."
+        ),
     }
 
     def __init__(self, db: SpotlightDatabaseInterface):

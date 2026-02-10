@@ -146,8 +146,8 @@ class SpotlightComposer:
         ci = state.current_iteration
         if ci.plan is None:
             raise ValueError("Composer requires plan in current_iteration")
-        if ci.compiled_query is None:
-            raise ValueError("Composer requires compiled_query in current_iteration")
+        # compiled_query may be None if filter translation failed (e.g., invalid
+        # timestamp format). The template already handles this with a fallback.
         if ci.search_results is None:
             raise ValueError("Composer requires search_results in current_iteration")
         # Evaluation is only available in normal agentic iterations
