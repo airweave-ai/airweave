@@ -263,15 +263,17 @@ class VespaClient:
         parent_ids: List[str],
         collection_id: UUID,
         batch_size: int = DELETE_BATCH_SIZE,
+        schemas: Optional[List[str]] = None,
     ) -> List[DeleteResult]:
-        """Delete all documents for parent IDs across all schemas.
+        """Delete all documents for parent IDs across schemas.
 
-        Batches parent IDs to avoid overly long selection expressions.
+        When schemas is provided, only those schemas are scanned.
 
         Args:
             parent_ids: List of parent entity IDs
             collection_id: Collection ID to scope deletion
             batch_size: Max parent IDs per batch
+            schemas: Specific schemas to delete from. If None, scans all schemas.
 
         Returns:
             List of DeleteResult for all operations
@@ -279,11 +281,13 @@ class VespaClient:
         if not parent_ids:
             return []
 
+        target_schemas = schemas or ALL_VESPA_SCHEMAS
+
         results = []
         for i in range(0, len(parent_ids), batch_size):
             batch = parent_ids[i : i + batch_size]
 
-            for schema in ALL_VESPA_SCHEMAS:
+            for schema in target_schemas:
                 parent_conditions = " or ".join(
                     f"{schema}.airweave_system_metadata_original_entity_id=='{pid}'"
                     for pid in batch

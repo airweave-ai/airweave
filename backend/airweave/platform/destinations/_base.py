@@ -84,8 +84,19 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
-        """Bulk delete entities for multiple parent IDs within a given sync."""
+    async def bulk_delete_by_parent_ids(
+        self,
+        parent_ids: list[str],
+        sync_id: UUID,
+        entities: Optional[list[BaseEntity]] = None,
+    ) -> None:
+        """Bulk delete entities for multiple parent IDs within a given sync.
+
+        Args:
+            parent_ids: List of parent entity IDs to delete chunks for
+            sync_id: Sync ID to scope deletion
+            entities: Optional entities for schema-scoped deletion (performance optimization)
+        """
         pass
 
     @abstractmethod

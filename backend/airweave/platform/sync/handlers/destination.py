@@ -5,7 +5,7 @@ Handler owns processor lifecycle (singletons).
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Awaitable, Callable, Dict, List
+from typing import TYPE_CHECKING, Awaitable, Callable, Dict, List, Optional
 
 import httpcore
 import httpx
@@ -94,6 +94,7 @@ class DestinationHandler(EntityActionHandler):
                 [a.entity_id for a in batch.updates],
                 "update_delete",
                 sync_context,
+                entities=[a.entity for a in batch.updates],
             )
 
         # Process and insert (inserts + updates)
@@ -203,12 +204,13 @@ class DestinationHandler(EntityActionHandler):
         entity_ids: List[str],
         operation: str,
         sync_context: "SyncContext",
+        entities: Optional[List["BaseEntity"]] = None,
     ) -> None:
         """Delete entities by parent IDs from all destinations."""
         for dest in self._destinations:
             await self._execute_with_retry(
-                operation=lambda d=dest, ids=entity_ids: d.bulk_delete_by_parent_ids(
-                    ids, sync_context.sync.id
+                operation=lambda d=dest, ids=entity_ids, ents=entities: (
+                    d.bulk_delete_by_parent_ids(ids, sync_context.sync.id, entities=ents)
                 ),
                 operation_name=f"{operation}_{dest.__class__.__name__}",
                 destination=dest,

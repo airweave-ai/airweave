@@ -219,17 +219,30 @@ class VespaDestination(VectorDBDestination):
 
         await self._client.delete_by_collection_id(collection_id)
 
-    async def bulk_delete_by_parent_ids(self, parent_ids: List[str], sync_id: UUID) -> None:
+    async def bulk_delete_by_parent_ids(
+        self,
+        parent_ids: List[str],
+        sync_id: UUID,
+        entities: Optional[List[BaseEntity]] = None,
+    ) -> None:
         """Delete all documents for multiple parent IDs.
 
         Args:
             parent_ids: List of parent entity IDs
             sync_id: The sync ID for scoping (unused, kept for interface)
+            entities: Optional entities to derive the Vespa schema for targeted deletion.
+                If provided, only the matching schema is scanned instead of all 5.
         """
         if not parent_ids or not self._client:
             return
 
-        await self._client.delete_by_parent_ids(parent_ids, self.collection_id)
+        schemas = None
+        if entities:
+            schemas = list({self._transformer._get_vespa_schema(e) for e in entities})
+
+        await self._client.delete_by_parent_ids(
+            parent_ids, self.collection_id, schemas=schemas
+        )
 
     async def search(
         self,
