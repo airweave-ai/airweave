@@ -919,6 +919,15 @@ class GoogleDriveSource(BaseSource):
             self.logger.debug(f"Skipping video file ({mime_type}): {file_name}")
             return None
 
+        # Skip files larger than 200MB using metadata from the listing API
+        MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024
+        file_size = int(file_obj["size"]) if file_obj.get("size") else 0
+        if file_size > MAX_FILE_SIZE_BYTES:
+            file_name = file_obj.get("name", "unknown")
+            size_mb = file_size / (1024 * 1024)
+            self.logger.info(f"Skipping oversized file ({size_mb:.1f}MB, max 200MB): {file_name}")
+            return None
+
         # Create download URL based on file type
         download_url = None
 

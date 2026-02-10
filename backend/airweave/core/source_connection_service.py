@@ -17,6 +17,7 @@ from airweave.analytics import business_events
 from airweave.api.context import ApiContext
 from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.config import settings as core_settings
+from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.source_connection_service_helpers import source_connection_helpers
 from airweave.core.sync_service import sync_service
@@ -38,7 +39,6 @@ from airweave.schemas.source_connection import (
     SourceConnectionListItem,
     SourceConnectionUpdate,
 )
-from airweave.webhooks.service import service as webhooks_service
 
 
 class SourceConnectionService:
@@ -1553,14 +1553,22 @@ class SourceConnectionService:
         )
         sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
 
-        # Publish PENDING webhook event
-        await webhooks_service.publish_event_sync(
-            source_connection_id=source_connection_schema.id,
-            organisation=ctx.organization,
-            sync_job=sync_job_schema,
-            collection=collection_schema,
-            source_type=connection_schema.short_name,
-        )
+        # Publish PENDING event via the event bus (fans out to webhooks, pubsub, etc.)
+        from airweave.core.container import container
+
+        if container is not None:
+            await container.event_bus.publish(
+                SyncLifecycleEvent.pending(
+                    organization_id=ctx.organization.id,
+                    source_connection_id=source_connection_schema.id,
+                    sync_job_id=sync_job_schema.id,
+                    sync_id=source_connection_schema.sync_id,
+                    collection_id=collection_schema.id,
+                    source_type=connection_schema.short_name,
+                    collection_name=collection_schema.name,
+                    collection_readable_id=collection_schema.readable_id,
+                )
+            )
 
         await temporal_service.run_source_connection_workflow(
             sync=sync,

@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, Dict, List, Optional, Tuple
 from uuid import UUID
 
+import aiofiles
+
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import ContextualLogger
 from airweave.platform.storage.exceptions import StorageNotFoundError
@@ -260,8 +262,8 @@ class SyncFileManager:
         # Download from storage to cache
         logger.debug(f"Downloading file from storage to cache: {path}")
         content = await self.backend.read_file(path)
-        with open(cache_path, "wb") as f:
-            f.write(content)
+        async with aiofiles.open(cache_path, "wb") as f:
+            await f.write(content)
 
         return str(cache_path)
 
@@ -317,8 +319,8 @@ class SyncFileManager:
             return None
 
         try:
-            with open(file_path, "rb") as f:
-                return f.read()
+            async with aiofiles.open(file_path, "rb") as f:
+                return await f.read()
         except Exception as e:
             logger.error(f"Failed to read file {file_path}: {e}")
             return None
@@ -479,8 +481,8 @@ class SyncFileManager:
             if create_dirs:
                 Path(output_file_path).parent.mkdir(parents=True, exist_ok=True)
 
-            with open(output_file_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            async with aiofiles.open(output_file_path, "w", encoding="utf-8") as f:
+                await f.write(content)
 
             logger.info(
                 "CTTI file saved",

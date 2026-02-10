@@ -632,8 +632,6 @@ subsection "Other services:"
 
 printf "📊 Temporal UI     http://localhost:8088\n"
 printf "🗄️ PostgreSQL      localhost:5432\n"
-printf "🔍 Qdrant          http://localhost:6333\n"
-
 if curl -sf http://localhost:8081/state/v1/health 2>/dev/null | grep -q '"up"'; then
     printf "🔎 Vespa           http://localhost:8081\n"
 else

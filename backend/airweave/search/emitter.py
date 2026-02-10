@@ -86,7 +86,6 @@ class EventEmitter:
             "EmbedQuery": "embedding",
             "GenerateAnswer": "completion",
             "Reranking": "llm_reranking",
-            "TemporalRelevance": "recency",
             "UserFilter": "qdrant_filter",
             "Retrieval": "vector_search",
             "FederatedSearch": "federated_search",

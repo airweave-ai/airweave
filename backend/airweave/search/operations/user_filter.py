@@ -4,14 +4,12 @@ Applies user-provided filters and merges them with filters extracted
 from query interpretation. Responsible for creating the final filter that
 will be passed to the retrieval operation.
 
-Accepts both Qdrant Filter objects and Airweave canonical filter dicts
-(Dict[str, Any] with must/should/must_not structure).
+Accepts Airweave canonical filter dicts (Dict[str, Any] with must/should/must_not structure).
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from fastapi import HTTPException
-from pydantic import ValidationError
 
 from airweave.api.context import ApiContext
 from airweave.schemas.search import AirweaveFilter
@@ -21,12 +19,6 @@ from ._base import SearchOperation
 
 if TYPE_CHECKING:
     from airweave.search.state import SearchState
-
-# Optional import for backwards compatibility with Qdrant Filter objects
-try:
-    from qdrant_client.http.models import Filter as QdrantFilter
-except ImportError:
-    QdrantFilter = None  # type: ignore
 
 
 class UserFilter(SearchOperation):
@@ -56,11 +48,11 @@ class UserFilter(SearchOperation):
     # Note: created_at, updated_at are entity-level fields (not nested in airweave_system_metadata)
     # They don't need path mapping - used directly in filters
 
-    def __init__(self, filter: Union[AirweaveFilter, "QdrantFilter", None]) -> None:
+    def __init__(self, filter: Optional[AirweaveFilter]) -> None:
         """Initialize with user-provided filter.
 
         Args:
-            filter: Filter in either Airweave canonical format (dict) or Qdrant Filter object
+            filter: Filter in Airweave canonical format (dict with must/should/must_not)
         """
         self.filter = filter
 
@@ -123,10 +115,9 @@ class UserFilter(SearchOperation):
             )
 
     def _normalize_user_filter(self) -> Optional[Dict[str, Any]]:
-        """Normalize user filter and map field names to Qdrant paths.
+        """Normalize user filter and map field names to destination paths.
 
-        Handles both Qdrant Filter objects (with .model_dump()) and plain dicts
-        (Airweave canonical format).
+        Handles Pydantic models (with .model_dump()) and plain dicts.
 
         Raises:
             HTTPException: 422 if filter format is invalid
@@ -134,7 +125,7 @@ class UserFilter(SearchOperation):
         if not self.filter:
             return None
 
-        # Convert to dict if it's a Pydantic model (Qdrant Filter)
+        # Convert to dict if it's a Pydantic model
         if hasattr(self.filter, "model_dump"):
             filter_dict = self.filter.model_dump(exclude_none=True)
         elif isinstance(self.filter, dict):
@@ -143,19 +134,17 @@ class UserFilter(SearchOperation):
             # Unknown type - try to use as-is
             filter_dict = dict(self.filter)
 
-        # Validate filter structure using Qdrant's model
+        # Validate filter structure
         self._validate_filter_structure(filter_dict)
 
         # Map field names in conditions
         return self._map_filter_keys(filter_dict)
 
     def _validate_filter_structure(self, filter_dict: Dict[str, Any]) -> None:
-        """Validate that filter has correct Qdrant structure.
+        """Validate that filter dict has correct structure.
 
-        Uses Qdrant's Filter model for proper validation. This catches:
-        - Bare FieldConditions (missing must/should/must_not wrapper)
-        - Invalid field names or structures
-        - Type mismatches
+        Checks that the filter uses boolean group wrappers (must/should/must_not)
+        and is not a bare FieldCondition.
 
         Args:
             filter_dict: The filter dictionary to validate
@@ -166,46 +155,59 @@ class UserFilter(SearchOperation):
         if not filter_dict:
             return
 
-        if QdrantFilter is None:
-            # Qdrant client not available, skip validation
-            return
+        valid_top_level_keys = {
+            self.FILTER_KEY_MUST,
+            self.FILTER_KEY_MUST_NOT,
+            self.FILTER_KEY_SHOULD,
+            self.FILTER_KEY_MIN_SHOULD_MATCH,
+        }
 
-        try:
-            # Use Qdrant's actual Filter model for validation
-            QdrantFilter.model_validate(filter_dict)
-        except ValidationError as e:
-            # Check if this looks like a bare FieldCondition for better error message
-            if (
-                self.FIELD_CONDITION_KEY in filter_dict
-                or self.FIELD_CONDITION_MATCH in filter_dict
-                or self.FIELD_CONDITION_RANGE in filter_dict
-            ):
-                example_filter = {
-                    self.FILTER_KEY_MUST: [
-                        {
-                            self.FIELD_CONDITION_KEY: "source_name",
-                            self.FIELD_CONDITION_MATCH: {"value": "github"},
-                        }
-                    ]
-                }
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        f"Invalid filter format: received bare FieldCondition which must be "
-                        f"wrapped in '{self.FILTER_KEY_MUST}', '{self.FILTER_KEY_SHOULD}', "
-                        f"or '{self.FILTER_KEY_MUST_NOT}'. "
-                        f"Received: {filter_dict}. "
-                        f"Example of correct format: {example_filter}"
-                    ),
-                )
-            # Generic validation error
+        # Check if this looks like a bare FieldCondition instead of a filter
+        if (
+            self.FIELD_CONDITION_KEY in filter_dict
+            or self.FIELD_CONDITION_MATCH in filter_dict
+            or self.FIELD_CONDITION_RANGE in filter_dict
+        ):
+            example_filter = {
+                self.FILTER_KEY_MUST: [
+                    {
+                        self.FIELD_CONDITION_KEY: "source_name",
+                        self.FIELD_CONDITION_MATCH: {"value": "github"},
+                    }
+                ]
+            }
             raise HTTPException(
                 status_code=422,
-                detail=f"Invalid filter format: {e.errors()}",
+                detail=(
+                    f"Invalid filter format: received bare FieldCondition which must be "
+                    f"wrapped in '{self.FILTER_KEY_MUST}', '{self.FILTER_KEY_SHOULD}', "
+                    f"or '{self.FILTER_KEY_MUST_NOT}'. "
+                    f"Received: {filter_dict}. "
+                    f"Example of correct format: {example_filter}"
+                ),
             )
 
+        # Validate that top-level keys are recognized
+        unknown_keys = set(filter_dict.keys()) - valid_top_level_keys
+        if unknown_keys:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Invalid filter format: unknown top-level keys {unknown_keys}. "
+                    f"Allowed keys: {valid_top_level_keys}"
+                ),
+            )
+
+        # Validate that boolean group values are lists
+        for group_key in (self.FILTER_KEY_MUST, self.FILTER_KEY_MUST_NOT, self.FILTER_KEY_SHOULD):
+            if group_key in filter_dict and not isinstance(filter_dict[group_key], list):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid filter format: '{group_key}' must be a list of conditions",
+                )
+
     def _map_filter_keys(self, filter_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """Recursively map field names in filter dict to Qdrant paths."""
+        """Recursively map field names in filter dict to destination paths."""
         if not filter_dict:
             return filter_dict
 
@@ -236,7 +238,7 @@ class UserFilter(SearchOperation):
         # Map the "key" field if present
         key_field = self.FIELD_CONDITION_KEY
         if key_field in mapped and isinstance(mapped[key_field], str):
-            mapped[key_field] = self._map_to_qdrant_path(mapped[key_field])
+            mapped[key_field] = self._map_to_destination_path(mapped[key_field])
 
         # Recursively handle nested boolean groups
         for group_key in (self.FILTER_KEY_MUST, self.FILTER_KEY_MUST_NOT, self.FILTER_KEY_SHOULD):
@@ -245,8 +247,8 @@ class UserFilter(SearchOperation):
 
         return mapped
 
-    def _map_to_qdrant_path(self, key: str) -> str:
-        """Map field names to Qdrant payload paths."""
+    def _map_to_destination_path(self, key: str) -> str:
+        """Map field names to destination payload paths."""
         # Already has prefix
         if key.startswith(self.SYSTEM_METADATA_PREFIX):
             return key

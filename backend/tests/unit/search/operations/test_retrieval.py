@@ -69,7 +69,6 @@ class TestRetrieval:
         assert "QueryInterpretation" in deps
         assert "EmbedQuery" in deps
         assert "UserFilter" in deps
-        assert "TemporalRelevance" in deps
 
     @pytest.mark.asyncio
     async def test_execute_calls_destination_search(

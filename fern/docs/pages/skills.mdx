@@ -1,0 +1,130 @@
+---
+title: Agent Skills
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/skills.mdx
+subtitle: Reusable skills that teach AI agents how to set up, search, and work with Airweave, installable with a single command.
+slug: skills
+---
+
+Agent Skills are portable instruction files that give AI agents deep knowledge about specific tools and workflows. Airweave publishes official skills so that agents in Cursor, Claude Code, Gemini CLI, OpenCode, and other environments can set up integrations and search your data without you having to explain how every time.
+
+Skills are installed via the [skills CLI](https://skills.sh) and live in your project as markdown files that the agent reads on demand.
+
+![Installing Airweave skills via the skills CLI](../assets/images/airweave-skills.gif)
+
+---
+
+## Available skills
+
+Airweave currently publishes two official skills, plus a community listing on OpenClaw.
+
+<CardGroup cols={2}>
+  <Card
+    title="airweave-setup"
+    icon="fa-solid fa-wrench"
+    href="https://skills.sh/airweave-ai/skills/airweave-setup"
+  >
+    Guides agents through installing SDKs, creating collections, connecting sources, configuring MCP, and running first searches.
+  </Card>
+  <Card
+    title="airweave-search"
+    icon="fa-solid fa-magnifying-glass"
+    href="https://skills.sh/airweave-ai/skills/airweave-search"
+  >
+    Teaches agents how to formulate queries, choose search parameters, interpret results, and synthesize answers from your Airweave collections.
+  </Card>
+</CardGroup>
+
+### airweave-setup
+
+The **setup skill** is the go-to resource when an agent needs to help you integrate Airweave into a project. It covers:
+
+- **Quick Start**: Airweave Cloud sign-up or self-hosted deployment
+- **SDK installation**: Python (`airweave-sdk`) and TypeScript (`@airweave/sdk`)
+- **Core workflow**: Creating collections, adding source connections, running searches
+- **MCP configuration**: Setting up the MCP server for Cursor, Claude Desktop, VS Code, and cloud platforms
+- **Advanced search**: Reranking, query expansion, recency bias, and filtering
+- **Troubleshooting**: Common issues with auth, sync, and rate limits
+
+The skill also ships with companion reference files: `SDK-REFERENCE.md`, `MCP-SETUP.md`, and `SEARCH-PATTERNS.md`.
+
+### airweave-search
+
+The **search skill** activates when you ask your agent questions about data in your connected apps, like "What did we discuss in Slack about the launch?" or "Find the API docs in Notion". It teaches the agent to:
+
+- **Decide when to search**: Distinguishes between questions that need Airweave and general knowledge questions
+- **Formulate effective queries**: Maps natural language intent to concise semantic search queries
+- **Select the right parameters**: Chooses `recency_bias`, `search_method`, `response_type`, and other options based on context
+- **Interpret and present results**: Scores, source attribution, synthesis, and graceful handling of no-result scenarios
+- **Find the right MCP tool**: Locates the `search-{collection}` tool among available MCP tools
+
+The skill includes `PARAMETERS.md` for deep parameter guidance and `EXAMPLES.md` for real conversation patterns.
+
+---
+
+## Installation
+
+Install one or both skills into your project with the [skills CLI](https://skills.sh):
+
+```bash
+# Install both skills at once
+npx skills add airweave-ai/skills
+
+# Or install individually
+npx skills add airweave-ai/skills --skill airweave-setup
+npx skills add airweave-ai/skills --skill airweave-search
+```
+
+The CLI detects your AI assistant (Cursor, Claude Code, Gemini CLI, etc.) and places the skill files in the correct location. Once installed, your agent will automatically pick up the skills when relevant tasks come up.
+
+<Note>
+Skills are just markdown files with no runtime dependencies and no build steps. You can inspect and customize them after installation.
+</Note>
+
+---
+
+## How skills work
+
+When you ask your AI agent to do something Airweave-related, the skill system follows this flow:
+
+1. **Discovery**: The agent sees the installed skill files in your project
+2. **Trigger**: Based on your request, the agent decides which skill is relevant
+3. **Apply**: The agent reads the skill's instructions and supporting reference files
+4. **Execute**: The agent follows the skill's guidance to complete the task (install SDKs, configure MCP, run searches, etc.)
+
+Skills work with MCP tools, code execution, and as guided instructions depending on what the task requires.
+
+---
+
+## OpenClaw Skill
+
+Airweave is also listed on [OpenClaw](https://clawhub.ai/lennertjansen/airweave), a community directory for AI agent tools and integrations. The OpenClaw listing provides an alternative way to discover and evaluate Airweave's capabilities for your agent workflows.
+
+---
+
+## Source repository
+
+All Airweave skills are open source and maintained in the [airweave-ai/skills](https://github.com/airweave-ai/skills) repository. Contributions are welcome. You can add new skills or improve existing ones by opening a pull request.
+
+<CardGroup cols={3}>
+  <Card
+    title="Skills Repository"
+    icon="fa-brands fa-github"
+    href="https://github.com/airweave-ai/skills"
+  >
+    Source code for all Airweave agent skills.
+  </Card>
+  <Card
+    title="skills.sh"
+    icon="fa-solid fa-box-open"
+    href="https://skills.sh/airweave-ai/skills/airweave-setup"
+  >
+    Browse and install skills from the registry.
+  </Card>
+  <Card
+    title="OpenClaw"
+    icon="fa-solid fa-paw"
+    href="https://clawhub.ai/lennertjansen/airweave"
+  >
+    Airweave on the OpenClaw directory.
+  </Card>
+</CardGroup>

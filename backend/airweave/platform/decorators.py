@@ -153,9 +153,9 @@ def destination(
         supports_vector: Whether destination supports vector storage
         max_batch_size: Maximum batch size for write operations
         requires_client_embedding: Whether the destination requires client-side embedding
-            generation (True for Qdrant, False for Vespa which embeds server-side)
+            generation (False for Vespa which embeds server-side)
         supports_temporal_relevance: Whether the destination supports temporal relevance
-            ranking (True for Qdrant with decay formulas, False for Vespa currently)
+            ranking
     """
 
     def decorator(cls: type) -> type:

@@ -1,14 +1,18 @@
 """Webhook protocols.
 
 Two protocols based on consumer needs:
-- WebhookPublisher: Internal use (sync domain publishes events)
+- WebhookPublisher: Internal use (event bus subscriber publishes events)
 - WebhookAdmin: External API (users manage subscriptions, view history)
 
 All WebhookAdmin methods raise WebhooksError on failure.
 """
 
 from datetime import datetime
-from typing import Optional, Protocol
+from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from airweave.core.protocols.event_bus import DomainEvent
+
 from uuid import UUID
 
 from airweave.domains.webhooks.types import (
@@ -19,35 +23,39 @@ from airweave.domains.webhooks.types import (
 )
 
 
+@runtime_checkable
 class WebhookPublisher(Protocol):
-    """Publish sync events to webhook subscribers.
+    """Publish domain events to external webhook subscribers.
 
-    Used by sync domain / event bus subscriber. Internal only.
+    Accepts domain events directly. The adapter is responsible for
+    serializing the event into the format its backend requires.
     """
 
-    async def publish_sync_event(
-        self,
-        org_id: UUID,
-        source_connection_id: UUID,
-        sync_job_id: UUID,
-        sync_id: UUID,
-        collection_id: UUID,
-        collection_name: str,
-        collection_readable_id: str,
-        source_type: str,
-        status: str,
-        error: Optional[str] = None,
-    ) -> None:
-        """Publish a sync lifecycle event to all subscribed webhooks."""
+    async def publish_event(self, event: "DomainEvent") -> None:
+        """Publish a domain event to all subscribed webhook endpoints."""
         ...
 
 
+@runtime_checkable
 class WebhookAdmin(Protocol):
     """Manage webhook subscriptions and view message history.
 
     Used by API endpoints. External user-facing.
     All methods raise WebhooksError on failure.
     """
+
+    # -------------------------------------------------------------------------
+    # Organization lifecycle
+    # -------------------------------------------------------------------------
+
+    # TODO: Implement create organization -> now implemented implicitly by SvixAdapter (decorator)
+
+    async def delete_organization(self, org_id: UUID) -> None:
+        """Delete an organization and all its webhook data.
+
+        Best-effort: implementations should log errors rather than raise.
+        """
+        ...
 
     # -------------------------------------------------------------------------
     # Subscriptions

@@ -158,7 +158,6 @@ class SearchOrchestrator:
                 context.query_interpretation,
                 context.embed_query,
                 context.user_filter,
-                context.temporal_relevance,
                 context.retrieval,
                 context.federated_search,
                 context.reranking,

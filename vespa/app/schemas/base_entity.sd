@@ -1,4 +1,4 @@
-# OVERVIEW (chunk-as-document model - unified with Qdrant):
+# OVERVIEW (chunk-as-document model):
 # - Each chunk is a separate document
 # - entity_id: "{original_id}__chunk_{idx}"
 # - original_entity_id: tracks parent entity
@@ -14,7 +14,7 @@
 # - ANN index: bfloat16 {{EMBEDDING_DIM}}-dim with angular distance
 # - HNSW: M=32 (higher recall), ef_construct=200
 # - Pre-filtering by collection_id (approximateThreshold=0.05 for exact NN fallback)
-# - targetHits: 5000 candidates (matches Qdrant)
+# - targetHits: 5000 candidates
 #
 # RANKING (simplified - no second-phase needed with bfloat16 precision):
 # - first-phase: BM25 + closeness (all candidates)
@@ -136,7 +136,7 @@ schema base_entity {
         }
 
         # =============================================================================
-        # Embedding Field (unified {{EMBEDDING_DIM}}-dim - same as Qdrant)
+        # Embedding Field (unified {{EMBEDDING_DIM}}-dim)
         # =============================================================================
 
         # Single {{EMBEDDING_DIM}}-dim bfloat16 embedding for both ANN matching and ranking

@@ -460,7 +460,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 
         for (let i = 0; i < src.length; i++) {
             const event = src[i] as any;
-            // Operation skipped notices (backend emits for Qdrant-only ops when no vector sources)
+            // Operation skipped notices (backend emits when ops are not applicable)
             if (event.type === 'operation_skipped') {
                 const op = (event as any).operation || 'operation';
                 const reason = (event as any).reason || 'skipped';
@@ -487,7 +487,8 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             }
 
 
-            if (event.type === 'operator_start' && event.op === 'qdrant_filter') {
+            if (event.type === 'operator_start' && (event.op === 'qdrant_filter' || event.op === 'vespa_filter')) {
+                const filterOp = event.op;
                 let filterData = null;
                 let mergeDetails: { merged?: any; existing?: any; user?: any } | null = null;
                 for (let j = i + 1; j < src.length && j < i + 5; j++) {
@@ -503,13 +504,13 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                             user: e.user
                         };
                     }
-                    if ((src[j] as any).type === 'operator_end' && (src[j] as any).op === 'qdrant_filter') {
+                    if ((src[j] as any).type === 'operator_end' && (src[j] as any).op === filterOp) {
                         break;
                     }
                 }
 
                 rows.push(
-                    <div key={`qdrant-${i}-start`} className="px-2 py-1 text-[11px] flex items-center gap-1.5">
+                    <div key={`filter-${i}-start`} className="px-2 py-1 text-[11px] flex items-center gap-1.5">
                         <FiSliders className="h-3 w-3 opacity-80" />
                         <span className="opacity-90">Filter</span>
                         <span className={cn(
@@ -522,7 +523,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 const hasExisting = !!(mergeDetails && mergeDetails.existing && typeof mergeDetails.existing === 'object' && Object.keys(mergeDetails.existing).length > 0);
                 if (hasExisting) {
                     rows.push(
-                        <div key={`qdrant-${i}-merge-label`} className="px-2 py-0.5 text-[11px] opacity-70">
+                        <div key={`filter-${i}-merge-label`} className="px-2 py-0.5 text-[11px] opacity-70">
                             merged interpreted + manual
                         </div>
                     );
@@ -532,7 +533,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                     const display = toDisplayFilter(filterData);
                     const pretty = JSON.stringify(display, null, 2);
                     rows.push(
-                        <div key={`qdrant-filter-${i}`} className="py-0.5 px-2 text-[11px]">
+                        <div key={`filter-data-${i}`} className="py-0.5 px-2 text-[11px]">
                             <span className="opacity-90">• Filter:</span>
                             <div className="ml-3 mt-1">
                                 <JsonBlock value={pretty} isDark={isDark} />
@@ -541,19 +542,19 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                     );
                 }
 
-                while (i < src.length && !((src[i] as any).type === 'operator_end' && (src[i] as any).op === 'qdrant_filter')) {
+                while (i < src.length && !((src[i] as any).type === 'operator_end' && (src[i] as any).op === filterOp)) {
                     i++;
                 }
 
                 if (i < src.length) {
                     rows.push(
-                        <div key={`qdrant-${i}-end`} className="py-0.5 px-2 text-[11px] opacity-70">
+                        <div key={`filter-${i}-end`} className="py-0.5 px-2 text-[11px] opacity-70">
                             Filter applied
                         </div>
                     );
 
                     rows.push(
-                        <div key={`qdrant-${i}-separator`} className="py-1">
+                        <div key={`filter-${i}-separator`} className="py-1">
                             <div className="mx-2 border-t border-border/30"></div>
                         </div>
                     );

@@ -587,13 +587,25 @@ class BaseSource:
         total_items_cell: list[int] = [0]
 
         async def _producer() -> None:
+            import time as _time
+
             try:
                 idx = 0
+                last_yield_time = _time.monotonic()
+
                 if hasattr(items, "__aiter__"):
                     async for item in items:  # type: ignore[union-attr]
+                        now = _time.monotonic()
+                        gap = now - last_yield_time
+                        if gap > 60:
+                            self.logger.warning(
+                                f"Source producer resumed after {int(gap)}s gap "
+                                f"(item {idx}, {total_items_cell[0]} total)"
+                            )
                         await items_queue.put((idx, item))
                         idx += 1
                         total_items_cell[0] = idx
+                        last_yield_time = _time.monotonic()
                 else:
                     for item in items:  # type: ignore[union-attr]
                         await items_queue.put((idx, item))
@@ -602,8 +614,6 @@ class BaseSource:
             finally:
                 await items_queue.put(items_done)
                 producer_finished.set()
-                # Wake up drain if it's blocked on an empty results queue
-                # (e.g. 0 items). The drain treats None as a no-op wake-up.
                 await results.put(None)
 
         async def _pool_worker() -> None:

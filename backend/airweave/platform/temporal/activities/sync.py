@@ -8,6 +8,7 @@ Each class declares its dependencies in __init__, making them:
 """
 
 import asyncio
+import json
 import sys
 import time
 import traceback
@@ -16,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 from uuid import UUID
+
+from airweave.core.redis_client import redis_client
 
 if TYPE_CHECKING:
     from airweave.core.protocols import EventBus
@@ -168,6 +171,69 @@ class RunSyncActivity:
             last_stack_dump_time = heartbeat_start_time
             stack_dump_interval = 600  # 10 minutes
 
+            # Stall detection via Redis progress snapshot
+            last_redis_check_time = heartbeat_start_time
+            redis_check_interval = 30  # check every 30 seconds
+            last_known_timestamp = None
+            stall_start_time = None
+            stall_dump_emitted = False
+            stall_threshold = 300  # 5 minutes without progress
+
+            def _emit_stack_dump(reason: str, elapsed_s: int):
+                """Collect and emit a chunked stack trace dump."""
+                traces = []
+                for thread_id, frame in sys._current_frames().items():
+                    traces.append(f"\n=== Thread {thread_id} ===")
+                    traces.append("".join(traceback.format_stack(frame)))
+                all_tasks = asyncio.all_tasks()
+                traces.append(f"\n=== Async Tasks ({len(all_tasks)} total) ===")
+                for task in all_tasks:
+                    if not task.done():
+                        task_name = task.get_name()
+                        coro = task.get_coro()
+                        if hasattr(coro, "cr_frame") and coro.cr_frame:
+                            frame = coro.cr_frame
+                            traces.append(f"\nTask: {task_name}")
+                            loc = f"{frame.f_code.co_filename}:{frame.f_lineno}"
+                            traces.append(f"  at {loc} in {frame.f_code.co_name}")
+
+                thread_parts = []
+                async_parts = []
+                in_async = False
+                for trace in traces:
+                    if "=== Async Tasks" in trace:
+                        in_async = True
+                    (async_parts if in_async else thread_parts).append(trace)
+
+                base_extra = {
+                    "elapsed_seconds": elapsed_s,
+                    "sync_id": str(sync.id),
+                    "sync_job_id": str(sync_job.id),
+                }
+
+                ctx.logger.debug(
+                    f"[STACK_TRACE_DUMP] sync={sync.id} "
+                    f"sync_job={sync_job.id} elapsed={elapsed_s}s "
+                    f"reason={reason} part=threads",
+                    extra={**base_extra, "stack_traces": "".join(thread_parts)},
+                )
+
+                async_str = "".join(async_parts)
+                chunk_size = 12000
+                chunk_idx = 0
+                for i in range(0, max(len(async_str), 1), chunk_size):
+                    chunk_idx += 1
+                    ctx.logger.debug(
+                        f"[STACK_TRACE_DUMP] sync={sync.id} "
+                        f"sync_job={sync_job.id} elapsed={elapsed_s}s "
+                        f"reason={reason} part=async_tasks chunk={chunk_idx}",
+                        extra={
+                            **base_extra,
+                            "stack_traces": async_str[i : i + chunk_size],
+                            "chunk": chunk_idx,
+                        },
+                    )
+
             try:
                 while True:
                     done, _ = await asyncio.wait({sync_task}, timeout=1)
@@ -178,44 +244,46 @@ class RunSyncActivity:
                     current_time = time.time()
                     elapsed_seconds = int(current_time - heartbeat_start_time)
 
-                    # Dump stack trace for long-running syncs
-                    # (every 10 minutes after initial 10 minutes)
+                    # Stall detection: read Redis progress snapshot periodically
+                    if (current_time - last_redis_check_time) >= redis_check_interval:
+                        last_redis_check_time = current_time
+                        try:
+                            snapshot_key = f"sync_progress_snapshot:{sync_job.id}"
+                            snapshot_raw = await redis_client.client.get(snapshot_key)
+                            if snapshot_raw:
+                                snapshot = json.loads(snapshot_raw)
+                                current_timestamp = snapshot.get("last_update_timestamp")
+
+                                if current_timestamp != last_known_timestamp:
+                                    last_known_timestamp = current_timestamp
+                                    stall_start_time = None
+                                    stall_dump_emitted = False
+                                elif stall_start_time is None:
+                                    stall_start_time = current_time
+                        except Exception:
+                            pass
+
+                    # Emit stall dump if no progress for 5 minutes
+                    if (
+                        stall_start_time is not None
+                        and not stall_dump_emitted
+                        and (current_time - stall_start_time) >= stall_threshold
+                    ):
+                        stall_seconds = int(current_time - stall_start_time)
+                        ctx.logger.warning(
+                            f"[STALL_DETECTED] sync={sync.id} "
+                            f"sync_job={sync_job.id} "
+                            f"no entity progress for {stall_seconds}s"
+                        )
+                        _emit_stack_dump("stall", elapsed_seconds)
+                        stall_dump_emitted = True
+
+                    # Regular periodic stack trace dump (every 10 min after 10 min)
                     if (
                         elapsed_seconds > 600
                         and (current_time - last_stack_dump_time) >= stack_dump_interval
                     ):
-                        # Collect all thread/task stack traces
-                        stack_traces = []
-
-                        # Main thread stack
-                        for thread_id, frame in sys._current_frames().items():
-                            stack_traces.append(f"\n=== Thread {thread_id} ===")
-                            stack_traces.append("".join(traceback.format_stack(frame)))
-
-                        # All async tasks
-                        all_tasks = asyncio.all_tasks()
-                        stack_traces.append(f"\n=== Async Tasks ({len(all_tasks)} total) ===")
-                        for task in all_tasks:
-                            if not task.done():
-                                task_name = task.get_name()
-                                coro = task.get_coro()
-                                if hasattr(coro, "cr_frame") and coro.cr_frame:
-                                    frame = coro.cr_frame
-                                    stack_traces.append(f"\nTask: {task_name}")
-                                    loc = f"{frame.f_code.co_filename}:{frame.f_lineno}"
-                                    stack_traces.append(f"  at {loc} in {frame.f_code.co_name}")
-
-                        stack_trace_str = "".join(stack_traces)
-                        ctx.logger.debug(
-                            f"[STACK_TRACE_DUMP] sync={sync.id} "
-                            f"sync_job={sync_job.id} elapsed={elapsed_seconds}s",
-                            extra={
-                                "elapsed_seconds": elapsed_seconds,
-                                "sync_id": str(sync.id),
-                                "sync_job_id": str(sync_job.id),
-                                "stack_traces": stack_trace_str,
-                            },
-                        )
+                        _emit_stack_dump("periodic", elapsed_seconds)
                         last_stack_dump_time = current_time
 
                     ctx.logger.debug("HEARTBEAT: Sync in progress")

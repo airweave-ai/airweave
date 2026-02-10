@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
-from airweave.domains.webhooks.types import EventType, SyncEventPayload
+from airweave.domains.webhooks.types import EventType
 
 # Import shared error response models
 from airweave.schemas.errors import (
@@ -65,9 +65,10 @@ class WebhookMessage(BaseModel):
         description="The type of event (e.g., 'sync.completed', 'sync.failed')",
         json_schema_extra={"example": "sync.completed"},
     )
-    payload: SyncEventPayload = Field(
+    payload: dict = Field(
         ...,
-        description="The event payload data, matching what is delivered to webhooks",
+        description="The event payload data, matching what is delivered to webhooks. "
+        "Structure varies by event_type.",
     )
     timestamp: datetime = Field(
         ...,
@@ -91,7 +92,7 @@ class WebhookMessage(BaseModel):
         return cls(
             id=msg.id,
             event_type=msg.event_type,
-            payload=SyncEventPayload(**msg.payload),
+            payload=msg.payload,
             timestamp=msg.timestamp,
             channels=msg.channels,
             tags=None,
@@ -139,7 +140,7 @@ class WebhookMessageWithAttempts(WebhookMessage):
         return cls(
             id=msg.id,
             event_type=msg.event_type,
-            payload=SyncEventPayload(**msg.payload),
+            payload=msg.payload,
             timestamp=msg.timestamp,
             channels=msg.channels,
             tags=None,
@@ -164,8 +165,7 @@ class WebhookSubscription(BaseModel):
         default=None,
         description=(
             "Event types this subscription is filtered to receive. "
-            "Available types: `sync.pending`, `sync.running`, `sync.completed`, "
-            "`sync.failed`, `sync.cancelled`."
+            "See EventType enum for all available types."
         ),
         json_schema_extra={"example": ["sync.completed", "sync.failed"]},
     )
@@ -398,7 +398,10 @@ class CreateSubscriptionRequest(BaseModel):
         ...,
         description="List of event types to subscribe to. Events not in this list "
         "will not be delivered to this subscription. Available types: "
-        "`sync.pending`, `sync.running`, `sync.completed`, `sync.failed`, `sync.cancelled`.",
+        "`sync.pending`, `sync.running`, `sync.completed`, `sync.failed`, "
+        "`sync.cancelled`, `source_connection.created`, "
+        "`source_connection.auth_completed`, `source_connection.deleted`, "
+        "`collection.created`, `collection.updated`, `collection.deleted`.",
         json_schema_extra={"example": ["sync.completed", "sync.failed"]},
     )
     secret: str | None = Field(

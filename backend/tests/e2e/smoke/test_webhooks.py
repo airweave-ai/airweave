@@ -6,11 +6,7 @@ These tests cover two distinct concepts:
 
 Tests use the stub connector for fast execution while testing the full flow including Svix integration.
 
-Test Categories:
-- Tests WITHOUT @pytest.mark.svix: Test API functionality only
-- Tests WITH @pytest.mark.svix: Require Svix to be running, but use Svix's API to verify delivery
-
-These svix tests are skipped in CI because they require Svix to be running locally.
+Tests use the stub connector for fast execution while testing the full flow including Svix integration.
 """
 
 import asyncio
@@ -24,8 +20,8 @@ import pytest
 import pytest_asyncio
 
 
-# Webhook delivery timeout
-WEBHOOK_TIMEOUT = 30.0
+# Webhook delivery timeout — generous to handle concurrent syncs
+WEBHOOK_TIMEOUT = 90.0
 
 # Dummy URL for webhook subscriptions - Svix will try to deliver here
 # We don't need it to succeed, we just check Svix's message attempts
@@ -39,23 +35,54 @@ DUMMY_WEBHOOK_URL = "https://example.com/webhook"
 
 async def wait_for_sync_completed_message(
     api_client: httpx.AsyncClient,
+    source_connection_id: str | None = None,
     timeout: float = WEBHOOK_TIMEOUT,
 ) -> Dict:
-    """Poll the messages API until a sync.completed message appears."""
+    """Poll the messages API until a sync.completed message appears.
+
+    Also checks sync job status for diagnostics so we can distinguish
+    'sync never completed' from 'Svix publish failed'.
+    """
     start_time = time.time()
     last_message_id = None
+    last_status_log = 0.0
 
     while time.time() - start_time < timeout:
+        # Check for sync.completed messages
         response = await api_client.get(
             "/webhooks/messages", params={"event_types": ["sync.completed"]}
         )
         if response.status_code == 200:
             messages = response.json()
             if messages:
-                # Return the most recent message if it's new
                 if messages[0]["id"] != last_message_id:
                     return messages[0]
                 last_message_id = messages[0]["id"] if messages else None
+
+        # Every 10s, log diagnostics: sync job status + all message types
+        elapsed = time.time() - start_time
+        if elapsed - last_status_log >= 10.0:
+            last_status_log = elapsed
+
+            # Check ALL webhook messages (not just sync.completed)
+            all_msgs_resp = await api_client.get("/webhooks/messages")
+            all_msgs = all_msgs_resp.json() if all_msgs_resp.status_code == 200 else []
+            event_types_seen = [m.get("event_type") for m in all_msgs[:10]]
+
+            # Check sync job status if we have a source connection
+            sync_status = "unknown"
+            if source_connection_id:
+                sc_resp = await api_client.get(f"/source-connections/{source_connection_id}")
+                if sc_resp.status_code == 200:
+                    sc_data = sc_resp.json()
+                    sync_status = sc_data.get("status", "unknown")
+
+            print(
+                f"[{elapsed:.0f}s] Waiting for sync.completed | "
+                f"sync_status={sync_status} | "
+                f"all_messages({len(all_msgs)})={event_types_seen} | "
+                f"completed_messages_status={response.status_code}"
+            )
 
         await asyncio.sleep(0.5)
 
@@ -105,17 +132,29 @@ async def webhook_subscription_all_events(
     api_client: httpx.AsyncClient,
     unique_webhook_url: str,
 ) -> AsyncGenerator[Dict, None]:
-    """Create a webhook subscription for all sync event types."""
+    """Create a webhook subscription for a representative set of event types.
+
+    Note: Svix limits subscriptions to 10 channels max, so we pick a
+    representative set across all three domains.
+    """
     response = await api_client.post(
         "/webhooks/subscriptions",
         json={
             "url": unique_webhook_url,
             "event_types": [
+                # Sync lifecycle
                 "sync.pending",
                 "sync.running",
                 "sync.completed",
                 "sync.failed",
                 "sync.cancelled",
+                # Source connection lifecycle
+                "source_connection.created",
+                "source_connection.auth_completed",
+                "source_connection.deleted",
+                # Collection lifecycle
+                "collection.created",
+                "collection.deleted",
             ],
         },
     )
@@ -160,7 +199,6 @@ class TestWebhookMessages:
         for msg in messages:
             assert msg["event_type"] == "sync.completed"
 
-    @pytest.mark.svix
     async def test_messages_created_after_sync(
         self,
         api_client: httpx.AsyncClient,
@@ -187,9 +225,12 @@ class TestWebhookMessages:
             },
         )
         assert response.status_code == 200
+        sc_id = response.json()["id"]
 
         # Wait for new message to appear
-        message = await wait_for_sync_completed_message(api_client, timeout=WEBHOOK_TIMEOUT)
+        message = await wait_for_sync_completed_message(
+            api_client, source_connection_id=sc_id, timeout=WEBHOOK_TIMEOUT
+        )
 
         # Verify message structure
         assert "id" in message
@@ -199,7 +240,6 @@ class TestWebhookMessages:
 
 
 @pytest.mark.asyncio
-@pytest.mark.svix
 class TestWebhookEventTypes:
     """Tests for different event types (sync.pending, sync.running, sync.completed, etc.)."""
 
@@ -210,7 +250,7 @@ class TestWebhookEventTypes:
     ):
         """Test that event payloads contain all required fields."""
         # Trigger a sync
-        await api_client.post(
+        response = await api_client.post(
             "/source-connections",
             json={
                 "name": "Stub Payload Test",
@@ -222,32 +262,38 @@ class TestWebhookEventTypes:
                 "sync_immediately": True,
             },
         )
+        assert response.status_code == 200
+        sc_id = response.json()["id"]
 
         # Wait for message
-        message = await wait_for_sync_completed_message(api_client, timeout=WEBHOOK_TIMEOUT)
+        message = await wait_for_sync_completed_message(
+            api_client, source_connection_id=sc_id, timeout=WEBHOOK_TIMEOUT
+        )
         payload = message.get("payload", {})
 
-        # Verify required fields per SyncEventPayload schema
+        # Verify required fields per SyncLifecycleEvent schema
         assert "event_type" in payload
-        assert "job_id" in payload
+        assert "sync_job_id" in payload
+        assert "sync_id" in payload
+        assert "collection_id" in payload
         assert "collection_readable_id" in payload
         assert "collection_name" in payload
+        assert "source_connection_id" in payload
         assert "source_type" in payload
-        assert "status" in payload
         assert "timestamp" in payload
 
-    async def test_completed_event_has_job_id(
+    async def test_completed_event_has_sync_job_id(
         self,
         api_client: httpx.AsyncClient,
         collection: Dict,
     ):
-        """Test that completed events include the job_id in correct format."""
+        """Test that completed events include the sync_job_id in correct format."""
         # Trigger a sync
-        await api_client.post(
+        response = await api_client.post(
             "/source-connections",
             json={
                 "name": "Stub Job ID Test",
-                "description": "Testing job_id presence",
+                "description": "Testing sync_job_id presence",
                 "short_name": "stub",
                 "readable_collection_id": collection["readable_id"],
                 "authentication": {"credentials": {"stub_key": "key"}},
@@ -255,15 +301,19 @@ class TestWebhookEventTypes:
                 "sync_immediately": True,
             },
         )
+        assert response.status_code == 200
+        sc_id = response.json()["id"]
 
         # Wait for message
-        message = await wait_for_sync_completed_message(api_client, timeout=WEBHOOK_TIMEOUT)
+        message = await wait_for_sync_completed_message(
+            api_client, source_connection_id=sc_id, timeout=WEBHOOK_TIMEOUT
+        )
         payload = message.get("payload", {})
 
-        assert "job_id" in payload
-        job_id = payload["job_id"]
+        assert "sync_job_id" in payload
+        sync_job_id = payload["sync_job_id"]
         # UUID format validation
-        assert len(job_id) == 36  # xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        assert len(sync_job_id) == 36  # xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
 
 # =============================================================================
@@ -438,6 +488,680 @@ class TestWebhookSubscriptions:
         data = response.json()
         # Secret should be null when not requested
         assert data.get("secret") is None
+
+
+@pytest.mark.asyncio
+class TestNewEventTypeSubscriptions:
+    """Tests for subscription CRUD with source_connection.* and collection.* event types.
+
+    These tests verify the API correctly accepts the new event type domains
+    introduced alongside source connection and collection lifecycle events.
+    """
+
+    async def test_create_subscription_source_connection_events(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test creating a subscription for source_connection events."""
+        event_types = [
+            "source_connection.created",
+            "source_connection.auth_completed",
+            "source_connection.deleted",
+        ]
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert response.status_code == 200
+        subscription = response.json()
+        assert set(subscription["filter_types"]) == set(event_types)
+
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
+
+    async def test_create_subscription_collection_events(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test creating a subscription for collection events."""
+        event_types = [
+            "collection.created",
+            "collection.updated",
+            "collection.deleted",
+        ]
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert response.status_code == 200
+        subscription = response.json()
+        assert set(subscription["filter_types"]) == set(event_types)
+
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
+
+    async def test_create_subscription_mixed_domains(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test creating a subscription mixing sync, source_connection, and collection events."""
+        event_types = [
+            "sync.completed",
+            "sync.failed",
+            "source_connection.created",
+            "source_connection.deleted",
+            "collection.created",
+            "collection.deleted",
+        ]
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert response.status_code == 200
+        subscription = response.json()
+        assert set(subscription["filter_types"]) == set(event_types)
+
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
+
+    async def test_create_subscription_all_event_types(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test creating a subscription with 10 event types (Svix max per subscription).
+
+        Svix limits subscriptions to at most 10 channels. We pick a representative
+        set across all three domains.
+        """
+        event_types = [
+            "sync.pending",
+            "sync.running",
+            "sync.completed",
+            "sync.failed",
+            "sync.cancelled",
+            "source_connection.created",
+            "source_connection.auth_completed",
+            "source_connection.deleted",
+            "collection.created",
+            "collection.deleted",
+        ]
+        assert len(event_types) <= 10, "Svix allows at most 10 channels per subscription"
+
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert response.status_code == 200
+        subscription = response.json()
+        assert set(subscription["filter_types"]) == set(event_types)
+
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
+
+    async def test_update_subscription_to_new_event_types(
+        self, api_client: httpx.AsyncClient, webhook_subscription: Dict
+    ):
+        """Test updating a sync-only subscription to source_connection + collection types."""
+        subscription_id = webhook_subscription["id"]
+        new_event_types = [
+            "source_connection.created",
+            "collection.created",
+            "collection.deleted",
+        ]
+
+        response = await api_client.patch(
+            f"/webhooks/subscriptions/{subscription_id}",
+            json={"event_types": new_event_types},
+        )
+        assert response.status_code == 200
+        updated = response.json()
+        assert set(updated["filter_types"]) == set(new_event_types)
+
+    async def test_update_subscription_add_new_domain_to_existing(
+        self, api_client: httpx.AsyncClient, webhook_subscription: Dict
+    ):
+        """Test adding source_connection events to an existing sync subscription."""
+        subscription_id = webhook_subscription["id"]
+        combined_types = [
+            "sync.completed",
+            "source_connection.created",
+            "source_connection.deleted",
+        ]
+
+        response = await api_client.patch(
+            f"/webhooks/subscriptions/{subscription_id}",
+            json={"event_types": combined_types},
+        )
+        assert response.status_code == 200
+        updated = response.json()
+        assert set(updated["filter_types"]) == set(combined_types)
+
+    async def test_get_subscription_shows_new_event_types(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test that GET returns the correct new event types."""
+        event_types = [
+            "source_connection.created",
+            "collection.updated",
+        ]
+        create_response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert create_response.status_code == 200
+        subscription = create_response.json()
+
+        # Fetch and verify
+        get_response = await api_client.get(
+            f"/webhooks/subscriptions/{subscription['id']}"
+        )
+        assert get_response.status_code == 200
+        data = get_response.json()
+        assert set(data["filter_types"]) == set(event_types)
+
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
+
+    async def test_delete_subscription_with_new_event_types(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test that deleting a subscription with new event types returns them correctly."""
+        event_types = [
+            "source_connection.auth_completed",
+            "collection.deleted",
+        ]
+        create_response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert create_response.status_code == 200
+        subscription = create_response.json()
+
+        delete_response = await api_client.delete(
+            f"/webhooks/subscriptions/{subscription['id']}"
+        )
+        assert delete_response.status_code == 200
+        deleted = delete_response.json()
+        assert set(deleted["filter_types"]) == set(event_types)
+
+    async def test_list_subscriptions_includes_new_event_types(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test that list subscriptions correctly shows new event types."""
+        event_types = ["source_connection.created", "collection.created"]
+        create_response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert create_response.status_code == 200
+        subscription = create_response.json()
+
+        list_response = await api_client.get("/webhooks/subscriptions")
+        assert list_response.status_code == 200
+        subscriptions = list_response.json()
+
+        our_sub = next(
+            (s for s in subscriptions if s["id"] == subscription["id"]),
+            None,
+        )
+        assert our_sub is not None
+        assert set(our_sub["filter_types"]) == set(event_types)
+
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
+
+
+@pytest.mark.asyncio
+class TestNewEventTypeMessageFiltering:
+    """Tests for filtering messages by new event type domains.
+
+    These tests verify the messages API accepts source_connection.* and
+    collection.* event types as filter parameters. Messages may not exist
+    yet for these types, but the API should accept the filter gracefully.
+    """
+
+    async def test_filter_messages_by_source_connection_events(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test filtering messages by source_connection event types."""
+        response = await api_client.get(
+            "/webhooks/messages",
+            params={"event_types": ["source_connection.created"]},
+        )
+        assert response.status_code == 200
+        messages = response.json()
+        assert isinstance(messages, list)
+        for msg in messages:
+            assert msg["event_type"] == "source_connection.created"
+
+    async def test_filter_messages_by_collection_events(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test filtering messages by collection event types."""
+        response = await api_client.get(
+            "/webhooks/messages",
+            params={"event_types": ["collection.created", "collection.deleted"]},
+        )
+        assert response.status_code == 200
+        messages = response.json()
+        assert isinstance(messages, list)
+        for msg in messages:
+            assert msg["event_type"] in ["collection.created", "collection.deleted"]
+
+    async def test_filter_messages_mixed_domains(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test filtering messages by event types across all three domains."""
+        response = await api_client.get(
+            "/webhooks/messages",
+            params={
+                "event_types": [
+                    "sync.completed",
+                    "source_connection.created",
+                    "collection.deleted",
+                ]
+            },
+        )
+        assert response.status_code == 200
+        messages = response.json()
+        assert isinstance(messages, list)
+        for msg in messages:
+            assert msg["event_type"] in [
+                "sync.completed",
+                "source_connection.created",
+                "collection.deleted",
+            ]
+
+    async def test_filter_messages_all_source_connection_events(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test filtering by all source_connection event types at once."""
+        response = await api_client.get(
+            "/webhooks/messages",
+            params={
+                "event_types": [
+                    "source_connection.created",
+                    "source_connection.auth_completed",
+                    "source_connection.deleted",
+                ]
+            },
+        )
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    async def test_filter_messages_all_collection_events(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test filtering by all collection event types at once."""
+        response = await api_client.get(
+            "/webhooks/messages",
+            params={
+                "event_types": [
+                    "collection.created",
+                    "collection.updated",
+                    "collection.deleted",
+                ]
+            },
+        )
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+
+@pytest.mark.asyncio
+class TestNewEventTypeSingleSubscriptions:
+    """Tests creating a subscription for each individual new event type.
+
+    Validates that every event type in the enum can be used on its own.
+    """
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            "source_connection.created",
+            "source_connection.auth_completed",
+            "source_connection.deleted",
+            "collection.created",
+            "collection.updated",
+            "collection.deleted",
+        ],
+    )
+    async def test_create_subscription_single_new_event_type(
+        self, api_client: httpx.AsyncClient, event_type: str
+    ):
+        """Test creating a subscription with a single new event type."""
+        url = f"https://example.com/webhook/single-{event_type.replace('.', '-')}"
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": url, "event_types": [event_type]},
+        )
+        assert response.status_code == 200, f"Failed for {event_type}: {response.text}"
+        subscription = response.json()
+        assert subscription["filter_types"] == [event_type]
+
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
+
+
+@pytest.mark.asyncio
+class TestNewEventTypeDisableEnable:
+    """Tests for disabling/enabling subscriptions with new event types."""
+
+    async def test_disable_source_connection_subscription(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test disabling and re-enabling a source_connection subscription."""
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={
+                "url": unique_webhook_url,
+                "event_types": ["source_connection.created", "source_connection.deleted"],
+            },
+        )
+        assert response.status_code == 200
+        subscription = response.json()
+        sub_id = subscription["id"]
+
+        # Disable
+        resp = await api_client.patch(
+            f"/webhooks/subscriptions/{sub_id}",
+            json={"disabled": True},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["disabled"] is True
+
+        # Verify event types are preserved
+        assert set(resp.json()["filter_types"]) == {
+            "source_connection.created",
+            "source_connection.deleted",
+        }
+
+        # Re-enable
+        resp = await api_client.patch(
+            f"/webhooks/subscriptions/{sub_id}",
+            json={"disabled": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["disabled"] is False
+        assert set(resp.json()["filter_types"]) == {
+            "source_connection.created",
+            "source_connection.deleted",
+        }
+
+        await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+
+    async def test_disable_collection_subscription(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test disabling and re-enabling a collection subscription."""
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={
+                "url": unique_webhook_url,
+                "event_types": ["collection.created", "collection.updated", "collection.deleted"],
+            },
+        )
+        assert response.status_code == 200
+        sub_id = response.json()["id"]
+
+        # Disable
+        resp = await api_client.patch(
+            f"/webhooks/subscriptions/{sub_id}",
+            json={"disabled": True},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["disabled"] is True
+
+        # Re-enable
+        resp = await api_client.patch(
+            f"/webhooks/subscriptions/{sub_id}",
+            json={"disabled": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["disabled"] is False
+
+        await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+
+
+@pytest.mark.asyncio
+class TestNewEventTypeSecretHandling:
+    """Tests for secret handling with new event type subscriptions."""
+
+    async def test_secret_with_source_connection_subscription(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test that include_secret works on source_connection subscriptions."""
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={
+                "url": unique_webhook_url,
+                "event_types": ["source_connection.created"],
+            },
+        )
+        assert response.status_code == 200
+        sub_id = response.json()["id"]
+
+        # Fetch with secret
+        resp = await api_client.get(
+            f"/webhooks/subscriptions/{sub_id}",
+            params={"include_secret": True},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["secret"] is not None
+        assert data["secret"].startswith("whsec_")
+
+        # Fetch without secret
+        resp = await api_client.get(f"/webhooks/subscriptions/{sub_id}")
+        assert resp.status_code == 200
+        assert resp.json().get("secret") is None
+
+        await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+
+
+@pytest.mark.asyncio
+class TestNewEventTypeSvixLimits:
+    """Tests for Svix-specific limits with event types.
+
+    Svix limits subscriptions to at most 10 channels (event types).
+    """
+
+    async def test_eleven_event_types_rejected(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test that creating a subscription with >10 event types is rejected."""
+        all_event_types = [
+            "sync.pending",
+            "sync.running",
+            "sync.completed",
+            "sync.failed",
+            "sync.cancelled",
+            "source_connection.created",
+            "source_connection.auth_completed",
+            "source_connection.deleted",
+            "collection.created",
+            "collection.updated",
+            "collection.deleted",
+        ]
+        assert len(all_event_types) == 11
+
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": all_event_types},
+        )
+        # Svix rejects >10 channels — surfaces as an error from our API
+        assert response.status_code in [400, 422, 500]
+
+    async def test_ten_event_types_accepted(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test that exactly 10 event types is the maximum that works."""
+        event_types = [
+            "sync.pending",
+            "sync.running",
+            "sync.completed",
+            "sync.failed",
+            "sync.cancelled",
+            "source_connection.created",
+            "source_connection.auth_completed",
+            "source_connection.deleted",
+            "collection.created",
+            "collection.deleted",
+        ]
+        assert len(event_types) == 10
+
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert response.status_code == 200
+        subscription = response.json()
+        assert len(subscription["filter_types"]) == 10
+
+        await api_client.delete(f"/webhooks/subscriptions/{subscription['id']}")
+
+
+@pytest.mark.asyncio
+class TestCrossDomainSubscriptionUpdates:
+    """Tests for updating subscriptions across event type domains."""
+
+    async def test_replace_sync_with_source_connection_types(
+        self, api_client: httpx.AsyncClient, webhook_subscription: Dict
+    ):
+        """Test replacing sync event types with source_connection types entirely."""
+        sub_id = webhook_subscription["id"]
+
+        response = await api_client.patch(
+            f"/webhooks/subscriptions/{sub_id}",
+            json={"event_types": ["source_connection.created", "source_connection.deleted"]},
+        )
+        assert response.status_code == 200
+        updated = response.json()
+        assert set(updated["filter_types"]) == {
+            "source_connection.created",
+            "source_connection.deleted",
+        }
+
+        # Verify the old sync.completed is gone
+        assert "sync.completed" not in updated["filter_types"]
+
+    async def test_replace_source_connection_with_collection_types(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test replacing source_connection types with collection types."""
+        # Create with source_connection types
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={
+                "url": unique_webhook_url,
+                "event_types": ["source_connection.created"],
+            },
+        )
+        assert response.status_code == 200
+        sub_id = response.json()["id"]
+
+        # Replace with collection types
+        response = await api_client.patch(
+            f"/webhooks/subscriptions/{sub_id}",
+            json={"event_types": ["collection.created", "collection.updated"]},
+        )
+        assert response.status_code == 200
+        updated = response.json()
+        assert set(updated["filter_types"]) == {"collection.created", "collection.updated"}
+        assert "source_connection.created" not in updated["filter_types"]
+
+        await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+
+    async def test_multiple_subscriptions_different_domains(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test creating separate subscriptions for each event domain."""
+        subs = []
+        domain_configs = [
+            {
+                "url": f"https://example.com/webhook/sync-{uuid.uuid4().hex[:8]}",
+                "event_types": ["sync.completed", "sync.failed"],
+            },
+            {
+                "url": f"https://example.com/webhook/sc-{uuid.uuid4().hex[:8]}",
+                "event_types": ["source_connection.created", "source_connection.deleted"],
+            },
+            {
+                "url": f"https://example.com/webhook/coll-{uuid.uuid4().hex[:8]}",
+                "event_types": ["collection.created", "collection.deleted"],
+            },
+        ]
+
+        # Create all three
+        for config in domain_configs:
+            response = await api_client.post(
+                "/webhooks/subscriptions",
+                json=config,
+            )
+            assert response.status_code == 200, f"Failed for {config['event_types']}: {response.text}"
+            subs.append(response.json())
+
+        # Verify each has the correct event types
+        for sub, config in zip(subs, domain_configs):
+            assert set(sub["filter_types"]) == set(config["event_types"])
+
+        # Verify all appear in list
+        list_response = await api_client.get("/webhooks/subscriptions")
+        assert list_response.status_code == 200
+        all_ids = {s["id"] for s in list_response.json()}
+        for sub in subs:
+            assert sub["id"] in all_ids
+
+        # Cleanup
+        for sub in subs:
+            await api_client.delete(f"/webhooks/subscriptions/{sub['id']}")
+
+    async def test_update_url_preserves_new_event_types(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test that updating the URL doesn't change the event types."""
+        event_types = ["source_connection.created", "collection.deleted"]
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert response.status_code == 200
+        sub_id = response.json()["id"]
+
+        # Update only the URL
+        new_url = f"https://example.com/webhook/new-{uuid.uuid4().hex[:8]}"
+        response = await api_client.patch(
+            f"/webhooks/subscriptions/{sub_id}",
+            json={"url": new_url},
+        )
+        assert response.status_code == 200
+        updated = response.json()
+        assert updated["url"].rstrip("/") == new_url.rstrip("/")
+        assert set(updated["filter_types"]) == set(event_types)
+
+        await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+
+    async def test_disable_preserves_new_event_types(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test that disabling/enabling preserves new event types."""
+        event_types = [
+            "source_connection.auth_completed",
+            "collection.created",
+            "collection.updated",
+        ]
+        response = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": unique_webhook_url, "event_types": event_types},
+        )
+        assert response.status_code == 200
+        sub_id = response.json()["id"]
+
+        # Disable
+        response = await api_client.patch(
+            f"/webhooks/subscriptions/{sub_id}",
+            json={"disabled": True},
+        )
+        assert response.status_code == 200
+        assert set(response.json()["filter_types"]) == set(event_types)
+
+        # Re-enable
+        response = await api_client.patch(
+            f"/webhooks/subscriptions/{sub_id}",
+            json={"disabled": False},
+        )
+        assert response.status_code == 200
+        assert set(response.json()["filter_types"]) == set(event_types)
+
+        await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
 
 
 @pytest.mark.asyncio

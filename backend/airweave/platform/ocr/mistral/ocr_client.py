@@ -193,12 +193,13 @@ class MistralOcrClient:
 
         async def _process_one(idx: int, chunk: FileChunk) -> None:
             async with semaphore:
-                results[idx] = await self.ocr_chunk(chunk)
+                try:
+                    results[idx] = await self.ocr_chunk(chunk)
+                except Exception as exc:
+                    results[idx] = exc
 
-        # Use return_exceptions=True so we attempt ALL chunks before raising.
         await asyncio.gather(
             *[_process_one(i, c) for i, c in enumerate(chunks)],
-            return_exceptions=True,
         )
 
         # Separate successes from failures — failed chunks get OcrResult with error

@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml/badge.svg" alt="Ruff"></a>
+  <a href="https://github.com/airweave-ai/airweave/actions/workflows/code-quality.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/code-quality.yml/badge.svg" alt="Code Quality"></a>
   <a href="https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml/badge.svg" alt="ESLint"></a>
   <a href="https://github.com/airweave-ai/airweave/actions/workflows/test-public-api.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/test-public-api.yml/badge.svg" alt="System Tests"></a>
   <a href="https://pepy.tech/projects/airweave-sdk"><img src="https://static.pepy.tech/badge/airweave-sdk" alt="PyPI Downloads"></a>
@@ -119,7 +119,7 @@ results = client.collections.search(
 
 - **Frontend**: [React/TypeScript](https://react.dev/) with [ShadCN](https://ui.shadcn.com/)
 - **Backend**: [FastAPI](https://fastapi.tiangolo.com/) (Python)
-- **Databases**: [PostgreSQL](https://www.postgresql.org/) (metadata), [Qdrant](https://qdrant.tech/) (vectors)
+- **Databases**: [PostgreSQL](https://www.postgresql.org/) (metadata), [Vespa](https://vespa.ai/) (vectors)
 - **Workers**: [Temporal](https://temporal.io/) (orchestration), [Redis](https://redis.io/) (pub/sub)
 - **Deployment**: [Docker Compose](https://docs.docker.com/compose/) (dev), [Kubernetes](https://kubernetes.io/) (prod)
 

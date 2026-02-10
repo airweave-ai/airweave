@@ -11,6 +11,7 @@ Key operations:
 - Update connection settings and credentials
 """
 
+import logging
 from typing import List, Optional
 from uuid import UUID
 
@@ -20,8 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.guard_rail_service import GuardRailService
+from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
@@ -32,6 +36,8 @@ from airweave.schemas.errors import (
     ValidationErrorResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 router = TrailingSlashRouter()
 
 
@@ -40,6 +46,7 @@ router = TrailingSlashRouter()
 async def oauth_callback(
     *,
     db: AsyncSession = Depends(get_db),
+    event_bus: EventBus = Inject(EventBus),
     # OAuth2 parameters
     state: Optional[str] = Query(None, description="OAuth2 state parameter"),
     code: Optional[str] = Query(None, description="OAuth2 authorization code"),
@@ -90,8 +97,17 @@ async def oauth_callback(
         from airweave.core.config import settings
 
         redirect_url = settings.app_url
-
-    connection_id = source_conn.id
+    try:
+        await event_bus.publish(
+            SourceConnectionLifecycleEvent.auth_completed(
+                organization_id=source_conn.organization_id,
+                source_connection_id=source_conn.id,
+                source_type=source_conn.short_name,
+                collection_readable_id=source_conn.readable_collection_id,
+            )
+        )
+    except Exception as e:
+        logger.error(f"Failed to publish source_connection.auth_completed event: {e}")
 
     # Parse the redirect URL to preserve existing query parameters
     from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -101,7 +117,7 @@ async def oauth_callback(
 
     # Add success parameters (using frontend-expected param names)
     query_params["status"] = ["success"]
-    query_params["source_connection_id"] = [str(connection_id)]
+    query_params["source_connection_id"] = [str(source_conn.id)]
 
     # Reconstruct the URL with all query parameters
     new_query = urlencode(query_params, doseq=True)
@@ -141,6 +157,7 @@ async def create(
     source_connection_in: schemas.SourceConnectionCreate,
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    event_bus: EventBus = Inject(EventBus),
 ) -> schemas.SourceConnection:
     """Create a new source connection."""
     # Check if organization is allowed to create a source connection
@@ -156,6 +173,20 @@ async def create(
         obj_in=source_connection_in,
         ctx=ctx,
     )
+
+    # Publish source_connection.created event
+    try:
+        await event_bus.publish(
+            SourceConnectionLifecycleEvent.created(
+                organization_id=ctx.organization.id,
+                source_connection_id=result.id,
+                source_type=result.short_name,
+                collection_readable_id=result.readable_collection_id,
+                is_authenticated=result.is_authenticated,
+            )
+        )
+    except Exception as e:
+        ctx.logger.warning(f"Failed to publish source_connection.created event: {e}")
 
     return result
 
@@ -317,6 +348,7 @@ async def delete(
     ),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    event_bus: EventBus = Inject(EventBus),
 ) -> schemas.SourceConnection:
     """Delete a source connection and all related data."""
     result = await source_connection_service.delete(
@@ -324,6 +356,19 @@ async def delete(
         id=source_connection_id,
         ctx=ctx,
     )
+
+    # Publish source_connection.deleted event
+    try:
+        await event_bus.publish(
+            SourceConnectionLifecycleEvent.deleted(
+                organization_id=ctx.organization.id,
+                source_connection_id=source_connection_id,
+                source_type=result.short_name,
+                collection_readable_id=result.readable_collection_id,
+            )
+        )
+    except Exception as e:
+        ctx.logger.warning(f"Failed to publish source_connection.deleted event: {e}")
 
     return result
 

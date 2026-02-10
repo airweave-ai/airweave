@@ -36,6 +36,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
+import aiofiles
+
 from airweave.platform.storage.exceptions import StorageNotFoundError
 from airweave.platform.storage.protocol import StorageBackend
 from airweave.platform.sync.arf.schema import SyncManifest
@@ -191,8 +193,9 @@ class ArfService:
                 file_path = self._file_path(sync_id, entity_id, filename)
 
                 try:
-                    with open(local_path, "rb") as f:
-                        await self.storage.write_file(file_path, f.read())
+                    async with aiofiles.open(local_path, "rb") as f:
+                        content = await f.read()
+                    await self.storage.write_file(file_path, content)
                     entity_dict["__stored_file__"] = file_path
                     stored_files.append(entity_id)
                 except Exception as e:
@@ -507,8 +510,8 @@ class ArfService:
                 filename = Path(stored_file).name
                 restored_path = restore_files_to / filename
                 restored_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(restored_path, "wb") as f:
-                    f.write(content)
+                async with aiofiles.open(restored_path, "wb") as f:
+                    await f.write(content)
                 entity_dict["local_path"] = str(restored_path)
             except Exception:
                 pass

@@ -18,7 +18,6 @@ if TYPE_CHECKING:
         QueryInterpretation,
         Reranking,
         Retrieval,
-        TemporalRelevance,
         UserFilter,
     )
 
@@ -46,7 +45,6 @@ class SearchContext(BaseModel):
     query_interpretation: Optional[QueryInterpretation] = Field()
     embed_query: Optional[EmbedQuery] = Field()
     user_filter: Optional[UserFilter] = Field()
-    temporal_relevance: Optional[TemporalRelevance] = Field()
     retrieval: Optional[Retrieval] = Field()
     federated_search: Optional[FederatedSearch] = Field()
     reranking: Optional[Reranking] = Field()

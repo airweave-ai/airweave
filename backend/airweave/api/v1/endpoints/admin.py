@@ -1018,7 +1018,7 @@ async def resync_with_execution_config(
     can use API keys to access this endpoint programmatically.
 
     **Config Structure**: Nested config with 4 sub-objects:
-        - destinations: skip_qdrant, skip_vespa, target_destinations, exclude_destinations
+        - destinations: skip_vespa, target_destinations, exclude_destinations
         - handlers: enable_vector_handlers, enable_raw_data_handler, enable_postgres_handler
         - cursor: skip_load, skip_updates
         - behavior: skip_hash_comparison, replay_from_arf
@@ -1044,7 +1044,6 @@ async def resync_with_execution_config(
         - Normal sync: SyncConfig.default()
         - ARF capture only: SyncConfig.arf_capture_only()
         - ARF replay to vector DBs: SyncConfig.replay_from_arf_to_vector_dbs()
-        - Qdrant only: SyncConfig.qdrant_only()
         - Vespa only: SyncConfig.vespa_only()
     """
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)

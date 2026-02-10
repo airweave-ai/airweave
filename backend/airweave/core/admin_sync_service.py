@@ -606,8 +606,6 @@ class AdminSyncService:
         self, collection_id: UUID, syncs: List[Sync], ctx: ApiContext
     ) -> Dict[UUID, Optional[int]]:
         """Count Qdrant documents for all syncs in a collection (reuse client)."""
-        from qdrant_client.models import FieldCondition, Filter, MatchValue
-
         from airweave.platform.destinations.qdrant import QdrantDestination
 
         try:
@@ -624,14 +622,14 @@ class AdminSyncService:
             async def count_sync(sync: Sync) -> Tuple[UUID, Optional[int]]:
                 async with semaphore:
                     try:
-                        scroll_filter = Filter(
-                            must=[
-                                FieldCondition(
-                                    key="airweave_system_metadata.sync_id",
-                                    match=MatchValue(value=str(sync.id)),
-                                )
+                        scroll_filter = {
+                            "must": [
+                                {
+                                    "key": "airweave_system_metadata.sync_id",
+                                    "match": {"value": str(sync.id)},
+                                }
                             ]
-                        )
+                        }
                         # Use exact=False for faster approximate counts
                         count_result = await qdrant.client.count(
                             collection_name=qdrant.collection_name,

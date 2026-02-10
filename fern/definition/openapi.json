@@ -2343,7 +2343,6 @@
       "AdminSearchDestination": {
         "type": "string",
         "enum": [
-          "qdrant",
           "vespa"
         ],
         "title": "AdminSearchDestination",
@@ -2502,17 +2501,6 @@
               }
             ],
             "title": "Total Arf Entity Count"
-          },
-          "total_qdrant_entity_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Qdrant Entity Count"
           },
           "total_vespa_entity_count": {
             "anyOf": [
@@ -4293,12 +4281,6 @@
       },
       "DestinationConfig": {
         "properties": {
-          "skip_qdrant": {
-            "type": "boolean",
-            "title": "Skip Qdrant",
-            "description": "Skip writing to native Qdrant",
-            "default": false
-          },
           "skip_vespa": {
             "type": "boolean",
             "title": "Skip Vespa",

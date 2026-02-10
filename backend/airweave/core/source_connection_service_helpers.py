@@ -17,7 +17,6 @@ from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.config import settings as core_settings
 from airweave.core.constants.reserved_ids import (
-    NATIVE_QDRANT_UUID,
     NATIVE_VESPA_UUID,
 )
 from airweave.core.shared_models import (
@@ -58,24 +57,21 @@ class SourceConnectionHelpers:
     ) -> list[UUID]:
         """Get destination connection IDs based on feature flags.
 
-        By default, writes to BOTH Qdrant and Vespa:
-        - Qdrant: Primary search destination (default for search queries)
-        - Vespa: Secondary destination (for future advanced search features)
+        Writes to Vespa as the primary (and only) vector database destination.
 
         Args:
             db: Database session
             ctx: API context with organization and feature flags
 
         Returns:
-            List of destination connection IDs (always includes Qdrant + Vespa, adds S3 if enabled)
+            List of destination connection IDs (Vespa + S3 if enabled)
         """
         from sqlalchemy import and_, select
 
         from airweave.models.connection import Connection
 
-        # Write to both Qdrant and Vespa by default
-        # TODO: Remove Qdrant once we Vespa is fully supported
-        destination_ids = [NATIVE_QDRANT_UUID, NATIVE_VESPA_UUID]
+        # Vespa is the sole vector database destination (Qdrant deprecated)
+        destination_ids = [NATIVE_VESPA_UUID]
 
         # Add S3 if feature flag enabled
         if ctx.has_feature(FeatureFlag.S3_DESTINATION):
@@ -110,7 +106,7 @@ class SourceConnectionHelpers:
     ) -> None:
         """Validate that new source uses same destination as existing sources.
 
-        Prevents mixing Qdrant and Vespa destinations within the same collection.
+        Ensures all sources in a collection write to the same vector database.
 
         Args:
             db: Database session
@@ -145,24 +141,14 @@ class SourceConnectionHelpers:
             if not existing_dest_ids:
                 continue
 
-            # Check if using Qdrant or Vespa
+            # Check Vespa consistency
             existing_uses_vespa = NATIVE_VESPA_UUID in existing_dest_ids
-            existing_uses_qdrant = NATIVE_QDRANT_UUID in existing_dest_ids
-
             new_uses_vespa = NATIVE_VESPA_UUID in new_destination_ids
-            new_uses_qdrant = NATIVE_QDRANT_UUID in new_destination_ids
 
             if existing_uses_vespa and not new_uses_vespa:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Collection '{collection_readable_id}' uses Vespa destination. "
-                    "Cannot add source with a different destination.",
-                )
-
-            if existing_uses_qdrant and not new_uses_qdrant:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Collection '{collection_readable_id}' uses Qdrant destination. "
                     "Cannot add source with a different destination.",
                 )
 
@@ -895,6 +881,7 @@ class SourceConnectionHelpers:
         # Build and return the complete response
         return schemas.SourceConnection(
             id=source_conn.id,
+            organization_id=source_conn.organization_id,
             name=source_conn.name,
             description=source_conn.description,
             short_name=source_conn.short_name,

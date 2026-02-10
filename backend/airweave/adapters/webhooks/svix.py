@@ -10,7 +10,7 @@ import time
 import uuid
 from datetime import datetime
 from functools import wraps
-from typing import Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Callable, Optional, TypeVar
 
 import jwt
 from svix.api import (
@@ -31,16 +31,18 @@ from svix.exceptions import HttpError as SvixHttpError
 from svix.exceptions import HTTPValidationError as SvixValidationError
 
 from airweave.core.config import settings
-from airweave.core.datetime_utils import utc_now_naive
+from airweave.core.protocols.webhooks import WebhookAdmin, WebhookPublisher
 from airweave.domains.webhooks.types import (
     DeliveryAttempt,
     EventMessage,
     RecoveryTask,
     Subscription,
-    SyncEventPayload,
+    WebhookPublishError,
     WebhooksError,
-    event_type_from_status,
 )
+
+if TYPE_CHECKING:
+    from airweave.core.protocols.event_bus import DomainEvent
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,9 @@ T = TypeVar("T")
 
 # 10 years in seconds
 TOKEN_DURATION_SECONDS = 24 * 365 * 10 * 60 * 60
+
+# Default org identifier for self-hosted Svix JWT auth
+SVIX_ORG_ID = "org_23rb8YdGqMT0qIzpgGwdXfHirMu"
 
 
 def _generate_token(signing_secret: str) -> str:
@@ -59,7 +64,7 @@ def _generate_token(signing_secret: str) -> str:
             "exp": now + TOKEN_DURATION_SECONDS,
             "nbf": now,
             "iss": "svix-server",
-            "sub": "org_23rb8YdGqMT0qIzpgGwdXfHirMu",
+            "sub": SVIX_ORG_ID,
         },
         signing_secret,
         algorithm="HS256",
@@ -144,7 +149,7 @@ def _to_attempt(attempt: MessageAttemptOut) -> DeliveryAttempt:
 # ---------------------------------------------------------------------------
 
 
-class SvixAdapter:
+class SvixAdapter(WebhookPublisher, WebhookAdmin):
     """Svix adapter implementing WebhookPublisher and WebhookAdmin."""
 
     def __init__(self) -> None:
@@ -156,55 +161,47 @@ class SvixAdapter:
         await self._svix.application.create(ApplicationIn(name=str(org_id), uid=str(org_id)))
 
     # -------------------------------------------------------------------------
+    # Organization lifecycle
+    # -------------------------------------------------------------------------
+
+    async def delete_organization(self, org_id: uuid.UUID) -> None:
+        """Delete a Svix application (organization) and all its data.
+
+        Best-effort: logs errors rather than raising.
+        """
+        try:
+            await self._svix.application.delete(str(org_id))
+        except Exception as e:
+            logger.error(f"Failed to delete Svix application for org {org_id}: {e}")
+
+    # -------------------------------------------------------------------------
     # WebhookPublisher
     # -------------------------------------------------------------------------
 
-    async def publish_sync_event(
-        self,
-        org_id: uuid.UUID,
-        source_connection_id: uuid.UUID,
-        sync_job_id: uuid.UUID,
-        sync_id: uuid.UUID,
-        collection_id: uuid.UUID,
-        collection_name: str,
-        collection_readable_id: str,
-        source_type: str,
-        status: str,
-        error: Optional[str] = None,
-    ) -> None:
-        """Publish a sync lifecycle event."""
-        event_type = event_type_from_status(status)
-        if event_type is None:
-            return
+    async def publish_event(self, event: "DomainEvent") -> None:
+        """Publish a domain event to webhook subscribers.
 
-        payload = SyncEventPayload(
-            event_type=event_type,
-            job_id=sync_job_id,
-            collection_readable_id=collection_readable_id,
-            collection_name=collection_name,
-            source_connection_id=source_connection_id,
-            source_type=source_type,
-            status=status,
-            timestamp=utc_now_naive(),
-            error=error,
-        )
-
+        Serializes the event to a flat JSON dict for Svix delivery.
+        Wraps infrastructure errors in WebhookPublishError so the event
+        bus sees a domain exception — never raw Svix/HTTP internals.
+        """
+        event_type = event.event_type.value
         try:
-            await self._publish_internal(org_id, event_type.value, payload)
-        except Exception as e:
-            logger.error(f"Failed to publish webhook event: {e}")
+            payload = event.model_dump(mode="json")
+            await self._publish_internal(event.organization_id, event_type, payload)
+            logger.info(f"Published webhook event '{event_type}' for org {event.organization_id}")
+        except Exception as exc:
+            raise WebhookPublishError(event_type, exc) from exc
 
     @_auto_create_org
-    async def _publish_internal(
-        self, org_id: uuid.UUID, event_type: str, payload: SyncEventPayload
-    ) -> None:
+    async def _publish_internal(self, org_id: uuid.UUID, event_type: str, payload: dict) -> None:
         await self._svix.message.create(
             str(org_id),
             MessageIn(
                 event_type=event_type,
                 channels=[event_type],
                 event_id=str(uuid.uuid4()),
-                payload=payload.to_dict(),
+                payload=payload,
             ),
         )
 

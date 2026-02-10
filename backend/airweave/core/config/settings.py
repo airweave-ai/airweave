@@ -41,12 +41,10 @@ class Settings(BaseSettings):
         REDIS_PORT (int): The Redis server port.
         REDIS_PASSWORD (Optional[str]): The Redis password (if authentication is enabled).
         REDIS_DB (int): The Redis database number.
-        QDRANT_HOST (str): The Qdrant host.
-        QDRANT_PORT (int): The Qdrant port.
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
-        EMBEDDING_DIMENSIONS (int): Embedding dimensions for the stack (provider, Vespa, Qdrant).
+        EMBEDDING_DIMENSIONS (int): Embedding dimensions for the stack (provider, Vespa).
         FIRECRAWL_API_KEY (Optional[str]): The FireCrawl API key.
         TEMPORAL_HOST (str): The host of the Temporal server.
         TEMPORAL_PORT (int): The Temporal server port.
@@ -65,7 +63,6 @@ class Settings(BaseSettings):
 
         # Custom deployment URLs
         API_FULL_URL (Optional[str]): The full URL for the API.
-        QDRANT_FULL_URL (Optional[str]): The full URL for the Qdrant.
         ADDITIONAL_CORS_ORIGINS (Optional[list[str]]): Additional CORS origins separated by commas.
     """
 
@@ -122,19 +119,17 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: Optional[str] = None
     REDIS_DB: int = 0
 
-    QDRANT_HOST: Optional[str] = None
-    QDRANT_PORT: Optional[int] = None
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
     # Embedding configuration (source of truth for entire stack)
-    # Must match: provider model, Vespa schema, Qdrant collection
+    # Must match: provider model dimensions and Vespa schema
     # Common values: 384 (local), 1024 (Mistral), 1536 (OpenAI small), 3072 (OpenAI large)
     EMBEDDING_DIMENSIONS: int = 1536
 
     # Vespa configuration
     VESPA_URL: str = "http://localhost"
     VESPA_PORT: int = 8081
-    VESPA_TIMEOUT: float = 120.0
+    VESPA_TIMEOUT: float = 60.0
     VESPA_CLUSTER: str = "airweave"  # Vespa content cluster name for bulk operations
 
     # -------------------------------------------------------------------------
@@ -231,7 +226,6 @@ class Settings(BaseSettings):
     # for custom domains in custom deployments
     API_FULL_URL: Optional[str] = None
     APP_FULL_URL: Optional[str] = None
-    QDRANT_FULL_URL: Optional[str] = None
     ADDITIONAL_CORS_ORIGINS: Optional[str] = None  # Separated by commas or semicolons
 
     # Svix (webhooks) configuration
@@ -413,21 +407,6 @@ class Settings(BaseSettings):
             port=port,
             path=f"{info.data.get('POSTGRES_DB') or ''}",
         )
-
-    @property
-    def qdrant_url(self) -> str:
-        """The Qdrant URL.
-
-        Returns:
-            str: The Qdrant URL.
-        """
-        if self.QDRANT_FULL_URL:
-            return self.QDRANT_FULL_URL
-
-        if not self.QDRANT_HOST or not self.QDRANT_PORT:
-            raise ValueError("QDRANT_HOST with QDRANT_PORT or QDRANT_FULL_URL must be set")
-
-        return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
 
     @property
     def vespa_url(self) -> str:

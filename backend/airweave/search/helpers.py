@@ -58,11 +58,7 @@ class SearchHelpers:
                 retrieval_strategy=search_context.retrieval.strategy.value,
                 limit=search_context.retrieval.limit,
                 offset=search_context.retrieval.offset,
-                temporal_relevance=(
-                    search_context.temporal_relevance.weight
-                    if search_context.temporal_relevance
-                    else 0.0
-                ),
+                temporal_relevance=0.0,
                 filter=filter_dict,
                 duration_ms=int(duration_ms),
                 results_count=len(search_response.results),

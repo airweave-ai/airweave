@@ -175,7 +175,15 @@ class DestinationHandler(EntityActionHandler):
 
             # Deep-copy to avoid cross-contamination
             dest_entities = [e.model_copy(deep=True) for e in entities]
+
+            proc_start = asyncio.get_running_loop().time()
             processed = await processor.process(dest_entities, sync_context)
+            proc_elapsed = asyncio.get_running_loop().time() - proc_start
+            if proc_elapsed > 10:
+                sync_context.logger.warning(
+                    f"[{self.name}] {processor.__class__.__name__} slow: "
+                    f"{proc_elapsed:.1f}s for {len(dest_entities)} entities"
+                )
 
             if not processed:
                 sync_context.logger.debug(
@@ -240,7 +248,15 @@ class DestinationHandler(EntityActionHandler):
         """
         for attempt in range(max_retries + 1):
             try:
-                return await operation()
+                start = asyncio.get_running_loop().time()
+                result = await operation()
+                elapsed = asyncio.get_running_loop().time() - start
+                if elapsed > 10:
+                    sync_context.logger.warning(
+                        f"[{self.name}] {operation_name} slow: {elapsed:.1f}s "
+                        f"(attempt {attempt + 1}/{max_retries + 1})"
+                    )
+                return result
             except _RETRYABLE_EXCEPTIONS as e:
                 error_msg = str(e) or "(empty error message)"
                 if attempt < max_retries:

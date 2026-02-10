@@ -8,8 +8,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from airweave.schemas.search import AirweaveTemporalConfig
-
 
 class SearchState(BaseModel):
     """Typed state passed between search operations.
@@ -24,7 +22,6 @@ class SearchState(BaseModel):
     - EmbedQuery -> dense_embeddings, sparse_embeddings
     - AccessControlFilter -> acl_filter, access_principals, filter (merged)
     - UserFilter -> filter (merged from user + interpreted + acl)
-    - TemporalRelevance -> temporal_config, filter (updated)
     - Retrieval -> results
     - FederatedSearch -> results (extended)
     - Reranking -> results (reordered)
@@ -67,13 +64,6 @@ class SearchState(BaseModel):
     access_principals: Optional[List[str]] = Field(
         default=None,
         description="Resolved access principals for the user (None = no AC sources)",
-    )
-
-    # =========================================================================
-    # Temporal relevance
-    # =========================================================================
-    temporal_config: Optional[AirweaveTemporalConfig] = Field(
-        default=None, description="Temporal relevance configuration"
     )
 
     # =========================================================================

@@ -586,6 +586,13 @@ class SourceConnection(BaseModel):
         description="Unique identifier of the source connection",
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
     )
+
+    organization_id: UUID = Field(
+        ...,
+        description="Organization this connection belongs to",
+        json_schema_extra={"example": "123e4567-e89b-12d3-a456-426614174000"},
+    )
+
     name: str = Field(
         ...,
         description="Display name of the connection",

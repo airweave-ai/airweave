@@ -5,10 +5,9 @@ import hashlib
 import json
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
-import aiofiles
-
 from airweave.core.shared_models import AirweaveFieldFlag
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity
+from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
 
 if TYPE_CHECKING:
@@ -219,21 +218,21 @@ class HashComputer:
             )
 
         try:
-            content_hash = hashlib.sha256()
-            async with aiofiles.open(local_path, "rb") as f:
-                while True:
-                    chunk = await f.read(8192)  # 8KB chunks
-                    if not chunk:
-                        break
-                    content_hash.update(chunk)
-
-            return content_hash.hexdigest()
-
+            return await run_in_thread_pool(self._sync_hash_file, str(local_path))
         except Exception as e:
             raise EntityProcessingError(
                 f"Failed to read file for {entity.__class__.__name__}[{entity.entity_id}] "
                 f"at {local_path}: {e}"
             ) from e
+
+    @staticmethod
+    def _sync_hash_file(path: str) -> str:
+        """Hash file content synchronously in a single thread-pool dispatch."""
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            while chunk := f.read(65536):  # 64KB chunks
+                h.update(chunk)
+        return h.hexdigest()
 
     # ------------------------------------------------------------------------------------
     # Serialization and Hashing

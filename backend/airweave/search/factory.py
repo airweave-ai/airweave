@@ -32,7 +32,6 @@ from airweave.search.operations import (
     QueryInterpretation,
     Reranking,
     Retrieval,
-    TemporalRelevance,
     UserFilter,
 )
 from airweave.search.providers._base import BaseProvider
@@ -125,13 +124,11 @@ class SearchFactory:
         # Resolve destination (may be overridden for admin search)
         destination = await self._resolve_destination(db, collection, ctx, destination_override)
         requires_embedding = getattr(destination, "_requires_client_embedding", True)
-        supports_temporal = getattr(destination, "_supports_temporal_relevance", True)
 
         self._log_source_modes(ctx, federated_sources, has_vector_sources)
         ctx.logger.info(
             f"[SearchFactory] Destination: {destination.__class__.__name__}, "
-            f"requires_client_embedding: {requires_embedding}, "
-            f"supports_temporal_relevance: {supports_temporal}"
+            f"requires_client_embedding: {requires_embedding}"
         )
 
         if not has_federated_sources and not has_vector_sources:
@@ -163,25 +160,6 @@ class SearchFactory:
         emitter = EventEmitter(request_id=request_id, stream=stream)
         await self._emit_skip_notices_if_needed(emitter, has_vector_sources, params, search_request)
 
-        # Get sources that support temporal relevance (for filtering when enabled)
-        # Only check if destination supports temporal relevance
-        temporal_supporting_sources = None
-        if params["temporal_weight"] > 0 and has_vector_sources and supports_temporal:
-            try:
-                temporal_supporting_sources = await self._get_temporal_supporting_sources(
-                    db, collection, ctx, emitter
-                )
-            except Exception as e:
-                # If we can't determine source support, raise the error
-                raise ValueError(f"Failed to check temporal relevance support: {e}") from e
-        elif params["temporal_weight"] > 0 and not supports_temporal:
-            # Destination doesn't support temporal relevance, skip the operation
-            ctx.logger.info(
-                f"[SearchFactory] Skipping temporal relevance: destination "
-                f"{destination.__class__.__name__} does not support it"
-            )
-            temporal_supporting_sources = []  # Empty list signals "skip operation"
-
         # Build operations with destination (destination-agnostic)
         operations = self._build_operations(
             params,
@@ -189,7 +167,6 @@ class SearchFactory:
             federated_sources,
             has_vector_sources,
             search_request,
-            temporal_supporting_sources,
             vector_size,
             destination=destination,
             requires_client_embedding=requires_embedding,
@@ -265,17 +242,6 @@ class SearchFactory:
             if search_request.generate_answer is not None
             else defaults.generate_answer
         )
-        temporal_weight = (
-            search_request.temporal_relevance
-            if search_request.temporal_relevance is not None
-            else defaults.temporal_relevance
-        )
-
-        if not (0 <= temporal_weight <= 1):
-            raise HTTPException(
-                status_code=422, detail="temporal_relevance must be between 0 and 1"
-            )
-
         return {
             "retrieval_strategy": retrieval_strategy,
             "offset": offset,
@@ -284,7 +250,6 @@ class SearchFactory:
             "interpret_filters": interpret_filters,
             "rerank": rerank,
             "generate_answer": generate_answer,
-            "temporal_weight": temporal_weight,
         }
 
     def _log_source_modes(self, ctx: ApiContext, federated_sources: List, has_vector_sources: bool):
@@ -331,14 +296,6 @@ class SearchFactory:
                         "reason": "All sources in the collection use federated search",
                     },
                 )
-            if params["temporal_weight"] > 0:
-                await emitter.emit(
-                    "operation_skipped",
-                    {
-                        "operation": "TemporalRelevance",
-                        "reason": "All sources in the collection use federated search",
-                    },
-                )
         except Exception:
             raise ValueError("Failed to emit skip notices for Qdrant-only features")
 
@@ -349,7 +306,6 @@ class SearchFactory:
         federated_sources: List[BaseSource],
         has_vector_sources: bool,
         search_request: SearchRequest,
-        temporal_supporting_sources: Optional[List[str]] = None,
         vector_size: Optional[int] = None,
         destination: Optional[BaseDestination] = None,
         requires_client_embedding: bool = True,
@@ -368,10 +324,6 @@ class SearchFactory:
             federated_sources: List of instantiated federated source objects
             has_vector_sources: Whether collection has any vector-backed sources
             search_request: Original search request from user
-            temporal_supporting_sources: List of source short_names to filter temporal search:
-                - Non-empty list: Filter to these sources (some don't support temporal)
-                - Empty list: Skip operation (no sources support temporal)
-                - None: No filtering needed (temporal disabled or not checked)
             vector_size: Vector dimensions for this collection (used by EmbedQuery)
             destination: The destination instance for search (Qdrant, Vespa, etc.)
             requires_client_embedding: Whether destination needs client-side embeddings
@@ -385,12 +337,6 @@ class SearchFactory:
         # Operations that need client-side embeddings (Qdrant-specific for now)
         # TODO: Make these destination-agnostic when filter DSL is abstracted
         needs_embedding_ops = has_vector_sources and requires_client_embedding
-
-        # Temporal relevance requires vector sources AND destination support
-        # Note: needs_embedding_ops is wrong here - we need vector sources, not client embedding
-        supports_temporal = (
-            getattr(destination, "_supports_temporal_relevance", True) if destination else False
-        )
 
         # Build access control filter operation if we have user context
         # This resolves the user's access principals and builds the filter
@@ -444,21 +390,6 @@ class SearchFactory:
                 if needs_embedding_ops
                 else None
             ),
-            "temporal_relevance": (
-                TemporalRelevance(
-                    weight=params["temporal_weight"],
-                    destination=destination,
-                    supporting_sources=temporal_supporting_sources,
-                )
-                if (
-                    params["temporal_weight"] > 0
-                    and has_vector_sources
-                    and supports_temporal
-                    # Skip only if explicitly empty list (no sources support it)
-                    and temporal_supporting_sources != []
-                )
-                else None
-            ),
             # User filter - destination-agnostic (filters are translated by destination)
             "user_filter": (
                 UserFilter(filter=search_request.filter)
@@ -509,8 +440,7 @@ class SearchFactory:
             f"query='{search_request.query[:50]}...', \n"
             f"retrieval_strategy={params['retrieval_strategy']}, \n"
             f"offset={params['offset']}, \n"
-            f"limit={params['limit']}, "
-            f"temporal_weight={params['temporal_weight']}, \n"
+            f"limit={params['limit']}, \n"
             f"expand_query={params['expand_query']}, \n"
             f"interpret_filters={params['interpret_filters']}, \n"
             f"rerank={params['rerank']}, \n"
@@ -760,109 +690,16 @@ class SearchFactory:
     ) -> BaseDestination:
         """Get the default destination instance for a collection.
 
-        Uses sync config to determine which vector DB to use:
-        - If skip_qdrant=True, uses Vespa
-        - Otherwise, uses Qdrant (default)
+        Uses Vespa as the sole vector database destination.
         """
-        from airweave.platform.sync.config.base import SyncConfig
+        from airweave.platform.destinations.vespa import VespaDestination
 
-        sync_config = SyncConfig()
-
-        if sync_config.destinations.skip_qdrant and not sync_config.destinations.skip_vespa:
-            from airweave.platform.destinations.vespa import VespaDestination
-
-            ctx.logger.info(
-                f"[SearchFactory] Collection {collection.readable_id} uses Vespa (skip_qdrant=True)"
-            )
-            return await VespaDestination.create(
-                collection_id=collection.id,
-                organization_id=collection.organization_id,
-                logger=ctx.logger,
-            )
-        else:
-            from airweave.platform.destinations.qdrant import QdrantDestination
-
-            ctx.logger.info(
-                f"[SearchFactory] Collection {collection.readable_id} uses Qdrant (default)"
-            )
-            return await QdrantDestination.create(
-                collection_id=collection.id,
-                organization_id=collection.organization_id,
-                vector_size=collection.vector_size,
-                logger=ctx.logger,
-            )
-
-    async def _get_temporal_supporting_sources(
-        self, db: AsyncSession, collection, ctx: ApiContext, emitter: EventEmitter
-    ) -> List[str]:
-        """Get list of source short_names that support temporal relevance.
-
-        Args:
-            db: Database session
-            collection: Collection object
-            ctx: API context
-            emitter: Event emitter for skip notices
-
-        Returns:
-            - Non-empty list: Some/all sources support temporal relevance (apply filtering)
-            - Empty list []: No sources support it (caller should skip operation)
-
-        Raises:
-            ValueError: If source connections or models cannot be retrieved
-        """
-        source_connections = await crud.source_connection.get_for_collection(
-            db, readable_collection_id=collection.readable_id, ctx=ctx
+        ctx.logger.info(f"[SearchFactory] Collection {collection.readable_id} uses Vespa")
+        return await VespaDestination.create(
+            collection_id=collection.id,
+            organization_id=collection.organization_id,
+            logger=ctx.logger,
         )
-        if not source_connections:
-            raise ValueError(f"No source connections found for collection {collection.readable_id}")
-
-        supporting_sources = []
-        non_supporting_sources = []
-
-        for source_connection in source_connections:
-            source_model = await crud.source.get_by_short_name(db, source_connection.short_name)
-            if not source_model:
-                raise ValueError(
-                    f"Source model not found for short_name={source_connection.short_name}"
-                )
-
-            # Check if source supports temporal relevance
-            supports_temporal = getattr(source_model, "supports_temporal_relevance", True)
-
-            if supports_temporal:
-                supporting_sources.append(source_connection.short_name)
-            else:
-                non_supporting_sources.append(source_connection.short_name)
-
-        # Log the results
-        if supporting_sources:
-            ctx.logger.info(
-                f"[SearchFactory] Temporal relevance: {len(supporting_sources)} "
-                f"supporting source(s): {supporting_sources}"
-            )
-        if non_supporting_sources:
-            ctx.logger.info(
-                f"[SearchFactory] Temporal relevance: {len(non_supporting_sources)} "
-                f"non-supporting source(s) will be filtered out: {non_supporting_sources}"
-            )
-
-        # If no sources support temporal relevance, emit skip event and return empty list
-        if not supporting_sources:
-            await emitter.emit(
-                "operation_skipped",
-                {
-                    "operation": "TemporalRelevance",
-                    "reason": "no_sources_support_temporal_relevance",
-                    "non_supporting_sources": non_supporting_sources,
-                },
-            )
-            ctx.logger.warning(
-                f"[SearchFactory] No sources in collection support temporal relevance. "
-                f"Skipping temporal decay. Non-supporting sources: {non_supporting_sources}"
-            )
-            return []  # Empty list signals "skip operation"
-
-        return supporting_sources
 
     def _init_all_providers_for_operation(  # noqa: C901
         self,

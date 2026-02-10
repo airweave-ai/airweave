@@ -39,20 +39,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-  qdrant:
-    container_name: airweave-qdrant
-    image: qdrant/qdrant:latest
-    command: bash -c "apt-get update && apt-get install -y curl && ./entrypoint.sh" # we need to install curl to check health
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6333/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    restart: on-failure
   temporal:
     container_name: airweave-temporal
     image: temporalio/auto-setup:1.24.2
@@ -151,6 +137,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  qdrant_data:
   minio_data:
   vespa_data:

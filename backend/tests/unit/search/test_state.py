@@ -4,7 +4,6 @@ import pytest
 from typing import Any, Dict, List
 
 from airweave.search.state import SearchState
-from airweave.schemas.search import AirweaveTemporalConfig
 
 
 class TestSearchState:
@@ -20,7 +19,6 @@ class TestSearchState:
         assert state.sparse_embeddings is None
         assert state.interpreted_filter is None
         assert state.filter is None
-        assert state.temporal_config is None
         assert state.completion is None
         
         # List fields should be empty
@@ -88,15 +86,6 @@ class TestSearchState:
         state.filter = filter_dict
         
         assert state.filter == filter_dict
-
-    def test_temporal_config_assignment(self):
-        """Test setting temporal_config field."""
-        state = SearchState()
-        config = AirweaveTemporalConfig(weight=0.5)
-        state.temporal_config = config
-        
-        assert state.temporal_config == config
-        assert state.temporal_config.weight == 0.5
 
     def test_results_assignment(self):
         """Test setting results field."""
@@ -217,9 +206,6 @@ class TestSearchState:
         # UserFilter
         state.filter = {"must": [{"key": "entity_type", "match": {"value": "issue"}}]}
         
-        # TemporalRelevance
-        state.temporal_config = AirweaveTemporalConfig(weight=0.3)
-        
         # Retrieval
         state.results = [
             {"entity_id": "1", "score": 0.95},
@@ -251,7 +237,6 @@ class TestSearchState:
         assert len(state.expanded_queries) == 2
         assert len(state.dense_embeddings) == 2
         assert state.filter is not None
-        assert state.temporal_config.weight == 0.3
         assert len(state.results) == 2
         assert state.completion is not None
         assert len(state.operation_metrics) == 3
