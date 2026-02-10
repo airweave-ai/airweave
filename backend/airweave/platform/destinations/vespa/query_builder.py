@@ -155,7 +155,8 @@ class QueryBuilder:
             # Server-side pagination: Vespa applies offset/hits after ranking
             "hits": limit,
             "offset": offset,
-            "presentation.summary": "full",
+            # Note: We don't specify presentation.summary - Vespa's default summary includes
+            # ALL fields with "summary" indexing, including fields from child schemas (e.g., url)
             # Timeout: increase from default 500ms to prevent soft doom during setup
             # Soft timeout: enable graceful degradation with partial results
             # See: https://docs.vespa.ai/en/performance/graceful-degradation.html
