@@ -36,6 +36,7 @@ from airweave.search.agentic_search.schemas import (
     AgenticSearchQueryEmbeddings,
     AgenticSearchRequest,
     AgenticSearchResponse,
+    AgenticSearchResult,
     AgenticSearchState,
 )
 from airweave.search.agentic_search.schemas.events import (
@@ -251,8 +252,17 @@ class AgenticSearchAgent:
         answer: AgenticSearchAnswer = await composer.compose(state)
         self._lap(timings, "compose", t)
 
+        # Truncate results to user-requested limit (if set)
+        results: list[AgenticSearchResult] = state.current_iteration.search_results.results
+        if request.limit is not None and len(results) > request.limit:
+            self.ctx.logger.debug(
+                f"[AgenticSearchAgent] Truncating results from {len(results)} "
+                f"to user limit of {request.limit}"
+            )
+            results = results[: request.limit]
+
         response = AgenticSearchResponse(
-            results=state.current_iteration.search_results.results,
+            results=results,
             answer=answer,
         )
 

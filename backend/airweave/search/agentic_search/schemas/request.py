@@ -1,7 +1,7 @@
 """Request schemas for agentic search."""
 
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -39,6 +39,15 @@ class AgenticSearchRequest(BaseModel):
             "'fast' performs a single search pass. "
             "'thinking' performs an intelligent multi-step search to find the best results "
             "(may take longer). Defaults to 'thinking'."
+        ),
+    )
+    limit: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Maximum number of results to return. The response will contain at most "
+            "this many results, but the agent can decide to return fewer. "
+            "When not set, all results are returned."
         ),
     )
 

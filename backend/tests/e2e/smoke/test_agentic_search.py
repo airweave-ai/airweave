@@ -231,6 +231,164 @@ class TestAgenticSearch:
         assert response.status_code == 422
 
     # ------------------------------------------------------------------
+    # Limit parameter tests
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_agentic_search_limit_truncates_results(
+        self, api_client: httpx.AsyncClient, module_source_connection_stripe: dict
+    ):
+        """Test that the limit parameter truncates results.
+
+        First performs an unlimited search to establish a baseline, then performs
+        the same search with a small limit and verifies the result count is capped.
+        Uses fast mode for speed since limit is applied post-search.
+        """
+        # Baseline: search without limit
+        baseline_payload = {
+            "query": "invoices and payments",
+            "mode": "fast",
+        }
+
+        baseline_response = await api_client.post(
+            f"/collections/{module_source_connection_stripe['readable_collection_id']}"
+            "/agentic-search",
+            json=baseline_payload,
+            timeout=90,
+        )
+
+        assert baseline_response.status_code == 200, (
+            f"Baseline search failed: {baseline_response.text}"
+        )
+
+        baseline_data = baseline_response.json()
+        baseline_count = len(baseline_data["results"])
+        assert baseline_count > 0, "Baseline should return results from Stripe data"
+
+        # Limited search: use a limit smaller than baseline count
+        limit = min(2, baseline_count)
+        limited_payload = {
+            "query": "invoices and payments",
+            "mode": "fast",
+            "limit": limit,
+        }
+
+        limited_response = await api_client.post(
+            f"/collections/{module_source_connection_stripe['readable_collection_id']}"
+            "/agentic-search",
+            json=limited_payload,
+            timeout=90,
+        )
+
+        assert limited_response.status_code == 200, (
+            f"Limited search failed: {limited_response.text}"
+        )
+
+        limited_data = limited_response.json()
+        assert len(limited_data["results"]) <= limit, (
+            f"Expected at most {limit} results, got {len(limited_data['results'])}"
+        )
+        # Answer should still be present regardless of limit
+        assert "answer" in limited_data
+        assert "text" in limited_data["answer"]
+
+    @pytest.mark.asyncio
+    async def test_agentic_search_limit_without_value_returns_all(
+        self, api_client: httpx.AsyncClient, module_source_connection_stripe: dict
+    ):
+        """Test that omitting the limit parameter returns all results.
+
+        When limit is not set (None), the agent's results should be returned
+        without any truncation.
+        """
+        payload = {
+            "query": "invoices",
+            "mode": "fast",
+        }
+
+        response = await api_client.post(
+            f"/collections/{module_source_connection_stripe['readable_collection_id']}"
+            "/agentic-search",
+            json=payload,
+            timeout=90,
+        )
+
+        assert response.status_code == 200, f"Search failed: {response.text}"
+
+        data = response.json()
+        assert "results" in data
+        assert len(data["results"]) > 0, "Expected results without limit"
+
+    @pytest.mark.asyncio
+    async def test_agentic_search_limit_larger_than_results_returns_all(
+        self, api_client: httpx.AsyncClient, module_source_connection_stripe: dict
+    ):
+        """Test that a limit larger than available results returns all results.
+
+        If the agent returns fewer results than the user's limit, we don't
+        pad or fetch more — we just return what the agent found.
+        """
+        payload = {
+            "query": "invoices",
+            "mode": "fast",
+            "limit": 10000,
+        }
+
+        response = await api_client.post(
+            f"/collections/{module_source_connection_stripe['readable_collection_id']}"
+            "/agentic-search",
+            json=payload,
+            timeout=90,
+        )
+
+        assert response.status_code == 200, f"Search failed: {response.text}"
+
+        data = response.json()
+        assert "results" in data
+        # Should return results normally — no error from a large limit
+        assert len(data["results"]) > 0, "Expected results with large limit"
+
+    @pytest.mark.asyncio
+    async def test_agentic_search_limit_invalid_zero_returns_422(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Test that limit=0 returns 422 Unprocessable Entity.
+
+        Limit must be >= 1 per the schema validation.
+        """
+        payload = {
+            "query": "test query",
+            "limit": 0,
+        }
+
+        response = await api_client.post(
+            f"/collections/{collection['readable_id']}/agentic-search",
+            json=payload,
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_agentic_search_limit_invalid_negative_returns_422(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Test that a negative limit returns 422 Unprocessable Entity.
+
+        Limit must be >= 1 per the schema validation.
+        """
+        payload = {
+            "query": "test query",
+            "limit": -5,
+        }
+
+        response = await api_client.post(
+            f"/collections/{collection['readable_id']}/agentic-search",
+            json=payload,
+        )
+
+        assert response.status_code == 422
+
+    # ------------------------------------------------------------------
     # Streaming endpoint tests
     # ------------------------------------------------------------------
 
