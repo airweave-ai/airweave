@@ -89,10 +89,6 @@ class AgenticSearchConfig:
     # Database
     DATABASE_IMPL = DatabaseImpl.POSTGRESQL
 
-    # LLM
-    LLM_PROVIDER = LLMProvider.CEREBRAS
-    LLM_MODEL = LLMModel.ZAI_GLM_4_7
-
     # Tokenizer
     # Note: Must be compatible with the chosen LLM model (validated at startup)
     TOKENIZER_TYPE = TokenizerType.TIKTOKEN

@@ -62,6 +62,11 @@ class LLMModelSpec:
 
 
 # Registry: provider -> model -> spec
+#
+# Each LLMModel must appear under exactly one provider. The model name is the
+# unique identifier used by resolve_provider_for_model() to determine which
+# provider to instantiate. If you need the same underlying model on two
+# providers, create distinct LLMModel entries (e.g. GPT_OSS_120B_CEREBRAS).
 MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
     LLMProvider.CEREBRAS: {
         LLMModel.GPT_OSS_120B: LLMModelSpec(
@@ -96,6 +101,28 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
         ),
     },
 }
+
+
+def resolve_provider_for_model(model: LLMModel) -> LLMProvider:
+    """Resolve which provider hosts a given model.
+
+    Each model is unique across providers, so this is an unambiguous reverse lookup.
+
+    Args:
+        model: The LLM model to look up.
+
+    Returns:
+        The LLMProvider that hosts this model.
+
+    Raises:
+        ValueError: If the model is not found in any provider.
+    """
+    for provider, models in MODEL_REGISTRY.items():
+        if model in models:
+            return provider
+
+    all_models = [m.value for p in MODEL_REGISTRY.values() for m in p.keys()]
+    raise ValueError(f"Model '{model.value}' not found in any provider. Available: {all_models}")
 
 
 def get_model_spec(provider: LLMProvider, model: LLMModel) -> LLMModelSpec:

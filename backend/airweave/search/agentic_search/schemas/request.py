@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from airweave.search.agentic_search.config import LLMModel
 from airweave.search.agentic_search.schemas.filter import AgenticSearchFilterGroup
 
 
@@ -49,6 +50,10 @@ class AgenticSearchRequest(BaseModel):
             "this many results, but the agent can decide to return fewer. "
             "When not set, all results are returned."
         ),
+    )
+    model: LLMModel = Field(
+        default=LLMModel.ZAI_GLM_4_7,
+        description="The model used by the agent. Defaults to 'zai-glm-4.7'.",
     )
 
     @field_validator("query")

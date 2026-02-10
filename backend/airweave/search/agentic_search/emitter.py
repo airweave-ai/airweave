@@ -49,20 +49,20 @@ class AgenticSearchLoggingEmitter:
         prefix = "[AgenticSearch:Event]"
 
         if isinstance(event, AgenticSearchPlanningEvent):
-            self._ctx.logger.info(
+            self._ctx.logger.debug(
                 f"{prefix} Planning (iter {event.iteration}): {event.plan.reasoning}"
             )
         elif isinstance(event, AgenticSearchingEvent):
-            self._ctx.logger.info(
+            self._ctx.logger.debug(
                 f"{prefix} Search (iter {event.iteration}): "
                 f"{event.result_count} results in {event.duration_ms}ms"
             )
         elif isinstance(event, AgenticSearchEvaluatingEvent):
             ev = event.evaluation
-            self._ctx.logger.info(f"{prefix} Evaluation (iter {event.iteration}): {ev.reasoning}")
+            self._ctx.logger.debug(f"{prefix} Evaluation (iter {event.iteration}): {ev.reasoning}")
         elif isinstance(event, AgenticSearchDoneEvent):
             result_count = len(event.response.results)
-            self._ctx.logger.info(f"{prefix} Done: {result_count} results")
+            self._ctx.logger.debug(f"{prefix} Done: {result_count} results")
         elif isinstance(event, AgenticSearchErrorEvent):
             self._ctx.logger.error(f"{prefix} Error: {event.message}")
 

@@ -7,6 +7,7 @@ from airweave.search.agentic_search.external.llm.registry import (
     ReasoningConfig,
     get_available_models,
     get_model_spec,
+    resolve_provider_for_model,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "ReasoningConfig",
     "get_model_spec",
     "get_available_models",
+    "resolve_provider_for_model",
 ]

@@ -38,7 +38,7 @@ async def agentic_search(
     """Perform agentic search."""
     await guard_rail.is_allowed(ActionType.QUERIES)
 
-    services = await AgenticSearchServices.create(ctx, readable_id)
+    services = await AgenticSearchServices.create(ctx, readable_id, model=request.model)
 
     try:
         emitter = AgenticSearchLoggingEmitter(ctx)
@@ -78,7 +78,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
 
     async def _run_search() -> None:
         """Run the agentic search in background."""
-        services = await AgenticSearchServices.create(ctx, readable_id)
+        services = await AgenticSearchServices.create(ctx, readable_id, model=request.model)
         try:
             agent = AgenticSearchAgent(services, ctx, emitter)
             await agent.run(readable_id, request)
