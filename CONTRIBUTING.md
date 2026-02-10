@@ -108,9 +108,9 @@ Adding a source with Cursor should be pretty easy. Follow these steps to automat
 4. **Explain your integration plan to Cursor Agent**
    - Describe what you want your Cursor Agent to do.
    - Reference the newly added API reference or OpenAPI spec: `@your-docs` or `@your-openapi-spec`
-   - Also reference our Cursor rules with `@source-integration-rules.mdc`
+   - Also reference our Cursor rules with `@connector-development-end-to-end.mdc`
 
-   Example: `Write the source integration for Microsoft Teams with (@microsoft-teams-docs) and @source-integration-rules.mdc`
+   Example: `Write the source integration for Microsoft Teams with (@microsoft-teams-docs) and @connector-development-end-to-end.mdc`
 
 5. **Let Cursor generate the integration code**
    - Cursor will help generate both the entity schemas and source connector code
