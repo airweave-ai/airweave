@@ -91,6 +91,16 @@ class DropboxConfig(SourceConfig):
     """Dropbox configuration schema."""
 
 
+class FirefliesConfig(SourceConfig):
+    """Fireflies configuration schema.
+
+    Syncs meeting transcripts (mine: true) from the Fireflies GraphQL API.
+    No additional config required for basic sync.
+    """
+
+    pass
+
+
 class ElasticsearchConfig(SourceConfig):
     """Elasticsearch configuration schema."""
 

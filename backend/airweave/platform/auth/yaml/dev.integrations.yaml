@@ -425,3 +425,5 @@ integrations:
       prompt: "consent"
 
   qdrant:
+
+  fireflies:

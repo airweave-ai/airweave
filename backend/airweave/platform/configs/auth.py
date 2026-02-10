@@ -343,6 +343,13 @@ class DropboxAuthConfig(OAuth2BYOCAuthConfig):
     # Inherits client_id, client_secret, refresh_token and access_token from OAuth2BYOCAuthConfig
 
 
+class FirefliesAuthConfig(APIKeyAuthConfig):
+    """Fireflies authentication credentials schema.
+
+    API key from https://app.fireflies.ai/integrations (API & Webhooks).
+    """
+
+
 class ElasticsearchAuthConfig(AuthConfig):
     """Elasticsearch authentication credentials schema."""
 
