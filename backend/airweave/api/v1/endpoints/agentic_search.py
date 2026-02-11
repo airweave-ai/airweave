@@ -23,6 +23,7 @@ from airweave.search.agentic_search.emitter import (
     AgenticSearchPubSubEmitter,
 )
 from airweave.search.agentic_search.schemas import AgenticSearchRequest, AgenticSearchResponse
+from airweave.search.agentic_search.schemas.events import AgenticSearchErrorEvent
 from airweave.search.agentic_search.services import AgenticSearchServices
 
 router = TrailingSlashRouter()
@@ -89,15 +90,36 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     emitter = AgenticSearchPubSubEmitter(request_id)
 
     async def _run_search() -> None:
-        """Run the agentic search in background."""
-        services = await AgenticSearchServices.create(ctx, readable_id, model=request.model)
+        """Run the agentic search in background.
+
+        All exceptions MUST be caught here to guarantee an error event is emitted
+        to pubsub. Without this, event_stream() hangs forever waiting for messages
+        that never arrive.
+
+        Note: agent.run() already emits AgenticSearchErrorEvent for errors inside
+        the agent loop, so we track whether the agent was reached to avoid
+        emitting a duplicate error event.
+        """
+        services = None
+        agent_reached = False
         try:
+            services = await AgenticSearchServices.create(ctx, readable_id, model=request.model)
             agent = AgenticSearchAgent(services, ctx, emitter)
+            agent_reached = True
             await agent.run(readable_id, request, is_streaming=True)
         except Exception as e:
             ctx.logger.exception(f"[AgenticSearchStream] Error in search {request_id}: {e}")
+            # Only emit if agent.run() wasn't reached (it handles its own error events)
+            if not agent_reached:
+                try:
+                    await emitter.emit(AgenticSearchErrorEvent(message=str(e)))
+                except Exception:
+                    ctx.logger.error(
+                        f"[AgenticSearchStream] Failed to emit error event for {request_id}"
+                    )
         finally:
-            await services.close()
+            if services is not None:
+                await services.close()
 
     search_task = asyncio.create_task(_run_search())
 
