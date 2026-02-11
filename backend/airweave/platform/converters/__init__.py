@@ -1,10 +1,8 @@
 """Text converters for converting files and URLs to markdown.
 
-Singleton converter instances are created lazily (on first attribute access)
-to avoid a circular import between this package and ``airweave.platform.ocr``.
-The OCR package's ``MistralOCR`` imports from ``converters._base``, so
-eagerly importing it here would re-enter the ``converters`` package before
-``_base`` has been loaded.
+Singleton converter instances are created lazily (on first attribute access).
+OCR is pulled from the DI container — the container is guaranteed to be
+initialized before any sync runs (startup in main.py / worker.py).
 """
 
 import sys
@@ -18,10 +16,8 @@ from .txt_converter import TxtConverter
 from .web_converter import WebConverter
 from .xlsx_converter import XlsxConverter
 
-# TODO: Move all of this to specialized DI container
-
 # ---------------------------------------------------------------------------
-# Lazy singleton initialisation (avoids circular import with platform.ocr)
+# Lazy singleton initialisation
 # ---------------------------------------------------------------------------
 #
 # ``from .pdf_converter import PdfConverter`` also adds the *module*
@@ -62,25 +58,28 @@ _singletons: dict | None = None
 
 
 def _init_singletons() -> dict:
-    """Create all converter singletons (called once, on first access)."""
+    """Create all converter singletons (called once, on first access).
+
+    OCR is pulled from the DI container (``container.ocr_provider``)
+    which provides a FallbackOcrProvider with circuit breaking built in.
+    """
     global _singletons
     if _singletons is not None:
         return _singletons
 
-    # Deferred import — safe now because _base is already loaded.
-    from airweave.platform.ocr import MistralOCR
+    from airweave.core.container import container
 
-    _mistral = MistralOCR()  # Pure OCR (no text extraction)
+    ocr = container.ocr_provider
 
     _singletons = {
-        "mistral_converter": _mistral,
-        "pdf_converter": PdfConverter(ocr_provider=_mistral),
-        "docx_converter": DocxConverter(ocr_provider=_mistral),
-        "pptx_converter": PptxConverter(ocr_provider=_mistral),
-        "img_converter": _mistral,  # Images go directly to OCR
+        "mistral_converter": ocr,
+        "pdf_converter": PdfConverter(ocr_provider=ocr),
+        "docx_converter": DocxConverter(ocr_provider=ocr),
+        "pptx_converter": PptxConverter(ocr_provider=ocr),
+        "img_converter": ocr,  # Images go directly to OCR
         "html_converter": HtmlConverter(),
         "txt_converter": TxtConverter(),
-        "xlsx_converter": XlsxConverter(),  # Local openpyxl (not Mistral)
+        "xlsx_converter": XlsxConverter(),  # Local openpyxl
         "code_converter": CodeConverter(),
         "web_converter": WebConverter(),  # URL fetching → HTML → markdown
     }
