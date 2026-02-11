@@ -1,11 +1,12 @@
 """Text converters for converting files and URLs to markdown.
 
-Singleton converter instances are created lazily (on first attribute access).
-OCR is pulled from the DI container — the container is guaranteed to be
-initialized before any sync runs (startup in main.py / worker.py).
+Converter singletons are initialized explicitly at startup via
+``initialize_converters()``. OCR is injected as a parameter — the
+converters module never imports the DI container.
 """
 
 import sys
+from typing import TYPE_CHECKING
 
 from .code_converter import CodeConverter
 from .docx_converter import DocxConverter
@@ -16,12 +17,15 @@ from .txt_converter import TxtConverter
 from .web_converter import WebConverter
 from .xlsx_converter import XlsxConverter
 
+if TYPE_CHECKING:
+    from airweave.core.protocols import OcrProvider
+
 # ---------------------------------------------------------------------------
-# Lazy singleton initialisation
+# Singleton management
 # ---------------------------------------------------------------------------
 #
 # ``from .pdf_converter import PdfConverter`` also adds the *module*
-# ``pdf_converter`` as an attribute of this package.  That shadows the lazy
+# ``pdf_converter`` as an attribute of this package.  That shadows the
 # singleton of the same name and prevents ``__getattr__`` from firing.
 # Remove the module references so the singleton lookup works correctly.
 # (The submodules remain in ``sys.modules`` so direct imports still work.)
@@ -57,31 +61,31 @@ del _mod
 _singletons: dict | None = None
 
 
-def _init_singletons() -> dict:
-    """Create all converter singletons (called once, on first access).
+def initialize_converters(ocr_provider: "OcrProvider") -> None:
+    """Initialize converter singletons with the given OCR provider.
 
-    OCR is pulled from the DI container (``container.ocr_provider``)
-    which provides a FallbackOcrProvider with circuit breaking built in.
+    Called once at startup from ``main.py`` lifespan and ``worker main()``.
+    The OCR provider is passed explicitly — no container import needed.
+
+    Args:
+        ocr_provider: The OCR provider (e.g., FallbackOcrProvider with
+            circuit breaking) to inject into document converters.
     """
     global _singletons
     if _singletons is not None:
-        return _singletons
-
-    from airweave.core.container import container
-
-    ocr = container.ocr_provider
+        return
 
     _singletons = {
-        "mistral_converter": ocr,
-        "pdf_converter": PdfConverter(ocr_provider=ocr),
-        "docx_converter": DocxConverter(ocr_provider=ocr),
-        "pptx_converter": PptxConverter(ocr_provider=ocr),
-        "img_converter": ocr,  # Images go directly to OCR
+        "mistral_converter": ocr_provider,
+        "pdf_converter": PdfConverter(ocr_provider=ocr_provider),
+        "docx_converter": DocxConverter(ocr_provider=ocr_provider),
+        "pptx_converter": PptxConverter(ocr_provider=ocr_provider),
+        "img_converter": ocr_provider,  # Images go directly to OCR
         "html_converter": HtmlConverter(),
         "txt_converter": TxtConverter(),
-        "xlsx_converter": XlsxConverter(),  # Local openpyxl
+        "xlsx_converter": XlsxConverter(),
         "code_converter": CodeConverter(),
-        "web_converter": WebConverter(),  # URL fetching → HTML → markdown
+        "web_converter": WebConverter(),
     }
 
     # Also set as module attributes so subsequent lookups are O(1)
@@ -90,13 +94,16 @@ def _init_singletons() -> dict:
     for _name, _value in _singletons.items():
         setattr(this_module, _name, _value)
 
-    return _singletons
-
 
 def __getattr__(name: str):
-    """PEP 562 module-level ``__getattr__`` for lazy singleton access."""
+    """PEP 562 module-level ``__getattr__`` for singleton access."""
     if name in _SINGLETON_NAMES:
-        return _init_singletons()[name]
+        if _singletons is None:
+            raise RuntimeError(
+                "Converters not initialized. "
+                "Call initialize_converters() at startup."
+            )
+        return _singletons[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
