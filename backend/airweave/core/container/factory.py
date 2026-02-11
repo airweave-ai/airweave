@@ -19,6 +19,7 @@ from airweave.core.container.container import Container
 
 if TYPE_CHECKING:
     from airweave.core.config import Settings
+    from airweave.core.protocols import CircuitBreaker, OcrProvider
 
 
 def create_container(settings: Settings) -> Container:
@@ -53,10 +54,20 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     event_bus = _create_event_bus(webhook_publisher=svix_adapter)
 
+    # -----------------------------------------------------------------
+    # Circuit Breaker + OCR
+    # Shared circuit breaker tracks provider health across the process.
+    # FallbackOcrProvider tries providers in order, skipping tripped ones.
+    # -----------------------------------------------------------------
+    circuit_breaker = _create_circuit_breaker()
+    ocr_provider = _create_ocr_provider(circuit_breaker)
+
     return Container(
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
+        circuit_breaker=circuit_breaker,
+        ocr_provider=ocr_provider,
     )
 
 
@@ -87,3 +98,31 @@ def _create_event_bus(webhook_publisher):
         bus.subscribe(pattern, webhook_subscriber.handle)
 
     return bus
+
+
+def _create_circuit_breaker() -> "CircuitBreaker":
+    """Create the shared circuit breaker for provider failover.
+
+    Uses a 120-second cooldown: after a provider fails, it is skipped
+    for 2 minutes before being retried (half-open state).
+    """
+    from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
+
+    return InMemoryCircuitBreaker(cooldown_seconds=120)
+
+
+def _create_ocr_provider(circuit_breaker: "CircuitBreaker") -> "OcrProvider":
+    """Create OCR provider with fallback chain.
+
+    Currently: Mistral only.
+    Future: add more providers to the list for automatic failover.
+    """
+    from airweave.adapters.ocr.fallback import FallbackOcrProvider
+    from airweave.adapters.ocr.mistral import MistralOcrAdapter
+
+    return FallbackOcrProvider(
+        providers=[
+            ("mistral-ocr", MistralOcrAdapter()),
+        ],
+        circuit_breaker=circuit_breaker,
+    )

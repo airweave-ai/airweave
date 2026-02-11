@@ -1,6 +1,7 @@
 """OCR adapters."""
 
 from airweave.adapters.ocr.fake import FakeOcrProvider
+from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
 
-__all__ = ["MistralOcrAdapter", "FakeOcrProvider"]
+__all__ = ["MistralOcrAdapter", "FallbackOcrProvider", "FakeOcrProvider"]
