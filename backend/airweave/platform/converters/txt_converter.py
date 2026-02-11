@@ -1,7 +1,6 @@
 """Text file to markdown converter."""
 
 import asyncio
-import csv
 import json
 import os
 import xml.dom.minidom
@@ -16,10 +15,9 @@ from airweave.platform.sync.exceptions import EntityProcessingError
 
 
 class TxtConverter(BaseTextConverter):
-    """Converts text files (TXT, CSV, JSON, XML, MD, YAML, TOML) to markdown.
+    """Converts text files (TXT, JSON, XML, MD, YAML, TOML) to markdown.
 
     Features:
-    - CSV: Converts to markdown tables
     - JSON: Pretty-prints with code fence
     - XML: Pretty-prints with code fence
     - Others: Returns as plain text
@@ -47,9 +45,7 @@ class TxtConverter(BaseTextConverter):
                     ext = ext.lower()
 
                     # Dispatch to format-specific handler
-                    if ext == ".csv":
-                        text = await self._convert_csv(path)
-                    elif ext == ".json":
+                    if ext == ".json":
                         text = await self._convert_json(path)
                     elif ext == ".xml":
                         text = await self._convert_xml(path)
@@ -145,60 +141,6 @@ class TxtConverter(BaseTextConverter):
                 )
 
         return text
-
-    async def _convert_csv(self, path: str) -> str:
-        """Convert CSV to markdown table.
-
-        Args:
-            path: Path to CSV file
-
-        Returns:
-            Markdown table string
-
-        Raises:
-            EntityProcessingError: If CSV is empty or contains corrupted data
-        """
-
-        def _read_and_convert():
-            # Read raw bytes for encoding detection
-            with open(path, "rb") as f:
-                raw_bytes = f.read()
-
-            # Try UTF-8 first
-            try:
-                text = raw_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                # Fallback with replace to detect corruption
-                text = raw_bytes.decode("utf-8", errors="replace")
-                replacement_count = text.count("\ufffd")
-                if replacement_count > 100:  # More lenient for CSV
-                    raise EntityProcessingError(
-                        f"CSV contains excessive binary data ({replacement_count} replacement chars)"
-                    )
-
-            # Parse CSV from text
-            reader = csv.reader(text.splitlines())
-            rows = list(reader)
-
-            if not rows:
-                raise EntityProcessingError(f"CSV file {path} is empty")
-
-            # Create markdown table
-            md = []
-
-            # Header
-            md.append("| " + " | ".join(rows[0]) + " |")
-            md.append("|" + "|".join(["---"] * len(rows[0])) + "|")
-
-            # Data rows
-            for row in rows[1:]:
-                # Pad if row is shorter than header
-                padded = row + [""] * (len(rows[0]) - len(row))
-                md.append("| " + " | ".join(padded[: len(rows[0])]) + " |")
-
-            return "\n".join(md)
-
-        return await run_in_thread_pool(_read_and_convert)
 
     async def _convert_json(self, path: str) -> str:
         """Convert JSON to pretty-printed code fence.

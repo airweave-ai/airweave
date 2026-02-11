@@ -1,0 +1,58 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.airweave-ai/search",
+  "title": "Airweave Search",
+  "description": "MCP server for searching Airweave collections with natural language queries, vector search, and AI-powered completions.",
+  "repository": {
+    "url": "https://github.com/airweave-ai/airweave",
+    "source": "github"
+  },
+  "version": "0.8.84",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.airweave.ai/mcp",
+      "headers": [
+        {
+          "name": "X-API-Key",
+          "description": "Your Airweave API key",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "X-Collection-Readable-ID",
+          "description": "The Airweave collection readable ID to search",
+          "isRequired": true
+        }
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "airweave-mcp-search",
+      "version": "0.8.84",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "AIRWEAVE_API_KEY",
+          "description": "Your Airweave API key for authentication",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "AIRWEAVE_COLLECTION",
+          "description": "The Airweave collection to search",
+          "isRequired": true
+        },
+        {
+          "name": "AIRWEAVE_BASE_URL",
+          "description": "Airweave API base URL (defaults to https://api.airweave.ai)",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

@@ -515,12 +515,6 @@ class PipedriveAuthConfig(AuthConfig):
         return v.strip()
 
 
-class ExcelAuthConfig(OAuth2WithRefreshAuthConfig):
-    """Microsoft Excel authentication credentials schema."""
-
-    # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
-
-
 class OneNoteAuthConfig(OAuth2WithRefreshAuthConfig):
     """Microsoft OneNote authentication credentials schema."""
 

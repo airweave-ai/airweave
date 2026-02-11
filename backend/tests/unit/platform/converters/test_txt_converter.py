@@ -80,22 +80,6 @@ class TestTxtConverterEncodingValidation:
         assert result[file_path] is None
 
     @pytest.mark.asyncio
-    async def test_convert_csv_clean(self, converter, temp_dir):
-        """Test CSV conversion with clean data."""
-        file_path = os.path.join(temp_dir, "clean.csv")
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write("Name,Age,City\n")
-            f.write("Alice,30,NYC\n")
-            f.write("Bob,25,SF\n")
-
-        result = await converter.convert_batch([file_path])
-
-        assert file_path in result
-        assert result[file_path] is not None
-        assert "Name" in result[file_path]
-        assert "Alice" in result[file_path]
-
-    @pytest.mark.asyncio
     async def test_convert_json_clean(self, converter, temp_dir):
         """Test JSON conversion with clean data."""
         file_path = os.path.join(temp_dir, "clean.json")
@@ -209,19 +193,6 @@ class TestTxtConverterEdgeCases:
         assert file_path in result
         assert result[file_path] is not None
         assert len(result[file_path]) > 1000000
-
-    @pytest.mark.asyncio
-    async def test_convert_csv_invalid_format(self, converter, temp_dir):
-        """Test CSV with invalid format."""
-        file_path = os.path.join(temp_dir, "invalid.csv")
-        with open(file_path, "w", encoding="utf-8") as f:
-            # Empty CSV
-            f.write("")
-
-        result = await converter.convert_batch([file_path])
-
-        assert file_path in result
-        assert result[file_path] is None
 
     @pytest.mark.asyncio
     async def test_convert_json_invalid_syntax(self, converter, temp_dir):

@@ -336,7 +336,6 @@ class TextualRepresentationBuilder:
             ".htm": converters.html_converter,
             # Text files
             ".txt": converters.txt_converter,
-            ".csv": converters.txt_converter,
             ".json": converters.txt_converter,
             ".xml": converters.txt_converter,
             ".md": converters.txt_converter,

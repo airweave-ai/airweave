@@ -18,15 +18,6 @@ def render_body(artifact: DropboxArtifact, file_type: str) -> str:
             "metadata": getattr(artifact, "metadata", {})
         }
         return json.dumps(data, indent=2)
-    elif file_type == "csv":
-        # Create CSV content
-        rows = [
-            "Title,Description,Token,Created",
-            f'"{artifact.title}","{artifact.description}","{artifact.token}","{artifact.created_at}"'
-        ]
-        if hasattr(artifact, 'data_rows') and artifact.data_rows:
-            rows.extend(artifact.data_rows)
-        return "\n".join(rows)
     elif file_type == "yaml":
         # Create YAML content
         lines = [
@@ -71,11 +62,6 @@ async def generate_dropbox_artifact(
             "Generate a JSON configuration file for a synthetic application. "
             "Include the literal token '{token}' in the metadata. "
             "Include relevant configuration options."
-        ),
-        "csv": (
-            "Generate CSV data tracking synthetic user analytics. "
-            "Include the literal token '{token}' in one of the data rows. "
-            "Create headers and at least 5 data rows."
         ),
         "yaml": (
             "Generate a YAML configuration for a synthetic deployment pipeline. "

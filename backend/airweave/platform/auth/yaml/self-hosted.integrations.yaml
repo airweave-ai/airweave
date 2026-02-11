@@ -71,20 +71,6 @@ integrations:
     additional_frontend_params:
       token_access_type: "offline"
 
-  excel:
-    oauth_type: "with_rotating_refresh"
-    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-    grant_type: "authorization_code"
-    client_id: "placeholder_client_id"
-    client_secret: "placeholder_client_secret"
-    content_type: "application/x-www-form-urlencoded"
-    client_credential_location: "body"
-    scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All"
-    additional_frontend_params:
-      response_type: "code"
-      response_mode: "query"
-
   github:
 
   gitlab:
