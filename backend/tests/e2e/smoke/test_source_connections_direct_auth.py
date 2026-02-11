@@ -34,7 +34,7 @@ class TestDirectAuthentication:
         assert connection["id"]
         assert connection["name"] == "Test Stripe Connection"
         assert connection["short_name"] == "stripe"
-        assert connection["auth"]["method"] == "direct"
+        assert connection["auth"]["method"] == "fast"
         assert connection["auth"]["authenticated"] == True
         assert connection["status"] == "active"
 
@@ -107,7 +107,7 @@ class TestDirectAuthentication:
         connection = response.json()
 
         # Verify it's direct auth
-        assert connection["auth"]["method"] == "direct"
+        assert connection["auth"]["method"] == "fast"
 
         # Update with new API key (same key in test, but demonstrates the flow)
         update_payload = {
@@ -120,7 +120,7 @@ class TestDirectAuthentication:
 
         response.raise_for_status()
         updated = response.json()
-        assert updated["auth"]["method"] == "direct"
+        assert updated["auth"]["method"] == "fast"
         assert updated["auth"]["authenticated"] == True
 
         # Cleanup
