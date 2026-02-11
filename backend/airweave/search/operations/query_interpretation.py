@@ -91,6 +91,33 @@ class QueryInterpretation(SearchOperation):
         "updated_at": "Entity last update timestamp (ISO8601 datetime)",
     }
 
+    # Fields that actually exist as filterable attributes in the Vespa schema.
+    # After the Vespa migration, source-specific entity fields (e.g. title, status,
+    # assignee from Jira/Notion/etc.) are stored in the `payload` JSON string field
+    # and are NOT individually indexed or filterable. Only fields defined as
+    # `attribute` in base_entity.sd are filterable.
+    # See: vespa/app/schemas/base_entity.sd
+    VESPA_FILTERABLE_FIELDS = {
+        # Base entity fields
+        "entity_id",
+        "name",
+        "created_at",
+        "updated_at",
+        # System metadata fields (logical names, mapped by _map_to_qdrant_path)
+        "source_name",
+        "entity_type",
+        "sync_id",
+        # Already-prefixed dotted paths (in case LLM uses full notation)
+        "airweave_system_metadata.source_name",
+        "airweave_system_metadata.entity_type",
+        "airweave_system_metadata.sync_id",
+        "airweave_system_metadata.sync_job_id",
+        "airweave_system_metadata.hash",
+        "airweave_system_metadata.original_entity_id",
+        "airweave_system_metadata.collection_id",
+        "airweave_system_metadata.chunk_index",
+    }
+
     def __init__(self, providers: List[BaseProvider]) -> None:
         """Initialize with list of LLM providers in preference order.
 
@@ -290,10 +317,14 @@ class QueryInterpretation(SearchOperation):
             )
             entity_class = resource_locator.get_entity_definition(entity_schema)
 
-            # Extract all fields from entity class for filtering
+            # Extract filterable fields from entity class
             if hasattr(entity_class, "model_fields"):
                 for field_name, field_info in entity_class.model_fields.items():
                     if field_name.startswith("_") or field_name == "airweave_system_metadata":
+                        continue
+
+                    # Skip source-specific fields that aren't Vespa attributes
+                    if field_name not in self.VESPA_FILTERABLE_FIELDS:
                         continue
 
                     # Get description from field
@@ -400,6 +431,13 @@ class QueryInterpretation(SearchOperation):
         validated = []
         for condition in filters:
             if condition.key not in allowed_keys:
+                continue
+
+            # Skip fields that are not actually filterable as Vespa attributes.
+            # Source-specific fields (e.g. title, status) are stored in the payload
+            # JSON field and cannot be filtered on directly. Silently dropping these
+            # prevents 500 errors from Vespa when the LLM generates filters on them.
+            if condition.key not in self.VESPA_FILTERABLE_FIELDS:
                 continue
 
             cond_dict = {"key": self._map_to_qdrant_path(condition.key)}
