@@ -299,3 +299,83 @@ export interface PartialStreamUpdate {
     results?: any[]; // latest snapshot
     status?: StreamPhase;
 }
+
+// ─── Agentic Search Types ─────────────────────────────────────────────────────
+// These mirror the backend schemas in agentic_search/schemas/
+
+export type AgenticSearchModeType = "fast" | "thinking";
+
+export interface AgenticSearchPlanData {
+    reasoning: string;
+    query: {
+        primary: string;
+        variations: string[];
+    };
+    filter_groups: any[];
+    limit: number;
+    offset: number;
+    retrieval_strategy: "semantic" | "keyword" | "hybrid";
+}
+
+export interface AgenticSearchEvaluationData {
+    reasoning: string;
+    should_continue: boolean;
+    answer_found: boolean;
+}
+
+export interface AgenticSearchCitationData {
+    entity_id: string;
+}
+
+export interface AgenticSearchAnswerData {
+    text: string;
+    citations: AgenticSearchCitationData[];
+}
+
+// Agentic SSE events
+
+export interface AgenticPlanningEvent extends BaseEvent {
+    type: 'planning';
+    iteration: number;
+    plan: AgenticSearchPlanData;
+    is_consolidation: boolean;
+    history_shown: number;
+    history_total: number;
+}
+
+export interface AgenticSearchingEvent extends BaseEvent {
+    type: 'searching';
+    iteration: number;
+    result_count: number;
+    duration_ms: number;
+}
+
+export interface AgenticEvaluatingEvent extends BaseEvent {
+    type: 'evaluating';
+    iteration: number;
+    evaluation: AgenticSearchEvaluationData;
+    results_shown: number;
+    results_total: number;
+    history_shown: number;
+    history_total: number;
+}
+
+export interface AgenticDoneEvent extends BaseEvent {
+    type: 'done';
+    response: {
+        results: any[];
+        answer: AgenticSearchAnswerData;
+    };
+}
+
+export interface AgenticErrorEvent extends BaseEvent {
+    type: 'error';
+    message: string;
+}
+
+export type AgenticSearchEvent =
+    | AgenticPlanningEvent
+    | AgenticSearchingEvent
+    | AgenticEvaluatingEvent
+    | AgenticDoneEvent
+    | AgenticErrorEvent;

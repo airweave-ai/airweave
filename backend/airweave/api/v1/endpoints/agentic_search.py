@@ -82,6 +82,10 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     ctx.logger.info(
         f"[AgenticSearchStream] Starting stream for collection '{readable_id}' id={request_id}"
     )
+    ctx.logger.info(
+        f"[AgenticSearchStream] Request body: query={request.query!r}, "
+        f"mode={request.mode}, filter={request.filter}"
+    )
 
     await guard_rail.is_allowed(ActionType.QUERIES)
 
@@ -133,6 +137,11 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
                     try:
                         parsed = json.loads(data)
                         event_type = parsed.get("type", "")
+
+                        ctx.logger.info(
+                            f"[AgenticSearchStream] Yielding SSE event: type={event_type}, "
+                            f"keys={list(parsed.keys())}"
+                        )
 
                         yield f"data: {data}\n\n"
 

@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme-provider";
-import { SearchBox } from "@/search/SearchBox";
+import { SearchBox, type SearchMode } from "@/search/SearchBox";
 import { SearchResponse } from "@/search/SearchResponse";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
 
@@ -21,6 +21,9 @@ interface SearchProps {
 export const Search = ({ collectionReadableId, disabled = false }: SearchProps) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
+
+    // Search mode (search vs agent)
+    const [searchMode, setSearchMode] = useState<SearchMode>("search");
 
     // Search response state (final)
     const [searchResponse, setSearchResponse] = useState<any>(null);
@@ -85,6 +88,8 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
                 <SearchBox
                     collectionId={collectionReadableId}
                     disabled={disabled}
+                    searchMode={searchMode}
+                    onSearchModeChange={setSearchMode}
                     onSearch={handleSearchResult}
                     onSearchStart={handleSearchStart}
                     onSearchEnd={handleSearchEnd}

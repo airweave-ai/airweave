@@ -103,6 +103,62 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
 }
 
 
+@dataclass(frozen=True)
+class FallbackSpec:
+    """Specification for a fallback LLM provider.
+
+    Bundles the provider, model spec, and the settings attribute name for
+    the API key so the services layer can iterate FALLBACK_CHAIN without
+    knowing about individual fallback providers.
+
+    Attributes:
+        provider: The LLM provider enum.
+        model_spec: Model specification for this fallback.
+        api_key_setting: Attribute name on settings (e.g., "GROQ_API_KEY").
+    """
+
+    provider: LLMProvider
+    model_spec: LLMModelSpec
+    api_key_setting: str
+
+
+# Ordered fallback chain — tried in sequence when the primary provider fails.
+# Not part of MODEL_REGISTRY so they don't appear in user-facing model lists.
+FALLBACK_CHAIN: list[FallbackSpec] = [
+    FallbackSpec(
+        provider=LLMProvider.GROQ,
+        api_key_setting="GROQ_API_KEY",
+        model_spec=LLMModelSpec(
+            api_model_name="openai/gpt-oss-120b",
+            context_window=131_000,
+            max_output_tokens=40_000,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=30,
+            rate_limit_tpm=200_000,
+            reasoning=ReasoningConfig(
+                param_name="reasoning_effort",
+                param_value="high",
+            ),
+        ),
+    ),
+    FallbackSpec(
+        provider=LLMProvider.ANTHROPIC,
+        api_key_setting="ANTHROPIC_API_KEY",
+        model_spec=LLMModelSpec(
+            api_model_name="claude-sonnet-4-5-20250929",
+            context_window=200_000,
+            max_output_tokens=16_384,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=50,
+            rate_limit_tpm=200_000,
+            reasoning=ReasoningConfig(param_name="_noop", param_value=True),
+        ),
+    ),
+]
+
+
 def resolve_provider_for_model(model: LLMModel) -> LLMProvider:
     """Resolve which provider hosts a given model.
 

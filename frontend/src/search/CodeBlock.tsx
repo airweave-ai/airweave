@@ -21,25 +21,139 @@ interface SearchConfig {
     filter?: any;
 }
 
+interface AgenticConfig {
+    mode: "fast" | "thinking";
+    filter: any[];  // backend-ready filter groups
+}
+
 interface ApiIntegrationDocProps {
     collectionReadableId: string;
     query?: string;
     searchConfig?: SearchConfig;
+    agenticConfig?: AgenticConfig;
     filter?: string | null;
     apiKey?: string;
 }
 
-export const ApiIntegrationDoc = ({ collectionReadableId, query, searchConfig, filter, apiKey = "YOUR_API_KEY" }: ApiIntegrationDocProps) => {
+export const ApiIntegrationDoc = ({ collectionReadableId, query, searchConfig, agenticConfig, filter, apiKey = "YOUR_API_KEY" }: ApiIntegrationDocProps) => {
     // LiveApiDoc state
     const [apiTab, setApiTab] = useState<"rest" | "python" | "node" | "mcp">("rest");
 
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
 
+    const isAgentic = !!agenticConfig;
 
+    // ─── Agentic search snippets ─────────────────────────────────────
+    const agenticEndpoints = useMemo(() => {
+        if (!agenticConfig) return null;
 
-    // Memoize API endpoints to prevent expensive recalculation on every render
+        const apiBaseUrl = API_CONFIG.baseURL;
+        const apiUrl = `${apiBaseUrl}/collections/${collectionReadableId}/agentic-search/stream`;
+        const searchQuery = query || "Ask a question about your data";
+
+        const escapeForJson = (str: string) => str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const escapeForPython = (str: string) => str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+        // Build request body
+        const requestBody: any = {
+            query: searchQuery,
+            ...(agenticConfig.filter.length > 0 ? { filter: agenticConfig.filter } : {}),
+            mode: agenticConfig.mode,
+        };
+
+        const jsonBody = JSON.stringify(requestBody, null, 2)
+            .split('\n')
+            .map((line, index, array) => {
+                if (index === 0) return line;
+                if (index === array.length - 1) return '  ' + line;
+                return '  ' + line;
+            })
+            .join('\n');
+
+        // cURL — SSE stream
+        const curlSnippet = `# Agentic search (Server-Sent Events stream)
+curl -N -X 'POST' \\
+  '${apiUrl}' \\
+  -H 'accept: text/event-stream' \\
+  -H 'x-api-key: ${apiKey}' \\
+  -H 'Content-Type: application/json' \\
+  -d '${jsonBody}'`;
+
+        // Python
+        const filterLines = agenticConfig.filter.length > 0
+            ? `\n        filter=${JSON.stringify(agenticConfig.filter, null, 4)
+                .split('\n')
+                .map((l, i) => i === 0 ? l : '        ' + l)
+                .join('\n')},`
+            : '';
+
+        const pythonSnippet =
+            `from airweave import AirweaveSDK
+
+client = AirweaveSDK(
+    api_key="${apiKey}",
+)
+
+# Streaming agentic search
+for event in client.collections.agentic_search_stream(
+    readable_id="${collectionReadableId}",
+    request={
+        "query": "${escapeForPython(searchQuery)}",${filterLines}
+        "mode": "${agenticConfig.mode}",
+    },
+):
+    print(event.type, event)`;
+
+        // Node.js
+        const nodeFilterLines = agenticConfig.filter.length > 0
+            ? `\n            filter: ${JSON.stringify(agenticConfig.filter, null, 4)
+                .split('\n')
+                .map((l, i) => i === 0 ? l : '            ' + l)
+                .join('\n')},`
+            : '';
+
+        const nodeSnippet =
+            `import { AirweaveSDKClient } from "@airweave/sdk";
+
+const client = new AirweaveSDKClient({ apiKey: "${apiKey}" });
+
+// Streaming agentic search
+const stream = await client.collections.agenticSearchStream(
+    "${collectionReadableId}",
+    {
+        request: {
+            query: "${escapeForJson(searchQuery)}",${nodeFilterLines}
+            mode: "${agenticConfig.mode}",
+        }
+    }
+);
+
+for await (const event of stream) {
+    console.log(event.type, event);
+}`;
+
+        const configSnippet = `{
+  "mcpServers": {
+    "airweave-${collectionReadableId}": {
+      "command": "npx",
+      "args": ["airweave-mcp-search"],
+      "env": {
+        "AIRWEAVE_API_KEY": "${apiKey}",
+        "AIRWEAVE_COLLECTION": "${collectionReadableId}",
+        "AIRWEAVE_BASE_URL": "${API_CONFIG.baseURL}"
+      }
+    }
+  }
+}`;
+
+        return { curlSnippet, pythonSnippet, nodeSnippet, configSnippet };
+    }, [collectionReadableId, apiKey, agenticConfig, query]);
+
+    // ─── Regular search snippets ─────────────────────────────────────
     const apiEndpoints = useMemo(() => {
+        if (isAgentic) return null;
+
         const apiBaseUrl = API_CONFIG.baseURL;
         const apiUrl = `${apiBaseUrl}/collections/${collectionReadableId}/search`;
         const searchQuery = query || "Ask a question about your data";
@@ -110,7 +224,7 @@ export const ApiIntegrationDoc = ({ collectionReadableId, query, searchConfig, f
             `        interpret_filters=${searchConfig?.enable_query_interpretation ? "True" : "False"}`,
             `        temporal_relevance=${searchConfig?.recency_bias ?? 0}`,
             `        rerank=${(searchConfig?.enable_reranking ?? true) ? "True" : "False"}`,
-            `        generate_answer=${searchConfig?.response_type === "completion" ? "True" : "False"}`,
+            `        generate_answer=${searchConfig?.response_type === "compilation" ? "True" : "False"}`,
             `        limit=1000`,
             `        offset=0`
         ];
@@ -184,8 +298,6 @@ console.log(result.completion);  // AI-generated answer (if generateAnswer=true)
 console.log(result.results.length);  // Number of results`;
 
         // MCP Server code examples
-        // Note: MCP servers typically don't support all advanced search parameters directly,
-        // but the config is provided for basic integration
         const configSnippet =
             `{
   "mcpServers": {
@@ -201,15 +313,16 @@ console.log(result.results.length);  // Number of results`;
   }
 }`;
 
-
-
         return {
             curlSnippet,
             pythonSnippet,
             nodeSnippet,
             configSnippet
         };
-    }, [collectionReadableId, apiKey, searchConfig, query, filter]);
+    }, [collectionReadableId, apiKey, searchConfig, query, filter, isAgentic]);
+
+    // Resolved endpoints — whichever mode is active
+    const endpoints = isAgentic ? agenticEndpoints : apiEndpoints;
 
 
 
@@ -336,22 +449,25 @@ console.log(result.results.length);  // Number of results`;
 
                         {/* Tab Content */}
                         <div className={"h-[460px]"}>
-                            {apiTab === "rest" && (
+                            {endpoints && apiTab === "rest" && (
                                 <CodeBlock
-                                    code={apiEndpoints.curlSnippet}
+                                    code={endpoints.curlSnippet}
                                     language="bash"
-                                    badgeText="POST"
-                                    badgeColor="bg-amber-600 hover:bg-amber-600"
-                                    title={`/collections/${collectionReadableId}/search`}
+                                    badgeText={isAgentic ? "SSE" : "POST"}
+                                    badgeColor={isAgentic ? "bg-emerald-600 hover:bg-emerald-600" : "bg-amber-600 hover:bg-amber-600"}
+                                    title={isAgentic
+                                        ? `/collections/${collectionReadableId}/agentic-search/stream`
+                                        : `/collections/${collectionReadableId}/search`
+                                    }
                                     footerContent={docLinkFooter}
                                     height="100%"
                                     className="h-full rounded-none border-none"
                                 />
                             )}
 
-                            {apiTab === "python" && (
+                            {endpoints && apiTab === "python" && (
                                 <CodeBlock
-                                    code={apiEndpoints.pythonSnippet}
+                                    code={endpoints.pythonSnippet}
                                     language="python"
                                     badgeText="SDK"
                                     badgeColor="bg-blue-600 hover:bg-blue-600"
@@ -362,9 +478,9 @@ console.log(result.results.length);  // Number of results`;
                                 />
                             )}
 
-                            {apiTab === "node" && (
+                            {endpoints && apiTab === "node" && (
                                 <CodeBlock
-                                    code={apiEndpoints.nodeSnippet}
+                                    code={endpoints.nodeSnippet}
                                     language="javascript"
                                     badgeText="SDK"
                                     badgeColor="bg-blue-600 hover:bg-blue-600"
@@ -375,9 +491,9 @@ console.log(result.results.length);  // Number of results`;
                                 />
                             )}
 
-                            {apiTab === "mcp" && (
+                            {endpoints && apiTab === "mcp" && (
                                 <CodeBlock
-                                    code={apiEndpoints.configSnippet}
+                                    code={endpoints.configSnippet}
                                     language="json"
                                     badgeText="CONFIG"
                                     badgeColor="bg-purple-600 hover:bg-purple-600"

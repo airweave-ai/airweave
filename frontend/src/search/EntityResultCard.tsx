@@ -75,15 +75,16 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
 
     const scoreDisplay = getScoreDisplay();
 
-    // Extract key fields from flat AirweaveSearchResult structure
+    // Extract key fields — handle both regular (system_metadata) and agentic (airweave_system_metadata) shapes
     const entityId = result.entity_id;
-    const sourceName = result.system_metadata?.source_name || 'Unknown Source';
+    const sysMetadata = result.system_metadata || result.airweave_system_metadata || {};
+    const sourceName = sysMetadata.source_name || 'Unknown Source';
     const sourceIconUrl = getAppIconUrl(sourceName, resolvedTheme);
     const textualRepresentation = result.textual_representation || '';
     const breadcrumbs = result.breadcrumbs || [];
-    // URL fields are in source_fields
-    const webUrl = sourceFields.web_url;
-    const url = sourceFields.url;
+    // URL fields may be in source_fields (regular) or at top level (agentic)
+    const webUrl = sourceFields.web_url || result.web_url;
+    const url = sourceFields.url || result.url;
     const openUrl = webUrl || url;
     const hasDownloadUrl = Boolean(url && webUrl && url !== webUrl);
 
@@ -95,7 +96,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
     // Extract title and metadata from flat result structure
     const title = result.name || 'Untitled';
     const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const rawEntityType = result.system_metadata?.entity_type || '';
+    const rawEntityType = sysMetadata.entity_type || '';
     let entityTypeCore = rawEntityType.replace(/Entity$/, '');
     if (entityTypeCore && sourceName) {
         const normalizedSource = sourceName.replace(/[\s_-]/g, '');

@@ -5,7 +5,9 @@ This is the composition root - where external dependencies are wired together.
 
 from __future__ import annotations
 
+from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.api.context import ApiContext
+from airweave.core.config import settings
 from airweave.search.agentic_search.config import (
     DatabaseImpl,
     DenseEmbedderProvider,
@@ -26,10 +28,12 @@ from airweave.search.agentic_search.external.dense_embedder.registry import (
 from airweave.search.agentic_search.external.dense_embedder.registry import validate_vector_size
 from airweave.search.agentic_search.external.llm import AgenticSearchLLMInterface
 from airweave.search.agentic_search.external.llm.registry import (
-    get_model_spec as get_llm_model_spec,
+    FALLBACK_CHAIN,
+    LLMModelSpec,
+    resolve_provider_for_model,
 )
 from airweave.search.agentic_search.external.llm.registry import (
-    resolve_provider_for_model,
+    get_model_spec as get_llm_model_spec,
 )
 from airweave.search.agentic_search.external.sparse_embedder import (
     AgenticSearchSparseEmbedderInterface,
@@ -42,6 +46,18 @@ from airweave.search.agentic_search.external.tokenizer.registry import (
     get_model_spec as get_tokenizer_model_spec,
 )
 from airweave.search.agentic_search.external.vector_database import AgenticSearchVectorDBInterface
+
+# Module-level singletons shared across all requests
+_shared_circuit_breaker: InMemoryCircuitBreaker | None = None
+_shared_llm_cache: dict[LLMModel, AgenticSearchLLMInterface] = {}
+
+
+def _get_shared_circuit_breaker() -> InMemoryCircuitBreaker:
+    """Get the shared circuit breaker, creating it on first use."""
+    global _shared_circuit_breaker
+    if _shared_circuit_breaker is None:
+        _shared_circuit_breaker = InMemoryCircuitBreaker()
+    return _shared_circuit_breaker
 
 
 class AgenticSearchServices:
@@ -108,7 +124,7 @@ class AgenticSearchServices:
         db = await cls._create_db(ctx)
 
         tokenizer = cls._create_tokenizer(model, llm_provider)
-        llm = cls._create_llm(ctx, tokenizer, model, llm_provider)
+        llm = cls._create_llm(tokenizer, model, llm_provider)
 
         vector_size = await db.get_collection_vector_size(readable_id)
         dense_embedder = cls._create_dense_embedder(vector_size)
@@ -218,40 +234,119 @@ class AgenticSearchServices:
         raise ValueError(f"Unknown tokenizer type: {config.TOKENIZER_TYPE}")
 
     @staticmethod
-    def _create_llm(
-        ctx: ApiContext,
+    def _create_single_provider(
+        provider: LLMProvider,
+        model_spec: LLMModelSpec,
         tokenizer: AgenticSearchTokenizerInterface,
-        llm_model: LLMModel,
-        llm_provider: LLMProvider,
     ) -> AgenticSearchLLMInterface:
-        """Create LLM based on the resolved provider and model.
+        """Create a single LLM provider instance.
 
-        Gets the model spec from the registry.
+        Providers use the module-level logger so they can be long-lived singletons.
 
         Args:
-            ctx: API context for logging.
-            tokenizer: Tokenizer for accurate token counting in rate limiting.
-            llm_model: The LLM model to use.
-            llm_provider: The resolved LLM provider for this model.
+            provider: The LLM provider enum.
+            model_spec: Model specification for this provider.
+            tokenizer: Shared tokenizer.
 
         Returns:
             LLM interface implementation.
 
         Raises:
-            ValueError: If LLM provider is unknown.
+            ValueError: If provider is unknown.
         """
-        model_spec = get_llm_model_spec(llm_provider, llm_model)
-
-        if llm_provider == LLMProvider.CEREBRAS:
+        if provider == LLMProvider.CEREBRAS:
             from airweave.search.agentic_search.external.llm.cerebras import CerebrasLLM
 
-            return CerebrasLLM(
-                model_spec=model_spec,
-                tokenizer=tokenizer,
-                logger=ctx.logger,
-            )
+            return CerebrasLLM(model_spec=model_spec, tokenizer=tokenizer)
 
-        raise ValueError(f"Unknown LLM provider: {llm_provider}")
+        if provider == LLMProvider.GROQ:
+            from airweave.search.agentic_search.external.llm.groq import GroqLLM
+
+            return GroqLLM(model_spec=model_spec, tokenizer=tokenizer)
+
+        if provider == LLMProvider.ANTHROPIC:
+            from airweave.search.agentic_search.external.llm.anthropic import AnthropicLLM
+
+            return AnthropicLLM(model_spec=model_spec, tokenizer=tokenizer)
+
+        raise ValueError(f"Unknown LLM provider: {provider}")
+
+    @staticmethod
+    def _create_llm(
+        tokenizer: AgenticSearchTokenizerInterface,
+        llm_model: LLMModel,
+        llm_provider: LLMProvider,
+    ) -> AgenticSearchLLMInterface:
+        """Get or create a shared LLM with automatic fallback chain.
+
+        The LLM chain is cached per model and reused across all requests.
+        This ensures the circuit breaker state (which providers are tripped)
+        persists and the SDK clients are reused.
+
+        Builds a chain of providers: primary → Groq → Anthropic.
+        Fallback providers are only added if their API key is configured.
+
+        Args:
+            tokenizer: Tokenizer for accurate token counting.
+            llm_model: The LLM model to use.
+            llm_provider: The resolved LLM provider for this model.
+
+        Returns:
+            Shared LLM interface implementation (possibly wrapped in FallbackChainLLM).
+
+        Raises:
+            ValueError: If LLM provider is unknown.
+        """
+        # Return cached chain if already built for this model
+        if llm_model in _shared_llm_cache:
+            return _shared_llm_cache[llm_model]
+
+        from airweave.core.logging import logger
+
+        model_spec = get_llm_model_spec(llm_provider, llm_model)
+
+        # Build the primary provider
+        primary = AgenticSearchServices._create_single_provider(llm_provider, model_spec, tokenizer)
+
+        # Build fallback chain from registry
+        chain: list[AgenticSearchLLMInterface] = [primary]
+
+        for fb in FALLBACK_CHAIN:
+            if fb.provider == llm_provider:
+                continue
+
+            api_key = getattr(settings, fb.api_key_setting, None)
+            if not api_key:
+                continue
+
+            try:
+                fb_instance = AgenticSearchServices._create_single_provider(
+                    fb.provider, fb.model_spec, tokenizer
+                )
+                chain.append(fb_instance)
+                logger.info(
+                    f"[AgenticSearchServices] {fb.provider.value} fallback enabled "
+                    f"({fb.model_spec.api_model_name})"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[AgenticSearchServices] Failed to initialize "
+                    f"{fb.provider.value} fallback: {e}. Skipping."
+                )
+
+        # If we have multiple providers, wrap in FallbackChainLLM with circuit breaker
+        if len(chain) > 1:
+            from airweave.search.agentic_search.external.llm.fallback import FallbackChainLLM
+
+            result: AgenticSearchLLMInterface = FallbackChainLLM(
+                providers=chain,
+                circuit_breaker=_get_shared_circuit_breaker(),
+            )
+        else:
+            result = primary
+
+        _shared_llm_cache[llm_model] = result
+        return result
 
     @staticmethod
     def _create_dense_embedder(vector_size: int) -> AgenticSearchDenseEmbedderInterface:
@@ -334,9 +429,12 @@ class AgenticSearchServices:
         raise ValueError(f"Unknown vector DB provider: {config.VECTOR_DB_PROVIDER}")
 
     async def close(self) -> None:
-        """Clean up all resources."""
+        """Clean up per-request resources.
+
+        Note: LLM is a shared singleton and is NOT closed here.
+        It persists across requests for circuit breaker continuity.
+        """
         await self.db.close()
-        await self.llm.close()
         await self.dense_embedder.close()
         await self.sparse_embedder.close()
         await self.vector_db.close()

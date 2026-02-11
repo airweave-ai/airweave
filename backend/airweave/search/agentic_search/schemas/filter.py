@@ -1,13 +1,14 @@
 """Filter schemas for agentic search.
 
 Defines the allowed filterable fields and operators for search filters.
-Pydantic automatically validates all filter inputs.
+Pydantic automatically validates all filter inputs, including semantic
+checks that reject nonsensical combinations (e.g. ``entity_id > "boat"``).
 """
 
 from enum import Enum
 from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AgenticSearchFilterableField(str, Enum):
@@ -51,15 +52,68 @@ class AgenticSearchFilterOperator(str, Enum):
     NOT_IN = "not_in"
 
 
+# ── Field-type classification ─────────────────────────────────────────────────
+# Used by the semantic validator to decide which operator+value combos are sane.
+
+_TEXT_FIELDS: frozenset[AgenticSearchFilterableField] = frozenset(
+    {
+        AgenticSearchFilterableField.ENTITY_ID,
+        AgenticSearchFilterableField.NAME,
+        AgenticSearchFilterableField.BREADCRUMBS_ENTITY_ID,
+        AgenticSearchFilterableField.BREADCRUMBS_NAME,
+        AgenticSearchFilterableField.BREADCRUMBS_ENTITY_TYPE,
+        AgenticSearchFilterableField.SYSTEM_METADATA_ENTITY_TYPE,
+        AgenticSearchFilterableField.SYSTEM_METADATA_SOURCE_NAME,
+        AgenticSearchFilterableField.SYSTEM_METADATA_ORIGINAL_ENTITY_ID,
+        AgenticSearchFilterableField.SYSTEM_METADATA_SYNC_ID,
+        AgenticSearchFilterableField.SYSTEM_METADATA_SYNC_JOB_ID,
+    }
+)
+
+_DATE_FIELDS: frozenset[AgenticSearchFilterableField] = frozenset(
+    {
+        AgenticSearchFilterableField.CREATED_AT,
+        AgenticSearchFilterableField.UPDATED_AT,
+    }
+)
+
+_NUMERIC_FIELDS: frozenset[AgenticSearchFilterableField] = frozenset(
+    {
+        AgenticSearchFilterableField.SYSTEM_METADATA_CHUNK_INDEX,
+    }
+)
+
+_ORDERABLE_FIELDS = _DATE_FIELDS | _NUMERIC_FIELDS
+
+# ── Operator groups ───────────────────────────────────────────────────────────
+
+_ORDERING_OPS: frozenset[AgenticSearchFilterOperator] = frozenset(
+    {
+        AgenticSearchFilterOperator.GREATER_THAN,
+        AgenticSearchFilterOperator.LESS_THAN,
+        AgenticSearchFilterOperator.GREATER_THAN_OR_EQUAL,
+        AgenticSearchFilterOperator.LESS_THAN_OR_EQUAL,
+    }
+)
+
+_LIST_OPS: frozenset[AgenticSearchFilterOperator] = frozenset(
+    {
+        AgenticSearchFilterOperator.IN,
+        AgenticSearchFilterOperator.NOT_IN,
+    }
+)
+
+
 class AgenticSearchFilterCondition(BaseModel):
     """A single filter condition.
 
     Pydantic validates that:
-    - `field` is a valid AgenticSearchFilterableField enum value
-    - `operator` is a valid AgenticSearchFilterOperator enum value
-    - `value` matches the expected types
+    - ``field`` is a valid AgenticSearchFilterableField enum value
+    - ``operator`` is a valid AgenticSearchFilterOperator enum value
+    - ``value`` matches the expected types
+    - The combination of field + operator + value is semantically valid
 
-    Invalid filters raise pydantic.ValidationError automatically.
+    Invalid filters raise ``pydantic.ValidationError`` automatically.
 
     Examples:
         {"field": "airweave_system_metadata.source_name", "operator": "equals",
@@ -81,11 +135,82 @@ class AgenticSearchFilterCondition(BaseModel):
         description="Value to compare against. Use a list for 'in' and 'not_in' operators.",
     )
 
+    # ── Semantic validation ────────────────────────────────────────────────────
+
+    @model_validator(mode="after")
+    def check_semantic_validity(self) -> "AgenticSearchFilterCondition":
+        """Reject nonsensical field / operator / value combinations.
+
+        Rules:
+            1. Ordering operators (>, <, >=, <=) only on date or numeric fields.
+            2. ``contains`` only on text fields.
+            3. ``in`` / ``not_in`` require a list value.
+            4. Scalar operators must not receive a list value.
+            5. Numeric fields require numeric (or numeric-string) values.
+        """
+        f, op, v = self.field, self.operator, self.value
+
+        # 1. Ordering operators on text fields are nonsensical
+        #    e.g. entity_id > "boat"
+        if op in _ORDERING_OPS and f not in _ORDERABLE_FIELDS:
+            raise ValueError(
+                f"Cannot use '{op.value}' on text field '{f.value}'. "
+                f"Ordering operators (greater_than, less_than, …) only work on "
+                f"date fields (created_at, updated_at) or numeric fields "
+                f"(chunk_index). Use 'equals', 'not_equals', 'contains', 'in', "
+                f"or 'not_in' instead."
+            )
+
+        # 2. 'contains' is a substring match — meaningless on dates/numbers
+        #    e.g. created_at contains "2024"
+        if op == AgenticSearchFilterOperator.CONTAINS and f not in _TEXT_FIELDS:
+            kind = "date" if f in _DATE_FIELDS else "numeric"
+            raise ValueError(
+                f"Cannot use 'contains' on {kind} field '{f.value}'. "
+                f"Use 'equals' or an ordering operator instead."
+            )
+
+        # 3. in / not_in require list values
+        #    e.g. source_name in "slack"  →  should be ["slack"]
+        if op in _LIST_OPS and not isinstance(v, list):
+            raise ValueError(
+                f"Operator '{op.value}' requires a list value, "
+                f'got {type(v).__name__} ("{v}"). '
+                f'Example: ["val1", "val2"]'
+            )
+
+        # 4. Scalar operators must not receive list values
+        #    e.g. name equals ["a", "b"]  →  use 'in' instead
+        if op not in _LIST_OPS and isinstance(v, list):
+            raise ValueError(
+                f"Operator '{op.value}' expects a single value, not a list. "
+                f"Use 'in' or 'not_in' for list matching."
+            )
+
+        # 5. Numeric fields must receive a numeric value
+        #    e.g. chunk_index = "boat"
+        if f in _NUMERIC_FIELDS and not isinstance(v, list):
+            if isinstance(v, (int, float)):
+                pass  # fine
+            elif isinstance(v, str):
+                try:
+                    float(v)
+                except ValueError:
+                    raise ValueError(
+                        f"Field '{f.value}' is numeric — expected a number, got '{v}'."
+                    )
+            elif isinstance(v, bool):
+                raise ValueError(
+                    f"Field '{f.value}' is numeric — expected a number, got boolean {v}."
+                )
+
+        return self
+
     def to_md(self) -> str:
         """Render the condition as markdown.
 
         Returns:
-            Markdown string: `field operator value`
+            Markdown string: ``field operator value``
         """
         return f"`{self.field.value}` {self.operator.value} `{self.value!r}`"
 

@@ -16,6 +16,8 @@ class LLMProvider(str, Enum):
     """Supported LLM providers."""
 
     CEREBRAS = "cerebras"
+    GROQ = "groq"
+    ANTHROPIC = "anthropic"
 
 
 class LLMModel(str, Enum):

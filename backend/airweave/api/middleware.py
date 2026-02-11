@@ -376,7 +376,7 @@ async def validation_exception_handler(
                 "class_name": class_name,
                 "stack_trace": stack_trace,
                 "type": exception_type,
-                "error_messages": error_messages,
+                "errors": error_messages["errors"],
             },
         )
 
