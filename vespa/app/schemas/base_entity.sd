@@ -35,6 +35,7 @@ schema base_entity {
 
         field name type string {
             indexing: attribute | summary
+            attribute: fast-search
         }
 
         # Breadcrumbs for hierarchy navigation
@@ -44,7 +45,10 @@ schema base_entity {
                 indexing: attribute
                 attribute: fast-search
             }
-            struct-field name { indexing: attribute }
+            struct-field name {
+                indexing: attribute
+                attribute: fast-search
+            }
             struct-field entity_type {
                 indexing: attribute
                 attribute: fast-search
@@ -103,6 +107,7 @@ schema base_entity {
         # Chunk index within the parent entity
         field airweave_system_metadata_chunk_index type int {
             indexing: attribute | summary
+            attribute: fast-search
         }
 
         # =============================================================================
