@@ -88,13 +88,8 @@ class GoogleDocumentAIOcrAdapter:
         if self._client is not None:
             return
 
-        try:
-            from google.api_core.client_options import ClientOptions
-            from google.cloud import documentai
-        except ImportError:
-            raise RuntimeError(
-                "google-cloud-documentai package required but not installed"
-            )
+        from google.api_core.client_options import ClientOptions
+        from google.cloud import documentai
 
         opts = ClientOptions(
             api_endpoint=f"{self._location}-documentai.googleapis.com"
