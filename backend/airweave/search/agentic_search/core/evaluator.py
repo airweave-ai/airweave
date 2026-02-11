@@ -141,7 +141,7 @@ class AgenticSearchEvaluator:
     def _log_evaluation(self, evaluation: AgenticSearchEvaluation) -> None:
         """Log the evaluation result."""
         decision = "CONTINUE" if evaluation.should_continue else "STOP"
-        self._logger.info(
+        self._logger.debug(
             f"[Evaluator] Decision: {decision}\n  - Reasoning: {evaluation.reasoning}"
         )
 

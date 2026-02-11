@@ -197,7 +197,7 @@ class VespaVectorDB:
         total_count = root.get("fields", {}).get("totalCount", 0)
         hits = response.hits or []
 
-        self._logger.info(
+        self._logger.debug(
             f"[VespaVectorDB] Query completed in {query_time_ms:.1f}ms, "
             f"total={total_count}, hits={len(hits)}, "
             f"coverage={coverage.get('coverage', 100.0):.1f}%"
@@ -403,8 +403,8 @@ class VespaVectorDB:
                 self._logger.warning(f"[VespaVectorDB] Skipping hit {i}: missing entity_id")
                 continue
 
-            # Parse payload for source_fields (contains web_url and other source-specific data)
-            source_fields = self._parse_payload(fields.get("payload"))
+            # Parse payload for raw_source_fields (contains web_url and other source-specific data)
+            raw_source_fields = self._parse_payload(fields.get("payload"))
 
             result = AgenticSearchResult(
                 entity_id=entity_id,
@@ -418,9 +418,9 @@ class VespaVectorDB:
                 ),
                 airweave_system_metadata=self._extract_system_metadata(fields, entity_id),
                 access=self._extract_access_control(fields),
-                web_url=self._get_required_field(source_fields, "web_url", entity_id),
+                web_url=self._get_required_field(raw_source_fields, "web_url", entity_id),
                 url=fields.get("url"),  # Only present for FileEntity (download link)
-                source_fields=source_fields,
+                raw_source_fields=raw_source_fields,
             )
             results.append(result)
 
@@ -509,7 +509,7 @@ class VespaVectorDB:
             return None
 
     def _parse_payload(self, payload_str: Any) -> Dict[str, Any]:
-        """Parse payload JSON string into source_fields dict."""
+        """Parse payload JSON string into raw_source_fields dict."""
         if not payload_str or not isinstance(payload_str, str):
             return {}
         try:

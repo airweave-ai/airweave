@@ -122,7 +122,7 @@ class AgenticSearchServices:
         dense_spec = dense_embedder.model_spec
         sparse_spec = sparse_embedder.model_spec
 
-        ctx.logger.info(
+        ctx.logger.debug(
             f"[AgenticSearchServices] Initialized:\n"
             f"  - Database: {config.DATABASE_IMPL.value}\n"
             f"  - LLM: {llm_provider.value} / {llm_spec.api_model_name}\n"

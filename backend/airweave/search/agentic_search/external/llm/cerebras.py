@@ -85,6 +85,10 @@ class CerebrasLLM:
             logger=logger,
         )
 
+        # Cumulative token usage counters for analytics
+        self.total_prompt_tokens: int = 0
+        self.total_completion_tokens: int = 0
+
         self._logger.debug(
             f"[CerebrasLLM] Initialized with model={model_spec.api_model_name}, "
             f"context_window={model_spec.context_window}, "
@@ -261,6 +265,8 @@ class CerebrasLLM:
         # Record actual token usage
         if response.usage:
             self._rate_limiter.record_tokens(response.usage.total_tokens)
+            self.total_prompt_tokens += response.usage.prompt_tokens or 0
+            self.total_completion_tokens += response.usage.completion_tokens or 0
             self._logger.debug(
                 f"[CerebrasLLM] API call completed in {api_time:.2f}s, "
                 f"tokens: prompt={response.usage.prompt_tokens}, "

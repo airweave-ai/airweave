@@ -132,7 +132,7 @@ class AgenticSearchResult(BaseModel):
         description="Download URL for file entities. Only present for FileEntity types.",
     )
 
-    source_fields: dict[str, Any] = Field(
+    raw_source_fields: dict[str, Any] = Field(
         ...,
         description="All source-specific fields.",
     )
@@ -217,7 +217,7 @@ class AgenticSearchResult(BaseModel):
         lines.append("")
         lines.append("**Source Fields:**")
         lines.append("```json")
-        lines.append(json.dumps(self.source_fields, indent=2, default=str))
+        lines.append(json.dumps(self.raw_source_fields, indent=2, default=str))
         lines.append("```")
 
         return "\n".join(lines)

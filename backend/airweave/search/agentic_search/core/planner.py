@@ -113,7 +113,7 @@ class AgenticSearchPlanner:
         )
 
         # Log the generated plan
-        self._logger.info(f"[Planner] Generated plan:\n{plan.to_md()}")
+        self._logger.debug(f"[Planner] Generated plan:\n{plan.to_md()}")
 
         return plan
 

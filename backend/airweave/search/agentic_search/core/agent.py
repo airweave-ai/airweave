@@ -12,6 +12,11 @@ Flow:
 
 import time
 
+from airweave.analytics.agentic_search_analytics import (
+    build_iteration_summaries,
+    track_agentic_search_completion,
+    track_agentic_search_error,
+)
 from airweave.api.context import ApiContext
 from airweave.search.agentic_search.builders import (
     AgenticSearchCollectionMetadataBuilder,
@@ -63,17 +68,41 @@ class AgenticSearchAgent:
         self.emitter: AgenticSearchEmitter = emitter
 
     async def run(
-        self, collection_readable_id: str, request: AgenticSearchRequest
+        self,
+        collection_readable_id: str,
+        request: AgenticSearchRequest,
+        is_streaming: bool = False,
     ) -> AgenticSearchResponse:
         """Run the agent."""
+        start_time = time.monotonic()
         try:
-            return await self._run(collection_readable_id, request)
+            return await self._run(collection_readable_id, request, is_streaming)
         except Exception as e:
+            duration_ms = int((time.monotonic() - start_time) * 1000)
             await self.emitter.emit(AgenticSearchErrorEvent(message=str(e)))
+            try:
+                track_agentic_search_error(
+                    ctx=self.ctx,
+                    query=request.query,
+                    collection_slug=collection_readable_id,
+                    duration_ms=duration_ms,
+                    mode=request.mode.value,
+                    model=request.model.value,
+                    error_message=str(e),
+                    error_type=type(e).__name__,
+                    is_streaming=is_streaming,
+                )
+            except Exception:
+                self.ctx.logger.debug(
+                    "[AgenticSearchAgent] Failed to track error analytics", exc_info=True
+                )
             raise
 
     async def _run(
-        self, collection_readable_id: str, request: AgenticSearchRequest
+        self,
+        collection_readable_id: str,
+        request: AgenticSearchRequest,
+        is_streaming: bool = False,
     ) -> AgenticSearchResponse:
         """Internal run method with event emission."""
         timings: list[tuple[str, int]] = []
@@ -95,8 +124,12 @@ class AgenticSearchAgent:
         )
         t = self._lap(timings, "build_initial_state", t)
 
+        # Collect per-iteration context window stats for analytics
+        context_stats: list[dict[str, int]] = []
+
         while True:
             prefix = f"iter_{state.iteration_number}"
+            iter_stats: dict[str, int] = {}
 
             # Create search plan
             planner = AgenticSearchPlanner(
@@ -107,6 +140,10 @@ class AgenticSearchAgent:
             plan: AgenticSearchPlan = await planner.plan(state)
             state.current_iteration.plan = plan
             t = self._lap(timings, f"{prefix}/plan", t)
+
+            # Capture planner context window stats
+            iter_stats["planner_history_shown"] = planner.history_shown
+            iter_stats["planner_history_total"] = planner.history_total
 
             # Emit planning event (includes how much history fit in the prompt)
             await self.emitter.emit(
@@ -174,10 +211,12 @@ class AgenticSearchAgent:
             )
 
             if state.mode == AgenticSearchMode.FAST:
+                context_stats.append(iter_stats)
                 break
 
             # Consolidation pass: after search, skip evaluation and break
             if state.is_consolidation:
+                context_stats.append(iter_stats)
                 break
 
             # Build result brief deterministically (no LLM)
@@ -195,6 +234,14 @@ class AgenticSearchAgent:
             state.current_iteration.evaluation = evaluation
             self.ctx.logger.debug(f"[AgenticSearchAgent] Evaluation: {evaluation.to_md()}")
             t = self._lap(timings, f"{prefix}/evaluate", t)
+
+            # Capture evaluator context window stats
+            iter_stats["evaluator_results_shown"] = evaluator.results_shown
+            iter_stats["evaluator_results_total"] = evaluator.results_total
+            iter_stats["evaluator_history_shown"] = evaluator.history_shown
+            iter_stats["evaluator_history_total"] = evaluator.history_total
+
+            context_stats.append(iter_stats)
 
             # Emit evaluating event (includes how many results/history fit in the prompt)
             await self.emitter.emit(
@@ -216,7 +263,7 @@ class AgenticSearchAgent:
             # Don't break: fall through to add this iteration to history, set
             # consolidation mode, and let the loop do one more plan+search cycle.
             if not evaluation.should_continue and not evaluation.answer_found:
-                self.ctx.logger.info(
+                self.ctx.logger.debug(
                     "[AgenticSearchAgent] Consolidation pass: answer not found, "
                     "running one more targeted search."
                 )
@@ -270,7 +317,20 @@ class AgenticSearchAgent:
         await self.emitter.emit(AgenticSearchDoneEvent(response=response))
 
         # Log final timing summary
-        self._log_timings(timings, total_start)
+        total_ms = self._log_timings(timings, total_start)
+
+        # Track analytics (non-blocking, errors logged and swallowed)
+        self._track_analytics(
+            state,
+            request,
+            collection_readable_id,
+            results,
+            answer,
+            timings,
+            total_ms,
+            is_streaming,
+            context_stats,
+        )
 
         return response
 
@@ -280,8 +340,12 @@ class AgenticSearchAgent:
         timings.append((label, int((now - start) * 1000)))
         return now
 
-    def _log_timings(self, timings: list, total_start: float) -> None:
-        """Log all step timings in a single summary."""
+    def _log_timings(self, timings: list, total_start: float) -> int:
+        """Log all step timings in a single summary.
+
+        Returns:
+            Total elapsed time in milliseconds.
+        """
         total_ms = int((time.monotonic() - total_start) * 1000)
         lines = [f"{'Step':<30} {'Duration':>8}"]
         lines.append("─" * 40)
@@ -289,4 +353,72 @@ class AgenticSearchAgent:
             lines.append(f"{label:<30} {ms:>6}ms")
         lines.append("─" * 40)
         lines.append(f"{'Total':<30} {total_ms:>6}ms")
-        self.ctx.logger.info("[AgenticSearchAgent] Timings:\n" + "\n".join(lines))
+        self.ctx.logger.debug("[AgenticSearchAgent] Timings:\n" + "\n".join(lines))
+        return total_ms
+
+    def _track_analytics(
+        self,
+        state: AgenticSearchState,
+        request: AgenticSearchRequest,
+        collection_readable_id: str,
+        results: list[AgenticSearchResult],
+        answer: AgenticSearchAnswer,
+        timings: list[tuple[str, int]],
+        total_ms: int,
+        is_streaming: bool,
+        context_stats: list[dict[str, int]],
+    ) -> None:
+        """Track agentic search completion analytics via PostHog.
+
+        Non-blocking: errors are logged but never affect the response.
+        """
+        try:
+            # Determine exit reason
+            if state.mode == AgenticSearchMode.FAST:
+                exit_reason = "fast_mode"
+            elif state.is_consolidation:
+                exit_reason = "consolidation"
+            else:
+                exit_reason = "answer_found"
+
+            # Build per-iteration summaries (includes context window stats)
+            iteration_summaries, search_error_count = build_iteration_summaries(
+                history=state.history,
+                current_iteration=state.current_iteration,
+                current_iteration_number=state.iteration_number,
+                is_fast_mode=(state.mode == AgenticSearchMode.FAST),
+                context_stats=context_stats,
+            )
+
+            # Read cumulative token usage from the LLM (if available)
+            llm = self.services.llm
+            total_prompt_tokens = getattr(llm, "total_prompt_tokens", None)
+            total_completion_tokens = getattr(llm, "total_completion_tokens", None)
+
+            track_agentic_search_completion(
+                ctx=self.ctx,
+                query=state.user_query,
+                collection_slug=collection_readable_id,
+                duration_ms=total_ms,
+                mode=state.mode.value,
+                model=request.model.value,
+                total_iterations=state.iteration_number + 1,
+                had_consolidation=state.is_consolidation,
+                exit_reason=exit_reason,
+                results_count=len(results),
+                answer_length=len(answer.text),
+                citations_count=len(answer.citations),
+                timings=timings,
+                is_streaming=is_streaming,
+                has_user_filter=len(request.filter) > 0,
+                user_filter_groups_count=len(request.filter),
+                user_limit=request.limit,
+                iteration_summaries=iteration_summaries,
+                search_error_count=search_error_count,
+                total_prompt_tokens=total_prompt_tokens,
+                total_completion_tokens=total_completion_tokens,
+            )
+        except Exception:
+            self.ctx.logger.debug(
+                "[AgenticSearchAgent] Failed to track completion analytics", exc_info=True
+            )

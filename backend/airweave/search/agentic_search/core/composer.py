@@ -109,7 +109,7 @@ class AgenticSearchComposer:
     def _log_answer(self, answer: AgenticSearchAnswer) -> None:
         """Log the composed answer."""
         text_preview = answer.text[:200] + "..." if len(answer.text) > 200 else answer.text
-        self._logger.info(
+        self._logger.debug(
             f"[Composer] Answer composed:\n"
             f"  - Text length: {len(answer.text)} chars\n"
             f"  - Citations: {len(answer.citations)}\n"
