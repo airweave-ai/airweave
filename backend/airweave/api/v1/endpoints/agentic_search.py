@@ -8,7 +8,7 @@ completely separate from the Airweave API's database connection.
 import asyncio
 import json
 
-from fastapi import Depends, Path
+from fastapi import Depends, HTTPException, Path
 from starlette.responses import StreamingResponse
 
 from airweave.api import deps
@@ -16,7 +16,7 @@ from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.pubsub import core_pubsub
-from airweave.core.shared_models import ActionType
+from airweave.core.shared_models import ActionType, FeatureFlag
 from airweave.search.agentic_search.core.agent import AgenticSearchAgent
 from airweave.search.agentic_search.emitter import (
     AgenticSearchLoggingEmitter,
@@ -36,6 +36,12 @@ async def agentic_search(
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> AgenticSearchResponse:
     """Perform agentic search."""
+    if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
+        raise HTTPException(
+            status_code=403,
+            detail="AGENTIC_SEARCH feature not enabled for this organization",
+        )
+
     await guard_rail.is_allowed(ActionType.QUERIES)
 
     services = await AgenticSearchServices.create(ctx, readable_id, model=request.model)
@@ -44,7 +50,7 @@ async def agentic_search(
         emitter = AgenticSearchLoggingEmitter(ctx)
         agent = AgenticSearchAgent(services, ctx, emitter)
 
-        response = await agent.run(readable_id, request)
+        response = await agent.run(readable_id, request, is_streaming=False)
 
         await guard_rail.increment(ActionType.QUERIES)
 
@@ -65,6 +71,12 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     Streams progress events as the agent plans, searches, and evaluates.
     Events include: planning reasoning, search stats, evaluator assessment, and final results.
     """
+    if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
+        raise HTTPException(
+            status_code=403,
+            detail="AGENTIC_SEARCH feature not enabled for this organization",
+        )
+
     request_id = ctx.request_id
     ctx.logger.info(
         f"[AgenticSearchStream] Starting stream for collection '{readable_id}' id={request_id}"
@@ -81,7 +93,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
         services = await AgenticSearchServices.create(ctx, readable_id, model=request.model)
         try:
             agent = AgenticSearchAgent(services, ctx, emitter)
-            await agent.run(readable_id, request)
+            await agent.run(readable_id, request, is_streaming=True)
         except Exception as e:
             ctx.logger.exception(f"[AgenticSearchStream] Error in search {request_id}: {e}")
         finally:
