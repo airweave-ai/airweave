@@ -80,6 +80,7 @@ svix = "^1.84.1"
 pyjwt = "^2.10.1"
 mistral_common = {version = "1.8.8", extras = ["sentencepiece"]}
 google-cloud-storage = "^3.8.0"
+google-cloud-documentai = "^3.9.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

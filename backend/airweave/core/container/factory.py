@@ -115,7 +115,8 @@ def _create_ocr_provider(circuit_breaker: "CircuitBreaker") -> "OcrProvider":
     """Create OCR provider with fallback chain.
 
     Currently: Mistral only.
-    Future: add more providers to the list for automatic failover.
+    To enable Google Document AI as a fallback, uncomment the block below
+    and set the GCP_DOCUMENT_AI_* settings in core/config/settings.py.
     """
     from airweave.adapters.ocr.fallback import FallbackOcrProvider
     from airweave.adapters.ocr.mistral import MistralOcrAdapter
@@ -123,6 +124,12 @@ def _create_ocr_provider(circuit_breaker: "CircuitBreaker") -> "OcrProvider":
     return FallbackOcrProvider(
         providers=[
             ("mistral-ocr", MistralOcrAdapter()),
+            # Uncomment to enable Google Document AI as fallback:
+            # ("google-document-ai", GoogleDocumentAIOcrAdapter(
+            #     project_id=settings.GCP_DOCUMENT_AI_PROJECT,
+            #     location=settings.GCP_DOCUMENT_AI_LOCATION,
+            #     processor_id=settings.GCP_DOCUMENT_AI_PROCESSOR_ID,
+            # )),
         ],
         circuit_breaker=circuit_breaker,
     )
