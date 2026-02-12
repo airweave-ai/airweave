@@ -16,6 +16,7 @@ jobs:
     permissions:
       contents: write
       actions: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v3
@@ -92,6 +93,19 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
           npm publish --access public
           echo "Published airweave-mcp-search to npm"
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Update server.json version and publish to MCP Registry
+        working-directory: ./mcp
+        run: |
+          VERSION=${{ github.event.release.tag_name || github.event.inputs.version }}
+          VERSION=${VERSION#v}
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.tmp && mv server.tmp server.json
+          ../mcp-publisher login github-oidc
+          ../mcp-publisher publish
 
       - name: Trigger Docs Generation
         uses: actions/github-script@v6

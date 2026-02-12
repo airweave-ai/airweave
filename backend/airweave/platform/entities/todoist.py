@@ -17,7 +17,7 @@ class TodoistProjectEntity(BaseEntity):
     """Schema for Todoist project entities.
 
     Reference:
-        https://developer.todoist.com/rest/v2/#projects
+        https://developer.todoist.com/api/v1/#tag/Projects
     """
 
     project_id: str = AirweaveField(..., description="Todoist project ID.", is_entity_id=True)
@@ -40,9 +40,6 @@ class TodoistProjectEntity(BaseEntity):
     # API fields
     color: Optional[str] = AirweaveField(
         None, description="Color of the project (e.g., 'grey', 'blue')", embeddable=False
-    )
-    comment_count: int = AirweaveField(
-        0, description="Number of comments in the project", embeddable=False
     )
     order: int = AirweaveField(0, description="Project order in the project list", embeddable=False)
     is_shared: bool = AirweaveField(
@@ -77,7 +74,7 @@ class TodoistSectionEntity(BaseEntity):
     """Schema for Todoist section entities.
 
     Reference:
-        https://developer.todoist.com/rest/v2/#sections
+        https://developer.todoist.com/api/v1/#tag/Sections
     """
 
     section_id: str = AirweaveField(..., description="Todoist section ID.", is_entity_id=True)
@@ -94,7 +91,7 @@ class TodoistTaskEntity(BaseEntity):
     """Schema for Todoist task entities.
 
     Reference:
-        https://developer.todoist.com/rest/v2/#tasks
+        https://developer.todoist.com/api/v1/#tag/Tasks
     """
 
     task_id: str = AirweaveField(..., description="Todoist task ID.", is_entity_id=True)
@@ -118,11 +115,11 @@ class TodoistTaskEntity(BaseEntity):
     description: Optional[str] = AirweaveField(
         None, description="Optional detailed description of the task", embeddable=True
     )
-    comment_count: int = AirweaveField(
-        0, description="Number of comments on the task", embeddable=False
-    )
     is_completed: bool = AirweaveField(
         False, description="Whether the task is completed", embeddable=True
+    )
+    completed_at: Optional[str] = AirweaveField(
+        None, description="Timestamp when the task was completed (ISO 8601)", embeddable=False
     )
     labels: List[str] = AirweaveField(
         default_factory=list,
@@ -191,7 +188,7 @@ class TodoistCommentEntity(BaseEntity):
     """Schema for Todoist comment entities.
 
     Reference:
-        https://developer.todoist.com/rest/v2/#comments
+        https://developer.todoist.com/api/v1/#tag/Comments
     """
 
     comment_id: str = AirweaveField(..., description="Todoist comment ID.", is_entity_id=True)

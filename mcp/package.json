@@ -1,6 +1,6 @@
 {
   "name": "airweave-mcp-search",
-  "version": "0.8.84",
+  "version": "0.5.7",
   "mcpName": "io.github.airweave-ai/search",
   "description": "MCP server for searching Airweave collections",
   "type": "module",

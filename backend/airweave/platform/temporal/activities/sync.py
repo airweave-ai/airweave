@@ -77,7 +77,6 @@ class RunSyncActivity:
         from airweave.platform.temporal.worker_metrics import worker_metrics
 
         # Convert dicts back to Pydantic models
-        sync = schemas.Sync(**sync_dict)
         sync_job = schemas.SyncJob(**sync_job_dict)
         connection = schemas.Connection(**connection_dict)
 
@@ -100,9 +99,33 @@ class RunSyncActivity:
             ),
         )
 
-        # Fetch fresh collection from DB
+        # Fetch fresh sync and collection from DB to avoid stale data
+        # (Temporal schedules bake sync_dict at creation time, which can
+        # contain outdated destination_connection_ids after migrations)
+        sync_id = UUID(sync_dict["id"])
         collection_id = UUID(collection_dict["id"])
         async with get_db_context() as db:
+            # Fetch sync with connections to get current destination_connection_ids
+            try:
+                sync = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=True)
+                if not sync.destination_connection_ids:
+                    ctx.logger.warning(
+                        f"Sync {sync_id} has no destination connections in DB. "
+                        f"Falling back to workflow-provided sync_dict."
+                    )
+                    sync = schemas.Sync(**sync_dict)
+                else:
+                    ctx.logger.info(
+                        f"Fetched fresh sync data from DB: {sync.id} "
+                        f"(destinations={sync.destination_connection_ids})"
+                    )
+            except Exception as e:
+                ctx.logger.warning(
+                    f"Failed to fetch sync {sync_id} from DB: {e}. "
+                    f"Falling back to workflow-provided sync_dict."
+                )
+                sync = schemas.Sync(**sync_dict)
+
             collection_model = await crud.collection.get(db=db, id=collection_id, ctx=ctx)
             if not collection_model:
                 raise ValueError(f"Collection {collection_id} not found in database")
