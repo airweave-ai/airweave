@@ -60,29 +60,62 @@ class TodoistSource(BaseSource):
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
-    async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Optional[dict]:
-        """Make an authenticated GET request to the Todoist REST API using the provided URL.
+    async def _get_with_auth(
+        self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
+    ) -> Optional[Any]:
+        """Make an authenticated GET request to the Todoist API.
 
-        Returns the JSON response as a dict (or list if not JSON-object).
+        Returns the JSON response (dict or list).
         If a 404 error is encountered, returns None instead of raising an exception.
         """
         headers = {"Authorization": f"Bearer {self.access_token}"}
         try:
-            response = await client.get(url, headers=headers)
+            response = await client.get(url, headers=headers, params=params)
             response.raise_for_status()
 
-            # Depending on the endpoint, responses may be a list or a dict.
-            # We'll attempt to parse JSON and return whatever type we get:
             try:
                 return response.json()
             except ValueError:
                 return None
         except httpx.HTTPStatusError as e:
-            # Handle 404 errors gracefully by returning None
             if e.response.status_code == 404:
                 return None
-            # Re-raise other HTTP errors
             raise
+
+    async def _get_all_paginated(
+        self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
+    ) -> List[Dict]:
+        """Fetch all pages from a paginated Todoist API v1 endpoint.
+
+        The new Todoist API v1 returns paginated responses:
+            {"results": [...], "next_cursor": "..." | null}
+
+        This helper follows next_cursor until all pages are collected.
+        """
+        all_items: List[Dict] = []
+        request_params = dict(params) if params else {}
+
+        while True:
+            data = await self._get_with_auth(client, url, params=request_params)
+            if not data:
+                break
+
+            # Handle both paginated dict responses and legacy list responses
+            if isinstance(data, list):
+                all_items.extend(data)
+                break
+
+            results = data.get("results", [])
+            if isinstance(results, list):
+                all_items.extend(results)
+
+            next_cursor = data.get("next_cursor")
+            if not next_cursor:
+                break
+
+            request_params["cursor"] = next_cursor
+
+        return all_items
 
     @staticmethod
     def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
@@ -99,14 +132,13 @@ class TodoistSource(BaseSource):
     ) -> AsyncGenerator[TodoistProjectEntity, None]:
         """Retrieve and yield Project entities.
 
-        GET https://api.todoist.com/rest/v2/projects
+        GET https://api.todoist.com/api/v1/projects
         """
-        url = "https://api.todoist.com/rest/v2/projects"
-        projects = await self._get_with_auth(client, url)
+        url = "https://api.todoist.com/api/v1/projects"
+        projects = await self._get_all_paginated(client, url)
         if not projects:
             return
 
-        # 'projects' should be a list of project objects
         for project in projects:
             now = datetime.utcnow()
             project_url = project.get("url")
@@ -124,7 +156,6 @@ class TodoistSource(BaseSource):
                 updated_time=now,
                 web_url_value=project_url,
                 color=project.get("color"),
-                comment_count=project.get("comment_count", 0),
                 order=project.get("order", 0),
                 is_shared=project.get("is_shared", False),
                 is_favorite=project.get("is_favorite", False),
@@ -144,10 +175,10 @@ class TodoistSource(BaseSource):
     ) -> AsyncGenerator[TodoistSectionEntity, None]:
         """Retrieve and yield Section entities for a given project.
 
-        GET https://api.todoist.com/rest/v2/sections?project_id={project_id}
+        GET https://api.todoist.com/api/v1/sections?project_id={project_id}
         """
-        url = f"https://api.todoist.com/rest/v2/sections?project_id={project_id}"
-        sections = await self._get_with_auth(client, url)
+        url = "https://api.todoist.com/api/v1/sections"
+        sections = await self._get_all_paginated(client, url, {"project_id": project_id})
         if not sections:
             return
 
@@ -172,13 +203,12 @@ class TodoistSource(BaseSource):
     ) -> List[Dict]:
         """Fetch all tasks for a given project.
 
-        GET https://api.todoist.com/rest/v2/tasks?project_id={project_id}
+        GET https://api.todoist.com/api/v1/tasks?project_id={project_id}
 
         Returns a list of task objects.
         """
-        url = f"https://api.todoist.com/rest/v2/tasks?project_id={project_id}"
-        tasks = await self._get_with_auth(client, url)
-        return tasks if isinstance(tasks, list) else []
+        url = "https://api.todoist.com/api/v1/tasks"
+        return await self._get_all_paginated(client, url, {"project_id": project_id})
 
     async def _generate_task_entities(
         self,
@@ -239,8 +269,10 @@ class TodoistSource(BaseSource):
                 updated_time=updated_time,
                 web_url_value=task_url,
                 description=task.get("description"),
-                comment_count=task.get("comment_count", 0),
-                is_completed=task.get("is_completed", False),
+                is_completed=task.get("completed_at") is not None
+                if "completed_at" in task
+                else task.get("is_completed", False),
+                completed_at=task.get("completed_at"),
                 labels=task.get("labels", []),
                 order=task.get("order", 0),
                 priority=task.get("priority", 1),
@@ -277,12 +309,12 @@ class TodoistSource(BaseSource):
     ) -> AsyncGenerator[TodoistCommentEntity, None]:
         """Retrieve and yield Comment entities for a given task.
 
-        GET https://api.todoist.com/rest/v2/comments?task_id={task_id}
+        GET https://api.todoist.com/api/v1/comments?task_id={task_id}
         """
         task_id = task_entity.entity_id
-        url = f"https://api.todoist.com/rest/v2/comments?task_id={task_id}"
-        comments = await self._get_with_auth(client, url)
-        if not isinstance(comments, list):
+        url = "https://api.todoist.com/api/v1/comments"
+        comments = await self._get_all_paginated(client, url, {"task_id": task_id})
+        if not comments:
             return
 
         for comment in comments:
@@ -346,11 +378,12 @@ class TodoistSource(BaseSource):
                     client, project_entity.entity_id
                 )
 
-                # Re-fetch sections in-memory to attach tasks to them,
-                # or reuse the info from above if desired
-                url_sections = f"https://api.todoist.com/rest/v2/sections?project_id={project_entity.entity_id}"
-                sections_data = await self._get_with_auth(client, url_sections)
-                sections = sections_data if isinstance(sections_data, list) else []
+                # Re-fetch sections in-memory to attach tasks to them
+                sections = await self._get_all_paginated(
+                    client,
+                    "https://api.todoist.com/api/v1/sections",
+                    {"project_id": project_entity.entity_id},
+                )
 
                 # 3) For each section, yield tasks that belong to it, plus comments
                 for section_data in sections:
@@ -407,7 +440,7 @@ class TodoistSource(BaseSource):
     async def validate(self) -> bool:
         """Verify Todoist OAuth2 token by pinging a lightweight REST endpoint."""
         return await self._validate_oauth2(
-            ping_url="https://api.todoist.com/rest/v2/projects",
+            ping_url="https://api.todoist.com/api/v1/projects",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )

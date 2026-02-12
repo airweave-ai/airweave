@@ -2,17 +2,19 @@
 
 Tests that the subscriber correctly forwards domain events to the
 webhook publisher using the fake from the adapter layer.
+
+Fixtures used:
+- fake_webhook_publisher: from root conftest (FakeWebhookPublisher)
+- subscriber: from domain conftest (WebhookEventSubscriber wired to fake)
 """
 
 from uuid import uuid4
 
 import pytest
 
-from airweave.adapters.webhooks.fake import FakeWebhookPublisher
 from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
-from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 
 ORG_ID = uuid4()
 SYNC_ID = uuid4()
@@ -24,16 +26,8 @@ SOURCE_CONNECTION_ID = uuid4()
 class TestWebhookEventSubscriber:
     """Tests for WebhookEventSubscriber."""
 
-    @pytest.fixture
-    def publisher(self):
-        return FakeWebhookPublisher()
-
-    @pytest.fixture
-    def subscriber(self, publisher):
-        return WebhookEventSubscriber(publisher=publisher)
-
     @pytest.mark.asyncio
-    async def test_forwards_sync_event(self, publisher, subscriber):
+    async def test_forwards_sync_event(self, fake_webhook_publisher, subscriber):
         event = SyncLifecycleEvent.completed(
             organization_id=ORG_ID,
             sync_id=SYNC_ID,
@@ -46,11 +40,11 @@ class TestWebhookEventSubscriber:
         )
         await subscriber.handle(event)
 
-        assert len(publisher.events) == 1
-        assert publisher.events[0] is event
+        assert len(fake_webhook_publisher.events) == 1
+        assert fake_webhook_publisher.events[0] is event
 
     @pytest.mark.asyncio
-    async def test_forwards_source_connection_event(self, publisher, subscriber):
+    async def test_forwards_source_connection_event(self, fake_webhook_publisher, subscriber):
         event = SourceConnectionLifecycleEvent.created(
             organization_id=ORG_ID,
             source_connection_id=SOURCE_CONNECTION_ID,
@@ -59,10 +53,10 @@ class TestWebhookEventSubscriber:
         )
         await subscriber.handle(event)
 
-        assert publisher.has_event("source_connection.created")
+        assert fake_webhook_publisher.has_event("source_connection.created")
 
     @pytest.mark.asyncio
-    async def test_forwards_collection_event(self, publisher, subscriber):
+    async def test_forwards_collection_event(self, fake_webhook_publisher, subscriber):
         event = CollectionLifecycleEvent.deleted(
             organization_id=ORG_ID,
             collection_id=COLLECTION_ID,
@@ -71,10 +65,10 @@ class TestWebhookEventSubscriber:
         )
         await subscriber.handle(event)
 
-        assert publisher.has_event("collection.deleted")
+        assert fake_webhook_publisher.has_event("collection.deleted")
 
     @pytest.mark.asyncio
-    async def test_multiple_events(self, publisher, subscriber):
+    async def test_multiple_events(self, fake_webhook_publisher, subscriber):
         events = [
             SyncLifecycleEvent.running(
                 organization_id=ORG_ID,
@@ -100,6 +94,6 @@ class TestWebhookEventSubscriber:
         for event in events:
             await subscriber.handle(event)
 
-        assert len(publisher.events) == 2
-        assert publisher.has_event("sync.running")
-        assert publisher.has_event("sync.completed")
+        assert len(fake_webhook_publisher.events) == 2
+        assert fake_webhook_publisher.has_event("sync.running")
+        assert fake_webhook_publisher.has_event("sync.completed")

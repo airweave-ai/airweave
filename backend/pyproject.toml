@@ -164,7 +164,7 @@ docstring-code-format = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["tests", "airweave"]
 python_files = ["test_*.py", "*_test.py"]
 addopts = "-v --cov=airweave --cov-report=term-missing --cov-report=xml:coverage.xml"
 markers = [

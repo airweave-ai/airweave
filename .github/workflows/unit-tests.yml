@@ -54,7 +54,23 @@ jobs:
         run: poetry install --no-interaction
 
       - name: Run unit tests with coverage
-        run: poetry run pytest tests/unit/ -m "not slow" --cov=airweave --cov-report=xml:coverage.xml
+        run: >
+          poetry run pytest
+          tests/unit/
+          airweave/
+          -m "not slow"
+          --cov=airweave
+          --cov-report=xml:coverage.xml
+          --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./backend/coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
 
       - name: Run live integration tests (storage backends)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -93,12 +109,3 @@ jobs:
           diff-cover coverage.xml \
             --compare-branch=origin/${{ github.base_ref }} \
             --fail-under=80
-
-      - name: Upload coverage to Codecov
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./backend/coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
