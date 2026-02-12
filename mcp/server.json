@@ -2,12 +2,12 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.airweave-ai/search",
   "title": "Airweave Search",
-  "description": "MCP server for searching Airweave collections with natural language queries, vector search, and AI-powered completions.",
+  "description": "MCP server for searching Airweave collections with natural language queries.",
   "repository": {
     "url": "https://github.com/airweave-ai/airweave",
     "source": "github"
   },
-  "version": "0.8.84",
+  "version": "0.8.85",
   "remotes": [
     {
       "type": "streamable-http",
@@ -31,7 +31,7 @@
     {
       "registryType": "npm",
       "identifier": "airweave-mcp-search",
-      "version": "0.8.84",
+      "version": "0.8.85",
       "transport": {
         "type": "stdio"
       },

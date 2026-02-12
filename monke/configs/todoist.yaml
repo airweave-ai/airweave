@@ -7,8 +7,8 @@ connector:
   type: "todoist"
   auth_mode: composio
   composio_config:
-    account_id: ca_KMeEsHFsKSYh
-    auth_config_id: ac_8qw3bu1q2-tr
+    account_id: ca_MXj9wGxhxuLi
+    auth_config_id: ac_nrMRvyLrtKxU
   config_fields:
     openai_model: "gpt-4.1-mini"
     post_create_sleep_seconds: 15
