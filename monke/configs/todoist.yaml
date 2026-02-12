@@ -7,7 +7,7 @@ connector:
   type: "todoist"
   auth_mode: composio
   composio_config:
-    account_id: ca_yZv0j2YgF83V
+    account_id: ca_MXj9wGxhxuLi
     auth_config_id: ac_nrMRvyLrtKxU
   config_fields:
     openai_model: "gpt-4.1-mini"
