@@ -187,7 +187,7 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
                 continue
 
             relative_path = os.path.relpath(root, PLATFORM_DIR)
-            module_path = os.path.join(relative_path, filename[:-3]).replace("/", ".")
+            module_path = os.path.join(relative_path, filename[:-3]).replace("/", ".").replace("\\", ".")
             full_module_name = f"{base_package}.{module_path}"
 
             try:
