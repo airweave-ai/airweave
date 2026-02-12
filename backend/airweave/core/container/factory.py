@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
 
@@ -60,7 +61,7 @@ def create_container(settings: Settings) -> Container:
     # FallbackOcrProvider tries providers in order, skipping tripped ones.
     # -----------------------------------------------------------------
     circuit_breaker = _create_circuit_breaker()
-    ocr_provider = _create_ocr_provider(circuit_breaker)
+    ocr_provider = _create_ocr_provider(circuit_breaker, settings)
 
     return Container(
         event_bus=event_bus,
@@ -111,18 +112,21 @@ def _create_circuit_breaker() -> "CircuitBreaker":
     return InMemoryCircuitBreaker(cooldown_seconds=120)
 
 
-def _create_ocr_provider(circuit_breaker: "CircuitBreaker") -> "OcrProvider":
+def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings") -> "OcrProvider":
     """Create OCR provider with fallback chain.
 
-    Currently: Mistral only.
-    Future: add more providers to the list for automatic failover.
+    Chain order: Mistral (cloud) -> Docling (local service, if configured).
+    Docling is only added when DOCLING_BASE_URL is set.
     """
     from airweave.adapters.ocr.fallback import FallbackOcrProvider
     from airweave.adapters.ocr.mistral import MistralOcrAdapter
 
+    providers = [("mistral-ocr", MistralOcrAdapter())]
+
+    if settings.DOCLING_BASE_URL:
+        providers.append(("docling", DoclingOcrAdapter(base_url=settings.DOCLING_BASE_URL)))
+
     return FallbackOcrProvider(
-        providers=[
-            ("mistral-ocr", MistralOcrAdapter()),
-        ],
+        providers=providers,
         circuit_breaker=circuit_breaker,
     )
