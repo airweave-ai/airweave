@@ -73,9 +73,7 @@ class DoclingOcrAdapter:
                 results[path] = await self._convert_single(client, path)
         return results
 
-    async def _convert_single(
-        self, client: httpx.AsyncClient, file_path: str
-    ) -> Optional[str]:
+    async def _convert_single(self, client: httpx.AsyncClient, file_path: str) -> Optional[str]:
         """Convert a single file, returning markdown or None on failure."""
         path = Path(file_path)
         if path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
@@ -102,9 +100,7 @@ class DoclingOcrAdapter:
             return None
 
         except httpx.HTTPStatusError as exc:
-            logger.warning(
-                f"[DoclingOCR] HTTP {exc.response.status_code} for {file_path}"
-            )
+            logger.warning(f"[DoclingOCR] HTTP {exc.response.status_code} for {file_path}")
             raise
         except httpx.TimeoutException:
             logger.warning(f"[DoclingOCR] Timeout converting {file_path}")
