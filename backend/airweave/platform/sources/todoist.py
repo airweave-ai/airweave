@@ -99,9 +99,9 @@ class TodoistSource(BaseSource):
     ) -> AsyncGenerator[TodoistProjectEntity, None]:
         """Retrieve and yield Project entities.
 
-        GET https://api.todoist.com/rest/v2/projects
+        GET https://api.todoist.com/api/v1/projects
         """
-        url = "https://api.todoist.com/rest/v2/projects"
+        url = "https://api.todoist.com/api/v1/projects"
         projects = await self._get_with_auth(client, url)
         if not projects:
             return
@@ -144,9 +144,9 @@ class TodoistSource(BaseSource):
     ) -> AsyncGenerator[TodoistSectionEntity, None]:
         """Retrieve and yield Section entities for a given project.
 
-        GET https://api.todoist.com/rest/v2/sections?project_id={project_id}
+        GET https://api.todoist.com/api/v1/sections?project_id={project_id}
         """
-        url = f"https://api.todoist.com/rest/v2/sections?project_id={project_id}"
+        url = f"https://api.todoist.com/api/v1/sections?project_id={project_id}"
         sections = await self._get_with_auth(client, url)
         if not sections:
             return
@@ -172,11 +172,11 @@ class TodoistSource(BaseSource):
     ) -> List[Dict]:
         """Fetch all tasks for a given project.
 
-        GET https://api.todoist.com/rest/v2/tasks?project_id={project_id}
+        GET https://api.todoist.com/api/v1/tasks?project_id={project_id}
 
         Returns a list of task objects.
         """
-        url = f"https://api.todoist.com/rest/v2/tasks?project_id={project_id}"
+        url = f"https://api.todoist.com/api/v1/tasks?project_id={project_id}"
         tasks = await self._get_with_auth(client, url)
         return tasks if isinstance(tasks, list) else []
 
@@ -277,10 +277,10 @@ class TodoistSource(BaseSource):
     ) -> AsyncGenerator[TodoistCommentEntity, None]:
         """Retrieve and yield Comment entities for a given task.
 
-        GET https://api.todoist.com/rest/v2/comments?task_id={task_id}
+        GET https://api.todoist.com/api/v1/comments?task_id={task_id}
         """
         task_id = task_entity.entity_id
-        url = f"https://api.todoist.com/rest/v2/comments?task_id={task_id}"
+        url = f"https://api.todoist.com/api/v1/comments?task_id={task_id}"
         comments = await self._get_with_auth(client, url)
         if not isinstance(comments, list):
             return
@@ -348,7 +348,9 @@ class TodoistSource(BaseSource):
 
                 # Re-fetch sections in-memory to attach tasks to them,
                 # or reuse the info from above if desired
-                url_sections = f"https://api.todoist.com/rest/v2/sections?project_id={project_entity.entity_id}"
+                url_sections = (
+                    f"https://api.todoist.com/api/v1/sections?project_id={project_entity.entity_id}"
+                )
                 sections_data = await self._get_with_auth(client, url_sections)
                 sections = sections_data if isinstance(sections_data, list) else []
 
@@ -407,7 +409,7 @@ class TodoistSource(BaseSource):
     async def validate(self) -> bool:
         """Verify Todoist OAuth2 token by pinging a lightweight REST endpoint."""
         return await self._validate_oauth2(
-            ping_url="https://api.todoist.com/rest/v2/projects",
+            ping_url="https://api.todoist.com/api/v1/projects",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
