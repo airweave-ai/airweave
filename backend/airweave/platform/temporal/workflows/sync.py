@@ -229,3 +229,46 @@ class CleanupStuckSyncJobsWorkflow:
                 maximum_interval=timedelta(seconds=60),
             ),
         )
+
+
+@workflow.defn
+class CleanupSyncDataWorkflow:
+    """Workflow for cleaning up external data (Vespa, ARF) after sync deletion.
+
+    This runs asynchronously after the DB records have been cascade-deleted,
+    handling the potentially slow cleanup of destination data. Vespa deletions
+    can take minutes, so this must not run in the API request cycle.
+
+    Only accepts primitive IDs to keep the Temporal payload small.
+    """
+
+    @workflow.run
+    async def run(
+        self,
+        sync_ids: list[str],
+        collection_id: str,
+        organization_id: str,
+    ) -> Dict[str, Any]:
+        """Run cleanup for external sync data.
+
+        Args:
+            sync_ids: List of sync ID strings to clean up.
+            collection_id: Collection UUID string.
+            organization_id: Organization UUID string.
+
+        Returns:
+            Summary dict from the cleanup activity.
+        """
+        from airweave.platform.temporal.activities import cleanup_sync_data_activity
+
+        return await workflow.execute_activity(
+            cleanup_sync_data_activity,
+            args=[sync_ids, collection_id, organization_id],
+            start_to_close_timeout=timedelta(minutes=15),
+            retry_policy=RetryPolicy(
+                maximum_attempts=3,
+                initial_interval=timedelta(seconds=10),
+                maximum_interval=timedelta(minutes=2),
+                backoff_coefficient=2.0,
+            ),
+        )

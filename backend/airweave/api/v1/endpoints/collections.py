@@ -5,6 +5,7 @@ collections. Collections are containers that group related data from one or
 more source connections, enabling unified search across multiple data sources.
 """
 
+import asyncio
 from typing import List, Sequence
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Path, Query
@@ -24,15 +25,12 @@ from airweave.core.collection_service import collection_service
 from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.protocols import EventBus
-from airweave.core.shared_models import ActionType
-from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import ActionType, SyncJobStatus
 from airweave.core.source_connection_service import source_connection_service
 from airweave.core.source_connection_service_helpers import source_connection_helpers
 from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
 from airweave.models.source_connection import SourceConnection
-from airweave.platform.cleanup import cleanup_service
 from airweave.schemas.errors import (
     NotFoundErrorResponse,
     RateLimitErrorResponse,
@@ -40,6 +38,61 @@ from airweave.schemas.errors import (
 )
 
 router = TrailingSlashRouter()
+
+
+async def _cancel_and_wait_for_syncs(
+    db: AsyncSession,
+    sync_ids: list,
+    ctx: ApiContext,
+    timeout_seconds: int = 15,
+) -> None:
+    """Cancel running workflows and wait for them to reach terminal state.
+
+    Sends Temporal cancel signals for PENDING/RUNNING jobs, then polls until
+    all non-terminal jobs reach COMPLETED/FAILED/CANCELLED. Jobs already in
+    CANCELLING state are waited on without sending a new signal.
+
+    This prevents FK violations from CASCADE-deleting sync rows while a
+    worker is still writing entities.
+    """
+    non_terminal = {SyncJobStatus.PENDING, SyncJobStatus.RUNNING, SyncJobStatus.CANCELLING}
+    terminal = {SyncJobStatus.COMPLETED, SyncJobStatus.FAILED, SyncJobStatus.CANCELLED}
+
+    syncs_to_wait = []
+    for sync_id in sync_ids:
+        latest_job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=sync_id)
+        if not latest_job or latest_job.status not in non_terminal:
+            continue
+
+        if latest_job.status in [SyncJobStatus.PENDING, SyncJobStatus.RUNNING]:
+            try:
+                await temporal_service.cancel_sync_job_workflow(str(latest_job.id), ctx)
+                ctx.logger.info(f"Cancelled job {latest_job.id} before deletion")
+            except Exception as e:
+                ctx.logger.warning(f"Failed to cancel job {latest_job.id}: {e}")
+
+        syncs_to_wait.append(sync_id)
+
+    if not syncs_to_wait:
+        return
+
+    elapsed = 0.0
+    while elapsed < timeout_seconds and syncs_to_wait:
+        await asyncio.sleep(1.0)
+        elapsed += 1.0
+        db.expire_all()
+        syncs_to_wait = [
+            sid
+            for sid in syncs_to_wait
+            if (job := await crud.sync_job.get_latest_by_sync_id(db, sync_id=sid))
+            and job.status not in terminal
+        ]
+
+    if syncs_to_wait:
+        ctx.logger.warning(
+            f"{len(syncs_to_wait)} sync(s) did not reach terminal state "
+            f"within {timeout_seconds}s -- proceeding with deletion anyway"
+        )
 
 
 @router.get(
@@ -268,25 +321,30 @@ async def delete(
     ctx: ApiContext = Depends(deps.get_context),
     event_bus: EventBus = Inject(EventBus),
 ) -> schemas.Collection:
-    """Delete a collection and all associated data."""
+    """Delete a collection and all associated data.
+
+    The flow is:
+    1. Cancel any running sync workflows and wait for them to stop.
+    2. CASCADE-delete the DB records (collection, source connections, syncs, etc.).
+    3. Fire-and-forget a Temporal cleanup workflow for the slow external data
+       deletion (Vespa, ARF, schedules) which can take minutes.
+    """
     # Find the collection
     db_obj = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
     if db_obj is None:
         raise HTTPException(status_code=404, detail="Collection not found")
 
-    # Capture info before deletion for the event
+    # Capture IDs before deletion (ORM objects become stale after barrier/delete)
     collection_id = db_obj.id
     collection_name = db_obj.name
     collection_readable_id = db_obj.readable_id
-
-    # Convert to schema for cleanup service
-    collection_schema = schemas.Collection.model_validate(db_obj, from_attributes=True)
+    organization_id = ctx.organization.id
 
     # Collect sync IDs before cascading deletes remove the rows
     sync_id_rows: Sequence = await db.execute(
         select(SourceConnection.sync_id)
         .where(
-            SourceConnection.organization_id == ctx.organization.id,
+            SourceConnection.organization_id == organization_id,
             SourceConnection.readable_collection_id == db_obj.readable_id,
             SourceConnection.sync_id.is_not(None),
         )
@@ -294,31 +352,33 @@ async def delete(
     )
     sync_ids = [row[0] for row in sync_id_rows if row[0]]
 
-    # Cancel any running Temporal workflows before deletion to prevent FK violations.
-    # Without this, CASCADE-deleting sync rows while a worker is still writing entities
-    # causes ForeignKeyViolationError on the entity table.
-    for sync_id in sync_ids:
-        latest_job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=sync_id)
-        if latest_job and latest_job.status in [SyncJobStatus.PENDING, SyncJobStatus.RUNNING]:
-            try:
-                await temporal_service.cancel_sync_job_workflow(str(latest_job.id), ctx)
-                ctx.logger.info(f"Cancelled job {latest_job.id} before collection deletion")
-            except Exception as e:
-                ctx.logger.warning(
-                    f"Failed to cancel job {latest_job.id} during collection deletion: {e}"
-                )
+    # Cancel running workflows and wait for them to stop before CASCADE delete
+    await _cancel_and_wait_for_syncs(db, sync_ids, ctx)
 
-    # Clean up all external data (schedules, destinations, ARF)
-    await cleanup_service.cleanup_collection(db, collection_schema, sync_ids, ctx)
+    # Delete the collection first - CASCADE handles all child objects.
+    result = await crud.collection.remove(db, id=collection_id, ctx=ctx)
 
-    # Delete the collection - CASCADE will handle all child objects
-    result = await crud.collection.remove(db, id=db_obj.id, ctx=ctx)
+    # Fire-and-forget: schedule async cleanup of external data (Vespa, ARF,
+    # Temporal schedules). This can take minutes for Vespa and must not block.
+    if sync_ids:
+        try:
+            await temporal_service.start_cleanup_sync_data_workflow(
+                sync_ids=[str(sid) for sid in sync_ids],
+                collection_id=str(collection_id),
+                organization_id=str(organization_id),
+                ctx=ctx,
+            )
+        except Exception as e:
+            ctx.logger.error(
+                f"Failed to schedule async cleanup for collection {collection_id}: {e}. "
+                f"Data may be orphaned in Vespa/ARF."
+            )
 
     # Publish collection.deleted event
     try:
         await event_bus.publish(
             CollectionLifecycleEvent.deleted(
-                organization_id=ctx.organization.id,
+                organization_id=organization_id,
                 collection_id=collection_id,
                 collection_name=collection_name,
                 collection_readable_id=collection_readable_id,

@@ -788,6 +788,21 @@ class StubAuthConfig(AuthConfig):
     )
 
 
+class TimedAuthConfig(AuthConfig):
+    """Timed source authentication credentials schema.
+
+    The timed source doesn't require real authentication.
+    This config is a placeholder for consistency with other sources.
+    """
+
+    timed_key: str = Field(
+        default="timed",
+        title="Timed Key",
+        description="Placeholder field (any value works, timed source doesn't require "
+        "real authentication)",
+    )
+
+
 class FileStubAuthConfig(AuthConfig):
     """File stub source authentication credentials schema.
 

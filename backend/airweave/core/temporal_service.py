@@ -1,6 +1,7 @@
 """Service for integrating Temporal workflows."""
 
-from typing import Optional
+import uuid
+from typing import List, Optional
 
 from temporalio.client import WorkflowHandle
 
@@ -9,7 +10,10 @@ from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.platform.temporal.client import temporal_client
-from airweave.platform.temporal.workflows import RunSourceConnectionWorkflow
+from airweave.platform.temporal.workflows import (
+    CleanupSyncDataWorkflow,
+    RunSourceConnectionWorkflow,
+)
 
 
 class TemporalService:
@@ -104,6 +108,49 @@ class TemporalService:
                 # Actual connectivity or other Temporal error
                 ctx.logger.error(f"Failed to request cancellation for {workflow_id}: {e}")
                 return {"success": False, "workflow_found": False}
+
+    async def start_cleanup_sync_data_workflow(
+        self,
+        sync_ids: List[str],
+        collection_id: str,
+        organization_id: str,
+        ctx: ApiContext,
+    ) -> Optional[WorkflowHandle]:
+        """Start an async workflow to clean up external data for deleted syncs.
+
+        This is fire-and-forget: the DELETE endpoint returns immediately,
+        and Temporal handles the potentially slow Vespa/ARF cleanup in the
+        background with retries.
+
+        Args:
+            sync_ids: List of sync ID strings to clean up.
+            collection_id: Collection UUID as string.
+            organization_id: Organization UUID as string.
+            ctx: API context for logging.
+
+        Returns:
+            WorkflowHandle if started successfully, None on failure.
+        """
+        client = await temporal_client.get_client()
+        task_queue = settings.TEMPORAL_TASK_QUEUE
+
+        # Use a unique workflow ID so multiple cleanup workflows can run
+        workflow_id = f"cleanup-sync-data-{uuid.uuid4().hex[:12]}"
+
+        try:
+            handle = await client.start_workflow(
+                CleanupSyncDataWorkflow.run,
+                args=[sync_ids, collection_id, organization_id],
+                id=workflow_id,
+                task_queue=task_queue,
+            )
+            ctx.logger.info(
+                f"Started async cleanup workflow {workflow_id} for {len(sync_ids)} sync(s)"
+            )
+            return handle
+        except Exception as e:
+            ctx.logger.error(f"Failed to start cleanup workflow for {len(sync_ids)} sync(s): {e}")
+            return None
 
     async def is_temporal_enabled(self) -> bool:
         """Check if Temporal is enabled and available.

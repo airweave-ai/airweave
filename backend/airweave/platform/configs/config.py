@@ -583,6 +583,35 @@ class TodoistConfig(SourceConfig):
     pass
 
 
+class TimedConfig(SourceConfig):
+    """Timed source configuration schema for testing sync lifecycle.
+
+    Controls the generation of N entities spread evenly over a configurable
+    duration. Designed for precise timing control in cancellation and
+    state transition tests.
+    """
+
+    entity_count: int = Field(
+        default=100,
+        title="Entity Count",
+        description="Total number of entities to generate",
+        ge=1,
+        le=10000,
+    )
+    duration_seconds: float = Field(
+        default=10.0,
+        title="Duration (seconds)",
+        description="Total time to spread entity generation over, in seconds",
+        ge=0.1,
+        le=600,
+    )
+    seed: int = Field(
+        default=42,
+        title="Random Seed",
+        description="Random seed for reproducible content generation",
+    )
+
+
 class StubConfig(SourceConfig):
     """Stub source configuration schema for testing.
 
