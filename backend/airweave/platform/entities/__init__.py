@@ -77,6 +77,13 @@ from .file_stub import (
     PptxFileStubEntity,
     ScannedPdfFileStubEntity,
 )
+from .freshdesk import (
+    FreshdeskCompanyEntity,
+    FreshdeskContactEntity,
+    FreshdeskConversationEntity,
+    FreshdeskSolutionArticleEntity,
+    FreshdeskTicketEntity,
+)
 from .github import (
     GitHubCodeFileEntity,
     GithubContentEntity,
@@ -356,6 +363,13 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         PdfFileStubEntity,
         PptxFileStubEntity,
         ScannedPdfFileStubEntity,
+    ],
+    "freshdesk": [
+        FreshdeskCompanyEntity,
+        FreshdeskContactEntity,
+        FreshdeskConversationEntity,
+        FreshdeskSolutionArticleEntity,
+        FreshdeskTicketEntity,
     ],
     "github": [
         GitHubCodeFileEntity,

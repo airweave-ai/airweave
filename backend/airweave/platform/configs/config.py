@@ -780,6 +780,16 @@ class ZendeskConfig(SourceConfig):
     )
 
 
+class FreshdeskConfig(SourceConfig):
+    """Freshdesk configuration schema."""
+
+    domain: str = RequiredTemplateConfig(
+        title="Freshdesk Domain",
+        description=("Your Freshdesk domain only (e.g., 'mycompany' for mycompany.freshdesk.com)"),
+        json_schema_extra={"required_for_auth": True},
+    )
+
+
 # AUTH PROVIDER CONFIGURATION CLASSES
 # These are for configuring auth provider behavior
 

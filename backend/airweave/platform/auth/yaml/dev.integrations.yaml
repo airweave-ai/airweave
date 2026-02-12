@@ -411,3 +411,5 @@ integrations:
       prompt: "consent"
 
   qdrant:
+
+  freshdesk:

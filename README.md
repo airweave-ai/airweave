@@ -72,6 +72,7 @@ cd airweave
 <img src="frontend/src/components/icons/apps/clickup.svg" alt="ClickUp" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/confluence.svg" alt="Confluence" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/dropbox.svg" alt="Dropbox" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/freshdesk.svg" alt="Freshdesk" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/github.svg" alt="Github" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/gitlab.svg" alt="Gitlab" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/gmail.svg" alt="Gmail" width="40" height="40" style="margin: 6px;" />

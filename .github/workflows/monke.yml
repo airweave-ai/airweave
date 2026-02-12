@@ -66,7 +66,7 @@ jobs:
         id: set-matrix
         env:
           BASE_BRANCH: ${{ github.base_ref || 'main' }}
-          MONKE_MIN_CONNECTORS: 0  # Don't pad to minimum - only test what's needed
+          MONKE_MIN_CONNECTORS: 0 # Don't pad to minimum - only test what's needed
         run: |
           # Use monke.sh CLI to determine connectors (keeps logic DRY)
           # This returns space-separated list: core + changed, minimum 4 connectors
@@ -266,6 +266,10 @@ jobs:
           MONKE_SHOPIFY_CLIENT_ID: ${{ secrets.MONKE_SHOPIFY_CLIENT_ID }}
           MONKE_SHOPIFY_CLIENT_SECRET: ${{ secrets.MONKE_SHOPIFY_CLIENT_SECRET }}
           MONKE_SHOPIFY_SHOP_DOMAIN: ${{ secrets.MONKE_SHOPIFY_SHOP_DOMAIN }}
+
+          # Freshdesk API key and domain
+          MONKE_FRESHDESK_API_KEY: ${{ secrets.MONKE_FRESHDESK_API_KEY }}
+          MONKE_FRESHDESK_DOMAIN: ${{ secrets.MONKE_FRESHDESK_DOMAIN }}
 
           # All SaaS app credentials (Composio configs, API tokens, etc.)
           # will be fetched from Azure Key Vault at runtime

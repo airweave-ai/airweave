@@ -657,6 +657,20 @@ class StripeAuthConfig(AuthConfig):
         return v
 
 
+class FreshdeskAuthConfig(AuthConfig):
+    """Freshdesk authentication credentials schema.
+
+    Uses API key as Basic auth username (password is 'X').
+    See: https://developers.freshdesk.com/api/#authentication
+    """
+
+    api_key: str = Field(
+        title="API Key",
+        description="Your Freshdesk API key. Find it in Profile Settings in your Freshdesk portal.",
+        min_length=1,
+    )
+
+
 class TodoistAuthConfig(OAuth2AuthConfig):
     """Todoist authentication credentials schema."""
 
