@@ -65,9 +65,7 @@ class FallbackOcrProvider:
         """
         for provider_key, provider in self._providers:
             if not await self._cb.is_available(provider_key):
-                logger.info(
-                    f"[FallbackOCR] Skipping '{provider_key}' (circuit-broken)"
-                )
+                logger.info(f"[FallbackOCR] Skipping '{provider_key}' (circuit-broken)")
                 continue
 
             try:
@@ -77,8 +75,7 @@ class FallbackOcrProvider:
             except Exception as exc:
                 await self._cb.record_failure(provider_key)
                 logger.warning(
-                    f"[FallbackOCR] '{provider_key}' failed ({exc}), "
-                    f"trying next provider"
+                    f"[FallbackOCR] '{provider_key}' failed ({exc}), trying next provider"
                 )
 
         logger.error("[FallbackOCR] All OCR providers unavailable or failed")

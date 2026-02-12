@@ -100,8 +100,7 @@ def __getattr__(name: str):
     if name in _SINGLETON_NAMES:
         if _singletons is None:
             raise RuntimeError(
-                "Converters not initialized. "
-                "Call initialize_converters() at startup."
+                "Converters not initialized. Call initialize_converters() at startup."
             )
         return _singletons[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
