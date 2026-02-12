@@ -11,6 +11,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 
 from airweave.platform.configs.auth import FirefliesAuthConfig
+from airweave.platform.configs.config import FirefliesConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.fireflies import FirefliesTranscriptEntity
@@ -26,8 +27,8 @@ TRANSCRIPTS_PAGE_SIZE = 50
     short_name="fireflies",
     auth_methods=[AuthenticationMethod.DIRECT, AuthenticationMethod.AUTH_PROVIDER],
     oauth_type=None,
-    auth_config_class="FirefliesAuthConfig",
-    config_class="FirefliesConfig",
+    auth_config_class=FirefliesAuthConfig,
+    config_class=FirefliesConfig,
     labels=["Meetings", "Transcription", "Productivity"],
     supports_continuous=False,
 )

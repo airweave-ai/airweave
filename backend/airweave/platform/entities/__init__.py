@@ -78,7 +78,7 @@ from .file_stub import (
     ScannedPdfFileStubEntity,
 )
 from .fireflies import (
-  FirefliesTranscriptEntity,
+    FirefliesTranscriptEntity,
 )
 from .github import (
     GitHubCodeFileEntity,
@@ -361,7 +361,7 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ScannedPdfFileStubEntity,
     ],
     "fireflies": [
-      FirefliesTranscriptEntity,
+        FirefliesTranscriptEntity,
     ],
     "github": [
         GitHubCodeFileEntity,
