@@ -140,7 +140,8 @@ class TemporalWorker:
 async def main() -> None:
     """Main entry point for the worker process."""
     # 1. Initialize DI container (fail fast if wiring is broken)
-    from airweave.core.container import container, initialize_container
+    from airweave.core import container as container_mod
+    from airweave.core.container import initialize_container
 
     logger.info("Initializing dependency injection container...")
     initialize_container(settings)
@@ -149,7 +150,7 @@ async def main() -> None:
     # 2. Initialize converters with OCR from the container
     from airweave.platform.converters import initialize_converters
 
-    initialize_converters(ocr_provider=container.ocr_provider)
+    initialize_converters(ocr_provider=container_mod.container.ocr_provider)
 
     # 2. Create worker with config
     config = WorkerConfig.from_settings()
