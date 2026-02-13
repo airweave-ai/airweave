@@ -13,7 +13,10 @@ These are used by workflows when calling execute_activity() with a function refe
 from airweave.platform.temporal.activities.api_key_notifications import (
     CheckAndNotifyExpiringKeysActivity,
 )
-from airweave.platform.temporal.activities.cleanup import SelfDestructOrphanedSyncActivity
+from airweave.platform.temporal.activities.cleanup import (
+    CleanupSyncDataActivity,
+    SelfDestructOrphanedSyncActivity,
+)
 from airweave.platform.temporal.activities.sync import (
     CleanupStuckSyncJobsActivity,
     CreateSyncJobActivity,
@@ -37,6 +40,7 @@ mark_sync_job_cancelled_activity = MarkSyncJobCancelledActivity.run
 create_sync_job_activity = CreateSyncJobActivity.run
 cleanup_stuck_sync_jobs_activity = CleanupStuckSyncJobsActivity.run
 self_destruct_orphaned_sync_activity = SelfDestructOrphanedSyncActivity.run
+cleanup_sync_data_activity = CleanupSyncDataActivity.run
 check_and_notify_expiring_keys_activity = CheckAndNotifyExpiringKeysActivity.run
 
 __all__ = [
@@ -46,6 +50,7 @@ __all__ = [
     "CreateSyncJobActivity",
     "CleanupStuckSyncJobsActivity",
     "SelfDestructOrphanedSyncActivity",
+    "CleanupSyncDataActivity",
     "CheckAndNotifyExpiringKeysActivity",
     # Activity method references (for workflow imports)
     "run_sync_activity",
@@ -53,5 +58,6 @@ __all__ = [
     "create_sync_job_activity",
     "cleanup_stuck_sync_jobs_activity",
     "self_destruct_orphaned_sync_activity",
+    "cleanup_sync_data_activity",
     "check_and_notify_expiring_keys_activity",
 ]

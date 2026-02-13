@@ -1,9 +1,18 @@
-"""Fake WebhookPublisher for testing.
+"""Fake webhook adapters for testing.
 
-Records published events for assertions without touching Svix.
+Records operations for assertions without touching Svix.
 """
 
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Optional
+from uuid import UUID, uuid4
+
+from airweave.domains.webhooks.types import (
+    DeliveryAttempt,
+    EventMessage,
+    RecoveryTask,
+    Subscription,
+)
 
 if TYPE_CHECKING:
     from airweave.core.protocols.event_bus import DomainEvent
@@ -45,3 +54,173 @@ class FakeWebhookPublisher:
     def clear(self) -> None:
         """Clear all recorded events."""
         self.events.clear()
+
+
+class FakeWebhookAdmin:
+    """Test implementation of WebhookAdmin.
+
+    Records all operations for assertions without touching Svix.
+
+    Usage:
+        fake = FakeWebhookAdmin()
+        container = Container(..., webhook_admin=fake)
+
+        # After calling code that creates a subscription:
+        fake.assert_subscription_created("https://example.com/hook")
+    """
+
+    def __init__(self) -> None:
+        """Initialize with empty state."""
+        self.subscriptions: dict[str, Subscription] = {}
+        self.messages: list[EventMessage] = []
+        self.deleted_orgs: list[UUID] = []
+        self.recovered: list[tuple[UUID, str, datetime]] = []
+
+    # -------------------------------------------------------------------------
+    # Organization lifecycle
+    # -------------------------------------------------------------------------
+
+    async def delete_organization(self, org_id: UUID) -> None:
+        """Record organization deletion."""
+        self.deleted_orgs.append(org_id)
+
+    # -------------------------------------------------------------------------
+    # Subscriptions
+    # -------------------------------------------------------------------------
+
+    async def list_subscriptions(self, org_id: UUID) -> list[Subscription]:
+        """Return all recorded subscriptions."""
+        return list(self.subscriptions.values())
+
+    async def get_subscription(self, org_id: UUID, subscription_id: str) -> Subscription:
+        """Return a specific subscription by ID."""
+        sub = self.subscriptions.get(subscription_id)
+        if sub is None:
+            raise KeyError(f"Subscription {subscription_id} not found")
+        return sub
+
+    async def create_subscription(
+        self,
+        org_id: UUID,
+        url: str,
+        event_types: list[str],
+        secret: Optional[str] = None,
+    ) -> Subscription:
+        """Record a subscription creation."""
+        sub_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        sub = Subscription(
+            id=sub_id,
+            url=url,
+            event_types=event_types,
+            disabled=False,
+            created_at=now,
+            updated_at=now,
+            secret=secret,
+        )
+        self.subscriptions[sub_id] = sub
+        return sub
+
+    async def update_subscription(
+        self,
+        org_id: UUID,
+        subscription_id: str,
+        url: Optional[str] = None,
+        event_types: Optional[list[str]] = None,
+        disabled: Optional[bool] = None,
+    ) -> Subscription:
+        """Record a subscription update."""
+        sub = await self.get_subscription(org_id, subscription_id)
+        # Build updated subscription (dataclass is not frozen)
+        if url is not None:
+            sub.url = url
+        if event_types is not None:
+            sub.event_types = event_types
+        if disabled is not None:
+            sub.disabled = disabled
+        sub.updated_at = datetime.now(timezone.utc)
+        return sub
+
+    async def delete_subscription(self, org_id: UUID, subscription_id: str) -> None:
+        """Record a subscription deletion."""
+        self.subscriptions.pop(subscription_id, None)
+
+    async def get_subscription_secret(self, org_id: UUID, subscription_id: str) -> str:
+        """Return the secret for a subscription."""
+        sub = await self.get_subscription(org_id, subscription_id)
+        return sub.secret or "whsec_fake_secret"
+
+    async def recover_messages(
+        self,
+        org_id: UUID,
+        subscription_id: str,
+        since: datetime,
+        until: Optional[datetime] = None,
+    ) -> RecoveryTask:
+        """Record a recovery request."""
+        self.recovered.append((org_id, subscription_id, since))
+        return RecoveryTask(id=str(uuid4()), status="completed")
+
+    # -------------------------------------------------------------------------
+    # Message history
+    # -------------------------------------------------------------------------
+
+    async def get_messages(
+        self,
+        org_id: UUID,
+        event_types: Optional[list[str]] = None,
+    ) -> list[EventMessage]:
+        """Return recorded messages, optionally filtered by event type."""
+        if event_types is None:
+            return list(self.messages)
+        return [m for m in self.messages if m.event_type in event_types]
+
+    async def get_message(self, org_id: UUID, message_id: str) -> EventMessage:
+        """Return a specific message by ID."""
+        for msg in self.messages:
+            if msg.id == message_id:
+                return msg
+        raise KeyError(f"Message {message_id} not found")
+
+    async def get_message_attempts(
+        self,
+        org_id: UUID,
+        message_id: str,
+    ) -> list[DeliveryAttempt]:
+        """Return delivery attempts for a message (always empty in fake)."""
+        return []
+
+    async def get_subscription_attempts(
+        self,
+        org_id: UUID,
+        subscription_id: str,
+        limit: int = 100,
+    ) -> list[DeliveryAttempt]:
+        """Return delivery attempts for a subscription (always empty in fake)."""
+        return []
+
+    # -------------------------------------------------------------------------
+    # Test helpers
+    # -------------------------------------------------------------------------
+
+    def assert_subscription_created(self, url: str) -> Subscription:
+        """Assert that a subscription was created for the given URL."""
+        for sub in self.subscriptions.values():
+            if sub.url == url:
+                return sub
+        raise AssertionError(
+            f"No subscription created for URL '{url}'. "
+            f"Created URLs: {[s.url for s in self.subscriptions.values()]}"
+        )
+
+    def assert_org_deleted(self, org_id: UUID) -> None:
+        """Assert that an organization was deleted."""
+        if org_id not in self.deleted_orgs:
+            raise AssertionError(f"Organization {org_id} was not deleted")
+
+    def clear(self) -> None:
+        """Clear all recorded state."""
+        self.subscriptions.clear()
+        self.messages.clear()
+        self.deleted_orgs.clear()
+        self.recovered.clear()

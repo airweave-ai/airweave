@@ -326,12 +326,21 @@ async def update(
     summary="Delete Source Connection",
     description="""Permanently delete a source connection and all its synced data.
 
-This operation:
-- Removes all entities synced from this source from the vector database
-- Cancels any scheduled or running sync jobs
-- Deletes the connection configuration and credentials
+**What happens when you delete:**
 
-**Warning**: This action cannot be undone. All synced data will be permanently deleted.""",
+1. Any running sync is cancelled and the API waits (up to 15 s) for the
+   worker to stop writing.
+2. The source connection, sync configuration, job history, and entity
+   metadata are cascade-deleted from the database.
+3. A background cleanup workflow is scheduled to remove data from the
+   vector database (Vespa) and raw data storage (ARF). This may take
+   several minutes for large datasets but does **not** block the response.
+
+The API returns immediately after step 2. Vector database cleanup happens
+asynchronously -- the data becomes unsearchable as soon as the database
+records are deleted.
+
+**Warning**: This action cannot be undone.""",
     responses={
         200: {"model": schemas.SourceConnection, "description": "Deleted source connection"},
         404: {"model": NotFoundErrorResponse, "description": "Source Connection Not Found"},
@@ -434,12 +443,14 @@ Returns a list of sync jobs ordered by creation time (newest first). Each job
 includes status, timing information, and entity counts.
 
 Job statuses:
-- **PENDING**: Job is queued and waiting to start
+- **PENDING**: Job is queued, waiting for the worker to pick it up
 - **RUNNING**: Sync is actively pulling and processing data
 - **COMPLETED**: Sync finished successfully
-- **FAILED**: Sync encountered an error
-- **CANCELLED**: Sync was manually cancelled
-- **CANCELLING**: Cancellation has been requested""",
+- **FAILED**: Sync encountered an unrecoverable error
+- **CANCELLING**: Cancellation has been requested. The worker is
+  gracefully stopping the pipeline and cleaning up destination data.
+- **CANCELLED**: Sync was cancelled. The worker has fully stopped
+  and destination data cleanup has been scheduled.""",
     responses={
         200: {
             "model": List[schemas.SourceConnectionJob],
@@ -481,11 +492,19 @@ async def get_source_connection_jobs(
     summary="Cancel Sync Job",
     description="""Request cancellation of a running sync job.
 
-The job will be marked as CANCELLING and the sync workflow will stop at the
-next checkpoint. Already-processed entities are retained.
+**State lifecycle**: `PENDING` / `RUNNING` → `CANCELLING` → `CANCELLED`
 
-**Note**: Cancellation is asynchronous. The job status will change to CANCELLED
-once the workflow has fully stopped.""",
+1. The API immediately marks the job as **CANCELLING** in the database.
+2. A cancellation signal is sent to the Temporal workflow.
+3. The worker receives the signal, gracefully stops the sync pipeline
+   (cancels worker pool, source stream), and marks the job as **CANCELLED**.
+
+Already-processed entities are retained in the vector database.
+If the worker is unresponsive, a background cleanup job will force the
+transition to CANCELLED after 3 minutes.
+
+**Note**: Only jobs in `PENDING` or `RUNNING` state can be cancelled.
+Attempting to cancel a `COMPLETED`, `FAILED`, or `CANCELLED` job returns 400.""",
     responses={
         200: {"model": schemas.SourceConnectionJob, "description": "Job with cancellation status"},
         404: {"model": NotFoundErrorResponse, "description": "Job Not Found"},

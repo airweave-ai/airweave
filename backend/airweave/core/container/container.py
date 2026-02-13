@@ -14,7 +14,9 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from airweave.core.protocols import (
+    CircuitBreaker,
     EventBus,
+    OcrProvider,
     WebhookAdmin,
     WebhookPublisher,
 )
@@ -31,10 +33,14 @@ class Container:
 
         # Testing: construct directly with fakes
         from airweave.adapters.event_bus import FakeEventBus
+        from airweave.adapters.circuit_breaker import FakeCircuitBreaker
+        from airweave.adapters.ocr import FakeOcrProvider
         test_container = Container(
             event_bus=FakeEventBus(),
             webhook_publisher=FakeWebhookPublisher(),
             webhook_admin=FakeWebhookAdmin(),
+            circuit_breaker=FakeCircuitBreaker(),
+            ocr_provider=FakeOcrProvider(),
         )
 
         # FastAPI endpoints: use Inject() to pull individual protocols
@@ -49,6 +55,12 @@ class Container:
     # Webhook protocols (Svix-backed)
     webhook_publisher: WebhookPublisher  # Internal: publish sync events
     webhook_admin: WebhookAdmin  # External API: subscriptions + history
+
+    # Circuit breaker for provider failover
+    circuit_breaker: CircuitBreaker
+
+    # OCR provider (with fallback chain + circuit breaking)
+    ocr_provider: OcrProvider
 
     # -----------------------------------------------------------------
     # Convenience methods

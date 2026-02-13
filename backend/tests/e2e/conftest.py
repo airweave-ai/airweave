@@ -245,6 +245,78 @@ async def source_connection_medium(
         pass  # Best effort cleanup
 
 
+@pytest_asyncio.fixture(scope="function")
+async def timed_source_connection_fast(
+    api_client: httpx.AsyncClient,
+    collection: Dict,
+) -> AsyncGenerator[Dict, None]:
+    """Create a fast TimedSource connection for testing.
+
+    Generates 20 entities over 2 seconds. Use for tests that need a
+    sync to complete quickly (e.g., testing post-completion state).
+    No external service dependencies.
+    """
+    connection_data = {
+        "name": f"Timed Fast {uuid.uuid4().hex[:8]}",
+        "short_name": "timed",
+        "readable_collection_id": collection["readable_id"],
+        "authentication": {"credentials": {"timed_key": "test"}},
+        "config": {"entity_count": 20, "duration_seconds": 2, "seed": 42},
+        "sync_immediately": False,
+    }
+
+    response = await api_client.post("/source-connections", json=connection_data)
+
+    if response.status_code != 200:
+        pytest.fail(f"Failed to create timed fast connection: {response.text}")
+
+    connection = response.json()
+
+    yield connection
+
+    # Cleanup
+    try:
+        await api_client.delete(f"/source-connections/{connection['id']}")
+    except Exception:
+        pass  # Best effort cleanup
+
+
+@pytest_asyncio.fixture(scope="function")
+async def timed_source_connection_medium(
+    api_client: httpx.AsyncClient,
+    collection: Dict,
+) -> AsyncGenerator[Dict, None]:
+    """Create a medium-speed TimedSource connection for testing.
+
+    Generates 100 entities over 30 seconds. Use for tests that need
+    a sync to stay running long enough to cancel mid-flight.
+    No external service dependencies.
+    """
+    connection_data = {
+        "name": f"Timed Medium {uuid.uuid4().hex[:8]}",
+        "short_name": "timed",
+        "readable_collection_id": collection["readable_id"],
+        "authentication": {"credentials": {"timed_key": "test"}},
+        "config": {"entity_count": 100, "duration_seconds": 30, "seed": 42},
+        "sync_immediately": False,
+    }
+
+    response = await api_client.post("/source-connections", json=connection_data)
+
+    if response.status_code != 200:
+        pytest.fail(f"Failed to create timed medium connection: {response.text}")
+
+    connection = response.json()
+
+    yield connection
+
+    # Cleanup
+    try:
+        await api_client.delete(f"/source-connections/{connection['id']}")
+    except Exception:
+        pass  # Best effort cleanup
+
+
 @pytest_asyncio.fixture
 async def module_source_connection_stripe(
     module_api_client: httpx.AsyncClient, module_collection: Dict, config
