@@ -519,6 +519,52 @@ async def pipedream_auth_provider(api_client: httpx.AsyncClient, config) -> Dict
         pass  # Best effort cleanup
 
 
+# ---------------------------------------------------------------------------
+# Enable agentic_search feature flag for the test organization
+# ---------------------------------------------------------------------------
+_agentic_search_flag_enabled = False
+
+
+async def _enable_agentic_search_feature_flag() -> None:
+    """Enable the agentic_search feature flag on the test organization via admin API.
+
+    In dev mode the test user is a superuser, so the admin endpoint succeeds.
+    Runs once per session; subsequent calls are no-ops.
+    """
+    global _agentic_search_flag_enabled
+    if _agentic_search_flag_enabled:
+        return
+
+    async with httpx.AsyncClient(
+        base_url=settings.api_url,
+        headers=settings.api_headers,
+        timeout=httpx.Timeout(15),
+        follow_redirects=True,
+    ) as client:
+        # Discover the test organization ID
+        orgs_resp = await client.get("/users/me/organizations")
+        if orgs_resp.status_code != 200 or not orgs_resp.json():
+            print("Warning: could not fetch organizations to enable agentic_search flag")
+            return
+
+        org_id = orgs_resp.json()[0]["id"]
+
+        resp = await client.post(
+            f"/admin/organizations/{org_id}/feature-flags/agentic_search/enable"
+        )
+        if resp.status_code == 200:
+            _agentic_search_flag_enabled = True
+            print(f"✓ agentic_search feature flag enabled for org {org_id}")
+        else:
+            print(f"Warning: failed to enable agentic_search flag: {resp.status_code} {resp.text}")
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _ensure_agentic_search_flag():
+    """Session-scoped fixture that enables the agentic_search feature flag once."""
+    await _enable_agentic_search_feature_flag()
+
+
 # Markers for test categorization
 def pytest_configure(config):
     """Register custom markers."""
