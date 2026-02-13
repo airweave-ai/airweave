@@ -70,7 +70,7 @@ class TestSources:
         sources = response.json()
 
         valid_auth_methods = [
-            "fast",
+            "direct",
             "oauth_browser",
             "oauth_token",
             "auth_provider",

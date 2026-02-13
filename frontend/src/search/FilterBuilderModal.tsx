@@ -278,7 +278,6 @@ export const FilterBuilderPopover: React.FC<FilterBuilderPopoverProps> = ({
                 })),
             );
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // ─── Group handlers ──────────────────────────────────────────────
