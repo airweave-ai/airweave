@@ -268,8 +268,8 @@ async def _create_filter_collection(client: httpx.AsyncClient) -> Dict:
     # Verify stub data is actually searchable (not just sync status = active).
     # Under parallel test load, indexing can lag behind sync completion.
     stub_verified = False
-    for attempt in range(10):  # up to ~40s (first 4 at 3s, rest at 5s)
-        wait_secs = 3 if attempt < 4 else 5
+    for attempt in range(12):  # up to ~55s (first 5 at 3s, rest at 5s)
+        wait_secs = 3 if attempt < 5 else 5
         await asyncio.sleep(wait_secs)
         verify_resp = await client.post(
             f"/collections/{readable_id}/search",
@@ -292,7 +292,7 @@ async def _create_filter_collection(client: httpx.AsyncClient) -> Dict:
         print(f"  [stub verify] attempt {attempt + 1}: no results yet, retrying...")
 
     if not stub_verified:
-        print("⚠ Stub sync completed but data not searchable after retries")
+        pytest.fail("Stub sync completed but data not searchable after retries")
 
     # --------------------------------------------------------------------------
     # Source 2: Stripe (optional - only if credentials available)

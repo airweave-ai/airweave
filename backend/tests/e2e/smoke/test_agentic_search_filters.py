@@ -222,16 +222,20 @@ async def _create_agentic_search_collection(client: httpx.AsyncClient) -> Dict:
     if not await wait_for_sync(client, stub_connection["id"]):
         pytest.fail("Stub sync did not complete within timeout")
 
-    # Verify stub data is searchable via agentic_search (fast mode for speed)
+    # Verify stub data is searchable (use regular /search — cheaper, no LLM dependency)
     stub_verified = False
-    for attempt in range(10):
-        wait_secs = 3 if attempt < 4 else 5
+    for attempt in range(12):
+        wait_secs = 3 if attempt < 5 else 5
         await asyncio.sleep(wait_secs)
         verify_resp = await client.post(
-            f"/collections/{readable_id}/agentic-search",
+            f"/collections/{readable_id}/search",
             json={
                 "query": "stub",
-                "mode": "fast",
+                "expand_query": False,
+                "interpret_filters": False,
+                "rerank": False,
+                "generate_answer": False,
+                "limit": 5,
             },
             timeout=60,
         )
@@ -247,7 +251,7 @@ async def _create_agentic_search_collection(client: httpx.AsyncClient) -> Dict:
         print(f"  [stub verify] attempt {attempt + 1}: no results yet, retrying...")
 
     if not stub_verified:
-        print("  WARNING: Stub sync completed but data not searchable after retries")
+        pytest.fail("Stub sync completed but data not searchable after retries")
 
     # ---------- Source 2: Stripe (optional) ----------
     stripe_connection: Optional[Dict] = None
@@ -270,24 +274,18 @@ async def _create_agentic_search_collection(client: httpx.AsyncClient) -> Dict:
             connections_to_cleanup.append(stripe_connection["id"])
 
             if await wait_for_sync(client, stripe_connection["id"], max_wait_time=300):
-                for attempt in range(6):
+                for attempt in range(8):
                     await asyncio.sleep(5)
                     verify_response = await client.post(
-                        f"/collections/{readable_id}/agentic-search",
+                        f"/collections/{readable_id}/search",
                         json={
                             "query": "customer OR invoice OR payment",
-                            "mode": "fast",
-                            "filter": [
-                                {
-                                    "conditions": [
-                                        {
-                                            "field": "airweave_system_metadata.source_name",
-                                            "operator": "equals",
-                                            "value": "stripe",
-                                        }
-                                    ]
-                                }
-                            ],
+                            "expand_query": False,
+                            "interpret_filters": False,
+                            "rerank": False,
+                            "generate_answer": False,
+                            "filter": {"must": [{"key": "source_name", "match": {"value": "stripe"}}]},
+                            "limit": 5,
                         },
                         timeout=60,
                     )
