@@ -65,8 +65,13 @@ class FakeSourceService:
         self._sources: dict[str, schemas.Source] = {}
 
     async def get(self, short_name: str, *args, **kwargs) -> schemas.Source:
-        """Get source by short name. Raises KeyError if missing."""
-        return self._sources[short_name]
+        """Get source by short name. Raises SourceNotFoundError if missing."""
+        try:
+            return self._sources[short_name]
+        except KeyError:
+            from airweave.domains.sources.exceptions import SourceNotFoundError
+
+            raise SourceNotFoundError(short_name)
 
     async def list(self, *args, **kwargs) -> list[schemas.Source]:
         """List all sources."""

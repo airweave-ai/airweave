@@ -4,6 +4,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config.settings import Settings
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
+from airweave.domains.sources.exceptions import SourceNotFoundError
 from airweave.domains.sources.protocols import (
     SourceRegistryProtocol,
     SourceServiceProtocol,
@@ -29,12 +30,15 @@ class SourceService(SourceServiceProtocol):
 
     async def get(self, short_name: str, ctx: ApiContext) -> schemas.Source:
         """Get a source by short name."""
-        entry = self.source_registry.get(short_name)
+        try:
+            entry = self.source_registry.get(short_name)
+        except KeyError:
+            raise SourceNotFoundError(short_name)
 
         enabled_features = ctx.organization.enabled_features or []
 
         if self._is_hidden_by_feature_flag(entry, enabled_features, ctx):
-            raise KeyError(short_name)
+            raise SourceNotFoundError(short_name)
 
         return self._entry_to_schema(entry, enabled_features)
 

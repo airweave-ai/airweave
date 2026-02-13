@@ -8,7 +8,7 @@ synchronized with Airweave.
 
 from typing import List
 
-from fastapi import Depends, HTTPException, Path
+from fastapi import Depends, Path
 
 from airweave import schemas
 from airweave.api import deps
@@ -84,7 +84,4 @@ async def get(
     source_service: SourceServiceProtocol = Inject(SourceServiceProtocol),
 ) -> schemas.Source:
     """Get detailed information about a specific data source connector."""
-    try:
-        return await source_service.get(short_name, ctx)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Source not found: {short_name}")
+    return await source_service.get(short_name, ctx)

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from airweave.core.shared_models import FeatureFlag
+from airweave.domains.sources.exceptions import SourceNotFoundError
 from airweave.domains.sources.fake import FakeSourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.tests.conftest import _make_ctx, _make_entry, _make_settings
@@ -26,7 +27,7 @@ class GetCase:
     seed: bool = True  # whether to seed the entry into the registry
     feature_flag: str | None = None
     enabled_features: list = field(default_factory=list)
-    expect_short_name: str | None = None  # None = expect KeyError
+    expect_short_name: str | None = None  # None = expect SourceNotFoundError
 
 
 GET_CASES = [
@@ -36,7 +37,7 @@ GET_CASES = [
         expect_short_name="slack",
     ),
     GetCase(
-        desc="unknown source raises KeyError",
+        desc="unknown source raises SourceNotFoundError",
         short_name="nonexistent",
         seed=False,
     ),
@@ -71,7 +72,7 @@ async def test_get(case: GetCase):
     ctx = _make_ctx(enabled_features=case.enabled_features)
 
     if case.expect_short_name is None:
-        with pytest.raises(KeyError):
+        with pytest.raises(SourceNotFoundError):
             await service.get(case.short_name, ctx)
     else:
         result = await service.get(case.short_name, ctx)
