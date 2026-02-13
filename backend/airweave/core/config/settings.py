@@ -231,6 +231,7 @@ class Settings(BaseSettings):
     # Svix (webhooks) configuration
     SVIX_URL: str = "http://localhost:8071"
     SVIX_JWT_SECRET: str = "default_signing_secret"
+    WEBHOOK_VERIFY_ENDPOINTS: bool = True
 
     @field_validator("AZURE_KEYVAULT_NAME", mode="before")
     def validate_azure_keyvault_name(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:

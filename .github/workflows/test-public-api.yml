@@ -132,6 +132,9 @@ jobs:
           # Enable internal sources (stub, snapshot) for testing
           echo "ENABLE_INTERNAL_SOURCES=true" >> .env
 
+          # Disable webhook endpoint verification (tests use fake URLs)
+          echo "WEBHOOK_VERIFY_ENDPOINTS=false" >> .env
+
           # Set embedding dimensions (OpenAI text-embedding-3-small supports 1536)
           echo "EMBEDDING_DIMENSIONS=1536" >> .env
 

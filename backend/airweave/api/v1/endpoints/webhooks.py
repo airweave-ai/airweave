@@ -14,6 +14,7 @@ from airweave.analytics import business_events
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
+from airweave.core.config import settings
 from airweave.core.protocols import WebhookAdmin
 from airweave.domains.webhooks import WebhooksError
 from airweave.schemas.webhooks import (
@@ -255,7 +256,8 @@ async def create_subscription(
 
     try:
         # Verify the endpoint is reachable before creating the subscription
-        await webhook_admin.verify_endpoint(str(request.url))
+        if settings.WEBHOOK_VERIFY_ENDPOINTS:
+            await webhook_admin.verify_endpoint(str(request.url))
 
         subscription = await webhook_admin.create_subscription(
             ctx.organization.id, str(request.url), event_type_strs, request.secret
