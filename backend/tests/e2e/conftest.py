@@ -376,7 +376,39 @@ async def module_source_connection_stripe(
                     break
 
     if not sync_completed:
-        print(f"Warning: Initial sync may not have completed after {max_wait_time} seconds")
+        pytest.fail(f"Stripe sync did not complete within {max_wait_time} seconds")
+
+    # Verify data is actually searchable (sync complete != indexed)
+    readable_id = module_collection["readable_id"]
+    data_verified = False
+    for attempt in range(12):
+        wait_secs = 3 if attempt < 5 else 5
+        await asyncio.sleep(wait_secs)
+        verify_resp = await module_api_client.post(
+            f"/collections/{readable_id}/search",
+            json={
+                "query": "customer OR invoice OR payment",
+                "expand_query": False,
+                "interpret_filters": False,
+                "rerank": False,
+                "generate_answer": False,
+                "limit": 5,
+            },
+            timeout=60,
+        )
+        if verify_resp.status_code == 200:
+            verify_data = verify_resp.json()
+            if verify_data.get("results") and len(verify_data["results"]) > 0:
+                data_verified = True
+                print(
+                    f"✓ Stripe data searchable: {len(verify_data['results'])} results "
+                    f"(attempt {attempt + 1})"
+                )
+                break
+        print(f"  [stripe verify] attempt {attempt + 1}: no results yet, retrying...")
+
+    if not data_verified:
+        pytest.fail("Stripe sync completed but data not searchable after retries")
 
     # Yield for tests to use
     yield connection
