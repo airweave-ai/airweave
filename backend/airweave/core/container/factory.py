@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
+from airweave.core.logging import logger
 
 if TYPE_CHECKING:
     from airweave.core.config import Settings
@@ -117,16 +118,34 @@ def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings"
 
     Chain order: Mistral (cloud) -> Docling (local service, if configured).
     Docling is only added when DOCLING_BASE_URL is set.
+
+    raises: ValueError if no OCR providers are available
+    returns: FallbackOcrProvider with the available OCR providers
     """
     from airweave.adapters.ocr.fallback import FallbackOcrProvider
     from airweave.adapters.ocr.mistral import MistralOcrAdapter
 
-    providers = [("mistral-ocr", MistralOcrAdapter())]
+    try:
+        mistral_ocr = MistralOcrAdapter()
+    except Exception as e:
+        logger.error(f"Error creating Mistral OCR adapter: {e}")
+        mistral_ocr = None
+
+    providers = []
+    if mistral_ocr:
+        providers.append(("mistral-ocr", mistral_ocr))
 
     if settings.DOCLING_BASE_URL:
-        providers.append(("docling", DoclingOcrAdapter(base_url=settings.DOCLING_BASE_URL)))
+        try:
+            docling_ocr = DoclingOcrAdapter(base_url=settings.DOCLING_BASE_URL)
+            providers.append(("docling", docling_ocr))
+        except Exception as e:
+            logger.error(f"Error creating Docling OCR adapter: {e}")
+            docling_ocr = None
 
-    return FallbackOcrProvider(
-        providers=providers,
-        circuit_breaker=circuit_breaker,
-    )
+    if not providers:
+        raise ValueError("No OCR providers available")
+
+    logger.info(f"Creating FallbackOcrProvider with {len(providers)} providers: {providers}")
+
+    return FallbackOcrProvider(providers=providers, circuit_breaker=circuit_breaker)

@@ -48,7 +48,7 @@ class FallbackOcrProvider:
         if not providers:
             raise ValueError("At least one OCR provider is required")
         self._providers = providers
-        self._cb = circuit_breaker
+        self._circuit_breaker = circuit_breaker
 
     async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
         """Convert files to markdown, trying providers in order.
@@ -64,16 +64,16 @@ class FallbackOcrProvider:
             Mapping of ``file_path -> markdown`` (``None`` on failure).
         """
         for provider_key, provider in self._providers:
-            if not await self._cb.is_available(provider_key):
+            if not await self._circuit_breaker.is_available(provider_key):
                 logger.info(f"[FallbackOCR] Skipping '{provider_key}' (circuit-broken)")
                 continue
 
             try:
                 results = await provider.convert_batch(file_paths)
-                await self._cb.record_success(provider_key)
+                await self._circuit_breaker.record_success(provider_key)
                 return results
             except Exception as exc:
-                await self._cb.record_failure(provider_key)
+                await self._circuit_breaker.record_failure(provider_key)
                 logger.warning(
                     f"[FallbackOCR] '{provider_key}' failed ({exc}), trying next provider"
                 )

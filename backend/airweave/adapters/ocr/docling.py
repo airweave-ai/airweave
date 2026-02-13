@@ -57,6 +57,12 @@ class DoclingOcrAdapter:
         """
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        try:
+            response = httpx.get(f"{self._base_url}/health")
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.warning(f"[DoclingOCR] Health check failed: {exc}")
+            raise
 
     async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
         """Convert files to markdown via docling-serve.

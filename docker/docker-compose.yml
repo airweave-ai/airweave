@@ -202,8 +202,6 @@ services:
       - SVIX_URL=http://svix:8071
       - SVIX_JWT_SECRET=${SVIX_JWT_SECRET:-default_signing_secret}
       - SVIX_AUTH_TOKEN=${SVIX_AUTH_TOKEN:-}
-      # Docling OCR fallback service
-      - DOCLING_BASE_URL=http://docling:5001
     volumes:
       - ../backend:/app
     entrypoint: [ "python", "-m", "airweave.platform.temporal.worker" ]
@@ -214,22 +212,6 @@ services:
         condition: service_healthy
       svix:
         condition: service_healthy
-      docling:
-        condition: service_healthy
-    restart: on-failure
-
-  # Docling OCR fallback service (local document conversion)
-  docling:
-    container_name: airweave-docling
-    image: quay.io/docling-project/docling-serve-cpu:latest
-    ports:
-      - "5001:5001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
     restart: on-failure
 
   # Vespa single-node for development (config server + content + container combined)
