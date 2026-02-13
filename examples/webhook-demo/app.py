@@ -73,9 +73,9 @@ def verify_signature(secret: str, payload_bytes: bytes, headers: dict[str, str])
 
     print(f"[verify] msg_id={msg_id!r}")
     print(f"[verify] timestamp={timestamp!r}")
-    print(f"[verify] signatures={signatures!r}")
-    print(f"[verify] secret (first 20 chars)={secret[:20]!r}...")
-    print(f"[verify] body (first 100 chars)={payload_bytes[:100]!r}")
+    print(f"[verify] signature_count={len(signatures.split())}")
+    print(f"[verify] secret_length={len(secret)}")
+    print(f"[verify] body_length={len(payload_bytes)}")
 
     if not msg_id or not timestamp or not signatures:
         print("[verify] FAIL: missing header fields")
@@ -97,13 +97,13 @@ def verify_signature(secret: str, payload_bytes: bytes, headers: dict[str, str])
     expected = hmac.new(secret_bytes, signed_content.encode("utf-8"), hashlib.sha256).digest()
     expected_b64 = base64.b64encode(expected).decode("utf-8")
 
-    print(f"[verify] expected sig={expected_b64[:30]}...")
+    print(f"[verify] expected sig computed (length={len(expected_b64)})")
 
     # Svix sends space-separated signatures like "v1,<base64>"
     for sig in signatures.split(" "):
         parts = sig.split(",", 1)
         if len(parts) == 2 and parts[0] == "v1":
-            print(f"[verify] comparing with={parts[1][:30]}...")
+            print(f"[verify] comparing candidate signature (length={len(parts[1])})")
             if hmac.compare_digest(expected_b64, parts[1]):
                 print("[verify] PASS")
                 return True
