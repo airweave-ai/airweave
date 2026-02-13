@@ -5,6 +5,7 @@ retrieving event messages sent to those webhooks. Uses protocol-based
 dependency injection via Inject().
 """
 
+import asyncio
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -141,10 +142,29 @@ async def get_subscriptions(
     """List all webhook subscriptions for the organization."""
     try:
         subscriptions = await webhook_admin.list_subscriptions(ctx.organization.id)
+
+        # Fetch recent delivery attempts per subscription in parallel for health status
+        attempts_results = await asyncio.gather(
+            *[
+                webhook_admin.get_subscription_attempts(ctx.organization.id, sub.id, limit=10)
+                for sub in subscriptions
+            ],
+            return_exceptions=True,
+        )
+
+        result = []
+        for sub, attempts_or_exc in zip(subscriptions, attempts_results, strict=False):
+            if isinstance(attempts_or_exc, Exception):
+                # If fetching attempts fails, still return the subscription without health
+                result.append(WebhookSubscription.from_domain(sub))
+            else:
+                delivery_attempts = [DeliveryAttempt.from_domain(a) for a in attempts_or_exc]
+                result.append(
+                    WebhookSubscription.from_domain(sub, delivery_attempts=delivery_attempts)
+                )
+        return result
     except WebhooksError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
-
-    return [WebhookSubscription.from_domain(sub) for sub in subscriptions]
 
 
 @router.get(
@@ -234,6 +254,9 @@ async def create_subscription(
     event_type_strs = [e.value for e in request.event_types]
 
     try:
+        # Verify the endpoint is reachable before creating the subscription
+        await webhook_admin.verify_endpoint(str(request.url))
+
         subscription = await webhook_admin.create_subscription(
             ctx.organization.id, str(request.url), event_type_strs, request.secret
         )

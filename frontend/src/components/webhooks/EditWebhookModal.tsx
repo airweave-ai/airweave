@@ -8,15 +8,23 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Info,
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   useSubscription,
   useUpdateSubscription,
   useDeleteSubscription,
   useEnableEndpoint,
   useDisableEndpoint,
+  type HealthStatus,
 } from "@/hooks/use-webhooks";
 import { toast } from "sonner";
 import { EVENT_TYPES_CONFIG, type EventTypeGroup, formatFullDate } from "./shared";
@@ -244,6 +252,38 @@ function EnableConfirmDialog({
   );
 }
 
+// ============ Health Status Display ============
+
+const HEALTH_DISPLAY: Record<
+  HealthStatus,
+  { label: string; dotClass: string; textClass: string; description: string }
+> = {
+  healthy: {
+    label: "Healthy",
+    dotClass: "bg-emerald-500",
+    textClass: "text-emerald-600 dark:text-emerald-400",
+    description: "All recent deliveries succeeded.",
+  },
+  degraded: {
+    label: "Degraded",
+    dotClass: "bg-amber-500",
+    textClass: "text-amber-600 dark:text-amber-400",
+    description: "Some recent deliveries failed. Check the logs for details.",
+  },
+  failing: {
+    label: "Failing",
+    dotClass: "bg-red-500",
+    textClass: "text-red-600 dark:text-red-400",
+    description: "Multiple consecutive deliveries have failed. Your endpoint may be down.",
+  },
+  unknown: {
+    label: "No data",
+    dotClass: "bg-muted-foreground/40",
+    textClass: "text-muted-foreground/60",
+    description: "No deliveries yet. Events will appear once a sync runs.",
+  },
+};
+
 // ============ Edit Modal ============
 
 export function EditWebhookModal({
@@ -354,6 +394,32 @@ export function EditWebhookModal({
                     Active
                   </span>
                 )}
+              </div>
+
+              <div>
+                <p className="text-[11px] text-muted-foreground/50 uppercase tracking-wide mb-2">
+                  Health
+                </p>
+                {(() => {
+                  const healthStatus = (subscription?.health_status || "unknown") as HealthStatus;
+                  const config = HEALTH_DISPLAY[healthStatus] || HEALTH_DISPLAY.unknown;
+                  return (
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium cursor-default ${config.textClass}`}>
+                            <span className={`size-2 rounded-full ${config.dotClass}`} />
+                            {config.label}
+                            <Info className="size-3 text-muted-foreground/40" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[220px]">
+                          <p className="text-[11px] leading-relaxed">{config.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  );
+                })()}
               </div>
 
               <div>

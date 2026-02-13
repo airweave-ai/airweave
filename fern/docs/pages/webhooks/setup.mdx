@@ -144,6 +144,8 @@ app.listen(3000);
 
 Every webhook delivery is signed. Verify signatures to ensure requests actually come from Airweave and haven't been tampered with.
 
+Svix signs every outbound delivery using HMAC-SHA256. It generates a per-endpoint secret, computes the signature over the payload, and attaches `svix-id`, `svix-timestamp`, and `svix-signature` headers. Verifying these signatures is your responsibility as the receiver. You can either implement HMAC-SHA256 verification manually (shown below) or use the Svix client library's `Webhook.verify()` helper.
+
 ### Get Your Signing Secret
 
 First, retrieve your subscription's signing secret:
@@ -414,7 +416,7 @@ This triggers a recovery task that replays failed messages in chronological orde
 ## Sample Application
 
 <Note>
-A complete sample application demonstrating webhook handling, signature verification, and event processing is coming soon.
+A complete sample application demonstrating webhook handling, signature verification, and event processing is available in the Airweave repository under `examples/webhook-demo`.
 </Note>
 
 ## Next Steps

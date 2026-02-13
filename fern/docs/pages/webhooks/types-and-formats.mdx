@@ -134,10 +134,10 @@ Your endpoint should return a `2xx` status code to acknowledge receipt:
 
 | Response | Meaning |
 |----------|---------|
-| `200-299` | Success — message delivered |
-| `4xx` | Client error — will retry |
-| `5xx` | Server error — will retry |
-| Timeout (30s) | Delivery failed — will retry |
+| `200-299` | Success. Message delivered |
+| `4xx` | Client error, will retry |
+| `5xx` | Server error, will retry |
+| Timeout (30s) | Delivery failed, will retry |
 
 ## Webhook Subscription
 

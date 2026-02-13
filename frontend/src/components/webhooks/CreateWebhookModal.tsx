@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { AlertCircle, ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCreateSubscription, type CreateSubscriptionRequest } from "@/hooks/use-webhooks";
 import { EVENT_TYPES_CONFIG, type EventTypeGroup } from "./shared";
@@ -151,25 +151,39 @@ export function CreateWebhookModal({
   const [url, setUrl] = useState("");
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [secret, setSecret] = useState("");
+  const [endpointError, setEndpointError] = useState<string | null>(null);
 
   const secretError = validateWebhookSecret(secret);
   const isValid = url && selectedEventTypes.length > 0 && !secretError;
 
+  const handleUrlChange = (value: string) => {
+    setUrl(value);
+    if (endpointError) setEndpointError(null);
+  };
+
   const handleCreate = async () => {
+    setEndpointError(null);
     const request: CreateSubscriptionRequest = {
       url,
       event_types: selectedEventTypes,
       ...(secret ? { secret: formatSecretForApi(secret) } : {}),
     };
-    await createMutation.mutateAsync(request);
-    onOpenChange(false);
-    resetForm();
+    try {
+      await createMutation.mutateAsync(request);
+      onOpenChange(false);
+      resetForm();
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create webhook";
+      setEndpointError(message);
+    }
   };
 
   const resetForm = () => {
     setUrl("");
     setSelectedEventTypes([]);
     setSecret("");
+    setEndpointError(null);
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -200,9 +214,28 @@ export function CreateWebhookModal({
               type="url"
               placeholder="https://example.com/webhooks"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="h-8 text-[12px] font-mono"
+              onChange={(e) => handleUrlChange(e.target.value)}
+              className={cn(
+                "h-8 text-[12px] font-mono",
+                endpointError && "border-destructive focus-visible:ring-destructive/30"
+              )}
             />
+            {endpointError && (
+              <div className="mt-2 flex items-start gap-2 rounded-md bg-destructive/5 border border-destructive/20 px-3 py-2.5">
+                <AlertCircle className="size-3.5 text-destructive shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-[12px] font-medium text-destructive">
+                    Could not verify endpoint
+                  </p>
+                  <p className="text-[11px] text-destructive/80 mt-0.5 leading-relaxed">
+                    {endpointError}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground/60 mt-1">
+                    Make sure your server is running and returns a 2xx response to POST requests.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

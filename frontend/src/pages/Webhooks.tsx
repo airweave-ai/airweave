@@ -132,7 +132,7 @@ const WebhooksPage = () => {
       <p className="text-sm text-muted-foreground mb-4">
         Get notified when syncs complete or fail.{" "}
         <a
-          href="https://docs.airweave.ai/webhooks"
+          href="https://docs.airweave.ai/webhooks/overview"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center text-primary hover:underline"

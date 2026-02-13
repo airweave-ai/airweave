@@ -5,13 +5,15 @@ All Svix SDK types are converted to domain types at the boundary.
 WebhookAdmin methods raise WebhooksError on failure.
 """
 
+import asyncio
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from typing import TYPE_CHECKING, Callable, Optional, TypeVar
 
+import httpx
 import jwt
 from svix.api import (
     ApplicationIn,
@@ -84,6 +86,19 @@ def _raise_from_exception(e: Exception, context: str = "") -> None:
         messages = [err.msg for err in e.detail] if e.detail else ["Validation error"]
         raise WebhooksError(f"{prefix}{'; '.join(messages)}", 422) from e
     raise WebhooksError(f"{prefix}{str(e)}", 500) from e
+
+
+def _is_transient_error(exc: Exception) -> bool:
+    """Check if an exception is a transient error worth retrying.
+
+    Returns True for connection errors and Svix 5xx responses.
+    Returns False for validation errors and other non-recoverable failures.
+    """
+    if isinstance(exc, (ConnectionError, OSError, TimeoutError)):
+        return True
+    if isinstance(exc, SvixHttpError):
+        return exc.status_code is not None and exc.status_code >= 500
+    return False
 
 
 def _auto_create_org(method: Callable[..., T]) -> Callable[..., T]:
@@ -182,16 +197,35 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
         """Publish a domain event to webhook subscribers.
 
         Serializes the event to a flat JSON dict for Svix delivery.
+        Retries up to 3 times on transient errors (connection failures,
+        Svix 5xx) with exponential backoff (0s, 1s, 2s).
         Wraps infrastructure errors in WebhookPublishError so the event
-        bus sees a domain exception — never raw Svix/HTTP internals.
+        bus sees a domain exception, never raw Svix/HTTP internals.
         """
         event_type = event.event_type.value
-        try:
-            payload = event.model_dump(mode="json")
-            await self._publish_internal(event.organization_id, event_type, payload)
-            logger.info(f"Published webhook event '{event_type}' for org {event.organization_id}")
-        except Exception as exc:
-            raise WebhookPublishError(event_type, exc) from exc
+        payload = event.model_dump(mode="json")
+
+        max_retries = 3
+        retry_delays = [0, 1, 2]
+
+        for attempt in range(max_retries):
+            try:
+                await self._publish_internal(event.organization_id, event_type, payload)
+                logger.info(
+                    f"Published webhook event '{event_type}' for org {event.organization_id}"
+                )
+                return
+            except Exception as exc:
+                is_last_attempt = attempt == max_retries - 1
+                if not _is_transient_error(exc) or is_last_attempt:
+                    raise WebhookPublishError(event_type, exc) from exc
+                delay = retry_delays[attempt]
+                logger.warning(
+                    f"Transient Svix error publishing '{event_type}' "
+                    f"(attempt {attempt + 1}/{max_retries}), retrying in {delay}s: {exc}"
+                )
+                if delay > 0:
+                    await asyncio.sleep(delay)
 
     @_auto_create_org
     async def _publish_internal(self, org_id: uuid.UUID, event_type: str, payload: dict) -> None:
@@ -204,6 +238,51 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
                 payload=payload,
             ),
         )
+
+    # -------------------------------------------------------------------------
+    # WebhookAdmin - Endpoint verification
+    # -------------------------------------------------------------------------
+
+    async def verify_endpoint(self, url: str, timeout: float = 5.0) -> None:
+        """Send a test ping to verify the endpoint is reachable.
+
+        Sends a lightweight POST with event_type ``webhook_endpoint.ping``
+        directly from Airweave (not via Svix) and expects a 2xx response.
+
+        Args:
+            url: The webhook endpoint URL to verify.
+            timeout: Seconds to wait for a response before giving up.
+
+        Raises:
+            WebhooksError: If the endpoint is unreachable, times out, or
+                returns a non-2xx status code.
+        """
+        test_payload = {
+            "event_type": "webhook_endpoint.ping",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": "Endpoint verification ping from Airweave",
+        }
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                response = await client.post(url, json=test_payload)
+                if response.status_code < 200 or response.status_code >= 300:
+                    raise WebhooksError(
+                        f"Endpoint returned HTTP {response.status_code}. Expected a 2xx response.",
+                        422,
+                    )
+            except httpx.TimeoutException as exc:
+                raise WebhooksError("Endpoint did not respond within 5 seconds.", 422) from exc
+            except httpx.ConnectError as exc:
+                raise WebhooksError(
+                    "Could not connect to endpoint. Please check the URL is correct "
+                    "and the server is running.",
+                    422,
+                ) from exc
+            except WebhooksError:
+                raise
+            except httpx.HTTPError as exc:
+                raise WebhooksError(f"Failed to reach endpoint: {exc}", 422) from exc
 
     # -------------------------------------------------------------------------
     # WebhookAdmin - Subscriptions

@@ -85,6 +85,14 @@ class FakeWebhookAdmin:
         self.deleted_orgs.append(org_id)
 
     # -------------------------------------------------------------------------
+    # Endpoint verification
+    # -------------------------------------------------------------------------
+
+    async def verify_endpoint(self, url: str, timeout: float = 5.0) -> None:
+        """No-op verification for testing. Always succeeds."""
+        pass
+
+    # -------------------------------------------------------------------------
     # Subscriptions
     # -------------------------------------------------------------------------
 

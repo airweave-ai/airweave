@@ -11,8 +11,67 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AlertTriangle, Loader2, Plus, Trash2, Webhook } from "lucide-react";
-import { useDeleteSubscriptions, type Subscription } from "@/hooks/use-webhooks";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useDeleteSubscriptions, type Subscription, type HealthStatus } from "@/hooks/use-webhooks";
 import { getEventTypeLabel } from "./shared";
+
+// ============ Health Status Badge ============
+
+const HEALTH_CONFIG: Record<
+  HealthStatus,
+  { label: string; dotClass: string; textClass: string; description: string }
+> = {
+  healthy: {
+    label: "Healthy",
+    dotClass: "bg-emerald-500",
+    textClass: "text-emerald-600 dark:text-emerald-400",
+    description: "All recent deliveries succeeded.",
+  },
+  degraded: {
+    label: "Degraded",
+    dotClass: "bg-amber-500",
+    textClass: "text-amber-600 dark:text-amber-400",
+    description: "Some recent deliveries failed. Check the logs for details.",
+  },
+  failing: {
+    label: "Failing",
+    dotClass: "bg-red-500",
+    textClass: "text-red-600 dark:text-red-400",
+    description: "Multiple consecutive deliveries have failed. Your endpoint may be down.",
+  },
+  unknown: {
+    label: "No data",
+    dotClass: "bg-muted-foreground/40",
+    textClass: "text-muted-foreground/60",
+    description: "No deliveries yet. Events will appear once a sync runs.",
+  },
+};
+
+function HealthBadge({ status }: { status: HealthStatus }) {
+  const config = HEALTH_CONFIG[status] || HEALTH_CONFIG.unknown;
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center gap-1.5 text-xs font-normal cursor-default ${config.textClass}`}
+          >
+            <span className={`size-1.5 rounded-full ${config.dotClass}`} />
+            {config.label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-[220px]">
+          <p className="text-[11px] leading-relaxed">{config.description}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 // ============ Empty State ============
 
@@ -116,6 +175,7 @@ export function WebhooksTab({
               </TableHead>
               <TableHead className="text-xs font-medium">URL</TableHead>
               <TableHead className="text-xs font-medium">Status</TableHead>
+              <TableHead className="text-xs font-medium">Health</TableHead>
               <TableHead className="text-xs font-medium">Events</TableHead>
             </TableRow>
           </TableHeader>
@@ -146,6 +206,9 @@ export function WebhooksTab({
                       Active
                     </Badge>
                   )}
+                </TableCell>
+                <TableCell>
+                  <HealthBadge status={subscription.health_status || "unknown"} />
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">

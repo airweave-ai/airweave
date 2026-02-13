@@ -9,6 +9,7 @@ payloads that are delivered to your endpoints.
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
@@ -148,6 +149,58 @@ class WebhookMessageWithAttempts(WebhookMessage):
         )
 
 
+class HealthStatus(str, Enum):
+    """Health status of a webhook subscription based on recent delivery attempts."""
+
+    healthy = "healthy"
+    """Last N deliveries all succeeded (2xx responses)."""
+
+    degraded = "degraded"
+    """Mix of successes and failures in recent deliveries."""
+
+    failing = "failing"
+    """Multiple consecutive failures beyond threshold."""
+
+    unknown = "unknown"
+    """No delivery attempts yet."""
+
+
+def _compute_health_status(
+    attempts: Optional[List["DeliveryAttempt"]],
+    consecutive_failure_threshold: int = 3,
+) -> HealthStatus:
+    """Compute health status from recent delivery attempts.
+
+    Args:
+        attempts: Recent delivery attempts, most recent first.
+        consecutive_failure_threshold: How many consecutive failures
+            mark the subscription as ``failing``.
+
+    Returns:
+        The computed ``HealthStatus``.
+    """
+    if not attempts:
+        return HealthStatus.unknown
+
+    # Count consecutive leading failures
+    consecutive_failures = 0
+    for attempt in attempts:
+        if attempt.status != "success":
+            consecutive_failures += 1
+        else:
+            break
+
+    if consecutive_failures >= consecutive_failure_threshold:
+        return HealthStatus.failing
+
+    # Check if all succeeded
+    all_success = all(a.status == "success" for a in attempts)
+    if all_success:
+        return HealthStatus.healthy
+
+    return HealthStatus.degraded
+
+
 class WebhookSubscription(BaseModel):
     """A webhook subscription (endpoint) configuration."""
 
@@ -202,6 +255,15 @@ class WebhookSubscription(BaseModel):
         "Keep this secret secure.",
         json_schema_extra={"example": "whsec_C2FVsBQIhrscChlQIMV10R9X4jZ8"},
     )
+    health_status: HealthStatus = Field(
+        default=HealthStatus.unknown,
+        description="Health status of this subscription based on recent delivery attempts. "
+        "Values: 'healthy' (all recent deliveries succeeded), "
+        "'degraded' (mix of successes and failures), "
+        "'failing' (consecutive failures beyond threshold), "
+        "'unknown' (no delivery data yet).",
+        json_schema_extra={"example": "healthy"},
+    )
 
     @classmethod
     def from_domain(
@@ -211,6 +273,7 @@ class WebhookSubscription(BaseModel):
         secret: Optional[str] = None,
     ) -> "WebhookSubscription":
         """Convert a domain Subscription to API response."""
+        health = _compute_health_status(delivery_attempts)
         return cls(
             id=sub.id,
             url=sub.url,
@@ -221,6 +284,7 @@ class WebhookSubscription(BaseModel):
             updated_at=sub.updated_at,
             delivery_attempts=delivery_attempts,
             secret=secret,
+            health_status=health,
         )
 
     model_config = {
@@ -236,6 +300,7 @@ class WebhookSubscription(BaseModel):
                 "updated_at": "2024-03-15T14:30:00Z",
                 "delivery_attempts": None,
                 "secret": None,
+                "health_status": "healthy",
             }
         },
     }

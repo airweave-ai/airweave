@@ -15,7 +15,7 @@ The Webhooks API is currently in beta. The API is stable but may receive enhance
 
 Webhooks are real-time notifications that Airweave sends when things happen in your organization. Instead of constantly polling the API to check if a sync completed, you register a webhook endpoint and Airweave pushes updates to you the moment they occur.
 
-This is the foundation for building reactive integrations—trigger downstream workflows, update dashboards, send alerts, or sync state with external systems automatically.
+This is the foundation for building reactive integrations. Trigger downstream workflows, update dashboards, send alerts, or sync state with external systems automatically.
 
 ## Why Use Webhooks?
 
@@ -53,12 +53,12 @@ Most integrations only need `sync.completed` and `sync.failed`. Subscribe to add
 └─────────────┘      └─────────────┘      └─────────────┘
 ```
 
-1. **Something happens** — A sync job completes, fails, or changes state
-2. **Airweave creates an event** — The event is recorded with full payload data
-3. **Svix delivers it** — Our webhook infrastructure (powered by [Svix](https://www.svix.com/)) sends an HTTP POST to your registered endpoints
-4. **You process it** — Your server receives the payload and takes action
+1. **Something happens.** A sync job completes, fails, or changes state.
+2. **Airweave creates an event.** The event is recorded with full payload data.
+3. **Svix delivers it.** Our webhook infrastructure (powered by [Svix](https://www.svix.com/)) sends an HTTP POST to your registered endpoints.
+4. **You process it.** Your server receives the payload and takes action.
 
-Svix handles retries, signature verification, and delivery guarantees so you don't have to build that infrastructure yourself.
+Svix handles retries, delivery guarantees, and signs every outbound delivery. You verify signatures on your end using the signing secret (see the [Setup Guide](/webhooks/setup) for examples).
 
 ## Use Cases
 

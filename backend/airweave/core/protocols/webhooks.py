@@ -58,6 +58,17 @@ class WebhookAdmin(Protocol):
         ...
 
     # -------------------------------------------------------------------------
+    # Endpoint verification
+    # -------------------------------------------------------------------------
+
+    async def verify_endpoint(self, url: str, timeout: float = 5.0) -> None:
+        """Send a test ping to verify the endpoint is reachable.
+
+        Raises WebhooksError if the endpoint is unreachable or returns non-2xx.
+        """
+        ...
+
+    # -------------------------------------------------------------------------
     # Subscriptions
     # -------------------------------------------------------------------------
 
