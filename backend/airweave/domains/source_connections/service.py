@@ -786,6 +786,7 @@ class SourceConnectionService:
                 byoc_consumer_secret=None,
                 db=db,
                 uow=None,  # Will create own UoW inside
+                ctx=ctx,
             )
         else:
             init_result = await self._oauth_flow_service.initiate_oauth2(
@@ -801,6 +802,7 @@ class SourceConnectionService:
                 template_configs=template_configs,
                 db=db,
                 uow=None,
+                ctx=ctx,
             )
 
         # Create shell source connection and link to init session
@@ -960,6 +962,7 @@ class SourceConnectionService:
                 byoc_consumer_secret=obj_in.authentication.consumer_secret,
                 db=db,
                 uow=None,
+                ctx=ctx,
             )
         else:
             if not obj_in.authentication.client_id or not obj_in.authentication.client_secret:
@@ -976,6 +979,7 @@ class SourceConnectionService:
                 template_configs=template_configs,
                 db=db,
                 uow=None,
+                ctx=ctx,
             )
 
         async with UnitOfWork(db) as uow:

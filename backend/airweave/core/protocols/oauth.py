@@ -21,6 +21,7 @@ class OAuthFlowServiceProtocol(Protocol):
         template_configs: Optional[dict],
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> Any:
         """Start OAuth2 browser flow: create init session, proxy URL, return auth URL.
 
@@ -38,6 +39,7 @@ class OAuthFlowServiceProtocol(Protocol):
         byoc_consumer_secret: Optional[str],
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> Any:
         """Start OAuth1 browser flow: request token, create init session, return auth URL.
 

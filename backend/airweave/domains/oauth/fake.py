@@ -44,6 +44,7 @@ class FakeOAuthFlowService:
         template_configs: Optional[dict],
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> OAuthInitResult:
         """Return canned OAuthInitResult."""
         self._maybe_raise()
@@ -73,6 +74,7 @@ class FakeOAuthFlowService:
         byoc_consumer_secret: Optional[str],
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> OAuthInitResult:
         """Return canned OAuthInitResult for OAuth1."""
         self._maybe_raise()

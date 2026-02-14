@@ -48,6 +48,7 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
         template_configs: Optional[dict],
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> OAuthInitResult:
         """Start OAuth2 browser flow."""
         oauth_settings = await self._integration_settings.get_by_short_name(short_name)
@@ -76,7 +77,7 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
             overrides["code_verifier"] = code_verifier
 
         proxy_url, proxy_expiry, redirect_session_id = await self._create_proxy_url(
-            db, provider_auth_url, uow
+            db, provider_auth_url, uow, ctx=ctx
         )
 
         init_session = await self._create_init_session(
@@ -88,6 +89,7 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
             overrides=overrides,
             redirect_session_id=redirect_session_id,
             uow=uow,
+            ctx=ctx,
         )
 
         return OAuthInitResult(
@@ -108,6 +110,7 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
         byoc_consumer_secret: Optional[str],
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> OAuthInitResult:
         """Start OAuth1 browser flow."""
         from airweave.platform.auth.schemas import OAuth1Settings
@@ -120,15 +123,18 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
         consumer_secret = byoc_consumer_secret or oauth_settings.consumer_secret
         api_callback = f"{core_settings.api_url}/source-connections/callback"
 
+        from airweave.core.logging import logger as app_logger
+
         request_token_response = await self._oauth1_service.get_request_token(
             request_token_url=oauth_settings.request_token_url,
             consumer_key=consumer_key,
             consumer_secret=consumer_secret,
             callback_url=api_callback,
+            logger=app_logger,
         )
 
         provider_auth_url = (
-            f"{oauth_settings.authorize_url}?oauth_token={request_token_response.oauth_token}"
+            f"{oauth_settings.authorization_url}?oauth_token={request_token_response.oauth_token}"
         )
 
         overrides = self._build_overrides(
@@ -142,7 +148,7 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
             overrides["consumer_secret"] = byoc_consumer_secret
 
         proxy_url, proxy_expiry, redirect_session_id = await self._create_proxy_url(
-            db, provider_auth_url, uow
+            db, provider_auth_url, uow, ctx=ctx
         )
 
         init_session = await self._create_init_session(
@@ -154,6 +160,7 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
             overrides=overrides,
             redirect_session_id=redirect_session_id,
             uow=uow,
+            ctx=ctx,
         )
 
         return OAuthInitResult(
@@ -273,13 +280,13 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
             "client_id": client_id,
             "client_secret": client_secret,
             "oauth_client_mode": "byoc" if client_id else "platform_default",
-            "redirect_url": redirect_url or core_settings.app_url,
+            "redirect_url": redirect_url,
             "oauth_redirect_uri": f"{core_settings.api_url}/source-connections/callback",
             "template_configs": template_configs,
         }
 
     @staticmethod
-    async def _create_proxy_url(db: Any, provider_auth_url: str, uow: Any):
+    async def _create_proxy_url(db: Any, provider_auth_url: str, uow: Any, ctx: Any = None):
         """Create proxy URL for the OAuth auth URL."""
         proxy_ttl = 1440  # 24 hours
         proxy_expires = datetime.now(timezone.utc) + timedelta(minutes=proxy_ttl)
@@ -290,7 +297,7 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
             code=code8,
             final_url=provider_auth_url,
             expires_at=proxy_expires,
-            ctx=None,
+            ctx=ctx,
             uow=uow,
         )
 
@@ -307,6 +314,7 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
         overrides: dict,
         redirect_session_id: UUID,
         uow: Any,
+        ctx: Any = None,
     ) -> Any:
         """Create a ConnectionInitSession record."""
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
@@ -323,6 +331,6 @@ class OAuthFlowService(OAuthFlowServiceProtocol):
                 "expires_at": expires_at,
                 "redirect_session_id": redirect_session_id,
             },
-            ctx=None,
+            ctx=ctx,
             uow=uow,
         )

@@ -59,6 +59,7 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
         await db.flush()
         if not uow:
             await db.commit()
+            await db.refresh(obj)
         return obj
 
     async def get_by_state(

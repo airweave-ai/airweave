@@ -92,7 +92,7 @@ class MockOAuth1Settings:
     """Fake OAuth1Settings — must pass isinstance check."""
 
     request_token_url = "https://provider.example.com/request_token"
-    authorize_url = "https://provider.example.com/authorize"
+    authorization_url = "https://provider.example.com/authorize"
     access_token_url = "https://provider.example.com/access_token"
     consumer_key = "platform-consumer-key"
     consumer_secret = "platform-consumer-secret"
@@ -116,7 +116,7 @@ class MockIntegrationSettings:
         # Create a real OAuth1Settings-like mock that passes isinstance
         mock = MagicMock(spec=RealOAuth1Settings)
         mock.request_token_url = "https://provider.example.com/request_token"
-        mock.authorize_url = "https://provider.example.com/authorize"
+        mock.authorization_url = "https://provider.example.com/authorize"
         mock.access_token_url = "https://provider.example.com/access_token"
         mock.consumer_key = "platform-consumer-key"
         mock.consumer_secret = "platform-consumer-secret"
