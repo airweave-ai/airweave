@@ -158,6 +158,7 @@ class CredentialService(CredentialServiceProtocol):
         auth_config_class: Optional[str],
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> Any:
         """Encrypt and create an IntegrationCredential record."""
         if hasattr(auth_fields, "model_dump"):
@@ -179,7 +180,7 @@ class CredentialService(CredentialServiceProtocol):
             encrypted_credentials=encrypted,
             auth_config_class=auth_config_class,
         )
-        return await self._credential_repo.create(db, obj_in=cred_in, ctx=None, uow=uow)
+        return await self._credential_repo.create(db, obj_in=cred_in, ctx=ctx, uow=uow)
 
     async def update_credential(
         self,
@@ -188,6 +189,7 @@ class CredentialService(CredentialServiceProtocol):
         short_name: str,
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> None:
         """Re-validate auth fields, re-encrypt, and update the credential record."""
         validated_auth = await self.validate_auth_fields(short_name, auth_fields)
@@ -202,10 +204,10 @@ class CredentialService(CredentialServiceProtocol):
         credential_update = schemas.IntegrationCredentialUpdate(
             encrypted_credentials=credentials.encrypt(serializable)
         )
-        credential = await self._credential_repo.get(db, id=credential_id, ctx=None)
+        credential = await self._credential_repo.get(db, id=credential_id, ctx=ctx)
         if credential:
             await self._credential_repo.update(
-                db, db_obj=credential, obj_in=credential_update, ctx=None, uow=uow
+                db, db_obj=credential, obj_in=credential_update, ctx=ctx, uow=uow
             )
 
     @staticmethod

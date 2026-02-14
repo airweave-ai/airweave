@@ -692,6 +692,7 @@ class SourceConnectionService:
                 ),
                 db=uow.session,
                 uow=uow,
+                ctx=ctx,
             )
             await uow.session.flush()
 
@@ -867,6 +868,7 @@ class SourceConnectionService:
                 ),
                 db=uow.session,
                 uow=uow,
+                ctx=ctx,
             )
             await uow.session.flush()
 

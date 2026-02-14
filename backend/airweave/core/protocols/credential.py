@@ -62,6 +62,7 @@ class CredentialServiceProtocol(Protocol):
         auth_config_class: Optional[str],
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> Any:
         """Encrypt auth fields and create an IntegrationCredential record.
 
@@ -76,6 +77,7 @@ class CredentialServiceProtocol(Protocol):
         short_name: str,
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> None:
         """Re-validate auth fields, re-encrypt, and update the credential record."""
         ...

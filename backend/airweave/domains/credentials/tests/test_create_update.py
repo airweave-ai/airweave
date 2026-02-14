@@ -22,6 +22,13 @@ def _make_service(registry: FakeSourceRegistry) -> tuple[CredentialService, Fake
     return CredentialService(source_registry=registry, credential_repo=repo), repo
 
 
+def _make_ctx() -> MagicMock:
+    """Build a minimal mock RequestContext with organization.id."""
+    ctx = MagicMock()
+    ctx.organization.id = uuid4()
+    return ctx
+
+
 # ---------------------------------------------------------------------------
 # create_credential
 # ---------------------------------------------------------------------------
@@ -35,16 +42,18 @@ class TestCreateCredential:
         registry.seed(make_entry("stripe", "Stripe"))
         svc, repo = _make_service(registry)
 
+        ctx = _make_ctx()
         result = await svc.create_credential(
             source_short_name="stripe",
             source_name="Stripe",
             auth_fields={"api_key": "sk_test_123"},
-            organization_id=uuid4(),
+            organization_id=ctx.organization.id,
             auth_method=AuthenticationMethod.DIRECT,
             oauth_type=None,
             auth_config_class=None,
             db=MagicMock(),
             uow=MagicMock(),
+            ctx=ctx,
         )
 
         assert result is not None
@@ -59,17 +68,19 @@ class TestCreateCredential:
         svc, repo = _make_service(registry)
 
         auth_model = FakeAuthConfig(api_key="sk_test_456", api_secret="sec")
+        ctx = _make_ctx()
 
         result = await svc.create_credential(
             source_short_name="stripe",
             source_name="Stripe",
             auth_fields=auth_model,
-            organization_id=uuid4(),
+            organization_id=ctx.organization.id,
             auth_method=AuthenticationMethod.DIRECT,
             oauth_type=None,
             auth_config_class=None,
             db=MagicMock(),
             uow=MagicMock(),
+            ctx=ctx,
         )
 
         assert result is not None
@@ -83,16 +94,18 @@ class TestCreateCredential:
         registry.seed(make_entry("notion", "Notion"))
         svc, repo = _make_service(registry)
 
+        ctx = _make_ctx()
         result = await svc.create_credential(
             source_short_name="notion",
             source_name="Notion",
             auth_fields={"access_token": "token123"},
-            organization_id=uuid4(),
+            organization_id=ctx.organization.id,
             auth_method=AuthenticationMethod.OAUTH_TOKEN,
             oauth_type="with_refresh",
             auth_config_class=None,
             db=MagicMock(),
             uow=MagicMock(),
+            ctx=ctx,
         )
 
         assert result is not None
@@ -122,6 +135,7 @@ class TestUpdateCredential:
             short_name="stripe",
             db=MagicMock(),
             uow=MagicMock(),
+            ctx=_make_ctx(),
         )
 
         # validate_auth_fields is called, encrypt is called
@@ -141,6 +155,7 @@ class TestUpdateCredential:
             short_name="stripe",
             db=MagicMock(),
             uow=MagicMock(),
+            ctx=_make_ctx(),
         )
 
         # encrypt is still called (validation happens before get)
