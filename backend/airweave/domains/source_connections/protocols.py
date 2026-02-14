@@ -3,7 +3,7 @@
 Domain-specific: only used by source_connections service and response builder.
 """
 
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 from uuid import UUID
 
 from airweave.schemas.source_connection import (
@@ -92,3 +92,67 @@ class ResponseBuilderProtocol(Protocol):
     def map_sync_job(self, job: Any, source_connection_id: UUID) -> SourceConnectionJob:
         """Convert sync job to SourceConnectionJob schema."""
         ...
+
+
+class SourceConnectionHelpersProtocol(Protocol):
+    """Stopgap protocol wrapping source_connection_service_helpers.
+
+    These functions will eventually be absorbed into proper domain services.
+    For now, this protocol makes them injectable and fakeable for testing.
+    """
+
+    async def update_auth_fields(
+        self, db: Any, source_conn: Any, auth_fields: Any, ctx: Any, uow: Any
+    ) -> None: ...
+
+    async def get_connection_for_source_connection(
+        self, db: Any, source_connection: Any, ctx: Any
+    ) -> Any: ...
+
+    async def update_sync_schedule(
+        self, db: Any, sync_id: UUID, cron_schedule: Optional[str], ctx: Any, uow: Any
+    ) -> None: ...
+
+    async def create_sync_without_schedule(
+        self,
+        db: Any,
+        name: str,
+        connection_id: UUID,
+        collection_id: UUID,
+        collection_readable_id: str,
+        cron_schedule: Optional[str],
+        run_immediately: bool,
+        ctx: Any,
+        uow: Any,
+    ) -> Tuple[Any, Optional[Any]]: ...
+
+    async def reconstruct_context_from_session(self, db: Any, init_session: Any) -> Any: ...
+
+    async def complete_oauth1_connection(
+        self, db: Any, source_conn_shell: Any, init_session: Any, token_response: Any, ctx: Any
+    ) -> Any: ...
+
+    async def complete_oauth2_connection(
+        self, db: Any, source_conn_shell: Any, init_session: Any, token_response: Any, ctx: Any
+    ) -> Any: ...
+
+    async def create_connection(
+        self, db: Any, name: str, source: Any, credential_id: Optional[UUID], ctx: Any, uow: Any
+    ) -> Any: ...
+
+    async def create_source_connection(
+        self,
+        db: Any,
+        obj_in: Any,
+        connection_id: Optional[UUID],
+        collection_id: str,
+        sync_id: Optional[UUID],
+        config_fields: Optional[Dict[str, Any]],
+        is_authenticated: bool,
+        ctx: Any,
+        uow: Any,
+        auth_provider_id: Optional[str] = None,
+        auth_provider_config: Optional[Dict[str, Any]] = None,
+    ) -> Any: ...
+
+    async def get_collection(self, db: Any, collection_id: str, ctx: Any) -> Any: ...

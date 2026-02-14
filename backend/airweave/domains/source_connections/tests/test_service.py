@@ -14,6 +14,7 @@ import pytest
 
 from airweave.api.context import ApiContext
 from airweave.core.shared_models import AuthMethod, SyncJobStatus
+from airweave.adapters.event_bus.fake import FakeEventBus
 from airweave.domains.collections.fake import FakeCollectionRepository
 from airweave.domains.connections.fake import FakeConnectionRepository
 from airweave.domains.credentials.fake import FakeCredentialService
@@ -25,14 +26,20 @@ from airweave.domains.source_connections.exceptions import (
     SourceConnectionNotFoundError,
     SyncImmediatelyNotAllowedError,
 )
+from airweave.domains.source_connections.fake_auth_provider import FakeAuthProviderService
+from airweave.domains.source_connections.fake_helpers import FakeSourceConnectionHelpers
 from airweave.domains.source_connections.fake_repository import FakeSourceConnectionRepository
 from airweave.domains.source_connections.fake_response import FakeResponseBuilder
+from airweave.domains.source_connections.fake_schedule_service import FakeTemporalScheduleService
+from airweave.domains.source_connections.fake_sync_job_service import FakeSyncJobService
+from airweave.domains.source_connections.fake_temporal import FakeTemporalService
 from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.sources.exceptions import SourceNotFoundError
 from airweave.domains.sources.fake import FakeSourceRegistry
 from airweave.domains.sync_cursors.fake import FakeSyncCursorRepository
 from airweave.domains.sync_jobs.fake import FakeSyncJobRepository
 from airweave.domains.syncs.fake import FakeSyncRepository
+from airweave.domains.syncs.fake_service import FakeSyncService
 from airweave.schemas.source_connection import (
     AuthenticationMethod,
     AuthProviderAuthentication,
@@ -136,6 +143,13 @@ def _make_service(
     credential_service=None,
     oauth_flow_service=None,
     response_builder=None,
+    sync_service=None,
+    temporal_service=None,
+    sync_job_service=None,
+    temporal_schedule_service=None,
+    helpers=None,
+    auth_provider_service=None,
+    event_bus=None,
 ) -> SourceConnectionService:
     return SourceConnectionService(
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
@@ -148,6 +162,13 @@ def _make_service(
         sync_job_repo=sync_job_repo or FakeSyncJobRepository(),
         sync_cursor_repo=sync_cursor_repo or FakeSyncCursorRepository(),
         sync_repo=sync_repo or FakeSyncRepository(),
+        sync_service=sync_service or FakeSyncService(),
+        temporal_service=temporal_service or FakeTemporalService(),
+        sync_job_service=sync_job_service or FakeSyncJobService(),
+        temporal_schedule_service=temporal_schedule_service or FakeTemporalScheduleService(),
+        helpers=helpers or FakeSourceConnectionHelpers(),
+        auth_provider_service=auth_provider_service or FakeAuthProviderService(),
+        event_bus=event_bus or FakeEventBus(),
     )
 
 
@@ -217,21 +238,22 @@ class TestGetJobs:
         assert result == []
 
     @pytest.mark.asyncio
-    @patch("airweave.domains.source_connections.service.sync_service")
-    async def test_returns_mapped_jobs(self, mock_sync_svc):
+    async def test_returns_mapped_jobs(self):
         sync_id = uuid4()
         sc = _make_source_conn(sync_id=sync_id)
         repo = FakeSourceConnectionRepository()
         repo.seed(sc)
 
-        job = MagicMock()
+        job = MagicMock(spec=[])
         job.id = uuid4()
         job.status = SyncJobStatus.COMPLETED
         job.started_at = NOW
         job.completed_at = NOW
-        mock_sync_svc.list_sync_jobs = AsyncMock(return_value=[job])
 
-        svc = _make_service(sc_repo=repo)
+        fake_sync_svc = FakeSyncService()
+        fake_sync_svc.seed_jobs(sync_id, [job])
+
+        svc = _make_service(sc_repo=repo, sync_service=fake_sync_svc)
         result = await svc.get_jobs(MagicMock(), id=sc.id, ctx=_make_ctx())
         assert len(result) == 1
 
@@ -418,3 +440,327 @@ class TestCreateValidation:
         obj_in.sync_immediately = True
         with pytest.raises(SyncImmediatelyNotAllowedError):
             await svc.create(MagicMock(), obj_in=obj_in, ctx=_make_ctx())
+
+
+# ===========================================================================
+# Happy-path tests
+# ===========================================================================
+
+# Additional imports for happy-path tests
+from airweave.core.shared_models import ConnectionStatus, IntegrationType, SourceConnectionStatus
+from airweave.schemas.source_connection import (
+    AuthenticationDetails,
+    SourceConnection as SourceConnectionSchema,
+    SourceConnectionCreate,
+    SourceConnectionUpdate,
+)
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers for happy-path tests
+# ---------------------------------------------------------------------------
+
+
+def _mock_db():
+    """Create a mock db session compatible with UnitOfWork."""
+    db = MagicMock()
+    db.commit = AsyncMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+    db.rollback = AsyncMock()
+    db.expire_all = MagicMock()
+    return db
+
+
+def _make_collection_mock(*, readable_id="col-1"):
+    """Collection mock with all attrs for schemas.Collection.model_validate."""
+    coll = MagicMock(spec=[])
+    coll.id = uuid4()
+    coll.name = f"Collection {readable_id}"
+    coll.readable_id = readable_id
+    coll.vector_size = 3072
+    coll.embedding_model_name = "text-embedding-3-large"
+    coll.sync_config = None
+    coll.created_at = NOW
+    coll.modified_at = NOW
+    coll.organization_id = uuid4()
+    coll.created_by_email = None
+    coll.modified_by_email = None
+    return coll
+
+
+def _make_sync_job_mock(*, sync_id, status=SyncJobStatus.PENDING):
+    """SyncJob mock with all attrs for schemas.SyncJob.model_validate."""
+    job = MagicMock(spec=[])
+    job.id = uuid4()
+    job.organization_id = uuid4()
+    job.sync_id = sync_id
+    job.status = status
+    job.scheduled = False
+    job.entities_inserted = 0
+    job.entities_updated = 0
+    job.entities_deleted = 0
+    job.entities_kept = 0
+    job.entities_skipped = 0
+    job.entities_encountered = {}
+    job.started_at = None
+    job.completed_at = None
+    job.failed_at = None
+    job.error = None
+    job.access_token = None
+    job.sync_config = None
+    job.sync_metadata = None
+    job.created_at = NOW
+    job.modified_at = NOW
+    job.created_by_email = None
+    job.modified_by_email = None
+    job.sync_name = None
+    return job
+
+
+# ---------------------------------------------------------------------------
+# delete -- happy paths
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteHappyPath:
+    @pytest.mark.asyncio
+    async def test_delete_no_sync(self):
+        """Source connection with no sync_id -- simple cascade delete."""
+        sc = _make_source_conn(sync_id=None, readable_collection_id="col-1")
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc)
+
+        coll = _make_collection_mock(readable_id="col-1")
+        coll_repo = FakeCollectionRepository()
+        coll_repo.seed(coll)
+
+        svc = _make_service(sc_repo=sc_repo, collection_repo=coll_repo)
+        result = await svc.delete(MagicMock(), id=sc.id, ctx=_make_ctx())
+
+        assert result.id == sc.id
+        assert sc.id not in sc_repo._store
+
+    @pytest.mark.asyncio
+    async def test_delete_with_sync_triggers_cleanup(self):
+        """Source connection with sync_id -- fires Temporal cleanup workflow."""
+        sync_id = uuid4()
+        sc = _make_source_conn(sync_id=sync_id, readable_collection_id="col-1")
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc)
+
+        coll = _make_collection_mock(readable_id="col-1")
+        coll_repo = FakeCollectionRepository()
+        coll_repo.seed(coll)
+
+        temporal = FakeTemporalService()
+        svc = _make_service(
+            sc_repo=sc_repo,
+            collection_repo=coll_repo,
+            temporal_service=temporal,
+        )
+        result = await svc.delete(MagicMock(), id=sc.id, ctx=_make_ctx())
+
+        assert result.id == sc.id
+        assert sc.id not in sc_repo._store
+        # Cleanup workflow should have been started
+        assert len(temporal.cleanups) == 1
+        assert temporal.cleanups[0]["sync_ids"] == [str(sync_id)]
+
+
+# ---------------------------------------------------------------------------
+# run -- happy path
+# ---------------------------------------------------------------------------
+
+
+class TestRunHappyPath:
+    @pytest.mark.asyncio
+    async def test_run_triggers_sync_and_starts_workflow(self):
+        """Run with valid sync_id triggers sync, publishes event, starts workflow."""
+        sync_id = uuid4()
+        sc = _make_source_conn(sync_id=sync_id, readable_collection_id="col-1")
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc)
+
+        # Collection that passes schemas.Collection.model_validate
+        coll = _make_collection_mock(readable_id="col-1")
+        coll_repo = FakeCollectionRepository()
+        coll_repo.seed(coll)
+
+        # Seed trigger result in sync service
+        sync_mock = MagicMock(spec=[])
+        sync_mock.id = sync_id
+        sync_job_mock = _make_sync_job_mock(sync_id=sync_id)
+
+        fake_sync_svc = FakeSyncService()
+        fake_sync_svc.seed_trigger_result(sync_id, sync_mock, sync_job_mock)
+
+        # Response builder that includes sync_id (needed by SyncLifecycleEvent)
+        sc_response = SourceConnectionSchema(
+            id=sc.id,
+            organization_id=sc.organization_id,
+            name=sc.name,
+            short_name=sc.short_name,
+            readable_collection_id=sc.readable_collection_id,
+            status=SourceConnectionStatus.ACTIVE,
+            created_at=NOW,
+            modified_at=NOW,
+            sync_id=sync_id,
+            auth=AuthenticationDetails(
+                method=AuthenticationMethod.DIRECT, authenticated=True
+            ),
+        )
+        rb = AsyncMock()
+        rb.build_response = AsyncMock(return_value=sc_response)
+
+        temporal = FakeTemporalService()
+        event_bus = FakeEventBus()
+
+        svc = _make_service(
+            sc_repo=sc_repo,
+            collection_repo=coll_repo,
+            sync_service=fake_sync_svc,
+            response_builder=rb,
+            temporal_service=temporal,
+            event_bus=event_bus,
+        )
+
+        result = await svc.run(MagicMock(), id=sc.id, ctx=_make_ctx())
+
+        assert result.source_connection_id == sc.id
+        assert result.status == SyncJobStatus.PENDING
+        assert len(temporal.workflows_started) == 1
+        assert len(event_bus.events) == 1
+
+
+# ---------------------------------------------------------------------------
+# cancel_job -- happy path
+# ---------------------------------------------------------------------------
+
+
+class TestCancelJobHappyPath:
+    @pytest.mark.asyncio
+    async def test_cancel_running_job(self):
+        """Cancel a RUNNING job -- sets CANCELLING, sends to Temporal."""
+        sync_id = uuid4()
+        sc = _make_source_conn(sync_id=sync_id)
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc)
+
+        job = _make_sync_job_mock(sync_id=sync_id, status=SyncJobStatus.RUNNING)
+        sync_job_repo = FakeSyncJobRepository()
+        sync_job_repo.seed(job)
+
+        sync_job_svc = FakeSyncJobService()
+        temporal = FakeTemporalService()
+
+        svc = _make_service(
+            sc_repo=sc_repo,
+            sync_job_repo=sync_job_repo,
+            sync_job_service=sync_job_svc,
+            temporal_service=temporal,
+        )
+
+        db = _mock_db()
+        result = await svc.cancel_job(
+            db, source_connection_id=sc.id, job_id=job.id, ctx=_make_ctx()
+        )
+
+        assert result.source_connection_id == sc.id
+        # CANCELLING status was sent
+        assert len(sync_job_svc.status_updates) >= 1
+        assert sync_job_svc.status_updates[0]["status"] == SyncJobStatus.CANCELLING
+        # Temporal received cancellation
+        assert str(job.id) in temporal.cancellations
+
+
+# ---------------------------------------------------------------------------
+# create with direct auth -- happy path
+# ---------------------------------------------------------------------------
+
+
+class TestCreateDirectAuth:
+    @pytest.mark.asyncio
+    @patch("airweave.domains.source_connections.service.business_events")
+    async def test_create_direct_auth_happy_path(self, mock_events):
+        """Create with DirectAuthentication -- validates, creates cred + conn + SC."""
+        registry = FakeSourceRegistry()
+        entry = _make_source_entry("stripe")
+        entry.source_class_ref.federated_search = False
+        registry.seed(entry)
+
+        helpers = FakeSourceConnectionHelpers()
+
+        # Enrich create_connection to produce a model_validate-compatible mock
+        _orig = helpers.create_connection
+
+        async def _rich_create(db, name, source, credential_id, ctx, uow):
+            conn = await _orig(db, name, source, credential_id, ctx, uow)
+            conn.name = name
+            conn.readable_id = f"conn-{str(conn.id).replace('-', '')[:8]}"
+            conn.short_name = getattr(source, "short_name", "test")
+            conn.integration_type = IntegrationType.SOURCE
+            conn.status = ConnectionStatus.ACTIVE
+            conn.created_at = NOW
+            conn.modified_at = NOW
+            conn.organization_id = uuid4()
+            conn.description = None
+            conn.integration_credential_id = credential_id
+            conn.created_by_email = None
+            conn.modified_by_email = None
+            return conn
+
+        helpers.create_connection = _rich_create
+
+        cred_svc = FakeCredentialService()
+
+        svc = _make_service(
+            source_registry=registry,
+            helpers=helpers,
+            credential_service=cred_svc,
+        )
+
+        obj_in = SourceConnectionCreate(
+            short_name="stripe",
+            readable_collection_id="col-1",
+            name="Test Stripe",
+            authentication=DirectAuthentication(credentials={"api_key": "sk_test_123"}),
+            sync_immediately=False,
+        )
+
+        db = _mock_db()
+        result = await svc.create(db, obj_in=obj_in, ctx=_make_ctx())
+
+        assert result.short_name == "stripe"
+        assert result.auth.authenticated is True
+        # Verify helpers were called in correct order
+        method_names = [c["method"] for c in helpers.calls]
+        assert "get_collection" in method_names
+        assert "create_connection" in method_names
+        assert "create_source_connection" in method_names
+        # Credential was created
+        assert len(cred_svc._created_credentials) == 1
+
+
+# ---------------------------------------------------------------------------
+# update -- happy path
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateHappyPath:
+    @pytest.mark.asyncio
+    async def test_update_name(self):
+        """Update just the name field -- simplest update path."""
+        sc = _make_source_conn(short_name="stripe")
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc)
+
+        svc = _make_service(sc_repo=sc_repo)
+
+        obj_in = SourceConnectionUpdate(name="Updated Name")
+        db = _mock_db()
+        result = await svc.update(db, id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+
+        assert result.id == sc.id
+        # Verify the name was updated on the underlying mock
+        assert sc.name == "Updated Name"

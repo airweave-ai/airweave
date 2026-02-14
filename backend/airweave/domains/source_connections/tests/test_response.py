@@ -11,23 +11,29 @@ from uuid import uuid4
 
 import pytest
 
-from unittest.mock import MagicMock
-
 from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus
+from airweave.domains.collections.fake import FakeCollectionRepository
+from airweave.domains.connections.fake import FakeConnectionRepository
+from airweave.domains.credentials.fake_repository import FakeIntegrationCredentialRepository
+from airweave.domains.entity_counts.fake import FakeEntityCountRepository
+from airweave.domains.source_connections.fake_repository import FakeSourceConnectionRepository
 from airweave.domains.source_connections.response import ResponseBuilder
+from airweave.domains.sources.fake import FakeSourceRegistry
+from airweave.domains.syncs.fake_service import FakeSyncService
 from airweave.schemas.source_connection import AuthenticationMethod
 
 NOW = datetime.now(timezone.utc)
 
 
 def _make_builder() -> ResponseBuilder:
-    """Build a ResponseBuilder with dummy deps (only pure methods are tested)."""
+    """Build a ResponseBuilder with fakes."""
     return ResponseBuilder(
-        sc_repo=MagicMock(),
-        connection_repo=MagicMock(),
-        credential_repo=MagicMock(),
-        source_registry=MagicMock(),
-        entity_count_repo=MagicMock(),
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=FakeSourceRegistry(),
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_service=FakeSyncService(),
     )
 
 

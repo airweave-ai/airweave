@@ -16,13 +16,31 @@ from typing import TYPE_CHECKING
 
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.webhooks.svix import SvixAdapter
+from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.container.container import Container
 from airweave.core.logging import logger
+
+# The legacy helpers singleton -- wrapped via protocol for testability
+from airweave.core.source_connection_service_helpers import source_connection_helpers
+from airweave.core.sync_job_service import sync_job_service
+from airweave.core.sync_service import sync_service
+from airweave.core.temporal_service import temporal_service
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.collections.repository import CollectionRepository
+from airweave.domains.connections.repository import ConnectionRepository
+from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.credentials.service import CredentialService
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.entity_counts.repository import EntityCountRepository
+from airweave.domains.source_connections.repository import SourceConnectionRepository
+from airweave.domains.source_connections.response import ResponseBuilder
+from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
+from airweave.domains.sync_cursors.repository import SyncCursorRepository
+from airweave.domains.sync_jobs.repository import SyncJobRepository
+from airweave.domains.syncs.repository import SyncRepository
+from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
 if TYPE_CHECKING:
     from airweave.core.config import Settings
@@ -99,7 +117,7 @@ def create_container(settings: Settings) -> Container:
     # Domain service orchestrating all source connection operations
     # -----------------------------------------------------------------
     source_connection_service = _create_source_connection_service(
-        source_registry, credential_service, oauth_flow_service
+        source_registry, credential_service, oauth_flow_service, event_bus
     )
 
     return Container(
@@ -216,8 +234,6 @@ def _create_source_service(source_registry: SourceRegistry, settings: Settings) 
 
 def _create_credential_service(source_registry) -> "CredentialServiceProtocol":
     """Create credential service using the shared source registry."""
-    from airweave.domains.credentials.repository import IntegrationCredentialRepository
-
     credential_repo = IntegrationCredentialRepository()
     return CredentialService(
         source_registry=source_registry,
@@ -239,18 +255,11 @@ def _create_oauth_flow_service() -> "OAuthFlowServiceProtocol":
     )
 
 
-def _create_source_connection_service(source_registry, credential_service, oauth_flow_service):
+def _create_source_connection_service(
+    source_registry, credential_service, oauth_flow_service, event_bus
+):
     """Create source connection service with all dependencies."""
-    from airweave.domains.collections.repository import CollectionRepository
-    from airweave.domains.connections.repository import ConnectionRepository
     from airweave.domains.credentials.repository import IntegrationCredentialRepository
-    from airweave.domains.entity_counts.repository import EntityCountRepository
-    from airweave.domains.source_connections.repository import SourceConnectionRepository
-    from airweave.domains.source_connections.response import ResponseBuilder
-    from airweave.domains.source_connections.service import SourceConnectionService
-    from airweave.domains.sync_cursors.repository import SyncCursorRepository
-    from airweave.domains.sync_jobs.repository import SyncJobRepository
-    from airweave.domains.syncs.repository import SyncRepository
 
     sc_repo = SourceConnectionRepository()
     collection_repo = CollectionRepository()
@@ -267,6 +276,7 @@ def _create_source_connection_service(source_registry, credential_service, oauth
         credential_repo=credential_repo,
         source_registry=source_registry,
         entity_count_repo=entity_count_repo,
+        sync_service=sync_service,
     )
 
     return SourceConnectionService(
@@ -280,4 +290,11 @@ def _create_source_connection_service(source_registry, credential_service, oauth
         sync_job_repo=sync_job_repo,
         sync_cursor_repo=sync_cursor_repo,
         sync_repo=sync_repo,
+        sync_service=sync_service,
+        temporal_service=temporal_service,
+        sync_job_service=sync_job_service,
+        temporal_schedule_service=temporal_schedule_service,
+        helpers=source_connection_helpers,
+        auth_provider_service=auth_provider_service,
+        event_bus=event_bus,
     )

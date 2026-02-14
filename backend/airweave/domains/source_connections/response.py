@@ -15,6 +15,7 @@ from airweave.core.protocols.entity_count import EntityCountRepositoryProtocol
 from airweave.core.protocols.integration_credential_repository import (
     IntegrationCredentialRepositoryProtocol,
 )
+from airweave.core.protocols.sync_service import SyncServiceProtocol
 from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.sources.protocols import SourceRegistryProtocol
@@ -39,6 +40,7 @@ class ResponseBuilder:
         credential_repo: IntegrationCredentialRepositoryProtocol,
         source_registry: SourceRegistryProtocol,
         entity_count_repo: EntityCountRepositoryProtocol,
+        sync_service: SyncServiceProtocol,
     ) -> None:
         """Initialize with all dependencies."""
         self._sc_repo = sc_repo
@@ -46,6 +48,7 @@ class ResponseBuilder:
         self._credential_repo = credential_repo
         self._source_registry = source_registry
         self._entity_count_repo = entity_count_repo
+        self._sync_service = sync_service
 
     async def build_response(self, db: Any, source_conn: Any, ctx: Any) -> SourceConnection:
         """Build complete SourceConnection response from an ORM object.
@@ -251,9 +254,9 @@ class ResponseBuilder:
         if not getattr(source_conn, "sync_id", None):
             return None
         try:
-            from airweave.core.sync_service import sync_service
-
-            job = await sync_service.get_last_sync_job(db, ctx=ctx, sync_id=source_conn.sync_id)
+            job = await self._sync_service.get_last_sync_job(
+                db, ctx=ctx, sync_id=source_conn.sync_id
+            )
             if job:
                 duration_seconds = None
                 if job.completed_at and job.started_at:

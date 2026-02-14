@@ -5,8 +5,7 @@ and repositories (source connection, connection, collection) to implement
 the source connection API contract.
 
 No direct crud calls -- all DB access goes through injected repositories.
-Singletons (sync_service, temporal_service, etc.) are called directly until
-they get their own refactor.
+All service dependencies are injected via __init__.
 """
 
 import asyncio
@@ -16,23 +15,23 @@ from uuid import UUID
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.api.context import ApiContext
-from airweave.core.auth_provider_service import auth_provider_service
-from airweave.core.container import container
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import BadGatewayError, BadRequestError, NotFoundException
+from airweave.core.protocols.auth_provider_service import AuthProviderServiceProtocol
 from airweave.core.protocols.collection import CollectionRepositoryProtocol
 from airweave.core.protocols.connection import ConnectionRepositoryProtocol
 from airweave.core.protocols.credential import CredentialServiceProtocol
+from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.oauth import OAuthFlowServiceProtocol
 from airweave.core.protocols.sync import SyncRepositoryProtocol
 from airweave.core.protocols.sync_cursor import SyncCursorRepositoryProtocol
 from airweave.core.protocols.sync_job import SyncJobRepositoryProtocol
+from airweave.core.protocols.sync_job_service import SyncJobServiceProtocol
+from airweave.core.protocols.sync_service import SyncServiceProtocol
+from airweave.core.protocols.temporal_schedule_service import TemporalScheduleServiceProtocol
+from airweave.core.protocols.temporal_service import TemporalServiceProtocol
 from airweave.core.shared_models import SyncJobStatus
-from airweave.core.source_connection_service_helpers import source_connection_helpers
-from airweave.core.sync_job_service import sync_job_service
-from airweave.core.sync_service import sync_service
-from airweave.core.temporal_service import temporal_service
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.credentials.exceptions import InvalidConfigFieldsError
 from airweave.domains.source_connections.exceptions import (
@@ -45,6 +44,7 @@ from airweave.domains.source_connections.exceptions import (
 )
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
+    SourceConnectionHelpersProtocol,
     SourceConnectionRepositoryProtocol,
 )
 from airweave.domains.source_connections.schedule import (
@@ -55,7 +55,6 @@ from airweave.domains.sources.exceptions import SourceNotFoundError
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.platform.auth.schemas import OAuth1Settings
 from airweave.platform.auth.settings import integration_settings
-from airweave.platform.temporal.schedule_service import temporal_schedule_service
 from airweave.schemas.source_connection import (
     AuthenticationMethod,
     AuthProviderAuthentication,
@@ -90,6 +89,13 @@ class SourceConnectionService:
         sync_job_repo: SyncJobRepositoryProtocol,
         sync_cursor_repo: SyncCursorRepositoryProtocol,
         sync_repo: SyncRepositoryProtocol,
+        sync_service: SyncServiceProtocol,
+        temporal_service: TemporalServiceProtocol,
+        sync_job_service: SyncJobServiceProtocol,
+        temporal_schedule_service: TemporalScheduleServiceProtocol,
+        helpers: SourceConnectionHelpersProtocol,
+        auth_provider_service: AuthProviderServiceProtocol,
+        event_bus: EventBus,
     ) -> None:
         """Initialize with all dependencies."""
         self._sc_repo = sc_repo
@@ -102,6 +108,13 @@ class SourceConnectionService:
         self._sync_job_repo = sync_job_repo
         self._sync_cursor_repo = sync_cursor_repo
         self._sync_repo = sync_repo
+        self._sync_service = sync_service
+        self._temporal_service = temporal_service
+        self._sync_job_service = sync_job_service
+        self._temporal_schedule_service = temporal_schedule_service
+        self._helpers = helpers
+        self._auth_provider_service = auth_provider_service
+        self._event_bus = event_bus
 
     # ------------------------------------------------------------------
     # Read operations
@@ -142,7 +155,7 @@ class SourceConnectionService:
         if not source_conn.sync_id:
             return []
 
-        sync_jobs = await sync_service.list_sync_jobs(
+        sync_jobs = await self._sync_service.list_sync_jobs(
             db, ctx=ctx, sync_id=source_conn.sync_id, limit=limit
         )
 
@@ -193,7 +206,7 @@ class SourceConnectionService:
                     raise BadRequestError(
                         "Credentials can only be updated for direct authentication"
                     )
-                await source_connection_helpers.update_auth_fields(
+                await self._helpers.update_auth_fields(
                     uow.session, source_conn, update_data["credentials"], ctx, uow
                 )
                 del update_data["credentials"]
@@ -268,7 +281,7 @@ class SourceConnectionService:
         # Fire-and-forget external cleanup
         if sync_id:
             try:
-                await temporal_service.start_cleanup_sync_data_workflow(
+                await self._temporal_service.start_cleanup_sync_data_workflow(
                     sync_ids=[str(sync_id)],
                     collection_id=collection_id,
                     organization_id=organization_id,
@@ -322,32 +335,31 @@ class SourceConnectionService:
 
         source_connection_schema = await self._response_builder.build_response(db, source_conn, ctx)
 
-        connection_schema = await source_connection_helpers.get_connection_for_source_connection(
+        connection_schema = await self._helpers.get_connection_for_source_connection(
             db=db, source_connection=source_conn, ctx=ctx
         )
 
         # Trigger sync
-        sync, sync_job = await sync_service.trigger_sync_run(
+        sync, sync_job = await self._sync_service.trigger_sync_run(
             db, sync_id=source_conn.sync_id, ctx=ctx
         )
         sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
 
         # Publish PENDING event
-        if container is not None:
-            await container.event_bus.publish(
-                SyncLifecycleEvent.pending(
-                    organization_id=ctx.organization.id,
-                    source_connection_id=source_connection_schema.id,
-                    sync_job_id=sync_job_schema.id,
-                    sync_id=source_connection_schema.sync_id,
-                    collection_id=collection_schema.id,
-                    source_type=connection_schema.short_name,
-                    collection_name=collection_schema.name,
-                    collection_readable_id=collection_schema.readable_id,
-                )
+        await self._event_bus.publish(
+            SyncLifecycleEvent.pending(
+                organization_id=ctx.organization.id,
+                source_connection_id=source_connection_schema.id,
+                sync_job_id=sync_job_schema.id,
+                sync_id=source_connection_schema.sync_id,
+                collection_id=collection_schema.id,
+                source_type=connection_schema.short_name,
+                collection_name=collection_schema.name,
+                collection_readable_id=collection_schema.readable_id,
             )
+        )
 
-        await temporal_service.run_source_connection_workflow(
+        await self._temporal_service.run_source_connection_workflow(
             sync=sync,
             sync_job=sync_job,
             collection=collection_schema,
@@ -386,12 +398,12 @@ class SourceConnectionService:
             raise BadRequestError(f"Cannot cancel job in {sync_job.status} state")
 
         # Set CANCELLING status
-        await sync_job_service.update_status(
+        await self._sync_job_service.update_status(
             sync_job_id=job_id, status=SyncJobStatus.CANCELLING, ctx=ctx
         )
 
         # Request cancellation from Temporal
-        cancel_result = await temporal_service.cancel_sync_job_workflow(str(job_id), ctx)
+        cancel_result = await self._temporal_service.cancel_sync_job_workflow(str(job_id), ctx)
 
         if not cancel_result["success"]:
             fallback_status = (
@@ -399,14 +411,14 @@ class SourceConnectionService:
                 if sync_job.status == SyncJobStatus.RUNNING
                 else SyncJobStatus.PENDING
             )
-            await sync_job_service.update_status(
+            await self._sync_job_service.update_status(
                 sync_job_id=job_id, status=fallback_status, ctx=ctx
             )
             raise BadGatewayError("Failed to request cancellation from Temporal")
 
         if not cancel_result["workflow_found"]:
             ctx.logger.info(f"Workflow not found for job {job_id} - marking as CANCELLED directly")
-            await sync_job_service.update_status(
+            await self._sync_job_service.update_status(
                 sync_job_id=job_id,
                 status=SyncJobStatus.CANCELLED,
                 ctx=ctx,
@@ -441,7 +453,7 @@ class SourceConnectionService:
                 validate_cron_for_source(
                     new_cron, source_conn.short_name, source_entry.supports_continuous
                 )
-            await source_connection_helpers.update_sync_schedule(
+            await self._helpers.update_sync_schedule(
                 uow.session, source_conn.sync_id, new_cron, ctx, uow
             )
         elif new_cron:
@@ -462,7 +474,7 @@ class SourceConnectionService:
                 uow.session, readable_id=source_conn.readable_collection_id, ctx=ctx
             )
 
-            sync, _ = await source_connection_helpers.create_sync_without_schedule(
+            sync, _ = await self._helpers.create_sync_without_schedule(
                 uow.session,
                 source_conn.name,
                 source_conn.connection_id,
@@ -483,7 +495,7 @@ class SourceConnectionService:
             )
             await uow.session.flush()
 
-            await temporal_schedule_service.create_or_update_schedule(
+            await self._temporal_schedule_service.create_or_update_schedule(
                 sync_id=sync.id, cron_schedule=new_cron, db=uow.session, ctx=ctx, uow=uow
             )
 
@@ -595,9 +607,7 @@ class SourceConnectionService:
             oauth_token=oauth_token, oauth_verifier=oauth_verifier, db=db
         )
 
-        ctx = await source_connection_helpers.reconstruct_context_from_session(
-            db, completion.init_session
-        )
+        ctx = await self._helpers.reconstruct_context_from_session(db, completion.init_session)
 
         source_conn_shell = await self._sc_repo.get_by_query_and_org(
             db, ctx=ctx, connection_init_session_id=completion.init_session.id
@@ -605,7 +615,7 @@ class SourceConnectionService:
         if not source_conn_shell:
             raise SourceConnectionNotFoundError("shell (OAuth1 callback)")
 
-        source_conn = await source_connection_helpers.complete_oauth1_connection(
+        source_conn = await self._helpers.complete_oauth1_connection(
             db, source_conn_shell, completion.init_session, completion.token_response, ctx
         )
 
@@ -623,9 +633,7 @@ class SourceConnectionService:
             state=state, code=code, db=db
         )
 
-        ctx = await source_connection_helpers.reconstruct_context_from_session(
-            db, completion.init_session
-        )
+        ctx = await self._helpers.reconstruct_context_from_session(db, completion.init_session)
 
         source_conn_shell = await self._sc_repo.get_by_query_and_org(
             db, ctx=ctx, connection_init_session_id=completion.init_session.id
@@ -638,7 +646,7 @@ class SourceConnectionService:
             completion.short_name, completion.token_response.access_token, None
         )
 
-        source_conn = await source_connection_helpers.complete_oauth2_connection(
+        source_conn = await self._helpers.complete_oauth2_connection(
             db, source_conn_shell, completion.init_session, completion.token_response, ctx
         )
 
@@ -669,7 +677,7 @@ class SourceConnectionService:
         )
 
         async with UnitOfWork(db) as uow:
-            collection = await source_connection_helpers.get_collection(
+            collection = await self._helpers.get_collection(
                 uow.session, obj_in.readable_collection_id, ctx
             )
             credential = await self._credential_service.create_credential(
@@ -687,7 +695,7 @@ class SourceConnectionService:
             )
             await uow.session.flush()
 
-            connection = await source_connection_helpers.create_connection(
+            connection = await self._helpers.create_connection(
                 uow.session, obj_in.name, source_entry, credential.id, ctx, uow
             )
             await uow.session.flush()
@@ -704,7 +712,7 @@ class SourceConnectionService:
                 ctx,
             )
 
-            source_conn = await source_connection_helpers.create_source_connection(
+            source_conn = await self._helpers.create_source_connection(
                 uow.session,
                 obj_in,
                 connection.id,
@@ -796,7 +804,7 @@ class SourceConnectionService:
 
         # Create shell source connection and link to init session
         async with UnitOfWork(db) as uow:
-            source_conn = await source_connection_helpers.create_source_connection(
+            source_conn = await self._helpers.create_source_connection(
                 uow.session,
                 obj_in,
                 connection_id=None,
@@ -844,7 +852,7 @@ class SourceConnectionService:
         )
 
         async with UnitOfWork(db) as uow:
-            collection = await source_connection_helpers.get_collection(
+            collection = await self._helpers.get_collection(
                 uow.session, obj_in.readable_collection_id, ctx
             )
             credential = await self._credential_service.create_credential(
@@ -862,7 +870,7 @@ class SourceConnectionService:
             )
             await uow.session.flush()
 
-            connection = await source_connection_helpers.create_connection(
+            connection = await self._helpers.create_connection(
                 uow.session, obj_in.name, source_entry, credential.id, ctx, uow
             )
             await uow.session.flush()
@@ -879,7 +887,7 @@ class SourceConnectionService:
                 ctx,
             )
 
-            source_conn = await source_connection_helpers.create_source_connection(
+            source_conn = await self._helpers.create_source_connection(
                 uow.session,
                 obj_in,
                 connection.id,
@@ -969,7 +977,7 @@ class SourceConnectionService:
             )
 
         async with UnitOfWork(db) as uow:
-            source_conn = await source_connection_helpers.create_source_connection(
+            source_conn = await self._helpers.create_source_connection(
                 uow.session,
                 obj_in,
                 connection_id=None,
@@ -1008,7 +1016,7 @@ class SourceConnectionService:
                 f"Auth provider '{obj_in.authentication.provider_readable_id}' not found"
             )
 
-        supported_providers = auth_provider_service.get_supported_providers_for_source(
+        supported_providers = self._auth_provider_service.get_supported_providers_for_source(
             obj_in.short_name
         )
         if auth_provider_conn.short_name not in supported_providers:
@@ -1019,7 +1027,7 @@ class SourceConnectionService:
 
         validated_auth_config = None
         if obj_in.authentication.provider_config:
-            validated_auth_config = await auth_provider_service.validate_auth_provider_config(
+            validated_auth_config = await self._auth_provider_service.validate_auth_provider_config(
                 db, auth_provider_conn.short_name, obj_in.authentication.provider_config
             )
 
@@ -1029,10 +1037,10 @@ class SourceConnectionService:
         )
 
         async with UnitOfWork(db) as uow:
-            collection = await source_connection_helpers.get_collection(
+            collection = await self._helpers.get_collection(
                 uow.session, obj_in.readable_collection_id, ctx
             )
-            connection = await source_connection_helpers.create_connection(
+            connection = await self._helpers.create_connection(
                 uow.session, obj_in.name, source_entry, None, ctx, uow
             )
             await uow.session.flush()
@@ -1048,7 +1056,7 @@ class SourceConnectionService:
                 ctx,
             )
 
-            source_conn = await source_connection_helpers.create_source_connection(
+            source_conn = await self._helpers.create_source_connection(
                 uow.session,
                 obj_in,
                 connection.id,
@@ -1080,10 +1088,8 @@ class SourceConnectionService:
         response = await self._response_builder.build_response(db, source_conn, ctx)
 
         if sync_job and obj_in.sync_immediately:
-            connection_schema = (
-                await source_connection_helpers.get_connection_for_source_connection(
-                    db=db, source_connection=source_conn, ctx=ctx
-                )
+            connection_schema = await self._helpers.get_connection_for_source_connection(
+                db=db, source_connection=source_conn, ctx=ctx
             )
             await self._trigger_sync_workflow(
                 connection_schema, sync_schema, sync_job_schema, collection_schema, ctx
@@ -1144,7 +1150,7 @@ class SourceConnectionService:
                 cron_schedule, source_entry.short_name, source_entry.supports_continuous
             )
 
-        sync, sync_job = await source_connection_helpers.create_sync_without_schedule(
+        sync, sync_job = await self._helpers.create_sync_without_schedule(
             uow.session,
             obj_in.name,
             connection_id,
@@ -1163,7 +1169,7 @@ class SourceConnectionService:
     async def _create_temporal_schedule_if_needed(self, uow, cron_schedule, sync_id, ctx) -> None:
         """Create Temporal schedule if we have both cron and sync_id."""
         if cron_schedule and sync_id:
-            await temporal_schedule_service.create_or_update_schedule(
+            await self._temporal_schedule_service.create_or_update_schedule(
                 sync_id=sync_id, cron_schedule=cron_schedule, db=uow.session, ctx=ctx, uow=uow
             )
 
@@ -1184,7 +1190,7 @@ class SourceConnectionService:
 
     async def _trigger_sync_workflow(self, connection, sync, sync_job, collection, ctx) -> None:
         """Trigger Temporal workflow for sync."""
-        await temporal_service.run_source_connection_workflow(
+        await self._temporal_service.run_source_connection_workflow(
             sync=sync, sync_job=sync_job, collection=collection, connection=connection, ctx=ctx
         )
 
@@ -1212,13 +1218,14 @@ class SourceConnectionService:
                                 sync_job, from_attributes=True
                             )
                             sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
-                            _helpers = source_connection_helpers
-                            connection_schema = await _helpers.get_connection_for_source_connection(
-                                db=db,
-                                source_connection=source_conn,
-                                ctx=ctx,
+                            connection_schema = (
+                                await self._helpers.get_connection_for_source_connection(
+                                    db=db,
+                                    source_connection=source_conn,
+                                    ctx=ctx,
+                                )
                             )
-                            await temporal_service.run_source_connection_workflow(
+                            await self._temporal_service.run_source_connection_workflow(
                                 sync=sync_schema,
                                 sync_job=sync_job_schema,
                                 collection=collection_schema,
