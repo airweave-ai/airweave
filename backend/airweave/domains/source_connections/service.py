@@ -10,11 +10,13 @@ they get their own refactor.
 """
 
 import asyncio
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 from uuid import UUID
 
 from airweave import crud, schemas
+from airweave.analytics import business_events
 from airweave.api.context import ApiContext
+from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.protocols.credential import CredentialServiceProtocol
 from airweave.core.protocols.oauth import OAuthFlowServiceProtocol
@@ -24,19 +26,32 @@ from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.source_connections.exceptions import (
+    ByocRequiredError,
+    InvalidAuthMethodError,
     NoSyncError,
     SourceConnectionNotFoundError,
+    SyncImmediatelyNotAllowedError,
 )
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
 )
-from airweave.domains.source_connections.schedule import validate_cron_for_source
+from airweave.domains.source_connections.schedule import (
+    determine_schedule,
+    validate_cron_for_source,
+)
 from airweave.domains.sources.exceptions import SourceNotFoundError
 from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.platform.auth.settings import integration_settings
+from airweave.platform.temporal.schedule_service import temporal_schedule_service
 from airweave.schemas.source_connection import (
     AuthenticationMethod,
+    AuthProviderAuthentication,
+    DirectAuthentication,
+    OAuthBrowserAuthentication,
+    OAuthTokenAuthentication,
     SourceConnection,
+    SourceConnectionCreate,
     SourceConnectionJob,
     SourceConnectionListItem,
     SourceConnectionUpdate,
@@ -505,37 +520,67 @@ class NewSourceConnectionService:
             raise SourceNotFoundError(short_name)
 
     # ------------------------------------------------------------------
-    # Create -- delegates to the legacy _create_with_* handlers via
-    # source_connection_service for the multi-step atomic transactions.
-    # The routing logic (auth method determination, validation) lives here.
-    # Individual handlers will be migrated to use sub-services incrementally.
+    # Create
     # ------------------------------------------------------------------
 
-    async def create(
+    async def create(  # noqa: C901
         self,
         db: Any,
         *,
-        obj_in: Any,
+        obj_in: SourceConnectionCreate,
         ctx: ApiContext,
     ) -> SourceConnection:
-        """Create a source connection with nested authentication.
+        """Create a source connection with nested authentication."""
+        source_entry = self._get_source_entry(obj_in.short_name)
+        source_cls = source_entry.source_class_ref
 
-        Routes to auth-specific handlers based on the authentication type.
-        """
-        from airweave.core.source_connection_service import source_connection_service
+        if obj_in.name is None:
+            obj_in.name = f"{source_entry.name} Connection"
 
-        # Delegate to the legacy service for create -- it has 7 auth-specific
-        # handlers with complex multi-step transactions. These will be migrated
-        # incrementally to use the new sub-services.
-        source_connection = await source_connection_service.create(db, obj_in=obj_in, ctx=ctx)
+        auth_method = self._determine_auth_method(obj_in, source_cls)
 
-        return source_connection
+        if not source_cls.supports_auth_method(auth_method):
+            supported = source_cls.get_supported_auth_methods()
+            raise InvalidAuthMethodError(auth_method.value, [m.value for m in supported])
+
+        if source_cls.requires_byoc and auth_method == AuthenticationMethod.OAUTH_BROWSER:
+            raise ByocRequiredError(obj_in.short_name)
+
+        if obj_in.sync_immediately is None:
+            if auth_method in [AuthenticationMethod.OAUTH_BROWSER, AuthenticationMethod.OAUTH_BYOC]:
+                obj_in.sync_immediately = False
+            else:
+                obj_in.sync_immediately = True
+
+        if auth_method in [AuthenticationMethod.OAUTH_BROWSER, AuthenticationMethod.OAUTH_BYOC]:
+            if obj_in.sync_immediately:
+                raise SyncImmediatelyNotAllowedError()
+
+        if auth_method == AuthenticationMethod.DIRECT:
+            result = await self._create_with_direct_auth(db, obj_in, ctx)
+        elif auth_method == AuthenticationMethod.OAUTH_BROWSER:
+            result = await self._create_with_oauth_browser(db, obj_in, ctx)
+        elif auth_method == AuthenticationMethod.OAUTH_TOKEN:
+            result = await self._create_with_oauth_token(db, obj_in, ctx)
+        elif auth_method == AuthenticationMethod.OAUTH_BYOC:
+            result = await self._create_with_oauth_byoc(db, obj_in, ctx)
+        elif auth_method == AuthenticationMethod.AUTH_PROVIDER:
+            result = await self._create_with_auth_provider(db, obj_in, ctx)
+        else:
+            from airweave.core.exceptions import BadRequestError
+
+            raise BadRequestError(f"Unsupported authentication method: {auth_method.value}")
+
+        business_events.track_source_connection_created(
+            ctx=ctx,
+            connection_id=result.id,
+            source_short_name=result.short_name,
+        )
+
+        return result
 
     # ------------------------------------------------------------------
-    # OAuth callbacks -- delegate to legacy service during transition.
-    # The OAuthFlowService handles the protocol-level token exchange,
-    # but the connection completion (credential, sync, etc.) still uses
-    # the old helpers.
+    # OAuth callbacks
     # ------------------------------------------------------------------
 
     async def complete_oauth1_callback(
@@ -545,12 +590,26 @@ class NewSourceConnectionService:
         oauth_token: str,
         oauth_verifier: str,
     ) -> SourceConnection:
-        """Complete OAuth1 callback flow."""
-        from airweave.core.source_connection_service import source_connection_service
-
-        return await source_connection_service.complete_oauth1_callback(
-            db, oauth_token=oauth_token, oauth_verifier=oauth_verifier
+        """Complete OAuth1 callback: exchange verifier, complete connection, trigger sync."""
+        completion = await self._oauth_flow_service.complete_oauth1_callback(
+            oauth_token=oauth_token, oauth_verifier=oauth_verifier, db=db
         )
+
+        ctx = await source_connection_helpers.reconstruct_context_from_session(
+            db, completion.init_session
+        )
+
+        source_conn_shell = await self._sc_repo.get_by_query_and_org(
+            db, ctx=ctx, connection_init_session_id=completion.init_session.id
+        )
+        if not source_conn_shell:
+            raise SourceConnectionNotFoundError("shell (OAuth1 callback)")
+
+        source_conn = await source_connection_helpers.complete_oauth1_connection(
+            db, source_conn_shell, completion.init_session, completion.token_response, ctx
+        )
+
+        return await self._finalize_oauth_callback(db, source_conn, ctx)
 
     async def complete_oauth2_callback(
         self,
@@ -559,7 +618,658 @@ class NewSourceConnectionService:
         state: str,
         code: str,
     ) -> SourceConnection:
-        """Complete OAuth2 callback flow."""
-        from airweave.core.source_connection_service import source_connection_service
+        """Complete OAuth2 callback: exchange code, validate token, complete connection."""
+        completion = await self._oauth_flow_service.complete_oauth2_callback(
+            state=state, code=code, db=db
+        )
 
-        return await source_connection_service.complete_oauth2_callback(db, state=state, code=code)
+        ctx = await source_connection_helpers.reconstruct_context_from_session(
+            db, completion.init_session
+        )
+
+        source_conn_shell = await self._sc_repo.get_by_query_and_org(
+            db, ctx=ctx, connection_init_session_id=completion.init_session.id
+        )
+        if not source_conn_shell:
+            raise SourceConnectionNotFoundError("shell (OAuth2 callback)")
+
+        # Validate the token
+        await self._credential_service.validate_oauth_token(
+            completion.short_name, completion.token_response.access_token, None
+        )
+
+        source_conn = await source_connection_helpers.complete_oauth2_connection(
+            db, source_conn_shell, completion.init_session, completion.token_response, ctx
+        )
+
+        return await self._finalize_oauth_callback(db, source_conn, ctx)
+
+    # ------------------------------------------------------------------
+    # Private: create handlers
+    # ------------------------------------------------------------------
+
+    async def _create_with_direct_auth(
+        self, db: Any, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnection:
+        """Create with direct credentials (API key, etc.)."""
+        source_entry = self._get_source_entry(obj_in.short_name)
+
+        if not obj_in.authentication or not isinstance(obj_in.authentication, DirectAuthentication):
+            from airweave.core.exceptions import BadRequestError
+
+            raise BadRequestError("Direct authentication requires credentials")
+
+        validated_auth = await self._credential_service.validate_auth_fields(
+            obj_in.short_name, obj_in.authentication.credentials
+        )
+        enabled_features = ctx.organization.enabled_features or []
+        validated_config = await self._credential_service.validate_config_fields(
+            obj_in.short_name, obj_in.config, enabled_features
+        )
+        await self._credential_service.validate_direct_auth(
+            obj_in.short_name, validated_auth, validated_config
+        )
+
+        # Get source schema for credential creation (need name, oauth_type, auth_config_class)
+        source = await crud.source.get_by_short_name(db, short_name=obj_in.short_name)
+
+        async with UnitOfWork(db) as uow:
+            collection = await source_connection_helpers.get_collection(
+                uow.session, obj_in.readable_collection_id, ctx
+            )
+            credential = await self._credential_service.create_credential(
+                source_short_name=source.short_name,
+                source_name=source.name,
+                auth_fields=validated_auth,
+                organization_id=ctx.organization.id,
+                auth_method=AuthenticationMethod.DIRECT,
+                oauth_type=getattr(source, "oauth_type", None),
+                auth_config_class=getattr(source, "auth_config_class", None),
+                db=uow.session,
+                uow=uow,
+            )
+            await uow.session.flush()
+
+            connection = await source_connection_helpers.create_connection(
+                uow.session, obj_in.name, source, credential.id, ctx, uow
+            )
+            await uow.session.flush()
+            connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
+
+            sync_id, sync, sync_job = await self._handle_sync_creation(
+                uow,
+                obj_in,
+                source,
+                source_entry,
+                connection.id,
+                collection.id,
+                collection.readable_id,
+                ctx,
+            )
+
+            source_conn = await source_connection_helpers.create_source_connection(
+                uow.session,
+                obj_in,
+                connection.id,
+                collection.readable_id,
+                sync_id,
+                validated_config,
+                is_authenticated=True,
+                ctx=ctx,
+                uow=uow,
+            )
+            await uow.session.flush()
+
+            cron_schedule = determine_schedule(obj_in, source_entry.supports_continuous)
+            await self._create_temporal_schedule_if_needed(uow, cron_schedule, sync_id, ctx)
+
+            (
+                sync_schema,
+                sync_job_schema,
+                collection_schema,
+            ) = await self._prepare_sync_schemas_for_workflow(
+                uow, sync, sync_job, collection, obj_in
+            )
+
+            await uow.commit()
+            await uow.session.refresh(source_conn)
+
+        response = await self._response_builder.build_response(db, source_conn, ctx)
+
+        if sync_job and obj_in.sync_immediately:
+            await self._trigger_sync_workflow(
+                connection_schema, sync_schema, sync_job_schema, collection_schema, ctx
+            )
+
+        return response
+
+    async def _create_with_oauth_browser(
+        self, db: Any, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnection:
+        """Create shell + start OAuth browser flow (OAuth1 or OAuth2)."""
+        self._get_source_entry(obj_in.short_name)  # validate source exists
+        enabled_features = ctx.organization.enabled_features or []
+        validated_config = await self._credential_service.validate_config_fields(
+            obj_in.short_name, obj_in.config, enabled_features
+        )
+
+        # Extract template configs for OAuth URL
+        template_configs = await self._validate_and_extract_template_configs(
+            db, obj_in.short_name, validated_config, ctx
+        )
+
+        # Extract BYOC credentials from authentication if present
+        oauth_auth = (
+            obj_in.authentication
+            if isinstance(obj_in.authentication, OAuthBrowserAuthentication)
+            else OAuthBrowserAuthentication()
+        )
+
+        # Determine OAuth1 vs OAuth2
+        from airweave.platform.auth.schemas import OAuth1Settings
+
+        oauth_settings = await integration_settings.get_by_short_name(obj_in.short_name)
+
+        if isinstance(oauth_settings, OAuth1Settings):
+            init_result = await self._oauth_flow_service.initiate_oauth1(
+                short_name=obj_in.short_name,
+                payload=obj_in.model_dump(
+                    exclude={"authentication", "client_id", "client_secret"}, exclude_none=True
+                ),
+                organization_id=ctx.organization.id,
+                redirect_url=getattr(obj_in, "redirect_url", None),
+                byoc_consumer_key=None,
+                byoc_consumer_secret=None,
+                db=db,
+                uow=None,  # Will create own UoW inside
+            )
+        else:
+            init_result = await self._oauth_flow_service.initiate_oauth2(
+                short_name=obj_in.short_name,
+                payload=obj_in.model_dump(
+                    exclude={"authentication", "client_id", "client_secret"}, exclude_none=True
+                ),
+                organization_id=ctx.organization.id,
+                redirect_url=getattr(oauth_auth, "redirect_url", None)
+                or getattr(obj_in, "redirect_url", None),
+                byoc_client_id=None,
+                byoc_client_secret=None,
+                template_configs=template_configs,
+                db=db,
+                uow=None,
+            )
+
+        # Create shell source connection and link to init session
+        async with UnitOfWork(db) as uow:
+            source_conn = await source_connection_helpers.create_source_connection(
+                uow.session,
+                obj_in,
+                connection_id=None,
+                collection_id=obj_in.readable_collection_id,
+                sync_id=None,
+                config_fields=validated_config,
+                is_authenticated=False,
+                ctx=ctx,
+                uow=uow,
+            )
+            source_conn.connection_init_session_id = init_result.init_session_id
+            source_conn.authentication_url = init_result.proxy_url
+            source_conn.authentication_url_expiry = init_result.proxy_expiry
+            uow.session.add(source_conn)
+            await uow.commit()
+            await uow.session.refresh(source_conn)
+
+        return await self._response_builder.build_response(db, source_conn, ctx)
+
+    async def _create_with_oauth_token(
+        self, db: Any, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnection:
+        """Create with injected OAuth token."""
+        source_entry = self._get_source_entry(obj_in.short_name)
+
+        if not obj_in.authentication or not isinstance(
+            obj_in.authentication, OAuthTokenAuthentication
+        ):
+            from airweave.core.exceptions import BadRequestError
+
+            raise BadRequestError("OAuth token authentication requires an access token")
+
+        oauth_creds = {
+            "access_token": obj_in.authentication.access_token,
+            "refresh_token": obj_in.authentication.refresh_token,
+            "token_type": "Bearer",
+        }
+        if obj_in.authentication.expires_at:
+            oauth_creds["expires_at"] = obj_in.authentication.expires_at.isoformat()
+
+        enabled_features = ctx.organization.enabled_features or []
+        validated_config = await self._credential_service.validate_config_fields(
+            obj_in.short_name, obj_in.config, enabled_features
+        )
+        await self._credential_service.validate_oauth_token(
+            obj_in.short_name, obj_in.authentication.access_token, validated_config
+        )
+
+        source = await crud.source.get_by_short_name(db, short_name=obj_in.short_name)
+
+        async with UnitOfWork(db) as uow:
+            collection = await source_connection_helpers.get_collection(
+                uow.session, obj_in.readable_collection_id, ctx
+            )
+            credential = await self._credential_service.create_credential(
+                source_short_name=source.short_name,
+                source_name=source.name,
+                auth_fields=oauth_creds,
+                organization_id=ctx.organization.id,
+                auth_method=AuthenticationMethod.OAUTH_TOKEN,
+                oauth_type=getattr(source, "oauth_type", None),
+                auth_config_class=getattr(source, "auth_config_class", None),
+                db=uow.session,
+                uow=uow,
+            )
+            await uow.session.flush()
+
+            connection = await source_connection_helpers.create_connection(
+                uow.session, obj_in.name, source, credential.id, ctx, uow
+            )
+            await uow.session.flush()
+            connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
+
+            sync_id, sync, sync_job = await self._handle_sync_creation(
+                uow,
+                obj_in,
+                source,
+                source_entry,
+                connection.id,
+                collection.id,
+                collection.readable_id,
+                ctx,
+            )
+
+            source_conn = await source_connection_helpers.create_source_connection(
+                uow.session,
+                obj_in,
+                connection.id,
+                collection.readable_id,
+                sync_id,
+                validated_config,
+                is_authenticated=True,
+                ctx=ctx,
+                uow=uow,
+            )
+            await uow.session.flush()
+
+            cron_schedule = determine_schedule(obj_in, source_entry.supports_continuous)
+            await self._create_temporal_schedule_if_needed(uow, cron_schedule, sync_id, ctx)
+
+            (
+                sync_schema,
+                sync_job_schema,
+                collection_schema,
+            ) = await self._prepare_sync_schemas_for_workflow(
+                uow, sync, sync_job, collection, obj_in
+            )
+
+            await uow.commit()
+            await uow.session.refresh(source_conn)
+
+        response = await self._response_builder.build_response(db, source_conn, ctx)
+
+        if sync_job and obj_in.sync_immediately:
+            await self._trigger_sync_workflow(
+                connection_schema, sync_schema, sync_job_schema, collection_schema, ctx
+            )
+
+        return response
+
+    async def _create_with_oauth_byoc(
+        self, db: Any, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnection:
+        """Create with BYOC OAuth (user provides client credentials)."""
+        if not obj_in.authentication or not isinstance(
+            obj_in.authentication, OAuthBrowserAuthentication
+        ):
+            from airweave.core.exceptions import BadRequestError
+
+            raise BadRequestError(
+                "OAuth BYOC requires browser authentication with client credentials"
+            )
+
+        self._get_source_entry(obj_in.short_name)  # validate source exists
+        enabled_features = ctx.organization.enabled_features or []
+        validated_config = await self._credential_service.validate_config_fields(
+            obj_in.short_name, obj_in.config, enabled_features
+        )
+        template_configs = await self._validate_and_extract_template_configs(
+            db, obj_in.short_name, validated_config, ctx
+        )
+
+        from airweave.platform.auth.schemas import OAuth1Settings
+
+        oauth_settings = await integration_settings.get_by_short_name(obj_in.short_name)
+
+        if isinstance(oauth_settings, OAuth1Settings):
+            if not obj_in.authentication.consumer_key or not obj_in.authentication.consumer_secret:
+                from airweave.core.exceptions import BadRequestError
+
+                raise BadRequestError("OAuth1 BYOC requires consumer_key and consumer_secret")
+
+            init_result = await self._oauth_flow_service.initiate_oauth1(
+                short_name=obj_in.short_name,
+                payload=obj_in.model_dump(exclude={"authentication"}, exclude_none=True),
+                organization_id=ctx.organization.id,
+                redirect_url=getattr(obj_in, "redirect_url", None),
+                byoc_consumer_key=obj_in.authentication.consumer_key,
+                byoc_consumer_secret=obj_in.authentication.consumer_secret,
+                db=db,
+                uow=None,
+            )
+        else:
+            if not obj_in.authentication.client_id or not obj_in.authentication.client_secret:
+                from airweave.core.exceptions import BadRequestError
+
+                raise BadRequestError("OAuth2 BYOC requires client_id and client_secret")
+
+            init_result = await self._oauth_flow_service.initiate_oauth2(
+                short_name=obj_in.short_name,
+                payload=obj_in.model_dump(exclude={"authentication"}, exclude_none=True),
+                organization_id=ctx.organization.id,
+                redirect_url=getattr(obj_in.authentication, "redirect_url", None)
+                or getattr(obj_in, "redirect_url", None),
+                byoc_client_id=obj_in.authentication.client_id,
+                byoc_client_secret=obj_in.authentication.client_secret,
+                template_configs=template_configs,
+                db=db,
+                uow=None,
+            )
+
+        async with UnitOfWork(db) as uow:
+            source_conn = await source_connection_helpers.create_source_connection(
+                uow.session,
+                obj_in,
+                connection_id=None,
+                collection_id=obj_in.readable_collection_id,
+                sync_id=None,
+                config_fields=validated_config,
+                is_authenticated=False,
+                ctx=ctx,
+                uow=uow,
+            )
+            source_conn.connection_init_session_id = init_result.init_session_id
+            source_conn.authentication_url = init_result.proxy_url
+            source_conn.authentication_url_expiry = init_result.proxy_expiry
+            uow.session.add(source_conn)
+            await uow.commit()
+            await uow.session.refresh(source_conn)
+
+        return await self._response_builder.build_response(db, source_conn, ctx)
+
+    async def _create_with_auth_provider(
+        self, db: Any, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnection:
+        """Create using external auth provider (Composio, Pipedream)."""
+        source_entry = self._get_source_entry(obj_in.short_name)
+
+        if not obj_in.authentication or not isinstance(
+            obj_in.authentication, AuthProviderAuthentication
+        ):
+            from airweave.core.exceptions import BadRequestError
+
+            raise BadRequestError("Auth provider authentication requires provider configuration")
+
+        auth_provider_conn = await crud.connection.get_by_readable_id(
+            db, readable_id=obj_in.authentication.provider_readable_id, ctx=ctx
+        )
+        if not auth_provider_conn:
+            from airweave.core.exceptions import NotFoundException
+
+            raise NotFoundException(
+                f"Auth provider '{obj_in.authentication.provider_readable_id}' not found"
+            )
+
+        supported_providers = auth_provider_service.get_supported_providers_for_source(
+            obj_in.short_name
+        )
+        if auth_provider_conn.short_name not in supported_providers:
+            from airweave.core.exceptions import BadRequestError
+
+            raise BadRequestError(
+                f"Source '{obj_in.short_name}' does not support "
+                f"'{auth_provider_conn.short_name}' as an auth provider."
+            )
+
+        validated_auth_config = None
+        if obj_in.authentication.provider_config:
+            validated_auth_config = await auth_provider_service.validate_auth_provider_config(
+                db, auth_provider_conn.short_name, obj_in.authentication.provider_config
+            )
+
+        source = await crud.source.get_by_short_name(db, short_name=obj_in.short_name)
+        enabled_features = ctx.organization.enabled_features or []
+        validated_config = await self._credential_service.validate_config_fields(
+            obj_in.short_name, obj_in.config, enabled_features
+        )
+
+        async with UnitOfWork(db) as uow:
+            collection = await source_connection_helpers.get_collection(
+                uow.session, obj_in.readable_collection_id, ctx
+            )
+            connection = await source_connection_helpers.create_connection(
+                uow.session, obj_in.name, source, None, ctx, uow
+            )
+            await uow.session.flush()
+
+            sync_id, sync, sync_job = await self._handle_sync_creation(
+                uow,
+                obj_in,
+                source,
+                source_entry,
+                connection.id,
+                collection.id,
+                collection.readable_id,
+                ctx,
+            )
+
+            source_conn = await source_connection_helpers.create_source_connection(
+                uow.session,
+                obj_in,
+                connection.id,
+                collection.readable_id,
+                sync_id,
+                validated_config,
+                is_authenticated=True,
+                ctx=ctx,
+                uow=uow,
+                auth_provider_id=auth_provider_conn.readable_id,
+                auth_provider_config=validated_auth_config,
+            )
+            await uow.session.flush()
+
+            cron_schedule = determine_schedule(obj_in, source_entry.supports_continuous)
+            await self._create_temporal_schedule_if_needed(uow, cron_schedule, sync_id, ctx)
+
+            (
+                sync_schema,
+                sync_job_schema,
+                collection_schema,
+            ) = await self._prepare_sync_schemas_for_workflow(
+                uow, sync, sync_job, collection, obj_in
+            )
+
+            await uow.commit()
+            await uow.session.refresh(source_conn)
+
+        response = await self._response_builder.build_response(db, source_conn, ctx)
+
+        if sync_job and obj_in.sync_immediately:
+            connection_schema = (
+                await source_connection_helpers.get_connection_for_source_connection(
+                    db=db, source_connection=source_conn, ctx=ctx
+                )
+            )
+            await self._trigger_sync_workflow(
+                connection_schema, sync_schema, sync_job_schema, collection_schema, ctx
+            )
+
+        return response
+
+    # ------------------------------------------------------------------
+    # Private: shared create helpers
+    # ------------------------------------------------------------------
+
+    def _determine_auth_method(
+        self, obj_in: SourceConnectionCreate, source_cls: type
+    ) -> AuthenticationMethod:
+        """Determine auth method from nested authentication object."""
+        auth = obj_in.authentication
+        if auth is None:
+            return AuthenticationMethod.OAUTH_BROWSER
+        if isinstance(auth, DirectAuthentication):
+            return AuthenticationMethod.DIRECT
+        if isinstance(auth, OAuthTokenAuthentication):
+            return AuthenticationMethod.OAUTH_TOKEN
+        if isinstance(auth, OAuthBrowserAuthentication):
+            has_oauth2_byoc = auth.client_id and auth.client_secret
+            has_oauth1_byoc = auth.consumer_key and auth.consumer_secret
+            if has_oauth2_byoc or has_oauth1_byoc:
+                return AuthenticationMethod.OAUTH_BYOC
+            return AuthenticationMethod.OAUTH_BROWSER
+        if isinstance(auth, AuthProviderAuthentication):
+            return AuthenticationMethod.AUTH_PROVIDER
+        from airweave.core.exceptions import BadRequestError
+
+        raise BadRequestError("Invalid authentication configuration")
+
+    async def _handle_sync_creation(
+        self,
+        uow,
+        obj_in,
+        source,
+        source_entry,
+        connection_id,
+        collection_id,
+        collection_readable_id,
+        ctx,
+    ) -> Tuple[Optional[UUID], Any, Any]:
+        """Create sync with schedule during source connection creation."""
+        if getattr(source_entry.source_class_ref, "federated_search", False):
+            ctx.logger.info(
+                f"Skipping sync for federated search source '{source_entry.short_name}'"
+            )
+            return None, None, None
+
+        cron_schedule = determine_schedule(obj_in, source_entry.supports_continuous)
+
+        if not cron_schedule and not obj_in.sync_immediately:
+            return None, None, None
+
+        if cron_schedule:
+            validate_cron_for_source(
+                cron_schedule, source_entry.short_name, source_entry.supports_continuous
+            )
+
+        sync, sync_job = await source_connection_helpers.create_sync_without_schedule(
+            uow.session,
+            obj_in.name,
+            connection_id,
+            collection_id,
+            collection_readable_id,
+            cron_schedule,
+            obj_in.sync_immediately,
+            ctx,
+            uow,
+        )
+        await uow.session.flush()
+
+        sync_id = sync.id if sync else None
+        return sync_id, sync, sync_job
+
+    async def _create_temporal_schedule_if_needed(self, uow, cron_schedule, sync_id, ctx) -> None:
+        """Create Temporal schedule if we have both cron and sync_id."""
+        if cron_schedule and sync_id:
+            await temporal_schedule_service.create_or_update_schedule(
+                sync_id=sync_id, cron_schedule=cron_schedule, db=uow.session, ctx=ctx, uow=uow
+            )
+
+    async def _prepare_sync_schemas_for_workflow(
+        self, uow, sync, sync_job, collection, obj_in
+    ) -> Tuple[Any, Any, Any]:
+        """Prepare schemas for Temporal workflow if sync_immediately."""
+        if sync_job and obj_in.sync_immediately:
+            await uow.session.flush()
+            await uow.session.refresh(sync_job)
+            await uow.session.refresh(collection)
+            return (
+                schemas.Sync.model_validate(sync, from_attributes=True),
+                schemas.SyncJob.model_validate(sync_job, from_attributes=True),
+                schemas.Collection.model_validate(collection, from_attributes=True),
+            )
+        return None, None, None
+
+    async def _trigger_sync_workflow(self, connection, sync, sync_job, collection, ctx) -> None:
+        """Trigger Temporal workflow for sync."""
+        await temporal_service.run_source_connection_workflow(
+            sync=sync, sync_job=sync_job, collection=collection, connection=connection, ctx=ctx
+        )
+
+    async def _finalize_oauth_callback(
+        self, db: Any, source_conn: Any, ctx: ApiContext
+    ) -> SourceConnection:
+        """Build response and trigger sync workflow after OAuth completion."""
+        response = await self._response_builder.build_response(db, source_conn, ctx)
+
+        if source_conn.sync_id:
+            sync = await crud.sync.get(db, id=source_conn.sync_id, ctx=ctx)
+            if sync:
+                jobs = await crud.sync_job.get_all_by_sync_id(db, sync_id=sync.id)
+                if jobs and len(jobs) > 0:
+                    sync_job = jobs[0]
+                    if sync_job.status == SyncJobStatus.PENDING:
+                        collection = await crud.collection.get_by_readable_id(
+                            db, readable_id=source_conn.readable_collection_id, ctx=ctx
+                        )
+                        if collection:
+                            collection_schema = schemas.Collection.model_validate(
+                                collection, from_attributes=True
+                            )
+                            sync_job_schema = schemas.SyncJob.model_validate(
+                                sync_job, from_attributes=True
+                            )
+                            sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
+                            _helpers = source_connection_helpers
+                            connection_schema = await _helpers.get_connection_for_source_connection(
+                                db=db,
+                                source_connection=source_conn,
+                                ctx=ctx,
+                            )
+                            await temporal_service.run_source_connection_workflow(
+                                sync=sync_schema,
+                                sync_job=sync_job_schema,
+                                collection=collection_schema,
+                                connection=connection_schema,
+                                ctx=ctx,
+                            )
+
+        return response
+
+    async def _validate_and_extract_template_configs(
+        self, db: Any, short_name: str, validated_config: Optional[dict], ctx: ApiContext
+    ) -> Optional[dict]:
+        """Extract template configs needed before OAuth can start (e.g., Zendesk subdomain)."""
+        source_entry = self._get_source_entry(short_name)
+        if source_entry.config_ref is None or validated_config is None:
+            return None
+
+        try:
+            template_fields = source_entry.config_ref.get_template_config_fields()
+            if template_fields:
+                source_entry.config_ref.validate_template_configs(validated_config)
+                return source_entry.config_ref.extract_template_configs(validated_config)
+        except ValueError as e:
+            from airweave.domains.credentials.exceptions import InvalidConfigFieldsError
+
+            raise InvalidConfigFieldsError(str(e))
+        except Exception as e:
+            ctx.logger.warning(f"Could not process template configs for {short_name}: {e}")
+
+        return None
