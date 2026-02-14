@@ -68,6 +68,7 @@ class FakeCredentialService:
         auth_config_class: Optional[str],
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> Any:
         self._maybe_raise()
         cred = {
@@ -85,6 +86,7 @@ class FakeCredentialService:
         short_name: str,
         db: Any,
         uow: Any,
+        ctx: Any = None,
     ) -> None:
         self._maybe_raise()
         self._updated_credentials.append({"credential_id": credential_id, "short_name": short_name})

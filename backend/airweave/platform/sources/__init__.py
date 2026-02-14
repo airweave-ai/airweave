@@ -36,6 +36,7 @@ from .snapshot import SnapshotSource
 from .stripe import StripeSource
 from .stub import StubSource
 from .teams import TeamsSource
+from .timed import TimedSource
 from .todoist import TodoistSource
 from .trello import TrelloSource
 from .word import WordSource
@@ -79,6 +80,7 @@ ALL_SOURCES: list[type] = [
     StripeSource,
     StubSource,
     TeamsSource,
+    TimedSource,
     TodoistSource,
     TrelloSource,
     WordSource,
