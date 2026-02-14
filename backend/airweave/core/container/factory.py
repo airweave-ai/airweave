@@ -95,6 +95,13 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     oauth_flow_service = _create_oauth_flow_service()
 
+    # Source Connection Service
+    # Domain service orchestrating all source connection operations
+    # -----------------------------------------------------------------
+    source_connection_service = _create_source_connection_service(
+        source_registry, credential_service, oauth_flow_service
+    )
+
     return Container(
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
@@ -104,6 +111,7 @@ def create_container(settings: Settings) -> Container:
         source_service=source_service,
         credential_service=credential_service,
         oauth_flow_service=oauth_flow_service,
+        source_connection_service=source_connection_service,
     )
 
 
@@ -228,4 +236,22 @@ def _create_oauth_flow_service() -> "OAuthFlowServiceProtocol":
         oauth2_service=oauth2_service,
         oauth1_service=oauth1_service,
         integration_settings=integration_settings,
+    )
+
+
+def _create_source_connection_service(source_registry, credential_service, oauth_flow_service):
+    """Create source connection service with all dependencies."""
+    from airweave.domains.source_connections.repository import SourceConnectionRepository
+    from airweave.domains.source_connections.response import ResponseBuilder
+    from airweave.domains.source_connections.service import NewSourceConnectionService
+
+    sc_repo = SourceConnectionRepository()
+    response_builder = ResponseBuilder()
+
+    return NewSourceConnectionService(
+        sc_repo=sc_repo,
+        response_builder=response_builder,
+        source_registry=source_registry,
+        credential_service=credential_service,
+        oauth_flow_service=oauth_flow_service,
     )

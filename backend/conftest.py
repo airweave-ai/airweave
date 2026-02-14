@@ -120,6 +120,14 @@ def fake_oauth_flow_service():
     return FakeOAuthFlowService()
 
 
+@pytest.fixture
+def fake_source_connection_service():
+    """Fake SourceConnectionService for testing."""
+    from airweave.domains.source_connections.fake_service import FakeSourceConnectionService
+
+    return FakeSourceConnectionService()
+
+
 # ---------------------------------------------------------------------------
 # Test container — fully faked Container for injection
 # ---------------------------------------------------------------------------
@@ -135,6 +143,7 @@ def test_container(
     fake_source_service,
     fake_credential_service,
     fake_oauth_flow_service,
+    fake_source_connection_service,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -155,4 +164,5 @@ def test_container(
         source_service=fake_source_service,
         credential_service=fake_credential_service,
         oauth_flow_service=fake_oauth_flow_service,
+        source_connection_service=fake_source_connection_service,
     )

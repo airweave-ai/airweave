@@ -22,6 +22,7 @@ from airweave.core.protocols import (
     WebhookAdmin,
     WebhookPublisher,
 )
+from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.domains.sources.protocols import SourceServiceProtocol
 
 
@@ -72,6 +73,9 @@ class Container:
 
     # OAuth flow service — cross-cutting OAuth initiation and completion
     oauth_flow_service: OAuthFlowServiceProtocol
+
+    # Source connection service — domain service for source connections
+    source_connection_service: SourceConnectionServiceProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

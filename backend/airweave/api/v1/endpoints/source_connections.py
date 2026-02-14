@@ -27,8 +27,8 @@ from airweave.core.events.source_connection import SourceConnectionLifecycleEven
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
-from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
+from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.schemas.errors import (
     ConflictErrorResponse,
     NotFoundErrorResponse,
@@ -47,6 +47,7 @@ async def oauth_callback(
     *,
     db: AsyncSession = Depends(get_db),
     event_bus: EventBus = Inject(EventBus),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
     # OAuth2 parameters
     state: Optional[str] = Query(None, description="OAuth2 state parameter"),
     code: Optional[str] = Query(None, description="OAuth2 authorization code"),
@@ -67,14 +68,14 @@ async def oauth_callback(
     # Determine OAuth1 vs OAuth2 based on parameters
     if oauth_token and oauth_verifier:
         # OAuth1 callback
-        source_conn = await source_connection_service.complete_oauth1_callback(
+        source_conn = await sc_service.complete_oauth1_callback(
             db,
             oauth_token=oauth_token,
             oauth_verifier=oauth_verifier,
         )
     elif state and code:
         # OAuth2 callback
-        source_conn = await source_connection_service.complete_oauth2_callback(
+        source_conn = await sc_service.complete_oauth2_callback(
             db,
             state=state,
             code=code,
@@ -158,6 +159,7 @@ async def create(
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
     event_bus: EventBus = Inject(EventBus),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Create a new source connection."""
     # Check if organization is allowed to create a source connection
@@ -168,7 +170,7 @@ async def create(
     if source_connection_in.sync_immediately:
         await guard_rail.is_allowed(ActionType.ENTITIES)
 
-    result = await source_connection_service.create(
+    result = await sc_service.create(
         db,
         obj_in=source_connection_in,
         ctx=ctx,
@@ -215,6 +217,7 @@ async def list(
     *,
     db: AsyncSession = Depends(get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
     collection: Optional[str] = Query(
         None,
         description="Filter by collection readable ID",
@@ -235,7 +238,7 @@ async def list(
     ),
 ) -> List[schemas.SourceConnectionListItem]:
     """List source connections with minimal fields for performance."""
-    return await source_connection_service.list(
+    return await sc_service.list(
         db,
         ctx=ctx,
         readable_collection_id=collection,
@@ -270,14 +273,10 @@ async def get(
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Get a source connection with full details."""
-    result = await source_connection_service.get(
-        db,
-        id=source_connection_id,
-        ctx=ctx,
-    )
-    return result
+    return await sc_service.get(db, id=source_connection_id, ctx=ctx)
 
 
 @router.patch(
@@ -310,13 +309,11 @@ async def update(
     ),
     source_connection_in: schemas.SourceConnectionUpdate,
     ctx: ApiContext = Depends(deps.get_context),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Update a source connection's configuration."""
-    return await source_connection_service.update(
-        db,
-        id=source_connection_id,
-        obj_in=source_connection_in,
-        ctx=ctx,
+    return await sc_service.update(
+        db, id=source_connection_id, obj_in=source_connection_in, ctx=ctx
     )
 
 
@@ -358,13 +355,10 @@ async def delete(
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
     event_bus: EventBus = Inject(EventBus),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Delete a source connection and all related data."""
-    result = await source_connection_service.delete(
-        db,
-        id=source_connection_id,
-        ctx=ctx,
-    )
+    result = await sc_service.delete(db, id=source_connection_id, ctx=ctx)
 
     # Publish source_connection.deleted event
     try:
@@ -411,6 +405,7 @@ async def run(
     ),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
     force_full_sync: bool = Query(
         False,
         description=(
@@ -424,13 +419,9 @@ async def run(
     # Check if organization is allowed to process entities
     await guard_rail.is_allowed(ActionType.ENTITIES)
 
-    run = await source_connection_service.run(
-        db,
-        id=source_connection_id,
-        ctx=ctx,
-        force_full_sync=force_full_sync,
+    return await sc_service.run(
+        db, id=source_connection_id, ctx=ctx, force_full_sync=force_full_sync
     )
-    return run
 
 
 @router.get(
@@ -469,6 +460,7 @@ async def get_source_connection_jobs(
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
     limit: int = Query(
         100,
         ge=1,
@@ -478,12 +470,7 @@ async def get_source_connection_jobs(
     ),
 ) -> List[schemas.SourceConnectionJob]:
     """Get sync jobs for a source connection."""
-    return await source_connection_service.get_jobs(
-        db,
-        id=source_connection_id,
-        ctx=ctx,
-        limit=limit,
-    )
+    return await sc_service.get_jobs(db, id=source_connection_id, ctx=ctx, limit=limit)
 
 
 @router.post(
@@ -526,13 +513,11 @@ async def cancel_job(
         json_schema_extra={"example": "660e8400-e29b-41d4-a716-446655440001"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnectionJob:
     """Cancel a running sync job."""
-    return await source_connection_service.cancel_job(
-        db,
-        source_connection_id=source_connection_id,
-        job_id=job_id,
-        ctx=ctx,
+    return await sc_service.cancel_job(
+        db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
     )
 
 
@@ -548,6 +533,9 @@ async def make_continuous(
 
     Only available for sources that support incremental sync.
     """
+    # Legacy endpoint -- not yet migrated to the new service
+    from airweave.core.source_connection_service import source_connection_service
+
     return await source_connection_service.make_continuous(
         db,
         id=source_connection_id,
