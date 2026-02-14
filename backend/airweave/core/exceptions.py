@@ -56,6 +56,18 @@ class BadRequestError(AirweaveException):
         super().__init__(self.message)
 
 
+class BadGatewayError(AirweaveException):
+    """Base exception for 502 Bad Gateway domain errors.
+
+    Used when an upstream/external service fails during an operation.
+    The middleware maps this to HTTP 502 automatically.
+    """
+
+    def __init__(self, message: Optional[str] = "Bad gateway"):
+        self.message = message
+        super().__init__(self.message)
+
+
 class ImmutableFieldError(AirweaveException):
     """Exception raised for attempts to modify immutable fields in a database model."""
 

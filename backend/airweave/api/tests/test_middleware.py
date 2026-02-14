@@ -8,7 +8,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from airweave.api.middleware import airweave_exception_handler
-from airweave.core.exceptions import AirweaveException, BadRequestError, TokenRefreshError
+from airweave.core.exceptions import (
+    AirweaveException,
+    BadGatewayError,
+    BadRequestError,
+    TokenRefreshError,
+)
 
 
 @pytest.mark.asyncio
@@ -33,6 +38,23 @@ async def test_token_refresh_error_returns_401():
     response = await airweave_exception_handler(MagicMock(), TokenRefreshError("token expired"))
     assert response.status_code == 401
     assert b"token expired" in response.body
+
+
+@pytest.mark.asyncio
+async def test_bad_gateway_error_returns_502():
+    response = await airweave_exception_handler(MagicMock(), BadGatewayError("upstream failed"))
+    assert response.status_code == 502
+    assert b"upstream failed" in response.body
+
+
+@pytest.mark.asyncio
+async def test_bad_gateway_subclass_returns_502():
+    """Subclasses of BadGatewayError also map to 502."""
+    from airweave.domains.oauth.exceptions import OAuthTokenExchangeError
+
+    response = await airweave_exception_handler(MagicMock(), OAuthTokenExchangeError("provider down"))
+    assert response.status_code == 502
+    assert b"provider down" in response.body
 
 
 @pytest.mark.asyncio

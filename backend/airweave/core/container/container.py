@@ -17,6 +17,7 @@ from airweave.core.protocols import (
     CircuitBreaker,
     CredentialServiceProtocol,
     EventBus,
+    OAuthFlowServiceProtocol,
     OcrProvider,
     WebhookAdmin,
     WebhookPublisher,
@@ -68,6 +69,9 @@ class Container:
 
     # Credential service — cross-cutting credential validation and management
     credential_service: CredentialServiceProtocol
+
+    # OAuth flow service — cross-cutting OAuth initiation and completion
+    oauth_flow_service: OAuthFlowServiceProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

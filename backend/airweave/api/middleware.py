@@ -19,6 +19,7 @@ from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.exceptions import (
     AirweaveException,
+    BadGatewayError,
     BadRequestError,
     InvalidStateError,
     NotFoundException,
@@ -412,6 +413,7 @@ async def airweave_exception_handler(request: Request, exc: AirweaveException) -
     status_map = {
         BadRequestError: 400,
         TokenRefreshError: 401,
+        BadGatewayError: 502,
     }
 
     for exc_type, code in status_map.items():

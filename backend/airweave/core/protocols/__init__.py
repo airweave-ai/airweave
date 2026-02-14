@@ -6,6 +6,7 @@ from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandle
 from airweave.core.protocols.integration_credential_repository import (
     IntegrationCredentialRepositoryProtocol,
 )
+from airweave.core.protocols.oauth import OAuthFlowServiceProtocol
 from airweave.core.protocols.ocr import OcrProvider
 from airweave.core.protocols.webhooks import WebhookAdmin, WebhookPublisher
 
@@ -16,6 +17,7 @@ __all__ = [
     "EventBus",
     "EventHandler",
     "IntegrationCredentialRepositoryProtocol",
+    "OAuthFlowServiceProtocol",
     "OcrProvider",
     "WebhookAdmin",
     "WebhookPublisher",

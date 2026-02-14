@@ -26,7 +26,12 @@ from airweave.domains.sources.service import SourceService
 
 if TYPE_CHECKING:
     from airweave.core.config import Settings
-    from airweave.core.protocols import CircuitBreaker, CredentialServiceProtocol, OcrProvider
+    from airweave.core.protocols import (
+        CircuitBreaker,
+        CredentialServiceProtocol,
+        OAuthFlowServiceProtocol,
+        OcrProvider,
+    )
 
 
 def create_container(settings: Settings) -> Container:
@@ -85,6 +90,11 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     credential_service = _create_credential_service(source_registry)
 
+    # OAuth Flow Service
+    # Cross-cutting: OAuth initiation and completion
+    # -----------------------------------------------------------------
+    oauth_flow_service = _create_oauth_flow_service()
+
     return Container(
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
@@ -93,6 +103,7 @@ def create_container(settings: Settings) -> Container:
         ocr_provider=ocr_provider,
         source_service=source_service,
         credential_service=credential_service,
+        oauth_flow_service=oauth_flow_service,
     )
 
 
@@ -203,4 +214,18 @@ def _create_credential_service(source_registry) -> "CredentialServiceProtocol":
     return CredentialService(
         source_registry=source_registry,
         credential_repo=credential_repo,
+    )
+
+
+def _create_oauth_flow_service() -> "OAuthFlowServiceProtocol":
+    """Create OAuth flow service with real OAuth adapters."""
+    from airweave.domains.oauth.service import OAuthFlowService
+    from airweave.platform.auth.oauth1_service import oauth1_service
+    from airweave.platform.auth.oauth2_service import oauth2_service
+    from airweave.platform.auth.settings import integration_settings
+
+    return OAuthFlowService(
+        oauth2_service=oauth2_service,
+        oauth1_service=oauth1_service,
+        integration_settings=integration_settings,
     )

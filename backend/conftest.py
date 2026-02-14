@@ -112,6 +112,14 @@ def fake_credential_service():
     return FakeCredentialService()
 
 
+@pytest.fixture
+def fake_oauth_flow_service():
+    """Fake OAuthFlowService for testing OAuth consumers."""
+    from airweave.domains.oauth.fake import FakeOAuthFlowService
+
+    return FakeOAuthFlowService()
+
+
 # ---------------------------------------------------------------------------
 # Test container — fully faked Container for injection
 # ---------------------------------------------------------------------------
@@ -126,6 +134,7 @@ def test_container(
     fake_ocr_provider,
     fake_source_service,
     fake_credential_service,
+    fake_oauth_flow_service,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -145,4 +154,5 @@ def test_container(
         ocr_provider=fake_ocr_provider,
         source_service=fake_source_service,
         credential_service=fake_credential_service,
+        oauth_flow_service=fake_oauth_flow_service,
     )
