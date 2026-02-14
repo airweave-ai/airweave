@@ -16,11 +16,14 @@ class FakeConnectionRepository:
         """Create and store a fake connection."""
         conn_id = uuid4()
         if isinstance(obj_in, dict):
-            record = type("FakeConnection", (), {"id": conn_id, **obj_in})()
+            attrs = {"id": conn_id, **obj_in}
+        elif hasattr(obj_in, "model_dump"):
+            dumped = obj_in.model_dump()
+            attrs = dumped if isinstance(dumped, dict) else {}
+            attrs["id"] = conn_id
         else:
-            data = obj_in.model_dump() if hasattr(obj_in, "model_dump") else {}
-            data["id"] = conn_id
-            record = type("FakeConnection", (), data)()
+            attrs = {"id": conn_id}
+        record = type("FakeConnection", (), attrs)()
         self._store[conn_id] = record
         readable_id = getattr(record, "readable_id", None)
         if readable_id:

@@ -4,7 +4,7 @@ Coordinates sub-services (credentials, OAuth, schedule, response builder)
 and repositories (source connection, connection, collection) to implement
 the source connection API contract.
 
-No direct crud.source_connection calls -- all DB access goes through repositories.
+No direct crud calls -- all DB access goes through injected repositories.
 Singletons (sync_service, temporal_service, etc.) are called directly until
 they get their own refactor.
 """
@@ -13,20 +13,31 @@ import asyncio
 from typing import Any, List, Optional, Tuple
 from uuid import UUID
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.analytics import business_events
 from airweave.api.context import ApiContext
 from airweave.core.auth_provider_service import auth_provider_service
+from airweave.core.container import container
+from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.events.sync import SyncLifecycleEvent
+from airweave.core.exceptions import BadGatewayError, BadRequestError, NotFoundException
+from airweave.core.protocols.collection import CollectionRepositoryProtocol
+from airweave.core.protocols.connection import ConnectionRepositoryProtocol
 from airweave.core.protocols.credential import CredentialServiceProtocol
 from airweave.core.protocols.oauth import OAuthFlowServiceProtocol
+from airweave.core.protocols.sync import SyncRepositoryProtocol
+from airweave.core.protocols.sync_cursor import SyncCursorRepositoryProtocol
+from airweave.core.protocols.sync_job import SyncJobRepositoryProtocol
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.source_connection_service_helpers import source_connection_helpers
+from airweave.core.sync_job_service import sync_job_service
 from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.credentials.exceptions import InvalidConfigFieldsError
 from airweave.domains.source_connections.exceptions import (
     ByocRequiredError,
+    CollectionNotFoundError,
     InvalidAuthMethodError,
     NoSyncError,
     SourceConnectionNotFoundError,
@@ -42,6 +53,7 @@ from airweave.domains.source_connections.schedule import (
 )
 from airweave.domains.sources.exceptions import SourceNotFoundError
 from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.platform.auth.schemas import OAuth1Settings
 from airweave.platform.auth.settings import integration_settings
 from airweave.platform.temporal.schedule_service import temporal_schedule_service
 from airweave.schemas.source_connection import (
@@ -59,11 +71,11 @@ from airweave.schemas.source_connection import (
 )
 
 
-class NewSourceConnectionService:
+class SourceConnectionService:
     """Thin orchestrator for source connection operations.
 
-    Named NewSourceConnectionService to coexist with the legacy service
-    during the transition. Will be renamed once the old service is removed.
+    Coordinates sub-services (credentials, OAuth, schedule, response builder)
+    and repositories to implement the source connection API contract.
     """
 
     def __init__(
@@ -73,6 +85,11 @@ class NewSourceConnectionService:
         source_registry: SourceRegistryProtocol,
         credential_service: CredentialServiceProtocol,
         oauth_flow_service: OAuthFlowServiceProtocol,
+        collection_repo: CollectionRepositoryProtocol,
+        connection_repo: ConnectionRepositoryProtocol,
+        sync_job_repo: SyncJobRepositoryProtocol,
+        sync_cursor_repo: SyncCursorRepositoryProtocol,
+        sync_repo: SyncRepositoryProtocol,
     ) -> None:
         """Initialize with all dependencies."""
         self._sc_repo = sc_repo
@@ -80,6 +97,11 @@ class NewSourceConnectionService:
         self._source_registry = source_registry
         self._credential_service = credential_service
         self._oauth_flow_service = oauth_flow_service
+        self._collection_repo = collection_repo
+        self._connection_repo = connection_repo
+        self._sync_job_repo = sync_job_repo
+        self._sync_cursor_repo = sync_cursor_repo
+        self._sync_repo = sync_repo
 
     # ------------------------------------------------------------------
     # Read operations
@@ -168,8 +190,6 @@ class NewSourceConnectionService:
             if "credentials" in update_data:
                 auth_method = determine_auth_method(source_conn)
                 if auth_method != AuthenticationMethod.DIRECT:
-                    from airweave.core.exceptions import BadRequestError
-
                     raise BadRequestError(
                         "Credentials can only be updated for direct authentication"
                     )
@@ -201,12 +221,10 @@ class NewSourceConnectionService:
             raise SourceConnectionNotFoundError(id)
 
         sync_id = source_conn.sync_id
-        collection = await crud.collection.get_by_readable_id(
+        collection = await self._collection_repo.get_by_readable_id(
             db, readable_id=source_conn.readable_collection_id, ctx=ctx
         )
         if not collection:
-            from airweave.domains.source_connections.exceptions import CollectionNotFoundError
-
             raise CollectionNotFoundError(source_conn.readable_collection_id)
         collection_id = str(collection.id)
         organization_id = str(collection.organization_id)
@@ -216,7 +234,7 @@ class NewSourceConnectionService:
 
         # Cancel running jobs and wait for terminal state
         if sync_id:
-            latest_job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=sync_id)
+            latest_job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=sync_id)
             if latest_job and latest_job.status in [
                 SyncJobStatus.PENDING,
                 SyncJobStatus.RUNNING,
@@ -286,10 +304,10 @@ class NewSourceConnectionService:
 
         # Validate force_full_sync for continuous syncs only
         if force_full_sync:
-            cursor = await crud.sync_cursor.get_by_sync_id(db, sync_id=source_conn.sync_id, ctx=ctx)
+            cursor = await self._sync_cursor_repo.get_by_sync_id(
+                db, sync_id=source_conn.sync_id, ctx=ctx
+            )
             if not cursor or not cursor.cursor_data:
-                from airweave.core.exceptions import BadRequestError
-
                 raise BadRequestError(
                     "force_full_sync can only be used with continuous syncs "
                     "(syncs with cursor data)."
@@ -297,7 +315,7 @@ class NewSourceConnectionService:
             ctx.logger.info(f"Force full sync requested for continuous sync {source_conn.sync_id}.")
 
         # Prepare schemas for Temporal workflow
-        collection = await crud.collection.get_by_readable_id(
+        collection = await self._collection_repo.get_by_readable_id(
             db, readable_id=source_conn.readable_collection_id, ctx=ctx
         )
         collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
@@ -315,8 +333,6 @@ class NewSourceConnectionService:
         sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
 
         # Publish PENDING event
-        from airweave.core.container import container
-
         if container is not None:
             await container.event_bus.publish(
                 SyncLifecycleEvent.pending(
@@ -359,25 +375,17 @@ class NewSourceConnectionService:
         if not source_conn.sync_id:
             raise NoSyncError(source_connection_id)
 
-        sync_job = await crud.sync_job.get(db, id=job_id, ctx=ctx)
+        sync_job = await self._sync_job_repo.get(db, id=job_id, ctx=ctx)
         if not sync_job:
-            from airweave.core.exceptions import NotFoundException
-
             raise NotFoundException("Sync job not found")
 
         if sync_job.sync_id != source_conn.sync_id:
-            from airweave.core.exceptions import BadRequestError
-
             raise BadRequestError("Sync job does not belong to this source connection")
 
         if sync_job.status not in [SyncJobStatus.PENDING, SyncJobStatus.RUNNING]:
-            from airweave.core.exceptions import BadRequestError
-
             raise BadRequestError(f"Cannot cancel job in {sync_job.status} state")
 
         # Set CANCELLING status
-        from airweave.core.sync_job_service import sync_job_service
-
         await sync_job_service.update_status(
             sync_job_id=job_id, status=SyncJobStatus.CANCELLING, ctx=ctx
         )
@@ -394,14 +402,10 @@ class NewSourceConnectionService:
             await sync_job_service.update_status(
                 sync_job_id=job_id, status=fallback_status, ctx=ctx
             )
-            from airweave.core.exceptions import BadGatewayError
-
             raise BadGatewayError("Failed to request cancellation from Temporal")
 
         if not cancel_result["workflow_found"]:
             ctx.logger.info(f"Workflow not found for job {job_id} - marking as CANCELLED directly")
-            from airweave.core.datetime_utils import utc_now_naive
-
             await sync_job_service.update_status(
                 sync_job_id=job_id,
                 status=SyncJobStatus.CANCELLED,
@@ -454,7 +458,7 @@ class NewSourceConnectionService:
                 del update_data["schedule"]
                 return
 
-            collection = await crud.collection.get_by_readable_id(
+            collection = await self._collection_repo.get_by_readable_id(
                 uow.session, readable_id=source_conn.readable_collection_id, ctx=ctx
             )
 
@@ -478,8 +482,6 @@ class NewSourceConnectionService:
                 uow=uow,
             )
             await uow.session.flush()
-
-            from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
             await temporal_schedule_service.create_or_update_schedule(
                 sync_id=sync.id, cron_schedule=new_cron, db=uow.session, ctx=ctx, uow=uow
@@ -507,7 +509,7 @@ class NewSourceConnectionService:
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
             db.expire_all()
-            job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=sync_id)
+            job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=sync_id)
             if job and job.status in terminal_states:
                 return True
         return False
@@ -567,8 +569,6 @@ class NewSourceConnectionService:
         elif auth_method == AuthenticationMethod.AUTH_PROVIDER:
             result = await self._create_with_auth_provider(db, obj_in, ctx)
         else:
-            from airweave.core.exceptions import BadRequestError
-
             raise BadRequestError(f"Unsupported authentication method: {auth_method.value}")
 
         business_events.track_source_connection_created(
@@ -655,8 +655,6 @@ class NewSourceConnectionService:
         source_entry = self._get_source_entry(obj_in.short_name)
 
         if not obj_in.authentication or not isinstance(obj_in.authentication, DirectAuthentication):
-            from airweave.core.exceptions import BadRequestError
-
             raise BadRequestError("Direct authentication requires credentials")
 
         validated_auth = await self._credential_service.validate_auth_fields(
@@ -670,28 +668,27 @@ class NewSourceConnectionService:
             obj_in.short_name, validated_auth, validated_config
         )
 
-        # Get source schema for credential creation (need name, oauth_type, auth_config_class)
-        source = await crud.source.get_by_short_name(db, short_name=obj_in.short_name)
-
         async with UnitOfWork(db) as uow:
             collection = await source_connection_helpers.get_collection(
                 uow.session, obj_in.readable_collection_id, ctx
             )
             credential = await self._credential_service.create_credential(
-                source_short_name=source.short_name,
-                source_name=source.name,
+                source_short_name=source_entry.short_name,
+                source_name=source_entry.name,
                 auth_fields=validated_auth,
                 organization_id=ctx.organization.id,
                 auth_method=AuthenticationMethod.DIRECT,
-                oauth_type=getattr(source, "oauth_type", None),
-                auth_config_class=getattr(source, "auth_config_class", None),
+                oauth_type=source_entry.oauth_type,
+                auth_config_class=(
+                    source_entry.auth_config_ref.__name__ if source_entry.auth_config_ref else None
+                ),
                 db=uow.session,
                 uow=uow,
             )
             await uow.session.flush()
 
             connection = await source_connection_helpers.create_connection(
-                uow.session, obj_in.name, source, credential.id, ctx, uow
+                uow.session, obj_in.name, source_entry, credential.id, ctx, uow
             )
             await uow.session.flush()
             connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
@@ -699,7 +696,7 @@ class NewSourceConnectionService:
             sync_id, sync, sync_job = await self._handle_sync_creation(
                 uow,
                 obj_in,
-                source,
+                source_entry,
                 source_entry,
                 connection.id,
                 collection.id,
@@ -766,8 +763,6 @@ class NewSourceConnectionService:
         )
 
         # Determine OAuth1 vs OAuth2
-        from airweave.platform.auth.schemas import OAuth1Settings
-
         oauth_settings = await integration_settings.get_by_short_name(obj_in.short_name)
 
         if isinstance(oauth_settings, OAuth1Settings):
@@ -830,8 +825,6 @@ class NewSourceConnectionService:
         if not obj_in.authentication or not isinstance(
             obj_in.authentication, OAuthTokenAuthentication
         ):
-            from airweave.core.exceptions import BadRequestError
-
             raise BadRequestError("OAuth token authentication requires an access token")
 
         oauth_creds = {
@@ -850,27 +843,27 @@ class NewSourceConnectionService:
             obj_in.short_name, obj_in.authentication.access_token, validated_config
         )
 
-        source = await crud.source.get_by_short_name(db, short_name=obj_in.short_name)
-
         async with UnitOfWork(db) as uow:
             collection = await source_connection_helpers.get_collection(
                 uow.session, obj_in.readable_collection_id, ctx
             )
             credential = await self._credential_service.create_credential(
-                source_short_name=source.short_name,
-                source_name=source.name,
+                source_short_name=source_entry.short_name,
+                source_name=source_entry.name,
                 auth_fields=oauth_creds,
                 organization_id=ctx.organization.id,
                 auth_method=AuthenticationMethod.OAUTH_TOKEN,
-                oauth_type=getattr(source, "oauth_type", None),
-                auth_config_class=getattr(source, "auth_config_class", None),
+                oauth_type=source_entry.oauth_type,
+                auth_config_class=(
+                    source_entry.auth_config_ref.__name__ if source_entry.auth_config_ref else None
+                ),
                 db=uow.session,
                 uow=uow,
             )
             await uow.session.flush()
 
             connection = await source_connection_helpers.create_connection(
-                uow.session, obj_in.name, source, credential.id, ctx, uow
+                uow.session, obj_in.name, source_entry, credential.id, ctx, uow
             )
             await uow.session.flush()
             connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
@@ -878,7 +871,7 @@ class NewSourceConnectionService:
             sync_id, sync, sync_job = await self._handle_sync_creation(
                 uow,
                 obj_in,
-                source,
+                source_entry,
                 source_entry,
                 connection.id,
                 collection.id,
@@ -929,8 +922,6 @@ class NewSourceConnectionService:
         if not obj_in.authentication or not isinstance(
             obj_in.authentication, OAuthBrowserAuthentication
         ):
-            from airweave.core.exceptions import BadRequestError
-
             raise BadRequestError(
                 "OAuth BYOC requires browser authentication with client credentials"
             )
@@ -944,14 +935,10 @@ class NewSourceConnectionService:
             db, obj_in.short_name, validated_config, ctx
         )
 
-        from airweave.platform.auth.schemas import OAuth1Settings
-
         oauth_settings = await integration_settings.get_by_short_name(obj_in.short_name)
 
         if isinstance(oauth_settings, OAuth1Settings):
             if not obj_in.authentication.consumer_key or not obj_in.authentication.consumer_secret:
-                from airweave.core.exceptions import BadRequestError
-
                 raise BadRequestError("OAuth1 BYOC requires consumer_key and consumer_secret")
 
             init_result = await self._oauth_flow_service.initiate_oauth1(
@@ -966,8 +953,6 @@ class NewSourceConnectionService:
             )
         else:
             if not obj_in.authentication.client_id or not obj_in.authentication.client_secret:
-                from airweave.core.exceptions import BadRequestError
-
                 raise BadRequestError("OAuth2 BYOC requires client_id and client_secret")
 
             init_result = await self._oauth_flow_service.initiate_oauth2(
@@ -1013,16 +998,12 @@ class NewSourceConnectionService:
         if not obj_in.authentication or not isinstance(
             obj_in.authentication, AuthProviderAuthentication
         ):
-            from airweave.core.exceptions import BadRequestError
-
             raise BadRequestError("Auth provider authentication requires provider configuration")
 
-        auth_provider_conn = await crud.connection.get_by_readable_id(
+        auth_provider_conn = await self._connection_repo.get_by_readable_id(
             db, readable_id=obj_in.authentication.provider_readable_id, ctx=ctx
         )
         if not auth_provider_conn:
-            from airweave.core.exceptions import NotFoundException
-
             raise NotFoundException(
                 f"Auth provider '{obj_in.authentication.provider_readable_id}' not found"
             )
@@ -1031,8 +1012,6 @@ class NewSourceConnectionService:
             obj_in.short_name
         )
         if auth_provider_conn.short_name not in supported_providers:
-            from airweave.core.exceptions import BadRequestError
-
             raise BadRequestError(
                 f"Source '{obj_in.short_name}' does not support "
                 f"'{auth_provider_conn.short_name}' as an auth provider."
@@ -1044,7 +1023,6 @@ class NewSourceConnectionService:
                 db, auth_provider_conn.short_name, obj_in.authentication.provider_config
             )
 
-        source = await crud.source.get_by_short_name(db, short_name=obj_in.short_name)
         enabled_features = ctx.organization.enabled_features or []
         validated_config = await self._credential_service.validate_config_fields(
             obj_in.short_name, obj_in.config, enabled_features
@@ -1055,14 +1033,14 @@ class NewSourceConnectionService:
                 uow.session, obj_in.readable_collection_id, ctx
             )
             connection = await source_connection_helpers.create_connection(
-                uow.session, obj_in.name, source, None, ctx, uow
+                uow.session, obj_in.name, source_entry, None, ctx, uow
             )
             await uow.session.flush()
 
             sync_id, sync, sync_job = await self._handle_sync_creation(
                 uow,
                 obj_in,
-                source,
+                source_entry,
                 source_entry,
                 connection.id,
                 collection.id,
@@ -1136,8 +1114,6 @@ class NewSourceConnectionService:
             return AuthenticationMethod.OAUTH_BROWSER
         if isinstance(auth, AuthProviderAuthentication):
             return AuthenticationMethod.AUTH_PROVIDER
-        from airweave.core.exceptions import BadRequestError
-
         raise BadRequestError("Invalid authentication configuration")
 
     async def _handle_sync_creation(
@@ -1219,13 +1195,13 @@ class NewSourceConnectionService:
         response = await self._response_builder.build_response(db, source_conn, ctx)
 
         if source_conn.sync_id:
-            sync = await crud.sync.get(db, id=source_conn.sync_id, ctx=ctx)
+            sync = await self._sync_repo.get(db, id=source_conn.sync_id, ctx=ctx)
             if sync:
-                jobs = await crud.sync_job.get_all_by_sync_id(db, sync_id=sync.id)
+                jobs = await self._sync_job_repo.get_all_by_sync_id(db, sync_id=sync.id)
                 if jobs and len(jobs) > 0:
                     sync_job = jobs[0]
                     if sync_job.status == SyncJobStatus.PENDING:
-                        collection = await crud.collection.get_by_readable_id(
+                        collection = await self._collection_repo.get_by_readable_id(
                             db, readable_id=source_conn.readable_collection_id, ctx=ctx
                         )
                         if collection:
@@ -1266,8 +1242,6 @@ class NewSourceConnectionService:
                 source_entry.config_ref.validate_template_configs(validated_config)
                 return source_entry.config_ref.extract_template_configs(validated_config)
         except ValueError as e:
-            from airweave.domains.credentials.exceptions import InvalidConfigFieldsError
-
             raise InvalidConfigFieldsError(str(e))
         except Exception as e:
             ctx.logger.warning(f"Could not process template configs for {short_name}: {e}")

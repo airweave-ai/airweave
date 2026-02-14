@@ -11,11 +11,24 @@ from uuid import uuid4
 
 import pytest
 
+from unittest.mock import MagicMock
+
 from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus
 from airweave.domains.source_connections.response import ResponseBuilder
 from airweave.schemas.source_connection import AuthenticationMethod
 
 NOW = datetime.now(timezone.utc)
+
+
+def _make_builder() -> ResponseBuilder:
+    """Build a ResponseBuilder with dummy deps (only pure methods are tested)."""
+    return ResponseBuilder(
+        sc_repo=MagicMock(),
+        connection_repo=MagicMock(),
+        credential_repo=MagicMock(),
+        source_registry=MagicMock(),
+        entity_count_repo=MagicMock(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +161,7 @@ LIST_ITEM_CASES = [
 
 @pytest.mark.parametrize("case", LIST_ITEM_CASES, ids=lambda c: c.desc)
 def test_build_list_item(case: ListItemCase):
-    builder = ResponseBuilder()
+    builder = _make_builder()
     item = builder.build_list_item(case.data)
     assert item.status == case.expect_status
     assert item.short_name == case.data["short_name"]
@@ -170,7 +183,7 @@ def test_build_list_item_preserves_all_fields():
         "last_job": {"status": SyncJobStatus.COMPLETED, "completed_at": NOW},
         "entity_count": 99,
     }
-    builder = ResponseBuilder()
+    builder = _make_builder()
     item = builder.build_list_item(data)
     assert item.id == data["id"]
     assert item.name == "Full Test"
@@ -232,7 +245,7 @@ def test_map_sync_job(case: MapJobCase):
         "error": None,
     })()
 
-    builder = ResponseBuilder()
+    builder = _make_builder()
     result = builder.map_sync_job(job, sc_id)
 
     assert result.source_connection_id == sc_id

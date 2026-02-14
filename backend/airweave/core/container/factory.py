@@ -241,17 +241,43 @@ def _create_oauth_flow_service() -> "OAuthFlowServiceProtocol":
 
 def _create_source_connection_service(source_registry, credential_service, oauth_flow_service):
     """Create source connection service with all dependencies."""
+    from airweave.domains.collections.repository import CollectionRepository
+    from airweave.domains.connections.repository import ConnectionRepository
+    from airweave.domains.credentials.repository import IntegrationCredentialRepository
+    from airweave.domains.entity_counts.repository import EntityCountRepository
     from airweave.domains.source_connections.repository import SourceConnectionRepository
     from airweave.domains.source_connections.response import ResponseBuilder
-    from airweave.domains.source_connections.service import NewSourceConnectionService
+    from airweave.domains.source_connections.service import SourceConnectionService
+    from airweave.domains.sync_cursors.repository import SyncCursorRepository
+    from airweave.domains.sync_jobs.repository import SyncJobRepository
+    from airweave.domains.syncs.repository import SyncRepository
 
     sc_repo = SourceConnectionRepository()
-    response_builder = ResponseBuilder()
+    collection_repo = CollectionRepository()
+    connection_repo = ConnectionRepository()
+    credential_repo = IntegrationCredentialRepository()
+    entity_count_repo = EntityCountRepository()
+    sync_job_repo = SyncJobRepository()
+    sync_repo = SyncRepository()
+    sync_cursor_repo = SyncCursorRepository()
 
-    return NewSourceConnectionService(
+    response_builder = ResponseBuilder(
+        sc_repo=sc_repo,
+        connection_repo=connection_repo,
+        credential_repo=credential_repo,
+        source_registry=source_registry,
+        entity_count_repo=entity_count_repo,
+    )
+
+    return SourceConnectionService(
         sc_repo=sc_repo,
         response_builder=response_builder,
         source_registry=source_registry,
         credential_service=credential_service,
         oauth_flow_service=oauth_flow_service,
+        collection_repo=collection_repo,
+        connection_repo=connection_repo,
+        sync_job_repo=sync_job_repo,
+        sync_cursor_repo=sync_cursor_repo,
+        sync_repo=sync_repo,
     )

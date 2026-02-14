@@ -128,6 +128,54 @@ def fake_source_connection_service():
     return FakeSourceConnectionService()
 
 
+@pytest.fixture
+def fake_collection_repo():
+    """Fake CollectionRepository for testing."""
+    from airweave.domains.collections.fake import FakeCollectionRepository
+
+    return FakeCollectionRepository()
+
+
+@pytest.fixture
+def fake_connection_repo():
+    """Fake ConnectionRepository for testing."""
+    from airweave.domains.connections.fake import FakeConnectionRepository
+
+    return FakeConnectionRepository()
+
+
+@pytest.fixture
+def fake_sync_job_repo():
+    """Fake SyncJobRepository for testing."""
+    from airweave.domains.sync_jobs.fake import FakeSyncJobRepository
+
+    return FakeSyncJobRepository()
+
+
+@pytest.fixture
+def fake_sync_repo():
+    """Fake SyncRepository for testing."""
+    from airweave.domains.syncs.fake import FakeSyncRepository
+
+    return FakeSyncRepository()
+
+
+@pytest.fixture
+def fake_sync_cursor_repo():
+    """Fake SyncCursorRepository for testing."""
+    from airweave.domains.sync_cursors.fake import FakeSyncCursorRepository
+
+    return FakeSyncCursorRepository()
+
+
+@pytest.fixture
+def fake_entity_count_repo():
+    """Fake EntityCountRepository for testing."""
+    from airweave.domains.entity_counts.fake import FakeEntityCountRepository
+
+    return FakeEntityCountRepository()
+
+
 # ---------------------------------------------------------------------------
 # Test container — fully faked Container for injection
 # ---------------------------------------------------------------------------

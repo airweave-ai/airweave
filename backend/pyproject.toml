@@ -176,6 +176,11 @@ markers = [
 ]
 extend-exclude = ["backend (old, neena, only for inspiration)"]
 
+[tool.coverage.run]
+omit = [
+    "**/fake*.py",
+]
+
 [tool.importlinter]
 root_package = "airweave"
 

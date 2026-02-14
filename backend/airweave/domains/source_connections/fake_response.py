@@ -13,6 +13,8 @@ from airweave.schemas.source_connection import (
     SourceConnectionListItem,
 )
 
+_NOW = datetime.now(timezone.utc)
+
 
 class FakeResponseBuilder:
     """Fake implementation of ResponseBuilderProtocol.
@@ -57,10 +59,10 @@ class FakeResponseBuilder:
             name=data.get("name", ""),
             short_name=data.get("short_name", ""),
             readable_collection_id=data.get("readable_collection_id", ""),
-            status=SourceConnectionStatus.ACTIVE,
+            created_at=data.get("created_at", _NOW),
+            modified_at=data.get("modified_at", _NOW),
             is_authenticated=data.get("is_authenticated", True),
             entity_count=data.get("entity_count", 0),
-            federated_search=data.get("federated_search", False),
         )
 
     def map_sync_job(self, job: Any, source_connection_id: UUID) -> SourceConnectionJob:

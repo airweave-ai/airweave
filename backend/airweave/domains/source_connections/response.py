@@ -8,9 +8,16 @@ each domain builds its own responses.
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.core.config import settings as core_settings
+from airweave.core.protocols.connection import ConnectionRepositoryProtocol
+from airweave.core.protocols.entity_count import EntityCountRepositoryProtocol
+from airweave.core.protocols.integration_credential_repository import (
+    IntegrationCredentialRepositoryProtocol,
+)
 from airweave.core.shared_models import SyncJobStatus
+from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
+from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.schemas.source_connection import (
     AuthenticationDetails,
     AuthenticationMethod,
@@ -25,6 +32,21 @@ from airweave.schemas.source_connection import (
 class ResponseBuilder:
     """Builds API response schemas for source connections."""
 
+    def __init__(
+        self,
+        sc_repo: SourceConnectionRepositoryProtocol,
+        connection_repo: ConnectionRepositoryProtocol,
+        credential_repo: IntegrationCredentialRepositoryProtocol,
+        source_registry: SourceRegistryProtocol,
+        entity_count_repo: EntityCountRepositoryProtocol,
+    ) -> None:
+        """Initialize with all dependencies."""
+        self._sc_repo = sc_repo
+        self._connection_repo = connection_repo
+        self._credential_repo = credential_repo
+        self._source_registry = source_registry
+        self._entity_count_repo = entity_count_repo
+
     async def build_response(self, db: Any, source_conn: Any, ctx: Any) -> SourceConnection:
         """Build complete SourceConnection response from an ORM object.
 
@@ -35,7 +57,7 @@ class ResponseBuilder:
         schedule = await self._build_schedule_details(db, source_conn, ctx)
         sync_details = await self._build_sync_details(db, source_conn, ctx)
         entities = await self._build_entity_summary(db, source_conn, ctx)
-        federated_search = await self._get_federated_search(db, source_conn, ctx)
+        federated_search = self._get_federated_search(source_conn)
 
         last_job_status = None
         if sync_details and sync_details.last_job:
@@ -154,9 +176,9 @@ class ResponseBuilder:
             return AuthenticationMethod.AUTH_PROVIDER
 
         if source_conn.connection_id:
-            connection = await crud.connection.get(db, id=source_conn.connection_id, ctx=ctx)
+            connection = await self._connection_repo.get(db, id=source_conn.connection_id, ctx=ctx)
             if connection and connection.integration_credential_id:
-                credential = await crud.integration_credential.get(
+                credential = await self._credential_repo.get(
                     db, id=connection.integration_credential_id, ctx=ctx
                 )
                 if credential and hasattr(credential, "authentication_method"):
@@ -209,7 +231,7 @@ class ResponseBuilder:
         if not getattr(source_conn, "sync_id", None):
             return None
         try:
-            schedule_info = await crud.source_connection.get_schedule_info(db, source_conn)
+            schedule_info = await self._sc_repo.get_schedule_info(db, source_connection=source_conn)
             if schedule_info:
                 return schemas.ScheduleDetails(
                     cron=schedule_info.get("cron_expression"),
@@ -266,7 +288,7 @@ class ResponseBuilder:
         if not getattr(source_conn, "sync_id", None):
             return None
         try:
-            entity_counts = await crud.entity_count.get_counts_per_sync_and_type(
+            entity_counts = await self._entity_count_repo.get_counts_per_sync_and_type(
                 db, source_conn.sync_id
             )
             if entity_counts:
@@ -282,12 +304,10 @@ class ResponseBuilder:
             ctx.logger.warning(f"Failed to get entity summary: {e}")
         return None
 
-    async def _get_federated_search(self, db: Any, source_conn: Any, ctx: Any) -> bool:
-        """Get federated_search flag for the source."""
+    def _get_federated_search(self, source_conn: Any) -> bool:
+        """Get federated_search flag from the source registry."""
         try:
-            source_model = await crud.source.get_by_short_name(db, source_conn.short_name)
-            if source_model:
-                return getattr(source_model, "federated_search", False)
-        except Exception as e:
-            ctx.logger.warning(f"Failed to get federated_search for {source_conn.short_name}: {e}")
-        return False
+            entry = self._source_registry.get(source_conn.short_name)
+            return getattr(entry, "federated_search", False)
+        except KeyError:
+            return False
