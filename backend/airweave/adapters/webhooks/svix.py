@@ -229,15 +229,44 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
 
     @_auto_create_org
     async def _publish_internal(self, org_id: uuid.UUID, event_type: str, payload: dict) -> None:
-        await self._svix.message.create(
-            str(org_id),
-            MessageIn(
-                event_type=event_type,
-                channels=[event_type],
-                event_id=str(uuid.uuid4()),
-                payload=payload,
-            ),
+        event_id = str(uuid.uuid4())
+        print(
+            f"[SVIX PRE-CREATE] event_type={event_type} org_id={org_id} "
+            f"event_id={event_id} svix_url={settings.SVIX_URL}"
         )
+        try:
+            result = await self._svix.message.create(
+                str(org_id),
+                MessageIn(
+                    event_type=event_type,
+                    channels=[event_type],
+                    event_id=event_id,
+                    payload=payload,
+                ),
+            )
+            print(
+                f"[SVIX POST-CREATE] msg_id={result.id} event_type={event_type} "
+                f"org_id={org_id} channels={result.channels}"
+            )
+        except Exception as exc:
+            print(
+                f"[SVIX CREATE FAILED] event_type={event_type} org_id={org_id} "
+                f"event_id={event_id} error={exc!r}"
+            )
+            raise
+
+        # Verify the message is queryable immediately
+        try:
+            msgs = await self._svix.message.list(
+                str(org_id), MessageListOptions(event_types=[event_type])
+            )
+            found = any(m.id == result.id for m in msgs.data)
+            print(
+                f"[SVIX VERIFY] msg_id={result.id} found_in_list={found} "
+                f"total_msgs={len(msgs.data)} event_type={event_type}"
+            )
+        except Exception as exc:
+            print(f"[SVIX VERIFY FAILED] {exc!r}")
 
     # -------------------------------------------------------------------------
     # WebhookAdmin - Endpoint verification
@@ -269,20 +298,20 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
                 if response.status_code < 200 or response.status_code >= 300:
                     raise WebhooksError(
                         f"Endpoint returned HTTP {response.status_code}. Expected a 2xx response.",
-                        422,
+                        400,
                     )
             except httpx.TimeoutException as exc:
-                raise WebhooksError("Endpoint did not respond within 5 seconds.", 422) from exc
+                raise WebhooksError("Endpoint did not respond within 5 seconds.", 400) from exc
             except httpx.ConnectError as exc:
                 raise WebhooksError(
                     "Could not connect to endpoint. Please check the URL is correct "
                     "and the server is running.",
-                    422,
+                    400,
                 ) from exc
             except WebhooksError:
                 raise
             except httpx.HTTPError as exc:
-                raise WebhooksError(f"Failed to reach endpoint: {exc}", 422) from exc
+                raise WebhooksError(f"Failed to reach endpoint: {exc}", 400) from exc
 
     # -------------------------------------------------------------------------
     # WebhookAdmin - Subscriptions

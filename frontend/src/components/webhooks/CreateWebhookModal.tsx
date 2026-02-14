@@ -225,13 +225,10 @@ export function CreateWebhookModal({
                 <AlertCircle className="size-3.5 text-destructive shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <p className="text-[12px] font-medium text-destructive">
-                    Could not verify endpoint
+                    Failed to create webhook
                   </p>
                   <p className="text-[11px] text-destructive/80 mt-0.5 leading-relaxed">
                     {endpointError}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground/60 mt-1">
-                    Make sure your server is running and returns a 2xx response to POST requests.
                   </p>
                 </div>
               </div>

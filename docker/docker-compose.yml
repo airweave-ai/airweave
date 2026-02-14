@@ -256,8 +256,12 @@ services:
     image: svix/svix-server
     ports:
       - "8071:8071"
+    # Enable host.docker.internal on Linux (needed for webhook e2e tests —
+    # Svix delivers webhooks to the test receiver running on the host)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      SVIX_WHITELIST_SUBNETS: "[127.0.0.1/32, 172.17.0.0/16, 192.168.0.0/16, 10.0.0.0/8]"
+      SVIX_WHITELIST_SUBNETS: "[0.0.0.0/0, ::/0]"
       WAIT_FOR: "true"
       SVIX_REDIS_DSN: "redis://redis:6379"
       SVIX_DB_DSN: "postgresql://${POSTGRES_USER:-airweave}:${POSTGRES_PASSWORD:-airweave1234!}@postgres:5432/svix"
