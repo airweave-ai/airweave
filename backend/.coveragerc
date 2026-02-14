@@ -1,9 +1,9 @@
 [run]
-source = app
 omit =
     app/alembic/*
     app/tests/*
     app/local.py
+    **/fake*.py
 
 [report]
 exclude_lines =
