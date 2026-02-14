@@ -19,6 +19,7 @@ from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.exceptions import (
     AirweaveException,
+    BadRequestError,
     InvalidStateError,
     NotFoundException,
     PaymentRequiredException,
@@ -409,6 +410,7 @@ async def airweave_exception_handler(request: Request, exc: AirweaveException) -
     # the right status code automatically, no per-exception registration needed.
     # Add new base classes here as they're introduced (BadRequestError, etc.).
     status_map = {
+        BadRequestError: 400,
         TokenRefreshError: 401,
     }
 

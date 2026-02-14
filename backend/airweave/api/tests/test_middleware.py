@@ -8,7 +8,24 @@ from unittest.mock import MagicMock
 import pytest
 
 from airweave.api.middleware import airweave_exception_handler
-from airweave.core.exceptions import AirweaveException, TokenRefreshError
+from airweave.core.exceptions import AirweaveException, BadRequestError, TokenRefreshError
+
+
+@pytest.mark.asyncio
+async def test_bad_request_error_returns_400():
+    response = await airweave_exception_handler(MagicMock(), BadRequestError("invalid input"))
+    assert response.status_code == 400
+    assert b"invalid input" in response.body
+
+
+@pytest.mark.asyncio
+async def test_bad_request_subclass_returns_400():
+    """Subclasses of BadRequestError also map to 400."""
+    from airweave.domains.credentials.exceptions import InvalidCredentialsError
+
+    response = await airweave_exception_handler(MagicMock(), InvalidCredentialsError("bad creds"))
+    assert response.status_code == 400
+    assert b"bad creds" in response.body
 
 
 @pytest.mark.asyncio

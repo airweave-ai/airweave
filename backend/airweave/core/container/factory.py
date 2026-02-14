@@ -19,13 +19,14 @@ from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
 from airweave.core.logging import logger
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.credentials.service import CredentialService
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 
 if TYPE_CHECKING:
     from airweave.core.config import Settings
-    from airweave.core.protocols import CircuitBreaker, OcrProvider
+    from airweave.core.protocols import CircuitBreaker, CredentialServiceProtocol, OcrProvider
 
 
 def create_container(settings: Settings) -> Container:
@@ -68,11 +69,21 @@ def create_container(settings: Settings) -> Container:
     circuit_breaker = _create_circuit_breaker()
     ocr_provider = _create_ocr_provider(circuit_breaker, settings)
 
+    # -----------------------------------------------------------------
+    # Source Registry
+    # -----------------------------------------------------------------
+    source_registry = _create_source_registry()
+
     # Source Service
     # Auth provider registry is built first, then passed to the source
     # registry so it can compute supported_auth_providers per source.
     # -----------------------------------------------------------------
-    source_service = _create_source_service(settings)
+    source_service = _create_source_service(source_registry, settings)
+
+    # Credential Service
+    # Cross-cutting: uses SourceRegistry for schema lookups
+    # -----------------------------------------------------------------
+    credential_service = _create_credential_service(source_registry)
 
     return Container(
         event_bus=event_bus,
@@ -81,6 +92,7 @@ def create_container(settings: Settings) -> Container:
         circuit_breaker=circuit_breaker,
         ocr_provider=ocr_provider,
         source_service=source_service,
+        credential_service=credential_service,
     )
 
 
@@ -162,14 +174,8 @@ def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings"
     return FallbackOcrProvider(providers=providers, circuit_breaker=circuit_breaker)
 
 
-def _create_source_service(settings: Settings) -> SourceService:
-    """Create source service with its registry dependencies.
-
-    Build order matters:
-    1. Auth provider registry (no dependencies)
-    2. Entity definition registry (no dependencies)
-    3. Source registry (depends on both)
-    """
+def _create_source_registry() -> SourceRegistry:
+    """Create source registry with its dependencies."""
     auth_provider_registry = AuthProviderRegistry()
     auth_provider_registry.build()
 
@@ -178,8 +184,23 @@ def _create_source_service(settings: Settings) -> SourceService:
 
     source_registry = SourceRegistry(auth_provider_registry, entity_definition_registry)
     source_registry.build()
+    return source_registry
 
-    return SourceService(
+
+def _create_source_service(source_registry: SourceRegistry, settings: Settings) -> SourceService:
+    source_service = SourceService(
         source_registry=source_registry,
         settings=settings,
+    )
+    return source_service
+
+
+def _create_credential_service(source_registry) -> "CredentialServiceProtocol":
+    """Create credential service using the shared source registry."""
+    from airweave.domains.credentials.repository import IntegrationCredentialRepository
+
+    credential_repo = IntegrationCredentialRepository()
+    return CredentialService(
+        source_registry=source_registry,
+        credential_repo=credential_repo,
     )

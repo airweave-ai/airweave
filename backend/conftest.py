@@ -104,6 +104,14 @@ def fake_entity_definition_registry():
     return FakeEntityDefinitionRegistry()
 
 
+@pytest.fixture
+def fake_credential_service():
+    """Fake CredentialService for testing credential consumers."""
+    from airweave.domains.credentials.fake import FakeCredentialService
+
+    return FakeCredentialService()
+
+
 # ---------------------------------------------------------------------------
 # Test container — fully faked Container for injection
 # ---------------------------------------------------------------------------
@@ -117,6 +125,7 @@ def test_container(
     fake_circuit_breaker,
     fake_ocr_provider,
     fake_source_service,
+    fake_credential_service,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -135,4 +144,5 @@ def test_container(
         circuit_breaker=fake_circuit_breaker,
         ocr_provider=fake_ocr_provider,
         source_service=fake_source_service,
+        credential_service=fake_credential_service,
     )

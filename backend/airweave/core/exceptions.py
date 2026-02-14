@@ -44,6 +44,18 @@ class NotFoundException(AirweaveException):
         super().__init__(self.message)
 
 
+class BadRequestError(AirweaveException):
+    """Base exception for 400 Bad Request domain errors.
+
+    All domain exceptions representing client errors should inherit from this.
+    The middleware maps this to HTTP 400 automatically.
+    """
+
+    def __init__(self, message: Optional[str] = "Bad request"):
+        self.message = message
+        super().__init__(self.message)
+
+
 class ImmutableFieldError(AirweaveException):
     """Exception raised for attempts to modify immutable fields in a database model."""
 

@@ -15,6 +15,7 @@ from typing import Any
 
 from airweave.core.protocols import (
     CircuitBreaker,
+    CredentialServiceProtocol,
     EventBus,
     OcrProvider,
     WebhookAdmin,
@@ -33,15 +34,14 @@ class Container:
         await container.event_bus.publish(SyncLifecycleEvent(...))
 
         # Testing: construct directly with fakes
-        from airweave.adapters.event_bus import FakeEventBus
-        from airweave.adapters.circuit_breaker import FakeCircuitBreaker
-        from airweave.adapters.ocr import FakeOcrProvider
         test_container = Container(
             event_bus=FakeEventBus(),
             webhook_publisher=FakeWebhookPublisher(),
             webhook_admin=FakeWebhookAdmin(),
             circuit_breaker=FakeCircuitBreaker(),
             ocr_provider=FakeOcrProvider(),
+            source_service=FakeSourceService(),
+            credential_service=FakeCredentialService(),
         )
 
         # FastAPI endpoints: use Inject() to pull individual protocols
@@ -65,6 +65,9 @@ class Container:
 
     # Source service — API-facing source operations
     source_service: SourceServiceProtocol
+
+    # Credential service — cross-cutting credential validation and management
+    credential_service: CredentialServiceProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods
