@@ -6,6 +6,12 @@ Domain-specific: only used by source_connections service and response builder.
 from typing import Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
+from airweave.schemas.source_connection import (
+    SourceConnection,
+    SourceConnectionJob,
+    SourceConnectionListItem,
+)
+
 
 class SourceConnectionRepositoryProtocol(Protocol):
     """Data access for source connections.
@@ -42,4 +48,20 @@ class SourceConnectionRepositoryProtocol(Protocol):
 
     async def get_schedule_info(self, db: Any, source_connection: Any) -> Optional[Dict[str, Any]]:
         """Get schedule info for a source connection."""
+        ...
+
+
+class ResponseBuilderProtocol(Protocol):
+    """Builds API response schemas for source connections."""
+
+    async def build_response(self, db: Any, source_conn: Any, ctx: Any) -> SourceConnection:
+        """Build full SourceConnection response from ORM object."""
+        ...
+
+    def build_list_item(self, data: Dict[str, Any]) -> SourceConnectionListItem:
+        """Build a SourceConnectionListItem from a stats dict."""
+        ...
+
+    def map_sync_job(self, job: Any, source_connection_id: UUID) -> SourceConnectionJob:
+        """Convert sync job to SourceConnectionJob schema."""
         ...
