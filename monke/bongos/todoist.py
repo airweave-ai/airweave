@@ -198,7 +198,7 @@ class TodoistBongo(BaseBongo):
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.todoist.com/rest/v2/projects",
+                "https://api.todoist.com/api/v1/projects",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Content-Type": "application/json",
@@ -230,7 +230,7 @@ class TodoistBongo(BaseBongo):
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.todoist.com/rest/v2/tasks",
+                "https://api.todoist.com/api/v1/tasks",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Content-Type": "application/json",
@@ -256,7 +256,7 @@ class TodoistBongo(BaseBongo):
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"https://api.todoist.com/rest/v2/tasks/{task_id}",
+                f"https://api.todoist.com/api/v1/tasks/{task_id}",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Content-Type": "application/json",
@@ -273,7 +273,7 @@ class TodoistBongo(BaseBongo):
 
         async with httpx.AsyncClient() as client:
             response = await client.delete(
-                f"https://api.todoist.com/rest/v2/tasks/{task_id}",
+                f"https://api.todoist.com/api/v1/tasks/{task_id}",
                 headers={"Authorization": f"Bearer {self.access_token}"},
             )
 
@@ -285,7 +285,7 @@ class TodoistBongo(BaseBongo):
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"https://api.todoist.com/rest/v2/tasks/{task_id}",
+                    f"https://api.todoist.com/api/v1/tasks/{task_id}",
                     headers={"Authorization": f"Bearer {self.access_token}"},
                 )
 
@@ -312,7 +312,7 @@ class TodoistBongo(BaseBongo):
 
         async with httpx.AsyncClient() as client:
             response = await client.delete(
-                f"https://api.todoist.com/rest/v2/projects/{project_id}",
+                f"https://api.todoist.com/api/v1/projects/{project_id}",
                 headers={"Authorization": f"Bearer {self.access_token}"},
             )
 

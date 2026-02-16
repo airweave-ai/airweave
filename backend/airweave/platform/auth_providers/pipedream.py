@@ -9,6 +9,8 @@ from fastapi import HTTPException
 from airweave.core.credential_sanitizer import safe_log_credentials
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthResult
+from airweave.platform.configs.auth import PipedreamAuthConfig
+from airweave.platform.configs.config import PipedreamConfig
 from airweave.platform.decorators import auth_provider
 
 
@@ -35,8 +37,8 @@ class PipedreamDefaultOAuthException(Exception):
 @auth_provider(
     name="Pipedream",
     short_name="pipedream",
-    auth_config_class="PipedreamAuthConfig",
-    config_class="PipedreamConfig",
+    auth_config_class=PipedreamAuthConfig,
+    config_class=PipedreamConfig,
 )
 class PipedreamAuthProvider(BaseAuthProvider):
     """Pipedream authentication provider.

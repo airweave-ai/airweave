@@ -5,10 +5,9 @@ collections. Collections are containers that group related data from one or
 more source connections, enabling unified search across multiple data sources.
 """
 
-from typing import List, Sequence
+from typing import List
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Path, Query
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -25,14 +24,10 @@ from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
-from airweave.core.logging import ContextualLogger
-from airweave.core.shared_models import ActionType, SyncJobStatus
 from airweave.core.source_connection_service import source_connection_service
 from airweave.core.source_connection_service_helpers import source_connection_helpers
 from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
-from airweave.models.source_connection import SourceConnection
-from airweave.platform.cleanup import cleanup_service
 from airweave.schemas.errors import (
     NotFoundErrorResponse,
     RateLimitErrorResponse,
@@ -269,59 +264,20 @@ async def delete(
     event_bus: EventBus = Inject(EventBus),
 ) -> schemas.Collection:
     """Delete a collection and all associated data."""
-    # Find the collection
-    db_obj = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
-    if db_obj is None:
-        raise HTTPException(status_code=404, detail="Collection not found")
-
-    # Capture info before deletion for the event
-    collection_id = db_obj.id
-    collection_name = db_obj.name
-    collection_readable_id = db_obj.readable_id
-
-    # Convert to schema for cleanup service
-    collection_schema = schemas.Collection.model_validate(db_obj, from_attributes=True)
-
-    # Collect sync IDs before cascading deletes remove the rows
-    sync_id_rows: Sequence = await db.execute(
-        select(SourceConnection.sync_id)
-        .where(
-            SourceConnection.organization_id == ctx.organization.id,
-            SourceConnection.readable_collection_id == db_obj.readable_id,
-            SourceConnection.sync_id.is_not(None),
-        )
-        .distinct()
+    result = await collection_service.delete(
+        db,
+        readable_id=readable_id,
+        ctx=ctx,
     )
-    sync_ids = [row[0] for row in sync_id_rows if row[0]]
-
-    # Cancel any running Temporal workflows before deletion to prevent FK violations.
-    # Without this, CASCADE-deleting sync rows while a worker is still writing entities
-    # causes ForeignKeyViolationError on the entity table.
-    for sync_id in sync_ids:
-        latest_job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=sync_id)
-        if latest_job and latest_job.status in [SyncJobStatus.PENDING, SyncJobStatus.RUNNING]:
-            try:
-                await temporal_service.cancel_sync_job_workflow(str(latest_job.id), ctx)
-                ctx.logger.info(f"Cancelled job {latest_job.id} before collection deletion")
-            except Exception as e:
-                ctx.logger.warning(
-                    f"Failed to cancel job {latest_job.id} during collection deletion: {e}"
-                )
-
-    # Clean up all external data (schedules, destinations, ARF)
-    await cleanup_service.cleanup_collection(db, collection_schema, sync_ids, ctx)
-
-    # Delete the collection - CASCADE will handle all child objects
-    result = await crud.collection.remove(db, id=db_obj.id, ctx=ctx)
 
     # Publish collection.deleted event
     try:
         await event_bus.publish(
             CollectionLifecycleEvent.deleted(
                 organization_id=ctx.organization.id,
-                collection_id=collection_id,
-                collection_name=collection_name,
-                collection_readable_id=collection_readable_id,
+                collection_id=result.id,
+                collection_name=result.name,
+                collection_readable_id=result.readable_id,
             )
         )
     except Exception as e:

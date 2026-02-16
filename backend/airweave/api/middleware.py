@@ -116,11 +116,17 @@ async def exception_logging_middleware(request: Request, call_next: callable) ->
         return JSONResponse(status_code=500, content=response_content)
 
 
+# Paths that are exempt from the request timeout (long-running operations)
+TIMEOUT_EXEMPT_PATHS = [
+    "/agentic-search",  # Agentic search involves multiple LLM calls
+]
+
+
 async def request_timeout_middleware(request: Request, call_next: callable) -> Response:
     """Middleware to enforce request timeout.
 
     Wraps request processing in asyncio.wait_for() to prevent long-running requests
-    from tying up resources.
+    from tying up resources. Some paths are exempt from timeout (e.g., agentic search).
 
     Args:
     ----
@@ -132,6 +138,12 @@ async def request_timeout_middleware(request: Request, call_next: callable) -> R
         Response: The response to the incoming request or 504 on timeout.
 
     """
+    # Check if this path is exempt from timeout
+    path = request.url.path
+    for exempt_path in TIMEOUT_EXEMPT_PATHS:
+        if exempt_path in path:
+            return await call_next(request)
+
     try:
         response = await asyncio.wait_for(
             call_next(request), timeout=settings.API_REQUEST_TIMEOUT_SECONDS
@@ -364,7 +376,7 @@ async def validation_exception_handler(
                 "class_name": class_name,
                 "stack_trace": stack_trace,
                 "type": exception_type,
-                "error_messages": error_messages,
+                "errors": error_messages["errors"],
             },
         )
 

@@ -12,7 +12,7 @@ from .google_docs import GoogleDocsCursor
 from .google_drive import GoogleDriveCursor
 from .google_slides import GoogleSlidesCursor
 from .outlook_mail import OutlookMailCursor
-from .postgresql import PostgreSQLCursor
+from .sharepoint2019v2 import SharePoint2019V2Cursor
 
 __all__ = [
     "BaseCursor",
@@ -22,6 +22,6 @@ __all__ = [
     "GoogleDocsCursor",
     "GoogleSlidesCursor",
     "GitHubCursor",
-    "PostgreSQLCursor",
     "OutlookMailCursor",
+    "SharePoint2019V2Cursor",
 ]

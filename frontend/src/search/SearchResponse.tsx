@@ -101,6 +101,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     const statusCode = searchResponse?.error ? (searchResponse?.status ?? 500) : 200;
     const responseTime = searchResponse?.responseTime || null;
     const completion = searchResponse?.completion || '';
+    const citations = searchResponse?.citations || [];
     const results = searchResponse?.results || [];
     const hasError = Boolean(searchResponse?.error);
     const isTransientError = Boolean(searchResponse?.errorIsTransient);
@@ -147,7 +148,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 
         results.forEach((result: any, idx: number) => {
             const entityId = result.entity_id;
-            const rawSourceName = result.system_metadata?.source_name || 'Unknown';
+            const rawSourceName = result.system_metadata?.source_name || result.airweave_system_metadata?.source_name || 'Unknown';
             const sourceName = formatSourceName(rawSourceName);
 
             if (entityId) {
@@ -167,6 +168,38 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 
         return { entitySourceMap: map, resultNumberMap: numberMap };
     }, [results]);
+
+    // Resolve citation entity_ids to display names + sources for the references footer
+    const citationEntities = useMemo(() => {
+        if (!citations || citations.length === 0 || results.length === 0) return [];
+
+        const formatSourceName = (name: string) => {
+            return name
+                .split('_')
+                .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ');
+        };
+
+        // Deduplicate by entity_id
+        const seen = new Set<string>();
+        return citations
+            .map((citation: any) => {
+                const entityId = citation.entity_id;
+                if (!entityId || seen.has(entityId)) return null;
+                seen.add(entityId);
+                const result = results.find((r: any) => r.entity_id === entityId);
+                if (!result) return null;
+                const rawSource = result.airweave_system_metadata?.source_name
+                    || result.system_metadata?.source_name
+                    || 'Unknown';
+                return {
+                    entity_id: entityId,
+                    name: result.name || entityId,
+                    source: formatSourceName(rawSource),
+                };
+            })
+            .filter(Boolean) as { entity_id: string; name: string; source: string }[];
+    }, [citations, results]);
 
     // Helper functions for tooltip management with delay
     const handleTooltipMouseEnter = useCallback((tooltipId: string) => {
@@ -460,6 +493,56 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 
         for (let i = 0; i < src.length; i++) {
             const event = src[i] as any;
+
+            // ─── Agentic search events ───────────────────────────────────
+            if (event.type === 'planning') {
+                const plan = event.plan;
+                rows.push(
+                    <div key={`planning-${i}`} className="animate-fade-in space-y-1.5 py-1.5">
+                        {plan?.reasoning && (
+                            <div className={cn(
+                                "text-[11px] leading-relaxed",
+                                isDark ? "text-gray-400" : "text-gray-500"
+                            )}>
+                                {plan.reasoning}
+                            </div>
+                        )}
+                    </div>
+                );
+                continue;
+            }
+
+            if (event.type === 'searching') {
+                rows.push(
+                    <div key={`searching-${i}`} className={cn(
+                        "animate-fade-in flex items-center gap-2 py-0.5 text-[10px]",
+                        isDark ? "text-gray-500" : "text-gray-400"
+                    )}>
+                        <span>
+                            Retrieved <span className={cn("font-medium", isDark ? "text-gray-300" : "text-gray-600")}>{event.result_count}</span> results in <span className={cn("font-medium", isDark ? "text-gray-300" : "text-gray-600")}>{event.duration_ms}ms</span>
+                        </span>
+                    </div>
+                );
+                continue;
+            }
+
+            if (event.type === 'evaluating') {
+                const eval_ = event.evaluation;
+                if (eval_?.reasoning) {
+                    rows.push(
+                        <div key={`evaluating-${i}`} className="animate-fade-in py-0.5">
+                            <div className={cn(
+                                "text-[11px] leading-relaxed",
+                                isDark ? "text-gray-400" : "text-gray-500"
+                            )}>
+                                {eval_.reasoning}
+                            </div>
+                        </div>
+                    );
+                }
+                continue;
+            }
+
             // Operation skipped notices (backend emits when ops are not applicable)
             if (event.type === 'operation_skipped') {
                 const op = (event as any).operation || 'operation';
@@ -1237,12 +1320,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                     </div>
                 );
             } else if (event.type === 'done') {
-                rows.push(
-                    <div key={(event.seq ?? i) + "-" + i} className="py-0.5 px-2 text-[11px] opacity-90 flex items-center gap-1.5">
-                        <Check className="h-3 w-3 opacity-80" strokeWidth={1.5} />
-                        Search complete
-                    </div>
-                );
+                continue;
             } else if (event.type === 'results' || event.type === 'summary') {
                 continue;
             } else if (event.type === 'error') {
@@ -1661,18 +1739,14 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                 isDark ? "bg-gray-950" : "bg-white"
                             )}>
                                 {(!events || events.length === 0) ? (
-                                    <div className="px-1 py-1">
-                                        <div className="space-y-2 animate-pulse">
-                                            <div className={cn("h-3 rounded", isDark ? "bg-gray-800" : "bg-gray-200")}></div>
-                                            <div className={cn("h-3 rounded", isDark ? "bg-gray-800" : "bg-gray-200")}></div>
-                                            <div className={cn("h-3 rounded w-5/6", isDark ? "bg-gray-800" : "bg-gray-200")}></div>
-                                            <div className="py-1">
-                                                <div className={cn("h-px", isDark ? "bg-gray-800" : "bg-gray-200")}></div>
-                                            </div>
-                                            <div className={cn("h-3 rounded", isDark ? "bg-gray-800" : "bg-gray-200")}></div>
-                                            <div className={cn("h-3 rounded w-2/3", isDark ? "bg-gray-800" : "bg-gray-200")}></div>
-                                            <div className={cn("h-3 rounded w-1/2", isDark ? "bg-gray-800" : "bg-gray-200")}></div>
-                                        </div>
+                                    <div className="animate-fade-in px-1 py-2 flex items-center gap-2">
+                                        <span className={cn(
+                                            "inline-block h-1 w-1 rounded-full animate-pulse shrink-0",
+                                            isDark ? "bg-gray-500" : "bg-gray-400"
+                                        )} />
+                                        <span className={cn("text-[11px]", isDark ? "text-gray-500" : "text-gray-400")}>
+                                            {responseType === 'completion' ? 'Planning search strategy...' : 'Starting search...'}
+                                        </span>
                                     </div>
                                 ) : (
                                     <>
@@ -1680,25 +1754,6 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                         {events.some((e: any) => e?.type === 'cancelled') && (
                                             <div className="py-0.5 px-2 text-[11px] text-red-500">
                                                 Search cancelled
-                                            </div>
-                                        )}
-                                        {isSearching && (
-                                            <div className="py-0.5 px-2 text-[11px] opacity-70 flex items-center gap-2">
-                                                <span>Searching</span>
-                                                <span className="flex items-center gap-1">
-                                                    <span className={cn(
-                                                        "h-1 w-1 rounded-full animate-pulse",
-                                                        isDark ? "bg-gray-600" : "bg-gray-400"
-                                                    )} style={{ animationDelay: '0ms' }} />
-                                                    <span className={cn(
-                                                        "h-1 w-1 rounded-full animate-pulse",
-                                                        isDark ? "bg-gray-600" : "bg-gray-400"
-                                                    )} style={{ animationDelay: '150ms' }} />
-                                                    <span className={cn(
-                                                        "h-1 w-1 rounded-full animate-pulse",
-                                                        isDark ? "bg-gray-600" : "bg-gray-400"
-                                                    )} style={{ animationDelay: '300ms' }} />
-                                                </span>
                                             </div>
                                         )}
                                     </>
@@ -1726,7 +1781,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                         </div>
                                     ) : completion ? (
                                         // Show the actual completion (only available when search completes)
-                                        <ReactMarkdown
+                                        <div className="animate-fade-in"><ReactMarkdown
                                             remarkPlugins={[remarkGfm]}
                                             components={{
                                                 h1: ({ node, ...props }) => <h1 className="text-[13px] font-semibold mt-0 mb-1.5" {...props} />,
@@ -2015,10 +2070,49 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                                 }
                                             }}
                                         >
-                                            {completion}
-                                        </ReactMarkdown>
+                                            {completion.replace(/\\n/g, '\n')}
+                                        </ReactMarkdown></div>
                                     ) : null}
                                 </div>
+
+                                {/* References footer */}
+                                {!isSearching && citationEntities.length > 0 && (
+                                    <div className={cn(
+                                        "animate-fade-in border-t px-4 py-3",
+                                        isDark ? "border-gray-800/50" : "border-gray-200/50"
+                                    )}>
+                                        <div className={cn(
+                                            "text-[10px] font-medium uppercase tracking-wider mb-2",
+                                            isDark ? "text-gray-500" : "text-gray-400"
+                                        )}>
+                                            Sources
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {citationEntities.map((entity) => (
+                                                <button
+                                                    key={entity.entity_id}
+                                                    onClick={() => handleEntityClick(entity.entity_id)}
+                                                    className={cn(
+                                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px]",
+                                                        "transition-colors cursor-pointer max-w-[280px]",
+                                                        isDark
+                                                            ? "bg-gray-800/60 text-gray-300 hover:bg-gray-700/80 hover:text-gray-100 border border-gray-700/50"
+                                                            : "bg-gray-50 text-gray-700 hover:bg-gray-100 hover:text-gray-900 border border-gray-200"
+                                                    )}
+                                                    title={`${entity.name} — ${entity.source}`}
+                                                >
+                                                    <span className="truncate font-medium">{entity.name}</span>
+                                                    <span className={cn(
+                                                        "shrink-0 text-[10px]",
+                                                        isDark ? "text-gray-500" : "text-gray-400"
+                                                    )}>
+                                                        {entity.source}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 

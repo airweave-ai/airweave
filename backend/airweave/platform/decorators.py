@@ -97,23 +97,23 @@ def source(
             )
 
         # Set metadata as class attributes
-        cls._is_source = True
-        cls._name = name
-        cls._short_name = short_name
-        cls._auth_methods = auth_methods
-        cls._oauth_type = oauth_type
-        cls._requires_byoc = requires_byoc
-        cls._auth_config_class = auth_config_class
-        cls._config_class = config_class
-        cls._labels = labels or []
-        cls._supports_continuous = supports_continuous
-        cls._federated_search = federated_search
-        cls._supports_temporal_relevance = supports_temporal_relevance
-        cls._cursor_class = cursor_class
-        cls._rate_limit_level = rate_limit_level
-        cls._supports_access_control = supports_access_control
-        cls._feature_flag = feature_flag
-        cls._internal = internal
+        cls.is_source = True
+        cls.source_name = name
+        cls.short_name = short_name
+        cls.auth_methods = auth_methods
+        cls.oauth_type = oauth_type
+        cls.requires_byoc = requires_byoc
+        cls.auth_config_class = auth_config_class
+        cls.config_class = config_class
+        cls.labels = labels or []
+        cls.supports_continuous = supports_continuous
+        cls.federated_search = federated_search
+        cls.supports_temporal_relevance = supports_temporal_relevance
+        cls.cursor_class = cursor_class
+        cls.rate_limit_level = rate_limit_level
+        cls.supports_access_control = supports_access_control
+        cls.feature_flag = feature_flag
+        cls.internal = internal
 
         # Add validation method if not present
         if not hasattr(cls, "validate"):
@@ -159,19 +159,19 @@ def destination(
     """
 
     def decorator(cls: type) -> type:
-        cls._is_destination = True
-        cls._name = name
-        cls._short_name = short_name
-        cls._auth_config_class = auth_config_class
-        cls._config_class = config_class
+        cls.is_destination = True
+        cls.destination_name = name
+        cls.short_name = short_name
+        cls.auth_config_class = auth_config_class
+        cls.config_class = config_class
 
         # Capability metadata
-        cls._supports_upsert = supports_upsert
-        cls._supports_delete = supports_delete
-        cls._supports_vector = supports_vector
-        cls._max_batch_size = max_batch_size
-        cls._requires_client_embedding = requires_client_embedding
-        cls._supports_temporal_relevance = supports_temporal_relevance
+        cls.supports_upsert = supports_upsert
+        cls.supports_delete = supports_delete
+        cls.supports_vector = supports_vector
+        cls.max_batch_size = max_batch_size
+        cls.requires_client_embedding = requires_client_embedding
+        cls.supports_temporal_relevance = supports_temporal_relevance
 
         return cls
 
@@ -185,8 +185,8 @@ def destination(
 def auth_provider(
     name: str,
     short_name: str,
-    auth_config_class: str,
-    config_class: str,
+    auth_config_class: Type[BaseModel],
+    config_class: Type[BaseModel],
 ) -> Callable[[type], type]:
     """Class decorator to mark a class as representing an Airweave auth provider.
 
@@ -194,8 +194,8 @@ def auth_provider(
     ----
         name (str): The name of the auth provider.
         short_name (str): The short name of the auth provider.
-        auth_config_class (str): The authentication config class of the auth provider.
-        config_class (str): The configuration class for the auth provider.
+        auth_config_class (Type[BaseModel]): The authentication config class.
+        config_class (Type[BaseModel]): The configuration class.
 
     Returns:
     -------
@@ -204,11 +204,11 @@ def auth_provider(
     """
 
     def decorator(cls: type) -> type:
-        cls._is_auth_provider = True
-        cls._name = name
-        cls._short_name = short_name
-        cls._auth_config_class = auth_config_class
-        cls._config_class = config_class
+        cls.is_auth_provider = True
+        cls.provider_name = name
+        cls.short_name = short_name
+        cls.auth_config_class = auth_config_class
+        cls.config_class = config_class
         return cls
 
     return decorator

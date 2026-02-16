@@ -3,7 +3,7 @@
   "info": {
     "title": "Airweave",
     "version": "0.1.0",
-    "description": "\n\n## API Groups\nThis API spec only includes the following API groups:\n- **Sources**: API endpoints for discovering available data source connectors and their configuration requirements\n- **Collections**: API endpoints for managing collections - logical groups of data sources that provide unified search capabilities\n- **Source Connections**: API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections\n- **Events**: API endpoints for managing webhook subscriptions and event messages. Subscribe to events like sync completions to receive real-time notifications at your webhook URL\n"
+    "description": "\n\n## API Groups\nThis API spec only includes the following API groups:\n- **Sources**: API endpoints for discovering available data source connectors and their configuration requirements\n- **Collections**: API endpoints for managing collections - logical groups of data sources that provide unified search capabilities\n- **Source Connections**: API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections\n- **Webhooks**: API endpoints for managing webhook subscriptions and messages. Subscribe to events like sync completions to receive real-time notifications at your webhook URL\n"
   },
   "paths": {
     "/sources": {
@@ -606,7 +606,7 @@
           "collections"
         ],
         "summary": "Refresh All Sources",
-        "description": "Trigger data synchronization for all source connections in a collection.\n\nStarts sync jobs for every source connection in the collection, pulling the latest\ndata from each connected source. Jobs run asynchronously in the background.\n\nReturns a list of sync jobs that were created. Use the source connection endpoints\nto monitor the progress and status of individual sync jobs.\n\n**Note**: If any source connection is already syncing, a new job will still be\ncreated and queued.",
+        "description": "Trigger data synchronization for all source connections in a collection.\n\nStarts sync jobs for every source connection in the collection, pulling the latest\ndata from each connected source. Jobs run asynchronously in the background.\n\nReturns a list of sync jobs that were created. Use the source connection endpoints\nto monitor the progress and status of individual sync jobs.",
         "operationId": "refresh_all_source_connections_collections__readable_id__refresh_all_post",
         "parameters": [
           {
@@ -1261,7 +1261,7 @@
           "source-connections"
         ],
         "summary": "Delete Source Connection",
-        "description": "Permanently delete a source connection and all its synced data.\n\nThis operation:\n- Removes all entities synced from this source from the vector database\n- Cancels any scheduled or running sync jobs\n- Deletes the connection configuration and credentials\n\n**Warning**: This action cannot be undone. All synced data will be permanently deleted.",
+        "description": "Permanently delete a source connection and all its synced data.\n\n**What happens when you delete:**\n\n1. Any running sync is cancelled and the API waits (up to 15 s) for the\n   worker to stop writing.\n2. The source connection, sync configuration, job history, and entity\n   metadata are cascade-deleted from the database.\n3. A background cleanup workflow is scheduled to remove data from the\n   vector database (Vespa) and raw data storage (ARF). This may take\n   several minutes for large datasets but does **not** block the response.\n\nThe API returns immediately after step 2. Vector database cleanup happens\nasynchronously -- the data becomes unsearchable as soon as the database\nrecords are deleted.\n\n**Warning**: This action cannot be undone.",
         "operationId": "delete_source_connections__source_connection_id__delete",
         "parameters": [
           {
@@ -1428,7 +1428,7 @@
           "source-connections"
         ],
         "summary": "List Sync Jobs",
-        "description": "Retrieve the sync job history for a source connection.\n\nReturns a list of sync jobs ordered by creation time (newest first). Each job\nincludes status, timing information, and entity counts.\n\nJob statuses:\n- **PENDING**: Job is queued and waiting to start\n- **RUNNING**: Sync is actively pulling and processing data\n- **COMPLETED**: Sync finished successfully\n- **FAILED**: Sync encountered an error\n- **CANCELLED**: Sync was manually cancelled\n- **CANCELLING**: Cancellation has been requested",
+        "description": "Retrieve the sync job history for a source connection.\n\nReturns a list of sync jobs ordered by creation time (newest first). Each job\nincludes status, timing information, and entity counts.\n\nJob statuses:\n- **PENDING**: Job is queued, waiting for the worker to pick it up\n- **RUNNING**: Sync is actively pulling and processing data\n- **COMPLETED**: Sync finished successfully\n- **FAILED**: Sync encountered an unrecoverable error\n- **CANCELLING**: Cancellation has been requested. The worker is\n  gracefully stopping the pipeline and cleaning up destination data.\n- **CANCELLED**: Sync was cancelled. The worker has fully stopped\n  and destination data cleanup has been scheduled.",
         "operationId": "get_source_connection_jobs_source_connections__source_connection_id__jobs_get",
         "parameters": [
           {
@@ -1519,7 +1519,7 @@
           "source-connections"
         ],
         "summary": "Cancel Sync Job",
-        "description": "Request cancellation of a running sync job.\n\nThe job will be marked as CANCELLING and the sync workflow will stop at the\nnext checkpoint. Already-processed entities are retained.\n\n**Note**: Cancellation is asynchronous. The job status will change to CANCELLED\nonce the workflow has fully stopped.",
+        "description": "Request cancellation of a running sync job.\n\n**State lifecycle**: `PENDING` / `RUNNING` \u2192 `CANCELLING` \u2192 `CANCELLED`\n\n1. The API immediately marks the job as **CANCELLING** in the database.\n2. A cancellation signal is sent to the Temporal workflow.\n3. The worker receives the signal, gracefully stops the sync pipeline\n   (cancels worker pool, source stream), and marks the job as **CANCELLED**.\n\nAlready-processed entities are retained in the vector database.\nIf the worker is unresponsive, a background cleanup job will force the\ntransition to CANCELLED after 3 minutes.\n\n**Note**: Only jobs in `PENDING` or `RUNNING` state can be cancelled.\nAttempting to cancel a `COMPLETED`, `FAILED`, or `CANCELLED` job returns 400.",
         "operationId": "cancel_job_source_connections__source_connection_id__jobs__job_id__cancel_post",
         "parameters": [
           {
@@ -1608,14 +1608,14 @@
         ]
       }
     },
-    "/events/messages": {
+    "/webhooks/messages": {
       "get": {
         "tags": [
-          "events"
+          "webhooks"
         ],
         "summary": "List Messages",
-        "description": "Retrieve all event messages for your organization.\n\nEvent messages represent webhook payloads that were sent (or attempted to be sent)\nto your subscribed endpoints. Each message contains the event type, payload data,\nand delivery status information.\n\nUse the `event_types` query parameter to filter messages by specific event types,\nsuch as `sync.completed` or `sync.failed`.",
-        "operationId": "get_messages_events_messages_get",
+        "description": "Retrieve all webhook messages for your organization.\n\nWebhook messages represent payloads that were sent (or attempted to be sent)\nto your subscribed endpoints. Each message contains the event type, payload data,\nand delivery status information.\n\nUse the `event_types` query parameter to filter messages by specific event types,\nsuch as `sync.completed` or `sync.failed`.",
+        "operationId": "get_messages_webhooks_messages_get",
         "parameters": [
           {
             "name": "event_types",
@@ -1645,15 +1645,15 @@
         ],
         "responses": {
           "200": {
-            "description": "List of event messages",
+            "description": "List of webhook messages",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/EventMessage"
+                    "$ref": "#/components/schemas/WebhookMessage"
                   },
-                  "title": "Response 200 Get Messages Events Messages Get"
+                  "title": "Response 200 Get Messages Webhooks Messages Get"
                 }
               }
             }
@@ -1686,14 +1686,14 @@
         ]
       }
     },
-    "/events/messages/{message_id}": {
+    "/webhooks/messages/{message_id}": {
       "get": {
         "tags": [
-          "events"
+          "webhooks"
         ],
         "summary": "Get Message",
-        "description": "Retrieve a specific event message by its ID.\n\nReturns the full message details including the event type, payload data,\ntimestamp, and delivery channel information. Use this to inspect the\nexact payload that was sent to your webhook endpoints.\n\nUse `include_attempts=true` to also retrieve delivery attempts for this message,\nwhich include HTTP response codes, response bodies, and timestamps for debugging\ndelivery failures.",
-        "operationId": "get_message_events_messages__message_id__get",
+        "description": "Retrieve a specific webhook message by its ID.\n\nReturns the full message details including the event type, payload data,\ntimestamp, and delivery channel information. Use this to inspect the\nexact payload that was sent to your webhook endpoints.\n\nUse `include_attempts=true` to also retrieve delivery attempts for this message,\nwhich include HTTP response codes, response bodies, and timestamps for debugging\ndelivery failures.",
+        "operationId": "get_message_webhooks_messages__message_id__get",
         "parameters": [
           {
             "name": "message_id",
@@ -1722,11 +1722,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Event message details",
+            "description": "Webhook message details",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EventMessageWithAttempts"
+                  "$ref": "#/components/schemas/WebhookMessageWithAttempts"
                 }
               }
             }
@@ -1769,14 +1769,14 @@
         ]
       }
     },
-    "/events/subscriptions": {
+    "/webhooks/subscriptions": {
       "get": {
         "tags": [
-          "events"
+          "webhooks"
         ],
         "summary": "List Subscriptions",
         "description": "List all webhook subscriptions for your organization.\n\nReturns all configured webhook endpoints, including their URLs, subscribed\nevent types, and current status (enabled/disabled). Use this to audit\nyour webhook configuration or find a specific subscription.",
-        "operationId": "get_subscriptions_events_subscriptions_get",
+        "operationId": "get_subscriptions_webhooks_subscriptions_get",
         "parameters": [],
         "responses": {
           "200": {
@@ -1788,7 +1788,7 @@
                   "items": {
                     "$ref": "#/components/schemas/WebhookSubscription"
                   },
-                  "title": "Response 200 Get Subscriptions Events Subscriptions Get"
+                  "title": "Response 200 Get Subscriptions Webhooks Subscriptions Get"
                 }
               }
             }
@@ -1822,11 +1822,11 @@
       },
       "post": {
         "tags": [
-          "events"
+          "webhooks"
         ],
         "summary": "Create Subscription",
         "description": "Create a new webhook subscription.\n\nWebhook subscriptions allow you to receive real-time notifications when events\noccur in Airweave. When you create a subscription, you specify:\n\n- **URL**: The HTTPS endpoint where events will be delivered\n- **Event Types**: Which events you want to receive (e.g., `sync.completed`, `sync.failed`)\n- **Secret** (optional): A custom signing secret for verifying webhook signatures\n\nAfter creation, Airweave will send HTTP POST requests to your URL whenever\nmatching events occur. Each request includes a signature header for verification.",
-        "operationId": "create_subscription_events_subscriptions_post",
+        "operationId": "create_subscription_webhooks_subscriptions_post",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -1877,14 +1877,14 @@
         ]
       }
     },
-    "/events/subscriptions/{subscription_id}": {
+    "/webhooks/subscriptions/{subscription_id}": {
       "get": {
         "tags": [
-          "events"
+          "webhooks"
         ],
         "summary": "Get Subscription",
         "description": "Retrieve a specific webhook subscription with its recent delivery attempts.\n\nReturns the subscription configuration along with a history of message delivery\nattempts. This is useful for debugging delivery issues or verifying that your\nendpoint is correctly receiving events.\n\nUse `include_secret=true` to also retrieve the signing secret for webhook\nsignature verification. Keep this secret secure.",
-        "operationId": "get_subscription_events_subscriptions__subscription_id__get",
+        "operationId": "get_subscription_webhooks_subscriptions__subscription_id__get",
         "parameters": [
           {
             "name": "subscription_id",
@@ -1961,11 +1961,11 @@
       },
       "delete": {
         "tags": [
-          "events"
+          "webhooks"
         ],
         "summary": "Delete Subscription",
         "description": "Permanently delete a webhook subscription.\n\nOnce deleted, Airweave will stop sending events to this endpoint immediately.\nThis action cannot be undone. Any pending message deliveries will be cancelled.\n\nIf you want to temporarily stop receiving events, consider disabling the\nsubscription instead using the PATCH endpoint.",
-        "operationId": "delete_subscription_events_subscriptions__subscription_id__delete",
+        "operationId": "delete_subscription_webhooks_subscriptions__subscription_id__delete",
         "parameters": [
           {
             "name": "subscription_id",
@@ -2030,11 +2030,11 @@
       },
       "patch": {
         "tags": [
-          "events"
+          "webhooks"
         ],
         "summary": "Update Subscription",
         "description": "Update an existing webhook subscription.\n\nUse this endpoint to modify a subscription's configuration. You can:\n\n- **Change the URL**: Update where events are delivered\n- **Update event types**: Modify which events trigger notifications\n- **Enable/disable**: Temporarily pause delivery without deleting the subscription\n- **Recover messages**: When re-enabling, optionally recover missed messages\n\nOnly include the fields you want to change. Omitted fields will retain their\ncurrent values.\n\nWhen re-enabling a subscription (`disabled: false`), you can optionally provide\n`recover_since` to automatically retry all messages that were generated while\nthe subscription was disabled.",
-        "operationId": "patch_subscription_events_subscriptions__subscription_id__patch",
+        "operationId": "patch_subscription_webhooks_subscriptions__subscription_id__patch",
         "parameters": [
           {
             "name": "subscription_id",
@@ -2108,14 +2108,14 @@
         ]
       }
     },
-    "/events/subscriptions/{subscription_id}/recover": {
+    "/webhooks/subscriptions/{subscription_id}/recover": {
       "post": {
         "tags": [
-          "events"
+          "webhooks"
         ],
         "summary": "Recover Failed Messages",
         "description": "Retry failed message deliveries for a webhook subscription.\n\nTriggers a recovery process that replays all failed messages within the\nspecified time window. This is useful when:\n\n- Your endpoint was temporarily down and you want to catch up\n- You've fixed a bug in your webhook handler\n- You want to reprocess events after re-enabling a disabled subscription\n\nMessages are retried in chronological order. Successfully delivered messages\nare skipped; only failed or pending messages are retried.",
-        "operationId": "recover_failed_messages_events_subscriptions__subscription_id__recover_post",
+        "operationId": "recover_failed_messages_webhooks_subscriptions__subscription_id__recover_post",
         "parameters": [
           {
             "name": "subscription_id",
@@ -2343,6 +2343,7 @@
       "AdminSearchDestination": {
         "type": "string",
         "enum": [
+          "qdrant",
           "vespa"
         ],
         "title": "AdminSearchDestination",
@@ -2501,6 +2502,17 @@
               }
             ],
             "title": "Total Arf Entity Count"
+          },
+          "total_qdrant_entity_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Qdrant Entity Count"
           },
           "total_vespa_entity_count": {
             "anyOf": [
@@ -3986,7 +3998,7 @@
             },
             "type": "array",
             "title": "Event Types",
-            "description": "List of event types to subscribe to. Events not in this list will not be delivered to this subscription. Available types: `sync.pending`, `sync.running`, `sync.completed`, `sync.failed`, `sync.cancelled`.",
+            "description": "List of event types to subscribe to. Events not in this list will not be delivered to this subscription. Available types: `sync.pending`, `sync.running`, `sync.completed`, `sync.failed`, `sync.cancelled`, `source_connection.created`, `source_connection.auth_completed`, `source_connection.deleted`, `collection.created`, `collection.updated`, `collection.deleted`.",
             "example": [
               "sync.completed",
               "sync.failed"
@@ -4122,6 +4134,18 @@
             "title": "Timestamp",
             "description": "When this delivery attempt occurred (ISO 8601 format, UTC)",
             "example": "2024-03-15T09:45:33Z"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "The URL that was called"
           }
         },
         "type": "object",
@@ -4916,195 +4940,6 @@
         "title": "EntityTypeStats",
         "description": "Statistics for a specific entity type."
       },
-      "EventMessage": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "description": "Unique identifier for this message (UUID format)",
-            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-          },
-          "event_type": {
-            "type": "string",
-            "title": "Event Type",
-            "description": "The type of event (e.g., 'sync.completed', 'sync.failed')",
-            "example": "sync.completed"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/SyncEventPayload",
-            "description": "The event payload data, matching what is delivered to webhooks"
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Timestamp",
-            "description": "When this message was created (ISO 8601 format, UTC)",
-            "example": "2024-03-15T09:45:32Z"
-          },
-          "channels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Channels",
-            "description": "Channels this message was sent to (typically matches the event type)",
-            "example": [
-              "sync.completed"
-            ]
-          },
-          "tags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags",
-            "description": "Tags associated with this message for filtering"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "event_type",
-          "payload",
-          "timestamp"
-        ],
-        "title": "EventMessage",
-        "description": "An event message that was sent (or attempted) to webhook subscribers.\n\nThe payload contains the actual event data matching the webhook delivery format.",
-        "example": {
-          "channels": [
-            "sync.completed"
-          ],
-          "event_type": "sync.completed",
-          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-          "payload": {
-            "collection_name": "Customer Support Tickets",
-            "collection_readable_id": "customer-support-tickets-x7k9m",
-            "event_type": "sync.completed",
-            "job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            "source_connection_id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
-            "source_type": "zendesk",
-            "status": "completed",
-            "timestamp": "2024-03-15T09:45:32Z"
-          },
-          "timestamp": "2024-03-15T09:45:32Z"
-        }
-      },
-      "EventMessageWithAttempts": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "description": "Unique identifier for this message (UUID format)",
-            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-          },
-          "event_type": {
-            "type": "string",
-            "title": "Event Type",
-            "description": "The type of event (e.g., 'sync.completed', 'sync.failed')",
-            "example": "sync.completed"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/SyncEventPayload",
-            "description": "The event payload data, matching what is delivered to webhooks"
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Timestamp",
-            "description": "When this message was created (ISO 8601 format, UTC)",
-            "example": "2024-03-15T09:45:32Z"
-          },
-          "channels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Channels",
-            "description": "Channels this message was sent to (typically matches the event type)",
-            "example": [
-              "sync.completed"
-            ]
-          },
-          "tags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags",
-            "description": "Tags associated with this message for filtering"
-          },
-          "delivery_attempts": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/DeliveryAttempt"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delivery Attempts",
-            "description": "Delivery attempts for this message."
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "event_type",
-          "payload",
-          "timestamp"
-        ],
-        "title": "EventMessageWithAttempts",
-        "description": "An event message with delivery attempts.",
-        "example": {
-          "channels": [
-            "sync.completed"
-          ],
-          "event_type": "sync.completed",
-          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-          "payload": {
-            "collection_name": "Customer Support Tickets",
-            "collection_readable_id": "customer-support-tickets-x7k9m",
-            "event_type": "sync.completed",
-            "job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            "source_connection_id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
-            "source_type": "zendesk",
-            "status": "completed",
-            "timestamp": "2024-03-15T09:45:32Z"
-          },
-          "timestamp": "2024-03-15T09:45:32Z"
-        }
-      },
       "EventType": {
         "type": "string",
         "enum": [
@@ -5112,10 +4947,16 @@
           "sync.running",
           "sync.completed",
           "sync.failed",
-          "sync.cancelled"
+          "sync.cancelled",
+          "source_connection.created",
+          "source_connection.auth_completed",
+          "source_connection.deleted",
+          "collection.created",
+          "collection.updated",
+          "collection.deleted"
         ],
         "title": "EventType",
-        "description": "Enumeration of webhook event types."
+        "description": "Webhook event types.\n\nAll available event types that webhook subscribers can filter on.\nConvention: {domain}.{action} \u2014 matches the event_type string\non the corresponding domain event class."
       },
       "FeatureFlag": {
         "type": "string",
@@ -6951,8 +6792,8 @@
               }
             ],
             "title": "Temporal Relevance",
-            "description": "Weight recent content higher than older content; 0 = no recency effect, 1 = only recent items matter. NOTE: This feature is currently under construction and will be ignored.",
-            "example": 0.3
+            "description": "DEPRECATED: This field is accepted for backwards compatibility but ignored. Temporal relevance has been removed.",
+            "example": 0.0
           },
           "expand_query": {
             "anyOf": [
@@ -6977,7 +6818,7 @@
               }
             ],
             "title": "Interpret Filters",
-            "description": "Extract structured filters from natural language (e.g., 'from last week' \u2192 date filter)",
+            "description": "Extract structured filters from natural language (e.g., 'from last week' becomes a date filter)",
             "example": false
           },
           "rerank": {
@@ -7279,20 +7120,13 @@
             "title": "Class Name",
             "description": "Python class name of the source implementation that handles data extraction logic."
           },
-          "output_entity_definition_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Output Entity Definition Ids",
-            "description": "List of entity definition IDs that this source can produce. Defines the data schema and structure that this connector outputs."
+          "output_entity_definitions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Output Entity Definitions",
+            "description": "List of entity definition short names that this source can produce (e.g., ['asana_task_entity', 'asana_project_entity'])."
           },
           "labels": {
             "anyOf": [
@@ -7357,24 +7191,6 @@
             "title": "Feature Flag",
             "description": "Feature flag required to access this source. If set, only organizations with this feature enabled can see/use this source."
           },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id",
-            "description": "Unique system identifier for this source type. Generated automatically when the source is registered."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Timestamp when this source type was registered in the system (ISO 8601 format)."
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At",
-            "description": "Timestamp when this source type was last updated (ISO 8601 format)."
-          },
           "auth_fields": {
             "anyOf": [
               {
@@ -7411,13 +7227,10 @@
           "name",
           "short_name",
           "class_name",
-          "id",
-          "created_at",
-          "modified_at",
           "config_fields"
         ],
         "title": "Source",
-        "description": "Complete source representation with authentication and configuration schemas.",
+        "description": "Complete source representation with authentication and configuration schemas.\n\nServed from the in-memory SourceRegistry \u2014 no database row needed.",
         "examples": [
           {
             "auth_config_class": "GitHubAuthConfig",
@@ -7461,9 +7274,9 @@
             ],
             "modified_at": "2024-01-01T00:00:00Z",
             "name": "GitHub",
-            "output_entity_definition_ids": [
-              "def12345-6789-abcd-ef01-234567890abc",
-              "def67890-abcd-ef01-2345-67890abcdef1"
+            "output_entity_definitions": [
+              "git_hub_repository_entity",
+              "git_hub_code_file_entity"
             ],
             "short_name": "github",
             "supported_auth_providers": []
@@ -7497,9 +7310,9 @@
             "modified_at": "2024-01-01T00:00:00Z",
             "name": "Gmail",
             "oauth_type": "with_refresh",
-            "output_entity_definition_ids": [
-              "abc12345-6789-abcd-ef01-234567890abc",
-              "abc67890-abcd-ef01-2345-67890abcdef1"
+            "output_entity_definitions": [
+              "gmail_thread_entity",
+              "gmail_message_entity"
             ],
             "short_name": "gmail",
             "supported_auth_providers": [
@@ -7517,6 +7330,13 @@
             "title": "Id",
             "description": "Unique identifier of the source connection",
             "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id",
+            "description": "Organization this connection belongs to",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
           },
           "name": {
             "type": "string",
@@ -7647,6 +7467,7 @@
         "type": "object",
         "required": [
           "id",
+          "organization_id",
           "name",
           "short_name",
           "readable_collection_id",
@@ -8754,7 +8575,7 @@
         },
         "type": "object",
         "title": "SyncConfig",
-        "description": "Sync configuration with automatic env var loading.\n\nEnv vars use double underscore as delimiter:\n    SYNC_CONFIG__DESTINATIONS__SKIP_QDRANT=true\n    SYNC_CONFIG__HANDLERS__ENABLE_VECTOR_HANDLERS=false"
+        "description": "Sync configuration with automatic env var loading.\n\nEnv vars use double underscore as delimiter:\n    SYNC_CONFIG__HANDLERS__ENABLE_VECTOR_HANDLERS=false"
       },
       "SyncCreate": {
         "properties": {
@@ -8904,135 +8725,6 @@
         "type": "object",
         "title": "SyncDetails",
         "description": "Sync execution details."
-      },
-      "SyncEventPayload": {
-        "properties": {
-          "event_type": {
-            "$ref": "#/components/schemas/EventType",
-            "description": "The type of sync event",
-            "example": "sync.completed"
-          },
-          "job_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Job Id",
-            "description": "Unique identifier for this sync job",
-            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-          },
-          "collection_readable_id": {
-            "type": "string",
-            "title": "Collection Readable Id",
-            "description": "Human-readable identifier for the collection (e.g., 'finance-data-ab123')",
-            "example": "customer-support-tickets-x7k9m"
-          },
-          "collection_name": {
-            "type": "string",
-            "title": "Collection Name",
-            "description": "Display name of the collection",
-            "example": "Customer Support Tickets"
-          },
-          "source_connection_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Connection Id",
-            "description": "Unique identifier for the source connection",
-            "example": "b2c3d4e5-f6a7-8901-bcde-f23456789012"
-          },
-          "source_type": {
-            "type": "string",
-            "title": "Source Type",
-            "description": "Short name of the source type (e.g., 'hubspot', 'notion', 'salesforce')",
-            "example": "hubspot"
-          },
-          "status": {
-            "$ref": "#/components/schemas/SyncJobStatus",
-            "description": "Current status of the sync job",
-            "example": "completed"
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Timestamp",
-            "description": "When this event occurred (ISO 8601 format, UTC)",
-            "example": "2024-03-15T09:45:32Z"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error",
-            "description": "Error message if the sync failed (only present for failed events)"
-          }
-        },
-        "type": "object",
-        "required": [
-          "event_type",
-          "job_id",
-          "collection_readable_id",
-          "collection_name",
-          "source_type",
-          "status",
-          "timestamp"
-        ],
-        "title": "SyncEventPayload",
-        "description": "Payload for sync-related webhook events.\n\nThis schema defines the data sent to webhook subscribers when sync events occur\n(e.g., sync.pending, sync.running, sync.completed, sync.failed, sync.cancelled).",
-        "examples": [
-          {
-            "description": "A successful sync job completion event",
-            "summary": "Sync Completed",
-            "value": {
-              "collection_name": "Customer Support Tickets",
-              "collection_readable_id": "customer-support-tickets-x7k9m",
-              "event_type": "sync.completed",
-              "job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-              "source_connection_id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
-              "source_type": "zendesk",
-              "status": "completed",
-              "timestamp": "2024-03-15T09:45:32Z"
-            }
-          },
-          {
-            "description": "A failed sync job with error details",
-            "summary": "Sync Failed",
-            "value": {
-              "collection_name": "Sales Pipeline Data",
-              "collection_readable_id": "sales-pipeline-data-p4q8r",
-              "error": "Authentication failed: OAuth token expired. Please reconnect the source.",
-              "event_type": "sync.failed",
-              "job_id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
-              "source_connection_id": "d4e5f6a7-b8c9-0123-def0-456789012345",
-              "source_type": "salesforce",
-              "status": "failed",
-              "timestamp": "2024-03-15T10:12:05Z"
-            }
-          },
-          {
-            "description": "A sync job queued for execution",
-            "summary": "Sync Pending",
-            "value": {
-              "collection_name": "Engineering Documentation",
-              "collection_readable_id": "engineering-docs-m2n5p",
-              "event_type": "sync.pending",
-              "job_id": "e5f6a7b8-c9d0-1234-ef01-567890123456",
-              "source_connection_id": "f6a7b8c9-d0e1-2345-f012-678901234567",
-              "source_type": "confluence",
-              "status": "pending",
-              "timestamp": "2024-03-15T08:30:00Z"
-            }
-          }
-        ]
       },
       "SyncJob": {
         "properties": {
@@ -10187,6 +9879,199 @@
           ]
         }
       },
+      "WebhookMessage": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for this message (UUID format)",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type",
+            "description": "The type of event (e.g., 'sync.completed', 'sync.failed')",
+            "example": "sync.completed"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "The event payload data, matching what is delivered to webhooks. Structure varies by event_type."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "When this message was created (ISO 8601 format, UTC)",
+            "example": "2024-03-15T09:45:32Z"
+          },
+          "channels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels",
+            "description": "Channels this message was sent to (typically matches the event type)",
+            "example": [
+              "sync.completed"
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Tags associated with this message for filtering"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "payload",
+          "timestamp"
+        ],
+        "title": "WebhookMessage",
+        "description": "A webhook message that was sent (or attempted) to webhook subscribers.\n\nThe payload contains the actual event data matching the webhook delivery format.",
+        "example": {
+          "channels": [
+            "sync.completed"
+          ],
+          "event_type": "sync.completed",
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "payload": {
+            "collection_name": "Customer Support Tickets",
+            "collection_readable_id": "customer-support-tickets-x7k9m",
+            "event_type": "sync.completed",
+            "job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "source_connection_id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+            "source_type": "zendesk",
+            "status": "completed",
+            "timestamp": "2024-03-15T09:45:32Z"
+          },
+          "timestamp": "2024-03-15T09:45:32Z"
+        }
+      },
+      "WebhookMessageWithAttempts": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for this message (UUID format)",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type",
+            "description": "The type of event (e.g., 'sync.completed', 'sync.failed')",
+            "example": "sync.completed"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "The event payload data, matching what is delivered to webhooks. Structure varies by event_type."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "When this message was created (ISO 8601 format, UTC)",
+            "example": "2024-03-15T09:45:32Z"
+          },
+          "channels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels",
+            "description": "Channels this message was sent to (typically matches the event type)",
+            "example": [
+              "sync.completed"
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Tags associated with this message for filtering"
+          },
+          "delivery_attempts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DeliveryAttempt"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Attempts",
+            "description": "Delivery attempts for this message."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "payload",
+          "timestamp"
+        ],
+        "title": "WebhookMessageWithAttempts",
+        "description": "A webhook message with delivery attempts.",
+        "example": {
+          "channels": [
+            "sync.completed"
+          ],
+          "event_type": "sync.completed",
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "payload": {
+            "collection_name": "Customer Support Tickets",
+            "collection_readable_id": "customer-support-tickets-x7k9m",
+            "event_type": "sync.completed",
+            "job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "source_connection_id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+            "source_type": "zendesk",
+            "status": "completed",
+            "timestamp": "2024-03-15T09:45:32Z"
+          },
+          "timestamp": "2024-03-15T09:45:32Z"
+        }
+      },
       "WebhookSubscription": {
         "properties": {
           "id": {
@@ -10214,7 +10099,7 @@
               }
             ],
             "title": "Filter Types",
-            "description": "Event types this subscription is filtered to receive. Available types: `sync.pending`, `sync.running`, `sync.completed`, `sync.failed`, `sync.cancelled`.",
+            "description": "Event types this subscription is filtered to receive. See EventType enum for all available types.",
             "example": [
               "sync.completed",
               "sync.failed"
@@ -10332,9 +10217,9 @@
       "description": "API endpoints for discovering available data source connectors and their configuration requirements"
     },
     {
-      "name": "events",
-      "x-display-name": "Events",
-      "description": "API endpoints for managing webhook subscriptions and event messages. Subscribe to events like sync completions to receive real-time notifications at your webhook URL"
+      "name": "webhooks",
+      "x-display-name": "Webhooks",
+      "description": "API endpoints for managing webhook subscriptions and messages. Subscribe to events like sync completions to receive real-time notifications at your webhook URL"
     }
   ],
   "servers": [

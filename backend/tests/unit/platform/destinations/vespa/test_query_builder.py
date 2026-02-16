@@ -158,7 +158,7 @@ class TestQueryBuilder:
         assert params["ranking.softtimeout.enable"] == "true"
 
     def test_build_params_ranking_profile_hybrid(self, query_builder, sample_dense_embeddings):
-        """Test hybrid strategy selects hybrid-rrf ranking profile."""
+        """Test hybrid strategy selects hybrid ranking profile."""
         queries = ["test"]
         params = query_builder.build_params(
             queries=queries,
@@ -169,10 +169,10 @@ class TestQueryBuilder:
             retrieval_strategy="hybrid"
         )
 
-        assert params["ranking.profile"] == "hybrid-rrf"
+        assert params["ranking.profile"] == "hybrid"
 
     def test_build_params_ranking_profile_neural(self, query_builder, sample_dense_embeddings):
-        """Test neural strategy selects semantic-only ranking profile."""
+        """Test neural strategy selects semantic ranking profile."""
         queries = ["test"]
         params = query_builder.build_params(
             queries=queries,
@@ -183,10 +183,10 @@ class TestQueryBuilder:
             retrieval_strategy="neural"
         )
 
-        assert params["ranking.profile"] == "semantic-only"
+        assert params["ranking.profile"] == "semantic"
 
     def test_build_params_ranking_profile_keyword(self, query_builder, sample_dense_embeddings):
-        """Test keyword strategy selects keyword-only ranking profile."""
+        """Test keyword strategy selects keyword ranking profile."""
         queries = ["test"]
         params = query_builder.build_params(
             queries=queries,
@@ -197,7 +197,7 @@ class TestQueryBuilder:
             retrieval_strategy="keyword"
         )
 
-        assert params["ranking.profile"] == "keyword-only"
+        assert params["ranking.profile"] == "keyword"
 
     def test_build_params_dense_embeddings(self, query_builder, sample_dense_embeddings):
         """Test dense embeddings added to parameters."""

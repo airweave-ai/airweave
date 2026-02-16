@@ -64,6 +64,37 @@ def should_retry_on_timeout(exception: BaseException) -> bool:
     )
 
 
+def should_retry_on_ntlm_auth(exception: BaseException) -> bool:
+    """Check if exception is an NTLM authentication failure that should be retried.
+
+    SharePoint 2019 with NTLM can return 401 when the connection pool
+    reuses a connection whose NTLM context has expired. Retrying
+    establishes a fresh NTLM handshake.
+
+    Args:
+        exception: Exception to check
+
+    Returns:
+        True if this is a 401 that should be retried with fresh NTLM auth
+    """
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code == 401
+    return False
+
+
+def should_retry_on_ntlm_auth_or_rate_limit_or_timeout(exception: BaseException) -> bool:
+    """Combined retry condition for NTLM auth failures, rate limits, and timeouts.
+
+    Use this for SharePoint 2019 NTLM-authenticated endpoints where
+    connection pool reuse can cause stale auth contexts.
+    """
+    return (
+        should_retry_on_ntlm_auth(exception)
+        or should_retry_on_rate_limit(exception)
+        or should_retry_on_timeout(exception)
+    )
+
+
 def should_retry_on_rate_limit_or_timeout(exception: BaseException) -> bool:
     """Combined retry condition for rate limits and timeouts.
 
@@ -132,6 +163,9 @@ def wait_rate_limit_with_backoff(retry_state) -> float:
 retry_if_rate_limit = retry_if_exception(should_retry_on_rate_limit)
 retry_if_timeout = retry_if_exception(should_retry_on_timeout)
 retry_if_rate_limit_or_timeout = retry_if_exception(should_retry_on_rate_limit_or_timeout)
+retry_if_ntlm_auth_or_rate_limit_or_timeout = retry_if_exception(
+    should_retry_on_ntlm_auth_or_rate_limit_or_timeout
+)
 
 
 def log_retry_attempt(logger: logging.Logger, service_name: str = "API") -> Callable[..., None]:

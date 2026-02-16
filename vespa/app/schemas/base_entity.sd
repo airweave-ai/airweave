@@ -35,6 +35,7 @@ schema base_entity {
 
         field name type string {
             indexing: attribute | summary
+            attribute: fast-search
         }
 
         # Breadcrumbs for hierarchy navigation
@@ -44,7 +45,10 @@ schema base_entity {
                 indexing: attribute
                 attribute: fast-search
             }
-            struct-field name { indexing: attribute }
+            struct-field name {
+                indexing: attribute
+                attribute: fast-search
+            }
             struct-field entity_type {
                 indexing: attribute
                 attribute: fast-search
@@ -97,15 +101,17 @@ schema base_entity {
 
         field airweave_system_metadata_source_name type string {
             indexing: attribute | summary
+            attribute: fast-search
         }
 
         # Chunk index within the parent entity
         field airweave_system_metadata_chunk_index type int {
             indexing: attribute | summary
+            attribute: fast-search
         }
 
         # =============================================================================
-        # Access Control Fields
+        # Access Control Fields (flattened from AccessControl model)
         # =============================================================================
         field access_is_public type bool {
             indexing: attribute | summary
@@ -188,26 +194,9 @@ schema base_entity {
         fields: textual_representation, payload
     }
 
-    # Full summary - returns all fields needed for complete search results
-    document-summary full {
-        summary entity_id {}
-        summary name {}
-        summary breadcrumbs {}
-        summary created_at {}
-        summary updated_at {}
-        summary airweave_system_metadata_collection_id {}
-        summary airweave_system_metadata_entity_type {}
-        summary airweave_system_metadata_sync_id {}
-        summary airweave_system_metadata_sync_job_id {}
-        summary airweave_system_metadata_hash {}
-        summary airweave_system_metadata_original_entity_id {}
-        summary airweave_system_metadata_source_name {}
-        summary airweave_system_metadata_chunk_index {}
-        summary access_is_public {}
-        summary access_viewers {}
-        summary textual_representation {}
-        summary payload {}
-    }
+    # Note: We use Vespa's default summary (no explicit document-summary)
+    # which automatically includes ALL fields with "summary" in their indexing,
+    # including fields from child schemas (e.g., url from file_entity)
 
     # =========================================================================
     # BASE RANK PROFILE - shared inputs and functions
@@ -256,7 +245,7 @@ schema base_entity {
     # HYBRID RANK PROFILE with RRF (Reciprocal Rank Fusion)
     # Uses FastEmbed sparse embeddings for keyword scoring instead of Vespa BM25
     # =========================================================================
-    rank-profile hybrid-rrf inherits default {
+    rank-profile hybrid inherits default {
 
         # -----------------------------------------------------------------------
         # FIRST PHASE: Runs on all matched candidates
@@ -292,19 +281,19 @@ schema base_entity {
     }
 
     # =========================================================================
-    # SEMANTIC-ONLY RANK PROFILE (for neural-only search)
+    # SEMANTIC RANK PROFILE (for neural-only search)
     # =========================================================================
-    rank-profile semantic-only inherits default {
+    rank-profile semantic inherits default {
         first-phase {
             expression: semantic_score()
         }
     }
 
     # =========================================================================
-    # KEYWORD-ONLY RANK PROFILE (for keyword-only search)
+    # KEYWORD RANK PROFILE (for keyword-only search)
     # Uses FastEmbed sparse embeddings for consistent behavior with Qdrant
     # =========================================================================
-    rank-profile keyword-only inherits default {
+    rank-profile keyword inherits default {
         first-phase {
             expression: keyword_score()
         }

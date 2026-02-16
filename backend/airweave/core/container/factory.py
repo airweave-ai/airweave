@@ -15,16 +15,23 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
+from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
+from airweave.core.logging import logger
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
+from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.sources.registry import SourceRegistry
+from airweave.domains.sources.service import SourceService
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 
 if TYPE_CHECKING:
     from airweave.core.config import Settings
+    from airweave.core.protocols import CircuitBreaker, OcrProvider
     from airweave.core.protocols.event_bus import EventBus
 
 
@@ -74,10 +81,27 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     event_bus = _create_event_bus(webhook_publisher=svix_adapter)
 
+    # -----------------------------------------------------------------
+    # Circuit Breaker + OCR
+    # Shared circuit breaker tracks provider health across the process.
+    # FallbackOcrProvider tries providers in order, skipping tripped ones.
+    # -----------------------------------------------------------------
+    circuit_breaker = _create_circuit_breaker()
+    ocr_provider = _create_ocr_provider(circuit_breaker, settings)
+
+    # Source Service
+    # Auth provider registry is built first, then passed to the source
+    # registry so it can compute supported_auth_providers per source.
+    # -----------------------------------------------------------------
+    source_service = _create_source_service(settings)
+
     return Container(
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
+        circuit_breaker=circuit_breaker,
+        ocr_provider=ocr_provider,
+        source_service=source_service,
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
     )
@@ -107,3 +131,75 @@ def _create_event_bus(webhook_publisher: WebhookPublisher) -> EventBus:
         bus.subscribe(pattern, webhook_subscriber.handle)
 
     return bus
+
+
+def _create_circuit_breaker() -> "CircuitBreaker":
+    """Create the shared circuit breaker for provider failover.
+
+    Uses a 120-second cooldown: after a provider fails, it is skipped
+    for 2 minutes before being retried (half-open state).
+    """
+    from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
+
+    return InMemoryCircuitBreaker(cooldown_seconds=120)
+
+
+def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings") -> "OcrProvider":
+    """Create OCR provider with fallback chain.
+
+    Chain order: Mistral (cloud) -> Docling (local service, if configured).
+    Docling is only added when DOCLING_BASE_URL is set.
+
+    raises: ValueError if no OCR providers are available
+    returns: FallbackOcrProvider with the available OCR providers
+    """
+    from airweave.adapters.ocr.fallback import FallbackOcrProvider
+    from airweave.adapters.ocr.mistral import MistralOcrAdapter
+
+    try:
+        mistral_ocr = MistralOcrAdapter()
+    except Exception as e:
+        logger.error(f"Error creating Mistral OCR adapter: {e}")
+        mistral_ocr = None
+
+    providers = []
+    if mistral_ocr:
+        providers.append(("mistral-ocr", mistral_ocr))
+
+    if settings.DOCLING_BASE_URL:
+        try:
+            docling_ocr = DoclingOcrAdapter(base_url=settings.DOCLING_BASE_URL)
+            providers.append(("docling", docling_ocr))
+        except Exception as e:
+            logger.error(f"Error creating Docling OCR adapter: {e}")
+            docling_ocr = None
+
+    if not providers:
+        raise ValueError("No OCR providers available")
+
+    logger.info(f"Creating FallbackOcrProvider with {len(providers)} providers: {providers}")
+
+    return FallbackOcrProvider(providers=providers, circuit_breaker=circuit_breaker)
+
+
+def _create_source_service(settings: Settings) -> SourceService:
+    """Create source service with its registry dependencies.
+
+    Build order matters:
+    1. Auth provider registry (no dependencies)
+    2. Entity definition registry (no dependencies)
+    3. Source registry (depends on both)
+    """
+    auth_provider_registry = AuthProviderRegistry()
+    auth_provider_registry.build()
+
+    entity_definition_registry = EntityDefinitionRegistry()
+    entity_definition_registry.build()
+
+    source_registry = SourceRegistry(auth_provider_registry, entity_definition_registry)
+    source_registry.build()
+
+    return SourceService(
+        source_registry=source_registry,
+        settings=settings,
+    )

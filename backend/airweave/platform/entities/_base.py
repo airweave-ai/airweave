@@ -1,9 +1,9 @@
 from datetime import datetime
-from typing import Any, ClassVar, Dict, List, Optional, Type
+from typing import Any, ClassVar, List, Optional, Type
 from uuid import UUID
 
 from fastembed import SparseEmbedding
-from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Breadcrumb(BaseModel):
@@ -129,16 +129,6 @@ class BaseEntity(BaseModel):
         """
         from airweave.core.shared_models import AirweaveFieldFlag
 
-        # Polymorphic entities (e.g. PostgreSQL table entities) are generated dynamically
-        # and populate BaseEntity fields directly in the source connector instead of using
-        # AirweaveField flags. For these, we skip strict flag enforcement while still
-        # requiring basic BaseEntity invariants (like breadcrumbs being a list).
-        if any(cls.__name__ == "PolymorphicEntity" for cls in self.__class__.__mro__):
-            if self.breadcrumbs is None:
-                # Root polymorphic entities are allowed to have an empty breadcrumb list
-                self.breadcrumbs = []
-            return self
-
         # Define which flags must be unique (and validate their presence)
         unique_flags = [
             AirweaveFieldFlag.IS_ENTITY_ID,
@@ -234,49 +224,6 @@ class FileEntity(BaseEntity):
     mime_type: Optional[str] = Field(None, description="MIME type of the file.")
 
     local_path: Optional[str] = Field(None, description="Local path of the file.")
-
-
-class PolymorphicEntity(BaseEntity):
-    """Base class for entities that are generated dynamically from table schemas."""
-
-    table_name: str = Field(..., description="Name of the table this entity belongs to.")
-    schema_name: Optional[str] = Field(
-        None, description="Name of the schema this entity belongs to."
-    )
-    primary_key_columns: List[str] = Field(
-        default_factory=list, description="List of primary key columns."
-    )
-
-    @classmethod
-    def create_table_entity_class(
-        cls,
-        table_name: str,
-        schema_name: Optional[str],
-        columns: Dict[str, Dict[str, Any]],
-        primary_keys: List[str],
-    ) -> Type["PolymorphicEntity"]:
-        """Create a polymorphic entity subclass for the given table definition."""
-
-        def _pk_default_factory() -> List[str]:
-            return list(primary_keys)
-
-        fields: Dict[str, tuple[Any, Field]] = {
-            "table_name": (str, Field(default=table_name)),
-            "schema_name": (Optional[str], Field(default=schema_name)),
-            "primary_key_columns": (List[str], Field(default_factory=_pk_default_factory)),
-        }
-
-        for column_name, column_info in columns.items():
-            field_name = f"{column_name}_" if column_name == "id" else column_name
-            python_type = column_info.get("python_type", Any)
-            fields[field_name] = (Optional[python_type], Field(default=None))
-
-        model_name = f"{table_name.title().replace('_', '')}TableEntity"
-        return create_model(
-            model_name,
-            __base__=cls,
-            **fields,
-        )
 
 
 class CodeFileEntity(FileEntity):

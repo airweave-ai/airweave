@@ -12,7 +12,7 @@ import { CollapsibleCard } from "@/components/ui/CollapsibleCard";
 
 interface SearchProcessProps {
     requestId?: string | null;
-    events: SearchEvent[];
+    events: any[];  // SearchEvent[] | AgenticSearchEvent[] - mixed during streaming
     className?: string;
     isSearching?: boolean;
 }
@@ -141,7 +141,7 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
         const last = events[events.length - 1] as any;
         const ended = last?.type === 'done';
         const error = events.some((e: any) => e?.type === 'error');
-        const started = events.some((e: any) => e?.type === 'connected' || e?.type === 'start' || e?.type === 'operator_start');
+        const started = events.some((e: any) => e?.type === 'connected' || e?.type === 'start' || e?.type === 'operator_start' || e?.type === 'planning');
         const answering = events.some((e: any) => e?.type === 'completion_start' || e?.type === 'completion_delta');
         const cancelled = events.some((e: any) => e?.type === 'cancelled');
         return {
@@ -225,6 +225,67 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
             const event = src[i];
             if (i === 0) {
                 console.log('[SearchProcess] Rendering events', { count: src.length, firstType: (event as any)?.type });
+            }
+
+            // ─── Agentic search events ───────────────────────────────────
+            if (event.type === 'planning') {
+                const e = event as any;
+                const plan = e.plan;
+                rows.push(
+                    <div key={`planning-${i}`} className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            <div className={cn(
+                                "h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold",
+                                isDark ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
+                            )}>
+                                {e.iteration + 1}
+                            </div>
+                            <span className={cn(DESIGN_SYSTEM.typography.sizes.body, DESIGN_SYSTEM.typography.weights.semibold)}>
+                                {e.is_consolidation ? 'Consolidation' : `Iteration ${e.iteration + 1}`}
+                            </span>
+                        </div>
+                        {plan?.reasoning && (
+                            <div className={cn(
+                                "ml-7 px-3 py-2 rounded-md text-xs leading-relaxed italic",
+                                isDark ? "bg-muted/50 text-muted-foreground" : "bg-muted/30 text-muted-foreground"
+                            )}>
+                                {plan.reasoning}
+                            </div>
+                        )}
+                    </div>
+                );
+                continue;
+            }
+
+            if (event.type === 'searching') {
+                const e = event as any;
+                rows.push(
+                    <div key={`searching-${i}`} className="ml-7 flex items-center gap-2 text-xs text-muted-foreground">
+                        <FiBox className="h-3 w-3" />
+                        <span>
+                            Retrieved <span className="font-medium text-foreground">{e.result_count}</span> results in <span className="font-medium text-foreground">{e.duration_ms}ms</span>
+                        </span>
+                    </div>
+                );
+                continue;
+            }
+
+            if (event.type === 'evaluating') {
+                const e = event as any;
+                const eval_ = e.evaluation;
+                if (eval_?.reasoning) {
+                    rows.push(
+                        <div key={`evaluating-${i}`}>
+                            <div className={cn(
+                                "ml-7 px-3 py-2 rounded-md text-xs leading-relaxed italic",
+                                isDark ? "bg-muted/50 text-muted-foreground" : "bg-muted/30 text-muted-foreground"
+                            )}>
+                                {eval_.reasoning}
+                            </div>
+                        </div>
+                    );
+                }
+                continue;
             }
 
             // Start of qdrant_filter (manual filter)
@@ -1011,12 +1072,8 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
                     </div>
                 );
             } else if (event.type === 'done') {
-                rows.push(
-                    <div key={(event.seq ?? i) + "-" + i} className="py-0.5 px-2 text-[11px] opacity-90 flex items-center gap-1.5">
-                        <Check className="h-3 w-3 opacity-80" strokeWidth={1.5} />
-                        Search complete
-                    </div>
-                );
+                // Skip — no visual indicator for search completion
+                continue;
             } else if (event.type === 'results' || event.type === 'summary') {
                 // Skip results and summary events - they're shown elsewhere
                 continue;

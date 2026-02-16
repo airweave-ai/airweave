@@ -9,9 +9,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from airweave import crud, models
-from airweave.core.constants.reserved_ids import RESERVED_TABLE_ENTITY_ID
 from airweave.db.session import get_db_context
-from airweave.platform.entities._base import BaseEntity, DeletionEntity, PolymorphicEntity
+from airweave.platform.entities._base import BaseEntity, DeletionEntity
 from airweave.platform.sync.actions.entity.types import (
     EntityActionBatch,
     EntityDeleteAction,
@@ -113,15 +112,7 @@ class EntityActionResolver:
                 entity_class = target_class
 
         # Try direct lookup
-        definition_id = self.entity_map.get(entity_class)
-        if definition_id:
-            return definition_id
-
-        # Fallback for polymorphic entities
-        if issubclass(entity_class, PolymorphicEntity):
-            return RESERVED_TABLE_ENTITY_ID
-
-        return None
+        return self.entity_map.get(entity_class)
 
     # -------------------------------------------------------------------------
     # Internal Methods

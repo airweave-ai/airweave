@@ -15,12 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.core import credentials
-from airweave.core.constants.reserved_ids import (
-    NATIVE_VESPA_UUID,
-    RESERVED_TABLE_ENTITY_ID,
-)
+from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
 from airweave.core.logging import ContextualLogger
-from airweave.db.init_db_native import init_db_with_entity_definitions
 from airweave.platform.contexts.destinations import DestinationsContext
 from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.destinations._base import BaseDestination
@@ -311,15 +307,10 @@ class DestinationsContextBuilder:
     @classmethod
     async def _get_entity_definition_map(cls, db: AsyncSession) -> Dict[type[BaseEntity], UUID]:
         """Get entity definition map (entity class -> entity_definition_id)."""
-        # Ensure the reserved polymorphic entity definition exists (idempotent)
-        await init_db_with_entity_definitions(db)
-
         entity_definitions = await crud.entity_definition.get_all(db)
 
         entity_definition_map = {}
         for entity_definition in entity_definitions:
-            if entity_definition.id == RESERVED_TABLE_ENTITY_ID:
-                continue
             full_module_name = f"airweave.platform.entities.{entity_definition.module_name}"
             module = importlib.import_module(full_module_name)
             entity_class = getattr(module, entity_definition.class_name)

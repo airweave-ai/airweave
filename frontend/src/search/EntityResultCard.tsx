@@ -1,12 +1,33 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { materialOceanic, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { ChevronDown, ChevronRight, ExternalLink, Copy, Check, Link as LinkIcon, Clock } from 'lucide-react';
 import { getAppIconUrl } from '@/lib/utils/icons';
 import { useTheme } from '@/lib/theme-provider';
+
+// Module-level cache for lazily-loaded heavy dependencies.
+// Loaded once on first content expand, then reused across all cards.
+let _markdownModule: { default: React.ComponentType<any> } | null = null;
+let _remarkGfm: any = null;
+let _syntaxHighlighter: React.ComponentType<any> | null = null;
+let _styles: { materialOceanic: any; oneLight: any } | null = null;
+let _loadingPromise: Promise<void> | null = null;
+
+function loadHeavyDeps(): Promise<void> {
+    if (_markdownModule && _remarkGfm && _syntaxHighlighter && _styles) {
+        return Promise.resolve();
+    }
+    if (!_loadingPromise) {
+        _loadingPromise = Promise.all([
+            import('react-markdown').then(m => { _markdownModule = m; }),
+            import('remark-gfm').then(m => { _remarkGfm = m.default; }),
+            import('react-syntax-highlighter').then(m => { _syntaxHighlighter = m.Prism; }),
+            import('react-syntax-highlighter/dist/esm/styles/prism').then(m => {
+                _styles = { materialOceanic: m.materialOceanic, oneLight: m.oneLight };
+            }),
+        ]).then(() => {});
+    }
+    return _loadingPromise;
+}
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface EntityResultCardProps {
@@ -47,6 +68,20 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
     const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
     const { resolvedTheme } = useTheme();
 
+    // Track whether heavy deps are loaded (triggers re-render when they arrive)
+    const [depsReady, setDepsReady] = useState(!!_markdownModule);
+    const needsDeps = isContentExpanded || isRawExpanded || isPreviewExpanded;
+
+    useEffect(() => {
+        if (needsDeps && !depsReady) {
+            loadHeavyDeps().then(() => setDepsReady(true));
+        }
+    }, [needsDeps, depsReady]);
+
+    const ReactMarkdown = _markdownModule?.default ?? null;
+    const SyntaxHighlighter = _syntaxHighlighter;
+    const remarkGfmPlugin = _remarkGfm;
+
     const score = result.score;
 
     const sourceFields = result.source_fields || {};
@@ -75,15 +110,16 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
 
     const scoreDisplay = getScoreDisplay();
 
-    // Extract key fields from flat AirweaveSearchResult structure
+    // Extract key fields — handle both regular (system_metadata) and agentic (airweave_system_metadata) shapes
     const entityId = result.entity_id;
-    const sourceName = result.system_metadata?.source_name || 'Unknown Source';
+    const sysMetadata = result.system_metadata || result.airweave_system_metadata || {};
+    const sourceName = sysMetadata.source_name || 'Unknown Source';
     const sourceIconUrl = getAppIconUrl(sourceName, resolvedTheme);
     const textualRepresentation = result.textual_representation || '';
     const breadcrumbs = result.breadcrumbs || [];
-    // URL fields are in source_fields
-    const webUrl = sourceFields.web_url;
-    const url = sourceFields.url;
+    // URL fields may be in source_fields (regular) or at top level (agentic)
+    const webUrl = sourceFields.web_url || result.web_url;
+    const url = sourceFields.url || result.url;
     const openUrl = webUrl || url;
     const hasDownloadUrl = Boolean(url && webUrl && url !== webUrl);
 
@@ -95,7 +131,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
     // Extract title and metadata from flat result structure
     const title = result.name || 'Untitled';
     const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const rawEntityType = result.system_metadata?.entity_type || '';
+    const rawEntityType = sysMetadata.entity_type || '';
     let entityTypeCore = rawEntityType.replace(/Entity$/, '');
     if (entityTypeCore && sourceName) {
         const normalizedSource = sourceName.replace(/[\s_-]/g, '');
@@ -295,8 +331,10 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
         };
     };
 
-    // Memoized syntax style
-    const syntaxStyle = useMemo(() => isDark ? materialOceanic : oneLight, [isDark]);
+    const syntaxStyle = useMemo(
+        () => _styles ? (isDark ? _styles.materialOceanic : _styles.oneLight) : {},
+        [isDark, depsReady]
+    );
 
     return (
         <div
@@ -612,56 +650,62 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
                                     <div className={cn(
                                         !isContentExpanded && formattedContent.length > 500 && "max-h-[200px] overflow-hidden"
                                     )}>
-                                        <ReactMarkdown
-                                            remarkPlugins={[remarkGfm]}
-                                            components={{
-                                                h1: ({ node, ...props }) => <h1 className="text-base font-bold mt-4 mb-2 first:mt-0" {...props} />,
-                                                h2: ({ node, ...props }) => <h2 className="text-sm font-bold mt-3 mb-2 first:mt-0" {...props} />,
-                                                h3: ({ node, ...props }) => <h3 className="text-sm font-semibold mt-3 mb-1.5 first:mt-0" {...props} />,
-                                                p: ({ node, ...props }) => <p className="text-[13px] leading-relaxed mb-2" {...props} />,
-                                                ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-2 space-y-1 text-[13px]" {...props} />,
-                                                ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-2 space-y-1 text-[13px]" {...props} />,
-                                                li: ({ node, ...props }) => <li className="text-[13px] leading-relaxed" {...props} />,
-                                                blockquote: ({ node, ...props }) => (
-                                                    <blockquote className={cn(
-                                                        "border-l-4 pl-3 my-2 italic text-[13px]",
-                                                        isDark ? "border-gray-600 text-gray-400" : "border-gray-300 text-gray-600"
-                                                    )} {...props} />
-                                                ),
-                                                code(props) {
-                                                    const { children, className, node, ...rest } = props;
-                                                    const match = /language-(\w+)/.exec(className || '');
-                                                    return match ? (
-                                                        <SyntaxHighlighter
-                                                            language={match[1]}
-                                                            style={syntaxStyle}
-                                                            customStyle={{
-                                                                margin: '0.5rem 0',
-                                                                borderRadius: '0.375rem',
-                                                                fontSize: '0.75rem',
-                                                                padding: '0.75rem',
-                                                                background: isDark ? 'rgba(17, 24, 39, 0.8)' : 'rgba(249, 250, 251, 0.95)'
-                                                            }}
-                                                        >
-                                                            {String(children).replace(/\n$/, '')}
-                                                        </SyntaxHighlighter>
-                                                    ) : (
-                                                        <code className={cn(
-                                                            "px-1.5 py-0.5 rounded text-[11px] font-mono",
-                                                            isDark
-                                                                ? "bg-gray-800 text-gray-300"
-                                                                : "bg-gray-100 text-gray-800"
-                                                        )} {...rest}>
-                                                            {children}
-                                                        </code>
-                                                    );
-                                                },
-                                                strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
-                                                em: ({ node, ...props }) => <em className="italic" {...props} />,
-                                            }}
-                                        >
-                                            {formattedContent}
-                                        </ReactMarkdown>
+                                        {ReactMarkdown ? (
+                                            <ReactMarkdown
+                                                remarkPlugins={remarkGfmPlugin ? [remarkGfmPlugin] : []}
+                                                components={{
+                                                    h1: ({ node, ...props }) => <h1 className="text-base font-bold mt-4 mb-2 first:mt-0" {...props} />,
+                                                    h2: ({ node, ...props }) => <h2 className="text-sm font-bold mt-3 mb-2 first:mt-0" {...props} />,
+                                                    h3: ({ node, ...props }) => <h3 className="text-sm font-semibold mt-3 mb-1.5 first:mt-0" {...props} />,
+                                                    p: ({ node, ...props }) => <p className="text-[13px] leading-relaxed mb-2" {...props} />,
+                                                    ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-2 space-y-1 text-[13px]" {...props} />,
+                                                    ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-2 space-y-1 text-[13px]" {...props} />,
+                                                    li: ({ node, ...props }) => <li className="text-[13px] leading-relaxed" {...props} />,
+                                                    blockquote: ({ node, ...props }) => (
+                                                        <blockquote className={cn(
+                                                            "border-l-4 pl-3 my-2 italic text-[13px]",
+                                                            isDark ? "border-gray-600 text-gray-400" : "border-gray-300 text-gray-600"
+                                                        )} {...props} />
+                                                    ),
+                                                    code(props) {
+                                                        const { children, className, node, ...rest } = props;
+                                                        const match = /language-(\w+)/.exec(className || '');
+                                                        return match && SyntaxHighlighter ? (
+                                                            <SyntaxHighlighter
+                                                                language={match[1]}
+                                                                style={syntaxStyle}
+                                                                customStyle={{
+                                                                    margin: '0.5rem 0',
+                                                                    borderRadius: '0.375rem',
+                                                                    fontSize: '0.75rem',
+                                                                    padding: '0.75rem',
+                                                                    background: isDark ? 'rgba(17, 24, 39, 0.8)' : 'rgba(249, 250, 251, 0.95)'
+                                                                }}
+                                                            >
+                                                                {String(children).replace(/\n$/, '')}
+                                                            </SyntaxHighlighter>
+                                                        ) : (
+                                                            <code className={cn(
+                                                                "px-1.5 py-0.5 rounded text-[11px] font-mono",
+                                                                isDark
+                                                                    ? "bg-gray-800 text-gray-300"
+                                                                    : "bg-gray-100 text-gray-800"
+                                                            )} {...rest}>
+                                                                {children}
+                                                            </code>
+                                                        );
+                                                    },
+                                                    strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
+                                                    em: ({ node, ...props }) => <em className="italic" {...props} />,
+                                                }}
+                                            >
+                                                {formattedContent}
+                                            </ReactMarkdown>
+                                        ) : (
+                                            <div className="text-[13px] whitespace-pre-wrap opacity-70">
+                                                {formattedContent.slice(0, 500)}{formattedContent.length > 500 ? '...' : ''}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Fade overlay when content is truncated */}
@@ -928,34 +972,40 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
                             // Custom scrollbar styles
                             "raw-data-scrollbar"
                         )}>
-                            <SyntaxHighlighter
-                                language="json"
-                                style={syntaxStyle}
-                                customStyle={{
-                                    margin: 0,
-                                    borderRadius: 0,
-                                    fontSize: '0.65rem',
-                                    padding: '0.75rem',
-                                    background: 'transparent',
-                                    backgroundColor: 'transparent',
-                                    maxHeight: '300px',
-                                    overflow: 'auto',
-                                    border: 'none',
-                                    boxShadow: 'none',
-                                    outline: 'none'
-                                }}
-                                showLineNumbers={false}
-                                wrapLines={false}
-                                lineProps={{ style: { backgroundColor: 'transparent', background: 'transparent' } }}
-                                codeTagProps={{ style: { backgroundColor: 'transparent', background: 'transparent' } }}
-                                PreTag={({ children, ...props }) => (
-                                    <pre {...props} style={{ ...props.style, background: 'transparent', backgroundColor: 'transparent', margin: 0, padding: 0 }}>
-                                        {children}
-                                    </pre>
-                                )}
-                            >
-                                {JSON.stringify(result, null, 2)}
-                            </SyntaxHighlighter>
+                            {SyntaxHighlighter ? (
+                                <SyntaxHighlighter
+                                    language="json"
+                                    style={syntaxStyle}
+                                    customStyle={{
+                                        margin: 0,
+                                        borderRadius: 0,
+                                        fontSize: '0.65rem',
+                                        padding: '0.75rem',
+                                        background: 'transparent',
+                                        backgroundColor: 'transparent',
+                                        maxHeight: '300px',
+                                        overflow: 'auto',
+                                        border: 'none',
+                                        boxShadow: 'none',
+                                        outline: 'none'
+                                    }}
+                                    showLineNumbers={false}
+                                    wrapLines={false}
+                                    lineProps={{ style: { backgroundColor: 'transparent', background: 'transparent' } }}
+                                    codeTagProps={{ style: { backgroundColor: 'transparent', background: 'transparent' } }}
+                                    PreTag={({ children, ...props }) => (
+                                        <pre {...props} style={{ ...props.style, background: 'transparent', backgroundColor: 'transparent', margin: 0, padding: 0 }}>
+                                            {children}
+                                        </pre>
+                                    )}
+                                >
+                                    {JSON.stringify(result, null, 2)}
+                                </SyntaxHighlighter>
+                            ) : (
+                                <pre className="text-[0.65rem] p-3 font-mono opacity-70 max-h-[300px] overflow-auto">
+                                    {JSON.stringify(result, null, 2)}
+                                </pre>
+                            )}
                         </div>
                     </div>
                 )}

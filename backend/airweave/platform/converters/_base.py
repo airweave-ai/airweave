@@ -60,6 +60,54 @@ class HybridDocumentConverter(BaseTextConverter):
             Extracted markdown if successful, or ``None`` if OCR is needed.
         """
 
+    @staticmethod
+    def _try_read_as_text(path: str, max_probe_bytes: int = 8192) -> Optional[str]:
+        """Check if a file is actually plain text despite its extension.
+
+        Reads a small probe of the file and checks if it decodes as valid UTF-8
+        with a low ratio of control characters. This catches files that have
+        binary extensions (e.g. .docx, .pdf) but actually contain plain text --
+        common with auto-generated test data or legacy systems.
+
+        Args:
+            path: Path to the file.
+            max_probe_bytes: How many bytes to probe for text detection.
+
+        Returns:
+            Full file content as string if it's valid text, None otherwise.
+        """
+        try:
+            with open(path, "rb") as f:
+                probe = f.read(max_probe_bytes)
+
+            if not probe:
+                return None
+
+            # Try UTF-8 decode on the probe
+            try:
+                probe.decode("utf-8")
+            except UnicodeDecodeError:
+                return None
+
+            # Check for excessive control characters (binary indicator)
+            # Allow common whitespace: \n, \r, \t
+            control_count = sum(1 for b in probe if b < 32 and b not in (9, 10, 13))
+            if control_count / len(probe) > 0.05:  # >5% control chars = binary
+                return None
+
+            # It's text -- read the full file
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Must have meaningful content
+            if len(content.strip()) < 10:
+                return None
+
+            return content
+
+        except Exception:
+            return None
+
     async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
         """Convert files to markdown, trying extraction first.
 
@@ -83,11 +131,30 @@ class HybridDocumentConverter(BaseTextConverter):
                     results[path] = markdown
                     logger.debug(f"{name}: extracted via text layer")
                 else:
-                    logger.debug(f"{name}: text extraction insufficient, needs OCR")
-                    needs_ocr.append(path)
+                    # Before falling back to OCR, check if the file is actually
+                    # plain text with a misleading extension (e.g. .docx containing text)
+                    text_content = self._try_read_as_text(path)
+                    if text_content:
+                        results[path] = text_content
+                        logger.info(
+                            f"{name}: extension suggests binary but content is plain text, "
+                            "using text fallback instead of OCR"
+                        )
+                    else:
+                        logger.debug(f"{name}: text extraction insufficient, needs OCR")
+                        needs_ocr.append(path)
             except Exception as exc:
                 logger.warning(f"{name}: extraction error ({exc}), needs OCR")
-                needs_ocr.append(path)
+                # Same fallback check on extraction errors
+                text_content = self._try_read_as_text(path)
+                if text_content:
+                    results[path] = text_content
+                    logger.info(
+                        f"{name}: extraction failed but content is plain text, "
+                        "using text fallback instead of OCR"
+                    )
+                else:
+                    needs_ocr.append(path)
 
         if needs_ocr:
             if self._ocr_provider is None:

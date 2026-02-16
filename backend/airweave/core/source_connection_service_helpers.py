@@ -1604,7 +1604,7 @@ class SourceConnectionHelpers:
 
             # Check if this is a federated search source - these don't need syncs
             source_class = resource_locator.get_source(source)
-            is_federated = getattr(source_class, "_federated_search", False)
+            is_federated = getattr(source_class, "federated_search", False)
 
             if is_federated:
                 ctx.logger.info(
@@ -1636,7 +1636,7 @@ class SourceConnectionHelpers:
                     else payload.get("cron_schedule")
                 )
                 if cron_schedule is None:
-                    if getattr(source_class, "_supports_continuous", False):
+                    if getattr(source_class, "supports_continuous", False):
                         # Continuous connectors should default to fast incremental syncs
                         cron_schedule = "*/5 * * * *"
                         ctx.logger.info(

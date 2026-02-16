@@ -33,8 +33,8 @@ class ArfReplaySource(BaseSource):
     """
 
     # Fallback attributes (overridden per-instance from manifest)
-    _name = "ARF Replay"
-    _short_name = "arf_replay"
+    source_name = "ARF Replay"
+    short_name = "arf_replay"
 
     def __init__(
         self,
@@ -62,8 +62,8 @@ class ArfReplaySource(BaseSource):
 
         # Masquerade as original source if known
         if original_short_name:
-            self._short_name = original_short_name
-            self._name = f"ARF Replay ({original_short_name})"
+            self.short_name = original_short_name
+            self.source_name = f"ARF Replay ({original_short_name})"
 
     @property
     def reader(self) -> ArfReader:

@@ -42,6 +42,7 @@ class AuthFieldsResponse:
 class AuthProviderService:
     """Service for managing auth provider operations."""
 
+    # CODE BLUE: mark for deprecation
     def get_supported_providers_for_source(self, source_short_name: str) -> List[str]:
         """Get auth providers that support the given source.
 
@@ -58,7 +59,7 @@ class AuthProviderService:
 
         # Check each available provider
         for auth_provider_class in auth_provider_classes:
-            short_name = auth_provider_class._short_name
+            short_name = auth_provider_class.short_name
 
             # Check if source is blocked
             blocked_sources = getattr(auth_provider_class, "BLOCKED_SOURCES", [])

@@ -19,6 +19,7 @@ from typing import Any, AsyncGenerator, Dict, Optional
 import httpx
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import GoogleDocsConfig
 from airweave.platform.cursors import GoogleDocsCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
@@ -40,7 +41,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     oauth_type=OAuthType.WITH_REFRESH,
     requires_byoc=True,
     auth_config_class=None,
-    config_class="GoogleDocsConfig",
+    config_class=GoogleDocsConfig,
     labels=["Document Management", "Productivity"],
     supports_continuous=True,
     rate_limit_level=RateLimitLevel.ORG,

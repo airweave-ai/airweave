@@ -202,30 +202,34 @@ class MistralOcrClient:
             *[_process_one(i, c) for i, c in enumerate(chunks)],
         )
 
-        # Separate successes from failures
+        # Separate successes from failures — failed chunks get OcrResult with error
         final_results: list[OcrResult] = []
-        failed: list[str] = []
+        failed_count = 0
 
         for i, r in enumerate(results):
             file_name = os.path.basename(chunks[i].chunk_path)
             if isinstance(r, Exception):
-                failed.append(f"{file_name}: {r}")
+                logger.error(f"OCR failed for {file_name}: {r}")
+                final_results.append(OcrResult(chunk=chunks[i], markdown=None, error=str(r)))
+                failed_count += 1
             elif r is None:
-                failed.append(f"{file_name}: no result returned")
+                logger.error(f"OCR failed for {file_name}: task did not complete")
+                final_results.append(
+                    OcrResult(chunk=chunks[i], markdown=None, error="task did not complete")
+                )
+                failed_count += 1
             else:
                 final_results.append(r)
 
-        if failed:
-            logger.error(f"OCR failed for {len(failed)}/{len(chunks)} chunks: " + "; ".join(failed))
+        if failed_count:
+            logger.warning(
+                f"OCR batch: {failed_count}/{len(chunks)} chunks failed "
+                f"(continuing with {len(chunks) - failed_count} successful)"
+            )
 
-            # If ALL chunks failed, Mistral is likely down -- fail the sync
-            if len(failed) == len(chunks):
-                raise SyncFailureError(
-                    f"OCR failed for ALL {len(chunks)} chunks (Mistral outage?): "
-                    + "; ".join(failed)
-                )
-
-        logger.debug(f"OCR batch complete: {len(final_results)}/{len(chunks)} succeeded")
+        logger.debug(
+            f"OCR batch complete: {len(final_results) - failed_count}/{len(chunks)} succeeded"
+        )
         return final_results
 
     # ------------------------------------------------------------------

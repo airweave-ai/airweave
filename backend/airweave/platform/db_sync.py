@@ -7,7 +7,6 @@ import os
 import re
 from pathlib import Path
 from typing import Callable, Dict, Type
-from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,8 +52,8 @@ def _validate_source_template_config(source_class: Type[BaseSource]) -> None:
     Raises:
         ValueError: If template variables don't match auth-required config fields
     """
-    short_name = source_class._short_name
-    config_class_name = source_class._config_class
+    short_name = source_class.short_name
+    config_class_name = source_class.config_class
 
     # Skip if no config class
     if not config_class_name:
@@ -147,11 +146,11 @@ def _process_module_classes(module, components: Dict[str, list[Type | Callable]]
     """
     # Scan for classes
     for _, cls in inspect.getmembers(module, inspect.isclass):
-        if getattr(cls, "_is_source", False):
+        if getattr(cls, "is_source", False):
             components["sources"].append(cls)
-        elif getattr(cls, "_is_destination", False):
+        elif getattr(cls, "is_destination", False):
             components["destinations"].append(cls)
-        elif getattr(cls, "_is_auth_provider", False):
+        elif getattr(cls, "is_auth_provider", False):
             components["auth_providers"].append(cls)
 
 
@@ -212,7 +211,7 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
         if internal_sources:
             sync_logger.debug(
                 f"Skipping {len(internal_sources)} internal source(s) "
-                f"({', '.join(s._short_name for s in internal_sources)}) "
+                f"({', '.join(s.short_name for s in internal_sources)}) "
                 "(set ENABLE_INTERNAL_SOURCES=true to enable)"
             )
         components["sources"] = [s for s in components["sources"] if not s.is_internal()]
@@ -445,7 +444,7 @@ async def _sync_sources(
     source_definitions = []
     for source_class in filtered_sources:
         # Get the source's short name (e.g., "slack" for SlackSource)
-        source_module_name = source_class._short_name
+        source_module_name = source_class.short_name
 
         # NEW: Validate template configuration if source has templates
         try:
@@ -455,43 +454,43 @@ async def _sync_sources(
             sync_logger.error(f"Template validation failed for {source_module_name}")
             raise
 
-        # Get entity IDs for this module
-        output_entity_ids = []
+        # Get entity definition short names for this module
+        output_entity_definitions = []
         if source_module_name in module_entity_map:
-            output_entity_ids = [
-                UUID(id) for id in module_entity_map[source_module_name].get("entity_ids", [])
-            ]
+            output_entity_definitions = module_entity_map[source_module_name].get(
+                "entity_names", []
+            )
 
         # Convert oauth_type enum to string if present
-        oauth_type = getattr(source_class, "_oauth_type", None)
+        oauth_type = getattr(source_class, "oauth_type", None)
         if oauth_type:
             oauth_type = oauth_type.value if hasattr(oauth_type, "value") else oauth_type
 
         # Convert rate_limit_level enum to string if present
-        rate_limit_level = getattr(source_class, "_rate_limit_level", None)
+        rate_limit_level = getattr(source_class, "rate_limit_level", None)
         if rate_limit_level:
             rate_limit_level = (
                 rate_limit_level.value if hasattr(rate_limit_level, "value") else rate_limit_level
             )
 
         source_def = schemas.SourceCreate(
-            name=source_class._name,
+            name=source_class.source_name,
             description=source_class.__doc__,
-            auth_methods=[m.value for m in getattr(source_class, "_auth_methods", [])],
+            auth_methods=[m.value for m in getattr(source_class, "auth_methods", [])],
             oauth_type=oauth_type,
-            requires_byoc=getattr(source_class, "_requires_byoc", False),
-            auth_config_class=getattr(source_class, "_auth_config_class", None),
-            config_class=source_class._config_class,
-            short_name=source_class._short_name,
+            requires_byoc=getattr(source_class, "requires_byoc", False),
+            auth_config_class=getattr(source_class.auth_config_class, "__name__", None),
+            config_class=getattr(source_class.config_class, "__name__", None),
+            short_name=source_class.short_name,
             class_name=source_class.__name__,
-            output_entity_definition_ids=output_entity_ids,
-            labels=getattr(source_class, "_labels", []),
-            supports_continuous=getattr(source_class, "_supports_continuous", False),
-            federated_search=getattr(source_class, "_federated_search", False),
-            supports_temporal_relevance=getattr(source_class, "_supports_temporal_relevance", True),
-            supports_access_control=getattr(source_class, "_supports_access_control", False),
+            output_entity_definitions=output_entity_definitions,
+            labels=getattr(source_class, "labels", []),
+            supports_continuous=getattr(source_class, "supports_continuous", False),
+            federated_search=getattr(source_class, "federated_search", False),
+            supports_temporal_relevance=getattr(source_class, "supports_temporal_relevance", True),
+            supports_access_control=getattr(source_class, "supports_access_control", False),
             rate_limit_level=rate_limit_level,
-            feature_flag=getattr(source_class, "_feature_flag", None),
+            feature_flag=getattr(source_class, "feature_flag", None),
         )
         source_definitions.append(source_def)
 
@@ -511,12 +510,12 @@ async def _sync_destinations(db: AsyncSession, destinations: list[Type[BaseDesti
     destination_definitions = []
     for dest_class in destinations:
         dest_def = schemas.DestinationCreate(
-            name=dest_class._name,
+            name=dest_class.destination_name,
             description=dest_class.__doc__,
-            short_name=dest_class._short_name,
+            short_name=dest_class.short_name,
             class_name=dest_class.__name__,
-            auth_config_class=getattr(dest_class._auth_config_class, "__name__", None),
-            labels=getattr(dest_class, "_labels", []),
+            auth_config_class=getattr(dest_class.auth_config_class, "__name__", None),
+            labels=getattr(dest_class, "labels", []),
         )
         destination_definitions.append(dest_def)
 
@@ -537,13 +536,17 @@ async def _sync_auth_providers(
 
     auth_provider_definitions = []
     for auth_provider_class in auth_providers:
+        auth_config_cls = getattr(auth_provider_class, "auth_config_class", None)
+        config_cls = getattr(auth_provider_class, "config_class", None)
         auth_provider_def = schemas.AuthProviderCreate(
-            name=auth_provider_class._name,
-            short_name=auth_provider_class._short_name,
+            name=auth_provider_class.provider_name,
+            short_name=auth_provider_class.short_name,
             class_name=auth_provider_class.__name__,
             description=auth_provider_class.__doc__,
-            auth_config_class=getattr(auth_provider_class, "_auth_config_class", None),
-            config_class=getattr(auth_provider_class, "_config_class", None),
+            auth_config_class=getattr(auth_config_cls, "__name__", None)
+            if auth_config_cls
+            else None,
+            config_class=getattr(config_cls, "__name__", None) if config_cls else None,
         )
         auth_provider_definitions.append(auth_provider_def)
 

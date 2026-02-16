@@ -58,11 +58,17 @@ async def lifespan(app: FastAPI):
     Initializes the DI container, runs alembic migrations, and syncs platform components.
     """
     # Initialize the dependency injection container (fail fast if wiring is broken)
+    from airweave.core import container as container_mod
     from airweave.core.container import initialize_container
 
     logger.info("Initializing dependency injection container...")
     initialize_container(settings)
     logger.info("Container initialized successfully")
+
+    # Initialize converters with OCR from the container
+    from airweave.platform.converters import initialize_converters
+
+    initialize_converters(ocr_provider=container_mod.container.ocr_provider)
 
     async with AsyncSessionLocal() as db:
         if settings.RUN_ALEMBIC_MIGRATIONS:

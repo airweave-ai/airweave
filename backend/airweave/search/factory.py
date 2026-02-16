@@ -123,7 +123,7 @@ class SearchFactory:
 
         # Resolve destination (may be overridden for admin search)
         destination = await self._resolve_destination(db, collection, ctx, destination_override)
-        requires_embedding = getattr(destination, "_requires_client_embedding", True)
+        requires_embedding = getattr(destination, "requires_client_embedding", True)
 
         self._log_source_modes(ctx, federated_sources, has_vector_sources)
         ctx.logger.info(
@@ -626,7 +626,7 @@ class SearchFactory:
                 if not source_model:
                     raise ValueError(f"Source model not found for {source_connection.short_name}")
                 source_class = resource_locator.get_source(source_model)
-                if not getattr(source_class, "_federated_search", False):
+                if not getattr(source_class, "federated_search", False):
                     return True
             return False
         except Exception:
@@ -944,7 +944,7 @@ class SearchFactory:
             return None
 
         source_class = resource_locator.get_source(source_model)
-        if not getattr(source_class, "_federated_search", False):
+        if not getattr(source_class, "federated_search", False):
             return None
 
         # From here, source IS federated - any error should fail the search

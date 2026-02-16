@@ -21,21 +21,6 @@ class RetrievalStrategy(str, Enum):
     KEYWORD = "keyword"
 
 
-class SearchResult(BaseModel):
-    """Standard search result format returned by all destinations.
-
-    This is the canonical result format that all destination search implementations
-    must return, ensuring the search module remains destination-agnostic.
-    """
-
-    id: str = Field(..., description="Unique identifier for the search result")
-    score: float = Field(..., description="Relevance score from the search backend")
-    payload: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Document fields and metadata associated with the result",
-    )
-
-
 class AirweaveTemporalConfig(BaseModel):
     """Destination-agnostic temporal relevance configuration.
 

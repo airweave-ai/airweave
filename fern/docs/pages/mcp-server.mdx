@@ -7,11 +7,11 @@ slug: mcp-server
 
 The Airweave MCP server implements the [Model Context Protocol](https://modelcontextprotocol.io/) to let AI assistants search your synced data. It supports two deployment modes: **local** (stdio) for desktop AI clients and **hosted** (Streamable HTTP) for cloud platforms.
 
-### Prerequisites
+## Prerequisites
 
 Before you start you'll need:
 
-  - **A collection with data**: at least one source connection must have completed its initial sync. See the [Quickstart](https://docs.airweave.ai/quickstart) if you need to set this up.
+  - **A collection with data**: at least one source connection must have completed its initial sync. See the [Quickstart](/quickstart) if you need to set this up.
   - **An API key**: Create one in the Airweave dashboard under **API Keys**.
 
 ---
@@ -117,7 +117,7 @@ Local mode runs the MCP server as a local process that communicates over stdio. 
 
 Hosted mode runs the MCP server as a stateless HTTP service at `https://mcp.airweave.ai/mcp`. This is the setup for cloud-based AI platforms that need a remote MCP endpoint. The server uses the **Streamable HTTP** transport (MCP 2025-03-26).
 
-Each request is fully independent -- authentication and collection selection happen per-request via HTTP headers. No sessions or server-side state.
+Each request is fully independent: authentication and collection selection happen per-request via HTTP headers. No sessions or server-side state.
 
 <Tabs>
     <Tab title="OpenAI Agent Builder">
@@ -127,6 +127,18 @@ Each request is fully independent -- authentication and collection selection hap
       - **Headers**:
         - `X-API-Key`: Your Airweave API key
         - `X-Collection-Readable-ID`: Your collection's readable ID
+
+      <video
+        src="./mcp-openai-agent-builder.mp4"
+        controls
+        loop
+        autoplay
+        muted
+        playsinline
+        style={{ aspectRatio: '16 / 9', width: '100%' }}
+      >
+        Your browser does not support the video tag.
+      </video>
     </Tab>
 
     <Tab title="Any HTTP MCP Client">
@@ -181,22 +193,22 @@ The primary search tool. The tool name includes the collection ID so the AI assi
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `query` | string | Yes | -- | The search query text |
+| `query` | string | Yes | - | The search query text |
 | `response_type` | `"raw"` \| `"completion"` | No | `"raw"` | `"raw"` returns results, `"completion"` returns an AI-generated answer |
 | `limit` | number | No | 100 | Maximum results to return (1-1000) |
 | `offset` | number | No | 0 | Results to skip for pagination |
-| `recency_bias` | number | No | -- | Recency weighting from 0.0 to 1.0 |
-| `score_threshold` | number | No | -- | Minimum similarity score (0.0 to 1.0) |
-| `search_method` | `"hybrid"` \| `"neural"` \| `"keyword"` | No | -- | Search strategy |
-| `expansion_strategy` | `"auto"` \| `"llm"` \| `"no_expansion"` | No | -- | Query expansion strategy |
-| `enable_reranking` | boolean | No | -- | Enable LLM-based result reranking |
-| `enable_query_interpretation` | boolean | No | -- | Enable automatic filter extraction from natural language |
+| `recency_bias` | number | No | - | Recency weighting from 0.0 to 1.0 |
+| `score_threshold` | number | No | - | Minimum similarity score (0.0 to 1.0) |
+| `search_method` | `"hybrid"` \| `"neural"` \| `"keyword"` | No | - | Search strategy |
+| `expansion_strategy` | `"auto"` \| `"llm"` \| `"no_expansion"` | No | - | Query expansion strategy |
+| `enable_reranking` | boolean | No | - | Enable LLM-based result reranking |
+| `enable_query_interpretation` | boolean | No | - | Enable automatic filter extraction from natural language |
 
 <Note>
 The MCP server uses the **legacy** search parameter names for backwards compatibility. These are automatically mapped to the new API parameter names by the SDK. See the [Search documentation](/search) for the mapping between legacy and new parameter names.
 </Note>
 
-**Natural language examples** -- the AI assistant will map these to the correct parameters automatically:
+**Natural language examples**: the AI assistant will map these to the correct parameters automatically:
 
 - "Find the first 5 results" → `limit: 5`
 - "Show me results 11-20" → `limit: 10, offset: 10`

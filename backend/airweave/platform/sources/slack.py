@@ -8,6 +8,8 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import SlackAuthConfig
+from airweave.platform.configs.config import SlackConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import AirweaveSystemMetadata, BaseEntity, Breadcrumb
 from airweave.platform.entities.slack import SlackMessageEntity
@@ -29,8 +31,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.ACCESS_ONLY,
-    auth_config_class="SlackAuthConfig",
-    config_class="SlackConfig",
+    auth_config_class=SlackAuthConfig,
+    config_class=SlackConfig,
     labels=["Communication", "Messaging"],
     supports_continuous=False,
     federated_search=True,  # This source uses federated search instead of syncing

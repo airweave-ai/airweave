@@ -9,8 +9,3 @@ NATIVE_VESPA_UUID = uuid.UUID("33333333-3333-3333-3333-333333333333")
 # String versions for use in frontend code or string contexts
 NATIVE_NEO4J_UUID_STR = str(NATIVE_NEO4J_UUID)
 NATIVE_VESPA_UUID_STR = str(NATIVE_VESPA_UUID)
-
-# Entity definition UUIDs - these must match the ones in init_db_native.py
-# Disparate from the native connection UUIDs
-RESERVED_TABLE_ENTITY_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
-RESERVED_TABLE_ENTITY_ID_STR = str(RESERVED_TABLE_ENTITY_ID)

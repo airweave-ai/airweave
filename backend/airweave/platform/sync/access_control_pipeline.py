@@ -1,38 +1,43 @@
 """Pipeline for access control membership processing.
 
-Mirrors EntityPipeline but for membership tuples.
-Uses the handler/dispatcher architecture for consistency and future extensibility.
+Supports two sync modes:
+1. Full sync: Collect all memberships from source, upsert, detect + delete orphans
+2. Incremental sync: Apply DirSync delta changes (adds/removes) without orphan cleanup
 
-Key difference from old implementation:
-- Now supports orphan detection and deletion (critical for security)
-- When permissions are revoked at the source, the corresponding DB records are deleted
+The pipeline decides which mode to use based on the source's capabilities and cursor state.
+After a full sync, it seeds a DirSync cookie for future incremental syncs.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING, List, Set, Tuple
 
 from airweave import crud
 from airweave.db.session import get_db_context
-from airweave.platform.access_control.schemas import MembershipTuple
+from airweave.platform.access_control.schemas import (
+    ACLChangeType,
+    MembershipTuple,
+)
 from airweave.platform.sync.actions.access_control import ACActionDispatcher, ACActionResolver
 from airweave.platform.sync.pipeline.acl_membership_tracker import ACLMembershipTracker
+from airweave.platform.utils.error_utils import get_error_message
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
 
 
 class AccessControlPipeline:
-    """Orchestrates membership processing through resolver → dispatcher → handlers.
+    """Orchestrates membership processing with full and incremental sync support.
 
-    Mirrors EntityPipeline pattern for consistency:
-    1. Resolve: Determine actions for each membership
-    2. Dispatch: Route actions to handlers
-    3. Handle: Persist to destinations (currently just Postgres)
-    4. Cleanup: Delete orphan memberships (revoked permissions)
+    Full sync path:
+    1. Collect all memberships from source
+    2. Dedupe + resolve + dispatch (upsert to Postgres)
+    3. Delete orphan memberships (revoked permissions)
+    4. Seed DirSync cookie for future incremental syncs
 
-    This architecture supports:
-    - Deduplication within a sync
-    - Orphan detection (memberships in DB but not seen = revoked permissions)
-    - Future extensions (additional destinations, caching, etc.)
+    Incremental sync path:
+    1. Call source.get_acl_changes() with DirSync cookie
+    2. Apply ADD changes (upsert) and REMOVE changes (delete by key)
+    3. Update cursor with new DirSync cookie
     """
 
     def __init__(
@@ -48,87 +53,370 @@ class AccessControlPipeline:
 
     async def process(
         self,
-        memberships: List[MembershipTuple],
+        source,
         sync_context: "SyncContext",
     ) -> int:
-        """Process a batch of membership tuples and cleanup orphans.
+        """Process access control memberships from the source.
+
+        Decides between full and incremental sync based on source capabilities
+        and cursor state, then delegates to the appropriate path.
 
         Args:
-            memberships: Membership tuples to process (may include duplicates)
+            source: Source instance (e.g. SharePoint2019V2Source)
+            sync_context: Sync context with cursor, IDs, logger
+
+        Returns:
+            Number of memberships processed
+        """
+        if self._should_do_incremental_sync(source, sync_context):
+            return await self._process_incremental(source, sync_context)
+        else:
+            return await self._process_full(source, sync_context)
+
+    # -------------------------------------------------------------------------
+    # Sync mode decision
+    # -------------------------------------------------------------------------
+
+    def _should_do_incremental_sync(self, source, sync_context: "SyncContext") -> bool:
+        """Determine if incremental ACL sync is possible.
+
+        Requires:
+        - Source supports incremental ACL (has get_acl_changes + supports_incremental_acl)
+        - A DirSync cookie exists in the cursor
+        - Not a forced full sync
+        """
+        # Check source has incremental ACL support
+        if not hasattr(source, "supports_incremental_acl"):
+            return False
+        if not source.supports_incremental_acl():
+            return False
+
+        # Check we have a DirSync cookie from a previous sync
+        cursor_data = sync_context.cursor.data if sync_context.cursor else {}
+        if not cursor_data.get("acl_dirsync_cookie"):
+            sync_context.logger.info("No DirSync cookie found -- will do full ACL sync")
+            return False
+
+        # Check not forced full sync
+        if getattr(sync_context, "force_full_sync", False):
+            sync_context.logger.info("Force full sync requested -- skipping incremental ACL")
+            return False
+
+        return True
+
+    # -------------------------------------------------------------------------
+    # Full ACL sync (existing logic + DirSync cookie seeding)
+    # -------------------------------------------------------------------------
+
+    async def _process_full(self, source, sync_context: "SyncContext") -> int:  # noqa: C901
+        """Full ACL sync: stream memberships to DB in batches, then cleanup orphans.
+
+        Memberships are deduped and written to PostgreSQL in batches as they
+        stream from the source. This ensures partial progress is persisted even
+        if the sync is interrupted. Orphan cleanup runs after all memberships
+        have been collected.
+
+        After completion, seeds a DirSync cookie for future incremental syncs.
+
+        Args:
+            source: Source instance
             sync_context: Sync context
 
         Returns:
-            Number of memberships upserted (does not include deleted orphans)
+            Number of memberships upserted
         """
-        upserted_count = 0
+        sync_context.logger.info("Starting FULL ACL sync")
 
-        # Step 1: Track + dedupe memberships (for orphan detection + stats)
-        unique_memberships: List[MembershipTuple] = []
-        for membership in memberships:
-            is_new = self._tracker.track_membership(
-                member_id=membership.member_id,
-                member_type=membership.member_type,
-                group_id=membership.group_id,
+        BATCH_SIZE = 500
+        upserted_count = 0
+        total_collected = 0
+        batch_buffer: List[MembershipTuple] = []
+        collection_complete = False
+
+        if not hasattr(source, "generate_access_control_memberships"):
+            sync_context.logger.warning(
+                "Source has supports_access_control=True but no "
+                "generate_access_control_memberships() method. Skipping."
             )
-            if is_new:
-                unique_memberships.append(membership)
-                if len(unique_memberships) % 100 == 0:
+            return 0
+
+        # Stream memberships from source, dedupe, and write to DB in batches
+        try:
+            async for membership in source.generate_access_control_memberships():
+                total_collected += 1
+
+                # Dedupe via tracker (also records key for orphan detection)
+                is_new = self._tracker.track_membership(
+                    member_id=membership.member_id,
+                    member_type=membership.member_type,
+                    group_id=membership.group_id,
+                )
+                if not is_new:
+                    continue
+
+                batch_buffer.append(membership)
+
+                # Flush batch to DB when full
+                if len(batch_buffer) >= BATCH_SIZE:
+                    upserted_count += await self._flush_batch(batch_buffer, sync_context)
+                    batch_buffer = []
+
+                # Progress logging + heartbeat
+                if total_collected % 1000 == 0:
+                    stats = self._tracker.get_stats()
                     sync_context.logger.debug(
-                        f"🔐 Collected {len(unique_memberships)} unique memberships so far..."
+                        f"ACL progress: {total_collected} collected, "
+                        f"{stats.encountered} unique, "
+                        f"{upserted_count} written to DB"
                     )
+                    await sync_context.state_publisher.publish_progress()
+
+            collection_complete = True
+
+        except Exception as e:
+            sync_context.logger.error(
+                f"Error collecting memberships: {get_error_message(e)}",
+                exc_info=True,
+            )
+            # Flush whatever we have in the buffer before giving up
+            if batch_buffer:
+                upserted_count += await self._flush_batch(batch_buffer, sync_context)
+            sync_context.logger.info(
+                f"ACL collection failed after {upserted_count} memberships written to DB"
+            )
+            # Don't do orphan cleanup if collection failed (incomplete data)
+            return upserted_count
+
+        # Flush remaining batch
+        if batch_buffer:
+            upserted_count += await self._flush_batch(batch_buffer, sync_context)
 
         stats = self._tracker.get_stats()
         sync_context.logger.info(
-            f"🔐 Collected {stats.encountered} unique memberships "
+            f"ACL collection complete: {total_collected} total, "
+            f"{stats.encountered} unique, {upserted_count} written to DB "
             f"({stats.duplicates_skipped} duplicates skipped)"
         )
 
-        # Step 2: Process memberships (upsert)
-        if unique_memberships:
-            # Resolve to actions
-            batch = await self._resolver.resolve(unique_memberships, sync_context)
-
-            # Dispatch to handlers
-            upserted_count = await self._dispatcher.dispatch(batch, sync_context)
-            self._tracker.record_upserted(upserted_count)
-
-            sync_context.logger.info(f"🔐 Upserted {upserted_count} ACL memberships to PostgreSQL")
-
-        # Step 3: Cleanup orphan memberships (critical for security!)
-        deleted_count = await self._cleanup_orphan_memberships(
-            sync_context, self._tracker.get_encountered_keys()
-        )
-        self._tracker.record_deleted(deleted_count)
-        if deleted_count > 0:
-            sync_context.logger.warning(
-                f"🗑️ Deleted {deleted_count} orphan ACL memberships (revoked permissions)"
+        # Orphan cleanup (only if collection completed successfully)
+        if collection_complete:
+            deleted_count = await self._cleanup_orphan_memberships(
+                sync_context, self._tracker.get_encountered_keys()
             )
+            self._tracker.record_deleted(deleted_count)
+            if deleted_count > 0:
+                sync_context.logger.warning(
+                    f"Deleted {deleted_count} orphan ACL memberships (revoked permissions)"
+                )
 
-        # Log final summary
         self._tracker.log_summary()
 
+        # Step 5: Seed DirSync cookie for future incremental syncs
+        await self._store_dirsync_cookie_after_full(source, sync_context)
+
         return upserted_count
+
+    async def _flush_batch(
+        self,
+        batch: List[MembershipTuple],
+        sync_context: "SyncContext",
+    ) -> int:
+        """Write a batch of deduplicated memberships to PostgreSQL.
+
+        Uses the resolver/dispatcher pipeline for consistency with
+        the existing action architecture.
+
+        Args:
+            batch: List of unique MembershipTuple objects to persist.
+            sync_context: Sync context.
+
+        Returns:
+            Number of memberships upserted.
+        """
+        if not batch:
+            return 0
+
+        resolved = await self._resolver.resolve(batch, sync_context)
+        count = await self._dispatcher.dispatch(resolved, sync_context)
+        self._tracker.record_upserted(count)
+        return count
+
+    # -------------------------------------------------------------------------
+    # Incremental ACL sync (DirSync delta changes)
+    # -------------------------------------------------------------------------
+
+    async def _process_incremental(self, source, sync_context: "SyncContext") -> int:
+        """Incremental ACL sync: apply DirSync delta changes.
+
+        Calls source.get_acl_changes() with the stored cookie to get only
+        changed memberships. Applies ADDs via upsert and REMOVEs via delete.
+
+        Falls back to full sync on failure.
+
+        Args:
+            source: Source instance with get_acl_changes()
+            sync_context: Sync context
+
+        Returns:
+            Number of changes applied
+        """
+        cursor_data = sync_context.cursor.data if sync_context.cursor else {}
+        cookie = cursor_data.get("acl_dirsync_cookie", "")
+
+        sync_context.logger.info("Starting INCREMENTAL ACL sync via DirSync")
+
+        try:
+            result = await source.get_acl_changes(dirsync_cookie=cookie)
+        except Exception as e:
+            sync_context.logger.error(
+                f"Incremental ACL failed: {get_error_message(e)}. Falling back to full sync.",
+                exc_info=True,
+            )
+            return await self._process_full(source, sync_context)
+
+        deleted_group_ids = getattr(result, "deleted_group_ids", set())
+
+        if not result.changes and not deleted_group_ids:
+            sync_context.logger.info("No ACL changes detected (DirSync returned 0 changes)")
+            # Still update cursor with new cookie to advance the position
+            self._update_cursor_after_incremental(sync_context, result)
+            return 0
+
+        sync_context.logger.info(
+            f"Processing {len(result.changes)} ACL changes "
+            f"({len(result.modified_group_ids)} groups modified, "
+            f"{len(deleted_group_ids)} groups deleted)"
+        )
+
+        adds = 0
+        removes = 0
+        group_deletes = 0
+
+        async with get_db_context() as db:
+            for change in result.changes:
+                if change.change_type == ACLChangeType.ADD:
+                    await crud.access_control_membership.upsert(
+                        db,
+                        member_id=change.member_id,
+                        member_type=change.member_type,
+                        group_id=change.group_id,
+                        group_name=change.group_name or "",
+                        organization_id=sync_context.organization_id,
+                        source_connection_id=sync_context.source_connection_id,
+                        source_name=getattr(source, "_short_name", "unknown"),
+                    )
+                    adds += 1
+
+                elif change.change_type == ACLChangeType.REMOVE:
+                    await crud.access_control_membership.delete_by_key(
+                        db,
+                        member_id=change.member_id,
+                        member_type=change.member_type,
+                        group_id=change.group_id,
+                        source_connection_id=sync_context.source_connection_id,
+                        organization_id=sync_context.organization_id,
+                    )
+                    removes += 1
+
+            # Handle deleted AD groups -- immediately remove all memberships
+            # so that revoked access is reflected without waiting for a full sync
+            for group_id in deleted_group_ids:
+                deleted = await crud.access_control_membership.delete_by_group(
+                    db,
+                    group_id=group_id,
+                    source_connection_id=sync_context.source_connection_id,
+                    organization_id=sync_context.organization_id,
+                )
+                group_deletes += deleted
+
+        if group_deletes > 0:
+            sync_context.logger.warning(
+                f"Deleted {group_deletes} memberships from "
+                f"{len(deleted_group_ids)} deleted AD groups"
+            )
+
+        sync_context.logger.info(
+            f"Incremental ACL complete: {adds} adds, {removes} removes, "
+            f"{group_deletes} group-deletion removals"
+        )
+
+        # Update cursor with new DirSync cookie
+        self._update_cursor_after_incremental(sync_context, result)
+
+        return adds + removes + group_deletes
+
+    # -------------------------------------------------------------------------
+    # Cursor management
+    # -------------------------------------------------------------------------
+
+    def _update_cursor_after_incremental(self, sync_context: "SyncContext", result) -> None:
+        """Update cursor with new DirSync cookie after incremental sync."""
+        if not sync_context.cursor:
+            return
+
+        now = datetime.utcnow().isoformat() + "Z"
+        sync_context.cursor.update(
+            acl_dirsync_cookie=result.cookie_b64,
+            last_acl_sync_timestamp=now,
+            last_acl_changes_count=len(result.changes),
+        )
+
+    async def _store_dirsync_cookie_after_full(self, source, sync_context: "SyncContext") -> None:
+        """After a full sync, obtain and store an initial DirSync cookie.
+
+        This seeds the cookie so the next sync can be incremental.
+        Calls get_acl_changes with an empty cookie to get the initial state.
+        """
+        if not hasattr(source, "get_acl_changes"):
+            return
+        if not hasattr(source, "supports_incremental_acl"):
+            return
+        if not source.supports_incremental_acl():
+            return
+        if not sync_context.cursor:
+            return
+
+        try:
+            sync_context.logger.info(
+                "Obtaining initial DirSync cookie for future incremental ACL syncs..."
+            )
+            result = await source.get_acl_changes(dirsync_cookie="")
+
+            if result.cookie_b64:
+                now = datetime.utcnow().isoformat() + "Z"
+                sync_context.cursor.update(
+                    acl_dirsync_cookie=result.cookie_b64,
+                    last_acl_sync_timestamp=now,
+                    last_acl_changes_count=0,
+                )
+                sync_context.logger.info(
+                    f"Stored initial DirSync cookie (len={len(result.new_cookie)})"
+                )
+            else:
+                sync_context.logger.warning(
+                    "DirSync returned empty cookie -- incremental ACL not available"
+                )
+        except Exception as e:
+            sync_context.logger.warning(
+                f"Could not obtain DirSync cookie: {get_error_message(e)}. "
+                "Future syncs will use full ACL sync."
+            )
+
+    # -------------------------------------------------------------------------
+    # Orphan cleanup (full sync only)
+    # -------------------------------------------------------------------------
 
     async def _cleanup_orphan_memberships(
         self,
         sync_context: "SyncContext",
         encountered_keys: Set[Tuple[str, str, str]],
     ) -> int:
-        """Delete memberships in DB that weren't encountered during sync.
+        """Delete memberships in DB that weren't encountered during full sync.
 
-        This is critical for security: when a permission is revoked at the source,
-        the membership tuple is no longer yielded. We need to detect and delete
-        these orphan records to ensure the user can no longer see restricted documents.
-
-        Args:
-            sync_context: Sync context with source_connection_id and organization_id
-            encountered_keys: Set of (member_id, member_type, group_id) tuples
-                            that were encountered during this sync
-
-        Returns:
-            Number of orphan memberships deleted
+        Critical for security: when a permission is revoked at the source,
+        the membership tuple is no longer yielded. These orphan records must
+        be deleted to prevent unauthorized access.
         """
-        # Fetch all stored memberships for this source_connection
         async with get_db_context() as db:
             stored_memberships = await crud.access_control_membership.get_by_source_connection(
                 db=db,
@@ -137,36 +425,27 @@ class AccessControlPipeline:
             )
 
         if not stored_memberships:
-            sync_context.logger.debug("🔐 No existing memberships in DB for this source connection")
+            sync_context.logger.debug("No existing memberships in DB for this source connection")
             return 0
 
-        # Find orphans: memberships in DB but not encountered during sync
         orphans = []
         for membership in stored_memberships:
             key = (membership.member_id, membership.member_type, membership.group_id)
             if key not in encountered_keys:
                 orphans.append(membership)
-                sync_context.logger.debug(
-                    f"🔐 Orphan detected: {membership.member_id} ({membership.member_type}) "
-                    f"→ {membership.group_id} (group_name={membership.group_name})"
-                )
 
         if not orphans:
-            sync_context.logger.info("🔐 No orphan memberships to clean up")
+            sync_context.logger.info("No orphan memberships to clean up")
             return 0
 
-        # Log details about what's being deleted
         sync_context.logger.info(
-            f"🔐 Found {len(orphans)} orphan memberships (out of {len(stored_memberships)} stored) "
-            f"- these represent revoked permissions"
+            f"Found {len(orphans)} orphan memberships (out of {len(stored_memberships)} stored)"
         )
 
-        # Delete orphans
         async with get_db_context() as db:
-            orphan_ids = [m.id for m in orphans]
             deleted_count = await crud.access_control_membership.bulk_delete(
                 db=db,
-                ids=orphan_ids,
+                ids=[m.id for m in orphans],
             )
 
         return deleted_count

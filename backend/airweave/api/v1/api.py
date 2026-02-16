@@ -3,6 +3,7 @@
 from airweave.api.router import TrailingSlashRouter
 from airweave.api.v1.endpoints import (
     admin,
+    agentic_search,
     api_keys,
     auth_providers,
     billing,
@@ -45,6 +46,7 @@ api_router.include_router(
 api_router.include_router(auth_providers.router, prefix="/auth-providers", tags=["auth-providers"])
 api_router.include_router(collections.router, prefix="/collections", tags=["collections"])
 api_router.include_router(search.router, prefix="/collections", tags=["collections"])
+api_router.include_router(agentic_search.router, prefix="/collections", tags=["collections"])
 api_router.include_router(connections.router, prefix="/connections", tags=["connections"])
 api_router.include_router(
     source_connections.router, prefix="/source-connections", tags=["source-connections"]

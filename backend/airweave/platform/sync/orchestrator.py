@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import List, Optional
+from typing import Optional
 
 from airweave import schemas
 from airweave.analytics import business_events
@@ -13,7 +13,6 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
-from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.contexts import SyncContext
 from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.entity_pipeline import EntityPipeline
@@ -191,8 +190,9 @@ class SyncOrchestrator:
 
     async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
+        source_name = self.sync_context.source_instance.source_name
         self.sync_context.logger.info(
-            f"Starting pull-based processing from source {self.sync_context.source_instance._name} "
+            f"Starting pull-based processing from source {source_name} "
             f"(max workers: {self.worker_pool.max_workers}, "
             f"batch_size: {self.batch_size}, max_batch_latency_ms: {self.max_batch_latency_ms})"
         )
@@ -213,7 +213,10 @@ class SyncOrchestrator:
                         await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
                     except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
                         self.sync_context.logger.error(
-                            f"Guard rail check failed: {type(guard_error).__name__}: {str(guard_error)}"
+                            "Guard rail check failed: {type}: {error}".format(
+                                type=type(guard_error).__name__,
+                                error=str(guard_error),
+                            )
                         )
                         stream_error = guard_error
                         # Flush any buffered work so we don't drop it
@@ -430,7 +433,7 @@ class SyncOrchestrator:
 
         # Check if source supports continuous/incremental sync (class attribute)
         source_class = type(self.sync_context.source_instance)
-        source_supports_continuous = getattr(source_class, "_supports_continuous", False)
+        source_supports_continuous = getattr(source_class, "supports_continuous", False)
 
         self.sync_context.logger.debug(
             f"Orphan cleanup check: has_cursor_data={has_cursor_data}, "
@@ -475,67 +478,45 @@ class SyncOrchestrator:
 
     def _source_supports_access_control(self) -> bool:
         """Check if the source supports access control membership syncing."""
-        return getattr(self.sync_context.source_instance, "_supports_access_control", False)
+        return getattr(self.sync_context.source_instance, "supports_access_control", False)
 
     async def _process_access_control_memberships(self) -> None:
         """Process access control memberships from the source.
 
-        Collects MembershipTuple objects from the source's
-        generate_access_control_memberships() method and processes them
-        through the AccessControlPipeline to persist to PostgreSQL.
+        Delegates all ACL logic to the AccessControlPipeline, which:
+        - Decides whether to do incremental or full ACL sync
+        - Collects memberships from the source (full) or gets DirSync deltas (incremental)
+        - Resolves to actions and dispatches to handlers
+        - Handles orphan cleanup (full sync only)
+        - Updates the cursor with DirSync cookie
 
-        Key security feature: Memberships encountered during this sync are
-        tracked in the access control pipeline to detect and delete orphans
-        (revoked permissions).
+        Publishes progress heartbeats before and after to prevent the
+        stuck-job cleanup from cancelling during long-running ACL expansion.
         """
         source = self.sync_context.source_instance
         source_name = getattr(source, "_name", "unknown")
 
-        self.sync_context.logger.info(
-            f"🔐 Starting access control membership extraction from {source_name}"
-        )
+        self.sync_context.logger.info(f"Starting access control sync for {source_name}")
 
-        # Check if source has the method
-        if not hasattr(source, "generate_access_control_memberships"):
-            self.sync_context.logger.warning(
-                f"Source {source_name} has supports_access_control=True but no "
-                "generate_access_control_memberships() method. Skipping ACL sync."
-            )
-            return
+        # Publish a progress heartbeat so the stuck-job detector knows we're alive.
+        # ACL expansion (especially with 50K+ users) can take a long time without
+        # producing entity progress updates, which would otherwise trigger cancellation.
+        await self.sync_context.state_publisher.publish_progress()
 
-        # Collect memberships from source generator
-        memberships: List[MembershipTuple] = []
-        try:
-            async for membership in source.generate_access_control_memberships():
-                memberships.append(membership)
-
-                # Log progress every 100 memberships collected
-                if len(memberships) % 100 == 0 and len(memberships) > 0:
-                    self.sync_context.logger.debug(
-                        f"🔐 Collected {len(memberships)} memberships so far..."
-                    )
-        except Exception as e:
-            self.sync_context.logger.error(
-                f"Error collecting access control memberships: {get_error_message(e)}",
-                exc_info=True,
-            )
-            # Don't fail the entire sync for ACL errors
-            # Also don't do orphan cleanup if collection failed (could delete valid memberships)
-            return
-
-        # Process through AccessControlPipeline (handles tracking + orphan detection)
-        # Note: Even if no new memberships, we still need to check for orphans!
         try:
             await self.access_control_pipeline.process(
-                memberships=memberships,
+                source=source,
                 sync_context=self.sync_context,
             )
         except Exception as e:
             self.sync_context.logger.error(
-                f"Error processing access control memberships: {get_error_message(e)}",
+                f"ACL sync error: {get_error_message(e)}",
                 exc_info=True,
             )
-            # Don't fail the entire sync for ACL errors
+
+        # Publish another heartbeat after ACL sync completes
+        await self.sync_context.state_publisher.publish_progress()
+        # Don't fail the entire sync for ACL errors
 
     async def _finalize_progress_and_trackers(
         self, status: SyncJobStatus, error: Optional[str] = None
@@ -555,6 +536,10 @@ class SyncOrchestrator:
 
         # Save cursor data if it exists (for incremental syncs)
         await self._save_cursor_data()
+
+        # For snapshot sources: update short_name to the original source so that
+        # downstream consumers (search, metadata builders) see the real source.
+        await self._update_snapshot_short_name()
 
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
@@ -601,6 +586,55 @@ class SyncOrchestrator:
         self.sync_context.logger.info(
             f"Completed sync job {self.sync_context.sync_job.id} successfully. Stats: {stats}"
         )
+
+    async def _update_snapshot_short_name(self) -> None:
+        """For snapshot sources, update source_connection.short_name to the original source.
+
+        After a successful sync, the snapshot source_connection's short_name is changed
+        from "snapshot" to the original source name (e.g., "github", "gmail"). This makes
+        the source_connection transparent to downstream consumers (search, metadata builders,
+        filters). The original source name is read from the entity's system metadata.
+
+        Re-syncing a completed snapshot is blocked by a guard in SourceBuilder.
+        """
+        if self.sync_context.source_instance.short_name != "snapshot":
+            return
+
+        try:
+            from sqlalchemy import select as sa_select
+
+            from airweave import crud
+            from airweave.models.entity import Entity as EntityModel
+
+            async with get_db_context() as db:
+                # Get the original source_name from any synced entity
+                result = await db.execute(
+                    sa_select(EntityModel.source_name)
+                    .where(EntityModel.sync_id == self.sync_context.sync.id)
+                    .limit(1)
+                )
+                original_source_name = result.scalar_one_or_none()
+
+                if not original_source_name or original_source_name == "snapshot":
+                    self.sync_context.logger.debug(
+                        "[Snapshot] Could not determine original source name, keeping 'snapshot'"
+                    )
+                    return
+
+                # Update source_connection short_name
+                source_connection = await crud.source_connection.get_by_sync_id(
+                    db, sync_id=self.sync_context.sync.id, ctx=self.sync_context.ctx
+                )
+                if source_connection:
+                    source_connection.short_name = original_source_name
+                    await db.commit()
+                    self.sync_context.logger.info(
+                        f"[Snapshot] Updated source_connection short_name: "
+                        f"snapshot → {original_source_name}"
+                    )
+        except Exception as e:
+            # Non-fatal: the metadata builder fallback handles snapshot sources anyway
+            self.sync_context.logger.warning(f"[Snapshot] Failed to update short_name: {e}")
 
     async def _save_cursor_data(self) -> None:
         """Save cursor data to database if it exists."""

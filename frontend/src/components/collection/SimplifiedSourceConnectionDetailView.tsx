@@ -66,7 +66,7 @@ interface SourceConnectionJob {
     modified_by_email: string;
     created_at: string;
     modified_at: string;
-    status: 'pending' | 'in_progress' | 'completed' | 'failed';
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelling' | 'cancelled';
     entities_inserted?: number;
     entities_updated?: number;
     entities_deleted?: number;
@@ -786,11 +786,14 @@ const SimplifiedSourceConnectionDetailView = ({
                                     <span className={`inline-flex h-2 w-2 rounded-full
                                         ${syncJob?.status === 'completed' ? 'bg-green-500' :
                                             syncJob?.status === 'failed' ? 'bg-red-500' :
-                                                syncJob?.status === 'in_progress' ? 'bg-blue-500 animate-pulse' :
-                                                    'bg-amber-500'}`}
+                                                syncJob?.status === 'running' ? 'bg-blue-500 animate-pulse' :
+                                                    syncJob?.status === 'cancelling' ? 'bg-amber-500 animate-pulse' :
+                                                        syncJob?.status === 'cancelled' ? 'bg-gray-400' :
+                                                            syncJob?.status === 'pending' ? 'bg-amber-500' :
+                                                                'bg-gray-300'}`}
                                     />
                                     <span className="capitalize text-xs">
-                                        {syncJob?.status === 'in_progress' ? 'Running' : syncJob?.status || 'Not run'}
+                                        {syncJob?.status || 'Not run'}
                                     </span>
                                 </div>
                             </div>

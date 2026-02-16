@@ -11,10 +11,7 @@ from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
-from airweave.db.init_db_native import (
-    init_db_with_entity_definitions,
-    init_db_with_native_connections,
-)
+from airweave.db.init_db_native import init_db_with_native_connections
 
 
 async def init_db(db: AsyncSession) -> None:
@@ -27,8 +24,6 @@ async def init_db(db: AsyncSession) -> None:
     # First initialize native connections
     await init_db_with_native_connections(db)
 
-    # Initialize entity definitions
-    await init_db_with_entity_definitions(db)
     try:
         user = await crud.user.get_by_email(db, email=settings.FIRST_SUPERUSER)
     except NotFoundException:

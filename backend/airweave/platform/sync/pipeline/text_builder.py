@@ -48,7 +48,7 @@ class TextualRepresentationBuilder:
             Modifies entities in-place, setting textual_representation.
             Failed entities are removed and counted as skipped.
         """
-        source_name = sync_context.source_instance._short_name
+        source_name = sync_context.source_instance.short_name
 
         # Step 1: Build metadata section for all entities
         await self._build_metadata_for_all(entities, source_name)

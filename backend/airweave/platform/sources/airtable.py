@@ -7,6 +7,8 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import AirtableAuthConfig
+from airweave.platform.configs.config import AirtableConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.airtable import (
@@ -35,8 +37,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.WITH_REFRESH,
-    auth_config_class="AirtableAuthConfig",
-    config_class="AirtableConfig",
+    auth_config_class=AirtableAuthConfig,
+    config_class=AirtableConfig,
     labels=["Database", "Spreadsheet"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

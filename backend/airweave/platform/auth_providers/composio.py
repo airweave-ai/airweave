@@ -10,14 +10,16 @@ from airweave.core.credential_sanitizer import (
     sanitize_credentials_dict,
 )
 from airweave.platform.auth_providers._base import BaseAuthProvider
+from airweave.platform.configs.auth import ComposioAuthConfig
+from airweave.platform.configs.config import ComposioConfig
 from airweave.platform.decorators import auth_provider
 
 
 @auth_provider(
     name="Composio",
     short_name="composio",
-    auth_config_class="ComposioAuthConfig",
-    config_class="ComposioConfig",
+    auth_config_class=ComposioAuthConfig,
+    config_class=ComposioConfig,
 )
 class ComposioAuthProvider(BaseAuthProvider):
     """Composio authentication provider."""

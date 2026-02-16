@@ -6,10 +6,10 @@ for connecting to a specific type of data source.
 """
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field
 
 from airweave.platform.configs._base import Fields
 
@@ -70,11 +70,11 @@ class SourceBase(BaseModel):
             "Python class name of the source implementation that handles data extraction logic."
         ),
     )
-    output_entity_definition_ids: Optional[List[UUID]] = Field(
-        None,
+    output_entity_definitions: List[str] = Field(
+        default_factory=list,
         description=(
-            "List of entity definition IDs that this source can produce. Defines the data schema "
-            "and structure that this connector outputs."
+            "List of entity definition short names that this source can produce "
+            "(e.g., ['asana_task_entity', 'asana_project_entity'])."
         ),
     )
     labels: Optional[List[str]] = Field(
@@ -130,25 +130,6 @@ class SourceBase(BaseModel):
         ),
     )
 
-    @field_serializer("output_entity_definition_ids")
-    def serialize_output_entity_definition_ids(
-        self, output_entity_definition_ids: Optional[List[UUID]]
-    ) -> Optional[List[str]]:
-        """Convert UUID list to string list during serialization."""
-        if output_entity_definition_ids is None:
-            return None
-        return [str(uuid) for uuid in output_entity_definition_ids]
-
-    @field_validator("output_entity_definition_ids", mode="before")
-    @classmethod
-    def validate_output_entity_definition_ids(cls, value: Any) -> Optional[List[UUID]]:
-        """Convert string list to UUID list during deserialization."""
-        if value is None:
-            return None
-        if isinstance(value, list):
-            return [UUID(str(item)) if not isinstance(item, UUID) else item for item in value]
-        return value
-
     class Config:
         """Pydantic config for SourceBase."""
 
@@ -170,6 +151,10 @@ class SourceUpdate(SourceBase):
 class SourceInDBBase(SourceBase):
     """Base schema for Source stored in database with system fields."""
 
+    output_entity_definition_ids: Optional[List[str]] = Field(
+        None,
+        description="Legacy DB column — maps to output_entity_definitions.",
+    )
     id: UUID = Field(
         ...,
         description=(
@@ -194,8 +179,11 @@ class SourceInDBBase(SourceBase):
         from_attributes = True
 
 
-class Source(SourceInDBBase):
-    """Complete source representation with authentication and configuration schemas."""
+class Source(SourceBase):
+    """Complete source representation with authentication and configuration schemas.
+
+    Served from the in-memory SourceRegistry — no database row needed.
+    """
 
     auth_fields: Optional[Fields] = Field(
         None,
@@ -237,9 +225,9 @@ class Source(SourceInDBBase):
                     "config_class": "GitHubConfig",
                     "short_name": "github",
                     "class_name": "GitHubSource",
-                    "output_entity_definition_ids": [
-                        "def12345-6789-abcd-ef01-234567890abc",
-                        "def67890-abcd-ef01-2345-67890abcdef1",
+                    "output_entity_definitions": [
+                        "git_hub_repository_entity",
+                        "git_hub_code_file_entity",
                     ],
                     "organization_id": None,
                     "labels": ["code"],
@@ -293,9 +281,9 @@ class Source(SourceInDBBase):
                     "config_class": "GmailConfig",
                     "short_name": "gmail",
                     "class_name": "GmailSource",
-                    "output_entity_definition_ids": [
-                        "abc12345-6789-abcd-ef01-234567890abc",
-                        "abc67890-abcd-ef01-2345-67890abcdef1",
+                    "output_entity_definitions": [
+                        "gmail_thread_entity",
+                        "gmail_message_entity",
                     ],
                     "organization_id": None,
                     "labels": ["Communication", "Email"],

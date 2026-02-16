@@ -551,10 +551,6 @@ class CTTIAuthConfig(AuthConfig):
         return v.strip()
 
 
-class PostgreSQLAuthConfig(BaseDatabaseAuthConfig):
-    """PostgreSQL authentication configuration."""
-
-
 class SharePointAuthConfig(OAuth2WithRefreshAuthConfig):
     """SharePoint authentication credentials schema."""
 
@@ -784,6 +780,21 @@ class StubAuthConfig(AuthConfig):
         default="stub",
         title="Stub Key",
         description="Placeholder field (any value works, stub source doesn't require "
+        "real authentication)",
+    )
+
+
+class TimedAuthConfig(AuthConfig):
+    """Timed source authentication credentials schema.
+
+    The timed source doesn't require real authentication.
+    This config is a placeholder for consistency with other sources.
+    """
+
+    timed_key: str = Field(
+        default="timed",
+        title="Timed Key",
+        description="Placeholder field (any value works, timed source doesn't require "
         "real authentication)",
     )
 
