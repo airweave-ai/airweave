@@ -497,80 +497,14 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             // ─── Agentic search events ───────────────────────────────────
             if (event.type === 'planning') {
                 const plan = event.plan;
-                const phaseLabel = event.is_consolidation
-                    ? 'Consolidating results'
-                    : event.iteration === 0
-                        ? 'Planning'
-                        : 'Refining search';
-
-                // Format filter groups into a compact readable string
-                const filterGroups: any[] = plan?.filter_groups || [];
-                const OP_SYMBOLS: Record<string, string> = {
-                    equals: '=', not_equals: '!=', contains: '~',
-                    greater_than: '>', less_than: '<',
-                    greater_than_or_equal: '>=', less_than_or_equal: '<=',
-                    in: 'in', not_in: 'not in',
-                };
-                const formatField = (f: string) => {
-                    // Strip common prefixes for readability
-                    const stripped = f
-                        .replace('airweave_system_metadata.', '')
-                        .replace('breadcrumbs.', '');
-                    return stripped;
-                };
-                const formatCondition = (c: any) => {
-                    const field = formatField(c.field || '');
-                    const op = OP_SYMBOLS[c.operator] || c.operator;
-                    const val = Array.isArray(c.value) ? `[${c.value.join(', ')}]` : String(c.value);
-                    return { field, op, val };
-                };
-
                 rows.push(
                     <div key={`planning-${i}`} className="animate-fade-in space-y-1.5 py-1.5">
-                        <span className="text-[11px] font-medium text-foreground">
-                            {phaseLabel}
-                        </span>
                         {plan?.reasoning && (
                             <div className={cn(
                                 "text-[11px] leading-relaxed",
                                 isDark ? "text-gray-400" : "text-gray-500"
                             )}>
                                 {plan.reasoning}
-                            </div>
-                        )}
-                        <div className={cn("flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]", isDark ? "text-gray-500" : "text-gray-400")}>
-                            {plan?.query?.primary && (
-                                <span>Query: <span className={cn("font-medium", isDark ? "text-gray-300" : "text-gray-600")}>{plan.query.primary}</span></span>
-                            )}
-                            {plan?.retrieval_strategy && (
-                                <span>Strategy: <span className={cn("font-medium", isDark ? "text-gray-300" : "text-gray-600")}>{plan.retrieval_strategy}</span></span>
-                            )}
-                            {plan?.limit != null && (
-                                <span>Limit: <span className={cn("font-medium", isDark ? "text-gray-300" : "text-gray-600")}>{plan.limit}</span></span>
-                            )}
-                        </div>
-                        {filterGroups.length > 0 && (
-                            <div className={cn("flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px]", isDark ? "text-gray-500" : "text-gray-400")}>
-                                <span>Filters:</span>
-                                {filterGroups.map((group: any, gi: number) => {
-                                    const conditions: any[] = group.conditions || [];
-                                    return (
-                                        <span key={gi} className="inline-flex items-center gap-x-1">
-                                            {gi > 0 && <span className={cn("font-medium", isDark ? "text-gray-600" : "text-gray-300")}>or</span>}
-                                            {conditions.map((c: any, ci: number) => {
-                                                const { field, op, val } = formatCondition(c);
-                                                return (
-                                                    <span key={ci} className="inline-flex items-center gap-x-0.5">
-                                                        {ci > 0 && <span className={cn(isDark ? "text-gray-600" : "text-gray-300")}>&</span>}
-                                                        <span className={cn("font-mono", isDark ? "text-gray-400" : "text-gray-500")}>{field}</span>
-                                                        <span>{op}</span>
-                                                        <span className={cn("font-medium", isDark ? "text-gray-300" : "text-gray-600")}>{val}</span>
-                                                    </span>
-                                                );
-                                            })}
-                                        </span>
-                                    );
-                                })}
                             </div>
                         )}
                     </div>
@@ -594,33 +528,18 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 
             if (event.type === 'evaluating') {
                 const eval_ = event.evaluation;
-                rows.push(
-                    <div key={`evaluating-${i}`} className="animate-fade-in space-y-1 py-0.5">
-                        <div className={cn("flex items-center gap-2 text-[10px]", isDark ? "text-gray-500" : "text-gray-400")}>
-                            <span className={cn(
-                                "font-medium",
-                                eval_?.answer_found
-                                    ? isDark ? "text-emerald-400" : "text-emerald-600"
-                                    : eval_?.should_continue
-                                        ? isDark ? "text-gray-400" : "text-gray-500"
-                                        : isDark ? "text-gray-500" : "text-gray-400"
-                            )}>
-                                {eval_?.answer_found ? "Answer found" : eval_?.should_continue ? "Continuing" : "Search exhausted"}
-                            </span>
-                            <span className={cn("text-[10px]", isDark ? "text-gray-600" : "text-gray-300")}>
-                                {event.results_shown}/{event.results_total} evaluated
-                            </span>
-                        </div>
-                        {eval_?.reasoning && (
+                if (eval_?.reasoning) {
+                    rows.push(
+                        <div key={`evaluating-${i}`} className="animate-fade-in py-0.5">
                             <div className={cn(
                                 "text-[11px] leading-relaxed",
                                 isDark ? "text-gray-400" : "text-gray-500"
                             )}>
                                 {eval_.reasoning}
                             </div>
-                        )}
-                    </div>
-                );
+                        </div>
+                    );
+                }
                 continue;
             }
 
@@ -1401,12 +1320,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                     </div>
                 );
             } else if (event.type === 'done') {
-                rows.push(
-                    <div key={(event.seq ?? i) + "-" + i} className="py-0.5 px-2 text-[11px] opacity-90 flex items-center gap-1.5">
-                        <Check className="h-3 w-3 opacity-80" strokeWidth={1.5} />
-                        Search complete
-                    </div>
-                );
+                continue;
             } else if (event.type === 'results' || event.type === 'summary') {
                 continue;
             } else if (event.type === 'error') {

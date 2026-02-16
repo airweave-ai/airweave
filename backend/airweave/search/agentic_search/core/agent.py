@@ -87,7 +87,6 @@ class AgenticSearchAgent:
                     collection_slug=collection_readable_id,
                     duration_ms=duration_ms,
                     mode=request.mode.value,
-                    model=request.model.value,
                     error_message=str(e),
                     error_type=type(e).__name__,
                     is_streaming=is_streaming,
@@ -390,10 +389,11 @@ class AgenticSearchAgent:
                 context_stats=context_stats,
             )
 
-            # Read cumulative token usage from the LLM (if available)
+            # Read cumulative token usage and fallback stats from the LLM (if available)
             llm = self.services.llm
             total_prompt_tokens = getattr(llm, "total_prompt_tokens", None)
             total_completion_tokens = getattr(llm, "total_completion_tokens", None)
+            fallback_stats = getattr(llm, "fallback_stats", None)
 
             track_agentic_search_completion(
                 ctx=self.ctx,
@@ -401,7 +401,6 @@ class AgenticSearchAgent:
                 collection_slug=collection_readable_id,
                 duration_ms=total_ms,
                 mode=state.mode.value,
-                model=request.model.value,
                 total_iterations=state.iteration_number + 1,
                 had_consolidation=state.is_consolidation,
                 exit_reason=exit_reason,
@@ -417,6 +416,7 @@ class AgenticSearchAgent:
                 search_error_count=search_error_count,
                 total_prompt_tokens=total_prompt_tokens,
                 total_completion_tokens=total_completion_tokens,
+                fallback_stats=fallback_stats,
             )
         except Exception:
             self.ctx.logger.debug(

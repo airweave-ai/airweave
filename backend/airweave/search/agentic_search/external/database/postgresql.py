@@ -100,19 +100,19 @@ class PostgreSQLAgenticSearchDatabase:
             raise ValueError(f"Source not found: {short_name}")
         return AgenticSearchSource(
             short_name=source.short_name,
-            output_entity_definition_ids=source.output_entity_definition_ids or [],
+            output_entity_definitions=source.output_entity_definitions or [],
         )
 
     async def get_entity_definitions_of_source(
         self, source: AgenticSearchSource
     ) -> list[AgenticSearchEntityDefinition]:
         """Get entity definitions for a source."""
-        if not source.output_entity_definition_ids:
-            raise ValueError(f"Source '{source.short_name}' has no output entity definition IDs")
+        if not source.output_entity_definitions:
+            raise ValueError(f"Source '{source.short_name}' has no output entity definitions")
 
         result = await self._session.execute(
             select(EntityDefinitionModel).where(
-                EntityDefinitionModel.id.in_(source.output_entity_definition_ids)
+                EntityDefinitionModel.name.in_(source.output_entity_definitions)
             )
         )
         models = result.scalars().all()
@@ -120,7 +120,7 @@ class PostgreSQLAgenticSearchDatabase:
         if not models:
             raise ValueError(
                 f"No entity definitions found for source '{source.short_name}' "
-                f"(expected IDs: {source.output_entity_definition_ids})"
+                f"(expected names: {source.output_entity_definitions})"
             )
 
         return [

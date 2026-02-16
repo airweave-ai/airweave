@@ -403,7 +403,7 @@ class EntityPipeline:
             # For snapshot sources, preserve the original source_name from the captured entity
             # (the entity was reconstructed with its original system metadata intact).
             # For all other sources, set source_name from the current source instance.
-            is_snapshot = sync_context.source_instance._short_name == "snapshot"
+            is_snapshot = sync_context.source_instance.short_name == "snapshot"
             if not (is_snapshot and entity.airweave_system_metadata.source_name):
                 entity.airweave_system_metadata.source_name = (
                     sync_context.source_instance.short_name

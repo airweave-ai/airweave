@@ -49,7 +49,7 @@ export const ApiIntegrationDoc = ({ collectionReadableId, query, searchConfig, a
         if (!agenticConfig) return null;
 
         const apiBaseUrl = API_CONFIG.baseURL;
-        const apiUrl = `${apiBaseUrl}/collections/${collectionReadableId}/agentic-search/stream`;
+        const apiUrl = `${apiBaseUrl}/collections/${collectionReadableId}/agentic-search`;
         const searchQuery = query || "Ask a question about your data";
 
         const escapeForJson = (str: string) => str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -71,11 +71,11 @@ export const ApiIntegrationDoc = ({ collectionReadableId, query, searchConfig, a
             })
             .join('\n');
 
-        // cURL — SSE stream
-        const curlSnippet = `# Agentic search (Server-Sent Events stream)
-curl -N -X 'POST' \\
+        // cURL
+        const curlSnippet = `# Agentic search
+curl -X 'POST' \\
   '${apiUrl}' \\
-  -H 'accept: text/event-stream' \\
+  -H 'accept: application/json' \\
   -H 'x-api-key: ${apiKey}' \\
   -H 'Content-Type: application/json' \\
   -d '${jsonBody}'`;
@@ -95,15 +95,15 @@ client = AirweaveSDK(
     api_key="${apiKey}",
 )
 
-# Streaming agentic search
-for event in client.collections.agentic_search_stream(
+# Agentic search
+response = client.collections.agentic_search(
     readable_id="${collectionReadableId}",
     request={
         "query": "${escapeForPython(searchQuery)}",${filterLines}
         "mode": "${agenticConfig.mode}",
     },
-):
-    print(event.type, event)`;
+)
+print(response.results, response.answer)`;
 
         // Node.js
         const nodeFilterLines = agenticConfig.filter.length > 0
@@ -118,8 +118,8 @@ for event in client.collections.agentic_search_stream(
 
 const client = new AirweaveSDKClient({ apiKey: "${apiKey}" });
 
-// Streaming agentic search
-const stream = await client.collections.agenticSearchStream(
+// Agentic search
+const response = await client.collections.agenticSearch(
     "${collectionReadableId}",
     {
         request: {
@@ -129,9 +129,7 @@ const stream = await client.collections.agenticSearchStream(
     }
 );
 
-for await (const event of stream) {
-    console.log(event.type, event);
-}`;
+console.log(response.results, response.answer);`;
 
         const configSnippet = `{
   "mcpServers": {
@@ -453,10 +451,10 @@ console.log(result.results.length);  // Number of results`;
                                 <CodeBlock
                                     code={endpoints.curlSnippet}
                                     language="bash"
-                                    badgeText={isAgentic ? "SSE" : "POST"}
-                                    badgeColor={isAgentic ? "bg-emerald-600 hover:bg-emerald-600" : "bg-amber-600 hover:bg-amber-600"}
+                                    badgeText="POST"
+                                    badgeColor="bg-amber-600 hover:bg-amber-600"
                                     title={isAgentic
-                                        ? `/collections/${collectionReadableId}/agentic-search/stream`
+                                        ? `/collections/${collectionReadableId}/agentic-search`
                                         : `/collections/${collectionReadableId}/search`
                                     }
                                     footerContent={docLinkFooter}

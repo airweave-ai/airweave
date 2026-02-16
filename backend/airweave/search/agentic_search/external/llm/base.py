@@ -19,14 +19,17 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 
 from airweave.core.logging import logger as _default_logger
+from airweave.search.agentic_search.external.llm.interface import AgenticSearchLLMInterface
 from airweave.search.agentic_search.external.llm.registry import LLMModelSpec
 from airweave.search.agentic_search.external.tokenizer import AgenticSearchTokenizerInterface
 
 T = TypeVar("T", bound=BaseModel)
 
 
-class BaseLLM:
+class BaseLLM(AgenticSearchLLMInterface):
     """Base class for all agentic search LLM providers.
+
+    Explicitly implements the AgenticSearchLLMInterface protocol.
 
     Provides:
     - model_spec property

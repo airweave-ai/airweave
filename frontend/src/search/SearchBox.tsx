@@ -59,6 +59,7 @@ interface SearchBoxProps {
     onStreamUpdate?: (partial: PartialStreamUpdate) => void;
     onCancel?: () => void;
     // Search mode
+    agenticEnabled?: boolean;
     searchMode?: SearchMode;
     onSearchModeChange?: (mode: SearchMode) => void;
 }
@@ -92,7 +93,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     onCancel,
     className,
     disabled = false,
-    searchMode = "search",
+    agenticEnabled = true,
+    searchMode = "agent",
     onSearchModeChange,
 }) => {
     const { resolvedTheme } = useTheme();
@@ -618,34 +620,15 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     return (
         <>
             <div className={cn("w-full", className)}>
-                <div
-                    className={cn(
-                        DESIGN_SYSTEM.radius.card,
-                        "border overflow-hidden",
-                        isDark ? "border-border bg-gray-900" : "border-border bg-white"
-                    )}
-                >
-                    <div className="relative px-2 pt-2 pb-1">
-                        {/* Mode toggle slider (top-right, left of code button) */}
+                {/* Mode toggle (above search box) — only shown when agentic search is enabled */}
+                {agenticEnabled && (
+                    <div className="flex items-center justify-end gap-2 mb-1.5">
                         <div
                             className={cn(
-                                "absolute top-2.5 right-12 z-20",
                                 "inline-flex items-center h-6 rounded-md border p-0.5",
                                 isDark ? "border-border/50 bg-background" : "border-border bg-white"
                             )}
                         >
-                            <button
-                                type="button"
-                                onClick={() => onSearchModeChange?.("search")}
-                                className={cn(
-                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all",
-                                    !isAgenticMode
-                                        ? "text-primary bg-primary/10"
-                                        : "text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                Search
-                            </button>
                             <button
                                 type="button"
                                 onClick={() => onSearchModeChange?.("agent")}
@@ -656,10 +639,32 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         : "text-muted-foreground hover:text-foreground"
                                 )}
                             >
-                                Agent
+                                Agentic Search
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onSearchModeChange?.("search")}
+                                className={cn(
+                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all",
+                                    !isAgenticMode
+                                        ? "text-primary bg-primary/10"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                Classic Search
                             </button>
                         </div>
+                    </div>
+                )}
 
+                <div
+                    className={cn(
+                        DESIGN_SYSTEM.radius.card,
+                        "border overflow-hidden",
+                        isDark ? "border-border bg-gray-900" : "border-border bg-white"
+                    )}
+                >
+                    <div className="relative px-2 pt-2 pb-1">
                         {/* Code button with tooltip */}
                         <TooltipProvider delayDuration={0}>
                             <Tooltip>

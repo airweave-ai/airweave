@@ -231,7 +231,6 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
             if (event.type === 'planning') {
                 const e = event as any;
                 const plan = e.plan;
-                const iterLabel = e.is_consolidation ? 'Consolidation' : `Iteration ${e.iteration + 1}`;
                 rows.push(
                     <div key={`planning-${i}`} className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -242,7 +241,7 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
                                 {e.iteration + 1}
                             </div>
                             <span className={cn(DESIGN_SYSTEM.typography.sizes.body, DESIGN_SYSTEM.typography.weights.semibold)}>
-                                {iterLabel} — Planning
+                                {e.is_consolidation ? 'Consolidation' : `Iteration ${e.iteration + 1}`}
                             </span>
                         </div>
                         {plan?.reasoning && (
@@ -253,17 +252,6 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
                                 {plan.reasoning}
                             </div>
                         )}
-                        <div className={cn("ml-7 flex flex-wrap gap-x-4 gap-y-1 text-[11px]", isDark ? "text-muted-foreground" : "text-muted-foreground")}>
-                            {plan?.query?.primary && (
-                                <span>Query: <span className="font-medium text-foreground">{plan.query.primary}</span></span>
-                            )}
-                            {plan?.retrieval_strategy && (
-                                <span>Strategy: <span className="font-medium text-foreground">{plan.retrieval_strategy}</span></span>
-                            )}
-                            {plan?.limit != null && (
-                                <span>Limit: <span className="font-medium text-foreground">{plan.limit}</span></span>
-                            )}
-                        </div>
                     </div>
                 );
                 continue;
@@ -285,33 +273,18 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
             if (event.type === 'evaluating') {
                 const e = event as any;
                 const eval_ = e.evaluation;
-                rows.push(
-                    <div key={`evaluating-${i}`} className="space-y-1">
-                        <div className="ml-7 flex items-center gap-2 text-xs">
-                            <span className={cn(
-                                "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
-                                eval_?.answer_found
-                                    ? isDark ? "bg-emerald-500/15 text-emerald-400" : "bg-emerald-50 text-emerald-600"
-                                    : eval_?.should_continue
-                                        ? isDark ? "bg-amber-500/15 text-amber-400" : "bg-amber-50 text-amber-600"
-                                        : isDark ? "bg-muted text-muted-foreground" : "bg-muted text-muted-foreground"
-                            )}>
-                                {eval_?.answer_found ? "Answer found" : eval_?.should_continue ? "Continuing..." : "Search exhausted"}
-                            </span>
-                            <span className="text-muted-foreground">
-                                ({e.results_shown}/{e.results_total} results evaluated)
-                            </span>
-                        </div>
-                        {eval_?.reasoning && (
+                if (eval_?.reasoning) {
+                    rows.push(
+                        <div key={`evaluating-${i}`}>
                             <div className={cn(
                                 "ml-7 px-3 py-2 rounded-md text-xs leading-relaxed italic",
                                 isDark ? "bg-muted/50 text-muted-foreground" : "bg-muted/30 text-muted-foreground"
                             )}>
                                 {eval_.reasoning}
                             </div>
-                        )}
-                    </div>
-                );
+                        </div>
+                    );
+                }
                 continue;
             }
 
@@ -1099,12 +1072,8 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
                     </div>
                 );
             } else if (event.type === 'done') {
-                rows.push(
-                    <div key={(event.seq ?? i) + "-" + i} className="py-0.5 px-2 text-[11px] opacity-90 flex items-center gap-1.5">
-                        <Check className="h-3 w-3 opacity-80" strokeWidth={1.5} />
-                        Search complete
-                    </div>
-                );
+                // Skip — no visual indicator for search completion
+                continue;
             } else if (event.type === 'results' || event.type === 'summary') {
                 // Skip results and summary events - they're shown elsewhere
                 continue;

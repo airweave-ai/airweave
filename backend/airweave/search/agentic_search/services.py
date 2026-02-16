@@ -11,7 +11,6 @@ from airweave.core.config import settings
 from airweave.search.agentic_search.config import (
     DatabaseImpl,
     DenseEmbedderProvider,
-    LLMModel,
     LLMProvider,
     SparseEmbedderProvider,
     TokenizerType,
@@ -28,9 +27,8 @@ from airweave.search.agentic_search.external.dense_embedder.registry import (
 from airweave.search.agentic_search.external.dense_embedder.registry import validate_vector_size
 from airweave.search.agentic_search.external.llm import AgenticSearchLLMInterface
 from airweave.search.agentic_search.external.llm.registry import (
-    FALLBACK_CHAIN,
+    PROVIDER_API_KEY_SETTINGS,
     LLMModelSpec,
-    resolve_provider_for_model,
 )
 from airweave.search.agentic_search.external.llm.registry import (
     get_model_spec as get_llm_model_spec,
@@ -49,7 +47,7 @@ from airweave.search.agentic_search.external.vector_database import AgenticSearc
 
 # Module-level singletons shared across all requests
 _shared_circuit_breaker: InMemoryCircuitBreaker | None = None
-_shared_llm_cache: dict[LLMModel, AgenticSearchLLMInterface] = {}
+_shared_llm: AgenticSearchLLMInterface | None = None
 
 
 def _get_shared_circuit_breaker() -> InMemoryCircuitBreaker:
@@ -105,26 +103,23 @@ class AgenticSearchServices:
         cls,
         ctx: ApiContext,
         readable_id: str,
-        model: LLMModel,
     ) -> AgenticSearchServices:
-        """Create services based on config and the requested model.
+        """Create services from config.
 
-        The LLM provider is resolved automatically from the model via the registry.
+        The LLM fallback chain is built from config.LLM_FALLBACK_CHAIN.
+        The tokenizer is validated against the primary (first) model in the chain.
 
         Args:
             ctx: API context for organization scoping and logging.
             readable_id: Collection readable ID (used to get vector_size for embedders).
-            model: LLM model to use (determines the provider automatically).
 
         Returns:
             AgenticSearchServices instance with all dependencies wired.
         """
-        llm_provider = resolve_provider_for_model(model)
-
         db = await cls._create_db(ctx)
 
-        tokenizer = cls._create_tokenizer(model, llm_provider)
-        llm = cls._create_llm(tokenizer, model, llm_provider)
+        tokenizer = cls._create_tokenizer()
+        llm = cls._create_llm(tokenizer)
 
         vector_size = await db.get_collection_vector_size(readable_id)
         dense_embedder = cls._create_dense_embedder(vector_size)
@@ -138,10 +133,12 @@ class AgenticSearchServices:
         dense_spec = dense_embedder.model_spec
         sparse_spec = sparse_embedder.model_spec
 
+        chain_desc = " → ".join(f"{p.value}/{m.value}" for p, m in config.LLM_FALLBACK_CHAIN)
         ctx.logger.debug(
             f"[AgenticSearchServices] Initialized:\n"
             f"  - Database: {config.DATABASE_IMPL.value}\n"
-            f"  - LLM: {llm_provider.value} / {llm_spec.api_model_name}\n"
+            f"  - LLM chain: {chain_desc}\n"
+            f"  - Primary LLM: {llm_spec.api_model_name}\n"
             f"  - Tokenizer: {config.TOKENIZER_TYPE.value} / "
             f"{tokenizer_spec.encoding_name}\n"
             f"  - Dense embedder: {config.DENSE_EMBEDDER_PROVIDER.value} / "
@@ -183,18 +180,11 @@ class AgenticSearchServices:
         raise ValueError(f"Unknown database implementation: {config.DATABASE_IMPL}")
 
     @staticmethod
-    def _create_tokenizer(
-        llm_model: LLMModel,
-        llm_provider: LLMProvider,
-    ) -> AgenticSearchTokenizerInterface:
+    def _create_tokenizer() -> AgenticSearchTokenizerInterface:
         """Create tokenizer based on config.
 
-        Gets the model spec from the registry and validates that the
-        tokenizer is compatible with the chosen LLM model.
-
-        Args:
-            llm_model: The LLM model to validate tokenizer compatibility against.
-            llm_provider: The resolved LLM provider for registry lookup.
+        Validates that the tokenizer is compatible with the primary LLM model
+        in the fallback chain.
 
         Returns:
             Tokenizer interface implementation.
@@ -202,27 +192,32 @@ class AgenticSearchServices:
         Raises:
             ValueError: If tokenizer type or encoding is unknown.
             ValueError: If tokenizer doesn't match LLM requirements.
+            ValueError: If fallback chain is empty.
         """
-        # Get tokenizer spec
-        model_spec = get_tokenizer_model_spec(
-            config.TOKENIZER_TYPE,
-            config.TOKENIZER_ENCODING,
-        )
+        if not config.LLM_FALLBACK_CHAIN:
+            raise ValueError("LLM_FALLBACK_CHAIN is empty — at least one provider is required")
 
-        # Validate compatibility with LLM
-        llm_spec = get_llm_model_spec(llm_provider, llm_model)
+        # Validate against the primary (first) model in the chain
+        primary_provider, primary_model = config.LLM_FALLBACK_CHAIN[0]
+        llm_spec = get_llm_model_spec(primary_provider, primary_model)
+
         if config.TOKENIZER_TYPE != llm_spec.required_tokenizer_type:
             raise ValueError(
-                f"LLM '{llm_model.value}' requires tokenizer type "
-                f"'{llm_spec.required_tokenizer_type.value}', "
+                f"Primary LLM '{primary_provider.value}/{primary_model.value}' requires "
+                f"tokenizer type '{llm_spec.required_tokenizer_type.value}', "
                 f"but config specifies '{config.TOKENIZER_TYPE.value}'"
             )
         if config.TOKENIZER_ENCODING != llm_spec.required_tokenizer_encoding:
             raise ValueError(
-                f"LLM '{llm_model.value}' requires tokenizer encoding "
-                f"'{llm_spec.required_tokenizer_encoding.value}', "
+                f"Primary LLM '{primary_provider.value}/{primary_model.value}' requires "
+                f"tokenizer encoding '{llm_spec.required_tokenizer_encoding.value}', "
                 f"but config specifies '{config.TOKENIZER_ENCODING.value}'"
             )
+
+        model_spec = get_tokenizer_model_spec(
+            config.TOKENIZER_TYPE,
+            config.TOKENIZER_ENCODING,
+        )
 
         if config.TOKENIZER_TYPE == TokenizerType.TIKTOKEN:
             from airweave.search.agentic_search.external.tokenizer.tiktoken import (
@@ -274,67 +269,68 @@ class AgenticSearchServices:
     @staticmethod
     def _create_llm(
         tokenizer: AgenticSearchTokenizerInterface,
-        llm_model: LLMModel,
-        llm_provider: LLMProvider,
     ) -> AgenticSearchLLMInterface:
-        """Get or create a shared LLM with automatic fallback chain.
+        """Get or create a shared LLM from the configured fallback chain.
 
-        The LLM chain is cached per model and reused across all requests.
-        This ensures the circuit breaker state (which providers are tripped)
-        persists and the SDK clients are reused.
+        The LLM chain is built once and reused across all requests. This ensures
+        the circuit breaker state persists and SDK clients are reused.
 
-        Builds a chain of providers: primary → Groq → Anthropic.
-        Fallback providers are only added if their API key is configured.
+        Iterates config.LLM_FALLBACK_CHAIN in order. Providers whose API key
+        is not configured are skipped. If only one provider is available,
+        returns it directly (no fallback wrapper).
 
         Args:
             tokenizer: Tokenizer for accurate token counting.
-            llm_model: The LLM model to use.
-            llm_provider: The resolved LLM provider for this model.
 
         Returns:
             Shared LLM interface implementation (possibly wrapped in FallbackChainLLM).
 
         Raises:
-            ValueError: If LLM provider is unknown.
+            ValueError: If no providers could be initialized.
         """
-        # Return cached chain if already built for this model
-        if llm_model in _shared_llm_cache:
-            return _shared_llm_cache[llm_model]
+        global _shared_llm
+        if _shared_llm is not None:
+            return _shared_llm
 
         from airweave.core.logging import logger
 
-        model_spec = get_llm_model_spec(llm_provider, llm_model)
+        chain: list[AgenticSearchLLMInterface] = []
 
-        # Build the primary provider
-        primary = AgenticSearchServices._create_single_provider(llm_provider, model_spec, tokenizer)
+        for provider, model in config.LLM_FALLBACK_CHAIN:
+            # Skip providers without a configured API key
+            api_key_attr = PROVIDER_API_KEY_SETTINGS.get(provider)
+            if api_key_attr:
+                api_key = getattr(settings, api_key_attr, None)
+                if not api_key:
+                    logger.debug(
+                        f"[AgenticSearchServices] Skipping {provider.value}/{model.value} "
+                        f"(no {api_key_attr})"
+                    )
+                    continue
 
-        # Build fallback chain from registry
-        chain: list[AgenticSearchLLMInterface] = [primary]
-
-        for fb in FALLBACK_CHAIN:
-            if fb.provider == llm_provider:
-                continue
-
-            api_key = getattr(settings, fb.api_key_setting, None)
-            if not api_key:
-                continue
+            model_spec = get_llm_model_spec(provider, model)
 
             try:
-                fb_instance = AgenticSearchServices._create_single_provider(
-                    fb.provider, fb.model_spec, tokenizer
+                instance = AgenticSearchServices._create_single_provider(
+                    provider, model_spec, tokenizer
                 )
-                chain.append(fb_instance)
+                chain.append(instance)
                 logger.info(
-                    f"[AgenticSearchServices] {fb.provider.value} fallback enabled "
-                    f"({fb.model_spec.api_model_name})"
+                    f"[AgenticSearchServices] LLM provider ready: "
+                    f"{provider.value}/{model.value} ({model_spec.api_model_name})"
                 )
             except Exception as e:
                 logger.warning(
                     f"[AgenticSearchServices] Failed to initialize "
-                    f"{fb.provider.value} fallback: {e}. Skipping."
+                    f"{provider.value}/{model.value}: {e}. Skipping."
                 )
 
-        # If we have multiple providers, wrap in FallbackChainLLM with circuit breaker
+        if not chain:
+            raise ValueError(
+                "No LLM providers could be initialized. Check API keys and "
+                "config.LLM_FALLBACK_CHAIN."
+            )
+
         if len(chain) > 1:
             from airweave.search.agentic_search.external.llm.fallback import FallbackChainLLM
 
@@ -343,9 +339,9 @@ class AgenticSearchServices:
                 circuit_breaker=_get_shared_circuit_breaker(),
             )
         else:
-            result = primary
+            result = chain[0]
 
-        _shared_llm_cache[llm_model] = result
+        _shared_llm = result
         return result
 
     @staticmethod

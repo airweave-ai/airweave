@@ -1,6 +1,8 @@
 """Model registry for agentic search.
 
-Defines valid provider-model combinations and their specifications.
+Single source of truth for all provider-model combinations and their specifications.
+The fallback chain (which combinations to use and in what order) is configured in
+config.py, not here. This module is purely a catalog.
 """
 
 from dataclasses import dataclass
@@ -63,10 +65,11 @@ class LLMModelSpec:
 
 # Registry: provider -> model -> spec
 #
-# Each LLMModel must appear under exactly one provider. The model name is the
-# unique identifier used by resolve_provider_for_model() to determine which
-# provider to instantiate. If you need the same underlying model on two
-# providers, create distinct LLMModel entries (e.g. GPT_OSS_120B_CEREBRAS).
+# Contains ALL available provider-model combinations. The same logical model
+# (e.g., GPT_OSS_120B) can appear under multiple providers with different
+# api_model_names and rate limits.
+#
+# Which combinations are actually used is determined by config.LLM_FALLBACK_CHAIN.
 MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
     LLMProvider.CEREBRAS: {
         LLMModel.GPT_OSS_120B: LLMModelSpec(
@@ -100,35 +103,8 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             ),
         ),
     },
-}
-
-
-@dataclass(frozen=True)
-class FallbackSpec:
-    """Specification for a fallback LLM provider.
-
-    Bundles the provider, model spec, and the settings attribute name for
-    the API key so the services layer can iterate FALLBACK_CHAIN without
-    knowing about individual fallback providers.
-
-    Attributes:
-        provider: The LLM provider enum.
-        model_spec: Model specification for this fallback.
-        api_key_setting: Attribute name on settings (e.g., "GROQ_API_KEY").
-    """
-
-    provider: LLMProvider
-    model_spec: LLMModelSpec
-    api_key_setting: str
-
-
-# Ordered fallback chain — tried in sequence when the primary provider fails.
-# Not part of MODEL_REGISTRY so they don't appear in user-facing model lists.
-FALLBACK_CHAIN: list[FallbackSpec] = [
-    FallbackSpec(
-        provider=LLMProvider.GROQ,
-        api_key_setting="GROQ_API_KEY",
-        model_spec=LLMModelSpec(
+    LLMProvider.GROQ: {
+        LLMModel.GPT_OSS_120B: LLMModelSpec(
             api_model_name="openai/gpt-oss-120b",
             context_window=131_000,
             max_output_tokens=40_000,
@@ -141,11 +117,9 @@ FALLBACK_CHAIN: list[FallbackSpec] = [
                 param_value="high",
             ),
         ),
-    ),
-    FallbackSpec(
-        provider=LLMProvider.ANTHROPIC,
-        api_key_setting="ANTHROPIC_API_KEY",
-        model_spec=LLMModelSpec(
+    },
+    LLMProvider.ANTHROPIC: {
+        LLMModel.CLAUDE_SONNET_4_5: LLMModelSpec(
             api_model_name="claude-sonnet-4-5-20250929",
             context_window=200_000,
             max_output_tokens=16_384,
@@ -155,30 +129,17 @@ FALLBACK_CHAIN: list[FallbackSpec] = [
             rate_limit_tpm=200_000,
             reasoning=ReasoningConfig(param_name="_noop", param_value=True),
         ),
-    ),
-]
+    },
+}
 
 
-def resolve_provider_for_model(model: LLMModel) -> LLMProvider:
-    """Resolve which provider hosts a given model.
-
-    Each model is unique across providers, so this is an unambiguous reverse lookup.
-
-    Args:
-        model: The LLM model to look up.
-
-    Returns:
-        The LLMProvider that hosts this model.
-
-    Raises:
-        ValueError: If the model is not found in any provider.
-    """
-    for provider, models in MODEL_REGISTRY.items():
-        if model in models:
-            return provider
-
-    all_models = [m.value for p in MODEL_REGISTRY.values() for m in p.keys()]
-    raise ValueError(f"Model '{model.value}' not found in any provider. Available: {all_models}")
+# Maps each provider to the settings attribute name for its API key.
+# Used by services.py to skip providers whose key isn't configured.
+PROVIDER_API_KEY_SETTINGS: dict[LLMProvider, str] = {
+    LLMProvider.CEREBRAS: "CEREBRAS_API_KEY",
+    LLMProvider.GROQ: "GROQ_API_KEY",
+    LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
+}
 
 
 def get_model_spec(provider: LLMProvider, model: LLMModel) -> LLMModelSpec:

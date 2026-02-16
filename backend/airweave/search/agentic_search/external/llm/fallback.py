@@ -6,7 +6,8 @@ avoiding wasted retries on providers known to be down.
 """
 
 import logging
-from typing import TypeVar
+from collections import defaultdict
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
@@ -18,12 +19,14 @@ from airweave.search.agentic_search.external.llm.registry import LLMModelSpec
 T = TypeVar("T", bound=BaseModel)
 
 
-class FallbackChainLLM:
+class FallbackChainLLM(AgenticSearchLLMInterface):
     """LLM wrapper that chains multiple providers with automatic fallback.
 
-    Implements the same AgenticSearchLLMInterface protocol.
+    Explicitly implements AgenticSearchLLMInterface.
     Exposes the first (primary) provider's model_spec so token budgeting
     stays consistent.
+
+    Tracks per-provider call counts and fallback events for analytics.
 
     On each structured_output() call:
     1. Skip providers whose circuit breaker is tripped (recently failed).
@@ -57,6 +60,12 @@ class FallbackChainLLM:
         self._circuit_breaker = circuit_breaker
         self._logger = logger or _default_logger
 
+        # Analytics tracking
+        self._calls_per_provider: dict[str, int] = defaultdict(int)
+        self._fallback_count: int = 0
+        self._total_calls: int = 0
+
+        self._primary_name = providers[0].model_spec.api_model_name
         names = [p.model_spec.api_model_name for p in providers]
         self._logger.debug(f"[FallbackChainLLM] Chain initialized: {' → '.join(names)}")
 
@@ -64,6 +73,26 @@ class FallbackChainLLM:
     def model_spec(self) -> LLMModelSpec:
         """Expose primary provider's model spec for consistent token budgeting."""
         return self._providers[0].model_spec
+
+    @property
+    def fallback_stats(self) -> dict[str, Any]:
+        """Cumulative fallback statistics for analytics.
+
+        Returns a dict with:
+        - total_calls: Total structured_output calls made.
+        - fallback_count: Calls where the primary provider failed.
+        - fallback_rate: Fraction of calls that required fallback (0.0-1.0).
+        - calls_per_provider: Dict of provider_name -> call count.
+        - primary_provider: Name of the primary provider.
+        """
+        rate = self._fallback_count / self._total_calls if self._total_calls > 0 else 0.0
+        return {
+            "total_calls": self._total_calls,
+            "fallback_count": self._fallback_count,
+            "fallback_rate": round(rate, 3),
+            "calls_per_provider": dict(self._calls_per_provider),
+            "primary_provider": self._primary_name,
+        }
 
     async def structured_output(
         self,
@@ -88,6 +117,8 @@ class FallbackChainLLM:
         Raises:
             RuntimeError: If all providers in the chain fail.
         """
+        self._total_calls += 1
+
         # Partition providers into available vs tripped
         available: list[AgenticSearchLLMInterface] = []
         tripped: list[AgenticSearchLLMInterface] = []
@@ -124,7 +155,11 @@ class FallbackChainLLM:
             try:
                 result = await provider.structured_output(prompt, schema, system_prompt)
 
-                # Success — clear any prior failure state
+                # Success — update analytics and circuit breaker
+                self._calls_per_provider[provider_name] += 1
+                if provider_name != self._primary_name:
+                    self._fallback_count += 1
+
                 await self._circuit_breaker.record_success(provider_name)
 
                 if i > 0:

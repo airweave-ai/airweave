@@ -4,6 +4,8 @@ import { useTheme } from "@/lib/theme-provider";
 import { SearchBox, type SearchMode } from "@/search/SearchBox";
 import { SearchResponse } from "@/search/SearchResponse";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
+import { useOrganizationStore } from "@/lib/stores/organizations";
+import { FeatureFlags } from "@/lib/constants/feature-flags";
 
 interface SearchProps {
     collectionReadableId: string;
@@ -22,8 +24,11 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
 
-    // Search mode (search vs agent)
-    const [searchMode, setSearchMode] = useState<SearchMode>("search");
+    // Check if the organization has the agentic search feature flag
+    const agenticEnabled = useOrganizationStore((state) => state.hasFeature(FeatureFlags.AGENTIC_SEARCH));
+
+    // Search mode (search vs agent) — defaults to agent only if feature is enabled
+    const [searchMode, setSearchMode] = useState<SearchMode>(agenticEnabled ? "agent" : "search");
 
     // Search response state (final)
     const [searchResponse, setSearchResponse] = useState<any>(null);
@@ -88,6 +93,7 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
                 <SearchBox
                     collectionId={collectionReadableId}
                     disabled={disabled}
+                    agenticEnabled={agenticEnabled}
                     searchMode={searchMode}
                     onSearchModeChange={setSearchMode}
                     onSearch={handleSearchResult}

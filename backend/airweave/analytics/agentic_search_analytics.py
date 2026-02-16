@@ -19,7 +19,6 @@ def build_agentic_search_properties(
     collection_slug: str,
     duration_ms: float,
     mode: str,
-    model: str,
     total_iterations: int,
     had_consolidation: bool,
     exit_reason: str,
@@ -35,13 +34,15 @@ def build_agentic_search_properties(
     search_error_count: int = 0,
     total_prompt_tokens: Optional[int] = None,
     total_completion_tokens: Optional[int] = None,
+    fallback_stats: Optional[Dict[str, Any]] = None,
     status: str = "success",
     **additional_properties: Any,
 ) -> Dict[str, Any]:
     """Build agentic search properties for PostHog tracking.
 
-    Aggregates timing data, per-iteration summaries, token usage, and
-    context window utilization into a flat property dict suitable for
+    Aggregates timing data, per-iteration summaries, token usage, fallback
+    provider tracking, and context window utilization into a flat property
+    dict suitable for
     PostHog dashboards.
 
     Args:
@@ -50,7 +51,6 @@ def build_agentic_search_properties(
         collection_slug: Collection readable ID.
         duration_ms: Total end-to-end execution time in milliseconds.
         mode: Search mode ("fast" or "thinking").
-        model: LLM model identifier (e.g. "zai-glm-4.7").
         total_iterations: Number of plan-search-evaluate iterations.
         had_consolidation: Whether a consolidation pass was triggered.
         exit_reason: Why the loop exited ("fast_mode", "answer_found", "consolidation").
@@ -66,6 +66,7 @@ def build_agentic_search_properties(
         search_error_count: Number of iterations with search errors.
         total_prompt_tokens: Cumulative LLM prompt tokens (None if unavailable).
         total_completion_tokens: Cumulative LLM completion tokens (None if unavailable).
+        fallback_stats: Provider fallback tracking from FallbackChainLLM (None if single provider).
         status: "success" or error status.
         **additional_properties: Extra properties to include.
 
@@ -80,7 +81,6 @@ def build_agentic_search_properties(
         "status": status,
         # Configuration
         "mode": mode,
-        "model": model,
         "is_streaming": is_streaming,
         "has_user_filter": has_user_filter,
         "user_filter_groups_count": user_filter_groups_count,
@@ -106,6 +106,15 @@ def build_agentic_search_properties(
         properties["total_prompt_tokens"] = total_prompt_tokens
         properties["total_completion_tokens"] = total_completion_tokens or 0
         properties["total_tokens"] = total_prompt_tokens + (total_completion_tokens or 0)
+
+    # LLM provider fallback tracking
+    if fallback_stats is not None:
+        properties["llm_primary_provider"] = fallback_stats.get("primary_provider")
+        properties["llm_total_calls"] = fallback_stats.get("total_calls", 0)
+        properties["llm_fallback_count"] = fallback_stats.get("fallback_count", 0)
+        properties["llm_fallback_rate"] = fallback_stats.get("fallback_rate", 0.0)
+        properties["llm_calls_per_provider"] = fallback_stats.get("calls_per_provider", {})
+        properties["llm_had_fallback"] = fallback_stats.get("fallback_count", 0) > 0
 
     # Flatten and aggregate timing data
     _flatten_timings(properties, timings)
@@ -307,7 +316,6 @@ def track_agentic_search_completion(
     collection_slug: str,
     duration_ms: float,
     mode: str,
-    model: str,
     total_iterations: int,
     had_consolidation: bool,
     exit_reason: str,
@@ -323,6 +331,7 @@ def track_agentic_search_completion(
     search_error_count: int = 0,
     total_prompt_tokens: Optional[int] = None,
     total_completion_tokens: Optional[int] = None,
+    fallback_stats: Optional[Dict[str, Any]] = None,
     **additional_properties: Any,
 ) -> None:
     """Track a completed agentic search with full analytics.
@@ -333,7 +342,6 @@ def track_agentic_search_completion(
         collection_slug: Collection readable ID.
         duration_ms: Total end-to-end execution time in milliseconds.
         mode: Search mode ("fast" or "thinking").
-        model: LLM model identifier.
         total_iterations: Number of plan-search-evaluate iterations.
         had_consolidation: Whether a consolidation pass was triggered.
         exit_reason: Why the loop exited.
@@ -349,6 +357,7 @@ def track_agentic_search_completion(
         search_error_count: Number of iterations with search errors.
         total_prompt_tokens: Cumulative LLM prompt tokens.
         total_completion_tokens: Cumulative LLM completion tokens.
+        fallback_stats: Provider fallback tracking from FallbackChainLLM.
         **additional_properties: Extra properties to include.
     """
     properties = build_agentic_search_properties(
@@ -357,7 +366,6 @@ def track_agentic_search_completion(
         collection_slug=collection_slug,
         duration_ms=duration_ms,
         mode=mode,
-        model=model,
         total_iterations=total_iterations,
         had_consolidation=had_consolidation,
         exit_reason=exit_reason,
@@ -373,6 +381,7 @@ def track_agentic_search_completion(
         search_error_count=search_error_count,
         total_prompt_tokens=total_prompt_tokens,
         total_completion_tokens=total_completion_tokens,
+        fallback_stats=fallback_stats,
         **additional_properties,
     )
     ctx.analytics.track_event("agentic_search_query", properties)
@@ -384,7 +393,6 @@ def track_agentic_search_error(
     collection_slug: str,
     duration_ms: float,
     mode: str,
-    model: str,
     error_message: str,
     error_type: str,
     is_streaming: bool = False,
@@ -397,7 +405,6 @@ def track_agentic_search_error(
         collection_slug: Collection readable ID.
         duration_ms: Time elapsed before the error occurred.
         mode: Search mode ("fast" or "thinking").
-        model: LLM model identifier.
         error_message: The exception message.
         error_type: The exception class name.
         is_streaming: Whether this was a streaming request.
@@ -407,7 +414,6 @@ def track_agentic_search_error(
         "collection_slug": collection_slug,
         "duration_ms": duration_ms,
         "mode": mode,
-        "model": model,
         "is_streaming": is_streaming,
         "error_message": error_message,
         "error_type": error_type,

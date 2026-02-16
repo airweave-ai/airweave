@@ -32,9 +32,9 @@ class AgenticSearchSource(BaseModel):
     """Minimal source definition info needed by agentic_search."""
 
     short_name: str = Field(..., description="Source type identifier")
-    output_entity_definition_ids: list[UUID] = Field(
+    output_entity_definitions: list[str] = Field(
         default_factory=list,
-        description="IDs of entity definitions this source produces",
+        description="Entity definition names this source produces (e.g., 'AsanaTaskEntity')",
     )
 
 

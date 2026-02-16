@@ -42,7 +42,7 @@ class AgenticSearchDatabaseInterface(Protocol):
     async def get_entity_definitions_of_source(
         self, source: AgenticSearchSource
     ) -> list[AgenticSearchEntityDefinition]:
-        """Get entity definitions for a source (from output_entity_definition_ids)."""
+        """Get entity definitions for a source (from output_entity_definitions)."""
         ...
 
     async def get_entity_type_count_of_source_connection(
