@@ -18,7 +18,6 @@ from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Dict
 
 import httpx
-import jwt
 import pytest
 import pytest_asyncio
 
