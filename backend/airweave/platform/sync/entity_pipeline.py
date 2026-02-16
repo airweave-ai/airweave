@@ -406,7 +406,7 @@ class EntityPipeline:
             is_snapshot = sync_context.source_instance._short_name == "snapshot"
             if not (is_snapshot and entity.airweave_system_metadata.source_name):
                 entity.airweave_system_metadata.source_name = (
-                    sync_context.source_instance._short_name
+                    sync_context.source_instance.short_name
                 )
             entity.airweave_system_metadata.entity_type = entity.__class__.__name__
             entity.airweave_system_metadata.sync_id = sync_context.sync.id

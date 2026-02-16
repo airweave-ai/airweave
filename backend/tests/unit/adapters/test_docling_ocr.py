@@ -10,10 +10,18 @@ import pytest
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.core.protocols.ocr import OcrProvider
 
+# All tests patch the sync health-check in __init__ so they don't need a live docling instance.
+_HEALTH_PATCH = "airweave.adapters.ocr.docling.httpx.get"
+
+
+def _mock_health_response():
+    return httpx.Response(200, request=httpx.Request("GET", "http://docling:5001/health"))
+
 
 class TestProtocolConformance:
     def test_docling_is_ocr_provider(self):
-        adapter = DoclingOcrAdapter(base_url="http://docling:5001")
+        with patch(_HEALTH_PATCH, return_value=_mock_health_response()):
+            adapter = DoclingOcrAdapter(base_url="http://docling:5001")
         assert isinstance(adapter, OcrProvider)
 
 
@@ -81,7 +89,8 @@ async def test_docling_ocr(case: Case, tmp_path):
     test_file = tmp_path / "doc.pdf"
     test_file.write_bytes(b"%PDF-1.4 fake content")
 
-    adapter = DoclingOcrAdapter(base_url="http://docling:5001")
+    with patch(_HEALTH_PATCH, return_value=_mock_health_response()):
+        adapter = DoclingOcrAdapter(base_url="http://docling:5001")
 
     mock_post = AsyncMock()
     if case.raise_exception:
@@ -110,7 +119,8 @@ async def test_unsupported_extension(tmp_path):
     test_file = tmp_path / "data.xyz"
     test_file.write_text("unsupported")
 
-    adapter = DoclingOcrAdapter(base_url="http://docling:5001")
+    with patch(_HEALTH_PATCH, return_value=_mock_health_response()):
+        adapter = DoclingOcrAdapter(base_url="http://docling:5001")
 
     with patch("airweave.adapters.ocr.docling.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()

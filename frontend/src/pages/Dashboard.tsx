@@ -34,7 +34,6 @@ interface Collection {
 
 // Source type definition
 interface Source {
-  id: string;
   name: string;
   description?: string | null;
   short_name: string;
@@ -220,8 +219,8 @@ const Dashboard = () => {
                 <>
                   {[...sources].sort((a, b) => a.name.localeCompare(b.name)).map((source) => (
                     <SourceButton
-                      key={source.id}
-                      id={source.id}
+                      key={source.short_name}
+                      id={source.short_name}
                       name={source.name}
                       shortName={source.short_name}
                       onClick={() => handleSourceClick(source)}

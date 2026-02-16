@@ -10,6 +10,8 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import GitLabAuthConfig
+from airweave.platform.configs.config import GitLabConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gitlab import (
@@ -42,8 +44,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.WITH_REFRESH,
-    auth_config_class="GitLabAuthConfig",
-    config_class="GitLabConfig",
+    auth_config_class=GitLabAuthConfig,
+    config_class=GitLabConfig,
     labels=["Code"],
     supports_continuous=False,
     supports_temporal_relevance=False,

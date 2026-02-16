@@ -20,6 +20,7 @@ from airweave.core.protocols import (
     WebhookAdmin,
     WebhookPublisher,
 )
+from airweave.domains.sources.protocols import SourceServiceProtocol
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,9 @@ class Container:
 
     # OCR provider (with fallback chain + circuit breaking)
     ocr_provider: OcrProvider
+
+    # Source service — API-facing source operations
+    source_service: SourceServiceProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

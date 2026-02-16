@@ -302,7 +302,7 @@ class SourceConnectionService:
             )
 
         # Validate BYOC requirement: If source requires BYOC, auth method must be OAUTH_BYOC
-        if source_class.requires_byoc() and auth_method == AuthenticationMethod.OAUTH_BROWSER:
+        if source_class.requires_byoc and auth_method == AuthenticationMethod.OAUTH_BROWSER:
             raise HTTPException(
                 status_code=400,
                 detail=f"Source {obj_in.short_name} requires custom OAuth client credentials. "
@@ -1277,7 +1277,7 @@ class SourceConnectionService:
         """
         # Check if this is a federated search source - these don't need syncs
         source_class = self._get_source_class(source.class_name)
-        if getattr(source_class, "_federated_search", False):
+        if getattr(source_class, "federated_search", False):
             ctx.logger.info(
                 f"Skipping sync creation for federated search source '{source.short_name}'. "
                 "Federated search sources are searched at query time."

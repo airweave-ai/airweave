@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.core.constants.reserved_ids import (
     NATIVE_NEO4J_UUID,
     NATIVE_VESPA_UUID,
-    RESERVED_TABLE_ENTITY_ID,
 )
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.models.connection import Connection
@@ -67,33 +66,3 @@ async def init_db_with_native_connections(db: AsyncSession) -> None:
             db.add(connection)
 
     await db.commit()
-
-
-async def init_db_with_entity_definitions(db: AsyncSession) -> None:
-    """Initialize the database with entity definitions.
-
-    Creates the reserved ID for the PolymorphicEntity class.
-    """
-    from airweave.models.entity_definition import EntityDefinition, EntityType
-
-    # Check if the polymorphic entity definition already exists
-    result = await db.execute(
-        text("SELECT id FROM entity_definition WHERE id = :id"),
-        {"id": str(RESERVED_TABLE_ENTITY_ID)},
-    )
-    existing_entity = result.scalar_one_or_none()
-
-    if not existing_entity:
-        # Create the polymorphic table entity definition
-        entity_def = EntityDefinition(
-            id=RESERVED_TABLE_ENTITY_ID,
-            name="Polymorphic Table Entity",
-            description="Base entity type for polymorphic table entities",
-            type=EntityType.JSON,
-            entity_schema={},  # Empty schema for polymorphic entities
-            module_name="airweave.platform.entities.polymorphic",
-            class_name="PolymorphicEntity",
-            # organization_id is NULL for system-level entity definitions
-        )
-        db.add(entity_def)
-        await db.commit()

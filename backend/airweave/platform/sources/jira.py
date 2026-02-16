@@ -16,6 +16,8 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import JiraAuthConfig
+from airweave.platform.configs.config import JiraConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.jira import (
@@ -45,8 +47,8 @@ ZEPHYR_SCALE_BASE_URL = "https://api.zephyrscale.smartbear.com/v2"
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.WITH_ROTATING_REFRESH,
-    auth_config_class="JiraAuthConfig",
-    config_class="JiraConfig",
+    auth_config_class=JiraAuthConfig,
+    config_class=JiraConfig,
     labels=["Project Management", "Issue Tracking", "Test Management"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

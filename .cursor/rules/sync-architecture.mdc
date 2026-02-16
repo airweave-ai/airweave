@@ -158,7 +158,6 @@ if all_edges_go_to_destinations:
 ```
 
 **Advanced Features**:
-- Supports polymorphic entities (one-to-many transformations)
 - Handles multi-path routing through DAG
 - Optimized for chunk processing (files → chunks)
 

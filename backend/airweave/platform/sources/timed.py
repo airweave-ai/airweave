@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
 from airweave.platform.configs.auth import TimedAuthConfig
+from airweave.platform.configs.config import TimedConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.timed import TimedContainerEntity, TimedEntity
@@ -63,8 +64,8 @@ VERBS = [
     short_name="timed",
     auth_methods=[AuthenticationMethod.DIRECT],
     oauth_type=None,
-    auth_config_class="TimedAuthConfig",
-    config_class="TimedConfig",
+    auth_config_class=TimedAuthConfig,
+    config_class=TimedConfig,
     labels=["Internal", "Testing"],
     supports_continuous=False,
     internal=True,

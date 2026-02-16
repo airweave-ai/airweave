@@ -551,10 +551,6 @@ class CTTIAuthConfig(AuthConfig):
         return v.strip()
 
 
-class PostgreSQLAuthConfig(BaseDatabaseAuthConfig):
-    """PostgreSQL authentication configuration."""
-
-
 class SharePointAuthConfig(OAuth2WithRefreshAuthConfig):
     """SharePoint authentication credentials schema."""
 

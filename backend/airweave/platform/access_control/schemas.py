@@ -1,8 +1,30 @@
 """Access control schemas (Pydantic models)."""
 
+from enum import Enum
 from typing import List, Optional, Set
 
 from pydantic import BaseModel, Field
+
+
+class ACLChangeType(str, Enum):
+    """Type of ACL membership change for incremental sync."""
+
+    ADD = "add"
+    REMOVE = "remove"
+
+
+class MembershipChange(BaseModel):
+    """A single ACL membership change (add or remove).
+
+    Used for incremental ACL sync -- sources return a list of these
+    instead of the full membership set when doing delta updates.
+    """
+
+    change_type: ACLChangeType
+    member_id: str = Field(description="Email for users, ID for groups")
+    member_type: str = Field(description="'user' or 'group'")
+    group_id: str = Field(description="The group this member belongs to")
+    group_name: Optional[str] = None
 
 
 class MembershipTuple(BaseModel):

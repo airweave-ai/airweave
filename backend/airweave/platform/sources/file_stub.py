@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from airweave.platform.configs.auth import FileStubAuthConfig
+from airweave.platform.configs.config import FileStubConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.file_stub import (
@@ -353,8 +354,8 @@ class ContentGenerator:
     short_name="file_stub",
     auth_methods=[AuthenticationMethod.DIRECT],
     oauth_type=None,
-    auth_config_class="FileStubAuthConfig",
-    config_class="FileStubConfig",
+    auth_config_class=FileStubAuthConfig,
+    config_class=FileStubConfig,
     labels=["Internal", "Testing"],
     supports_continuous=False,
     internal=True,

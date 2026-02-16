@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from airweave.platform.configs.auth import StubAuthConfig
+from airweave.platform.configs.config import StubConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.stub import (
@@ -484,8 +485,8 @@ class ContentGenerator:
     short_name="stub",
     auth_methods=[AuthenticationMethod.DIRECT],
     oauth_type=None,
-    auth_config_class="StubAuthConfig",
-    config_class="StubConfig",
+    auth_config_class=StubAuthConfig,
+    config_class=StubConfig,
     labels=["Internal", "Testing"],
     supports_continuous=False,
     internal=True,

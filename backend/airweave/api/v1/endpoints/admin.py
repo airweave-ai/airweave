@@ -12,7 +12,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Body, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -1336,6 +1336,99 @@ async def admin_search_collection_as_user(
     )
 
 
+@router.get("/source-connections/{source_connection_id}/cursor")
+async def admin_get_cursor(
+    source_connection_id: str,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Admin-only: Get cursor data for a source connection.
+
+    Returns the sync cursor (change tokens, DirSync cookies, timestamps)
+    for the sync associated with this source connection. Used for debugging
+    and verifying continuous sync state.
+
+    Args:
+        source_connection_id: UUID of the source connection
+        db: Database session
+        ctx: API context
+
+    Returns:
+        Cursor data dict, or 404 if no cursor exists
+    """
+    from airweave.core.sync_cursor_service import sync_cursor_service
+
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    # Find the source connection and its sync_id
+    source_connections = await crud.source_connection.get_multi(db, ctx=ctx)
+    target_sc = None
+    for sc in source_connections:
+        if str(sc.id) == source_connection_id:
+            target_sc = sc
+            break
+
+    if not target_sc:
+        raise HTTPException(status_code=404, detail="Source connection not found")
+
+    # source_connection has a sync_id field linking to the sync
+    sync_id = getattr(target_sc, "sync_id", None)
+    if not sync_id:
+        raise HTTPException(status_code=404, detail="No sync found for this source connection")
+
+    # Get cursor data
+    cursor_data = await sync_cursor_service.get_cursor_data(db=db, sync_id=sync_id, ctx=ctx)
+
+    if not cursor_data:
+        raise HTTPException(status_code=404, detail="No cursor found for this sync")
+
+    return {
+        "sync_id": str(sync_id),
+        "source_connection_id": source_connection_id,
+        "cursor_data": cursor_data,
+    }
+
+
+@router.delete("/source-connections/{source_connection_id}/cursor")
+async def admin_delete_cursor(
+    source_connection_id: str,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Admin-only: Delete cursor for a source connection to force full sync.
+
+    Removes the sync cursor, which forces the next sync to do a full crawl
+    instead of incremental. Useful for debugging or resetting sync state.
+    """
+    from airweave.core.sync_cursor_service import sync_cursor_service
+
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    # Find source connection and its sync_id
+    source_connections = await crud.source_connection.get_multi(db, ctx=ctx)
+    target_sc = None
+    for sc in source_connections:
+        if str(sc.id) == source_connection_id:
+            target_sc = sc
+            break
+
+    if not target_sc:
+        raise HTTPException(status_code=404, detail="Source connection not found")
+
+    sync_id = getattr(target_sc, "sync_id", None)
+    if not sync_id:
+        raise HTTPException(status_code=404, detail="No sync found for this source connection")
+
+    # Delete cursor
+    deleted = await sync_cursor_service.delete_cursor(db=db, sync_id=sync_id, ctx=ctx)
+
+    return {
+        "sync_id": str(sync_id),
+        "deleted": deleted,
+        "message": "Cursor deleted. Next sync will be a full sync.",
+    }
+
+
 async def _build_admin_search_context(
     db: AsyncSession,
     collection,
@@ -1362,8 +1455,8 @@ async def _build_admin_search_context(
     has_vector_sources = await factory._has_vector_sources(db, collection, ctx)
 
     # Determine destination capabilities
-    requires_embedding = getattr(destination, "_requires_client_embedding", True)
-    supports_temporal = getattr(destination, "_supports_temporal_relevance", True)
+    requires_embedding = getattr(destination, "requires_client_embedding", True)
+    supports_temporal = getattr(destination, "supports_temporal_relevance", True)
 
     ctx.logger.info(
         f"[AdminSearch] Destination: {destination.__class__.__name__}, "
@@ -1703,6 +1796,7 @@ async def admin_cancel_sync_by_id(
     """Admin-only: Cancel all pending/running jobs for a sync.
     This is a convenience endpoint that finds active jobs for a sync and cancels them.
     More practical than /sync-jobs/{job_id}/cancel when you know the sync ID.
+
     Args:
         sync_id: The sync ID whose jobs should be cancelled
         db: Database session

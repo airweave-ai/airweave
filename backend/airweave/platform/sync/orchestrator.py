@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import List, Optional
+from typing import Optional
 
 from airweave import schemas
 from airweave.analytics import business_events
@@ -13,7 +13,6 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
-from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.contexts import SyncContext
 from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.entity_pipeline import EntityPipeline
@@ -191,8 +190,9 @@ class SyncOrchestrator:
 
     async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
+        source_name = self.sync_context.source_instance.source_name
         self.sync_context.logger.info(
-            f"Starting pull-based processing from source {self.sync_context.source_instance._name} "
+            f"Starting pull-based processing from source {source_name} "
             f"(max workers: {self.worker_pool.max_workers}, "
             f"batch_size: {self.batch_size}, max_batch_latency_ms: {self.max_batch_latency_ms})"
         )
@@ -433,7 +433,7 @@ class SyncOrchestrator:
 
         # Check if source supports continuous/incremental sync (class attribute)
         source_class = type(self.sync_context.source_instance)
-        source_supports_continuous = getattr(source_class, "_supports_continuous", False)
+        source_supports_continuous = getattr(source_class, "supports_continuous", False)
 
         self.sync_context.logger.debug(
             f"Orphan cleanup check: has_cursor_data={has_cursor_data}, "
@@ -478,67 +478,45 @@ class SyncOrchestrator:
 
     def _source_supports_access_control(self) -> bool:
         """Check if the source supports access control membership syncing."""
-        return getattr(self.sync_context.source_instance, "_supports_access_control", False)
+        return getattr(self.sync_context.source_instance, "supports_access_control", False)
 
     async def _process_access_control_memberships(self) -> None:
         """Process access control memberships from the source.
 
-        Collects MembershipTuple objects from the source's
-        generate_access_control_memberships() method and processes them
-        through the AccessControlPipeline to persist to PostgreSQL.
+        Delegates all ACL logic to the AccessControlPipeline, which:
+        - Decides whether to do incremental or full ACL sync
+        - Collects memberships from the source (full) or gets DirSync deltas (incremental)
+        - Resolves to actions and dispatches to handlers
+        - Handles orphan cleanup (full sync only)
+        - Updates the cursor with DirSync cookie
 
-        Key security feature: Memberships encountered during this sync are
-        tracked in the access control pipeline to detect and delete orphans
-        (revoked permissions).
+        Publishes progress heartbeats before and after to prevent the
+        stuck-job cleanup from cancelling during long-running ACL expansion.
         """
         source = self.sync_context.source_instance
         source_name = getattr(source, "_name", "unknown")
 
-        self.sync_context.logger.info(
-            f"🔐 Starting access control membership extraction from {source_name}"
-        )
+        self.sync_context.logger.info(f"Starting access control sync for {source_name}")
 
-        # Check if source has the method
-        if not hasattr(source, "generate_access_control_memberships"):
-            self.sync_context.logger.warning(
-                f"Source {source_name} has supports_access_control=True but no "
-                "generate_access_control_memberships() method. Skipping ACL sync."
-            )
-            return
+        # Publish a progress heartbeat so the stuck-job detector knows we're alive.
+        # ACL expansion (especially with 50K+ users) can take a long time without
+        # producing entity progress updates, which would otherwise trigger cancellation.
+        await self.sync_context.state_publisher.publish_progress()
 
-        # Collect memberships from source generator
-        memberships: List[MembershipTuple] = []
-        try:
-            async for membership in source.generate_access_control_memberships():
-                memberships.append(membership)
-
-                # Log progress every 100 memberships collected
-                if len(memberships) % 100 == 0 and len(memberships) > 0:
-                    self.sync_context.logger.debug(
-                        f"🔐 Collected {len(memberships)} memberships so far..."
-                    )
-        except Exception as e:
-            self.sync_context.logger.error(
-                f"Error collecting access control memberships: {get_error_message(e)}",
-                exc_info=True,
-            )
-            # Don't fail the entire sync for ACL errors
-            # Also don't do orphan cleanup if collection failed (could delete valid memberships)
-            return
-
-        # Process through AccessControlPipeline (handles tracking + orphan detection)
-        # Note: Even if no new memberships, we still need to check for orphans!
         try:
             await self.access_control_pipeline.process(
-                memberships=memberships,
+                source=source,
                 sync_context=self.sync_context,
             )
         except Exception as e:
             self.sync_context.logger.error(
-                f"Error processing access control memberships: {get_error_message(e)}",
+                f"ACL sync error: {get_error_message(e)}",
                 exc_info=True,
             )
-            # Don't fail the entire sync for ACL errors
+
+        # Publish another heartbeat after ACL sync completes
+        await self.sync_context.state_publisher.publish_progress()
+        # Don't fail the entire sync for ACL errors
 
     async def _finalize_progress_and_trackers(
         self, status: SyncJobStatus, error: Optional[str] = None

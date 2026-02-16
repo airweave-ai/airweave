@@ -510,8 +510,8 @@ class SourceContextBuilder:
         """Create sync cursor with optional data loading."""
         # Get cursor schema from source class (direct reference, no string lookup!)
         cursor_schema = None
-        if hasattr(source_class, "_cursor_class") and source_class._cursor_class:
-            cursor_schema = source_class._cursor_class
+        if hasattr(source_class, "cursor_class") and source_class.cursor_class:
+            cursor_schema = source_class.cursor_class
             logger.debug(f"Source has typed cursor: {cursor_schema.__name__}")
 
         # Determine whether to load cursor data

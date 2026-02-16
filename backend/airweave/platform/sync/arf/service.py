@@ -127,11 +127,10 @@ class ArfService:
     # =========================================================================
 
     def _get_source_short_name(self, sync_context: "SyncContext") -> str:
-        """Extract short name from source class."""
+        """Extract short name from source instance (or class fallback)."""
         source = sync_context.source
-        if hasattr(source.__class__, "_short_name"):
-            return source.__class__._short_name
-        return source.__class__.__name__.lower().replace("source", "")
+        name = getattr(source, "short_name", "") or ""
+        return name or source.__class__.__name__.lower().replace("source", "")
 
     def _is_file_entity(self, entity: "BaseEntity") -> bool:
         """Check if entity is a FileEntity or subclass."""

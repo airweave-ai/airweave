@@ -26,6 +26,7 @@ import httpx
 from pydantic import BaseModel
 
 from airweave.core.logging import logger
+from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.entities._base import BaseEntity
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
@@ -33,12 +34,30 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 class BaseSource:
     """Base class for all sources."""
 
-    _labels: ClassVar[list[str]] = []
-    _auth_methods: ClassVar[list[AuthenticationMethod]] = []
-    _oauth_type: ClassVar[Optional[OAuthType]] = None
-    _requires_byoc: ClassVar[bool] = False
-    _auth_config_class: ClassVar[Optional[str]] = None
-    _internal: ClassVar[bool] = False
+    # Identity (set by @source decorator — required)
+    is_source: ClassVar[bool] = False
+    source_name: ClassVar[str] = ""
+    short_name: ClassVar[str] = ""
+
+    # Auth (set by @source decorator)
+    auth_methods: ClassVar[list[AuthenticationMethod]] = []
+    oauth_type: ClassVar[Optional[OAuthType]] = None
+    requires_byoc: ClassVar[bool] = False
+    auth_config_class: ClassVar[Optional[type]] = None
+    config_class: ClassVar[Optional[type]] = None
+
+    # Capabilities (set by @source decorator)
+    supports_continuous: ClassVar[bool] = False
+    federated_search: ClassVar[bool] = False
+    supports_temporal_relevance: ClassVar[bool] = True
+    supports_access_control: ClassVar[bool] = False
+    cursor_class: ClassVar[Optional[type]] = None
+    rate_limit_level: ClassVar[Optional[RateLimitLevel]] = None
+
+    # Metadata (set by @source decorator)
+    labels: ClassVar[list[str]] = []
+    feature_flag: ClassVar[Optional[str]] = None
+    internal: ClassVar[bool] = False
 
     def __init__(self):
         """Initialize the base source."""
@@ -161,7 +180,7 @@ class BaseSource:
         loaded when ENABLE_INTERNAL_SOURCES=true. Set via `internal=True`
         in the @source decorator.
         """
-        return cls._internal
+        return cls.internal
 
     @classmethod
     def supports_auth_method(cls, method: AuthenticationMethod) -> bool:
@@ -173,7 +192,7 @@ class BaseSource:
     def get_supported_auth_methods(cls) -> list[AuthenticationMethod]:
         """Get all supported authentication methods."""
         # Always include BYOC if OAUTH_BROWSER is supported
-        methods = list(cls._auth_methods)
+        methods = list(cls.auth_methods)
         if (
             AuthenticationMethod.OAUTH_BROWSER in methods
             and AuthenticationMethod.OAUTH_BYOC not in methods
@@ -184,22 +203,22 @@ class BaseSource:
     @classmethod
     def get_oauth_type(cls) -> Optional[OAuthType]:
         """Get OAuth token type if this is an OAuth source."""
-        return cls._oauth_type
+        return cls.oauth_type
 
     @classmethod
     def is_oauth_source(cls) -> bool:
         """Check if this is an OAuth-based source."""
-        return AuthenticationMethod.OAUTH_BROWSER in cls._auth_methods
+        return AuthenticationMethod.OAUTH_BROWSER in cls.auth_methods
 
     @classmethod
     def requires_refresh_token(cls) -> bool:
         """Check if source requires refresh token."""
-        return cls._oauth_type in [OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH]
+        return cls.oauth_type in [OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH]
 
     @classmethod
-    def requires_byoc(cls) -> bool:
+    def does_require_byoc(cls) -> bool:
         """Check if source requires user to bring their own OAuth client credentials."""
-        return cls._requires_byoc
+        return cls.requires_byoc
 
     async def get_access_token(self) -> Optional[str]:
         """Get a valid access token using the token manager.
@@ -304,7 +323,7 @@ class BaseSource:
         Raises:
             NotImplementedError: If source does not support federated search
         """
-        if not getattr(self.__class__, "_federated_search", False):
+        if not getattr(self.__class__, "federated_search", False):
             raise NotImplementedError(
                 f"Source {self.__class__.__name__} does not support federated search"
             )

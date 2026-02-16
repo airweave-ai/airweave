@@ -467,12 +467,6 @@ class CTTIConfig(SourceConfig):
         return value
 
 
-class PostgreSQLConfig(SourceConfig):
-    """Postgres configuration schema."""
-
-    pass
-
-
 class SharePointConfig(SourceConfig):
     """SharePoint configuration schema."""
 

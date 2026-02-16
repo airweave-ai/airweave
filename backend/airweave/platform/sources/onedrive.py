@@ -21,6 +21,7 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import OneDriveConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.onedrive import OneDriveDriveEntity, OneDriveDriveItemEntity
@@ -39,7 +40,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     ],
     oauth_type=OAuthType.WITH_REFRESH,
     auth_config_class=None,
-    config_class="OneDriveConfig",
+    config_class=OneDriveConfig,
     labels=["File Storage"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

@@ -11,6 +11,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import GitHubAuthConfig
+from airweave.platform.configs.config import GitHubConfig
 from airweave.platform.cursors import GitHubCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -38,8 +39,8 @@ from airweave.schemas.source_connection import AuthenticationMethod
     short_name="github",
     auth_methods=[AuthenticationMethod.DIRECT, AuthenticationMethod.AUTH_PROVIDER],
     oauth_type=None,
-    auth_config_class="GitHubAuthConfig",
-    config_class="GitHubConfig",
+    auth_config_class=GitHubAuthConfig,
+    config_class=GitHubConfig,
     labels=["Code"],
     supports_continuous=True,
     supports_temporal_relevance=False,

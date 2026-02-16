@@ -32,7 +32,7 @@ from airweave.schemas.source_connection import AuthenticationMethod
     name="Pipedrive",
     short_name="pipedrive",
     auth_methods=[AuthenticationMethod.DIRECT],
-    auth_config_class="PipedriveAuthConfig",
+    auth_config_class=PipedriveAuthConfig,
     labels=["CRM", "Sales"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

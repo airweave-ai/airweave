@@ -16,6 +16,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt
 
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import NotionConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.notion import (
@@ -40,7 +41,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     ],
     oauth_type=OAuthType.ACCESS_ONLY,
     auth_config_class=None,
-    config_class="NotionConfig",
+    config_class=NotionConfig,
     labels=["Knowledge Base", "Productivity"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.CONNECTION,

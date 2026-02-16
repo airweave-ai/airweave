@@ -30,7 +30,6 @@ interface SourceSelectViewProps {
 const getSourceDescription = (shortName: string, fallbackDescription?: string): string => {
   const descriptions: Record<string, string> = {
     'notion': 'Connect to Notion to sync pages, databases, and workspace content. Includes notes, documents, project databases, property entities, and collaborative workspace data with full content aggregation.',
-    'postgresql': 'Connect to PostgreSQL to sync tables, views, schemas, and database records. Dynamically creates entities for each table based on schema structure with all relational data and metadata.',
     'jira': 'Connect to Jira to sync issues, projects, and team workflows. Includes tickets, project details, issue summaries, descriptions, status tracking, and project management information.',
     'hubspot': 'Connect to HubSpot to sync contacts, companies, deals, tickets, and CRM data. Includes sales pipeline information, marketing campaigns, customer relationship data, and business intelligence.',
     'google_calendar': 'Connect to Google Calendar to sync events, calendars, meetings, and scheduling data. Includes recurring events, attendees, calendar metadata, and scheduling information.',

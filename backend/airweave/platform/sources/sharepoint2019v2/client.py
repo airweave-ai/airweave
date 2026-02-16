@@ -18,6 +18,7 @@ from httpx_ntlm import HttpNtlmAuth
 from tenacity import retry, stop_after_attempt
 
 from airweave.platform.sources.retry_helpers import (
+    retry_if_ntlm_auth_or_rate_limit_or_timeout,
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
@@ -287,12 +288,254 @@ class SharePointClient:
             yield member
 
     # -------------------------------------------------------------------------
+    # Change Tracking (GetChanges API)
+    # -------------------------------------------------------------------------
+
+    async def _get_request_digest(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+    ) -> str:
+        """Get a form digest value needed for POST requests.
+
+        SharePoint requires a request digest (X-RequestDigest header) for
+        state-changing operations. This is obtained from /_api/contextinfo.
+
+        Args:
+            client: httpx AsyncClient instance.
+            site_url: Base URL of the site.
+
+        Returns:
+            Form digest value string.
+        """
+        auth = self._create_ntlm_auth()
+        url = f"{site_url}/_api/contextinfo"
+        response = await client.post(
+            url,
+            auth=auth,
+            headers=self.ODATA_HEADERS,
+            content="",
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["d"]["GetContextWebInformation"]["FormDigestValue"]
+
+    @retry(
+        stop=stop_after_attempt(3),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def post(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        json_data: Dict[str, Any],
+        site_url: str,
+    ) -> Dict[str, Any]:
+        """Make authenticated POST request to SharePoint REST API.
+
+        Includes the X-RequestDigest header required for POST operations.
+
+        Args:
+            client: httpx AsyncClient instance.
+            url: Full URL to request.
+            json_data: JSON body to send.
+            site_url: Base site URL (needed to get request digest).
+
+        Returns:
+            Parsed JSON response.
+        """
+        import json
+
+        auth = self._create_ntlm_auth()
+        digest = await self._get_request_digest(client, site_url)
+
+        headers = {
+            **self.ODATA_HEADERS,
+            "X-RequestDigest": digest,
+        }
+
+        self.logger.debug(f"POST {url}")
+        response = await client.post(
+            url,
+            auth=auth,
+            headers=headers,
+            content=json.dumps(json_data),
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_current_change_token(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+    ) -> str:
+        """Get the current change token for the site collection.
+
+        This token represents the "now" state. Passing it to GetChanges
+        later returns all changes since this point.
+
+        Args:
+            client: httpx AsyncClient instance.
+            site_url: Base URL of the site.
+
+        Returns:
+            Change token string (e.g. "1;3;{GUID};{Ticks};{ChangeId}").
+        """
+        data = await self.get(client, f"{site_url}/_api/site")
+        d = data.get("d", data)
+        token_obj = d.get("CurrentChangeToken", {})
+        token = token_obj.get("StringValue", "")
+        if not token:
+            raise ValueError("Could not retrieve current change token from site collection")
+        self.logger.debug(f"Current change token: {token[:40]}...")
+        return token
+
+    async def get_site_collection_changes(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+        change_token: str,
+        include_deletes: bool = True,
+    ) -> tuple:
+        """Get changes since a given change token at the site collection level.
+
+        Uses /_api/site/getChanges which covers the entire site collection
+        (all subsites, lists, items) with a single token.
+
+        SharePoint ChangeType values:
+            1=Add, 2=Update, 3=Delete, 4=Rename, 5=MoveAway, 6=MoveInto,
+            7=Restore, 8=RoleAdd, 9=RoleDelete, 10=RoleUpdate,
+            11=AssignmentAdd, 12=AssignmentDelete
+
+        Args:
+            client: httpx AsyncClient instance.
+            site_url: Base URL of the site.
+            change_token: Token from a previous sync or get_current_change_token.
+            include_deletes: Whether to include delete changes.
+
+        Returns:
+            Tuple of (changes_list, new_change_token) where each change has
+            ChangeType, ItemId, ListId, etc.
+        """
+        query_body = {
+            "query": {
+                "__metadata": {"type": "SP.ChangeQuery"},
+                "Item": True,
+                "File": True,
+                "Folder": True,
+                "Web": True,
+                "List": True,
+                "Site": True,
+                "Add": True,
+                "Update": True,
+                "DeleteObject": include_deletes,
+                "Move": True,
+                "Rename": True,
+                "Restore": True,
+                "ChangeTokenStart": {"StringValue": change_token},
+            }
+        }
+
+        data = await self.post(
+            client,
+            f"{site_url}/_api/site/getChanges",
+            json_data=query_body,
+            site_url=site_url,
+        )
+
+        d = data.get("d", {})
+        results = d.get("results", [])
+
+        # Get new token from the last change, or fetch current if no changes
+        new_token = change_token
+        if results:
+            last_change = results[-1]
+            token_obj = last_change.get("ChangeToken", {})
+            new_token = token_obj.get("StringValue", change_token)
+        else:
+            # No changes -- get fresh token to advance the cursor
+            new_token = await self.get_current_change_token(client, site_url)
+
+        self.logger.info(
+            f"GetChanges returned {len(results)} changes "
+            f"(token: ...{change_token[-20:]} -> ...{new_token[-20:]})"
+        )
+
+        return results, new_token
+
+    async def get_item_by_id(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+        list_id: str,
+        item_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch a single item by list GUID and item ID.
+
+        Used during incremental sync to resolve individual changed items.
+
+        Args:
+            client: httpx AsyncClient instance.
+            site_url: Base URL of the site.
+            list_id: GUID of the list.
+            item_id: Integer ID of the item.
+
+        Returns:
+            Item metadata dict, or None if not found.
+        """
+        endpoint = f"{site_url}/_api/web/lists(guid'{list_id}')/items({item_id})"
+        params = {"$expand": f"File,{self.ROLE_EXPAND},FieldValuesAsText"}
+
+        try:
+            data = await self.get(client, endpoint, params)
+            return data.get("d", data)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                self.logger.debug(f"Item {item_id} not found in list {list_id}")
+                return None
+            raise
+
+    async def get_list_by_id(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+        list_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch a single list by its GUID.
+
+        Used during incremental sync to resolve list metadata for changed items.
+
+        Args:
+            client: httpx AsyncClient instance.
+            site_url: Base URL of the site.
+            list_id: GUID of the list.
+
+        Returns:
+            List metadata dict, or None if not found.
+        """
+        endpoint = f"{site_url}/_api/web/lists(guid'{list_id}')"
+        params = {"$expand": self.ROLE_EXPAND}
+
+        try:
+            data = await self.get(client, endpoint, params)
+            return data.get("d", data)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                self.logger.debug(f"List {list_id} not found")
+                return None
+            raise
+
+    # -------------------------------------------------------------------------
     # File Download
     # -------------------------------------------------------------------------
 
     @retry(
         stop=stop_after_attempt(3),
-        retry=retry_if_rate_limit_or_timeout,
+        retry=retry_if_ntlm_auth_or_rate_limit_or_timeout,
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )

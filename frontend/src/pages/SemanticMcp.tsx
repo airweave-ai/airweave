@@ -17,7 +17,6 @@ import SimplifiedSourceConnectionDetailView from '@/components/collection/Simpli
 import { QueryToolAndLiveDoc } from '@/components/collection/SimplifiedQueryToolAndLiveDoc';
 
 interface DetailedSource {
-    id: string;
     name: string;
     short_name: string;
     description?: string;
@@ -400,9 +399,9 @@ const SemanticMcp = () => {
         }
     };
 
-    const handleSourceClick = async (source: { id: string; name: string; short_name: string }) => {
+    const handleSourceClick = async (source: { name: string; short_name: string }) => {
         // Don't handle click if source is already connected
-        if (connectedSources.has(source.id)) {
+        if (connectedSources.has(source.short_name)) {
             return;
         }
         console.log('🖱️ [SemanticMcp] Source clicked:', source);
@@ -808,11 +807,11 @@ const SemanticMcp = () => {
                                 .sort((a, b) => a.name.localeCompare(b.name))
                                 .map((source) => (
                                     <SmallSourceButton
-                                        key={source.id}
-                                        id={source.id}
+                                        key={source.short_name}
+                                        id={source.short_name}
                                         name={source.name}
                                         shortName={source.short_name}
-                                        connected={connectedSources.has(source.id)}
+                                        connected={connectedSources.has(source.short_name)}
                                         onClick={() => handleSourceClick(source)}
                                     />
                                 ))

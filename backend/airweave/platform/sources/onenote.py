@@ -22,6 +22,7 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import OneNoteConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.onenote import (
@@ -48,7 +49,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     ],
     oauth_type=OAuthType.WITH_ROTATING_REFRESH,
     auth_config_class=None,
-    config_class="OneNoteConfig",
+    config_class=OneNoteConfig,
     labels=["Productivity", "Note Taking", "Collaboration"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,
