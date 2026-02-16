@@ -266,6 +266,8 @@ services:
       SVIX_REDIS_DSN: "redis://redis:6379"
       SVIX_DB_DSN: "postgresql://${POSTGRES_USER:-airweave}:${POSTGRES_PASSWORD:-airweave1234!}@postgres:5432/svix"
       SVIX_JWT_SECRET: ${SVIX_JWT_SECRET:-default_signing_secret}
+      SVIX_QUEUE_TYPE: "redis"
+      SVIX_CACHE_TYPE: "none"         # "memory" cache causes stale endpoint lookups when messages arrive before endpoints exist
     depends_on:
       postgres:
         condition: service_healthy

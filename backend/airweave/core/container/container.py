@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from airweave.core.protocols import (
+    EndpointVerifier,
     EventBus,
     WebhookAdmin,
     WebhookPublisher,
@@ -35,6 +36,7 @@ class Container:
             event_bus=FakeEventBus(),
             webhook_publisher=FakeWebhookPublisher(),
             webhook_admin=FakeWebhookAdmin(),
+            endpoint_verifier=FakeEndpointVerifier(),
         )
 
         # FastAPI endpoints: use Inject() to pull individual protocols
@@ -49,6 +51,7 @@ class Container:
     # Webhook protocols (Svix-backed)
     webhook_publisher: WebhookPublisher  # Internal: publish sync events
     webhook_admin: WebhookAdmin  # External API: subscriptions + history
+    endpoint_verifier: EndpointVerifier  # Verify webhook URLs before subscribing
 
     # -----------------------------------------------------------------
     # Convenience methods

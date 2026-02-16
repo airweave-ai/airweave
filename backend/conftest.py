@@ -56,13 +56,23 @@ def fake_webhook_admin():
     return FakeWebhookAdmin()
 
 
+@pytest.fixture
+def fake_endpoint_verifier():
+    """Fake EndpointVerifier that records verification calls."""
+    from airweave.adapters.webhooks.fake import FakeEndpointVerifier
+
+    return FakeEndpointVerifier()
+
+
 # ---------------------------------------------------------------------------
 # Test container — fully faked Container for injection
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def test_container(fake_event_bus, fake_webhook_publisher, fake_webhook_admin):
+def test_container(
+    fake_event_bus, fake_webhook_publisher, fake_webhook_admin, fake_endpoint_verifier
+):
     """A Container with all dependencies replaced by fakes.
 
     Use this when testing code that receives a Container or individual
@@ -77,4 +87,5 @@ def test_container(fake_event_bus, fake_webhook_publisher, fake_webhook_admin):
         event_bus=fake_event_bus,
         webhook_publisher=fake_webhook_publisher,
         webhook_admin=fake_webhook_admin,
+        endpoint_verifier=fake_endpoint_verifier,
     )

@@ -3,9 +3,12 @@
 This module provides endpoints for managing webhook subscriptions and
 retrieving event messages sent to those webhooks. Uses protocol-based
 dependency injection via Inject().
+
+Business logic lives in ``domains.webhooks.operations`` — endpoints are
+thin HTTP routing that delegates to domain operations and converts results
+to API schemas.
 """
 
-import asyncio
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -15,8 +18,9 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.core.config import settings
-from airweave.core.protocols import WebhookAdmin
+from airweave.core.protocols import EndpointVerifier, WebhookAdmin
 from airweave.domains.webhooks import WebhooksError
+from airweave.domains.webhooks import operations as webhook_ops
 from airweave.schemas.webhooks import (
     CreateSubscriptionRequest,
     DeliveryAttempt,
@@ -142,30 +146,20 @@ async def get_subscriptions(
 ) -> List[WebhookSubscription]:
     """List all webhook subscriptions for the organization."""
     try:
-        subscriptions = await webhook_admin.list_subscriptions(ctx.organization.id)
-
-        # Fetch recent delivery attempts per subscription in parallel for health status
-        attempts_results = await asyncio.gather(
-            *[
-                webhook_admin.get_subscription_attempts(ctx.organization.id, sub.id, limit=10)
-                for sub in subscriptions
-            ],
-            return_exceptions=True,
+        results = await webhook_ops.list_subscriptions_with_health(
+            ctx.organization.id, webhook_admin=webhook_admin
         )
-
-        result = []
-        for sub, attempts_or_exc in zip(subscriptions, attempts_results, strict=False):
-            if isinstance(attempts_or_exc, Exception):
-                # If fetching attempts fails, still return the subscription without health
-                result.append(WebhookSubscription.from_domain(sub))
-            else:
-                delivery_attempts = [DeliveryAttempt.from_domain(a) for a in attempts_or_exc]
-                result.append(
-                    WebhookSubscription.from_domain(sub, delivery_attempts=delivery_attempts)
-                )
-        return result
     except WebhooksError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
+
+    return [
+        WebhookSubscription.from_domain(
+            sub,
+            delivery_attempts=[DeliveryAttempt.from_domain(a) for a in attempts],
+            health=health,
+        )
+        for sub, health, attempts in results
+    ]
 
 
 @router.get(
@@ -203,23 +197,16 @@ async def get_subscription(
 ) -> WebhookSubscription:
     """Retrieve a specific webhook subscription with delivery attempts."""
     try:
-        subscription = await webhook_admin.get_subscription(ctx.organization.id, subscription_id)
-
-        # Fetch delivery attempts
-        attempts_list = await webhook_admin.get_subscription_attempts(
-            ctx.organization.id, subscription_id
+        subscription, domain_attempts, secret = await webhook_ops.get_subscription_detail(
+            ctx.organization.id,
+            subscription_id,
+            webhook_admin=webhook_admin,
+            include_secret=include_secret,
         )
-        delivery_attempts = [DeliveryAttempt.from_domain(a) for a in attempts_list]
-
-        # Optionally fetch secret
-        secret = None
-        if include_secret:
-            secret = await webhook_admin.get_subscription_secret(
-                ctx.organization.id, subscription_id
-            )
     except WebhooksError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
+    delivery_attempts = [DeliveryAttempt.from_domain(a) for a in domain_attempts]
     return WebhookSubscription.from_domain(
         subscription, delivery_attempts=delivery_attempts, secret=secret
     )
@@ -250,17 +237,20 @@ async def create_subscription(
     request: CreateSubscriptionRequest,
     ctx: ApiContext = Depends(deps.get_context),
     webhook_admin: WebhookAdmin = Inject(WebhookAdmin),
+    endpoint_verifier: EndpointVerifier = Inject(EndpointVerifier),
 ) -> WebhookSubscription:
     """Create a new webhook subscription."""
     event_type_strs = [e.value for e in request.event_types]
 
     try:
-        # Verify the endpoint is reachable before creating the subscription
-        if settings.WEBHOOK_VERIFY_ENDPOINTS:
-            await webhook_admin.verify_endpoint(str(request.url))
-
-        subscription = await webhook_admin.create_subscription(
-            ctx.organization.id, str(request.url), event_type_strs, request.secret
+        subscription = await webhook_ops.create_subscription(
+            ctx.organization.id,
+            str(request.url),
+            event_type_strs,
+            request.secret,
+            webhook_admin=webhook_admin,
+            endpoint_verifier=endpoint_verifier,
+            verify=settings.WEBHOOK_VERIFY_ENDPOINTS,
         )
     except WebhooksError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
@@ -358,25 +348,15 @@ async def patch_subscription(
     event_type_strs = [e.value for e in request.event_types] if request.event_types else None
 
     try:
-        subscription = await webhook_admin.update_subscription(
+        subscription = await webhook_ops.update_subscription(
             ctx.organization.id,
             subscription_id,
-            url,
-            event_type_strs,
+            webhook_admin=webhook_admin,
+            url=url,
+            event_types=event_type_strs,
             disabled=request.disabled,
+            recover_since=request.recover_since,
         )
-
-        # If re-enabling (disabled=False) and recovery was requested, trigger it
-        if request.disabled is False and request.recover_since:
-            try:
-                await webhook_admin.recover_messages(
-                    ctx.organization.id,
-                    subscription_id,
-                    since=request.recover_since,
-                )
-            except WebhooksError:
-                # Log but don't fail - subscription is already updated
-                pass
     except WebhooksError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
 

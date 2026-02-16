@@ -114,18 +114,21 @@ services:
 
   svix:
     container_name: airweave-svix
-    image: svix/svix-server
+    image: svix/svix-server:v1.83.0
     healthcheck:
       test: ["CMD-SHELL", "svix-server healthcheck http://localhost:8071"]
       interval: 5s
       timeout: 5s
       retries: 30
     environment:
-      SVIX_WHITELIST_SUBNETS: "[127.0.0.1/32, 172.17.0.0/16, 192.168.0.0/16, 10.0.0.0/8]" # Allow local calls to local for development.
-      WAIT_FOR: "true" # We want to wait for the default services
+      SVIX_WHITELIST_SUBNETS: "[0.0.0.0/0, ::/0]"
+      WAIT_FOR: "true"
       SVIX_REDIS_DSN: "redis://redis:6379"
       SVIX_DB_DSN: "postgresql://airweave:airweave1234!@postgres:5432/svix"
       SVIX_JWT_SECRET: 'default_signing_secret'
+      SVIX_QUEUE_TYPE: "redis"
+      SVIX_QUEUE_MAX_POLL_SECS: "1"   # Poll Redis every 1s (default 20s causes multi-minute delays)
+      SVIX_CACHE_TYPE: "none"         # "memory" cache causes stale endpoint lookups — messages published before an endpoint exists poison the cache
     ports:
       - "8071:8071"
     depends_on:

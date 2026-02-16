@@ -6,6 +6,7 @@ The union `EventType` constrains DomainEvent.event_type to known values.
 When adding a new event domain:
 1. Define its enum here
 2. Add it to the EventType union
+3. Add it to ALL_EVENT_TYPE_ENUMS (webhooks EventType is derived from it)
 """
 
 from enum import Enum
@@ -40,3 +41,11 @@ class SourceConnectionEventType(str, Enum):
 # Union of all known event types.
 # DomainEvent.event_type is typed to this, ensuring only known values are used.
 EventType = SyncEventType | CollectionEventType | SourceConnectionEventType
+
+# Ordered tuple of every event-type enum class.
+# Used by domains/webhooks/types.py to derive its EventType enum automatically.
+ALL_EVENT_TYPE_ENUMS: tuple[type[Enum], ...] = (
+    SyncEventType,
+    CollectionEventType,
+    SourceConnectionEventType,
+)

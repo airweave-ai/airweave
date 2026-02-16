@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
 
@@ -48,6 +49,11 @@ def create_container(settings: Settings) -> Container:
     svix_adapter = SvixAdapter()
 
     # -----------------------------------------------------------------
+    # Endpoint verification (plain HTTP, not Svix)
+    # -----------------------------------------------------------------
+    endpoint_verifier = HttpEndpointVerifier()
+
+    # -----------------------------------------------------------------
     # Event Bus
     # Fans out domain events to subscribers (webhooks, analytics, etc.)
     # -----------------------------------------------------------------
@@ -57,6 +63,7 @@ def create_container(settings: Settings) -> Container:
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
+        endpoint_verifier=endpoint_verifier,
     )
 
 

@@ -1,6 +1,7 @@
 """Webhook domain types.
 
 Pure domain types with no infrastructure dependencies.
+EventType is derived from the core event bus enums (single source of truth).
 """
 
 from dataclasses import dataclass, field
@@ -8,31 +9,74 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+from airweave.core.events.enums import ALL_EVENT_TYPE_ENUMS
 
-class EventType(str, Enum):
-    """Webhook event types.
+# ---------------------------------------------------------------------------
+# Health status (pure domain logic)
+# ---------------------------------------------------------------------------
 
-    All available event types that webhook subscribers can filter on.
-    Convention: {domain}.{action} — matches the event_type string
-    on the corresponding domain event class.
+
+class HealthStatus(str, Enum):
+    """Health status of a webhook subscription based on recent delivery attempts."""
+
+    healthy = "healthy"
+    """Last N deliveries all succeeded (2xx responses)."""
+
+    degraded = "degraded"
+    """Mix of successes and failures in recent deliveries."""
+
+    failing = "failing"
+    """Multiple consecutive failures beyond threshold."""
+
+    unknown = "unknown"
+    """No delivery attempts yet."""
+
+
+def compute_health_status(
+    attempts: list["DeliveryAttempt"],
+    consecutive_failure_threshold: int = 3,
+) -> HealthStatus:
+    """Compute health status from recent delivery attempts.
+
+    Args:
+        attempts: Recent delivery attempts, most recent first.
+        consecutive_failure_threshold: How many consecutive failures
+            mark the subscription as ``failing``.
+
+    Returns:
+        The computed ``HealthStatus``.
     """
+    if not attempts:
+        return HealthStatus.unknown
 
-    # Sync lifecycle
-    SYNC_PENDING = "sync.pending"
-    SYNC_RUNNING = "sync.running"
-    SYNC_COMPLETED = "sync.completed"
-    SYNC_FAILED = "sync.failed"
-    SYNC_CANCELLED = "sync.cancelled"
+    # Count consecutive leading failures (most recent first)
+    consecutive_failures = 0
+    for attempt in attempts:
+        if attempt.response_status_code < 200 or attempt.response_status_code >= 300:
+            consecutive_failures += 1
+        else:
+            break
 
-    # Source connection lifecycle
-    SOURCE_CONNECTION_CREATED = "source_connection.created"
-    SOURCE_CONNECTION_AUTH_COMPLETED = "source_connection.auth_completed"
-    SOURCE_CONNECTION_DELETED = "source_connection.deleted"
+    if consecutive_failures >= consecutive_failure_threshold:
+        return HealthStatus.failing
 
-    # Collection lifecycle
-    COLLECTION_CREATED = "collection.created"
-    COLLECTION_UPDATED = "collection.updated"
-    COLLECTION_DELETED = "collection.deleted"
+    # Check if all succeeded
+    all_success = all(200 <= a.response_status_code < 300 for a in attempts)
+    if all_success:
+        return HealthStatus.healthy
+
+    return HealthStatus.degraded
+
+
+# Derive the webhook EventType enum from the single source of truth in
+# core/events/enums.py so there is only one place to add new event types.
+# Member names are derived from values: "sync.pending" → SYNC_PENDING.
+_members: dict[str, str] = {}
+for _enum_cls in ALL_EVENT_TYPE_ENUMS:
+    for _member in _enum_cls:
+        _members[_member.value.upper().replace(".", "_")] = _member.value
+
+EventType = Enum("EventType", _members, type=str)  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------

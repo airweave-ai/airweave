@@ -9,12 +9,11 @@ payloads that are delivered to your endpoints.
 """
 
 from datetime import datetime
-from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
-from airweave.domains.webhooks.types import EventType
+from airweave.domains.webhooks.types import EventType, HealthStatus
 
 # Import shared error response models
 from airweave.schemas.errors import (
@@ -149,58 +148,6 @@ class WebhookMessageWithAttempts(WebhookMessage):
         )
 
 
-class HealthStatus(str, Enum):
-    """Health status of a webhook subscription based on recent delivery attempts."""
-
-    healthy = "healthy"
-    """Last N deliveries all succeeded (2xx responses)."""
-
-    degraded = "degraded"
-    """Mix of successes and failures in recent deliveries."""
-
-    failing = "failing"
-    """Multiple consecutive failures beyond threshold."""
-
-    unknown = "unknown"
-    """No delivery attempts yet."""
-
-
-def _compute_health_status(
-    attempts: Optional[List["DeliveryAttempt"]],
-    consecutive_failure_threshold: int = 3,
-) -> HealthStatus:
-    """Compute health status from recent delivery attempts.
-
-    Args:
-        attempts: Recent delivery attempts, most recent first.
-        consecutive_failure_threshold: How many consecutive failures
-            mark the subscription as ``failing``.
-
-    Returns:
-        The computed ``HealthStatus``.
-    """
-    if not attempts:
-        return HealthStatus.unknown
-
-    # Count consecutive leading failures
-    consecutive_failures = 0
-    for attempt in attempts:
-        if attempt.status != "success":
-            consecutive_failures += 1
-        else:
-            break
-
-    if consecutive_failures >= consecutive_failure_threshold:
-        return HealthStatus.failing
-
-    # Check if all succeeded
-    all_success = all(a.status == "success" for a in attempts)
-    if all_success:
-        return HealthStatus.healthy
-
-    return HealthStatus.degraded
-
-
 class WebhookSubscription(BaseModel):
     """A webhook subscription (endpoint) configuration."""
 
@@ -271,9 +218,9 @@ class WebhookSubscription(BaseModel):
         sub: "DomainSubscription",
         delivery_attempts: Optional[List["DeliveryAttempt"]] = None,
         secret: Optional[str] = None,
+        health: HealthStatus = HealthStatus.unknown,
     ) -> "WebhookSubscription":
         """Convert a domain Subscription to API response."""
-        health = _compute_health_status(delivery_attempts)
         return cls(
             id=sub.id,
             url=sub.url,

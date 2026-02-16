@@ -1,8 +1,9 @@
 """Webhook protocols.
 
-Two protocols based on consumer needs:
+Three protocols based on consumer needs:
 - WebhookPublisher: Internal use (event bus subscriber publishes events)
 - WebhookAdmin: External API (users manage subscriptions, view history)
+- EndpointVerifier: Verify webhook endpoint reachability before subscription
 
 All WebhookAdmin methods raise WebhooksError on failure.
 """
@@ -54,17 +55,6 @@ class WebhookAdmin(Protocol):
         """Delete an organization and all its webhook data.
 
         Best-effort: implementations should log errors rather than raise.
-        """
-        ...
-
-    # -------------------------------------------------------------------------
-    # Endpoint verification
-    # -------------------------------------------------------------------------
-
-    async def verify_endpoint(self, url: str, timeout: float = 5.0) -> None:
-        """Send a test ping to verify the endpoint is reachable.
-
-        Raises WebhooksError if the endpoint is unreachable or returns non-2xx.
         """
         ...
 
@@ -169,4 +159,28 @@ class WebhookAdmin(Protocol):
         limit: int = 100,
     ) -> list[DeliveryAttempt]:
         """Get delivery attempts for a subscription."""
+        ...
+
+
+@runtime_checkable
+class EndpointVerifier(Protocol):
+    """Verify that a webhook endpoint URL is reachable.
+
+    Sends a lightweight test ping and expects a 2xx response.
+    Used by domain operations before creating a subscription.
+
+    Raises WebhooksError if the endpoint is unreachable, times out,
+    or returns a non-2xx status code.
+    """
+
+    async def verify(self, url: str, timeout: float = 5.0) -> None:
+        """Send a test ping to the given URL.
+
+        Args:
+            url: The webhook endpoint URL to verify.
+            timeout: Seconds to wait for a response.
+
+        Raises:
+            WebhooksError: If the endpoint is not reachable or not healthy.
+        """
         ...

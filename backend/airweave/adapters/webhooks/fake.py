@@ -85,14 +85,6 @@ class FakeWebhookAdmin:
         self.deleted_orgs.append(org_id)
 
     # -------------------------------------------------------------------------
-    # Endpoint verification
-    # -------------------------------------------------------------------------
-
-    async def verify_endpoint(self, url: str, timeout: float = 5.0) -> None:
-        """No-op verification for testing. Always succeeds."""
-        pass
-
-    # -------------------------------------------------------------------------
     # Subscriptions
     # -------------------------------------------------------------------------
 
@@ -232,3 +224,40 @@ class FakeWebhookAdmin:
         self.messages.clear()
         self.deleted_orgs.clear()
         self.recovered.clear()
+
+
+class FakeEndpointVerifier:
+    """Test implementation of EndpointVerifier.
+
+    Records verification calls for assertions.
+    Can be configured to simulate failures.
+
+    Usage:
+        fake = FakeEndpointVerifier()
+        container = Container(..., endpoint_verifier=fake)
+
+        # After calling code that verifies an endpoint:
+        assert fake.verified_urls == ["https://example.com/hook"]
+
+        # Simulate unreachable endpoint:
+        fake.should_fail = True
+    """
+
+    def __init__(self) -> None:
+        """Initialize with empty state."""
+        self.verified_urls: list[str] = []
+        self.should_fail: bool = False
+        self.fail_message: str = "Simulated endpoint verification failure"
+
+    async def verify(self, url: str, timeout: float = 5.0) -> None:
+        """Record the verification call. Optionally fail."""
+        if self.should_fail:
+            from airweave.domains.webhooks.types import WebhooksError
+
+            raise WebhooksError(self.fail_message, 400)
+        self.verified_urls.append(url)
+
+    def clear(self) -> None:
+        """Clear all recorded state."""
+        self.verified_urls.clear()
+        self.should_fail = False

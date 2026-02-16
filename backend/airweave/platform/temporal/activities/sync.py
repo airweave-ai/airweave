@@ -136,6 +136,31 @@ class RunSyncActivity:
                 f"(vector_size={collection.vector_size}, model={collection.embedding_model_name})"
             )
 
+            # Fetch the SourceConnection to get its user-facing ID for webhook events.
+            # sync.source_connection_id is the internal Connection.id, NOT the
+            # SourceConnection.id that users see in the API and webhook payloads.
+            source_connection_id = sync.source_connection_id  # fallback: internal ID
+            try:
+                source_conn = await crud.source_connection.get_by_sync_id(
+                    db=db, sync_id=sync_id, ctx=ctx
+                )
+                if source_conn:
+                    source_connection_id = source_conn.id
+                    ctx.logger.info(
+                        f"Resolved SourceConnection.id={source_connection_id} "
+                        f"(internal Connection.id={sync.source_connection_id})"
+                    )
+                else:
+                    ctx.logger.warning(
+                        f"No SourceConnection found for sync {sync_id}. "
+                        f"Falling back to sync.source_connection_id={sync.source_connection_id}"
+                    )
+            except Exception as e:
+                ctx.logger.warning(
+                    f"Failed to fetch SourceConnection for sync {sync_id}: {e}. "
+                    f"Falling back to sync.source_connection_id={sync.source_connection_id}"
+                )
+
         ctx.logger.debug(f"\n\nStarting sync activity for job {sync_job.id}\n\n")
 
         # Track this activity in worker metrics (fail-safe: never crash sync)
@@ -179,7 +204,7 @@ class RunSyncActivity:
             await self.event_bus.publish(
                 SyncLifecycleEvent.running(
                     organization_id=organization.id,
-                    source_connection_id=sync.source_connection_id,
+                    source_connection_id=source_connection_id,
                     sync_job_id=sync_job.id,
                     sync_id=sync.id,
                     collection_id=collection.id,
@@ -316,7 +341,7 @@ class RunSyncActivity:
                 await self.event_bus.publish(
                     SyncLifecycleEvent.completed(
                         organization_id=organization.id,
-                        source_connection_id=sync.source_connection_id,
+                        source_connection_id=source_connection_id,
                         sync_job_id=sync_job.id,
                         sync_id=sync.id,
                         collection_id=collection.id,
@@ -329,7 +354,14 @@ class RunSyncActivity:
 
             except asyncio.CancelledError:
                 await self._handle_cancellation(
-                    sync, sync_job, collection, connection, organization, ctx, sync_task
+                    sync,
+                    sync_job,
+                    collection,
+                    connection,
+                    organization,
+                    ctx,
+                    sync_task,
+                    source_connection_id,
                 )
                 raise
 
@@ -338,7 +370,7 @@ class RunSyncActivity:
                 await self.event_bus.publish(
                     SyncLifecycleEvent.failed(
                         organization_id=organization.id,
-                        source_connection_id=sync.source_connection_id,
+                        source_connection_id=source_connection_id,
                         sync_job_id=sync_job.id,
                         sync_id=sync.id,
                         collection_id=collection.id,
@@ -409,7 +441,15 @@ class RunSyncActivity:
             raise
 
     async def _handle_cancellation(
-        self, sync, sync_job, collection, connection, organization, ctx, sync_task
+        self,
+        sync,
+        sync_job,
+        collection,
+        connection,
+        organization,
+        ctx,
+        sync_task,
+        source_connection_id=None,
     ):
         """Handle activity cancellation."""
         from airweave.core.datetime_utils import utc_now_naive
@@ -434,7 +474,7 @@ class RunSyncActivity:
             await self.event_bus.publish(
                 SyncLifecycleEvent.cancelled(
                     organization_id=organization.id,
-                    source_connection_id=sync.source_connection_id,
+                    source_connection_id=source_connection_id or sync.source_connection_id,
                     sync_job_id=sync_job.id,
                     sync_id=sync.id,
                     collection_id=collection.id,

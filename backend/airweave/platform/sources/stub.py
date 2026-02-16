@@ -503,6 +503,7 @@ class StubSource(BaseSource):
         self.seed: int = 42
         self.entity_count: int = 10
         self.generation_delay_ms: int = 0
+        self.fail_after: int = -1  # Raise after N entities (-1 = never)
         self.weights: Dict[str, int] = {}
         self.generator: Optional[ContentGenerator] = None
         self._temp_dir: Optional[str] = None
@@ -528,6 +529,7 @@ class StubSource(BaseSource):
         instance.seed = config.get("seed", 42)
         instance.entity_count = config.get("entity_count", 10)
         instance.generation_delay_ms = config.get("generation_delay_ms", 0)
+        instance.fail_after = config.get("fail_after", -1)
 
         # Parse distribution weights
         instance.weights = {
@@ -847,7 +849,8 @@ class StubSource(BaseSource):
         """
         self.logger.info(
             f"Starting stub entity generation: count={self.entity_count}, "
-            f"seed={self.seed}, delay={self.generation_delay_ms}ms"
+            f"seed={self.seed}, delay={self.generation_delay_ms}ms, "
+            f"fail_after={self.fail_after}"
         )
         self.logger.info(f"Entity distribution weights: {self.weights}")
 
@@ -888,24 +891,26 @@ class StubSource(BaseSource):
             entity_type = self._select_entity_type(i)
             type_counts[entity_type] += 1
 
-            # Generate entity based on type
-            if entity_type == "small":
-                entity = await self._generate_small_entity(i, breadcrumbs)
-            elif entity_type == "medium":
-                entity = await self._generate_medium_entity(i, breadcrumbs)
-            elif entity_type == "large":
-                entity = await self._generate_large_entity(i, breadcrumbs)
-            elif entity_type == "small_file":
-                entity = await self._generate_small_file_entity(i, breadcrumbs)
-            elif entity_type == "large_file":
-                entity = await self._generate_large_file_entity(i, breadcrumbs)
-            elif entity_type == "code_file":
-                entity = await self._generate_code_file_entity(i, breadcrumbs)
-            else:
-                # Fallback to small entity
-                entity = await self._generate_small_entity(i, breadcrumbs)
+            # Generate entity based on type using dispatch map
+            generators = {
+                "small": self._generate_small_entity,
+                "medium": self._generate_medium_entity,
+                "large": self._generate_large_entity,
+                "small_file": self._generate_small_file_entity,
+                "large_file": self._generate_large_file_entity,
+                "code_file": self._generate_code_file_entity,
+            }
+            generator = generators.get(entity_type, self._generate_small_entity)
+            entity = await generator(i, breadcrumbs)
 
             yield entity
+
+            # Simulate failure after N entities if configured
+            if self.fail_after >= 0 and (i + 1) >= self.fail_after:
+                raise RuntimeError(
+                    f"Stub source simulated failure after {i + 1} entities "
+                    f"(fail_after={self.fail_after})"
+                )
 
             # Apply generation delay if configured
             if self.generation_delay_ms > 0:

@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Dict
 
 import httpx
+import jwt
 import pytest
 import pytest_asyncio
 
@@ -38,56 +39,63 @@ async def wait_for_sync_completed_message(
     api_client: httpx.AsyncClient,
     source_connection_id: str | None = None,
     timeout: float = SVIX_MESSAGE_TIMEOUT,
+    existing_ids: set | None = None,
 ) -> Dict:
     """Poll the messages API until a sync.completed message appears.
 
-    Also checks sync job status for diagnostics so we can distinguish
-    'sync never completed' from 'Svix publish failed'.
+    Args:
+        api_client: The HTTP client for the Airweave API.
+        source_connection_id: If provided, only match messages with this
+            source_connection_id in the payload.
+        timeout: Max seconds to wait.
+        existing_ids: Set of message IDs that existed before the test
+            started. Messages with these IDs are ignored.
+
+    Returns:
+        The matching webhook message dict.
+
+    Raises:
+        TimeoutError: If no matching message appears within the timeout.
     """
     start_time = time.time()
-    last_message_id = None
+    if existing_ids is None:
+        existing_ids = set()
     last_status_log = 0.0
 
     while time.time() - start_time < timeout:
-        # Check for sync.completed messages
         response = await api_client.get(
             "/webhooks/messages", params={"event_types": ["sync.completed"]}
         )
         if response.status_code == 200:
-            messages = response.json()
-            if messages:
-                if messages[0]["id"] != last_message_id:
-                    return messages[0]
-                last_message_id = messages[0]["id"] if messages else None
+            for msg in response.json():
+                if msg["id"] in existing_ids:
+                    continue
+                payload = msg.get("payload", {})
+                if source_connection_id is None:
+                    return msg
+                if payload.get("source_connection_id") == source_connection_id:
+                    return msg
 
-        # Every 10s, log diagnostics: sync job status + all message types
+        # Diagnostics every 15s
         elapsed = time.time() - start_time
-        if elapsed - last_status_log >= 10.0:
+        if elapsed - last_status_log >= 15.0:
             last_status_log = elapsed
-
-            # Check ALL webhook messages (not just sync.completed)
-            all_msgs_resp = await api_client.get("/webhooks/messages")
-            all_msgs = all_msgs_resp.json() if all_msgs_resp.status_code == 200 else []
-            event_types_seen = [m.get("event_type") for m in all_msgs[:10]]
-
-            # Check sync job status if we have a source connection
             sync_status = "unknown"
             if source_connection_id:
                 sc_resp = await api_client.get(f"/source-connections/{source_connection_id}")
                 if sc_resp.status_code == 200:
-                    sc_data = sc_resp.json()
-                    sync_status = sc_data.get("status", "unknown")
-
+                    sync_status = sc_resp.json().get("status", "unknown")
             print(
-                f"[{elapsed:.0f}s] Waiting for sync.completed | "
-                f"sync_status={sync_status} | "
-                f"all_messages({len(all_msgs)})={event_types_seen} | "
-                f"completed_messages_status={response.status_code}"
+                f"[{elapsed:.0f}s] Waiting for sync.completed "
+                f"(sc_id={source_connection_id}, sync_status={sync_status})"
             )
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
 
-    raise TimeoutError(f"No sync.completed message found within {timeout}s")
+    raise TimeoutError(
+        f"No sync.completed message for source_connection_id={source_connection_id} "
+        f"within {timeout}s"
+    )
 
 
 # =============================================================================
@@ -245,79 +253,70 @@ class TestWebhookMessages:
 
 @pytest.mark.asyncio
 class TestWebhookDelivery:
-    """Tests that the full webhook pipeline works: sync → event bus → Svix.
+    """Tests the full webhook pipeline: event bus → Svix → postbin.
 
-    Verifies that after a sync completes, a ``sync.completed`` message
-    with the correct ``source_connection_id`` is visible in the Svix
-    messages API (via our ``/webhooks/messages`` endpoint).
+    Full lifecycle timeline for a stub source with ``sync_immediately=True``::
 
-    A subscription pointing at postbin is created so that endpoint
-    verification passes, but we do NOT test actual delivery to the
-    endpoint — self-hosted Svix dispatch is unreliable locally.
+        ┌─ API process ──────────────────────────────────────────────────┐
+        │  POST /collections         → collection.created               │
+        │  POST /source-connections  → source_connection.created         │
+        │                            → sync.pending                     │
+        ├─ Worker process ───────────────────────────────────────────────┤
+        │  RunSyncActivity           → sync.running                     │
+        │                            → sync.completed                   │
+        ├─ API process (cleanup) ────────────────────────────────────────┤
+        │  DELETE /source-connections → source_connection.deleted        │
+        │  DELETE /collections       → collection.deleted               │
+        └────────────────────────────────────────────────────────────────┘
+
+    Note: ``source_connection.auth_completed`` only fires for OAuth flows,
+    not for credential-based auth like the stub connector.
+
+    Cascade: ``DELETE /collections`` CASCADE-deletes source connections
+    from the DB but does **not** emit ``source_connection.deleted`` events.
+    Only ``collection.deleted`` fires.
     """
 
-    async def test_sync_completed_message_published(
+    # -----------------------------------------------------------------
+    # 1. Postbin delivery: sync.completed lands at the actual endpoint
+    # -----------------------------------------------------------------
+
+    async def test_sync_completed_delivered_to_postbin(
         self,
         api_client: httpx.AsyncClient,
         collection: Dict,
-        webhook_receiver,
     ):
-        """Trigger a sync, wait for it to complete, verify sync.completed in messages API."""
+        """Trigger a sync and verify sync.completed actually arrives at postbin."""
+        import json as _json
 
-        # 1. Create subscription so Svix has at least one endpoint
+        # Create dedicated postbin
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            bin_resp = await http.post("https://www.postb.in/api/bin")
+            assert bin_resp.status_code in (200, 201), (
+                f"Failed to create postbin: {bin_resp.status_code} {bin_resp.text}"
+            )
+            bin_id = bin_resp.json()["binId"]
+            bin_url = f"https://www.postb.in/{bin_id}"
+            try:
+                await http.post(bin_url, json={"warmup": True}, timeout=10.0)
+            except Exception:
+                pass
+
+        # Subscribe to sync.completed
         sub_resp = await api_client.post(
             "/webhooks/subscriptions",
-            json={
-                "url": webhook_receiver["url"],
-                "event_types": ["sync.completed"],
-            },
+            json={"url": bin_url, "event_types": ["sync.completed"]},
         )
-        assert sub_resp.status_code == 200, f"Sub creation failed: {sub_resp.text}"
+        assert sub_resp.status_code == 200
         sub_id = sub_resp.json()["id"]
 
         try:
-            # Debug: check which org the API thinks we are
-            me_resp = await api_client.get("/organizations/me")
-            if me_resp.status_code == 200:
-                org_data = me_resp.json()
-                print(f"[org] API org_id={org_data.get('id')} name={org_data.get('name')}")
-            else:
-                # Try another endpoint
-                me_resp2 = await api_client.get("/users/me")
-                if me_resp2.status_code == 200:
-                    user_data = me_resp2.json()
-                    print(f"[org] from /users/me: org_id={user_data.get('organization_id')} user={user_data.get('email')}")
-                else:
-                    # Get org_id from the source connection we'll create
-                    print(f"[org] /organizations/me={me_resp.status_code} /users/me={me_resp2.status_code}")
-                    # Use the collection's org as a proxy
-                    print(f"[org] collection_id={collection.get('id')} owner={collection.get('created_by_email')}")
-
-            # Also dump ALL messages (no filter) to see what's in Svix for this org
-            all_resp = await api_client.get("/webhooks/messages")
-            if all_resp.status_code == 200:
-                all_msgs = all_resp.json()
-                print(f"[debug] total messages in Svix for this org: {len(all_msgs)}")
-                for m in all_msgs[:5]:
-                    print(f"  msg_id={m['id']} type={m.get('event_type')} sc_id={m.get('payload',{}).get('source_connection_id')}")
-            else:
-                print(f"[debug] /webhooks/messages returned {all_resp.status_code}: {all_resp.text[:200]}")
-
-            # 2. Snapshot existing sync.completed message IDs
-            existing_resp = await api_client.get(
-                "/webhooks/messages", params={"event_types": ["sync.completed"]}
-            )
-            existing_ids = set()
-            if existing_resp.status_code == 200:
-                existing_ids = {m["id"] for m in existing_resp.json()}
-            print(f"[snapshot] {len(existing_ids)} existing sync.completed messages")
-
-            # 3. Trigger a sync
+            # Trigger sync
             sc_resp = await api_client.post(
                 "/source-connections",
                 json={
-                    "name": f"Stub Webhook Test {uuid.uuid4().hex[:8]}",
-                    "description": "Verify sync.completed published to Svix",
+                    "name": f"Stub Postbin {uuid.uuid4().hex[:8]}",
+                    "description": "Postbin delivery test",
                     "short_name": "stub",
                     "readable_collection_id": collection["readable_id"],
                     "authentication": {"credentials": {"stub_key": "key"}},
@@ -326,67 +325,507 @@ class TestWebhookDelivery:
                 },
             )
             assert sc_resp.status_code == 200
-            sc_data = sc_resp.json()
-            sc_id = sc_data["id"]
-            sc_org = sc_data.get("organization_id", "NOT_IN_RESPONSE")
-            print(f"[trigger] source_connection_id={sc_id} organization_id={sc_org}")
-            print(f"[trigger] Compare with worker org: fa8bd037-9d75-483d-b7e5-0f3c72b03f40")
+            sc_id = sc_resp.json()["id"]
 
-            # 4. Wait for the sync to actually complete (poll source connection)
-            sync_completed = False
-            for i in range(SVIX_MESSAGE_TIMEOUT):
-                sc_check = await api_client.get(f"/source-connections/{sc_id}")
-                if sc_check.status_code == 200:
-                    status = sc_check.json().get("status", "unknown")
-                    if status == "active":
-                        # Check if there's a completed sync job
-                        # "active" means the SC exists; we need to check sync jobs
+            # Wait for message in Svix first
+            await wait_for_sync_completed_message(
+                api_client, source_connection_id=sc_id, timeout=SVIX_MESSAGE_TIMEOUT
+            )
+
+            # Now poll postbin for the actual delivery
+            delivered = False
+            async with httpx.AsyncClient(timeout=10.0) as http:
+                for _ in range(15):
+                    await asyncio.sleep(2)
+                    try:
+                        pb_resp = await http.get(
+                            f"https://www.postb.in/api/bin/{bin_id}/req/shift",
+                            timeout=10.0,
+                        )
+                        if pb_resp.status_code != 200:
+                            continue
+                        body = pb_resp.json().get("body", {})
+                        if isinstance(body, str):
+                            try:
+                                body = _json.loads(body)
+                            except Exception:
+                                continue
+                        if isinstance(body, dict) and body.get("source_connection_id") == sc_id:
+                            delivered = True
+                            break
+                    except Exception:
                         pass
-                if i > 0 and i % 5 == 0:
-                    print(f"[{i}s] sc_status={status}")
-                await asyncio.sleep(1)
 
-                # Check messages API for our sc_id — query ALL messages, no filter
+            assert delivered, (
+                f"sync.completed for sc_id={sc_id} was not delivered to postbin "
+                f"within 30s (message exists in Svix)"
+            )
+        finally:
+            try:
+                await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+            except Exception:
+                pass
+
+    # -----------------------------------------------------------------
+    # 2. Messages API: all lifecycle events exist in Svix
+    # -----------------------------------------------------------------
+
+    async def test_full_lifecycle_events_in_messages_api(
+        self,
+        api_client: httpx.AsyncClient,
+        webhook_receiver,
+    ):
+        """Verify every lifecycle event appears in the messages API.
+
+        Uses the messages API (not postbin) to avoid the Svix dispatch
+        race window for events that fire immediately after subscription
+        creation.
+        """
+        # Subscribe to all event types so Svix creates the org/app
+        all_event_types = [
+            "source_connection.created",
+            "sync.pending",
+            "sync.running",
+            "sync.completed",
+            "source_connection.deleted",
+            "collection.created",
+            "collection.deleted",
+        ]
+        sub_resp = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": webhook_receiver["url"], "event_types": all_event_types},
+        )
+        assert sub_resp.status_code == 200
+        sub_id = sub_resp.json()["id"]
+
+        try:
+            # Snapshot existing messages
+            existing_resp = await api_client.get("/webhooks/messages")
+            existing_ids = set()
+            if existing_resp.status_code == 200:
+                existing_ids = {m["id"] for m in existing_resp.json()}
+
+            # Create collection
+            coll_resp = await api_client.post(
+                "/collections/", json={"name": f"Lifecycle {uuid.uuid4().hex[:8]}"}
+            )
+            assert coll_resp.status_code == 200
+            collection = coll_resp.json()
+
+            # Create source connection + sync
+            sc_resp = await api_client.post(
+                "/source-connections",
+                json={
+                    "name": f"Stub Lifecycle {uuid.uuid4().hex[:8]}",
+                    "description": "Lifecycle events test",
+                    "short_name": "stub",
+                    "readable_collection_id": collection["readable_id"],
+                    "authentication": {"credentials": {"stub_key": "key"}},
+                    "config": {"entity_count": "1"},
+                    "sync_immediately": True,
+                },
+            )
+            assert sc_resp.status_code == 200
+            sc_id = sc_resp.json()["id"]
+
+            # Wait for sync to finish
+            await wait_for_sync_completed_message(
+                api_client, source_connection_id=sc_id, timeout=SVIX_MESSAGE_TIMEOUT
+            )
+
+            # Delete source connection
+            del_resp = await api_client.delete(f"/source-connections/{sc_id}")
+            assert del_resp.status_code == 200
+
+            # Poll for all expected lifecycle events (Svix eventual consistency)
+            expected_events = {
+                "collection.created",
+                "source_connection.created",
+                "sync.pending",
+                "sync.running",
+                "sync.completed",
+                "source_connection.deleted",
+            }
+            poll_timeout = 30
+            poll_start = time.time()
+            new_msgs: list = []
+            event_types: list[str] = []
+
+            while time.time() - poll_start < poll_timeout:
                 resp = await api_client.get("/webhooks/messages")
                 if resp.status_code == 200:
-                    all_msgs = resp.json()
-                    new_msgs = [m for m in all_msgs if m["id"] not in existing_ids]
-                    for msg in new_msgs:
+                    new_msgs = [m for m in resp.json() if m["id"] not in existing_ids]
+                    event_types = [m["event_type"] for m in new_msgs]
+                    if expected_events.issubset(set(event_types)):
+                        break
+                await asyncio.sleep(2)
+
+            print(f"[lifecycle] messages API event types: {event_types}")
+
+            for expected in expected_events:
+                assert expected in event_types, (
+                    f"Expected {expected} in messages API. Got: {event_types}"
+                )
+
+            # Verify source_connection_id on sync events
+            for msg in new_msgs:
+                if msg["event_type"].startswith("sync."):
+                    assert msg["payload"].get("source_connection_id") == sc_id, (
+                        f"{msg['event_type']} has wrong source_connection_id"
+                    )
+
+        finally:
+            try:
+                await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+            except Exception:
+                pass
+            try:
+                await api_client.delete(f"/collections/{collection['readable_id']}")
+            except Exception:
+                pass
+
+    # -----------------------------------------------------------------
+    # 3. Collection delete cascade: only collection.deleted fires
+    # -----------------------------------------------------------------
+
+    async def test_collection_delete_fires_collection_deleted_only(
+        self,
+        api_client: httpx.AsyncClient,
+        webhook_receiver,
+    ):
+        """Delete a collection with a source connection. Verify:
+        - collection.deleted fires
+        - source_connection.deleted does NOT fire (CASCADE deletes the SC
+          at DB level, but the API event is not published)
+        """
+        sub_resp = await api_client.post(
+            "/webhooks/subscriptions",
+            json={
+                "url": webhook_receiver["url"],
+                "event_types": [
+                    "collection.deleted",
+                    "source_connection.deleted",
+                    "sync.completed",
+                ],
+            },
+        )
+        assert sub_resp.status_code == 200
+        sub_id = sub_resp.json()["id"]
+
+        try:
+            # Snapshot
+            existing_resp = await api_client.get("/webhooks/messages")
+            existing_ids = {m["id"] for m in existing_resp.json()} if existing_resp.status_code == 200 else set()
+
+            # Create collection + source connection, wait for sync
+            coll_resp = await api_client.post(
+                "/collections/", json={"name": f"Cascade {uuid.uuid4().hex[:8]}"}
+            )
+            assert coll_resp.status_code == 200
+            collection = coll_resp.json()
+
+            sc_resp = await api_client.post(
+                "/source-connections",
+                json={
+                    "name": f"Stub Cascade {uuid.uuid4().hex[:8]}",
+                    "short_name": "stub",
+                    "readable_collection_id": collection["readable_id"],
+                    "authentication": {"credentials": {"stub_key": "key"}},
+                    "config": {"entity_count": "1"},
+                    "sync_immediately": True,
+                },
+            )
+            assert sc_resp.status_code == 200
+            sc_id = sc_resp.json()["id"]
+
+            await wait_for_sync_completed_message(
+                api_client, source_connection_id=sc_id, timeout=SVIX_MESSAGE_TIMEOUT
+            )
+
+            # Delete the COLLECTION (not the source connection)
+            del_resp = await api_client.delete(f"/collections/{collection['readable_id']}")
+            assert del_resp.status_code == 200
+
+            await asyncio.sleep(3)
+
+            # Check messages
+            resp = await api_client.get("/webhooks/messages")
+            assert resp.status_code == 200
+            new_msgs = [m for m in resp.json() if m["id"] not in existing_ids]
+            event_types = [m["event_type"] for m in new_msgs]
+            print(f"[cascade] event types after collection delete: {event_types}")
+
+            assert "collection.deleted" in event_types, (
+                f"collection.deleted should fire on collection delete. Got: {event_types}"
+            )
+            # source_connection.deleted should NOT fire — the SC was CASCADE-deleted
+            sc_deleted_events = [
+                m for m in new_msgs
+                if m["event_type"] == "source_connection.deleted"
+                and m["payload"].get("source_connection_id") == str(sc_id)
+            ]
+            assert len(sc_deleted_events) == 0, (
+                "source_connection.deleted should NOT fire on cascade delete — "
+                "only collection.deleted should fire"
+            )
+
+        finally:
+            try:
+                await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+            except Exception:
+                pass
+
+    # -----------------------------------------------------------------
+    # 4. Payload structure: verify all fields
+    # -----------------------------------------------------------------
+
+    async def test_sync_completed_payload_structure(
+        self,
+        api_client: httpx.AsyncClient,
+        collection: Dict,
+        webhook_receiver,
+    ):
+        """Verify the sync.completed payload has all required fields."""
+        sub_resp = await api_client.post(
+            "/webhooks/subscriptions",
+            json={"url": webhook_receiver["url"], "event_types": ["sync.completed"]},
+        )
+        assert sub_resp.status_code == 200
+        sub_id = sub_resp.json()["id"]
+
+        try:
+            sc_resp = await api_client.post(
+                "/source-connections",
+                json={
+                    "name": f"Stub Payload {uuid.uuid4().hex[:8]}",
+                    "description": "Payload structure test",
+                    "short_name": "stub",
+                    "readable_collection_id": collection["readable_id"],
+                    "authentication": {"credentials": {"stub_key": "key"}},
+                    "config": {"entity_count": "1"},
+                    "sync_immediately": True,
+                },
+            )
+            assert sc_resp.status_code == 200
+            sc_id = sc_resp.json()["id"]
+
+            message = await wait_for_sync_completed_message(
+                api_client, source_connection_id=sc_id, timeout=SVIX_MESSAGE_TIMEOUT
+            )
+            payload = message["payload"]
+
+            # Required fields
+            assert payload["event_type"] == "sync.completed"
+            assert payload["source_connection_id"] == sc_id
+            assert payload["source_type"] == "stub"
+            assert len(payload["sync_job_id"]) == 36  # UUID
+            assert len(payload["sync_id"]) == 36
+            assert len(payload["collection_id"]) == 36
+            assert "collection_name" in payload
+            assert "collection_readable_id" in payload
+            assert "timestamp" in payload
+        finally:
+            try:
+                await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+            except Exception:
+                pass
+
+    # -----------------------------------------------------------------
+    # 5. sync.failed: stub connector with fail_after triggers failure
+    # -----------------------------------------------------------------
+
+    async def test_sync_failed_event(
+        self,
+        api_client: httpx.AsyncClient,
+        collection: Dict,
+        webhook_receiver,
+    ):
+        """Use stub's fail_after config to trigger a sync failure,
+        verify sync.failed appears in the messages API with error info.
+        """
+        sub_resp = await api_client.post(
+            "/webhooks/subscriptions",
+            json={
+                "url": webhook_receiver["url"],
+                "event_types": ["sync.failed", "sync.running"],
+            },
+        )
+        assert sub_resp.status_code == 200
+        sub_id = sub_resp.json()["id"]
+
+        try:
+            # Snapshot existing messages
+            existing_resp = await api_client.get("/webhooks/messages")
+            existing_ids = set()
+            if existing_resp.status_code == 200:
+                existing_ids = {m["id"] for m in existing_resp.json()}
+
+            # Create source with fail_after=1 (fail after first entity)
+            sc_resp = await api_client.post(
+                "/source-connections",
+                json={
+                    "name": f"Stub Fail {uuid.uuid4().hex[:8]}",
+                    "description": "Testing sync.failed event",
+                    "short_name": "stub",
+                    "readable_collection_id": collection["readable_id"],
+                    "authentication": {"credentials": {"stub_key": "key"}},
+                    "config": {"entity_count": "5", "fail_after": "1"},
+                    "sync_immediately": True,
+                },
+            )
+            assert sc_resp.status_code == 200
+            sc_id = sc_resp.json()["id"]
+
+            # Poll for sync.failed message
+            found_failed = None
+            for i in range(SVIX_MESSAGE_TIMEOUT):
+                await asyncio.sleep(1)
+                resp = await api_client.get(
+                    "/webhooks/messages", params={"event_types": ["sync.failed"]}
+                )
+                if resp.status_code == 200:
+                    for msg in resp.json():
+                        if msg["id"] in existing_ids:
+                            continue
                         payload = msg.get("payload", {})
-                        msg_sc_id = payload.get("source_connection_id")
-                        msg_type = msg.get("event_type") or payload.get("event_type")
-                        if msg_sc_id == sc_id and msg_type == "sync.completed":
-                            sync_completed = True
-                            print(
-                                f"[FOUND] msg_id={msg['id']} sc_id={msg_sc_id} "
-                                f"event_type={msg_type}"
-                            )
+                        if payload.get("source_connection_id") == sc_id:
+                            found_failed = msg
                             break
+                if found_failed:
+                    break
+                if i > 0 and i % 15 == 0:
+                    print(f"[{i}s] waiting for sync.failed with sc_id={sc_id}...")
 
-                    # Diagnostics every 10s
-                    if not sync_completed and i > 0 and i % 10 == 0:
-                        new_info = [
-                            f"{m.get('event_type','?')}|{m.get('payload',{}).get('source_connection_id','?')}"
-                            for m in new_msgs
-                        ]
-                        # Also check: is our sc_id in ANY message at all?
-                        our_sc_msgs = [
-                            m for m in all_msgs
-                            if m.get("payload", {}).get("source_connection_id") == sc_id
-                        ]
-                        print(
-                            f"[{i}s] total={len(all_msgs)} new={len(new_msgs)} "
-                            f"new_details={new_info} "
-                            f"msgs_with_our_sc_id={len(our_sc_msgs)}"
-                        )
+            assert found_failed is not None, (
+                f"sync.failed for sc_id={sc_id} never appeared within {SVIX_MESSAGE_TIMEOUT}s"
+            )
 
-                if sync_completed:
+            payload = found_failed["payload"]
+            assert payload["event_type"] == "sync.failed"
+            assert payload["source_connection_id"] == sc_id
+            assert payload["source_type"] == "stub"
+            assert "error" in payload
+            assert payload["error"] is not None, "sync.failed should include an error message"
+            print(f"[sync.failed] error={payload['error']}")
+
+        finally:
+            try:
+                await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
+            except Exception:
+                pass
+
+    # -----------------------------------------------------------------
+    # 6. sync.cancelled: slow stub + cancel job via API
+    # -----------------------------------------------------------------
+
+    async def test_sync_cancelled_event(
+        self,
+        api_client: httpx.AsyncClient,
+        collection: Dict,
+        webhook_receiver,
+    ):
+        """Start a slow sync, cancel it via the API, verify sync.cancelled fires."""
+        sub_resp = await api_client.post(
+            "/webhooks/subscriptions",
+            json={
+                "url": webhook_receiver["url"],
+                "event_types": ["sync.cancelled", "sync.running"],
+            },
+        )
+        assert sub_resp.status_code == 200
+        sub_id = sub_resp.json()["id"]
+
+        try:
+            # Snapshot existing messages
+            existing_resp = await api_client.get("/webhooks/messages")
+            existing_ids = set()
+            if existing_resp.status_code == 200:
+                existing_ids = {m["id"] for m in existing_resp.json()}
+
+            # Create a slow source: 100 entities with 500ms delay each = ~50s total
+            sc_resp = await api_client.post(
+                "/source-connections",
+                json={
+                    "name": f"Stub Cancel {uuid.uuid4().hex[:8]}",
+                    "description": "Testing sync.cancelled event",
+                    "short_name": "stub",
+                    "readable_collection_id": collection["readable_id"],
+                    "authentication": {"credentials": {"stub_key": "key"}},
+                    "config": {"entity_count": "100", "generation_delay_ms": "500"},
+                    "sync_immediately": True,
+                },
+            )
+            assert sc_resp.status_code == 200
+            sc_id = sc_resp.json()["id"]
+
+            # Wait for sync.running so we know the worker picked it up
+            found_running = False
+            for i in range(30):
+                await asyncio.sleep(1)
+                resp = await api_client.get(
+                    "/webhooks/messages", params={"event_types": ["sync.running"]}
+                )
+                if resp.status_code == 200:
+                    for msg in resp.json():
+                        if msg["id"] in existing_ids:
+                            continue
+                        if msg["payload"].get("source_connection_id") == sc_id:
+                            found_running = True
+                            break
+                if found_running:
                     break
 
-            assert sync_completed, (
-                f"sync.completed for source_connection_id={sc_id} never appeared "
-                f"in /webhooks/messages within {SVIX_MESSAGE_TIMEOUT}s"
+            assert found_running, (
+                f"sync.running for sc_id={sc_id} never appeared — "
+                "cannot test cancellation without a running sync"
             )
+
+            # Get the job ID to cancel
+            jobs_resp = await api_client.get(f"/source-connections/{sc_id}/jobs")
+            assert jobs_resp.status_code == 200
+            jobs = jobs_resp.json()
+            running_jobs = [j for j in jobs if j["status"] in ("running", "pending")]
+            assert running_jobs, f"No running jobs found for sc_id={sc_id}"
+            job_id = running_jobs[0]["id"]
+
+            # Cancel the job
+            cancel_resp = await api_client.post(
+                f"/source-connections/{sc_id}/jobs/{job_id}/cancel"
+            )
+            assert cancel_resp.status_code == 200, (
+                f"Cancel failed: {cancel_resp.status_code} {cancel_resp.text}"
+            )
+            print(f"[cancel] cancelled job {job_id}")
+
+            # Poll for sync.cancelled message
+            found_cancelled = None
+            for i in range(SVIX_MESSAGE_TIMEOUT):
+                await asyncio.sleep(1)
+                resp = await api_client.get(
+                    "/webhooks/messages", params={"event_types": ["sync.cancelled"]}
+                )
+                if resp.status_code == 200:
+                    for msg in resp.json():
+                        if msg["id"] in existing_ids:
+                            continue
+                        payload = msg.get("payload", {})
+                        if payload.get("source_connection_id") == sc_id:
+                            found_cancelled = msg
+                            break
+                if found_cancelled:
+                    break
+                if i > 0 and i % 15 == 0:
+                    print(f"[{i}s] waiting for sync.cancelled with sc_id={sc_id}...")
+
+            assert found_cancelled is not None, (
+                f"sync.cancelled for sc_id={sc_id} never appeared "
+                f"within {SVIX_MESSAGE_TIMEOUT}s"
+            )
+
+            payload = found_cancelled["payload"]
+            assert payload["event_type"] == "sync.cancelled"
+            assert payload["source_connection_id"] == sc_id
+
         finally:
             try:
                 await api_client.delete(f"/webhooks/subscriptions/{sub_id}")
