@@ -597,7 +597,7 @@ class SyncOrchestrator:
 
         Re-syncing a completed snapshot is blocked by a guard in SourceBuilder.
         """
-        if self.sync_context.source_instance._short_name != "snapshot":
+        if self.sync_context.source_instance.short_name != "snapshot":
             return
 
         try:
