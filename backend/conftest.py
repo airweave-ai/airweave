@@ -64,6 +64,14 @@ def fake_endpoint_verifier():
     return FakeEndpointVerifier()
 
 
+@pytest.fixture
+def fake_webhook_service():
+    """Fake WebhookService with in-memory state for assertions."""
+    from airweave.adapters.webhooks.fake import FakeWebhookService
+
+    return FakeWebhookService()
+
+
 # ---------------------------------------------------------------------------
 # Test container — fully faked Container for injection
 # ---------------------------------------------------------------------------
@@ -71,7 +79,11 @@ def fake_endpoint_verifier():
 
 @pytest.fixture
 def test_container(
-    fake_event_bus, fake_webhook_publisher, fake_webhook_admin, fake_endpoint_verifier
+    fake_event_bus,
+    fake_webhook_publisher,
+    fake_webhook_admin,
+    fake_endpoint_verifier,
+    fake_webhook_service,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -88,4 +100,5 @@ def test_container(
         webhook_publisher=fake_webhook_publisher,
         webhook_admin=fake_webhook_admin,
         endpoint_verifier=fake_endpoint_verifier,
+        webhook_service=fake_webhook_service,
     )

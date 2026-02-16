@@ -14,12 +14,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
+from airweave.core.protocols.event_bus import EventBus
+from airweave.core.protocols.webhooks import WebhookPublisher
+from airweave.domains.webhooks.service import WebhookServiceImpl
+from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 
 if TYPE_CHECKING:
     from airweave.core.config import Settings
+    from airweave.core.protocols.event_bus import EventBus
 
 
 def create_container(settings: Settings) -> Container:
@@ -54,6 +60,15 @@ def create_container(settings: Settings) -> Container:
     endpoint_verifier = HttpEndpointVerifier()
 
     # -----------------------------------------------------------------
+    # Webhook service (composes admin + verifier for API layer)
+    # -----------------------------------------------------------------
+    webhook_service = WebhookServiceImpl(
+        webhook_admin=svix_adapter,
+        endpoint_verifier=endpoint_verifier,
+        verify_endpoints=settings.WEBHOOK_VERIFY_ENDPOINTS,
+    )
+
+    # -----------------------------------------------------------------
     # Event Bus
     # Fans out domain events to subscribers (webhooks, analytics, etc.)
     # -----------------------------------------------------------------
@@ -64,6 +79,7 @@ def create_container(settings: Settings) -> Container:
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
         endpoint_verifier=endpoint_verifier,
+        webhook_service=webhook_service,
     )
 
 
@@ -72,7 +88,7 @@ def create_container(settings: Settings) -> Container:
 # ---------------------------------------------------------------------------
 
 
-def _create_event_bus(webhook_publisher):
+def _create_event_bus(webhook_publisher: WebhookPublisher) -> EventBus:
     """Create event bus with subscribers wired up.
 
     The event bus fans out domain events to:
@@ -82,9 +98,6 @@ def _create_event_bus(webhook_publisher):
     - PubSubSubscriber: Redis PubSub for real-time UI updates
     - AnalyticsSubscriber: PostHog tracking
     """
-    from airweave.adapters.event_bus import InMemoryEventBus
-    from airweave.domains.webhooks import WebhookEventSubscriber
-
     bus = InMemoryEventBus()
 
     # WebhookEventSubscriber subscribes to * — all domain events

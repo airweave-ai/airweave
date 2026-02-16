@@ -1,4 +1,4 @@
-"""Webhooks domain - event publishing to external subscribers."""
+"""Webhooks domain - event publishing and subscription management."""
 
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.domains.webhooks.types import (

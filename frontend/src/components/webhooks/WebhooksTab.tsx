@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AlertTriangle, Loader2, Plus, Trash2, Webhook } from "lucide-react";
+import { Loader2, Plus, Trash2, Webhook } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -27,7 +27,7 @@ const HEALTH_CONFIG: Record<
   { label: string; dotClass: string; textClass: string; description: string }
 > = {
   healthy: {
-    label: "Healthy",
+    label: "Delivering",
     dotClass: "bg-emerald-500",
     textClass: "text-emerald-600 dark:text-emerald-400",
     description: "All recent deliveries succeeded.",
@@ -81,13 +81,13 @@ function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
       <div className="rounded-full bg-muted p-4 mb-4">
         <Webhook className="size-6 text-muted-foreground" />
       </div>
-      <h3 className="font-medium mb-1">No webhooks yet</h3>
+      <h3 className="font-medium mb-1">No subscriptions yet</h3>
       <p className="text-sm text-muted-foreground text-center mb-4 max-w-xs">
-        Create a webhook endpoint to receive event notifications.
+        Create a subscription to receive webhook notifications.
       </p>
       <Button onClick={onCreateClick} size="sm">
         <Plus className="mr-1.5 size-3.5" />
-        Create Webhook
+        Add subscription
       </Button>
     </div>
   );
@@ -197,14 +197,13 @@ export function WebhooksTab({
                 </TableCell>
                 <TableCell>
                   {subscription.disabled ? (
-                    <Badge variant="destructive" className="text-xs font-normal gap-1">
-                      <AlertTriangle className="size-3" />
+                    <span className="text-xs font-medium text-red-600 dark:text-red-400">
                       Disabled
-                    </Badge>
+                    </span>
                   ) : (
-                    <Badge variant="secondary" className="text-xs font-normal text-emerald-600 dark:text-emerald-400">
-                      Active
-                    </Badge>
+                    <span className="text-xs font-medium text-foreground/70">
+                      Enabled
+                    </span>
                   )}
                 </TableCell>
                 <TableCell>

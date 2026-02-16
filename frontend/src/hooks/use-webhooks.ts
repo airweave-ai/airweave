@@ -18,9 +18,15 @@ export interface Subscription {
   updated_at: string;
   description?: string;
   disabled?: boolean;
+  health_status?: HealthStatus;
+}
+
+/**
+ * Detail type returned by GET /subscriptions/{id} — includes delivery attempts and secret
+ */
+export interface SubscriptionDetail extends Subscription {
   delivery_attempts?: MessageAttempt[] | null;
   secret?: string | null;
-  health_status?: HealthStatus;
 }
 
 /**
@@ -113,7 +119,7 @@ async function fetchSubscriptions(): Promise<Subscription[]> {
 async function fetchSubscription(
   id: string,
   includeSecret = false
-): Promise<Subscription> {
+): Promise<SubscriptionDetail> {
   const params = new URLSearchParams();
   if (includeSecret) {
     params.set("include_secret", "true");
@@ -233,12 +239,12 @@ export function useSubscriptions() {
 }
 
 /**
- * Hook to fetch a single subscription with delivery attempts
+ * Hook to fetch a single subscription detail (delivery attempts + optional secret)
  * @param id - Subscription ID
  * @param includeSecret - Whether to include the signing secret
  */
 export function useSubscription(id: string | null, includeSecret = false) {
-  return useQuery({
+  return useQuery<SubscriptionDetail>({
     queryKey: webhookKeys.subscription(id ?? "", includeSecret),
     queryFn: () => fetchSubscription(id!, includeSecret),
     enabled: !!id,

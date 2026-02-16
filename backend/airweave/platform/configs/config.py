@@ -671,6 +671,14 @@ class StubConfig(SourceConfig):
         ),
     )
 
+    fail_after: int = Field(
+        default=-1,
+        title="Fail After",
+        description="Number of entities to generate before failing the sync",
+        ge=0,
+        le=100000,
+    )
+
     @field_validator(
         "small_entity_weight",
         "medium_entity_weight",

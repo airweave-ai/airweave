@@ -175,7 +175,7 @@ export function getMessageSummary(payload: Record<string, unknown>): string {
  */
 export const EVENT_TYPES_CONFIG = {
   sync: {
-    label: "Sync Events",
+    label: "sync",
     events: [
       { id: "sync.pending", label: "Pending" },
       { id: "sync.running", label: "Running" },
@@ -185,7 +185,7 @@ export const EVENT_TYPES_CONFIG = {
     ],
   },
   source_connection: {
-    label: "Source Connection Events",
+    label: "source_connection",
     events: [
       { id: "source_connection.created", label: "Created" },
       { id: "source_connection.auth_completed", label: "Auth Completed" },
@@ -193,7 +193,7 @@ export const EVENT_TYPES_CONFIG = {
     ],
   },
   collection: {
-    label: "Collection Events",
+    label: "collection",
     events: [
       { id: "collection.created", label: "Created" },
       { id: "collection.updated", label: "Updated" },

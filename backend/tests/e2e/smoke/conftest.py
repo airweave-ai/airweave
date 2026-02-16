@@ -18,16 +18,18 @@ import pytest
 POSTBIN_API = "https://www.postb.in/api/bin"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def webhook_receiver():
-    """Create a postb.in bin for the duration of the test module.
+    """Create a postb.in bin for the duration of a single test.
+
+    Each test gets its own bin to avoid cross-contamination when tests
+    run concurrently (pytest-xdist).  postb.in's ``/req/shift`` pops
+    requests, so a shared bin would let concurrent tests steal each
+    other's deliveries.
 
     Yields a dict with:
         url   – a publicly reachable URL that accepts POST and returns 200.
         bin_id – the postbin identifier (for manual inspection if needed).
-
-    The URL is usable from anywhere: host machine, Docker containers,
-    CI runners, cloud environments.  No tunnels or local servers required.
     """
     try:
         resp = httpx.post(POSTBIN_API, timeout=15.0)

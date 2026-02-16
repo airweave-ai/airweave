@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from airweave.domains.webhooks.types import (
     DeliveryAttempt,
     EventMessage,
+    HealthStatus,
     RecoveryTask,
     Subscription,
 )
@@ -261,3 +262,137 @@ class FakeEndpointVerifier:
         """Clear all recorded state."""
         self.verified_urls.clear()
         self.should_fail = False
+
+
+class FakeWebhookService:
+    """Test implementation of WebhookService.
+
+    Standalone fake with in-memory state for test assertions.
+    Composes FakeWebhookAdmin + FakeEndpointVerifier internally.
+
+    Usage:
+        fake = FakeWebhookService()
+        container = Container(..., webhook_service=fake)
+
+        # After calling code that creates a subscription:
+        fake.assert_subscription_created("https://example.com/hook")
+    """
+
+    def __init__(self) -> None:
+        """Initialize with in-memory state."""
+        self._admin = FakeWebhookAdmin()
+        self._verifier = FakeEndpointVerifier()
+
+    # -------------------------------------------------------------------------
+    # Subscriptions (orchestrated)
+    # -------------------------------------------------------------------------
+
+    async def list_subscriptions_with_health(
+        self,
+        org_id: UUID,
+    ) -> list[tuple[Subscription, HealthStatus, list[DeliveryAttempt]]]:
+        """Return subscriptions with unknown health (no delivery data in fake)."""
+        subs = await self._admin.list_subscriptions(org_id)
+        return [(sub, HealthStatus.unknown, []) for sub in subs]
+
+    async def get_subscription_detail(
+        self,
+        org_id: UUID,
+        subscription_id: str,
+        include_secret: bool = False,
+    ) -> tuple[Subscription, list[DeliveryAttempt], Optional[str]]:
+        """Return subscription with empty attempts."""
+        sub = await self._admin.get_subscription(org_id, subscription_id)
+        secret = None
+        if include_secret:
+            secret = await self._admin.get_subscription_secret(org_id, subscription_id)
+        return sub, [], secret
+
+    async def create_subscription(
+        self,
+        org_id: UUID,
+        url: str,
+        event_types: list[str],
+        secret: Optional[str] = None,
+    ) -> Subscription:
+        """Record a subscription creation."""
+        return await self._admin.create_subscription(org_id, url, event_types, secret)
+
+    async def update_subscription(
+        self,
+        org_id: UUID,
+        subscription_id: str,
+        url: Optional[str] = None,
+        event_types: Optional[list[str]] = None,
+        disabled: Optional[bool] = None,
+        recover_since: Optional[datetime] = None,
+    ) -> Subscription:
+        """Record a subscription update."""
+        return await self._admin.update_subscription(
+            org_id, subscription_id, url, event_types, disabled
+        )
+
+    async def delete_subscription(
+        self,
+        org_id: UUID,
+        subscription_id: str,
+    ) -> Subscription:
+        """Record a subscription deletion, return the deleted subscription."""
+        sub = await self._admin.get_subscription(org_id, subscription_id)
+        await self._admin.delete_subscription(org_id, subscription_id)
+        return sub
+
+    # -------------------------------------------------------------------------
+    # Messages (pass-through)
+    # -------------------------------------------------------------------------
+
+    async def get_messages(
+        self,
+        org_id: UUID,
+        event_types: Optional[list[str]] = None,
+    ) -> list[EventMessage]:
+        """Return recorded messages."""
+        return await self._admin.get_messages(org_id, event_types)
+
+    async def get_message(
+        self,
+        org_id: UUID,
+        message_id: str,
+    ) -> EventMessage:
+        """Return a specific message."""
+        return await self._admin.get_message(org_id, message_id)
+
+    async def get_message_attempts(
+        self,
+        org_id: UUID,
+        message_id: str,
+    ) -> list[DeliveryAttempt]:
+        """Return delivery attempts for a message."""
+        return await self._admin.get_message_attempts(org_id, message_id)
+
+    # -------------------------------------------------------------------------
+    # Recovery
+    # -------------------------------------------------------------------------
+
+    async def recover_messages(
+        self,
+        org_id: UUID,
+        subscription_id: str,
+        since: datetime,
+        until: Optional[datetime] = None,
+    ) -> RecoveryTask:
+        """Record a recovery request."""
+        return await self._admin.recover_messages(org_id, subscription_id, since, until)
+
+    # -------------------------------------------------------------------------
+    # Test helpers
+    # -------------------------------------------------------------------------
+
+    def assert_subscription_created(self, url: str) -> Subscription:
+        """Assert that a subscription was created for the given URL."""
+        return self._admin.assert_subscription_created(url)
+
+    def clear(self) -> None:
+        """Clear all recorded state."""
+        self._admin.clear()
+        self._verifier.clear()

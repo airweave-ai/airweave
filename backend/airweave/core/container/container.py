@@ -18,6 +18,7 @@ from airweave.core.protocols import (
     EventBus,
     WebhookAdmin,
     WebhookPublisher,
+    WebhookServiceProtocol,
 )
 
 
@@ -37,6 +38,7 @@ class Container:
             webhook_publisher=FakeWebhookPublisher(),
             webhook_admin=FakeWebhookAdmin(),
             endpoint_verifier=FakeEndpointVerifier(),
+            webhook_service=FakeWebhookService(),
         )
 
         # FastAPI endpoints: use Inject() to pull individual protocols
@@ -48,10 +50,11 @@ class Container:
     # Event bus for domain event fan-out
     event_bus: EventBus
 
-    # Webhook protocols (Svix-backed)
-    webhook_publisher: WebhookPublisher  # Internal: publish sync events
-    webhook_admin: WebhookAdmin  # External API: subscriptions + history
-    endpoint_verifier: EndpointVerifier  # Verify webhook URLs before subscribing
+    # Webhook protocols
+    webhook_publisher: WebhookPublisher
+    webhook_admin: WebhookAdmin
+    endpoint_verifier: EndpointVerifier
+    webhook_service: WebhookServiceProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

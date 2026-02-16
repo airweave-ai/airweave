@@ -657,9 +657,14 @@ class SourceConnectionService:
 
         # Trigger sync if requested
         if sync_job and obj_in.sync_immediately:
-            # Get the Connection object for the workflow
             await self._trigger_sync_workflow(
-                db, connection_schema, sync_schema, sync_job_schema, collection_schema, ctx
+                db,
+                connection_schema,
+                sync_schema,
+                sync_job_schema,
+                collection_schema,
+                ctx,
+                source_connection_id=response.id,
             )
 
         return response
@@ -1015,7 +1020,13 @@ class SourceConnectionService:
         # Trigger sync if requested
         if sync_job and obj_in.sync_immediately:
             await self._trigger_sync_workflow(
-                db, connection_schema, sync_schema, sync_job_schema, collection_schema, ctx
+                db,
+                connection_schema,
+                sync_schema,
+                sync_job_schema,
+                collection_schema,
+                ctx,
+                source_connection_id=response.id,
             )
 
         return response
@@ -1209,7 +1220,13 @@ class SourceConnectionService:
                 )
             )
             await self._trigger_sync_workflow(
-                db, connection_schema, sync_schema, sync_job_schema, collection_schema, ctx
+                db,
+                connection_schema,
+                sync_schema,
+                sync_job_schema,
+                collection_schema,
+                ctx,
+                source_connection_id=response.id,
             )
 
         return response
@@ -1447,11 +1464,36 @@ class SourceConnectionService:
         sync_job: schemas.SyncJob,
         collection: schemas.Collection,
         ctx: ApiContext,
+        source_connection_id: Optional[UUID] = None,
     ) -> None:
         """Trigger Temporal workflow for sync.
 
+        Also publishes sync.pending so every sync path (sync_immediately,
+        manual /run, scheduled) emits the full lifecycle.
+
         Note: All parameters except db and ctx should be Pydantic schemas, not SQLAlchemy models.
         """
+        # Publish sync.pending event
+        if source_connection_id:
+            from airweave.core.container import container
+
+            if container is not None:
+                try:
+                    await container.event_bus.publish(
+                        SyncLifecycleEvent.pending(
+                            organization_id=ctx.organization.id,
+                            source_connection_id=source_connection_id,
+                            sync_job_id=sync_job.id,
+                            sync_id=sync.id,
+                            collection_id=collection.id,
+                            source_type=connection.short_name,
+                            collection_name=collection.name,
+                            collection_readable_id=collection.readable_id,
+                        )
+                    )
+                except Exception as e:
+                    ctx.logger.warning(f"Failed to publish sync.pending event: {e}")
+
         # Trigger workflow - all inputs are already schemas
         await temporal_service.run_source_connection_workflow(
             sync=sync,
