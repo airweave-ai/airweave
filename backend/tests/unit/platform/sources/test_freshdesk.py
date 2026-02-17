@@ -566,9 +566,16 @@ async def test_generate_solution_article_entities_maps_api_to_entity():
         }
     ]
     article_response.headers = {}
+    subfolders_response = MagicMock()
+    subfolders_response.json.return_value = []  # no nested subfolders
 
     with patch.object(source, "_get_with_auth", new_callable=AsyncMock) as mock_get:
-        mock_get.side_effect = [cat_response, folder_response, article_response]
+        mock_get.side_effect = [
+            cat_response,
+            folder_response,
+            article_response,
+            subfolders_response,
+        ]
         entities = []
         async for entity in source._generate_solution_article_entities(AsyncMock()):
             entities.append(entity)
