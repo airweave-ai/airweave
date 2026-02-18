@@ -17,10 +17,6 @@ from typing import TYPE_CHECKING
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
-from airweave.domains.connections.repository import ConnectionRepository
-from airweave.domains.credentials.repository import IntegrationCredentialRepository
-from airweave.domains.oauth.oauth2_service import OAuth2Service
-from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
@@ -28,7 +24,11 @@ from airweave.core.logging import logger
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.connections.repository import ConnectionRepository
+from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from airweave.core.config import Settings
     from airweave.core.protocols import CircuitBreaker, OcrProvider
     from airweave.core.protocols.event_bus import EventBus
+    from airweave.core.protocols.payment import PaymentGatewayProtocol
 
 
 def create_container(settings: Settings) -> Container:
@@ -102,6 +103,12 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     source_deps = _create_source_services(settings)
 
+    # -----------------------------------------------------------------
+    # Billing domain (payment gateway + service + webhook processor)
+    # -----------------------------------------------------------------
+    payment_gateway = _create_payment_gateway(settings)
+    billing_deps = _create_billing_services(payment_gateway)
+
     return Container(
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
@@ -118,6 +125,9 @@ def create_container(settings: Settings) -> Container:
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
+        payment_gateway=payment_gateway,
+        billing_service=billing_deps["billing_service"],
+        billing_webhook=billing_deps["billing_webhook"],
     )
 
 
@@ -242,4 +252,53 @@ def _create_source_services(settings: Settings) -> dict:
         "cred_repo": cred_repo,
         "oauth2_service": oauth2_svc,
         "source_lifecycle_service": source_lifecycle_service,
+    }
+
+
+def _create_payment_gateway(settings: "Settings") -> "PaymentGatewayProtocol":
+    """Create payment gateway: Stripe if enabled, otherwise a null implementation."""
+    if settings.STRIPE_ENABLED:
+        from airweave.adapters.payment.stripe import StripePaymentGateway
+
+        return StripePaymentGateway()
+
+    from airweave.adapters.payment.null import NullPaymentGateway
+
+    return NullPaymentGateway()
+
+
+def _create_billing_services(payment_gateway: "PaymentGatewayProtocol") -> dict:
+    """Create billing service and webhook processor with shared dependencies."""
+    from airweave.domains.billing.operations import BillingOperations
+    from airweave.domains.billing.repository import (
+        BillingPeriodRepository,
+        OrganizationBillingRepository,
+    )
+    from airweave.domains.billing.service import BillingService
+    from airweave.domains.billing.webhook_handler import BillingWebhookProcessor
+    from airweave.domains.organizations.repository import OrganizationRepository
+
+    billing_repo = OrganizationBillingRepository()
+    period_repo = BillingPeriodRepository()
+    org_repo = OrganizationRepository()
+    billing_ops = BillingOperations(billing_repo=billing_repo, payment_gateway=payment_gateway)
+
+    billing_service = BillingService(
+        payment_gateway=payment_gateway,
+        billing_repo=billing_repo,
+        period_repo=period_repo,
+        billing_ops=billing_ops,
+        org_repo=org_repo,
+    )
+    billing_webhook = BillingWebhookProcessor(
+        payment_gateway=payment_gateway,
+        billing_repo=billing_repo,
+        period_repo=period_repo,
+        billing_ops=billing_ops,
+        org_repo=org_repo,
+    )
+
+    return {
+        "billing_service": billing_service,
+        "billing_webhook": billing_webhook,
     }

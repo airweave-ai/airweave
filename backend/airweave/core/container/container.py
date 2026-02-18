@@ -18,11 +18,13 @@ from airweave.core.protocols import (
     EndpointVerifier,
     EventBus,
     OcrProvider,
+    PaymentGatewayProtocol,
     WebhookAdmin,
     WebhookPublisher,
     WebhookServiceProtocol,
 )
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
+from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.oauth.protocols import OAuth2ServiceProtocol
@@ -95,6 +97,11 @@ class Container:
 
     # Source lifecycle — creates/validates configured source instances
     source_lifecycle_service: SourceLifecycleServiceProtocol
+
+    # Billing domain
+    payment_gateway: PaymentGatewayProtocol
+    billing_service: BillingServiceProtocol
+    billing_webhook: BillingWebhookProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

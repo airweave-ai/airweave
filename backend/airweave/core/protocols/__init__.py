@@ -8,6 +8,7 @@ infrastructure protocols only.
 from airweave.core.protocols.circuit_breaker import CircuitBreaker
 from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandler
 from airweave.core.protocols.ocr import OcrProvider
+from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import (
     EndpointVerifier,
     WebhookAdmin,
@@ -22,6 +23,7 @@ __all__ = [
     "EventBus",
     "EventHandler",
     "OcrProvider",
+    "PaymentGatewayProtocol",
     "WebhookAdmin",
     "WebhookPublisher",
     "WebhookServiceProtocol",

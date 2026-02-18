@@ -1,0 +1,1 @@
+"""Payment adapters implementing PaymentGatewayProtocol."""

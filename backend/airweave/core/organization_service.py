@@ -9,20 +9,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
-
-# Import billing dependencies only if Stripe is enabled
 from airweave.core.config import settings
 from airweave.core.context_cache_service import context_cache
 from airweave.core.logging import logger
+from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.shared_models import AuthMethod
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.billing.operations import BillingOperations
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models import Organization, User, UserOrganization
 from airweave.schemas.api_key import APIKeyCreate
 
 if settings.STRIPE_ENABLED:
-    from airweave.billing.service import billing_service
-    from airweave.integrations.stripe_client import stripe_client
+    from airweave.adapters.payment.stripe import StripePaymentGateway
+
+    _payment_gateway: PaymentGatewayProtocol = StripePaymentGateway()
+else:
+    from airweave.adapters.payment.null import NullPaymentGateway
+
+    _payment_gateway: PaymentGatewayProtocol = NullPaymentGateway()
+
+_billing_ops = BillingOperations(payment_gateway=_payment_gateway)
 
 
 class OrganizationService:
@@ -44,7 +51,7 @@ class OrganizationService:
 
         This method ensures atomicity across all external services:
         1. Creates Auth0 organization
-        2. Creates Stripe customer (if STRIPE_ENABLED)
+        2. Creates Stripe customer
         3. Creates local organization with optional billing
 
         On any failure, all changes are rolled back.
@@ -91,25 +98,24 @@ class OrganizationService:
                     "AUTH disabled or Auth0 client not configured; skipping Auth0 org creation"
                 )
 
-            # Step 2: Create Stripe customer if enabled
-            if settings.STRIPE_ENABLED:
-                logger.info(f"Creating Stripe customer for: {org_data.name}")
-                # Test clock support only via environment variable in non-production
-                # SECURITY: Never accept test_clock from user input to prevent billing manipulation
-                test_clock_id = None
-                if settings.ENVIRONMENT != "prd":
-                    test_clock_id = settings.STRIPE_TEST_CLOCK  # From env only, not user input
+            # Step 2: Create payment provider customer (no-op when billing disabled)
+            # Test clock support only via environment variable in non-production
+            # SECURITY: Never accept test_clock from user input to prevent billing manipulation
+            test_clock_id = None
+            if settings.ENVIRONMENT != "prd":
+                test_clock_id = settings.STRIPE_TEST_CLOCK  # From env only, not user input
 
-                stripe_customer = await stripe_client.create_customer(
-                    email=owner_user.email,
-                    name=org_data.name,
-                    metadata={
-                        "auth0_org_id": auth0_org_id or "",
-                        "owner_user_id": str(owner_user.id),
-                        "organization_name": org_data.name,
-                    },
-                    test_clock=test_clock_id,
-                )
+            stripe_customer = await _payment_gateway.create_customer(
+                email=owner_user.email,
+                name=org_data.name,
+                metadata={
+                    "auth0_org_id": auth0_org_id or "",
+                    "owner_user_id": str(owner_user.id),
+                    "organization_name": org_data.name,
+                },
+                test_clock=test_clock_id,
+            )
+            if stripe_customer:
                 logger.info(f"Created Stripe customer: {stripe_customer.id}")
 
             # Step 3: Create local organization
@@ -134,8 +140,8 @@ class OrganizationService:
                     f"Created organization with auth0_org_id: {org_dict.get('auth0_org_id')}"
                 )
 
-                # Create billing record if Stripe is enabled
-                if settings.STRIPE_ENABLED and stripe_customer:
+                # Create billing record if payment provider returned a customer
+                if stripe_customer:
                     local_org_schema = schemas.Organization.model_validate(local_org)
 
                     # Create system auth context for billing record creation
@@ -153,7 +159,7 @@ class OrganizationService:
                     )
 
                     # Create billing record
-                    _ = await billing_service.create_billing_record(
+                    _ = await _billing_ops.create_billing_record(
                         db=db,
                         organization=local_org_schema,
                         stripe_customer_id=stripe_customer.id,
@@ -261,10 +267,10 @@ class OrganizationService:
                 except Exception as cleanup_error:
                     logger.error(f"Failed to cleanup Auth0 organization: {cleanup_error}")
 
-            # Cleanup Stripe (only if enabled and customer was created)
-            if settings.STRIPE_ENABLED and stripe_customer:
+            # Cleanup payment provider customer if one was created
+            if stripe_customer:
                 try:
-                    await stripe_client.delete_customer(stripe_customer.id)
+                    await _payment_gateway.delete_customer(stripe_customer.id)
                     logger.info(f"Rolled back Stripe customer: {stripe_customer.id}")
                 except Exception as cleanup_error:
                     logger.error(f"Failed to cleanup Stripe customer: {cleanup_error}")
@@ -554,9 +560,6 @@ class OrganizationService:
         Note:
             Continues execution even if billing deletion fails.
         """
-        if not settings.STRIPE_ENABLED:
-            return
-
         try:
             org_billing = await crud.organization_billing.get_by_organization(
                 db, organization_id=organization_id
@@ -564,7 +567,7 @@ class OrganizationService:
             if not org_billing:
                 logger.warning(f"No billing record found for organization {org_name}")
             else:
-                await stripe_client.cancel_subscription(
+                await _payment_gateway.cancel_subscription(
                     subscription_id=org_billing.stripe_subscription_id,
                     cancel_at_period_end=False,
                 )
