@@ -142,25 +142,13 @@ class OAuth2Service(OAuth2ServiceProtocol):
         Raises:
             HTTPException: If settings are not found for the source or token exchange fails.
         """
-        oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
-        if not oauth2_settings:
-            raise HTTPException(
-                status_code=404, detail=f"Settings not found for source: {source_short_name}"
-            )
+        oauth2_settings = await self._get_oauth2_settings(source_short_name)
 
         redirect_uri = self._get_redirect_url(source_short_name)
 
-        if getattr(oauth2_settings, "backend_url_template", False):
-            if not template_configs:
-                raise ValueError(f"template_configs needed for {source_short_name}")
-            try:
-                backend_url = oauth2_settings.render_backend_url(**template_configs)
-            except KeyError as e:
-                raise ValueError(
-                    f"Missing template variable {e} in template_configs for token exchange"
-                ) from e
-        else:
-            backend_url = oauth2_settings.backend_url
+        backend_url = self._resolve_backend_url(
+            oauth2_settings, source_short_name, template_configs
+        )
 
         if not client_id and not client_secret:
             client_id = oauth2_settings.client_id
@@ -278,24 +266,11 @@ class OAuth2Service(OAuth2ServiceProtocol):
             HTTPException: If settings not found or token exchange fails
             ValueError: If template URL requires template_configs but it's missing
         """
-        try:
-            oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
-        except KeyError as e:
-            raise HTTPException(
-                status_code=404, detail=f"Settings not found for source: {source_short_name}"
-            ) from e
+        oauth2_settings = await self._get_oauth2_settings(source_short_name)
 
-        if getattr(oauth2_settings, "backend_url_template", False):
-            if not template_configs:
-                raise ValueError(f"template_configs needed for {source_short_name}")
-            try:
-                backend_url = oauth2_settings.render_backend_url(**template_configs)
-            except KeyError as e:
-                raise ValueError(
-                    f"Missing template variable {e} in template_configs for token exchange"
-                ) from e
-        else:
-            backend_url = oauth2_settings.backend_url
+        backend_url = self._resolve_backend_url(
+            oauth2_settings, source_short_name, template_configs
+        )
 
         if not client_id:
             client_id = oauth2_settings.client_id
@@ -349,7 +324,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
             )
 
             backend_url = integration_config.backend_url
-            if getattr(integration_config, "backend_url_template", False):
+            if integration_config.backend_url_template:
                 if not config_fields:
                     raise ValueError(
                         f"config_fields required for token refresh of {integration_short_name}"
@@ -380,7 +355,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
                     ) from e
 
             client_id, client_secret = await self._get_client_credentials(
-                ctx.logger, integration_config, None, decrypted_credential
+                integration_config, None, decrypted_credential
             )
 
             headers, payload = self._prepare_token_request(
@@ -404,6 +379,48 @@ class OAuth2Service(OAuth2ServiceProtocol):
             )
             raise
 
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    async def _get_oauth2_settings(self, source_short_name: str) -> OAuth2Settings:
+        """Look up integration settings and narrow to OAuth2Settings.
+
+        Raises:
+            HTTPException 404: if settings not found or not an OAuth2 integration.
+        """
+        try:
+            settings = await integration_settings.get_by_short_name(source_short_name)
+        except KeyError as e:
+            raise HTTPException(
+                status_code=404, detail=f"Settings not found for source: {source_short_name}"
+            ) from e
+
+        if not isinstance(settings, OAuth2Settings):
+            raise HTTPException(
+                status_code=404,
+                detail=f"{source_short_name} is not an OAuth2 integration",
+            )
+        return settings
+
+    def _resolve_backend_url(
+        self,
+        oauth2_settings: OAuth2Settings,
+        source_short_name: str,
+        template_configs: Optional[dict],
+    ) -> str:
+        """Resolve the backend token URL, rendering templates if needed."""
+        if oauth2_settings.backend_url_template:
+            if not template_configs:
+                raise ValueError(f"template_configs needed for {source_short_name}")
+            try:
+                return oauth2_settings.render_backend_url(**template_configs)
+            except KeyError as e:
+                raise ValueError(
+                    f"Missing template variable {e} in template_configs for token exchange"
+                ) from e
+        return oauth2_settings.backend_url
+
     async def _get_refresh_token(
         self, logger: ContextualLogger, decrypted_credential: dict
     ) -> str:
@@ -423,23 +440,30 @@ class OAuth2Service(OAuth2ServiceProtocol):
         self,
         logger: ContextualLogger,
         integration_short_name: str,
-    ) -> schemas.Source | schemas.Destination | schemas.EmbeddingModel:
-        """Get and validate integration configuration exists.
+    ) -> OAuth2Settings:
+        """Get and validate OAuth2 integration configuration.
 
         Raises:
             NotFoundException: If integration configuration is not found.
+            NotFoundException: If integration is not an OAuth2 integration.
         """
-        integration_config = await integration_settings.get_by_short_name(integration_short_name)
-        if not integration_config:
+        try:
+            config = await integration_settings.get_by_short_name(integration_short_name)
+        except KeyError:
             error_message = f"Configuration for {integration_short_name} not found"
             logger.error(error_message)
             raise NotFoundException(error_message)
-        return integration_config
+
+        if not isinstance(config, OAuth2Settings):
+            error_message = f"{integration_short_name} is not an OAuth2 integration"
+            logger.error(error_message)
+            raise NotFoundException(error_message)
+
+        return config
 
     async def _get_client_credentials(
         self,
-        logger: ContextualLogger,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: OAuth2Settings,
         auth_fields: Optional[dict] = None,
         decrypted_credential: Optional[dict] = None,
     ) -> tuple[str, str]:
@@ -466,7 +490,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
     def _prepare_token_request(
         self,
         logger: ContextualLogger,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: OAuth2Settings,
         refresh_token: str,
         client_id: str,
         client_secret: str,
@@ -486,19 +510,15 @@ class OAuth2Service(OAuth2ServiceProtocol):
         # For WITH_REFRESH OAuth (Google, Slack), scope should be included
         # EXCEPTION: Salesforce is with_refresh but does NOT support scope parameter during refresh
         # See: https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/#refresh-a-token
-        oauth_type = getattr(integration_config, "oauth_type", None)
-        integration_short_name = getattr(integration_config, "integration_short_name", None)
+        oauth_type = integration_config.oauth_type
+        short_name = integration_config.integration_short_name
 
-        if oauth_type == "with_rotating_refresh" or integration_short_name == "salesforce":
+        if oauth_type == "with_rotating_refresh" or short_name == "salesforce":
             logger.debug(
                 f"Skipping scope in token refresh "
-                f"(oauth_type={oauth_type}, integration={integration_short_name})"
+                f"(oauth_type={oauth_type}, integration={short_name})"
             )
-        elif (
-            oauth_type == "with_refresh"
-            and hasattr(integration_config, "scope")
-            and integration_config.scope
-        ):
+        elif oauth_type == "with_refresh" and integration_config.scope:
             payload["scope"] = integration_config.scope
             logger.debug(
                 f"Including scope in token refresh (oauth_type=with_refresh): "
@@ -608,17 +628,14 @@ class OAuth2Service(OAuth2ServiceProtocol):
         self,
         db: AsyncSession,
         response: httpx.Response,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: OAuth2Settings,
         ctx: ApiContext,
         connection_id: UUID,
     ) -> OAuth2TokenResponse:
         """Handle the token response and update refresh token if needed."""
         oauth2_token_response = OAuth2TokenResponse(**response.json())
 
-        if (
-            hasattr(integration_config, "oauth_type")
-            and integration_config.oauth_type == "with_rotating_refresh"
-        ):
+        if integration_config.oauth_type == "with_rotating_refresh":
             connection = await self.conn_repo.get(db=db, id=connection_id, ctx=ctx)
             integration_credential = await self.cred_repo.get(
                 db=db, id=connection.integration_credential_id, ctx=ctx
@@ -703,7 +720,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         client_id: str,
         client_secret: str,
         backend_url: str,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: OAuth2Settings,
         code_verifier: Optional[str] = None,
     ) -> OAuth2TokenResponse:
         """Core method to exchange an authorization code for tokens.
@@ -780,7 +797,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         """Create a new connection with OAuth2 credentials."""
         decrypted_credentials = (
             {"access_token": oauth2_response.access_token}
-            if (hasattr(auth_settings, "oauth_type") and auth_settings.oauth_type == "access_only")
+            if auth_settings.oauth_type == "access_only"
             else {
                 "refresh_token": oauth2_response.refresh_token,
                 "access_token": oauth2_response.access_token,

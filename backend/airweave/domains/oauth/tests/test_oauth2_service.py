@@ -116,10 +116,13 @@ def _make_oauth2_settings(
     )
 
 
-def _make_integration_config(**overrides) -> SimpleNamespace:
-    """Build a lightweight integration config stand-in."""
+def _make_integration_config(**overrides) -> OAuth2Settings:
+    """Build an OAuth2Settings for use as integration config in tests."""
+    if "integration_short_name" in overrides:
+        overrides["short_name"] = overrides.pop("integration_short_name")
     defaults = dict(
-        integration_short_name="google_drive",
+        short_name="google_drive",
+        url="https://accounts.google.com/o/oauth2/v2/auth",
         backend_url="https://oauth2.googleapis.com/token",
         backend_url_template=False,
         content_type="application/x-www-form-urlencoded",
@@ -131,7 +134,7 @@ def _make_integration_config(**overrides) -> SimpleNamespace:
         oauth_type="with_refresh",
     )
     defaults.update(overrides)
-    return SimpleNamespace(**defaults)
+    return _make_oauth2_settings(**defaults)
 
 
 def _make_httpx_response(
@@ -423,9 +426,8 @@ CLIENT_CRED_CASES = [
 @pytest.mark.parametrize("case", CLIENT_CRED_CASES, ids=lambda c: c.desc)
 async def test_get_client_credentials(case: ClientCredCase):
     config = _make_integration_config(client_id=case.config_id, client_secret=case.config_secret)
-    log = logger.with_context(test="creds")
     cid, csecret = await _svc()._get_client_credentials(
-        log, config, case.auth_fields, case.decrypted_credential
+        config, case.auth_fields, case.decrypted_credential
     )
     assert cid == case.expect_id
     assert csecret == case.expect_secret
@@ -869,7 +871,7 @@ async def test_exchange_authorization_code_for_token(case: ExchangeTokenCase):
 
     async def fake_get_by_short_name(name):
         if not case.settings_found:
-            return None
+            raise KeyError(f"Integration settings not found for {name}")
         return oauth_settings
 
     token_response = OAuth2TokenResponse(access_token="exchanged-tok")
@@ -1047,7 +1049,7 @@ async def test_refresh_access_token(case: RefreshCase):
 
     async def fake_get_by_short_name(name):
         if not case.config_found:
-            return None
+            raise KeyError(f"Integration settings not found for {name}")
         return integration_config
 
     # Seed repos for rotating refresh path
