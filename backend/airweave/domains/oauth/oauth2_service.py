@@ -18,10 +18,10 @@ from airweave.api.context import ApiContext
 from airweave.core.config.settings import Settings
 from airweave.core.exceptions import NotFoundException, TokenRefreshError
 from airweave.core.logging import ContextualLogger
+from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.shared_models import ConnectionStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.oauth.protocols import (
-    CredentialEncryptorProtocol,
     OAuth2ServiceProtocol,
     OAuthConnectionRepositoryProtocol,
     OAuthCredentialRepositoryProtocol,
@@ -44,7 +44,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         settings: Settings,
         conn_repo: OAuthConnectionRepositoryProtocol,
         cred_repo: OAuthCredentialRepositoryProtocol,
-        encryptor: CredentialEncryptorProtocol,
+        encryptor: CredentialEncryptor,
         source_repo: OAuthSourceRepositoryProtocol,
     ):
         """Initialize with injected dependencies."""
@@ -331,9 +331,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
                     )
 
                 try:
-                    source = await self.source_repo.get_by_short_name(
-                        db, integration_short_name
-                    )
+                    source = await self.source_repo.get_by_short_name(db, integration_short_name)
                     if source and source.config_class:
                         from airweave.platform.locator import resource_locator
 
@@ -362,9 +360,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
                 ctx.logger, integration_config, refresh_token, client_id, client_secret
             )
 
-            response = await self._make_token_request(
-                ctx.logger, backend_url, headers, payload
-            )
+            response = await self._make_token_request(ctx.logger, backend_url, headers, payload)
 
             oauth2_token_response = await self._handle_token_response(
                 db, response, integration_config, ctx, connection_id
@@ -421,9 +417,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
                 ) from e
         return oauth2_settings.backend_url
 
-    async def _get_refresh_token(
-        self, logger: ContextualLogger, decrypted_credential: dict
-    ) -> str:
+    async def _get_refresh_token(self, logger: ContextualLogger, decrypted_credential: dict) -> str:
         """Get refresh token from decrypted credentials.
 
         Raises:

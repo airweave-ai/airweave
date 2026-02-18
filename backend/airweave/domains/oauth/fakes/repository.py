@@ -23,9 +23,7 @@ class FakeOAuthConnectionRepository:
         self._calls.append(("get", db, id, ctx))
         return self._store.get(id)
 
-    async def create(
-        self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any
-    ) -> Any:
+    async def create(self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any) -> Any:
         self._calls.append(("create", db, obj_in, ctx, uow))
         self._created.append(obj_in)
         return obj_in
@@ -47,45 +45,15 @@ class FakeOAuthCredentialRepository:
         self._calls.append(("get", db, id, ctx))
         return self._store.get(id)
 
-    async def update(
-        self, db: AsyncSession, *, db_obj: Any, obj_in: Any, ctx: ApiContext
-    ) -> Any:
+    async def update(self, db: AsyncSession, *, db_obj: Any, obj_in: Any, ctx: ApiContext) -> Any:
         self._calls.append(("update", db, db_obj, obj_in, ctx))
         self._updated.append((db_obj, obj_in))
         return db_obj
 
-    async def create(
-        self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any
-    ) -> Any:
+    async def create(self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any) -> Any:
         self._calls.append(("create", db, obj_in, ctx, uow))
         self._created.append(obj_in)
         return obj_in
-
-
-class FakeCredentialEncryptor:
-    """In-memory fake for CredentialEncryptorProtocol.
-
-    Stores encrypt/decrypt calls. By default encrypt returns a predictable
-    string and decrypt returns the last-encrypted dict (round-trip).
-    """
-
-    def __init__(self) -> None:
-        self._encrypt_calls: list[dict] = []
-        self._decrypt_calls: list[str] = []
-        self._decrypt_return: Optional[dict] = None
-
-    def seed_decrypt(self, result: dict) -> None:
-        self._decrypt_return = result
-
-    def encrypt(self, data: dict) -> str:
-        self._encrypt_calls.append(data)
-        return f"encrypted:{id(data)}"
-
-    def decrypt(self, encrypted: str) -> dict:
-        self._decrypt_calls.append(encrypted)
-        if self._decrypt_return is not None:
-            return dict(self._decrypt_return)
-        return {}
 
 
 class FakeOAuthSourceRepository:
