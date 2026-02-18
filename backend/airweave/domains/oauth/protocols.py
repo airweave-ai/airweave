@@ -1,4 +1,4 @@
-"""Protocols for OAuth2 domain dependencies."""
+"""Protocols for OAuth domain dependencies."""
 
 from typing import Any, Optional, Protocol
 from uuid import UUID
@@ -6,7 +6,50 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.logging import ContextualLogger
 from airweave.platform.auth.schemas import OAuth2TokenResponse
+
+
+class OAuth1ServiceProtocol(Protocol):
+    """OAuth1 authentication flow capability."""
+
+    async def get_request_token(
+        self,
+        *,
+        request_token_url: str,
+        consumer_key: str,
+        consumer_secret: str,
+        callback_url: str,
+        logger: ContextualLogger,
+    ) -> Any:
+        """Obtain temporary credentials (request token)."""
+        ...
+
+    async def exchange_token(
+        self,
+        *,
+        access_token_url: str,
+        consumer_key: str,
+        consumer_secret: str,
+        oauth_token: str,
+        oauth_token_secret: str,
+        oauth_verifier: str,
+        logger: ContextualLogger,
+    ) -> Any:
+        """Exchange temporary credentials for access token credentials."""
+        ...
+
+    def build_authorization_url(
+        self,
+        *,
+        authorization_url: str,
+        oauth_token: str,
+        app_name: Optional[str] = None,
+        scope: Optional[str] = None,
+        expiration: Optional[str] = None,
+    ) -> str:
+        """Build the authorization URL for user consent."""
+        ...
 
 
 class OAuth2ServiceProtocol(Protocol):
