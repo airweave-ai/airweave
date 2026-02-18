@@ -166,6 +166,14 @@ def fake_oauth2_service():
 
 
 @pytest.fixture
+def fake_oauth1_service():
+    """Real OAuth1Service (no injected deps, safe for unit tests)."""
+    from airweave.domains.oauth.oauth1_service import OAuth1Service
+
+    return OAuth1Service()
+
+
+@pytest.fixture
 def test_container(
     fake_event_bus,
     fake_webhook_publisher,
@@ -180,6 +188,7 @@ def test_container(
     fake_sc_repo,
     fake_conn_repo,
     fake_cred_repo,
+    fake_oauth1_service,
     fake_oauth2_service,
     fake_source_lifecycle_service,
 ):
@@ -207,6 +216,7 @@ def test_container(
         sc_repo=fake_sc_repo,
         conn_repo=fake_conn_repo,
         cred_repo=fake_cred_repo,
+        oauth1_service=fake_oauth1_service,
         oauth2_service=fake_oauth2_service,
         source_lifecycle_service=fake_source_lifecycle_service,
     )

@@ -579,7 +579,7 @@ async def test_handle_auth_config_credentials(case: HandleAuthConfigCase):
 
     oauth2_fake = FakeOAuth2Service()
     if case.has_refresh_token:
-        oauth2_fake.seed("src", "new-access-tok")
+        oauth2_fake.seed_refresh("src", "new-access-tok")
 
     service = _make_service(source_entries=[entry], oauth2_service=oauth2_fake)
     decrypted = {"access_token": "old", "refresh_token": case.refresh_token_value}

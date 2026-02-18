@@ -1,4 +1,4 @@
-"""Fake repositories for OAuth2 domain testing."""
+"""Fake repositories for OAuth domain testing."""
 
 from typing import Any, Optional
 from uuid import UUID
@@ -6,6 +6,15 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.db.unit_of_work import UnitOfWork
+from airweave.models.connection import Connection
+from airweave.models.integration_credential import IntegrationCredential
+from airweave.models.source import Source
+from airweave.schemas.connection import ConnectionCreate
+from airweave.schemas.integration_credential import (
+    IntegrationCredentialCreateEncrypted,
+    IntegrationCredentialUpdate,
+)
 
 
 class FakeOAuthConnectionRepository:
@@ -19,11 +28,18 @@ class FakeOAuthConnectionRepository:
     def seed(self, id: UUID, obj: Any) -> None:
         self._store[id] = obj
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Any]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Connection:
         self._calls.append(("get", db, id, ctx))
         return self._store.get(id)
 
-    async def create(self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any) -> Any:
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: ConnectionCreate,
+        ctx: ApiContext,
+        uow: UnitOfWork,
+    ) -> Connection:
         self._calls.append(("create", db, obj_in, ctx, uow))
         self._created.append(obj_in)
         return obj_in
@@ -41,16 +57,30 @@ class FakeOAuthCredentialRepository:
     def seed(self, id: UUID, obj: Any) -> None:
         self._store[id] = obj
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Any]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> IntegrationCredential:
         self._calls.append(("get", db, id, ctx))
         return self._store.get(id)
 
-    async def update(self, db: AsyncSession, *, db_obj: Any, obj_in: Any, ctx: ApiContext) -> Any:
+    async def update(
+        self,
+        db: AsyncSession,
+        *,
+        db_obj: IntegrationCredential,
+        obj_in: IntegrationCredentialUpdate,
+        ctx: ApiContext,
+    ) -> IntegrationCredential:
         self._calls.append(("update", db, db_obj, obj_in, ctx))
         self._updated.append((db_obj, obj_in))
         return db_obj
 
-    async def create(self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any) -> Any:
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: IntegrationCredentialCreateEncrypted,
+        ctx: ApiContext,
+        uow: UnitOfWork,
+    ) -> IntegrationCredential:
         self._calls.append(("create", db, obj_in, ctx, uow))
         self._created.append(obj_in)
         return obj_in
@@ -66,6 +96,6 @@ class FakeOAuthSourceRepository:
     def seed(self, short_name: str, obj: Any) -> None:
         self._store[short_name] = obj
 
-    async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[Any]:
+    async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[Source]:
         self._calls.append(("get_by_short_name", db, short_name))
         return self._store.get(short_name)

@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
+from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
@@ -27,8 +28,8 @@ from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.oauth.oauth1_service import OAuth1Service
 from airweave.domains.oauth.oauth2_service import OAuth2Service
-from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.domains.oauth.repository import (
     OAuthConnectionRepository,
     OAuthCredentialRepository,
@@ -120,6 +121,7 @@ def create_container(settings: Settings) -> Container:
         sc_repo=source_deps["sc_repo"],
         conn_repo=source_deps["conn_repo"],
         cred_repo=source_deps["cred_repo"],
+        oauth1_service=source_deps["oauth1_service"],
         oauth2_service=source_deps["oauth2_service"],
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
@@ -224,11 +226,12 @@ def _create_source_services(settings: Settings) -> dict:
     sc_repo = SourceConnectionRepository()
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
+    oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
         settings=settings,
         conn_repo=OAuthConnectionRepository(),
         cred_repo=OAuthCredentialRepository(),
-        encryptor=FernetCredentialEncryptor(),
+        encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
         source_repo=OAuthSourceRepository(),
     )
 
@@ -252,6 +255,7 @@ def _create_source_services(settings: Settings) -> dict:
         "sc_repo": sc_repo,
         "conn_repo": conn_repo,
         "cred_repo": cred_repo,
+        "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
         "source_lifecycle_service": source_lifecycle_service,
     }
