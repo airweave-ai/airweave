@@ -2021,11 +2021,13 @@ class SourceConnectionService:
     _create_sync = source_connection_helpers.create_sync
     _create_sync_without_schedule = source_connection_helpers.create_sync_without_schedule
     _create_source_connection = source_connection_helpers.create_source_connection
+    # [code blue] deprecate once source_connections domain is live
     _build_source_connection_response = source_connection_helpers.build_source_connection_response
     _create_init_session = source_connection_helpers.create_init_session
     _create_proxy_url = source_connection_helpers.create_proxy_url
     _update_sync_schedule = source_connection_helpers.update_sync_schedule
     _update_auth_fields = source_connection_helpers.update_auth_fields
+    # [code blue] deprecate once source_connections domain is live
     _sync_job_to_source_connection_job = source_connection_helpers.sync_job_to_source_connection_job
     _reconstruct_context_from_session = source_connection_helpers.reconstruct_context_from_session
     _exchange_oauth1_code = source_connection_helpers.exchange_oauth1_code

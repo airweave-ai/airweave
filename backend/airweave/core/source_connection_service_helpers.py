@@ -665,6 +665,8 @@ class SourceConnectionHelpers:
 
         return compute_status(source_conn, last_job_status)
 
+    # [code blue] deprecate once source_connections domain is live — replaced by
+    # domains.source_connections.response.ResponseBuilder.build_response
     async def build_source_connection_response(  # noqa: C901
         self,
         db: AsyncSession,
@@ -1054,6 +1056,8 @@ class SourceConnectionHelpers:
         collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
         await cleanup_service.cleanup_sync(db, source_conn.sync_id, collection_schema, ctx)
 
+    # [code blue] deprecate once source_connections domain is live — replaced by
+    # domains.source_connections.response.ResponseBuilder.map_sync_job
     def sync_job_to_source_connection_job(
         self, job: Any, source_connection_id: UUID
     ) -> SourceConnectionJob:
