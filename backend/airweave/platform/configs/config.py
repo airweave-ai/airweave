@@ -25,6 +25,12 @@ class AsanaConfig(SourceConfig):
     pass
 
 
+class ApolloConfig(SourceConfig):
+    """Apollo configuration schema."""
+
+    pass
+
+
 class AttioConfig(SourceConfig):
     """Attio configuration schema."""
 

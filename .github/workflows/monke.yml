@@ -262,6 +262,9 @@ jobs:
           # Pipedrive direct auth credentials
           MONKE_PIPEDRIVE_API_TOKEN: ${{ secrets.MONKE_PIPEDRIVE_API_TOKEN }}
 
+          # Apollo direct auth (master API key for sequences/email activities)
+          MONKE_APOLLO_API_KEY: ${{ secrets.MONKE_APOLLO_API_KEY }}
+
           # Shopify direct auth credentials (client credentials grant)
           MONKE_SHOPIFY_CLIENT_ID: ${{ secrets.MONKE_SHOPIFY_CLIENT_ID }}
           MONKE_SHOPIFY_CLIENT_SECRET: ${{ secrets.MONKE_SHOPIFY_CLIENT_SECRET }}

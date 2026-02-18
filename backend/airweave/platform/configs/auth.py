@@ -241,6 +241,28 @@ class AsanaAuthConfig(OAuth2WithRefreshAuthConfig):
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
 
 
+class ApolloAuthConfig(APIKeyAuthConfig):
+    """Apollo authentication credentials schema.
+
+    Use your Apollo API key (Settings > API in Apollo). Master API key is
+    required for Sequences and Email Activities.
+    """
+
+    api_key: str = Field(
+        title="API Key",
+        description="The API key for Apollo. Create in Apollo: Settings > API.",
+        min_length=10,
+    )
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate Apollo API key."""
+        if not v or not v.strip():
+            raise ValueError("API key is required")
+        return v.strip()
+
+
 class AttioAuthConfig(APIKeyAuthConfig):
     """Attio authentication credentials schema."""
 
