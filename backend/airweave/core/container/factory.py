@@ -43,8 +43,8 @@ from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.domains.oauth.repository import (
-    CredentialEncryptor,
     OAuthConnectionRepository,
     OAuthCredentialRepository,
     OAuthSourceRepository,
@@ -285,7 +285,7 @@ def _create_source_services(settings: Settings) -> dict:
         settings=settings,
         conn_repo=OAuthConnectionRepository(),
         cred_repo=OAuthCredentialRepository(),
-        encryptor=CredentialEncryptor(),
+        encryptor=FernetCredentialEncryptor(),
         source_repo=OAuthSourceRepository(),
     )
 

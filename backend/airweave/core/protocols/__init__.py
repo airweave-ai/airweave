@@ -7,6 +7,7 @@ infrastructure protocols only.
 
 from airweave.core.health.protocols import HealthProbe, HealthServiceProtocol
 from airweave.core.protocols.circuit_breaker import CircuitBreaker
+from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandler
 from airweave.core.protocols.ocr import OcrProvider
 from airweave.core.protocols.webhooks import (
@@ -18,6 +19,7 @@ from airweave.core.protocols.webhooks import (
 
 __all__ = [
     "CircuitBreaker",
+    "CredentialEncryptor",
     "DomainEvent",
     "EndpointVerifier",
     "EventBus",

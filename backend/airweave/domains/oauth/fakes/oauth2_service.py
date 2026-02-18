@@ -74,9 +74,7 @@ class FakeOAuth2Service:
             raise self._should_raise
         url = self._auth_urls.get(oauth2_settings.integration_short_name)
         if url is None:
-            raise ValueError(
-                f"No seeded auth_url for {oauth2_settings.integration_short_name}"
-            )
+            raise ValueError(f"No seeded auth_url for {oauth2_settings.integration_short_name}")
         return url
 
     async def exchange_authorization_code_for_token(
@@ -88,10 +86,17 @@ class FakeOAuth2Service:
         client_secret: Optional[str] = None,
         template_configs: Optional[dict] = None,
     ) -> OAuth2TokenResponse:
-        self._calls.append((
-            "exchange_authorization_code_for_token",
-            ctx, source_short_name, code, client_id, client_secret, template_configs,
-        ))
+        self._calls.append(
+            (
+                "exchange_authorization_code_for_token",
+                ctx,
+                source_short_name,
+                code,
+                client_id,
+                client_secret,
+                template_configs,
+            )
+        )
         if self._should_raise:
             raise self._should_raise
         resp = self._exchange_responses.get(source_short_name)
@@ -108,19 +113,21 @@ class FakeOAuth2Service:
         state: Optional[str] = None,
         template_configs: Optional[dict] = None,
     ) -> Tuple[str, Optional[str]]:
-        self._calls.append((
-            "generate_auth_url_with_redirect",
-            oauth2_settings, redirect_uri, client_id, state,
-        ))
+        self._calls.append(
+            (
+                "generate_auth_url_with_redirect",
+                oauth2_settings,
+                redirect_uri,
+                client_id,
+                state,
+            )
+        )
         if self._should_raise:
             raise self._should_raise
-        result = self._auth_url_with_redirect_responses.get(
-            oauth2_settings.integration_short_name
-        )
+        result = self._auth_url_with_redirect_responses.get(oauth2_settings.integration_short_name)
         if result is None:
             raise ValueError(
-                f"No seeded auth_url_with_redirect for "
-                f"{oauth2_settings.integration_short_name}"
+                f"No seeded auth_url_with_redirect for {oauth2_settings.integration_short_name}"
             )
         return result
 
@@ -136,11 +143,19 @@ class FakeOAuth2Service:
         template_configs: Optional[dict] = None,
         code_verifier: Optional[str] = None,
     ) -> OAuth2TokenResponse:
-        self._calls.append((
-            "exchange_authorization_code_for_token_with_redirect",
-            ctx, source_short_name, code, redirect_uri,
-            client_id, client_secret, template_configs, code_verifier,
-        ))
+        self._calls.append(
+            (
+                "exchange_authorization_code_for_token_with_redirect",
+                ctx,
+                source_short_name,
+                code,
+                redirect_uri,
+                client_id,
+                client_secret,
+                template_configs,
+                code_verifier,
+            )
+        )
         if self._should_raise:
             raise self._should_raise
         resp = self._exchange_responses.get(source_short_name)
@@ -157,11 +172,17 @@ class FakeOAuth2Service:
         decrypted_credential: dict,
         config_fields: Optional[dict] = None,
     ) -> OAuth2TokenResponse:
-        self._calls.append((
-            "refresh_access_token",
-            db, integration_short_name, ctx, connection_id,
-            decrypted_credential, config_fields,
-        ))
+        self._calls.append(
+            (
+                "refresh_access_token",
+                db,
+                integration_short_name,
+                ctx,
+                connection_id,
+                decrypted_credential,
+                config_fields,
+            )
+        )
         if self._should_raise:
             raise self._should_raise
         resp = self._refresh_responses.get(integration_short_name)
