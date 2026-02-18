@@ -150,8 +150,9 @@ class OAuth2Service(OAuth2ServiceProtocol):
             oauth2_settings, source_short_name, template_configs
         )
 
-        if not client_id and not client_secret:
+        if not client_id:
             client_id = oauth2_settings.client_id
+        if not client_secret:
             client_secret = oauth2_settings.client_secret
 
         return await self._exchange_code(
