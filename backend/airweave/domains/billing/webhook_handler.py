@@ -12,9 +12,9 @@ import stripe
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
+from airweave.api.context import ApiContext
 from airweave.core.logging import ContextualLogger, logger
 from airweave.core.protocols.payment import PaymentGatewayProtocol
-from airweave.domains.billing.context import create_billing_system_context
 from airweave.domains.billing.exceptions import wrap_gateway_errors
 from airweave.domains.billing.operations import BillingOperationsProtocol
 from airweave.domains.billing.protocols import BillingWebhookProtocol
@@ -168,10 +168,15 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             return True
         return False
 
-    async def _create_context_logger(
+    async def _resolve_event_context(  # noqa: C901
         self, db: AsyncSession, event: stripe.Event
-    ) -> ContextualLogger:
-        """Create contextual logger with organization context."""
+    ) -> tuple[ApiContext | None, ContextualLogger]:
+        """Resolve organization context and create logger for a webhook event.
+
+        Returns (ctx, log). ctx is None when the organization cannot be resolved.
+        """
+        from airweave.core.shared_models import AuthMethod
+
         organization_id = None
 
         try:
@@ -206,21 +211,29 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         except Exception as e:
             logger.error(f"Failed to get organization context: {e}")
 
-        from airweave.core.shared_models import AuthMethod
-
+        # Build the contextual logger (always available)
+        log_kwargs: dict[str, str] = {
+            "auth_method": AuthMethod.STRIPE_WEBHOOK.value,
+            "event_type": event.type,
+            "stripe_event_id": event.id,
+        }
         if organization_id:
-            return logger.with_context(
-                organization_id=str(organization_id),
-                auth_method=AuthMethod.STRIPE_WEBHOOK.value,
-                event_type=event.type,
-                stripe_event_id=event.id,
-            )
+            log_kwargs["organization_id"] = str(organization_id)
 
-        return logger.with_context(
-            auth_method=AuthMethod.STRIPE_WEBHOOK.value,
-            event_type=event.type,
-            stripe_event_id=event.id,
-        )
+        log = logger.with_context(**log_kwargs)
+
+        # Build full ApiContext when we can resolve the org
+        ctx: ApiContext | None = None
+        if organization_id:
+            org = await self._org_repo.get_by_id(
+                db, organization_id=organization_id, skip_access_validation=True
+            )
+            if org:
+                org_schema = schemas.Organization.model_validate(org, from_attributes=True)
+                ctx = ApiContext.for_system(org_schema, "stripe_webhook")
+                log = ctx.logger  # use the richer logger from the context
+
+        return ctx, log
 
     @wrap_gateway_errors
     async def process_webhook(self, db: AsyncSession, payload: bytes, signature: str) -> None:
@@ -233,13 +246,13 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
 
     async def _process_event(self, db: AsyncSession, event: Any) -> None:
         """Process a verified Stripe webhook event."""
-        log = await self._create_context_logger(db, event)
+        ctx, log = await self._resolve_event_context(db, event)
 
         handler = self.handlers.get(event.type)
         if handler:
             try:
                 log.info(f"Processing webhook event: {event.type}")
-                await handler(db, event, log)
+                await handler(db, event, ctx, log)
             except Exception as e:
                 log.error(f"Error handling {event.type}: {e}", exc_info=True)
                 raise
@@ -252,19 +265,20 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
+        ctx: ApiContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle new subscription creation."""
         subscription = event.data.object
 
-        # Get organization from metadata
-        org_id = subscription.metadata.get("organization_id")
-        if not org_id:
-            log.error(f"No organization_id in subscription {subscription.id} metadata")
+        if not ctx:
+            log.error(f"No organization context for subscription {subscription.id}")
             return
 
+        org_id = ctx.organization.id
+
         # Get billing record
-        billing = await self._billing_repo.get_by_org_id(db, organization_id=UUID(org_id))
+        billing = await self._billing_repo.get_by_org_id(db, organization_id=org_id)
         if not billing:
             log.error(f"No billing record for organization {org_id}")
             return
@@ -272,17 +286,6 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         # Determine plan
         plan_str = subscription.metadata.get("plan", "pro")
         plan = BillingPlan(plan_str)
-
-        # Create system context
-        org = await self._org_repo.get_by_id(
-            db, organization_id=UUID(org_id), skip_access_validation=True
-        )
-        if not org:
-            log.error(f"Organization {org_id} not found")
-            return
-
-        org_schema = schemas.Organization.model_validate(org, from_attributes=True)
-        ctx = create_billing_system_context(org_schema, "stripe_webhook")
 
         # Detect payment method
         has_pm, pm_id = await self._payment_gateway.detect_payment_method(subscription)
@@ -304,7 +307,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         # Create first billing period
         await self._billing_ops.create_billing_period(
             db=db,
-            organization_id=UUID(org_id),
+            organization_id=org_id,
             period_start=datetime.utcfromtimestamp(subscription.current_period_start),
             period_end=datetime.utcfromtimestamp(subscription.current_period_end),
             plan=plan,
@@ -319,17 +322,18 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         # Notify Donke about paid subscription
         if plan != BillingPlan.DEVELOPER:
             await _notify_donke_subscription(
-                org_schema, plan, UUID(org_id), is_yearly=False, log=log
+                ctx.organization, plan, org_id, is_yearly=False, log=log
             )
             # Send welcome email for Team plans
             await _send_team_welcome_email(
-                db, org_schema, plan, UUID(org_id), is_yearly=False, log=log
+                db, ctx.organization, plan, org_id, is_yearly=False, log=log
             )
 
     async def _handle_subscription_updated(  # noqa: C901
         self,
         db: AsyncSession,
         event: stripe.Event,
+        ctx: ApiContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle subscription updates."""
@@ -344,18 +348,11 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             log.error(f"No billing record for subscription {subscription.id}")
             return
 
-        org_id = billing.organization_id
-
-        # Create context
-        org = await self._org_repo.get_by_id(
-            db, organization_id=org_id, skip_access_validation=True
-        )
-        if not org:
-            log.error(f"Organization {org_id} not found")
+        if not ctx:
+            log.error(f"No organization context for subscription {subscription.id}")
             return
 
-        org_schema = schemas.Organization.model_validate(org, from_attributes=True)
-        ctx = create_billing_system_context(org_schema, "stripe_webhook")
+        org_id = billing.organization_id
 
         # Infer new plan
         is_renewal = "current_period_end" in previous_attributes
@@ -524,6 +521,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
+        ctx: ApiContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle subscription deletion/cancellation."""
@@ -537,18 +535,11 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             log.error(f"No billing record for subscription {subscription.id}")
             return
 
-        org_id = billing.organization_id
-
-        # Create context
-        org = await self._org_repo.get_by_id(
-            db, organization_id=org_id, skip_access_validation=True
-        )
-        if not org:
-            log.error(f"Organization {org_id} not found")
+        if not ctx:
+            log.error(f"No organization context for subscription {subscription.id}")
             return
 
-        org_schema = schemas.Organization.model_validate(org, from_attributes=True)
-        ctx = create_billing_system_context(org_schema, "stripe_webhook")
+        org_id = billing.organization_id
 
         # Check if actually deleted or just scheduled
         sub_status = getattr(subscription, "status", None)
@@ -589,6 +580,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
+        ctx: ApiContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle successful payment."""
@@ -605,17 +597,10 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             log.error(f"No billing record for customer {invoice.customer}")
             return
 
-        org_id = billing.organization_id
-
-        # Create context
-        org = await self._org_repo.get_by_id(
-            db, organization_id=org_id, skip_access_validation=True
-        )
-        if not org:
+        if not ctx:
             return
 
-        org_schema = schemas.Organization.model_validate(org, from_attributes=True)
-        ctx = create_billing_system_context(org_schema, "stripe_webhook")
+        org_id = billing.organization_id
 
         # Update payment info
         updates = OrganizationBillingUpdate(
@@ -664,6 +649,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
+        ctx: ApiContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle failed payment."""
@@ -680,17 +666,10 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             log.error(f"No billing record for customer {invoice.customer}")
             return
 
-        org_id = billing.organization_id
-
-        # Create context
-        org = await self._org_repo.get_by_id(
-            db, organization_id=org_id, skip_access_validation=True
-        )
-        if not org:
+        if not ctx:
             return
 
-        org_schema = schemas.Organization.model_validate(org, from_attributes=True)
-        ctx = create_billing_system_context(org_schema, "stripe_webhook")
+        org_id = billing.organization_id
 
         # Check if renewal failure
         if hasattr(invoice, "billing_reason") and invoice.billing_reason == "subscription_cycle":
@@ -744,6 +723,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
+        ctx: ApiContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle upcoming invoice notification."""
@@ -765,6 +745,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
+        ctx: ApiContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle checkout session completion."""
@@ -779,7 +760,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
 
         # If this is a yearly prepay payment (mode=payment), finalize yearly flow.
         if getattr(session, "mode", None) == "payment":
-            await self._finalize_yearly_prepay(db, session, log)
+            await self._finalize_yearly_prepay(db, session, ctx, log)
 
         # For subscription mode, the subscription.created webhook will handle setup
 
@@ -787,6 +768,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
+        ctx: ApiContext | None,
         log: ContextualLogger,
     ) -> None:
         """Optional handler for payment_intent.succeeded (not strictly needed)."""
@@ -794,7 +776,11 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         return
 
     async def _finalize_yearly_prepay(  # noqa: C901
-        self, db: AsyncSession, session: Any, log: ContextualLogger
+        self,
+        db: AsyncSession,
+        session: Any,
+        ctx: ApiContext | None,
+        log: ContextualLogger,
     ) -> None:
         """Finalize yearly prepay: credit balance, create subscription with coupon."""
         try:
@@ -811,17 +797,11 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
                 log.error("Missing metadata for yearly prepay finalization")
                 return
 
-            organization_id = UUID(org_id_str)
-
-            # Hydrate context
-            org = await self._org_repo.get_by_id(
-                db, organization_id=organization_id, skip_access_validation=True
-            )
-            if not org:
-                log.error(f"Organization {organization_id} not found for prepay finalization")
+            if not ctx:
+                log.error("No organization context for yearly prepay finalization")
                 return
-            org_schema = schemas.Organization.model_validate(org, from_attributes=True)
-            ctx = create_billing_system_context(org_schema, "stripe_webhook")
+
+            organization_id = UUID(org_id_str)
 
             # Credit customer's balance by the captured amount
             billing = await self._billing_repo.get_by_org_id(db, organization_id=organization_id)
@@ -975,12 +955,16 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
 
                 # Notify Donke about yearly subscription
                 await _notify_donke_subscription(
-                    org, BillingPlan(plan_str), organization_id, is_yearly=True, log=log
+                    ctx.organization,
+                    BillingPlan(plan_str),
+                    organization_id,
+                    is_yearly=True,
+                    log=log,
                 )
                 # Send welcome email for Team plans
                 await _send_team_welcome_email(
                     db,
-                    org,
+                    ctx.organization,
                     BillingPlan(plan_str),
                     organization_id,
                     is_yearly=True,

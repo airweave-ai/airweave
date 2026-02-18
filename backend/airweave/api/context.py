@@ -5,12 +5,13 @@ logging, and request metadata into a single injectable dependency.
 """
 
 from typing import Any, Dict, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 
 from airweave import schemas
 from airweave.core.logging import ContextualLogger
+from airweave.core.logging import logger as root_logger
 from airweave.core.shared_models import AuthMethod
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 
@@ -99,6 +100,32 @@ class ApiContext(BaseModel):
                 f"ApiContext(request_id={self.request_id[:8]}..., "
                 f"method={self.auth_method.value}, org={self.organization.id})"
             )
+
+    @classmethod
+    def for_system(
+        cls,
+        organization: schemas.Organization,
+        source: str = "system",
+    ) -> "ApiContext":
+        """Create a system context for internal/background operations.
+
+        Args:
+            organization: The organization to create context for.
+            source: Identifier for the subsystem creating the context.
+        """
+        request_id = str(uuid4())
+        return cls(
+            request_id=request_id,
+            auth_method=AuthMethod.INTERNAL_SYSTEM,
+            organization=organization,
+            user=None,
+            logger=root_logger.with_context(
+                request_id=request_id,
+                organization_id=str(organization.id),
+                auth_method=AuthMethod.INTERNAL_SYSTEM.value,
+                source=source,
+            ),
+        )
 
     def to_serializable_dict(self) -> Dict[str, Any]:
         """Convert to a serializable dictionary.

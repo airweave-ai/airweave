@@ -29,7 +29,6 @@ from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 from airweave.core.temporal_service import temporal_service
 from airweave.crud.crud_organization_billing import organization_billing
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.billing.context import create_billing_system_context
 from airweave.domains.billing.operations import BillingOperations
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models.organization import Organization
@@ -677,7 +676,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
         await db.flush()
 
         # Create system context for billing operations
-        internal_ctx = create_billing_system_context(org_schema, "admin_upgrade")
+        internal_ctx = ApiContext.for_system(org_schema, "admin_upgrade")
 
         # Create Stripe customer
         customer = await payment_gw.create_customer(
