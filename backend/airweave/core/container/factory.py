@@ -106,8 +106,7 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     # Billing domain (payment gateway + service + webhook processor)
     # -----------------------------------------------------------------
-    payment_gateway = _create_payment_gateway(settings)
-    billing_deps = _create_billing_services(payment_gateway)
+    billing_deps = _create_billing_services(settings)
 
     return Container(
         event_bus=event_bus,
@@ -125,7 +124,6 @@ def create_container(settings: Settings) -> Container:
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
-        payment_gateway=payment_gateway,
         billing_service=billing_deps["billing_service"],
         billing_webhook=billing_deps["billing_webhook"],
     )
@@ -267,7 +265,7 @@ def _create_payment_gateway(settings: "Settings") -> "PaymentGatewayProtocol":
     return NullPaymentGateway()
 
 
-def _create_billing_services(payment_gateway: "PaymentGatewayProtocol") -> dict:
+def _create_billing_services(settings: "Settings") -> dict:
     """Create billing service and webhook processor with shared dependencies."""
     from airweave.domains.billing.operations import BillingOperations
     from airweave.domains.billing.repository import (
@@ -278,6 +276,7 @@ def _create_billing_services(payment_gateway: "PaymentGatewayProtocol") -> dict:
     from airweave.domains.billing.webhook_handler import BillingWebhookProcessor
     from airweave.domains.organizations.repository import OrganizationRepository
 
+    payment_gateway = _create_payment_gateway(settings)
     billing_repo = OrganizationBillingRepository()
     period_repo = BillingPeriodRepository()
     org_repo = OrganizationRepository()

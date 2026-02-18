@@ -18,7 +18,6 @@ from airweave.core.protocols import (
     EndpointVerifier,
     EventBus,
     OcrProvider,
-    PaymentGatewayProtocol,
     WebhookAdmin,
     WebhookPublisher,
     WebhookServiceProtocol,
@@ -99,7 +98,6 @@ class Container:
     source_lifecycle_service: SourceLifecycleServiceProtocol
 
     # Billing domain
-    payment_gateway: PaymentGatewayProtocol
     billing_service: BillingServiceProtocol
     billing_webhook: BillingWebhookProtocol
 
