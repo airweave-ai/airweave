@@ -17,10 +17,6 @@ from typing import TYPE_CHECKING
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
-from airweave.domains.connections.repository import ConnectionRepository
-from airweave.domains.credentials.repository import IntegrationCredentialRepository
-from airweave.domains.oauth.oauth2_service import OAuth2Service
-from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
@@ -28,7 +24,17 @@ from airweave.core.logging import logger
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.connections.repository import ConnectionRepository
+from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.domains.oauth.repository import (
+    CredentialEncryptor,
+    OAuthConnectionRepository,
+    OAuthCredentialRepository,
+    OAuthSourceRepository,
+)
+from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
@@ -202,7 +208,7 @@ def _create_source_services(settings: Settings) -> dict:
     2. Entity definition registry (no dependencies)
     3. Source registry (depends on both)
     4. Repository adapters (thin wrappers around crud singletons)
-    5. OAuth2 adapter (thin wrapper around oauth2_service singleton)
+    5. OAuth2 service (with injected repos, encryptor, settings)
     6. SourceLifecycleService (depends on all of the above)
     """
     auth_provider_registry = AuthProviderRegistry()
@@ -218,7 +224,13 @@ def _create_source_services(settings: Settings) -> dict:
     sc_repo = SourceConnectionRepository()
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
-    oauth2_svc = OAuth2Service()
+    oauth2_svc = OAuth2Service(
+        settings=settings,
+        conn_repo=OAuthConnectionRepository(),
+        cred_repo=OAuthCredentialRepository(),
+        encryptor=CredentialEncryptor(),
+        source_repo=OAuthSourceRepository(),
+    )
 
     source_service = SourceService(
         source_registry=source_registry,
