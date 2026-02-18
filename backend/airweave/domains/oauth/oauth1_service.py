@@ -14,7 +14,7 @@ import hmac
 import secrets
 import time
 from typing import Optional
-from urllib.parse import parse_qsl, quote, urlencode
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 import httpx
 from fastapi import HTTPException
@@ -43,18 +43,26 @@ class OAuth1Service(OAuth1ServiceProtocol):
         return quote(str(value), safe="~")
 
     def _build_signature_base_string(self, method: str, url: str, params: dict) -> str:
-        """Build the signature base string per RFC 5849.
+        """Build the signature base string per RFC 5849 §3.4.1.
 
-        Format: HTTP_METHOD&URL&NORMALIZED_PARAMS
+        Per §3.4.1.2 the base URL must have query params stripped and those
+        params merged into the signing parameter set.
         """
-        sorted_params = sorted(params.items())
+        parsed = urlparse(url)
+        base_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+
+        merged = dict(params)
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True):
+            merged.setdefault(k, v)
+
+        sorted_params = sorted(merged.items())
         param_str = "&".join(
             f"{self._percent_encode(k)}={self._percent_encode(v)}" for k, v in sorted_params
         )
 
         parts = [
             method.upper(),
-            self._percent_encode(url),
+            self._percent_encode(base_url),
             self._percent_encode(param_str),
         ]
         return "&".join(parts)

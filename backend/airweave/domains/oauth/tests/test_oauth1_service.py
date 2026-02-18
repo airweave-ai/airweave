@@ -143,6 +143,13 @@ SIG_BASE_CASES = [
         "POST&",
         expect_params_sorted=True,
     ),
+    SigBaseCase(
+        "query params stripped from URL and merged (RFC 5849 §3.4.1.2)",
+        "POST",
+        "https://api.example.com/oauth/token?scope=read",
+        {"oauth_consumer_key": "key1"},
+        "POST&https%3A%2F%2Fapi.example.com%2Foauth%2Ftoken&",
+    ),
 ]
 
 
@@ -155,6 +162,20 @@ def test_build_signature_base_string(case: SigBaseCase):
         parts = result.split("&", 2)
         expected_param_str = svc._percent_encode("a_param=a_val&z_param=z_val")
         assert parts[2] == expected_param_str
+
+
+def test_base_string_merges_query_params():
+    """RFC 5849 §3.4.1.2: query params must be merged and URL stripped."""
+    svc = _svc()
+    result = svc._build_signature_base_string(
+        "POST",
+        "https://api.example.com/oauth/token?scope=read&extra=1",
+        {"oauth_consumer_key": "key1"},
+    )
+    parts = result.split("&", 2)
+    assert parts[1] == svc._percent_encode("https://api.example.com/oauth/token")
+    decoded_params = svc._percent_encode("extra=1&oauth_consumer_key=key1&scope=read")
+    assert parts[2] == decoded_params
 
 
 # ===========================================================================
