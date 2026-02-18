@@ -1,15 +1,13 @@
 """Repository implementations for OAuth2 domain, wrapping crud singletons."""
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.api.context import ApiContext
-from airweave.core import credentials as credentials_module
 from airweave.domains.oauth.protocols import (
-    CredentialEncryptorProtocol,
     OAuthConnectionRepositoryProtocol,
     OAuthCredentialRepositoryProtocol,
     OAuthSourceRepositoryProtocol,
@@ -22,9 +20,7 @@ class OAuthConnectionRepository(OAuthConnectionRepositoryProtocol):
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Any:
         return await crud.connection.get(db, id, ctx)
 
-    async def create(
-        self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any
-    ) -> Any:
+    async def create(self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any) -> Any:
         return await crud.connection.create(db, obj_in=obj_in, ctx=ctx, uow=uow)
 
 
@@ -34,27 +30,13 @@ class OAuthCredentialRepository(OAuthCredentialRepositoryProtocol):
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Any:
         return await crud.integration_credential.get(db, id, ctx)
 
-    async def update(
-        self, db: AsyncSession, *, db_obj: Any, obj_in: Any, ctx: ApiContext
-    ) -> Any:
+    async def update(self, db: AsyncSession, *, db_obj: Any, obj_in: Any, ctx: ApiContext) -> Any:
         return await crud.integration_credential.update(
             db=db, db_obj=db_obj, obj_in=obj_in, ctx=ctx
         )
 
-    async def create(
-        self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any
-    ) -> Any:
+    async def create(self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext, uow: Any) -> Any:
         return await crud.integration_credential.create(db, obj_in=obj_in, ctx=ctx, uow=uow)
-
-
-class CredentialEncryptor(CredentialEncryptorProtocol):
-    """Delegates to airweave.core.credentials."""
-
-    def encrypt(self, data: dict) -> str:
-        return credentials_module.encrypt(data)
-
-    def decrypt(self, encrypted: str) -> dict:
-        return credentials_module.decrypt(encrypted)
 
 
 class OAuthSourceRepository(OAuthSourceRepositoryProtocol):

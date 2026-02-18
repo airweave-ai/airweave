@@ -37,8 +37,8 @@ from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException, TokenRefreshError
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
+from airweave.adapters.encryption.fake import FakeCredentialEncryptor
 from airweave.domains.oauth.fakes.repository import (
-    FakeCredentialEncryptor,
     FakeOAuthConnectionRepository,
     FakeOAuthCredentialRepository,
     FakeOAuthSourceRepository,
