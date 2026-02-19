@@ -30,6 +30,8 @@ from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
 from airweave.adapters.pubsub.redis import RedisPubSub
+from airweave.adapters.secrets import InMemorySecretsProvider
+from airweave.adapters.secrets.azure_keyvault import AzureKeyVaultSecretsProvider
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.config import Settings
@@ -41,6 +43,7 @@ from airweave.core.protocols import CircuitBreaker, OcrProvider, PubSub
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
+from airweave.core.protocols.secrets_provider import SecretsProvider
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
@@ -207,6 +210,11 @@ def create_container(settings: Settings) -> Container:
     # Owns shutdown flag and orchestrates readiness probes.
     # -----------------------------------------------------------------
     health = _create_health_service(settings)
+
+    # -----------------------------------------------------------------
+    # Secrets provider (Azure Key Vault or fake for local/test)
+    # -----------------------------------------------------------------
+    secrets_provider = _create_secrets_provider(settings)
 
     # -----------------------------------------------------------------
     # Metrics (Prometheus adapters, shared registry, wrapped in service)
@@ -487,6 +495,7 @@ def create_container(settings: Settings) -> Container:
         organization_service=org_service,
         user_service=user_service,
         email_service=email_service,
+        secrets_provider=secrets_provider,
     )
 
 
@@ -525,6 +534,27 @@ def _create_health_service(settings: Settings) -> HealthService:
         informational=informational,
         timeout=settings.HEALTH_CHECK_TIMEOUT,
     )
+
+
+def _create_secrets_provider(settings: Settings) -> SecretsProvider:
+    """Create the secrets provider based on environment.
+
+    Uses Azure Key Vault for ``dev`` and ``prd`` environments when
+    ``AZURE_KEYVAULT_NAME`` is configured.  Falls back to an in-memory
+    provider seeded from settings for local development and testing.
+    """
+    if settings.ENVIRONMENT in ("dev", "prd") and settings.AZURE_KEYVAULT_NAME:
+        logger.info("Using AzureKeyVaultSecretsProvider (vault=%s)", settings.AZURE_KEYVAULT_NAME)
+        return AzureKeyVaultSecretsProvider(vault_name=settings.AZURE_KEYVAULT_NAME)
+
+    secrets: dict[str, str] = {}
+    if settings.AWS_S3_DESTINATION_ACCESS_KEY_ID:
+        secrets["aws-iam-access-key-id"] = settings.AWS_S3_DESTINATION_ACCESS_KEY_ID
+    if settings.AWS_S3_DESTINATION_SECRET_ACCESS_KEY:
+        secrets["aws-iam-secret-access-key"] = settings.AWS_S3_DESTINATION_SECRET_ACCESS_KEY
+
+    logger.info("Using InMemorySecretsProvider (%d secret(s) seeded)", len(secrets))
+    return InMemorySecretsProvider(secrets=secrets)
 
 
 def _create_metrics_service(settings: Settings) -> PrometheusMetricsService:
