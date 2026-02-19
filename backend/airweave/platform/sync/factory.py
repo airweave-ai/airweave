@@ -10,12 +10,10 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.core.context import BaseContext
 from airweave.core.logging import logger
 from airweave.platform.builders import SyncContextBuilder
-from airweave.platform.sync.actions import EntityActionResolver, EntityDispatcherBuilder
-from airweave.platform.sync.config import SyncConfig, SyncConfigBuilder
 from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.actions import (
     ACActionDispatcher,
@@ -23,7 +21,7 @@ from airweave.platform.sync.actions import (
     EntityActionResolver,
     EntityDispatcherBuilder,
 )
-from airweave.platform.sync.config import SyncExecutionConfig
+from airweave.platform.sync.config import SyncConfig, SyncConfigBuilder
 from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.handlers import ACPostgresHandler
 from airweave.platform.sync.orchestrator import SyncOrchestrator
@@ -47,7 +45,7 @@ class SyncFactory:
         sync_job: schemas.SyncJob,
         collection: schemas.Collection,
         connection: schemas.Connection,
-        ctx: ApiContext,
+        ctx: BaseContext,
         access_token: Optional[str] = None,
         max_workers: int = None,
         force_full_sync: bool = False,
@@ -84,7 +82,7 @@ class SyncFactory:
         logger.info("Creating sync context via context builders...")
 
         # Step 0: Build layered sync configuration
-        # Resolution order: schema defaults → env vars → collection → sync → sync_job → execution_config
+        # schema defaults → env vars → collection → sync → sync_job → execution_config
         resolved_config = SyncConfigBuilder.build(
             collection_overrides=collection.sync_config,
             sync_overrides=sync.sync_config,

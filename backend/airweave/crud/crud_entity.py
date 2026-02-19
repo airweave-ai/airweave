@@ -8,7 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.db.unit_of_work import UnitOfWork
@@ -31,7 +31,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         db: AsyncSession,
         *,
         obj_in: EntityCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional["UnitOfWork"] = None,
         skip_validation: bool = False,
     ) -> Entity:
@@ -186,7 +186,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
 
         return result_map
 
-    def _get_org_id_from_context(self, ctx: ApiContext) -> UUID | None:
+    def _get_org_id_from_context(self, ctx: BaseContext) -> UUID | None:
         """Attempt to extract organization ID from the API context."""
         # 1) Direct attributes
         for attr in ("organization_id", "org_id"):
@@ -205,7 +205,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         db: AsyncSession,
         *,
         objs: list[EntityCreate],
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> list[Entity]:
         """Create many Entity rows in a single transaction with conflict resolution.
 
@@ -231,7 +231,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
 
         org_id = self._get_org_id_from_context(ctx)
         if org_id is None:
-            raise ValueError("ApiContext must contain valid organization information")
+            raise ValueError("BaseContext must contain valid organization information")
 
         # Prepare data for bulk upsert
         values_list = []

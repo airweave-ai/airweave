@@ -14,13 +14,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.contexts.infra import InfraContext
-from airweave.platform.contexts.source import SourceContext
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.config import SyncConfig
@@ -42,34 +40,34 @@ class SourceContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        infra: InfraContext,
+        ctx: BaseContext,
+        logger: ContextualLogger,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
-    ) -> SourceContext:
+    ) -> tuple:
         """Build complete source context.
 
         Args:
             db: Database session
             sync: Sync configuration
             sync_job: The sync job (needed for file downloader)
-            infra: Infrastructure context (provides ctx and logger)
+            ctx: Base context for organization/user identity
+            logger: Contextual logger
             access_token: Optional direct token (skips credential loading)
             force_full_sync: If True, skip cursor loading
             execution_config: Optional execution config
 
         Returns:
-            SourceContext with configured source and cursor.
+            Tuple of (source, cursor).
         """
-        ctx = infra.ctx
-        logger = infra.logger
-
         # Check for ARF replay mode - override source with ArfReplaySource
         if execution_config and execution_config.behavior.replay_from_arf:
             return await cls._build_arf_replay_context(
                 db=db,
                 sync=sync,
-                infra=infra,
+                ctx=ctx,
+                logger=logger,
                 execution_config=execution_config,
             )
 
@@ -100,16 +98,17 @@ class SourceContextBuilder:
         # 4. Set cursor on source
         source.set_cursor(cursor)
 
-        return SourceContext(source=source, cursor=cursor)
+        return (source, cursor)
 
     @classmethod
     async def _build_arf_replay_context(
         cls,
         db: AsyncSession,
         sync: schemas.Sync,
-        infra: InfraContext,
+        ctx: BaseContext,
+        logger: ContextualLogger,
         execution_config: SyncConfig,
-    ) -> SourceContext:
+    ) -> tuple:
         """Build source context for ARF replay mode.
 
         Creates an ArfReplaySource instead of the normal source,
@@ -118,16 +117,14 @@ class SourceContextBuilder:
         Args:
             db: Database session
             sync: Sync configuration
-            infra: Infrastructure context
+            ctx: Base context for organization/user identity
+            logger: Contextual logger
             execution_config: Execution config (must have replay_from_arf=True)
 
         Returns:
-            SourceContext with ArfReplaySource
+            Tuple of (source, cursor).
         """
         from airweave.platform.storage.replay_source import ArfReplaySource
-
-        ctx = infra.ctx
-        logger = infra.logger
 
         # Get original source short_name from DB
         source_connection = await crud.source_connection.get_by_sync_id(
@@ -168,14 +165,14 @@ class SourceContextBuilder:
             cursor_data=None,
         )
 
-        return SourceContext(source=source, cursor=cursor)
+        return (source, cursor)
 
     @classmethod
     async def get_source_connection_id(
         cls,
         db: AsyncSession,
         sync: schemas.Sync,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> UUID:
         """Get user-facing source connection ID for logging and scoping.
 
@@ -196,7 +193,7 @@ class SourceContextBuilder:
 
     @classmethod
     async def _get_source_connection_data(
-        cls, db: AsyncSession, sync: schemas.Sync, ctx: ApiContext
+        cls, db: AsyncSession, sync: schemas.Sync, ctx: BaseContext
     ) -> dict:
         """Get source connection and model data."""
         # 1. Get SourceConnection first (has most of our data)
@@ -301,7 +298,7 @@ class SourceContextBuilder:
         cls,
         db: AsyncSession,
         source_connection_data: dict,
-        ctx: ApiContext,
+        ctx: BaseContext,
         logger: ContextualLogger,
         access_token: Optional[str] = None,
         sync_job: Optional[Any] = None,
@@ -384,7 +381,7 @@ class SourceContextBuilder:
         source: BaseSource,
         source_connection_data: dict,
         source_credentials: Any,
-        ctx: ApiContext,
+        ctx: BaseContext,
         logger: ContextualLogger,
         access_token: Optional[str],
         auth_config: dict,
@@ -503,7 +500,7 @@ class SourceContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         source_class: type,
-        ctx: ApiContext,
+        ctx: BaseContext,
         logger: ContextualLogger,
         force_full_sync: bool,
         execution_config: Optional[SyncConfig],
