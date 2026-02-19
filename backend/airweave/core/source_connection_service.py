@@ -1747,6 +1747,7 @@ class SourceConnectionService:
                 return True
         return False
 
+    # [code blue] ported to domains/oauth/callback_service.py OAuthCallbackService
     async def complete_oauth1_callback(
         self,
         db: AsyncSession,
@@ -1822,6 +1823,7 @@ class SourceConnectionService:
 
         return await self._finalize_oauth_callback(db, source_conn, ctx)
 
+    # [code blue] ported to domains/oauth/callback_service.py OAuthCallbackService
     async def complete_oauth2_callback(
         self,
         db: AsyncSession,
@@ -1880,6 +1882,7 @@ class SourceConnectionService:
 
         return await self._finalize_oauth_callback(db, source_conn, ctx)
 
+    # [code blue] ported to domains/oauth/callback_service.py OAuthCallbackService._finalize_callback
     async def _finalize_oauth_callback(
         self,
         db: AsyncSession,

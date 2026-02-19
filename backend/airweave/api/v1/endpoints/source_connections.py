@@ -29,6 +29,7 @@ from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
+from airweave.domains.oauth.protocols import OAuthCallbackServiceProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.schemas.errors import (
     ConflictErrorResponse,
@@ -48,6 +49,7 @@ async def oauth_callback(
     *,
     db: AsyncSession = Depends(get_db),
     event_bus: EventBus = Inject(EventBus),
+    oauth_callback_svc: OAuthCallbackServiceProtocol = Inject(OAuthCallbackServiceProtocol),
     # OAuth2 parameters
     state: Optional[str] = Query(None, description="OAuth2 state parameter"),
     code: Optional[str] = Query(None, description="OAuth2 authorization code"),
@@ -68,14 +70,14 @@ async def oauth_callback(
     # Determine OAuth1 vs OAuth2 based on parameters
     if oauth_token and oauth_verifier:
         # OAuth1 callback
-        source_conn = await source_connection_service.complete_oauth1_callback(
+        source_conn = await oauth_callback_svc.complete_oauth1_callback(
             db,
             oauth_token=oauth_token,
             oauth_verifier=oauth_verifier,
         )
     elif state and code:
         # OAuth2 callback
-        source_conn = await source_connection_service.complete_oauth2_callback(
+        source_conn = await oauth_callback_svc.complete_oauth2_callback(
             db,
             state=state,
             code=code,
