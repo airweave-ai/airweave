@@ -9,7 +9,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 try:
@@ -76,7 +76,7 @@ class S3Destination(BaseDestination):
         self._iam_access_key_id: str | None = None
         self._iam_secret_access_key: str | None = None
         # Cached temporary credentials (from AssumeRole)
-        self._temp_credentials: Dict[str, Any] | None = None
+        self._temp_credentials: dict[str, Any] | None = None
         self._credentials_expiry: datetime | None = None
         # Track entities
         self.entities_inserted_count: int = 0
@@ -86,12 +86,12 @@ class S3Destination(BaseDestination):
     async def create(
         cls,
         credentials: S3AuthConfig,
-        config: Optional[dict],
+        config: dict | None,
         collection_id: UUID,
-        organization_id: Optional[UUID] = None,
-        logger: Optional[ContextualLogger] = None,
-        collection_readable_id: Optional[str] = None,
-        sync_id: Optional[UUID] = None,
+        organization_id: UUID | None = None,
+        logger: ContextualLogger | None = None,
+        collection_readable_id: str | None = None,
+        sync_id: UUID | None = None,
     ) -> "S3Destination":
         """Create and configure S3 destination.
 
@@ -139,54 +139,23 @@ class S3Destination(BaseDestination):
     # =========================================================================
 
     async def _load_iam_credentials(self) -> None:
-        """Load IAM user credentials from Azure Key Vault or settings.
-
-        For local testing, set in .env or environment:
-        - AWS_S3_DESTINATION_ACCESS_KEY_ID
-        - AWS_S3_DESTINATION_SECRET_ACCESS_KEY
-        """
+        """Load IAM user credentials from the container's secrets provider."""
         try:
-            from airweave.adapters.credentials.azure_keyvault import secret_client
-            from airweave.core.config import settings
+            # TODO: refactor to receive SecretsProvider via constructor
+            # injection instead of importing the container at call time.
+            from airweave.core.container import container
 
-            # Try Key Vault first (for deployed environments)
-            if secret_client is not None:
-                # Load credentials from Key Vault
-                # TODO: Move this to DestinationFactory
-                access_key_id = await secret_client.get_secret("aws-iam-access-key-id")
-                secret_access_key = await secret_client.get_secret("aws-iam-secret-access-key")
-
-                if not access_key_id or not secret_access_key:
-                    raise ValueError(
-                        "AWS S3 destination credentials not found in Key Vault. "
-                        "Ensure 'aws-iam-access-key-id' and "
-                        "'aws-iam-secret-access-key' are set."
-                    )
-
-                self._iam_access_key_id = access_key_id.value
-                self._iam_secret_access_key = secret_access_key.value
-                self.logger.debug("Loaded IAM user credentials from Key Vault")
-
-            # Fallback to settings/environment (for local testing)
-            else:
-                access_key_id = settings.AWS_S3_DESTINATION_ACCESS_KEY_ID
-                secret_access_key = settings.AWS_S3_DESTINATION_SECRET_ACCESS_KEY
-
-                if not access_key_id or not secret_access_key:
-                    raise ValueError(
-                        "AWS S3 destination credentials not found. For local testing, set:\n"
-                        "  AWS_S3_DESTINATION_ACCESS_KEY_ID=...\n"
-                        "  AWS_S3_DESTINATION_SECRET_ACCESS_KEY=..."
-                    )
-
-                self._iam_access_key_id = access_key_id
-                self._iam_secret_access_key = secret_access_key
-                self.logger.debug("Loaded IAM user credentials from settings")
-
+            self._iam_access_key_id = await container.secrets_provider.get_secret(
+                "aws-iam-access-key-id"
+            )
+            self._iam_secret_access_key = await container.secrets_provider.get_secret(
+                "aws-iam-secret-access-key"
+            )
+            self.logger.debug("Loaded IAM user credentials from secrets provider")
         except Exception as e:
             raise ConnectionError(f"Failed to load AWS credentials: {e}") from e
 
-    async def _assume_role(self) -> Dict[str, Any]:
+    async def _assume_role(self) -> dict[str, Any]:
         """Assume customer IAM role using IAM user credentials.
 
         Returns:
@@ -221,7 +190,7 @@ class S3Destination(BaseDestination):
         )
         return self._temp_credentials
 
-    async def _get_credentials(self) -> Dict[str, Any]:
+    async def _get_credentials(self) -> dict[str, Any]:
         """Get temporary credentials, refreshing if needed.
 
         Returns:
@@ -326,7 +295,7 @@ class S3Destination(BaseDestination):
     # ARF-Compatible Entity Serialization
     # =========================================================================
 
-    def _serialize_entity(self, entity: "BaseEntity") -> Dict[str, Any]:
+    def _serialize_entity(self, entity: "BaseEntity") -> dict[str, Any]:
         """Serialize entity with class info for reconstruction (ARF format)."""
         entity_dict = entity.model_dump(mode="json")
         entity_dict["__entity_class__"] = entity.__class__.__name__

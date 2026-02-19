@@ -19,6 +19,7 @@ from airweave.core.protocols import (
     EventBus,
     HealthServiceProtocol,
     OcrProvider,
+    SecretsProvider,
     WebhookAdmin,
     WebhookPublisher,
     WebhookServiceProtocol,
@@ -49,18 +50,8 @@ class Container:
         await container.event_bus.publish(SyncLifecycleEvent(...))
 
         # Testing: construct directly with fakes
-        from airweave.adapters.event_bus import FakeEventBus
-        from airweave.adapters.circuit_breaker import FakeCircuitBreaker
-        from airweave.adapters.ocr import FakeOcrProvider
-        test_container = Container(
-            event_bus=FakeEventBus(),
-            webhook_publisher=FakeWebhookPublisher(),
-            webhook_admin=FakeWebhookAdmin(),
-            circuit_breaker=FakeCircuitBreaker(),
-            ocr_provider=FakeOcrProvider(),
-            endpoint_verifier=FakeEndpointVerifier(),
-            webhook_service=FakeWebhookService(),
-        )
+        # See the ``test_container`` fixture in ``conftest.py`` for
+        # a canonical example with all fields populated.
 
         # FastAPI endpoints: use Inject() to pull individual protocols
         from airweave.api.deps import Inject
@@ -85,6 +76,9 @@ class Container:
 
     # OCR provider (with fallback chain + circuit breaking)
     ocr_provider: OcrProvider
+
+    # Secrets provider (Azure Key Vault or fake for local/test)
+    secrets_provider: SecretsProvider
 
     # Source service — API-facing source operations
     source_service: SourceServiceProtocol
