@@ -921,6 +921,7 @@ class SourceConnectionHelpers:
             error=job.error if hasattr(job, "error") else None,
         )
 
+    # [code blue] ported to domains/oauth/flow_service.py OAuthFlowService.create_init_session
     async def create_init_session(  # noqa: C901
         self,
         db: AsyncSession,
@@ -1053,6 +1054,7 @@ class SourceConnectionHelpers:
             uow=uow,
         )
 
+    # [code blue] ported to domains/oauth/flow_service.py OAuthFlowService.create_proxy_url
     async def create_proxy_url(
         self, db: AsyncSession, provider_auth_url: str, ctx: ApiContext, uow: Any = None
     ) -> Tuple[str, datetime, UUID]:
@@ -1077,6 +1079,7 @@ class SourceConnectionHelpers:
         proxy_url = f"{core_settings.api_url}/source-connections/authorize/{code8}"
         return proxy_url, proxy_expires, redirect_sess.id
 
+    # [code blue] ported to domains/oauth/flow_service.py OAuthFlowService.complete_oauth1_callback
     async def exchange_oauth1_code(
         self,
         short_name: str,
@@ -1109,6 +1112,7 @@ class SourceConnectionHelpers:
             logger=ctx.logger,
         )
 
+    # [code blue] ported to domains/oauth/flow_service.py OAuthFlowService.complete_oauth2_callback
     async def exchange_oauth2_code(
         self,
         short_name: str,
@@ -1227,6 +1231,7 @@ class SourceConnectionHelpers:
             ctx=ctx,
         )
 
+    # [code blue] ported to domains/oauth/callback_service.py OAuthCallbackService._complete_oauth2_connection
     async def complete_oauth2_connection(
         self,
         db: AsyncSession,
@@ -1302,6 +1307,7 @@ class SourceConnectionHelpers:
             ctx=ctx,
         )
 
+    # [code blue] ported to domains/oauth/callback_service.py OAuthCallbackService._complete_connection_common
     async def _complete_oauth_connection_common(
         self,
         db: AsyncSession,

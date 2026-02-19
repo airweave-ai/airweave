@@ -36,11 +36,15 @@ from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.oauth.callback_service import OAuthCallbackService
+from airweave.domains.oauth.flow_service import OAuthFlowService
 from airweave.domains.oauth.oauth1_service import OAuth1Service
 from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.oauth.repository import (
     OAuthConnectionRepository,
     OAuthCredentialRepository,
+    OAuthInitSessionRepository,
+    OAuthRedirectSessionRepository,
     OAuthSourceRepository,
 )
 from airweave.domains.source_connections.repository import SourceConnectionRepository
@@ -122,6 +126,10 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     source_deps = _create_source_services(settings)
 
+    # Wire event_bus into callback service (circular dep: event_bus created before source_deps)
+    oauth_callback_svc = source_deps["oauth_callback_service"]
+    oauth_callback_svc._event_bus = event_bus  # noqa: SLF001
+
     return Container(
         health=health,
         event_bus=event_bus,
@@ -139,6 +147,8 @@ def create_container(settings: Settings) -> Container:
         oauth1_service=source_deps["oauth1_service"],
         oauth2_service=source_deps["oauth2_service"],
         source_connection_service=source_deps["source_connection_service"],
+        oauth_flow_service=source_deps["oauth_flow_service"],
+        oauth_callback_service=source_deps["oauth_callback_service"],
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
@@ -317,6 +327,41 @@ def _create_source_services(settings: Settings) -> dict:
         oauth2_service=oauth2_svc,
     )
 
+    # OAuth flow + callback services
+    from airweave.platform.auth.settings import integration_settings
+
+    init_session_repo = OAuthInitSessionRepository()
+    redirect_session_repo = OAuthRedirectSessionRepository()
+
+    oauth_flow_svc = OAuthFlowService(
+        oauth2_service=oauth2_svc,
+        oauth1_service=oauth1_svc,
+        integration_settings=integration_settings,
+        init_session_repo=init_session_repo,
+        redirect_session_repo=redirect_session_repo,
+        settings=settings,
+    )
+
+    entity_count_repo = EntityCountRepository()
+    sync_job_repo = SyncJobRepository()
+
+    response_builder = ResponseBuilder(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        credential_repo=cred_repo,
+        source_registry=source_registry,
+        entity_count_repo=entity_count_repo,
+        sync_job_repo=sync_job_repo,
+    )
+
+    oauth_callback_svc = OAuthCallbackService(
+        oauth_flow_service=oauth_flow_svc,
+        init_session_repo=init_session_repo,
+        response_builder=response_builder,
+        source_registry=source_registry,
+        event_bus=None,  # set after container creation via event_bus
+    )
+
     return {
         "source_service": source_service,
         "source_registry": source_registry,
@@ -329,4 +374,6 @@ def _create_source_services(settings: Settings) -> dict:
         "oauth2_service": oauth2_svc,
         "source_connection_service": source_connection_service,
         "source_lifecycle_service": source_lifecycle_service,
+        "oauth_flow_service": oauth_flow_svc,
+        "oauth_callback_service": oauth_callback_svc,
     }
