@@ -273,7 +273,7 @@ def _create_billing_services(settings: "Settings") -> dict:
         OrganizationBillingRepository,
     )
     from airweave.domains.billing.service import BillingService
-    from airweave.domains.billing.webhook_handler import BillingWebhookProcessor
+    from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
     from airweave.domains.organizations.repository import OrganizationRepository
 
     payment_gateway = _create_payment_gateway(settings)
