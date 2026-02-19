@@ -133,7 +133,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         for api_key in api_keys:
             try:
                 decrypted_data = credentials.decrypt(api_key.encrypted_key)
-                if decrypted_data["key"] == key:
+                if secrets.compare_digest(decrypted_data["key"], key):
                     # Check expiration
                     if api_key.expiration_date < utc_now_naive():
                         raise PermissionException("API key has expired")
