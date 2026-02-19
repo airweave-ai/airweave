@@ -146,8 +146,8 @@ class S3Destination(BaseDestination):
         - AWS_S3_DESTINATION_SECRET_ACCESS_KEY
         """
         try:
+            from airweave.adapters.credentials.azure_keyvault import secret_client
             from airweave.core.config import settings
-            from airweave.core.secrets import secret_client
 
             # Try Key Vault first (for deployed environments)
             if secret_client is not None:

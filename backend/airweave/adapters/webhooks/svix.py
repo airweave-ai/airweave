@@ -229,9 +229,8 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
     @_auto_create_org
     async def _publish_internal(self, org_id: uuid.UUID, event_type: str, payload: dict) -> None:
         event_id = str(uuid.uuid4())
-        print(
-            f"[SVIX PRE-CREATE] event_type={event_type} org_id={org_id} "
-            f"event_id={event_id} svix_url={settings.SVIX_URL}"
+        logger.debug(
+            f"Creating Svix message: event_type={event_type} org_id={org_id} event_id={event_id}"
         )
         try:
             result = await self._svix.message.create(
@@ -243,29 +242,15 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
                     payload=payload,
                 ),
             )
-            print(
-                f"[SVIX POST-CREATE] msg_id={result.id} event_type={event_type} "
-                f"org_id={org_id} channels={result.channels}"
+            logger.debug(
+                f"Created Svix message: msg_id={result.id} event_type={event_type} org_id={org_id}"
             )
         except Exception as exc:
-            print(
-                f"[SVIX CREATE FAILED] event_type={event_type} org_id={org_id} "
+            logger.debug(
+                f"Svix message creation failed: event_type={event_type} org_id={org_id} "
                 f"event_id={event_id} error={exc!r}"
             )
             raise
-
-        # Verify the message is queryable immediately
-        try:
-            msgs = await self._svix.message.list(
-                str(org_id), MessageListOptions(event_types=[event_type])
-            )
-            found = any(m.id == result.id for m in msgs.data)
-            print(
-                f"[SVIX VERIFY] msg_id={result.id} found_in_list={found} "
-                f"total_msgs={len(msgs.data)} event_type={event_type}"
-            )
-        except Exception as exc:
-            print(f"[SVIX VERIFY FAILED] {exc!r}")
 
     # -------------------------------------------------------------------------
     # WebhookAdmin - Subscriptions

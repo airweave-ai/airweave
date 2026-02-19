@@ -5,9 +5,9 @@ from typing import Any
 
 import yaml
 
+from airweave.adapters.credentials.azure_keyvault import secret_client
 from airweave.core.config import settings as core_settings
 from airweave.core.logging import logger
-from airweave.core.secrets import secret_client
 from airweave.platform.auth.schemas import (
     APIKeyAuthSettings,
     BaseAuthSettings,

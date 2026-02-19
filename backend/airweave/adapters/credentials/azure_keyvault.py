@@ -1,4 +1,4 @@
-"""This module contains the service classes for managing secrets."""
+"""Azure Key Vault credential adapter."""
 
 from azure.identity.aio import DefaultAzureCredential
 from azure.keyvault.secrets.aio import SecretClient
