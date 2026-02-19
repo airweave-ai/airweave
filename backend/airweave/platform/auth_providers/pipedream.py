@@ -76,6 +76,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
     # Key: Airweave field name, Value: Pipedream field name
     FIELD_NAME_MAPPING = {
         "api_key": "api_key",
+        "api_token": "api_key",  # Document360 and other sources use api_token
         "access_token": "oauth_access_token",
         "refresh_token": "oauth_refresh_token",
         "client_id": "oauth_client_id",

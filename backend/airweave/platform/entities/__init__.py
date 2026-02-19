@@ -71,6 +71,11 @@ from .confluence import (
     ConfluenceWhiteboardEntity,
 )
 from .ctti import CTTIWebEntity
+from .document360 import (
+    Document360ArticleEntity,
+    Document360CategoryEntity,
+    Document360ProjectVersionEntity,
+)
 from .dropbox import (
     DropboxAccountEntity,
     DropboxFileEntity,
@@ -366,6 +371,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
     ],
     "ctti": [
         CTTIWebEntity,
+    ],
+    "document360": [
+        Document360ArticleEntity,
+        Document360CategoryEntity,
+        Document360ProjectVersionEntity,
     ],
     "dropbox": [
         DropboxAccountEntity,

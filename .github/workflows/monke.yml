@@ -277,6 +277,8 @@ jobs:
           MONKE_FRESHDESK_API_KEY: ${{ secrets.MONKE_FRESHDESK_API_KEY }}
           MONKE_FRESHDESK_DOMAIN: ${{ secrets.MONKE_FRESHDESK_DOMAIN }}
 
+          MONKE_DOCUMENT360_API_TOKEN: ${{ secrets.MONKE_DOCUMENT360_API_TOKEN }}
+
           # All SaaS app credentials (Composio configs, API tokens, etc.)
           # will be fetched from Azure Key Vault at runtime
         run: |

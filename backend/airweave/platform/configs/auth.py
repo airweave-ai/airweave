@@ -354,6 +354,29 @@ class ConfluenceAuthConfig(OAuth2WithRefreshAuthConfig):
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
 
 
+class Document360AuthConfig(AuthConfig):
+    """Document360 authentication credentials schema.
+
+    Uses API token from Settings > Knowledge base portal > API tokens.
+    """
+
+    api_token: str = Field(
+        title="API Token",
+        description=(
+            "Document360 API token. Generate from Settings > Knowledge base portal > API tokens."
+        ),
+        min_length=10,
+    )
+
+    @field_validator("api_token")
+    @classmethod
+    def validate_api_token(cls, v: str) -> str:
+        """Validate Document360 API token."""
+        if not v or not v.strip():
+            raise ValueError("API token is required")
+        return v.strip()
+
+
 class DropboxAuthConfig(OAuth2BYOCAuthConfig):
     """Dropbox authentication credentials schema."""
 
