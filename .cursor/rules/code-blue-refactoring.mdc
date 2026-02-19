@@ -1,0 +1,296 @@
+---
+description: Code Blue domain refactoring patterns — protocols, repos, services, fakes, tests, container wiring
+globs: backend/airweave/domains/**/*.py, backend/airweave/core/protocols/**/*.py, backend/airweave/adapters/**/*.py, backend/airweave/core/container/**/*.py, backend/conftest.py
+alwaysApply: false
+---
+
+# Code Blue Refactoring Guide
+
+We are migrating from monolithic services (`core/source_connection_service.py`, `core/auth_provider_service.py`, etc.) into a domain-driven architecture under `domains/`. The goal is to eventually delete the old services entirely.
+
+## Non-Negotiables
+
+- **Reimplement, don't delegate.** Services must contain real business logic. Repositories are the ONLY layer that wraps crud singletons. If you find yourself forwarding every call to an old service, you are doing it wrong. Study PR #1430 (OAuth2Service) — every method was rebuilt from scratch with injected deps.
+- **No `Any` typing.** Use dataclasses, Pydantic models, or typed dicts. If a param is `dict`, type its contents: `dict[str, str]`.
+- **No lazy imports.** Everything at the top of the file. Never use `TYPE_CHECKING` guards or inline imports inside functions.
+- **No `.md` file creation** unless explicitly asked.
+- **Dead code marking.** When a reimplemented method has no remaining consumers in old code, add: `# [code blue] can be deleted once plugged into api`
+
+## Directory Layout
+
+Every domain module follows this tree:
+
+```
+domains/{domain_name}/
+├── __init__.py          # re-exports (optional, keep minimal)
+├── protocols.py         # Protocol classes — the contract
+├── repository.py        # Real implementation (thin crud wrapper)
+├── service.py           # Domain service (business logic, injected deps)
+├── types.py             # Value objects (frozen dataclasses / Pydantic)
+├── exceptions.py        # Domain-specific exceptions (if needed)
+├── fakes/
+│   ├── __init__.py
+│   ├── repository.py    # In-memory fake repository
+│   └── service.py       # In-memory fake service
+└── tests/
+    ├── __init__.py
+    └── test_{module}.py  # Table-driven unit tests
+```
+
+Cross-cutting concerns that don't fit a domain go in:
+- `core/protocols/` — infrastructure protocol definitions
+- `adapters/{name}/` — protocol implementations (real + fake + tests)
+
+## Protocols (`protocols.py`)
+
+Use `typing.Protocol` for structural typing. Each method gets a docstring. No default implementations.
+
+```python
+from typing import Optional, Protocol
+from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
+from airweave.api.context import ApiContext
+
+class SourceConnectionRepositoryProtocol(Protocol):
+    """Data access for source connections."""
+
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
+        """Get a source connection by ID within org scope."""
+        ...
+```
+
+Rules:
+- Domain-specific protocols live in `domains/{domain}/protocols.py`
+- Infrastructure protocols (EventBus, CircuitBreaker, OcrProvider) live in `core/protocols/`
+- Add `@runtime_checkable` only for infrastructure protocols that need `isinstance` checks
+- Separate protocol per responsibility: `RepositoryProtocol`, `ServiceProtocol`, `BuilderProtocol`
+- Protocol method signatures MUST match the real and fake implementations exactly
+
+## Repositories (`repository.py`)
+
+Thin wrappers around `crud.*` singletons — the ONLY place old crud code is called.
+
+```python
+from airweave import crud
+
+class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
+    """Delegates to the crud.source_connection singleton."""
+
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
+        return await crud.source_connection.get(db, id, ctx)
+```
+
+Rules:
+- One repo per domain, wrapping one or more crud modules
+- No business logic in repositories
+- Repo classes are stateless (no `__init__` state beyond config)
+
+## Services (`service.py`)
+
+Domain services hold ALL business logic. Constructor-injected dependencies typed as protocols.
+
+```python
+class SourceConnectionService(SourceConnectionServiceProtocol):
+
+    def __init__(
+        self,
+        sc_repo: SourceConnectionRepositoryProtocol,
+        source_registry: SourceRegistryProtocol,
+        response_builder: ResponseBuilderProtocol,
+    ):
+        self.sc_repo = sc_repo
+        self.source_registry = source_registry
+        self.response_builder = response_builder
+
+    async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> SourceConnectionSchema:
+        source_connection = await self.sc_repo.get(db, id=id, ctx=ctx)
+        if not source_connection:
+            raise NotFoundException("Source connection not found")
+        return await self.response_builder.build_response(db, source_connection, ctx)
+```
+
+Rules:
+- All dependencies via constructor, typed as protocols
+- No module-level singletons or global state
+- Private helpers prefixed with `_`
+- Services compose repos + registries + other services
+
+## Value Types (`types.py`)
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True, slots=True)
+class LastJobInfo:
+    status: SyncJobStatus
+    completed_at: Optional[datetime]
+
+@dataclass(frozen=True, slots=True)
+class SourceConnectionStats:
+    id: UUID
+    name: str
+    # ... all fields typed explicitly
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SourceConnectionStats":
+        """Construct from raw dict. Fails loudly on missing keys."""
+        ...
+```
+
+Rules:
+- Use `@dataclass(frozen=True, slots=True)` for value objects
+- Use Pydantic `BaseModel(frozen=True)` for registry entries (via `BaseRegistryEntry`)
+- `from_dict()` classmethod for converting raw dicts (e.g., from crud stats queries)
+
+## Fakes (`fakes/`)
+
+In-memory test doubles. Every fake mirrors its protocol exactly.
+
+```python
+class FakeSourceConnectionRepository:
+    """In-memory fake for SourceConnectionRepositoryProtocol."""
+
+    def __init__(self) -> None:
+        self._store: dict[UUID, SourceConnection] = {}
+        self._calls: list[tuple] = []
+        self._should_raise: Optional[Exception] = None
+
+    def seed(self, id: UUID, obj: SourceConnection) -> None:
+        self._store[id] = obj
+
+    def set_error(self, error: Exception) -> None:
+        self._should_raise = error
+
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
+        self._calls.append(("get", db, id, ctx))
+        if self._should_raise:
+            raise self._should_raise
+        return self._store.get(id)
+```
+
+Rules:
+- `_store: dict[key, value]` — typed in-memory storage
+- `_calls: list[tuple]` — records all method invocations for assertions
+- `seed(...)` methods for populating test data
+- `set_error(exc)` / `_should_raise` for error injection
+- Method signatures MUST match the protocol exactly
+- No real I/O, no database, no HTTP
+- Fake services can raise `NotImplementedError` for methods not yet needed
+
+## Tests (`tests/`)
+
+Table-driven, using fakes, colocated with the domain.
+
+```python
+"""Unit tests for OAuth2Service.
+
+Covers:
+- generate_auth_url (URL construction, templates, scopes)
+- refresh_access_token (full flow, rotating refresh)
+...
+Uses table-driven tests wherever possible.
+"""
+
+@dataclass
+class EncodeCredCase:
+    desc: str
+    client_id: str
+    client_secret: str
+    expected: str
+
+ENCODE_CRED_CASES = [
+    EncodeCredCase("standard", "my-id", "my-secret", base64.b64encode(b"my-id:my-secret").decode()),
+    EncodeCredCase("empty secret", "my-id", "", base64.b64encode(b"my-id:").decode()),
+]
+
+@pytest.mark.parametrize("case", ENCODE_CRED_CASES, ids=lambda c: c.desc)
+def test_encode_client_credentials(case: EncodeCredCase):
+    result = _svc()._encode_client_credentials(case.client_id, case.client_secret)
+    assert result == case.expected
+```
+
+Rules:
+- Module docstring lists what is covered
+- `@dataclass` case classes with a `desc` field for test case names
+- `_make_ctx()` helper builds a minimal `ApiContext`
+- `_make_*()` helpers build lightweight ORM stand-ins via `SimpleNamespace`
+- `Deps` class or `_build_service()` helper wires fakes into the service under test
+- `ids=lambda c: c.desc` for readable parametrize output
+- Use fakes, not `unittest.mock` — except for `AsyncMock` on deps you don't care about
+- Test both happy paths and error paths
+- Keep tests simple, lean, readable
+
+## Adapter Pattern (`adapters/`)
+
+For infrastructure concerns shared across domains (analytics, encryption, webhooks, etc.):
+
+```
+adapters/{name}/
+├── __init__.py
+├── protocols.py         # if protocol is adapter-specific (not in core/protocols/)
+├── {implementation}.py  # e.g., posthog.py, fernet.py, svix.py
+├── fake.py
+└── tests/
+    └── test_*.py
+```
+
+Rules:
+- Protocol in `core/protocols/` if used across domains, in `adapters/{name}/protocols.py` if adapter-specific
+- Real impl takes `Settings` or specific config in constructor
+- Fake records calls, provides `has()`, `get()`, `get_all()`, `clear()` assertion helpers
+- Fire-and-forget adapters (analytics) must never raise — log errors only
+
+## Container Wiring
+
+When you add a new domain service or adapter:
+
+1. **Add protocol field** to `core/container/container.py`:
+   ```python
+   source_connection_service: SourceConnectionServiceProtocol
+   ```
+
+2. **Wire in factory** at `core/container/factory.py`:
+   ```python
+   sc_service = SourceConnectionService(
+       sc_repo=sc_repo,
+       source_registry=source_registry,
+       response_builder=response_builder,
+   )
+   ```
+
+3. **Add fake fixture** to `backend/conftest.py`:
+   ```python
+   @pytest.fixture
+   def fake_sc_service():
+       from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
+       return FakeSourceConnectionService()
+   ```
+
+4. **Add to `test_container` fixture** in `conftest.py`.
+
+## Event Bus Integration
+
+Domain events flow through `EventBus.publish()`. Subscribers are wired in the factory:
+
+```python
+subscriber = AnalyticsEventSubscriber(tracker)
+for pattern in subscriber.EVENT_PATTERNS:
+    bus.subscribe(pattern, subscriber.handle)
+```
+
+Subscriber pattern:
+- `EVENT_PATTERNS` class attribute lists glob patterns
+- `_handlers: dict[str, Callable]` dispatch table
+- `handle(event)` dispatches by `event.event_type.value`
+- Each `_handle_*` method maps one event to one analytics/webhook call
+
+## Checklist for Every Code Blue PR
+
+- [ ] Protocol in `protocols.py` with typed methods + docstrings
+- [ ] Real implementation (repository or service) — not a delegation wrapper
+- [ ] Fake in `fakes/` with `seed()`, `_calls`, `set_error()`
+- [ ] Value types in `types.py` (if domain needs intermediate data shapes)
+- [ ] Tests in `tests/` — table-driven, using fakes, covering happy + error paths
+- [ ] Container field + factory wiring + conftest fixture (if new dep)
+- [ ] No `Any`, no lazy imports, no `TYPE_CHECKING`
+- [ ] Dead old-service methods marked with `# [code blue]` deprecation comment
