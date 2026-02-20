@@ -105,6 +105,7 @@ class FirefliesConfig(SourceConfig):
     No additional config required for basic sync.
     """
 
+
 class Document360Config(SourceConfig):
     """Document360 configuration schema."""
 
@@ -121,6 +122,7 @@ class Document360Config(SourceConfig):
         title="Language Code",
         description="Language code for article content (e.g. 'en', 'es'). Default: en.",
     )
+
 
 class ElasticsearchConfig(SourceConfig):
     """Elasticsearch configuration schema."""
