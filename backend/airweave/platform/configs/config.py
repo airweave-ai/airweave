@@ -88,6 +88,21 @@ class ClickUpConfig(SourceConfig):
     pass
 
 
+class CodaConfig(SourceConfig):
+    """Coda configuration schema."""
+
+    doc_id: Optional[str] = Field(
+        default=None,
+        title="Doc ID",
+        description="Sync only this doc (leave empty to sync all docs the token can access).",
+    )
+    folder_id: Optional[str] = Field(
+        default=None,
+        title="Folder ID",
+        description="Limit docs to this folder (optional).",
+    )
+
+
 class ConfluenceConfig(SourceConfig):
     """Confluence configuration schema."""
 
@@ -104,6 +119,24 @@ class FirefliesConfig(SourceConfig):
     Syncs meeting transcripts (mine: true) from the Fireflies GraphQL API.
     No additional config required for basic sync.
     """
+
+
+class Document360Config(SourceConfig):
+    """Document360 configuration schema."""
+
+    base_url: Optional[str] = Field(
+        default=None,
+        title="API Base URL",
+        description=(
+            "Document360 API base URL (e.g. https://apihub.document360.io or "
+            "https://apihub.us.document360.io for US). Leave empty to use default."
+        ),
+    )
+    lang_code: str = Field(
+        default="en",
+        title="Language Code",
+        description="Language code for article content (e.g. 'en', 'es'). Default: en.",
+    )
 
 
 class ElasticsearchConfig(SourceConfig):

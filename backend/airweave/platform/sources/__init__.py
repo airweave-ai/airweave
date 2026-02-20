@@ -7,8 +7,10 @@ from .attio import AttioSource
 from .bitbucket import BitbucketSource
 from .box import BoxSource
 from .clickup import ClickUpSource
+from .coda import CodaSource
 from .confluence import ConfluenceSource
 from .ctti import CTTISource
+from .document360 import Document360Source
 from .dropbox import DropboxSource
 from .file_stub import FileStubSource
 from .fireflies import FirefliesSource
@@ -53,8 +55,10 @@ ALL_SOURCES: list[type] = [
     BitbucketSource,
     BoxSource,
     ClickUpSource,
+    CodaSource,
     ConfluenceSource,
     CTTISource,
+    Document360Source,
     DropboxSource,
     FileStubSource,
     FirefliesSource,

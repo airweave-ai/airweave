@@ -71,6 +71,7 @@ cd airweave
 <img src="frontend/src/components/icons/apps/bitbucket.svg" alt="Bitbucket" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/box.svg" alt="Box" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/clickup.svg" alt="ClickUp" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/coda.svg" alt="Coda" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/confluence.svg" alt="Confluence" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/dropbox.svg" alt="Dropbox" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/fireflies.svg" alt="FireFlies" width="40" height="40" style="margin: 6px;" />

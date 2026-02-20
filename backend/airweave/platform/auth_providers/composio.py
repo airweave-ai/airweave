@@ -29,6 +29,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         "postgresql",
         "ctti",
         "sharepoint",
+        "document360",
     ]
 
     # Mapping of Airweave field names to Composio field names
