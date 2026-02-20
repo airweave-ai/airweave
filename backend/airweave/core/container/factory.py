@@ -152,7 +152,14 @@ def create_container(settings: Settings) -> Container:
         connection_repo=source_deps["conn_repo"],
     )
 
+    # -----------------------------------------------------------------
+    # Billing services
+    # -----------------------------------------------------------------
+    billing_services = _create_billing_services(settings)
+
     return Container(
+        billing_service=billing_services["billing_service"],
+        billing_webhook=billing_services["billing_webhook"],
         health=health,
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
@@ -178,6 +185,7 @@ def create_container(settings: Settings) -> Container:
         webhook_service=webhook_service,
         temporal_workflow_service=temporal_workflow_service,
         temporal_schedule_service=temporal_schedule_service,
+        payment_gateway=billing_services["payment_gateway"],
     )
 
 
@@ -411,12 +419,19 @@ def _create_billing_services(settings: Settings) -> dict:
     from airweave.domains.billing.service import BillingService
     from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
     from airweave.domains.organizations.repository import OrganizationRepository
+    from airweave.domains.usage.repository import UsageRepository
 
     payment_gateway = _create_payment_gateway(settings)
     billing_repo = OrganizationBillingRepository()
     period_repo = BillingPeriodRepository()
     org_repo = OrganizationRepository()
-    billing_ops = BillingOperations(billing_repo=billing_repo, payment_gateway=payment_gateway)
+    usage_repo = UsageRepository()
+    billing_ops = BillingOperations(
+        billing_repo=billing_repo,
+        period_repo=period_repo,
+        usage_repo=usage_repo,
+        payment_gateway=payment_gateway,
+    )
 
     billing_service = BillingService(
         payment_gateway=payment_gateway,
@@ -436,4 +451,5 @@ def _create_billing_services(settings: Settings) -> dict:
     return {
         "billing_service": billing_service,
         "billing_webhook": billing_webhook,
+        "payment_gateway": payment_gateway,
     }

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,7 +54,6 @@ class FakeOrganizationBillingRepository:
     ) -> OrganizationBilling:
         """Create a billing record (fake)."""
         self._calls.append(("create", db, obj_in, ctx, uow))
-        # Build a minimal ORM-like object from the schema
         if hasattr(obj_in, "organization_id"):
             self._store[obj_in.organization_id] = obj_in  # type: ignore[assignment]
         return obj_in  # type: ignore[return-value]
@@ -86,6 +85,33 @@ class FakeBillingPeriodRepository:
     def seed(self, obj: BillingPeriod) -> None:
         """Populate store with test data."""
         self._store.append(obj)
+
+    async def get(self, db: AsyncSession, *, id: UUID, ctx: object) -> Optional[BillingPeriod]:
+        """Get a billing period by ID."""
+        self._calls.append(("get", db, id))
+        for p in self._store:
+            if p.id == id:
+                return p
+        return None
+
+    async def create(
+        self, db: AsyncSession, *, obj_in: object, ctx: object, uow: object = None
+    ) -> BillingPeriod:
+        """Create a billing period (fake)."""
+        self._calls.append(("create", db, obj_in, ctx, uow))
+        period = BillingPeriod(
+            id=uuid4(),
+            organization_id=obj_in.organization_id,  # type: ignore[union-attr]
+            period_start=obj_in.period_start,  # type: ignore[union-attr]
+            period_end=obj_in.period_end,  # type: ignore[union-attr]
+            plan=obj_in.plan,  # type: ignore[union-attr]
+            status=obj_in.status,  # type: ignore[union-attr]
+            created_from=obj_in.created_from,  # type: ignore[union-attr]
+            stripe_subscription_id=getattr(obj_in, "stripe_subscription_id", None),
+            previous_period_id=getattr(obj_in, "previous_period_id", None),
+        )
+        self._store.append(period)
+        return period
 
     async def get_current_period(
         self, db: AsyncSession, *, organization_id: UUID

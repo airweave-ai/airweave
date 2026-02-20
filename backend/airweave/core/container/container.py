@@ -24,6 +24,7 @@ from airweave.core.protocols import (
     WebhookPublisher,
     WebhookServiceProtocol,
 )
+from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
@@ -125,6 +126,8 @@ class Container:
     # Billing domain
     billing_service: BillingServiceProtocol
     billing_webhook: BillingWebhookProtocol
+
+    payment_gateway: PaymentGatewayProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

@@ -704,7 +704,6 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
                 billing_email=owner_email,
                 ctx=internal_ctx,
                 uow=uow,
-                contextual_logger=ctx.logger,
             )
             await uow.commit()
 
