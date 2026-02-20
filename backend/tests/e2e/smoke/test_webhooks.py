@@ -28,6 +28,13 @@ SVIX_MESSAGE_TIMEOUT = 60
 # Timeout for Svix to deliver to the receiver after message exists
 SVIX_DELIVERY_TIMEOUT = 10
 
+# Svix caches the app+endpoints list (CreateMessageApp) with a 30s TTL.
+# When parallel tests keep the cache warm, a newly created subscription won't
+# be visible to the delivery worker until the cache expires. We wait slightly
+# longer than the TTL before triggering a sync so the worker fetches fresh
+# endpoint data from Postgres.
+SVIX_ENDPOINT_CACHE_TTL = 35
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -310,6 +317,10 @@ class TestWebhookDelivery:
         sub_id = sub_resp.json()["id"]
 
         try:
+            # Let the Svix endpoint cache expire so the delivery worker
+            # picks up the newly created subscription.
+            await asyncio.sleep(SVIX_ENDPOINT_CACHE_TTL)
+
             # Trigger sync
             sc_resp = await api_client.post(
                 "/source-connections",
