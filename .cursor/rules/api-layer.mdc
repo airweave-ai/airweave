@@ -56,15 +56,19 @@ The `get_context` dependency provides unified authentication and request context
 async def my_endpoint(
     ctx: ApiContext = Depends(deps.get_context),
 ):
-    # Provides: organization_id, user, auth_method, auth_metadata, logger
+    # Provides: organization, user, logger, request_id, auth_method, analytics
 ```
+
+`ApiContext` inherits from `BaseContext` (`core.context`), which provides organization identity and logger. `ApiContext` adds HTTP-specific fields: `request_id`, `auth_method`, `auth_metadata`, `analytics`.
+
+CRUD operations accept `BaseContext` (the parent type), so `ApiContext` works everywhere. Background jobs and Temporal activities use `BaseContext` directly without API-specific fields.
 
 **ApiContext Resolution Flow:**
 1. Check auth method: system (dev), Auth0, or API key
 2. Resolve organization ID from header or defaults
 3. Validate organization access
 4. Create contextual logger with request metadata
-5. Return unified `ApiContext` object with injected logger
+5. Return `ApiContext` (extends `BaseContext`) with injected logger and analytics
 
 **Key Features:**
 - Supports multiple auth methods simultaneously
