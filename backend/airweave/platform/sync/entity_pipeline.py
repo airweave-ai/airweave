@@ -16,6 +16,7 @@ from uuid import UUID
 
 from airweave.core.shared_models import AirweaveFieldFlag
 from airweave.platform.contexts import SyncContext
+from airweave.platform.contexts.runtime import SyncRuntime
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sync.actions import (
     EntityActionBatch,
@@ -26,6 +27,7 @@ from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.sync.pipeline.cleanup_service import cleanup_service
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
 from airweave.platform.sync.pipeline.hash_computer import hash_computer
+from airweave.platform.sync.state_publisher import SyncStatePublisher
 
 
 class EntityPipeline:
@@ -37,6 +39,7 @@ class EntityPipeline:
     def __init__(
         self,
         entity_tracker: EntityTracker,
+        state_publisher: SyncStatePublisher,
         action_resolver: EntityActionResolver,
         action_dispatcher: EntityActionDispatcher,
     ):
@@ -44,10 +47,12 @@ class EntityPipeline:
 
         Args:
             entity_tracker: Centralized entity state tracker
+            state_publisher: Publishes progress to Redis pubsub
             action_resolver: Resolves entities to actions
             action_dispatcher: Dispatches actions to handlers
         """
         self._tracker = entity_tracker
+        self._state_publisher = state_publisher
         self._resolver = action_resolver
         self._dispatcher = action_dispatcher
 
@@ -59,12 +64,14 @@ class EntityPipeline:
         self,
         entities: List[BaseEntity],
         sync_context: SyncContext,
+        runtime: SyncRuntime,
     ) -> None:
         """Process a batch of entities through the full pipeline.
 
         Args:
             entities: Entities to process
             sync_context: Sync context with all required components
+            runtime: Sync runtime with entity_tracker, source, etc.
         """
         # Phase 1: Track and deduplicate (FIRST - before any processing)
         unique_entities = await self._track_and_dedupe(entities, sync_context)
@@ -85,7 +92,7 @@ class EntityPipeline:
         # Phase 5: Dispatch to all handlers (handlers process content as needed)
         # Content processing (text → chunks → embeddings) is handled by destination processors
         # via DestinationHandler
-        await self._dispatcher.dispatch(batch, sync_context)
+        await self._dispatcher.dispatch(batch, sync_context, runtime)
 
         # Phase 6: Update tracker with successes → triggers pubsub
         await self._update_tracker(batch, sync_context)
@@ -122,7 +129,7 @@ class EntityPipeline:
 
         # Update tracker with orphan deletion counts per definition
         for definition_id, entity_ids in orphans_by_definition.items():
-            await sync_context.entity_tracker.record_deletes(definition_id, len(entity_ids))
+            await self._tracker.record_deletes(definition_id, len(entity_ids))
 
     async def cleanup_temp_files(self, sync_context: SyncContext) -> None:
         """Remove entire sync_job_id directory (final cleanup safety net).
@@ -232,7 +239,7 @@ class EntityPipeline:
         if batch.keeps:
             # We record kept entities and trigger publish
             await self._tracker.record_kept(len(batch.keeps))
-            await sync_context.state_publisher.check_and_publish()
+            await self._state_publisher.check_and_publish()
 
             sync_context.logger.debug(
                 f"All {len(batch.keeps)} entities unchanged - skipping pipeline"
@@ -286,7 +293,7 @@ class EntityPipeline:
         )
 
         # Trigger pubsub update
-        await sync_context.state_publisher.check_and_publish()
+        await self._state_publisher.check_and_publish()
 
     # -------------------------------------------------------------------------
     # Orphan Identification
@@ -403,11 +410,9 @@ class EntityPipeline:
             # For snapshot sources, preserve the original source_name from the captured entity
             # (the entity was reconstructed with its original system metadata intact).
             # For all other sources, set source_name from the current source instance.
-            is_snapshot = sync_context.source_instance.short_name == "snapshot"
+            is_snapshot = sync_context.source_short_name == "snapshot"
             if not (is_snapshot and entity.airweave_system_metadata.source_name):
-                entity.airweave_system_metadata.source_name = (
-                    sync_context.source_instance.short_name
-                )
+                entity.airweave_system_metadata.source_name = sync_context.source_short_name
             entity.airweave_system_metadata.entity_type = entity.__class__.__name__
             entity.airweave_system_metadata.sync_id = sync_context.sync.id
             entity.airweave_system_metadata.sync_job_id = sync_context.sync_job.id

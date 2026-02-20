@@ -29,6 +29,7 @@ from airweave.platform.sync.processors import (
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
     from airweave.platform.entities import BaseEntity
 
 
@@ -78,6 +79,7 @@ class DestinationHandler(EntityActionHandler):
         self,
         batch: EntityActionBatch,
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Handle batch by processing and dispatching to each destination."""
         if not self._destinations:
@@ -99,7 +101,7 @@ class DestinationHandler(EntityActionHandler):
         # Process and insert (inserts + updates)
         entities = batch.get_entities_to_process()
         if entities:
-            await self._do_process_and_insert(entities, sync_context)
+            await self._do_process_and_insert(entities, sync_context, runtime)
 
         # Deletes
         if batch.deletes:
@@ -109,18 +111,20 @@ class DestinationHandler(EntityActionHandler):
         self,
         actions: List[EntityInsertAction],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Handle inserts - process and insert to destinations."""
         if not actions:
             return
         entities = [a.entity for a in actions]
         sync_context.logger.debug(f"[{self.name}] Inserting {len(entities)} entities")
-        await self._do_process_and_insert(entities, sync_context)
+        await self._do_process_and_insert(entities, sync_context, runtime)
 
     async def handle_updates(
         self,
         actions: List[EntityUpdateAction],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Handle updates - delete old, then insert new."""
         if not actions:
@@ -131,7 +135,7 @@ class DestinationHandler(EntityActionHandler):
         # Delete old data first
         await self._do_delete_by_ids(entity_ids, "update_delete", sync_context)
         # Insert new data
-        await self._do_process_and_insert(entities, sync_context)
+        await self._do_process_and_insert(entities, sync_context, runtime)
 
     async def handle_deletes(
         self,
@@ -164,6 +168,7 @@ class DestinationHandler(EntityActionHandler):
         self,
         entities: List["BaseEntity"],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Process entities and insert into each destination.
 
@@ -177,7 +182,7 @@ class DestinationHandler(EntityActionHandler):
             dest_entities = [e.model_copy(deep=True) for e in entities]
 
             proc_start = asyncio.get_running_loop().time()
-            processed = await processor.process(dest_entities, sync_context)
+            processed = await processor.process(dest_entities, sync_context, runtime)
             proc_elapsed = asyncio.get_running_loop().time() - proc_start
             if proc_elapsed > 10:
                 sync_context.logger.warning(

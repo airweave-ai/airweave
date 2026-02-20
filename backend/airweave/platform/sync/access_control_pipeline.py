@@ -23,6 +23,7 @@ from airweave.platform.utils.error_utils import get_error_message
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 class AccessControlPipeline:
@@ -55,6 +56,7 @@ class AccessControlPipeline:
         self,
         source,
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> int:
         """Process access control memberships from the source.
 
@@ -64,20 +66,23 @@ class AccessControlPipeline:
         Args:
             source: Source instance (e.g. SharePoint2019V2Source)
             sync_context: Sync context with cursor, IDs, logger
+            runtime: Sync runtime with live services
 
         Returns:
             Number of memberships processed
         """
-        if self._should_do_incremental_sync(source, sync_context):
-            return await self._process_incremental(source, sync_context)
+        if self._should_do_incremental_sync(source, sync_context, runtime):
+            return await self._process_incremental(source, sync_context, runtime)
         else:
-            return await self._process_full(source, sync_context)
+            return await self._process_full(source, sync_context, runtime)
 
     # -------------------------------------------------------------------------
     # Sync mode decision
     # -------------------------------------------------------------------------
 
-    def _should_do_incremental_sync(self, source, sync_context: "SyncContext") -> bool:
+    def _should_do_incremental_sync(
+        self, source, sync_context: "SyncContext", runtime: "SyncRuntime"
+    ) -> bool:
         """Determine if incremental ACL sync is possible.
 
         Requires:
@@ -92,7 +97,7 @@ class AccessControlPipeline:
             return False
 
         # Check we have a DirSync cookie from a previous sync
-        cursor_data = sync_context.cursor.data if sync_context.cursor else {}
+        cursor_data = runtime.cursor.data if runtime.cursor else {}
         if not cursor_data.get("acl_dirsync_cookie"):
             sync_context.logger.info("No DirSync cookie found -- will do full ACL sync")
             return False
@@ -108,7 +113,9 @@ class AccessControlPipeline:
     # Full ACL sync (existing logic + DirSync cookie seeding)
     # -------------------------------------------------------------------------
 
-    async def _process_full(self, source, sync_context: "SyncContext") -> int:  # noqa: C901
+    async def _process_full(  # noqa: C901
+        self, source, sync_context: "SyncContext", runtime: "SyncRuntime"
+    ) -> int:
         """Full ACL sync: stream memberships to DB in batches, then cleanup orphans.
 
         Memberships are deduped and written to PostgreSQL in batches as they
@@ -121,6 +128,7 @@ class AccessControlPipeline:
         Args:
             source: Source instance
             sync_context: Sync context
+            runtime: Sync runtime with live services
 
         Returns:
             Number of memberships upserted
@@ -169,7 +177,7 @@ class AccessControlPipeline:
                         f"{stats.encountered} unique, "
                         f"{upserted_count} written to DB"
                     )
-                    await sync_context.state_publisher.publish_progress()
+                    await runtime.state_publisher.publish_progress()
 
             collection_complete = True
 
@@ -212,7 +220,7 @@ class AccessControlPipeline:
         self._tracker.log_summary()
 
         # Step 5: Seed DirSync cookie for future incremental syncs
-        await self._store_dirsync_cookie_after_full(source, sync_context)
+        await self._store_dirsync_cookie_after_full(source, sync_context, runtime)
 
         return upserted_count
 
@@ -245,7 +253,9 @@ class AccessControlPipeline:
     # Incremental ACL sync (DirSync delta changes)
     # -------------------------------------------------------------------------
 
-    async def _process_incremental(self, source, sync_context: "SyncContext") -> int:
+    async def _process_incremental(
+        self, source, sync_context: "SyncContext", runtime: "SyncRuntime"
+    ) -> int:
         """Incremental ACL sync: apply DirSync delta changes.
 
         Calls source.get_acl_changes() with the stored cookie to get only
@@ -256,11 +266,12 @@ class AccessControlPipeline:
         Args:
             source: Source instance with get_acl_changes()
             sync_context: Sync context
+            runtime: Sync runtime with cursor
 
         Returns:
             Number of changes applied
         """
-        cursor_data = sync_context.cursor.data if sync_context.cursor else {}
+        cursor_data = runtime.cursor.data if runtime.cursor else {}
         cookie = cursor_data.get("acl_dirsync_cookie", "")
 
         sync_context.logger.info("Starting INCREMENTAL ACL sync via DirSync")
@@ -272,14 +283,14 @@ class AccessControlPipeline:
                 f"Incremental ACL failed: {get_error_message(e)}. Falling back to full sync.",
                 exc_info=True,
             )
-            return await self._process_full(source, sync_context)
+            return await self._process_full(source, sync_context, runtime)
 
         deleted_group_ids = getattr(result, "deleted_group_ids", set())
 
         if not result.changes and not deleted_group_ids:
             sync_context.logger.info("No ACL changes detected (DirSync returned 0 changes)")
             # Still update cursor with new cookie to advance the position
-            self._update_cursor_after_incremental(sync_context, result)
+            self._update_cursor_after_incremental(sync_context, runtime, result)
             return 0
 
         sync_context.logger.info(
@@ -341,7 +352,7 @@ class AccessControlPipeline:
         )
 
         # Update cursor with new DirSync cookie
-        self._update_cursor_after_incremental(sync_context, result)
+        self._update_cursor_after_incremental(sync_context, runtime, result)
 
         return adds + removes + group_deletes
 
@@ -349,19 +360,23 @@ class AccessControlPipeline:
     # Cursor management
     # -------------------------------------------------------------------------
 
-    def _update_cursor_after_incremental(self, sync_context: "SyncContext", result) -> None:
+    def _update_cursor_after_incremental(
+        self, sync_context: "SyncContext", runtime: "SyncRuntime", result
+    ) -> None:
         """Update cursor with new DirSync cookie after incremental sync."""
-        if not sync_context.cursor:
+        if not runtime.cursor:
             return
 
         now = datetime.utcnow().isoformat() + "Z"
-        sync_context.cursor.update(
+        runtime.cursor.update(
             acl_dirsync_cookie=result.cookie_b64,
             last_acl_sync_timestamp=now,
             last_acl_changes_count=len(result.changes),
         )
 
-    async def _store_dirsync_cookie_after_full(self, source, sync_context: "SyncContext") -> None:
+    async def _store_dirsync_cookie_after_full(
+        self, source, sync_context: "SyncContext", runtime: "SyncRuntime"
+    ) -> None:
         """After a full sync, obtain and store an initial DirSync cookie.
 
         This seeds the cookie so the next sync can be incremental.
@@ -373,7 +388,7 @@ class AccessControlPipeline:
             return
         if not source.supports_incremental_acl():
             return
-        if not sync_context.cursor:
+        if not runtime.cursor:
             return
 
         try:
@@ -384,7 +399,7 @@ class AccessControlPipeline:
 
             if result.cookie_b64:
                 now = datetime.utcnow().isoformat() + "Z"
-                sync_context.cursor.update(
+                runtime.cursor.update(
                     acl_dirsync_cookie=result.cookie_b64,
                     last_acl_sync_timestamp=now,
                     last_acl_changes_count=0,

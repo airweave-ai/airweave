@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, List, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
     from airweave.platform.sync.actions.access_control import (
         ACActionBatch,
         ACDeleteAction,
@@ -39,12 +40,14 @@ class EntityActionHandler(Protocol):
         self,
         batch: "EntityActionBatch",
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Handle a full action batch (main entry point).
 
         Args:
             batch: Entity action batch
             sync_context: Sync context
+            runtime: Sync runtime with entity_tracker, source, etc.
 
         Raises:
             SyncFailureError: If any operation fails
@@ -55,6 +58,7 @@ class EntityActionHandler(Protocol):
         self,
         actions: List["EntityInsertAction"],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> Any:
         """Handle insert actions."""
         ...
@@ -63,6 +67,7 @@ class EntityActionHandler(Protocol):
         self,
         actions: List["EntityUpdateAction"],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> Any:
         """Handle update actions."""
         ...

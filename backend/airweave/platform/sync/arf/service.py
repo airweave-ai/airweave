@@ -44,6 +44,7 @@ from airweave.platform.sync.arf.schema import SyncManifest
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
     from airweave.platform.entities._base import BaseEntity
 
 
@@ -126,9 +127,9 @@ class ArfService:
     # Entity serialization
     # =========================================================================
 
-    def _get_source_short_name(self, sync_context: "SyncContext") -> str:
+    def _get_source_short_name(self, sync_context: "SyncContext", runtime: "SyncRuntime") -> str:
         """Extract short name from source instance (or class fallback)."""
-        source = sync_context.source
+        source = runtime.source
         name = getattr(source, "short_name", "") or ""
         return name or source.__class__.__name__.lower().replace("source", "")
 
@@ -387,14 +388,17 @@ class ArfService:
     # Full sync support
     # =========================================================================
 
-    async def cleanup_stale_entities(self, sync_context: "SyncContext") -> int:
+    async def cleanup_stale_entities(
+        self, sync_context: "SyncContext", runtime: "SyncRuntime"
+    ) -> int:
         """Delete entities not seen during the current sync.
 
         Call at the end of a full sync to remove entities that no longer exist
         in the source.
 
         Args:
-            sync_context: Sync context with EntityTracker
+            sync_context: Sync context
+            runtime: Sync runtime with EntityTracker
 
         Returns:
             Number of stale entities deleted
@@ -402,7 +406,7 @@ class ArfService:
         sync_id = str(sync_context.sync.id)
 
         # Get set of all encountered entity IDs
-        seen_ids = sync_context.entity_tracker.get_all_encountered_ids_flat()
+        seen_ids = runtime.entity_tracker.get_all_encountered_ids_flat()
 
         current_ids = await self.list_entity_ids(sync_id)
         stale_ids = [eid for eid in current_ids if eid not in seen_ids]
@@ -427,11 +431,12 @@ class ArfService:
         except StorageNotFoundError:
             return None
 
-    async def upsert_manifest(self, sync_context: "SyncContext") -> None:
+    async def upsert_manifest(self, sync_context: "SyncContext", runtime: "SyncRuntime") -> None:
         """Create or update manifest for a sync job.
 
         Args:
             sync_context: Sync context with job info
+            runtime: Sync runtime with source
         """
         sync_id = str(sync_context.sync.id)
         manifest_path = self._manifest_path(sync_id)
@@ -451,7 +456,7 @@ class ArfService:
             # Create new manifest
             manifest = SyncManifest(
                 sync_id=sync_id,
-                source_short_name=self._get_source_short_name(sync_context),
+                source_short_name=self._get_source_short_name(sync_context, runtime),
                 collection_id=str(sync_context.collection.id),
                 collection_readable_id=sync_context.collection.readable_id,
                 organization_id=str(sync_context.collection.organization_id),

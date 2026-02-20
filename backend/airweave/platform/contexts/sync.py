@@ -1,66 +1,52 @@
-"""Sync context - full context for sync operations."""
+"""Sync context - frozen data for sync operations."""
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 from uuid import UUID
 
 from airweave.core.context import BaseContext
 
 if TYPE_CHECKING:
     from airweave import schemas
-    from airweave.core.guard_rail_service import GuardRailService
-    from airweave.platform.destinations._base import BaseDestination
     from airweave.platform.entities._base import BaseEntity
-    from airweave.platform.sources._base import BaseSource
     from airweave.platform.sync.config import SyncConfig
-    from airweave.platform.sync.cursor import SyncCursor
-    from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
-    from airweave.platform.sync.state_publisher import SyncStatePublisher
 
 
 @dataclass
 class SyncContext(BaseContext):
-    """Everything needed for a sync run.
+    """Frozen data describing a sync run.
 
-    Inherits organization, user, and logger from BaseContext.
-    The builder overrides logger with sync-specific dimensions
-    (sync_id, sync_job_id, collection_readable_id, etc.).
+    Sibling to ApiContext — inherits organization, user, logger from BaseContext.
+    Contains only IDs, schema objects, config, and lookups. No live services.
 
-    Can be passed directly as ctx to CRUD operations since it IS a BaseContext.
+    Live services (source, cursor, destinations, trackers) live in SyncRuntime.
+
+    Can be passed as ctx to CRUD operations since it IS a BaseContext.
     """
 
-    # --- Scope ---
+    # --- Scope IDs ---
     sync_id: UUID = None
     sync_job_id: UUID = None
     collection_id: UUID = None
     source_connection_id: UUID = None
 
-    # --- Source pipeline ---
-    source: "BaseSource" = None
-    cursor: "SyncCursor" = None
-
-    # --- Destination pipeline ---
-    destinations: List["BaseDestination"] = field(default_factory=list)
-    entity_map: Dict[type["BaseEntity"], UUID] = field(default_factory=dict)
-
-    # --- Tracking ---
-    entity_tracker: "EntityTracker" = None
-    state_publisher: "SyncStatePublisher" = None
-    guard_rail: "GuardRailService" = None
-
-    # --- Batch config ---
-    batch_size: int = 64
-    max_batch_latency_ms: int = 200
-    force_full_sync: bool = False
-
-    # --- Schema objects (frequently accessed by pipeline) ---
+    # --- Schema objects ---
     sync: "schemas.Sync" = None
     sync_job: "schemas.SyncJob" = None
     collection: "schemas.Collection" = None
     connection: "schemas.Connection" = None
 
-    # --- Execution config ---
+    # --- Config ---
     execution_config: Optional["SyncConfig"] = None
+    force_full_sync: bool = False
+    batch_size: int = 64
+    max_batch_latency_ms: int = 200
+
+    # --- Lookups ---
+    entity_map: Dict[type["BaseEntity"], UUID] = field(default_factory=dict)
+
+    # --- Derived data (extracted from source at build time) ---
+    source_short_name: str = ""
 
     # --- Convenience ---
 
@@ -70,25 +56,6 @@ class SyncContext(BaseContext):
         return self.organization.id
 
     @property
-    def source_instance(self) -> "BaseSource":
-        """Alias for source (used by orchestrator)."""
-        return self.source
-
-    @property
-    def destination_list(self) -> List["BaseDestination"]:
-        """Alias for destinations list."""
-        return self.destinations
-
-    @property
     def should_batch(self) -> bool:
         """Whether batching is enabled (always True for now)."""
         return True
-
-    @property
-    def ctx(self) -> "BaseContext":
-        """Self-reference for backwards compat during migration.
-
-        Code that does sync_context.ctx can continue to work.
-        Will be removed once all callsites are updated.
-        """
-        return self

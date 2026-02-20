@@ -1,11 +1,9 @@
-"""Sync context builder - constructs flat SyncContext directly.
+"""Sync context builder - constructs SyncContext (frozen data only).
 
-Collapses all sub-builders (InfraContextBuilder, ScopeContextBuilder,
-SourceContextBuilder, DestinationsContextBuilder, TrackingContextBuilder)
-into private methods on this single builder class.
+Builds the data-only SyncContext. Live services (source, destinations, trackers)
+are built by SyncFactory directly using the sub-builders.
 """
 
-import asyncio
 from typing import Optional
 from uuid import UUID
 
@@ -19,7 +17,10 @@ from airweave.platform.sync.config import SyncConfig
 
 
 class SyncContextBuilder:
-    """Builds flat SyncContext with all required components."""
+    """Builds SyncContext (frozen data only).
+
+    Does NOT build services — those are the factory's responsibility.
+    """
 
     @classmethod
     async def build(
@@ -30,11 +31,13 @@ class SyncContextBuilder:
         collection: schemas.Collection,
         connection: schemas.Connection,
         ctx: BaseContext,
-        access_token: Optional[str] = None,
+        source_connection_id: UUID,
+        source_short_name: str,
+        entity_map: dict,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
     ) -> SyncContext:
-        """Build complete sync context.
+        """Build data-only SyncContext.
 
         Args:
             db: Database session
@@ -42,18 +45,16 @@ class SyncContextBuilder:
             sync_job: The sync job
             collection: The collection to sync to
             connection: The connection
-            ctx: The base context (provides org identity for CRUD)
-            access_token: Optional token to use instead of stored credentials
-            force_full_sync: If True, forces a full sync with orphaned entity deletion
-            execution_config: Optional execution config for controlling sync behavior
+            ctx: The base context (provides org identity)
+            source_connection_id: Pre-resolved source connection ID
+            source_short_name: Source short name (extracted from source instance)
+            entity_map: Entity class to definition ID mapping
+            force_full_sync: If True, forces a full sync
+            execution_config: Optional execution config
 
         Returns:
-            Flat SyncContext with all fields populated.
+            SyncContext with all data fields populated.
         """
-        # Step 1: Get source connection ID (needed for logger dimensions)
-        source_connection_id = await cls._get_source_connection_id(db, sync, ctx)
-
-        # Step 2: Build sync-specific logger with all relevant dimensions
         logger = cls._build_logger(
             sync=sync,
             sync_job=sync_job,
@@ -62,79 +63,23 @@ class SyncContextBuilder:
             ctx=ctx,
         )
 
-        logger.info("Building sync context...")
-
-        # Step 3: Build source, destinations, and tracking in parallel
-        source_result, destinations_result, tracking_result = await asyncio.gather(
-            cls._build_source(
-                db=db,
-                sync=sync,
-                sync_job=sync_job,
-                ctx=ctx,
-                logger=logger,
-                access_token=access_token,
-                force_full_sync=force_full_sync,
-                execution_config=execution_config,
-            ),
-            cls._build_destinations(
-                db=db,
-                sync=sync,
-                collection=collection,
-                ctx=ctx,
-                logger=logger,
-                execution_config=execution_config,
-            ),
-            cls._build_tracking(
-                db=db,
-                sync=sync,
-                sync_job=sync_job,
-                ctx=ctx,
-                logger=logger,
-            ),
-        )
-
-        source, cursor = source_result
-        destinations, entity_map = destinations_result
-        entity_tracker, state_publisher, guard_rail = tracking_result
-
-        # Step 4: Assemble flat SyncContext
-        sync_context = SyncContext(
-            # BaseContext fields
+        return SyncContext(
             organization=ctx.organization,
             user=ctx.user,
             logger=logger,
-            # Scope
             sync_id=sync.id,
             sync_job_id=sync_job.id,
             collection_id=collection.id,
             source_connection_id=source_connection_id,
-            # Source pipeline
-            source=source,
-            cursor=cursor,
-            # Destination pipeline
-            destinations=destinations,
-            entity_map=entity_map,
-            # Tracking
-            entity_tracker=entity_tracker,
-            state_publisher=state_publisher,
-            guard_rail=guard_rail,
-            # Batch config
-            force_full_sync=force_full_sync,
-            # Schema objects
             sync=sync,
             sync_job=sync_job,
             collection=collection,
             connection=connection,
-            # Execution config
             execution_config=execution_config,
+            force_full_sync=force_full_sync,
+            entity_map=entity_map,
+            source_short_name=source_short_name,
         )
-
-        logger.info("Sync context created")
-        return sync_context
-
-    # -------------------------------------------------------------------------
-    # Private: Logger
-    # -------------------------------------------------------------------------
 
     @classmethod
     def _build_logger(
@@ -159,12 +104,8 @@ class SyncContextBuilder:
             },
         )
 
-    # -------------------------------------------------------------------------
-    # Private: Source Connection ID
-    # -------------------------------------------------------------------------
-
     @classmethod
-    async def _get_source_connection_id(
+    async def get_source_connection_id(
         cls,
         db: AsyncSession,
         sync: schemas.Sync,
@@ -174,91 +115,3 @@ class SyncContextBuilder:
         from airweave.platform.builders.source import SourceContextBuilder
 
         return await SourceContextBuilder.get_source_connection_id(db, sync, ctx)
-
-    # -------------------------------------------------------------------------
-    # Private: Source
-    # -------------------------------------------------------------------------
-
-    @classmethod
-    async def _build_source(
-        cls,
-        db: AsyncSession,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        ctx: BaseContext,
-        logger: ContextualLogger,
-        access_token: Optional[str],
-        force_full_sync: bool,
-        execution_config: Optional[SyncConfig],
-    ) -> tuple:
-        """Build source and cursor. Returns (source, cursor) tuple."""
-        from airweave.platform.builders.source import SourceContextBuilder
-        from airweave.platform.contexts.infra import InfraContext
-
-        # SourceContextBuilder still expects InfraContext for now — create a thin wrapper.
-        # TODO: Refactor SourceContextBuilder to accept (ctx, logger) directly.
-        infra = InfraContext(ctx=ctx, logger=logger)
-
-        source_ctx = await SourceContextBuilder.build(
-            db=db,
-            sync=sync,
-            sync_job=sync_job,
-            infra=infra,
-            access_token=access_token,
-            force_full_sync=force_full_sync,
-            execution_config=execution_config,
-        )
-        return source_ctx.source, source_ctx.cursor
-
-    # -------------------------------------------------------------------------
-    # Private: Destinations
-    # -------------------------------------------------------------------------
-
-    @classmethod
-    async def _build_destinations(
-        cls,
-        db: AsyncSession,
-        sync: schemas.Sync,
-        collection: schemas.Collection,
-        ctx: BaseContext,
-        logger: ContextualLogger,
-        execution_config: Optional[SyncConfig],
-    ) -> tuple:
-        """Build destinations and entity map. Returns (destinations, entity_map) tuple."""
-        from airweave.platform.builders.destinations import DestinationsContextBuilder
-
-        return await DestinationsContextBuilder.build(
-            db=db,
-            sync=sync,
-            collection=collection,
-            ctx=ctx,
-            logger=logger,
-            execution_config=execution_config,
-        )
-
-    # -------------------------------------------------------------------------
-    # Private: Tracking
-    # -------------------------------------------------------------------------
-
-    @classmethod
-    async def _build_tracking(
-        cls,
-        db: AsyncSession,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        ctx: BaseContext,
-        logger: ContextualLogger,
-    ) -> tuple:
-        """Build tracking components.
-
-        Returns (entity_tracker, state_publisher, guard_rail) tuple.
-        """
-        from airweave.platform.builders.tracking import TrackingContextBuilder
-
-        return await TrackingContextBuilder.build(
-            db=db,
-            sync=sync,
-            sync_job=sync_job,
-            ctx=ctx,
-            logger=logger,
-        )
