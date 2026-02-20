@@ -10,35 +10,32 @@ Design principles:
 - Testable: can unit test factory logic with mock settings
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
+from airweave.adapters.analytics.posthog import PostHogTracker
+from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
-from airweave.domains.connections.repository import ConnectionRepository
-from airweave.domains.credentials.repository import IntegrationCredentialRepository
-from airweave.domains.oauth.oauth2_service import OAuth2Service
-from airweave.domains.source_connections.repository import SourceConnectionRepository
+from airweave.adapters.ocr.fallback import FallbackOcrProvider
+from airweave.adapters.ocr.mistral import MistralOcrAdapter
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
+from airweave.core.config import Settings
 from airweave.core.container.container import Container
 from airweave.core.logging import logger
+from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.connections.repository import ConnectionRepository
+from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
-
-if TYPE_CHECKING:
-    from airweave.core.config import Settings
-    from airweave.core.protocols import CircuitBreaker, OcrProvider
-    from airweave.core.protocols.event_bus import EventBus
 
 
 def create_container(settings: Settings) -> Container:
@@ -85,7 +82,7 @@ def create_container(settings: Settings) -> Container:
     # Event Bus
     # Fans out domain events to subscribers (webhooks, analytics, etc.)
     # -----------------------------------------------------------------
-    event_bus = _create_event_bus(webhook_publisher=svix_adapter)
+    event_bus = _create_event_bus(webhook_publisher=svix_adapter, settings=settings)
 
     # -----------------------------------------------------------------
     # Circuit Breaker + OCR
@@ -126,15 +123,12 @@ def create_container(settings: Settings) -> Container:
 # ---------------------------------------------------------------------------
 
 
-def _create_event_bus(webhook_publisher: WebhookPublisher) -> EventBus:
+def _create_event_bus(webhook_publisher: WebhookPublisher, settings: Settings) -> EventBus:
     """Create event bus with subscribers wired up.
 
     The event bus fans out domain events to:
     - WebhookEventSubscriber: External webhooks via Svix (all events)
-
-    Future subscribers:
-    - PubSubSubscriber: Redis PubSub for real-time UI updates
-    - AnalyticsSubscriber: PostHog tracking
+    - AnalyticsEventSubscriber: PostHog analytics tracking
     """
     bus = InMemoryEventBus()
 
@@ -144,10 +138,16 @@ def _create_event_bus(webhook_publisher: WebhookPublisher) -> EventBus:
     for pattern in webhook_subscriber.EVENT_PATTERNS:
         bus.subscribe(pattern, webhook_subscriber.handle)
 
+    # AnalyticsEventSubscriber — forwards domain events to PostHog
+    tracker = PostHogTracker(settings)
+    analytics_subscriber = AnalyticsEventSubscriber(tracker)
+    for pattern in analytics_subscriber.EVENT_PATTERNS:
+        bus.subscribe(pattern, analytics_subscriber.handle)
+
     return bus
 
 
-def _create_circuit_breaker() -> "CircuitBreaker":
+def _create_circuit_breaker() -> CircuitBreaker:
     """Create the shared circuit breaker for provider failover.
 
     Uses a 120-second cooldown: after a provider fails, it is skipped
@@ -156,7 +156,7 @@ def _create_circuit_breaker() -> "CircuitBreaker":
     return InMemoryCircuitBreaker(cooldown_seconds=120)
 
 
-def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings") -> "OcrProvider":
+def _create_ocr_provider(circuit_breaker: CircuitBreaker, settings: Settings) -> OcrProvider:
     """Create OCR provider with fallback chain.
 
     Chain order: Mistral (cloud) -> Docling (local service, if configured).
@@ -165,9 +165,6 @@ def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings"
     raises: ValueError if no OCR providers are available
     returns: FallbackOcrProvider with the available OCR providers
     """
-    from airweave.adapters.ocr.fallback import FallbackOcrProvider
-    from airweave.adapters.ocr.mistral import MistralOcrAdapter
-
     try:
         mistral_ocr = MistralOcrAdapter()
     except Exception as e:
