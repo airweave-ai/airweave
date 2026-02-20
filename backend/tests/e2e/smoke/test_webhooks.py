@@ -28,6 +28,13 @@ SVIX_MESSAGE_TIMEOUT = 60
 # Timeout for Svix to deliver to the receiver after message exists
 SVIX_DELIVERY_TIMEOUT = 10
 
+# Svix caches the app+endpoints list (CreateMessageApp) with a 30s TTL.
+# When parallel tests keep the cache warm, a newly created subscription won't
+# be visible to the delivery worker until the cache expires. We wait slightly
+# longer than the TTL before triggering a sync so the worker fetches fresh
+# endpoint data from Postgres.
+SVIX_ENDPOINT_CACHE_TTL = 35
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -310,6 +317,10 @@ class TestWebhookDelivery:
         sub_id = sub_resp.json()["id"]
 
         try:
+            # Let the Svix endpoint cache expire so the delivery worker
+            # picks up the newly created subscription.
+            await asyncio.sleep(SVIX_ENDPOINT_CACHE_TTL)
+
             # Trigger sync
             sc_resp = await api_client.post(
                 "/source-connections",
@@ -488,12 +499,21 @@ class TestWebhookDelivery:
                         f"likely Svix dispatch race (event fires before endpoint is indexed)"
                     )
 
-            # Verify source_connection_id on sync events
-            for msg in new_msgs:
-                if msg["event_type"].startswith("sync."):
-                    assert msg["payload"].get("source_connection_id") == sc_id, (
-                        f"{msg['event_type']} has wrong source_connection_id"
-                    )
+            # Verify source_connection_id on sync events belonging to this test.
+            # Parallel test workers may produce sync events for other source
+            # connections that land in the messages API during our poll window.
+            our_sync_msgs = [
+                m
+                for m in new_msgs
+                if m["event_type"].startswith("sync.")
+                and m["payload"].get("source_connection_id") == sc_id
+            ]
+            assert len(our_sync_msgs) >= len(
+                required_events & {"sync.pending", "sync.running", "sync.completed"}
+            ), (
+                f"Expected sync events for sc_id={sc_id}, got {len(our_sync_msgs)}. "
+                f"Types: {[m['event_type'] for m in our_sync_msgs]}"
+            )
 
         finally:
             try:

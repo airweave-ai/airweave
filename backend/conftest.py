@@ -126,6 +126,22 @@ def fake_entity_definition_registry():
 
 
 @pytest.fixture
+def fake_health_service():
+    """Fake HealthService with canned responses."""
+    from airweave.core.health.fakes import FakeHealthService
+
+    return FakeHealthService()
+
+
+@pytest.fixture
+def fake_source_connection_service():
+    """Fake SourceConnectionService."""
+    from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
+
+    return FakeSourceConnectionService()
+
+
+@pytest.fixture
 def fake_source_lifecycle_service():
     """Fake SourceLifecycleService for testing lifecycle consumers."""
     from airweave.domains.sources.fakes.lifecycle import FakeSourceLifecycleService
@@ -150,6 +166,14 @@ def fake_conn_repo():
 
 
 @pytest.fixture
+def fake_collection_repo():
+    """Fake CollectionRepository."""
+    from airweave.domains.collections.fakes.repository import FakeCollectionRepository
+
+    return FakeCollectionRepository()
+
+
+@pytest.fixture
 def fake_cred_repo():
     """Fake IntegrationCredentialRepository."""
     from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
@@ -166,7 +190,16 @@ def fake_oauth2_service():
 
 
 @pytest.fixture
+def fake_oauth1_service():
+    """Real OAuth1Service (no injected deps, safe for unit tests)."""
+    from airweave.domains.oauth.oauth1_service import OAuth1Service
+
+    return OAuth1Service()
+
+
+@pytest.fixture
 def test_container(
+    fake_health_service,
     fake_event_bus,
     fake_webhook_publisher,
     fake_webhook_admin,
@@ -178,9 +211,12 @@ def test_container(
     fake_source_registry,
     fake_auth_provider_registry,
     fake_sc_repo,
+    fake_collection_repo,
     fake_conn_repo,
     fake_cred_repo,
+    fake_oauth1_service,
     fake_oauth2_service,
+    fake_source_connection_service,
     fake_source_lifecycle_service,
 ):
     """A Container with all dependencies replaced by fakes.
@@ -194,6 +230,7 @@ def test_container(
     from airweave.core.container import Container
 
     return Container(
+        health=fake_health_service,
         event_bus=fake_event_bus,
         webhook_publisher=fake_webhook_publisher,
         webhook_admin=fake_webhook_admin,
@@ -205,8 +242,11 @@ def test_container(
         source_registry=fake_source_registry,
         auth_provider_registry=fake_auth_provider_registry,
         sc_repo=fake_sc_repo,
+        collection_repo=fake_collection_repo,
         conn_repo=fake_conn_repo,
         cred_repo=fake_cred_repo,
+        oauth1_service=fake_oauth1_service,
         oauth2_service=fake_oauth2_service,
+        source_connection_service=fake_source_connection_service,
         source_lifecycle_service=fake_source_lifecycle_service,
     )

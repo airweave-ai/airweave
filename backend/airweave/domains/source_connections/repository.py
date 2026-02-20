@@ -1,6 +1,6 @@
 """Source connection repository wrapping crud.source_connection."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
+from airweave.domains.source_connections.types import SourceConnectionStats
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.source_connection import SourceConnection
 
@@ -39,3 +40,18 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
         )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_multi_with_stats(
+        self,
+        db: AsyncSession,
+        *,
+        ctx: ApiContext,
+        collection_id: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[SourceConnectionStats]:
+        """Get source connections with complete stats."""
+        raw = await crud.source_connection.get_multi_with_stats(
+            db, ctx=ctx, collection_id=collection_id, skip=skip, limit=limit
+        )
+        return [SourceConnectionStats.from_dict(d) for d in raw]

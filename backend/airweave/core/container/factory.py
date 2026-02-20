@@ -10,35 +10,49 @@ Design principles:
 - Testable: can unit test factory logic with mock settings
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
+from airweave.adapters.analytics.posthog import PostHogTracker
+from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
+from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
+from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
-from airweave.domains.connections.repository import ConnectionRepository
-from airweave.domains.credentials.repository import IntegrationCredentialRepository
-from airweave.domains.oauth.oauth2_service import OAuth2Service
-from airweave.domains.source_connections.repository import SourceConnectionRepository
+from airweave.adapters.ocr.fallback import FallbackOcrProvider
+from airweave.adapters.ocr.mistral import MistralOcrAdapter
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
+from airweave.core.config import Settings
 from airweave.core.container.container import Container
+from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
+from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
+from airweave.core.redis_client import redis_client
+from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.collections.repository import CollectionRepository
+from airweave.domains.connections.repository import ConnectionRepository
+from airweave.domains.credentials.repository import IntegrationCredentialRepository
+from airweave.domains.entities.entity_count_repository import EntityCountRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.oauth.oauth1_service import OAuth1Service
+from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.domains.oauth.repository import (
+    OAuthConnectionRepository,
+    OAuthCredentialRepository,
+    OAuthSourceRepository,
+)
+from airweave.domains.source_connections.repository import SourceConnectionRepository
+from airweave.domains.source_connections.response import ResponseBuilder
+from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
+from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
-
-if TYPE_CHECKING:
-    from airweave.core.config import Settings
-    from airweave.core.protocols import CircuitBreaker, OcrProvider
-    from airweave.core.protocols.event_bus import EventBus
+from airweave.platform.temporal.client import TemporalClient
 
 
 def create_container(settings: Settings) -> Container:
@@ -85,7 +99,7 @@ def create_container(settings: Settings) -> Container:
     # Event Bus
     # Fans out domain events to subscribers (webhooks, analytics, etc.)
     # -----------------------------------------------------------------
-    event_bus = _create_event_bus(webhook_publisher=svix_adapter)
+    event_bus = _create_event_bus(webhook_publisher=svix_adapter, settings=settings)
 
     # -----------------------------------------------------------------
     # Circuit Breaker + OCR
@@ -95,6 +109,12 @@ def create_container(settings: Settings) -> Container:
     circuit_breaker = _create_circuit_breaker()
     ocr_provider = _create_ocr_provider(circuit_breaker, settings)
 
+    # -----------------------------------------------------------------
+    # Health service
+    # Owns shutdown flag and orchestrates readiness probes.
+    # -----------------------------------------------------------------
+    health = _create_health_service(settings)
+
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
     # registry so it can compute supported_auth_providers per source.
@@ -103,6 +123,7 @@ def create_container(settings: Settings) -> Container:
     source_deps = _create_source_services(settings)
 
     return Container(
+        health=health,
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
@@ -112,9 +133,12 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],
         sc_repo=source_deps["sc_repo"],
+        collection_repo=source_deps["collection_repo"],
         conn_repo=source_deps["conn_repo"],
         cred_repo=source_deps["cred_repo"],
+        oauth1_service=source_deps["oauth1_service"],
         oauth2_service=source_deps["oauth2_service"],
+        source_connection_service=source_deps["source_connection_service"],
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
@@ -126,15 +150,44 @@ def create_container(settings: Settings) -> Container:
 # ---------------------------------------------------------------------------
 
 
-def _create_event_bus(webhook_publisher: WebhookPublisher) -> EventBus:
+def _create_health_service(settings: Settings) -> HealthService:
+    """Create the health service with infrastructure probes.
+
+    All known probes (postgres, redis, temporal) are always registered.
+    The critical-vs-informational split comes from
+    ``settings.health_critical_probes``.
+    """
+    critical_names = settings.health_critical_probes
+
+    probes = {
+        "postgres": PostgresHealthProbe(health_check_engine),
+        "redis": RedisHealthProbe(redis_client.client),
+        "temporal": TemporalHealthProbe(lambda: TemporalClient._client),
+    }
+
+    unknown = critical_names - probes.keys()
+    if unknown:
+        logger.warning(
+            "HEALTH_CRITICAL_PROBES references unknown probes: %s",
+            ", ".join(sorted(unknown)),
+        )
+
+    critical = [p for name, p in probes.items() if name in critical_names]
+    informational = [p for name, p in probes.items() if name not in critical_names]
+
+    return HealthService(
+        critical=critical,
+        informational=informational,
+        timeout=settings.HEALTH_CHECK_TIMEOUT,
+    )
+
+
+def _create_event_bus(webhook_publisher: WebhookPublisher, settings: Settings) -> EventBus:
     """Create event bus with subscribers wired up.
 
     The event bus fans out domain events to:
     - WebhookEventSubscriber: External webhooks via Svix (all events)
-
-    Future subscribers:
-    - PubSubSubscriber: Redis PubSub for real-time UI updates
-    - AnalyticsSubscriber: PostHog tracking
+    - AnalyticsEventSubscriber: PostHog analytics tracking
     """
     bus = InMemoryEventBus()
 
@@ -144,10 +197,16 @@ def _create_event_bus(webhook_publisher: WebhookPublisher) -> EventBus:
     for pattern in webhook_subscriber.EVENT_PATTERNS:
         bus.subscribe(pattern, webhook_subscriber.handle)
 
+    # AnalyticsEventSubscriber — forwards domain events to PostHog
+    tracker = PostHogTracker(settings)
+    analytics_subscriber = AnalyticsEventSubscriber(tracker)
+    for pattern in analytics_subscriber.EVENT_PATTERNS:
+        bus.subscribe(pattern, analytics_subscriber.handle)
+
     return bus
 
 
-def _create_circuit_breaker() -> "CircuitBreaker":
+def _create_circuit_breaker() -> CircuitBreaker:
     """Create the shared circuit breaker for provider failover.
 
     Uses a 120-second cooldown: after a provider fails, it is skipped
@@ -156,7 +215,7 @@ def _create_circuit_breaker() -> "CircuitBreaker":
     return InMemoryCircuitBreaker(cooldown_seconds=120)
 
 
-def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings") -> "OcrProvider":
+def _create_ocr_provider(circuit_breaker: CircuitBreaker, settings: Settings) -> OcrProvider:
     """Create OCR provider with fallback chain.
 
     Chain order: Mistral (cloud) -> Docling (local service, if configured).
@@ -165,9 +224,6 @@ def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings"
     raises: ValueError if no OCR providers are available
     returns: FallbackOcrProvider with the available OCR providers
     """
-    from airweave.adapters.ocr.fallback import FallbackOcrProvider
-    from airweave.adapters.ocr.mistral import MistralOcrAdapter
-
     try:
         mistral_ocr = MistralOcrAdapter()
     except Exception as e:
@@ -202,7 +258,7 @@ def _create_source_services(settings: Settings) -> dict:
     2. Entity definition registry (no dependencies)
     3. Source registry (depends on both)
     4. Repository adapters (thin wrappers around crud singletons)
-    5. OAuth2 adapter (thin wrapper around oauth2_service singleton)
+    5. OAuth2 service (with injected repos, encryptor, settings)
     6. SourceLifecycleService (depends on all of the above)
     """
     auth_provider_registry = AuthProviderRegistry()
@@ -216,9 +272,37 @@ def _create_source_services(settings: Settings) -> dict:
 
     # Repository adapters
     sc_repo = SourceConnectionRepository()
+    collection_repo = CollectionRepository()
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
-    oauth2_svc = OAuth2Service()
+    entity_count_repo = EntityCountRepository()
+    sync_job_repo = SyncJobRepository()
+    oauth1_svc = OAuth1Service()
+    oauth2_svc = OAuth2Service(
+        settings=settings,
+        conn_repo=OAuthConnectionRepository(),
+        cred_repo=OAuthCredentialRepository(),
+        encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
+        source_repo=OAuthSourceRepository(),
+    )
+
+    response_builder = ResponseBuilder(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        credential_repo=cred_repo,
+        source_registry=source_registry,
+        entity_count_repo=entity_count_repo,
+        sync_job_repo=sync_job_repo,
+    )
+
+    source_connection_service = SourceConnectionService(
+        sc_repo=sc_repo,
+        collection_repo=collection_repo,
+        connection_repo=conn_repo,
+        source_registry=source_registry,
+        auth_provider_registry=auth_provider_registry,
+        response_builder=response_builder,
+    )
 
     source_service = SourceService(
         source_registry=source_registry,
@@ -238,8 +322,11 @@ def _create_source_services(settings: Settings) -> dict:
         "source_registry": source_registry,
         "auth_provider_registry": auth_provider_registry,
         "sc_repo": sc_repo,
+        "collection_repo": collection_repo,
         "conn_repo": conn_repo,
         "cred_repo": cred_repo,
+        "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
+        "source_connection_service": source_connection_service,
         "source_lifecycle_service": source_lifecycle_service,
     }

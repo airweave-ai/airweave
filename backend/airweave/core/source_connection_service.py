@@ -35,7 +35,6 @@ from airweave.schemas.source_connection import (
     OAuthTokenAuthentication,
     SourceConnection,
     SourceConnectionCreate,
-    SourceConnectionListItem,
     SourceConnectionUpdate,
 )
 
@@ -374,65 +373,6 @@ class SourceConnectionService:
         )
 
         return source_connection
-
-    async def get(
-        self,
-        db: AsyncSession,
-        *,
-        id: UUID,
-        ctx: ApiContext,
-    ) -> SourceConnection:
-        """Get a source connection with complete details."""
-        source_conn = await crud.source_connection.get(db, id=id, ctx=ctx)
-        if not source_conn:
-            raise HTTPException(status_code=404, detail="Source connection not found")
-
-        return await self._build_source_connection_response(db, source_conn, ctx)
-
-    async def list(
-        self,
-        db: AsyncSession,
-        *,
-        ctx: ApiContext,
-        readable_collection_id: Optional[str] = None,
-        skip: int = 0,
-        limit: int = 100,
-    ) -> List[SourceConnectionListItem]:
-        """List source connections with complete stats."""
-        # Use the new CRUD method that fetches all data efficiently
-        connections_with_stats = await crud.source_connection.get_multi_with_stats(
-            db, ctx=ctx, collection_id=readable_collection_id, skip=skip, limit=limit
-        )
-
-        # Transform to schema objects
-        result = []
-        for data in connections_with_stats:
-            # Extract last job status for status computation
-            last_job = data.get("last_job", {})
-            last_job_status = last_job.get("status") if last_job else None
-
-            # Build clean list item
-            result.append(
-                SourceConnectionListItem(
-                    # Core fields
-                    id=data["id"],
-                    name=data["name"],
-                    short_name=data["short_name"],
-                    readable_collection_id=data["readable_collection_id"],
-                    created_at=data["created_at"],
-                    modified_at=data["modified_at"],
-                    # Authentication
-                    is_authenticated=data["is_authenticated"],
-                    authentication_method=data.get("authentication_method"),
-                    # Stats
-                    entity_count=data.get("entity_count", 0),
-                    # Hidden fields for status computation
-                    is_active=data.get("is_active", True),
-                    last_job_status=last_job_status,
-                )
-            )
-
-        return result
 
     async def update(
         self,
@@ -2018,7 +1958,6 @@ class SourceConnectionService:
     _get_connection_for_source_connection = (
         source_connection_helpers.get_connection_for_source_connection
     )
-    _create_sync = source_connection_helpers.create_sync
     _create_sync_without_schedule = source_connection_helpers.create_sync_without_schedule
     _create_source_connection = source_connection_helpers.create_source_connection
     # [code blue] deprecate once source_connections domain is live

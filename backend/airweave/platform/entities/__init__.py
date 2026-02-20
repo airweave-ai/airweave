@@ -15,6 +15,12 @@ from .airtable import (
     AirtableTableEntity,
     AirtableUserEntity,
 )
+from .apollo import (
+    ApolloAccountEntity,
+    ApolloContactEntity,
+    ApolloEmailActivityEntity,
+    ApolloSequenceEntity,
+)
 from .asana import (
     AsanaCommentEntity,
     AsanaFileEntity,
@@ -79,6 +85,12 @@ from .file_stub import (
 )
 from .fireflies import (
     FirefliesTranscriptEntity,
+from .freshdesk import (
+    FreshdeskCompanyEntity,
+    FreshdeskContactEntity,
+    FreshdeskConversationEntity,
+    FreshdeskSolutionArticleEntity,
+    FreshdeskTicketEntity,
 )
 from .github import (
     GitHubCodeFileEntity,
@@ -288,6 +300,12 @@ from .zoho_crm import (
 )
 
 ENTITIES_BY_SOURCE: dict[str, list[type]] = {
+    "apollo": [
+        ApolloAccountEntity,
+        ApolloContactEntity,
+        ApolloEmailActivityEntity,
+        ApolloSequenceEntity,
+    ],
     "airtable": [
         AirtableAttachmentEntity,
         AirtableBaseEntity,
@@ -362,6 +380,12 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
     ],
     "fireflies": [
         FirefliesTranscriptEntity,
+    "freshdesk": [
+        FreshdeskCompanyEntity,
+        FreshdeskContactEntity,
+        FreshdeskConversationEntity,
+        FreshdeskSolutionArticleEntity,
+        FreshdeskTicketEntity,
     ],
     "github": [
         GitHubCodeFileEntity,

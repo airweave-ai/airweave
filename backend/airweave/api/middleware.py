@@ -560,16 +560,10 @@ def _build_endpoint_name(request: Request) -> str:
 
 
 def _should_skip_analytics(request: Request) -> bool:
-    """Skip analytics for certain paths."""
-    skip_paths = {
-        "/health",
-        "/metrics",
-        "/docs",
-        "/openapi.json",
-        "/favicon.ico",
-        "/redoc",
-    }
-    return request.url.path in skip_paths
+    """Skip analytics for certain paths (including sub-paths like /health/ready)."""
+    skip_prefixes = ("/health", "/metrics", "/docs", "/openapi.json", "/favicon.ico", "/redoc")
+    path = request.url.path
+    return any(path == p or path.startswith(p + "/") for p in skip_prefixes)
 
 
 async def _track_api_call_async(

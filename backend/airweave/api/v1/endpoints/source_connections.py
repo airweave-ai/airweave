@@ -29,6 +29,7 @@ from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
+from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.schemas.errors import (
     ConflictErrorResponse,
     NotFoundErrorResponse,
@@ -233,6 +234,9 @@ async def list(
         description="Maximum number of connections to return (1-1000)",
         json_schema_extra={"example": 100},
     ),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> List[schemas.SourceConnectionListItem]:
     """List source connections with minimal fields for performance."""
     return await source_connection_service.list(
@@ -270,6 +274,9 @@ async def get(
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> schemas.SourceConnection:
     """Get a source connection with full details."""
     result = await source_connection_service.get(
