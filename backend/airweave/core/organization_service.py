@@ -569,7 +569,7 @@ class OrganizationService:
             else:
                 await _payment_gateway.cancel_subscription(
                     subscription_id=org_billing.stripe_subscription_id,
-                    cancel_at_period_end=False,
+                    at_period_end=False,
                 )
             logger.info(f"Successfully deleted billing record for organization: {org_name}")
         except Exception as e:
