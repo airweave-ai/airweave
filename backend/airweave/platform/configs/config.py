@@ -88,6 +88,21 @@ class ClickUpConfig(SourceConfig):
     pass
 
 
+class CodaConfig(SourceConfig):
+    """Coda configuration schema."""
+
+    doc_id: Optional[str] = Field(
+        default=None,
+        title="Doc ID",
+        description="Sync only this doc (leave empty to sync all docs the token can access).",
+    )
+    folder_id: Optional[str] = Field(
+        default=None,
+        title="Folder ID",
+        description="Limit docs to this folder (optional).",
+    )
+
+
 class ConfluenceConfig(SourceConfig):
     """Confluence configuration schema."""
 

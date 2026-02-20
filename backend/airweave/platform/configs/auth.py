@@ -348,6 +348,20 @@ class ClickUpAuthConfig(OAuth2AuthConfig):
     # Inherits access_token from OAuth2AuthConfig
 
 
+class CodaAuthConfig(APIKeyAuthConfig):
+    """Coda authentication credentials schema.
+
+    Uses Personal API Token from Coda Account settings (Generate API token).
+    Pipedream maps this to their 'api_token' via SOURCE_FIELD_MAPPING in PipedreamAuthProvider.
+    """
+
+    api_key: str = Field(
+        title="Personal API Token",
+        description="Coda Personal API Token from Account settings",
+        min_length=10,
+    )
+
+
 class ConfluenceAuthConfig(OAuth2WithRefreshAuthConfig):
     """Confluence authentication credentials schema."""
 

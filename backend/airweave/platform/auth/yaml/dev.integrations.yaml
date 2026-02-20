@@ -355,6 +355,9 @@ integrations:
     url_template: true
     backend_url_template: true
 
+  coda:
+    # Coda API v1 uses Personal API Token (DIRECT auth). OAuth via Packs can be added later.
+
   clickup:
     oauth_type: "access_only"
     url: "https://app.clickup.com/api"

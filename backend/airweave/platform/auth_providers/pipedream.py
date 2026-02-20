@@ -95,6 +95,12 @@ class PipedreamAuthProvider(BaseAuthProvider):
         # Add more mappings as needed when names differ
     }
 
+    # Per-source override for field names (Airweave field -> Pipedream field).
+    # Use when a source's auth config uses one name but Pipedream returns another.
+    SOURCE_FIELD_MAPPING = {
+        "coda": {"api_key": "api_token"},  # Pipedream Coda app uses api_token
+    }
+
     @classmethod
     async def create(
         cls, credentials: Optional[Any] = None, config: Optional[Dict[str, Any]] = None
@@ -138,15 +144,20 @@ class PipedreamAuthProvider(BaseAuthProvider):
         """
         return self.SLUG_NAME_MAPPING.get(airweave_short_name, airweave_short_name)
 
-    def _map_field_name(self, airweave_field: str) -> str:
+    def _map_field_name(self, airweave_field: str, source_short_name: Optional[str] = None) -> str:
         """Map an Airweave field name to the corresponding Pipedream field name.
 
         Args:
             airweave_field: The Airweave field name
+            source_short_name: Optional source short name for per-source override
 
         Returns:
             The corresponding Pipedream field name
         """
+        if source_short_name:
+            source_map = self.SOURCE_FIELD_MAPPING.get(source_short_name, {})
+            if airweave_field in source_map:
+                return source_map[airweave_field]
         return self.FIELD_NAME_MAPPING.get(airweave_field, airweave_field)
 
     async def _ensure_valid_token(self) -> str:
@@ -445,8 +456,10 @@ class PipedreamAuthProvider(BaseAuthProvider):
         self.logger.info(f"📦 [Pipedream] Available credential fields: {list(credentials.keys())}")
 
         for airweave_field in source_auth_config_fields:
-            # Map the field name if needed
-            pipedream_field = self._map_field_name(airweave_field)
+            # Map the field name if needed (per-source override, then global)
+            pipedream_field = self._map_field_name(
+                airweave_field, source_short_name=source_short_name
+            )
 
             if airweave_field != pipedream_field:
                 self.logger.info(
