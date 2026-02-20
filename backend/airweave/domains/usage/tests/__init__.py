@@ -1,0 +1,1 @@
+"""Usage domain tests."""

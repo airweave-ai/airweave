@@ -11,8 +11,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.core.shared_models import ActionType
 from airweave.db.session import get_db_context
+from airweave.domains.usage.types import ActionType
 from airweave.platform.sync.actions.entity.types import (
     EntityActionBatch,
     EntityDeleteAction,
@@ -67,8 +67,11 @@ class EntityPostgresHandler(EntityActionHandler):
         if not skip_guardrails:
             total_synced = len(batch.inserts) + len(batch.updates)
             if total_synced > 0:
-                await sync_context.guard_rail.increment(ActionType.ENTITIES, amount=total_synced)
-                sync_context.logger.debug(f"[EntityPostgres] guard_rail += {total_synced}")
+                async with get_db_context() as db:
+                    await sync_context.usage_service.increment(
+                        db, ActionType.ENTITIES, amount=total_synced
+                    )
+                sync_context.logger.debug(f"[EntityPostgres] usage_service += {total_synced}")
 
     async def handle_inserts(
         self,

@@ -21,11 +21,9 @@ from airweave.core.exceptions import (
     AirweaveException,
     InvalidStateError,
     NotFoundException,
-    PaymentRequiredException,
     PermissionException,
     RateLimitExceededException,
     TokenRefreshError,
-    UsageLimitExceededException,
     unpack_validation_error,
 )
 from airweave.core.logging import logger
@@ -430,42 +428,6 @@ async def airweave_exception_handler(request: Request, exc: AirweaveException) -
 
     # Default for unmapped AirweaveException subclasses
     return JSONResponse(status_code=500, content={"detail": str(exc)})
-
-
-async def payment_required_exception_handler(
-    request: Request, exc: PaymentRequiredException
-) -> JSONResponse:
-    """Exception handler for PaymentRequiredException.
-
-    Args:
-    ----
-        request (Request): The incoming request that triggered the exception.
-        exc (PaymentRequiredException): The exception object that was raised.
-
-    Returns:
-    -------
-        JSONResponse: A 400 Bad Request status response that details the error message.
-
-    """
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
-
-
-async def usage_limit_exceeded_exception_handler(
-    request: Request, exc: UsageLimitExceededException
-) -> JSONResponse:
-    """Exception handler for UsageLimitExceededException.
-
-    Args:
-    ----
-        request (Request): The incoming request that triggered the exception.
-        exc (UsageLimitExceededException): The exception object that was raised.
-
-    Returns:
-    -------
-        JSONResponse: A 400 Bad Request status response that details the error message.
-
-    """
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 async def invalid_state_exception_handler(request: Request, exc: InvalidStateError) -> JSONResponse:

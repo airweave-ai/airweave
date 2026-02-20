@@ -5,7 +5,7 @@ all components needed for a sync run.
 """
 
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +14,6 @@ from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.platform.builders import SyncContextBuilder
-from airweave.platform.sync.actions import EntityActionResolver, EntityDispatcherBuilder
-from airweave.platform.sync.config import SyncConfig, SyncConfigBuilder
 from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.actions import (
     ACActionDispatcher,
@@ -23,13 +21,16 @@ from airweave.platform.sync.actions import (
     EntityActionResolver,
     EntityDispatcherBuilder,
 )
-from airweave.platform.sync.config import SyncExecutionConfig
+from airweave.platform.sync.config import SyncConfig, SyncConfigBuilder
 from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.handlers import ACPostgresHandler
 from airweave.platform.sync.orchestrator import SyncOrchestrator
 from airweave.platform.sync.pipeline.acl_membership_tracker import ACLMembershipTracker
 from airweave.platform.sync.stream import AsyncSourceStream
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
+
+if TYPE_CHECKING:
+    from airweave.domains.usage.protocols import UsageEnforcementProtocol
 
 
 class SyncFactory:
@@ -52,6 +53,7 @@ class SyncFactory:
         max_workers: int = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
+        usage_service: Optional["UsageEnforcementProtocol"] = None,
     ) -> SyncOrchestrator:
         """Create a dedicated orchestrator instance for a sync run.
 
@@ -70,6 +72,7 @@ class SyncFactory:
             force_full_sync: If True, forces a full sync with orphaned entity deletion
             execution_config: Optional execution config for controlling sync behavior
                 (overrides job-level config if provided)
+            usage_service: Optional usage enforcement service for tracking and limits
 
         Returns:
             A dedicated SyncOrchestrator instance
@@ -84,7 +87,7 @@ class SyncFactory:
         logger.info("Creating sync context via context builders...")
 
         # Step 0: Build layered sync configuration
-        # Resolution order: schema defaults → env vars → collection → sync → sync_job → execution_config
+        # Resolution order: defaults → env → collection → sync → sync_job → exec_config
         resolved_config = SyncConfigBuilder.build(
             collection_overrides=collection.sync_config,
             sync_overrides=sync.sync_config,
@@ -106,6 +109,7 @@ class SyncFactory:
             access_token=access_token,
             force_full_sync=force_full_sync,
             execution_config=resolved_config,
+            usage_service=usage_service,
         )
 
         logger.debug(f"Sync context created in {time.time() - init_start:.2f}s")

@@ -73,15 +73,6 @@ class CollectionStatus(str, Enum):
     ERROR = "ERROR"
 
 
-class ActionType(str, Enum):
-    """Action type enum."""
-
-    ENTITIES = "entities"
-    QUERIES = "queries"
-    SOURCE_CONNECTIONS = "source_connections"
-    TEAM_MEMBERS = "team_members"
-
-
 class RateLimitLevel(str, Enum):
     """Rate limiting level for sources.
 

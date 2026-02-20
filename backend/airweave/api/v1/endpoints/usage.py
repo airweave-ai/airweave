@@ -12,9 +12,12 @@ from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceededException
-from airweave.core.guard_rail_service import GuardRailService
-from airweave.core.shared_models import ActionType
+from airweave.domains.billing.types import get_plan_limits
+from airweave.domains.organizations.repository import UserOrganizationRepository
+from airweave.domains.source_connections.repository import SourceConnectionRepository
+from airweave.domains.usage.exceptions import PaymentRequiredError, UsageLimitExceededError
+from airweave.domains.usage.protocols import UsageEnforcementProtocol
+from airweave.domains.usage.types import ActionType
 from airweave.models import BillingPeriod, Usage
 from airweave.schemas.organization_billing import BillingPlan
 from airweave.schemas.usage_dashboard import (
@@ -25,6 +28,10 @@ from airweave.schemas.usage_dashboard import (
 )
 
 router = TrailingSlashRouter()
+
+# Stateless repos for counting team members and source connections
+_user_org_repo = UserOrganizationRepository()
+_sc_repo = SourceConnectionRepository()
 
 
 class ActionCheckRequest(BaseModel):
@@ -52,8 +59,9 @@ class ActionCheckResponse(BaseModel):
 @router.post("/check-actions", response_model=ActionCheckResponse)
 async def check_actions(
     request: ActionCheckRequest,
+    db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
 ) -> ActionCheckResponse:
     """Check multiple actions for usage limits and billing status.
 
@@ -80,13 +88,13 @@ async def check_actions(
 
         try:
             # Check if the action is allowed
-            is_allowed = await guard_rail.is_allowed(action_type, amount=amount)
+            is_allowed = await usage_service.is_allowed(db, action_type, amount=amount)
 
             results[action] = schemas.SingleActionCheckResponse(
                 allowed=is_allowed, action=action, reason=None, details=None
             )
 
-        except PaymentRequiredException as e:
+        except PaymentRequiredError as e:
             # Action blocked due to billing status
             results[action] = schemas.SingleActionCheckResponse(
                 allowed=False,
@@ -95,7 +103,7 @@ async def check_actions(
                 details={"message": str(e), "payment_status": e.payment_status},
             )
 
-        except UsageLimitExceededException as e:
+        except UsageLimitExceededError as e:
             # Action blocked due to usage limit
             results[action] = schemas.SingleActionCheckResponse(
                 allowed=False,
@@ -121,8 +129,9 @@ async def check_actions(
 async def check_action(
     action: str = Query(..., description="Action to check e.g. queries, entities"),
     amount: int = Query(1, ge=1, description="Number of units to check (default 1)"),
+    db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
 ) -> schemas.SingleActionCheckResponse:
     """Check a single action for usage limits and billing status."""
     try:
@@ -137,18 +146,18 @@ async def check_action(
         )
 
     try:
-        is_allowed = await guard_rail.is_allowed(action_type, amount=amount)
+        is_allowed = await usage_service.is_allowed(db, action_type, amount=amount)
         return schemas.SingleActionCheckResponse(
             allowed=is_allowed, action=action, reason=None, details=None
         )
-    except PaymentRequiredException as e:
+    except PaymentRequiredError as e:
         return schemas.SingleActionCheckResponse(
             allowed=False,
             action=action,
             reason="payment_required",
             details={"message": str(e), "payment_status": e.payment_status},
         )
-    except UsageLimitExceededException as e:
+    except UsageLimitExceededError as e:
         return schemas.SingleActionCheckResponse(
             allowed=False,
             action=action,
@@ -300,12 +309,8 @@ async def _build_previous_periods(
         db, organization_id=organization_id, limit=limit
     )
 
-    # Get team member and source connections count from guard rail service
-    team_guard_rail = GuardRailService(
-        organization_id=organization_id, logger=ctx.logger.with_context(component="guardrail")
-    )
-    team_members_count = await team_guard_rail.get_team_member_count()
-    source_connections_count = await team_guard_rail.get_source_connection_count()
+    team_members_count = await _user_org_repo.count_members(db, organization_id)
+    source_connections_count = await _sc_repo.count_by_organization(db, organization_id)
 
     previous_periods = []
     for period in previous_periods_data:
@@ -321,9 +326,7 @@ async def _build_previous_periods(
         except Exception:
             plan_enum = BillingPlan.PRO
 
-        period_limits = GuardRailService.PLAN_LIMITS.get(
-            plan_enum, GuardRailService.PLAN_LIMITS[BillingPlan.PRO]
-        )
+        period_limits = get_plan_limits(plan_enum)
 
         status_str, plan_str = _get_status_and_plan_strings(period)
 
@@ -383,18 +386,11 @@ async def get_usage_dashboard(
         except Exception:
             plan_enum = BillingPlan.PRO
 
-        plan_limits = GuardRailService.PLAN_LIMITS.get(
-            plan_enum, GuardRailService.PLAN_LIMITS[BillingPlan.PRO]
-        )
+        plan_limits = get_plan_limits(plan_enum)
 
-        # Get team member count from guard rail service (already injected)
-        # Note: guard_rail is not injected here, so create one
-        usage_guard_rail = GuardRailService(
-            organization_id=ctx.organization.id,
-            logger=ctx.logger.with_context(component="guardrail"),
-        )
-        team_members_count = await usage_guard_rail.get_team_member_count()
-        source_connections_count = await usage_guard_rail.get_source_connection_count()
+        # Get team member and source connection counts
+        team_members_count = await _user_org_repo.count_members(db, ctx.organization.id)
+        source_connections_count = await _sc_repo.count_by_organization(db, ctx.organization.id)
 
         # Create usage snapshot
         usage_snapshot = _create_usage_snapshot(

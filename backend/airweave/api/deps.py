@@ -21,11 +21,11 @@ from airweave.core.config import settings
 from airweave.core.container import Container
 from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import NotFoundException, RateLimitExceededException
-from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.logging import ContextualLogger, logger
 from airweave.core.rate_limiter_service import RateLimiter
 from airweave.core.shared_models import AuthMethod
 from airweave.db.session import get_db
+from airweave.domains.usage.protocols import UsageEnforcementProtocol
 from airweave.schemas.rate_limit import RateLimitResult
 
 
@@ -447,30 +447,6 @@ async def get_logger(
     return context.logger
 
 
-async def get_guard_rail_service(
-    ctx: ApiContext = Depends(get_context),
-) -> GuardRailService:
-    """Get a GuardRailService instance for the current organization.
-
-    This dependency creates a GuardRailService instance that can be used to check
-    if actions are allowed based on the organization's usage limits and payment status.
-
-    Args:
-    ----
-        ctx (ApiContext): The authentication context containing organization_id.
-        contextual_logger (ContextualLogger): Logger with authentication context.
-
-    Returns:
-    -------
-        GuardRailService: An instance configured for the current organization.
-    """
-    contextual_logger = ctx.logger
-    return GuardRailService(
-        organization_id=ctx.organization.id,
-        logger=contextual_logger.with_context(component="guardrail"),
-    )
-
-
 async def get_user(
     db: AsyncSession = Depends(get_db),
     auth0_user: Optional[Auth0User] = Depends(auth0.get_user),
@@ -648,3 +624,18 @@ def Inject(protocol_type: type):  # noqa: N802 — uppercase to match FastAPI co
         return getattr(c, field_name)
 
     return Depends(_resolve)
+
+
+async def get_usage_service(
+    ctx: ApiContext = Depends(get_context),
+    c: Container = Depends(get_container),
+) -> UsageEnforcementProtocol:
+    """Get a per-organization usage enforcement service.
+
+    Uses the container's factory to create a stateful service instance
+    for the current organization.
+    """
+    return c.usage_service_factory.create(
+        organization_id=ctx.organization.id,
+        logger=ctx.logger.with_context(component="usage"),
+    )

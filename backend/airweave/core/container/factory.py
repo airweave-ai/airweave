@@ -108,6 +108,11 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     billing_deps = _create_billing_services(settings)
 
+    # -----------------------------------------------------------------
+    # Usage domain (factory creates per-org enforcement services)
+    # -----------------------------------------------------------------
+    usage_service_factory = _create_usage_service_factory(settings, billing_deps, source_deps)
+
     return Container(
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
@@ -126,6 +131,7 @@ def create_container(settings: Settings) -> Container:
         webhook_service=webhook_service,
         billing_service=billing_deps["billing_service"],
         billing_webhook=billing_deps["billing_webhook"],
+        usage_service_factory=usage_service_factory,
     )
 
 
@@ -300,4 +306,26 @@ def _create_billing_services(settings: "Settings") -> dict:
     return {
         "billing_service": billing_service,
         "billing_webhook": billing_webhook,
+        "billing_repo": billing_repo,
+        "period_repo": period_repo,
     }
+
+
+def _create_usage_service_factory(settings: "Settings", billing_deps: dict, source_deps: dict):
+    """Create usage service factory: real if billing is enabled, null for local dev."""
+    if settings.LOCAL_DEVELOPMENT:
+        from airweave.domains.usage.factory import NullUsageServiceFactory
+
+        return NullUsageServiceFactory()
+
+    from airweave.domains.organizations.repository import UserOrganizationRepository
+    from airweave.domains.usage.factory import UsageServiceFactory
+    from airweave.domains.usage.repository import UsageRepository
+
+    return UsageServiceFactory(
+        usage_repo=UsageRepository(),
+        billing_repo=billing_deps["billing_repo"],
+        period_repo=billing_deps["period_repo"],
+        sc_repo=source_deps["sc_repo"],
+        user_org_repo=UserOrganizationRepository(),
+    )

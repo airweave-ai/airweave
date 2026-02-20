@@ -27,7 +27,7 @@ class SyncContext:
     - infra: Core infrastructure (ctx, logger)
     - source: Source pipeline (source instance, cursor)
     - destinations: Destination pipeline (destinations, entity_map)
-    - tracking: Progress tracking (entity_tracker, state_publisher, guard_rail)
+    - tracking: Progress tracking (entity_tracker, state_publisher, usage_service)
     - batch: Batch processing settings
 
     Schema objects are kept at top level for convenience.
@@ -119,9 +119,9 @@ class SyncContext:
         return self.tracking.state_publisher
 
     @property
-    def guard_rail(self):
-        """Shortcut to tracking.guard_rail."""
-        return self.tracking.guard_rail
+    def usage_service(self):
+        """Shortcut to tracking.usage_service."""
+        return self.tracking.usage_service
 
     @property
     def force_full_sync(self):

@@ -7,12 +7,15 @@ from typing import Optional
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
-from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceededException
-from airweave.core.guard_rail_service import ActionType
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
+from airweave.domains.usage.exceptions import (
+    PaymentRequiredError,
+    UsageLimitExceededError,
+)
+from airweave.domains.usage.types import ActionType
 from airweave.platform.contexts import SyncContext
 from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.entity_pipeline import EntityPipeline
@@ -148,13 +151,14 @@ class SyncOrchestrator:
             # Always finalize progress and trackers with error message if available
             await self._finalize_progress_and_trackers(final_status, error_message)
 
-            # Always flush guard rail usage to prevent data loss
+            # Always flush usage service usage to prevent data loss
             try:
-                self.sync_context.logger.info("Flushing guard rail usage data...")
-                await self.sync_context.guard_rail.flush_all()
+                self.sync_context.logger.info("Flushing usage service usage data...")
+                async with get_db_context() as db:
+                    await self.sync_context.usage_service.flush_all(db)
             except Exception as flush_error:
                 self.sync_context.logger.error(
-                    f"Failed to flush guard rail usage: {flush_error}", exc_info=True
+                    f"Failed to flush usage service usage: {flush_error}", exc_info=True
                 )
 
             # Always cleanup temp files to prevent pod eviction
@@ -210,8 +214,14 @@ class SyncOrchestrator:
                 # Check guardrails unless explicitly skipped
                 if not self.sync_context.execution_config.behavior.skip_guardrails:
                     try:
-                        await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
-                    except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
+                        async with get_db_context() as db:
+                            await self.sync_context.usage_service.is_allowed(
+                                db, ActionType.ENTITIES
+                            )
+                    except (
+                        UsageLimitExceededError,
+                        PaymentRequiredError,
+                    ) as guard_error:
                         self.sync_context.logger.error(
                             "Guard rail check failed: {type}: {error}".format(
                                 type=type(guard_error).__name__,

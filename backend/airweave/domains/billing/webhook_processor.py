@@ -28,7 +28,7 @@ from airweave.domains.billing.types import (
     PlanInferenceContext,
     compare_plans,
 )
-from airweave.domains.organizations.repository import OrganizationRepositoryProtocol
+from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
 from airweave.schemas.billing_period import BillingPeriodStatus, BillingTransition
 from airweave.schemas.organization_billing import (
     BillingPlan,

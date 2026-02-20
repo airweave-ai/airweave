@@ -15,3 +15,7 @@ class SourceConnectionRepositoryProtocol(Protocol):
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
         """Get a source connection by ID within an organization."""
         ...
+
+    async def count_by_organization(self, db: AsyncSession, organization_id: UUID) -> int:
+        """Count source connections belonging to an organization."""
+        ...

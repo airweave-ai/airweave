@@ -1,7 +1,7 @@
 """Sync context builder - orchestrates all context builders."""
 
 import asyncio
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,9 @@ from airweave.platform.builders.tracking import TrackingContextBuilder
 from airweave.platform.contexts.batch import BatchContext
 from airweave.platform.contexts.sync import SyncContext
 from airweave.platform.sync.config import SyncConfig
+
+if TYPE_CHECKING:
+    from airweave.domains.usage.protocols import UsageEnforcementProtocol
 
 
 class SyncContextBuilder:
@@ -32,6 +35,7 @@ class SyncContextBuilder:
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
+        usage_service: Optional["UsageEnforcementProtocol"] = None,
     ) -> SyncContext:
         """Build complete sync context using all builders.
 
@@ -48,6 +52,7 @@ class SyncContextBuilder:
             access_token: Optional token to use instead of stored credentials
             force_full_sync: If True, forces a full sync with orphaned entity deletion
             execution_config: Optional execution config for controlling sync behavior
+            usage_service: Optional usage enforcement service for tracking and limits
 
         Returns:
             SyncContext with all sub-contexts assembled.
@@ -99,6 +104,7 @@ class SyncContextBuilder:
             sync=sync,
             sync_job=sync_job,
             infra=infra,
+            usage_service=usage_service,
         )
 
         # Run all builders in parallel

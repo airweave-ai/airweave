@@ -402,6 +402,7 @@ class RunSyncActivity:
     ):
         """Run the actual sync service."""
         from airweave import crud
+        from airweave.core.container import container
         from airweave.core.exceptions import NotFoundException
         from airweave.core.sync_service import sync_service
         from airweave.db.session import get_db_context
@@ -420,6 +421,14 @@ class RunSyncActivity:
         except Exception as e:
             ctx.logger.warning(f"Failed to load execution config from DB: {e}")
 
+        # Create usage service at the Temporal boundary
+        usage_service = None
+        if container is not None and container.usage_service_factory is not None:
+            usage_service = container.usage_service_factory.create(
+                organization_id=ctx.organization.id,
+                logger=ctx.logger.with_context(component="usage"),
+            )
+
         try:
             return await sync_service.run(
                 sync=sync,
@@ -430,6 +439,7 @@ class RunSyncActivity:
                 access_token=access_token,
                 force_full_sync=force_full_sync,
                 execution_config=execution_config,
+                usage_service=usage_service,
             )
         except NotFoundException as e:
             if "Source connection record not found" in str(e) or "Connection not found" in str(e):
