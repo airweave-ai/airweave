@@ -89,6 +89,14 @@ def fake_ocr_provider():
 
 
 @pytest.fixture
+def fake_secrets_provider():
+    """Fake SecretsProvider backed by a dict."""
+    from airweave.adapters.secrets.fake import FakeSecretsProvider
+
+    return FakeSecretsProvider()
+
+
+@pytest.fixture
 def fake_source_service():
     """Fake SourceService that returns canned source schemas."""
     from airweave.domains.sources.fakes.service import FakeSourceService
@@ -205,6 +213,7 @@ def test_container(
     fake_webhook_admin,
     fake_circuit_breaker,
     fake_ocr_provider,
+    fake_secrets_provider,
     fake_source_service,
     fake_endpoint_verifier,
     fake_webhook_service,
@@ -238,6 +247,7 @@ def test_container(
         webhook_service=fake_webhook_service,
         circuit_breaker=fake_circuit_breaker,
         ocr_provider=fake_ocr_provider,
+        secrets_provider=fake_secrets_provider,
         source_service=fake_source_service,
         source_registry=fake_source_registry,
         auth_provider_registry=fake_auth_provider_registry,

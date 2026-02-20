@@ -10,6 +10,7 @@ from airweave.core.protocols.circuit_breaker import CircuitBreaker
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandler
 from airweave.core.protocols.ocr import OcrProvider
+from airweave.core.protocols.secrets_provider import SecretsProvider
 from airweave.core.protocols.webhooks import (
     EndpointVerifier,
     WebhookAdmin,
@@ -27,6 +28,7 @@ __all__ = [
     "HealthProbe",
     "HealthServiceProtocol",
     "OcrProvider",
+    "SecretsProvider",
     "WebhookAdmin",
     "WebhookPublisher",
     "WebhookServiceProtocol",

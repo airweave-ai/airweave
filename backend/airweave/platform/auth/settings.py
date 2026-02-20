@@ -7,7 +7,6 @@ import yaml
 
 from airweave.core.config import settings as core_settings
 from airweave.core.logging import logger
-from airweave.core.secrets import secret_client
 from airweave.platform.auth.schemas import (
     APIKeyAuthSettings,
     BaseAuthSettings,
@@ -152,11 +151,12 @@ class IntegrationSettings:
                 f"No client/consumer secret found for {settings.integration_short_name}"
             )
 
-        # In production, fetch from Azure Key Vault
-        # In dev/local, use the raw value from YAML
+        # In production, fetch from Azure Key Vault via the container.
+        # In dev/local, use the raw value from YAML.
         if core_settings.ENVIRONMENT == "prd":
-            secret = await secret_client.get_secret(secret_field)
-            return secret.value
+            from airweave.core.container import container
+
+            return await container.secrets_provider.get_secret(secret_field)
         else:
             return secret_field
 

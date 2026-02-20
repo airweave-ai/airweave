@@ -10,10 +10,14 @@ Design principles:
 - Testable: can unit test factory logic with mock settings
 """
 
+from typing import Any
+
 from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
+from airweave.adapters.secrets import InMemorySecretsProvider
+from airweave.adapters.secrets.azure_keyvault import AzureKeyVaultSecretsProvider
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
@@ -27,6 +31,7 @@ from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
 from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
+from airweave.core.protocols.secrets_provider import SecretsProvider
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
@@ -115,6 +120,11 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     health = _create_health_service(settings)
 
+    # -----------------------------------------------------------------
+    # Secrets provider (Azure Key Vault or fake for local/test)
+    # -----------------------------------------------------------------
+    secrets_provider = _create_secrets_provider(settings)
+
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
     # registry so it can compute supported_auth_providers per source.
@@ -125,6 +135,7 @@ def create_container(settings: Settings) -> Container:
     return Container(
         health=health,
         event_bus=event_bus,
+        secrets_provider=secrets_provider,
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
         circuit_breaker=circuit_breaker,
@@ -215,6 +226,27 @@ def _create_circuit_breaker() -> CircuitBreaker:
     return InMemoryCircuitBreaker(cooldown_seconds=120)
 
 
+def _create_secrets_provider(settings: Settings) -> SecretsProvider:
+    """Create the secrets provider based on environment.
+
+    Uses Azure Key Vault for ``dev`` and ``prd`` environments when
+    ``AZURE_KEYVAULT_NAME`` is configured.  Falls back to an in-memory
+    provider seeded from settings for local development and testing.
+    """
+    if settings.ENVIRONMENT in ("dev", "prd") and settings.AZURE_KEYVAULT_NAME:
+        logger.info("Using AzureKeyVaultSecretsProvider (vault=%s)", settings.AZURE_KEYVAULT_NAME)
+        return AzureKeyVaultSecretsProvider(vault_name=settings.AZURE_KEYVAULT_NAME)
+
+    secrets: dict[str, str] = {}
+    if settings.AWS_S3_DESTINATION_ACCESS_KEY_ID:
+        secrets["aws-iam-access-key-id"] = settings.AWS_S3_DESTINATION_ACCESS_KEY_ID
+    if settings.AWS_S3_DESTINATION_SECRET_ACCESS_KEY:
+        secrets["aws-iam-secret-access-key"] = settings.AWS_S3_DESTINATION_SECRET_ACCESS_KEY
+
+    logger.info("Using InMemorySecretsProvider (%d secret(s) seeded)", len(secrets))
+    return InMemorySecretsProvider(secrets=secrets)
+
+
 def _create_ocr_provider(circuit_breaker: CircuitBreaker, settings: Settings) -> OcrProvider:
     """Create OCR provider with fallback chain.
 
@@ -250,7 +282,7 @@ def _create_ocr_provider(circuit_breaker: CircuitBreaker, settings: Settings) ->
     return FallbackOcrProvider(providers=providers, circuit_breaker=circuit_breaker)
 
 
-def _create_source_services(settings: Settings) -> dict:
+def _create_source_services(settings: Settings) -> dict[str, Any]:
     """Create source services, registries, repository adapters, and lifecycle service.
 
     Build order matters:
