@@ -8,7 +8,7 @@ Context Types:
 - InfraContext: Core infrastructure (ctx, logger)
 - SourceContext: Source pipeline (source instance, cursor)
 - DestinationsContext: Destination pipeline (destinations, entity_map)
-- TrackingContext: Progress tracking (entity_tracker, state_publisher, guard_rail)
+- TrackingContext: Progress tracking (entity_tracker, state_publisher, usage_service)
 - BatchContext: Batch processing settings
 - SyncContext: Full sync context (composes all above)
 - CleanupContext: Minimal context for deletion operations

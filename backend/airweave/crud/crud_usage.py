@@ -6,8 +6,8 @@ from uuid import UUID
 from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.core.shared_models import ActionType
 from airweave.crud._base_organization import CRUDBaseOrganization
+from airweave.domains.usage.types import ActionType
 from airweave.models.usage import Usage
 from airweave.schemas.usage import UsageCreate, UsageUpdate
 
@@ -218,7 +218,7 @@ class CRUDUsage(CRUDBaseOrganization[Usage, UsageCreate, UsageUpdate]):
                 from airweave.schemas.usage import Usage as UsageSchema
 
                 updated = UsageSchema.model_validate(updated_model)
-                # Computed fields not stored in DB, populated separately by guard_rail
+                # Computed fields not stored in DB, populated separately by usage service
                 updated.team_members = None
                 updated.source_connections = None
 

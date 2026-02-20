@@ -21,13 +21,13 @@ from airweave.api.examples import (
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.collection_service import collection_service
 from airweave.core.events.collection import CollectionLifecycleEvent
-from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.protocols import EventBus
-from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
 from airweave.core.source_connection_service_helpers import source_connection_helpers
 from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
+from airweave.domains.usage.protocols import UsageEnforcementProtocol
+from airweave.domains.usage.types import ActionType
 from airweave.schemas.errors import (
     NotFoundErrorResponse,
     RateLimitErrorResponse,
@@ -314,7 +314,7 @@ async def refresh_all_source_connections(
     ),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
     background_tasks: BackgroundTasks,
 ) -> List[schemas.SourceConnectionJob]:
     """Trigger data synchronization for all source connections in the collection."""
@@ -335,7 +335,7 @@ async def refresh_all_source_connections(
         return []
 
     # Check if we're allowed to process entities
-    await guard_rail.is_allowed(ActionType.ENTITIES)
+    await usage_service.is_allowed(db, ActionType.ENTITIES)
 
     # Create a sync job for each source connection and run it in the background
     sync_jobs = []
@@ -392,6 +392,7 @@ async def refresh_all_source_connections(
                     collection_obj,  # Use the already converted object
                     source_connection,
                     ctx,
+                    usage_service=usage_service,
                 )
 
         except Exception as e:

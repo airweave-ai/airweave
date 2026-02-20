@@ -35,7 +35,7 @@ from airweave.domains.billing.types import (
     get_plan_limits,
     is_paid_plan,
 )
-from airweave.domains.organizations.repository import OrganizationRepositoryProtocol
+from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
 from airweave.schemas.organization_billing import (
     BillingPlan,
     BillingStatus,

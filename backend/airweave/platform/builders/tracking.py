@@ -3,17 +3,21 @@
 Builds progress tracking components:
 - EntityTracker: Centralized entity state tracking
 - SyncStatePublisher: Redis pubsub publishing
-- GuardRailService: Rate limiting
+- UsageEnforcementService: Usage tracking and limit enforcement
 """
+
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.core.guard_rail_service import GuardRailService
 from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.contexts.tracking import TrackingContext
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
 from airweave.platform.sync.state_publisher import SyncStatePublisher
+
+if TYPE_CHECKING:
+    from airweave.domains.usage.protocols import UsageEnforcementProtocol
 
 
 class TrackingContextBuilder:
@@ -26,6 +30,7 @@ class TrackingContextBuilder:
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
         infra: InfraContext,
+        usage_service: Optional["UsageEnforcementProtocol"] = None,
     ) -> TrackingContext:
         """Build complete tracking context.
 
@@ -34,11 +39,11 @@ class TrackingContextBuilder:
             sync: Sync configuration
             sync_job: The sync job being tracked
             infra: Infrastructure context (provides ctx and logger)
+            usage_service: Optional usage enforcement service for limit tracking
 
         Returns:
             TrackingContext with all tracking components.
         """
-        ctx = infra.ctx
         logger = infra.logger
 
         # Load initial entity counts from database
@@ -66,16 +71,10 @@ class TrackingContextBuilder:
             logger=logger,
         )
 
-        # Create GuardRailService with contextual logger
-        guard_rail = GuardRailService(
-            organization_id=ctx.organization.id,
-            logger=logger.with_context(component="guardrail"),
-        )
-
         logger.info(f"✅ Created EntityTracker and SyncStatePublisher for job {sync_job.id}")
 
         return TrackingContext(
             entity_tracker=entity_tracker,
             state_publisher=state_publisher,
-            guard_rail=guard_rail,
+            usage_service=usage_service,
         )

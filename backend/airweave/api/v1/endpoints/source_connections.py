@@ -24,11 +24,11 @@ from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
-from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.protocols import EventBus
-from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
+from airweave.domains.usage.protocols import UsageEnforcementProtocol
+from airweave.domains.usage.types import ActionType
 from airweave.schemas.errors import (
     ConflictErrorResponse,
     NotFoundErrorResponse,
@@ -156,17 +156,17 @@ async def create(
     db: AsyncSession = Depends(get_db),
     source_connection_in: schemas.SourceConnectionCreate,
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
     event_bus: EventBus = Inject(EventBus),
 ) -> schemas.SourceConnection:
     """Create a new source connection."""
     # Check if organization is allowed to create a source connection
-    await guard_rail.is_allowed(ActionType.SOURCE_CONNECTIONS)
+    await usage_service.is_allowed(db, ActionType.SOURCE_CONNECTIONS)
 
     # If sync_immediately is True or None (will be defaulted), check if we can process entities
     # Note: We check even for None because it may default to True based on auth method
     if source_connection_in.sync_immediately:
-        await guard_rail.is_allowed(ActionType.ENTITIES)
+        await usage_service.is_allowed(db, ActionType.ENTITIES)
 
     result = await source_connection_service.create(
         db,
@@ -356,7 +356,7 @@ async def delete(
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
     event_bus: EventBus = Inject(EventBus),
 ) -> schemas.SourceConnection:
     """Delete a source connection and all related data."""
@@ -410,7 +410,7 @@ async def run(
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
     force_full_sync: bool = Query(
         False,
         description=(
@@ -422,7 +422,7 @@ async def run(
 ) -> schemas.SourceConnectionJob:
     """Trigger a sync run for a source connection."""
     # Check if organization is allowed to process entities
-    await guard_rail.is_allowed(ActionType.ENTITIES)
+    await usage_service.is_allowed(db, ActionType.ENTITIES)
 
     run = await source_connection_service.run(
         db,

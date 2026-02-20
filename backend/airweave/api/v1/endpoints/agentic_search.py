@@ -9,14 +9,17 @@ import asyncio
 import json
 
 from fastapi import Depends, HTTPException, Path
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.pubsub import core_pubsub
-from airweave.core.shared_models import ActionType, FeatureFlag
+from airweave.core.shared_models import FeatureFlag
+from airweave.db.session import get_db
+from airweave.domains.usage.protocols import UsageEnforcementProtocol
+from airweave.domains.usage.types import ActionType
 from airweave.search.agentic_search.core.agent import AgenticSearchAgent
 from airweave.search.agentic_search.emitter import (
     AgenticSearchLoggingEmitter,
@@ -33,8 +36,9 @@ router = TrailingSlashRouter()
 async def agentic_search(
     request: AgenticSearchRequest,
     readable_id: str = Path(..., description="The unique readable identifier of the collection"),
+    db: AsyncSession = Depends(get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
 ) -> AgenticSearchResponse:
     """Perform agentic search."""
     if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
@@ -43,7 +47,7 @@ async def agentic_search(
             detail="AGENTIC_SEARCH feature not enabled for this organization",
         )
 
-    await guard_rail.is_allowed(ActionType.QUERIES)
+    await usage_service.is_allowed(db, ActionType.QUERIES)
 
     services = await AgenticSearchServices.create(ctx, readable_id)
 
@@ -53,7 +57,7 @@ async def agentic_search(
 
         response = await agent.run(readable_id, request, is_streaming=False)
 
-        await guard_rail.increment(ActionType.QUERIES)
+        await usage_service.increment(db, ActionType.QUERIES)
 
         return response
     finally:
@@ -64,8 +68,9 @@ async def agentic_search(
 async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acceptable
     request: AgenticSearchRequest,
     readable_id: str = Path(..., description="The unique readable identifier of the collection"),
+    db: AsyncSession = Depends(get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
 ) -> StreamingResponse:
     """Streaming agentic search endpoint using Server-Sent Events.
 
@@ -87,7 +92,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
         f"mode={request.mode}, filter={request.filter}"
     )
 
-    await guard_rail.is_allowed(ActionType.QUERIES)
+    await usage_service.is_allowed(db, ActionType.QUERIES)
 
     # Subscribe to events before starting the search
     pubsub = await core_pubsub.subscribe("agentic_search", request_id)
@@ -148,7 +153,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
                         if event_type == "done":
                             ctx.logger.info(f"[AgenticSearchStream] Done event for {request_id}")
                             try:
-                                await guard_rail.increment(ActionType.QUERIES)
+                                await usage_service.increment(db, ActionType.QUERIES)
                             except Exception:
                                 pass
                             break

@@ -33,6 +33,7 @@ from airweave.domains.sources.protocols import (
     SourceRegistryProtocol,
     SourceServiceProtocol,
 )
+from airweave.domains.usage.protocols import UsageServiceFactoryProtocol
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,9 @@ class Container:
     # Billing domain
     billing_service: BillingServiceProtocol
     billing_webhook: BillingWebhookProtocol
+
+    # Usage domain (factory creates per-org stateful services)
+    usage_service_factory: UsageServiceFactoryProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

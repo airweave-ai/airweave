@@ -23,13 +23,11 @@ from airweave.api.middleware import (
     invalid_state_exception_handler,
     log_requests,
     not_found_exception_handler,
-    payment_required_exception_handler,
     permission_exception_handler,
     rate_limit_exception_handler,
     rate_limit_headers_middleware,
     request_body_size_middleware,
     request_timeout_middleware,
-    usage_limit_exceeded_exception_handler,
     validation_exception_handler,
 )
 from airweave.api.router import TrailingSlashRouter
@@ -40,10 +38,8 @@ from airweave.core.exceptions import (
     AirweaveException,
     InvalidStateError,
     NotFoundException,
-    PaymentRequiredException,
     PermissionException,
     RateLimitExceededException,
-    UsageLimitExceededException,
 )
 from airweave.core.logging import logger
 from airweave.db.init_db import init_db
@@ -142,8 +138,6 @@ app.exception_handler(RequestValidationError)(validation_exception_handler)
 app.exception_handler(ValidationError)(validation_exception_handler)
 app.exception_handler(PermissionException)(permission_exception_handler)
 app.exception_handler(NotFoundException)(not_found_exception_handler)
-app.exception_handler(PaymentRequiredException)(payment_required_exception_handler)
-app.exception_handler(UsageLimitExceededException)(usage_limit_exceeded_exception_handler)
 app.exception_handler(RateLimitExceededException)(rate_limit_exception_handler)
 app.exception_handler(InvalidStateError)(invalid_state_exception_handler)
 
