@@ -27,7 +27,12 @@ from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtoco
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
-from airweave.domains.oauth.protocols import OAuth1ServiceProtocol, OAuth2ServiceProtocol
+from airweave.domains.oauth.protocols import (
+    OAuth1ServiceProtocol,
+    OAuth2ServiceProtocol,
+    OAuthCallbackServiceProtocol,
+    OAuthFlowServiceProtocol,
+)
 from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
     SourceConnectionServiceProtocol,
@@ -102,6 +107,8 @@ class Container:
     # OAuth services
     oauth1_service: OAuth1ServiceProtocol
     oauth2_service: OAuth2ServiceProtocol
+    oauth_flow_service: OAuthFlowServiceProtocol
+    oauth_callback_service: OAuthCallbackServiceProtocol
 
     # Source connection service — domain service for source connections
     source_connection_service: SourceConnectionServiceProtocol

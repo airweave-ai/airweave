@@ -198,6 +198,22 @@ def fake_oauth1_service():
 
 
 @pytest.fixture
+def fake_oauth_flow_service():
+    """Fake OAuthFlowService."""
+    from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
+
+    return FakeOAuthFlowService()
+
+
+@pytest.fixture
+def fake_oauth_callback_service():
+    """Fake OAuthCallbackService."""
+    from airweave.domains.oauth.fakes.callback_service import FakeOAuthCallbackService
+
+    return FakeOAuthCallbackService()
+
+
+@pytest.fixture
 def test_container(
     fake_health_service,
     fake_event_bus,
@@ -217,6 +233,8 @@ def test_container(
     fake_oauth1_service,
     fake_oauth2_service,
     fake_source_connection_service,
+    fake_oauth_flow_service,
+    fake_oauth_callback_service,
     fake_source_lifecycle_service,
 ):
     """A Container with all dependencies replaced by fakes.
@@ -248,5 +266,7 @@ def test_container(
         oauth1_service=fake_oauth1_service,
         oauth2_service=fake_oauth2_service,
         source_connection_service=fake_source_connection_service,
+        oauth_flow_service=fake_oauth_flow_service,
+        oauth_callback_service=fake_oauth_callback_service,
         source_lifecycle_service=fake_source_lifecycle_service,
     )
