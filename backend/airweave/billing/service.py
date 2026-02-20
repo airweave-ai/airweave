@@ -6,13 +6,12 @@ between the business logic, repository, and Stripe client.
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.api.context import ApiContext
 from airweave.billing.plan_logic import (
     ChangeType,
     PlanChangeContext,
@@ -24,6 +23,7 @@ from airweave.billing.plan_logic import (
     is_paid_plan,
 )
 from airweave.billing.transactions import billing_transactions
+from airweave.core.context import BaseContext
 from airweave.core.exceptions import InvalidStateError, NotFoundException
 from airweave.core.logging import ContextualLogger, logger
 from airweave.core.shared_models import AuthMethod
@@ -45,20 +45,12 @@ class BillingService:
         self,
         organization: schemas.Organization,
         source: str = "billing_service",
-    ) -> ApiContext:
+    ) -> BaseContext:
         """Create a system context for billing operations."""
-        request_id = str(uuid4())
-        return ApiContext(
-            request_id=request_id,
-            auth_method=AuthMethod.INTERNAL_SYSTEM,
-            auth_subject_id=str(uuid4()),
-            auth_subject_name=f"billing_{source}",
+        return BaseContext(
             organization=organization,
-            user=None,
             logger=logger.with_context(
-                request_id=request_id,
                 organization_id=str(organization.id),
-                auth_method=AuthMethod.INTERNAL_SYSTEM.value,
                 source=source,
             ),
         )
@@ -80,7 +72,7 @@ class BillingService:
         organization: Organization,
         stripe_customer_id: str,
         billing_email: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: UnitOfWork,
         contextual_logger: Optional[ContextualLogger] = None,
     ) -> schemas.OrganizationBilling:
@@ -177,7 +169,7 @@ class BillingService:
         *,
         billing: schemas.OrganizationBilling,
         target_plan: BillingPlan,
-        ctx: ApiContext,
+        ctx: BaseContext,
         db: AsyncSession,
         update_price_immediately: bool,
     ) -> str:
@@ -295,7 +287,7 @@ class BillingService:
         plan: str,
         success_url: str,
         cancel_url: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Start a subscription checkout flow."""
         billing = await billing_transactions.get_billing_record(db, ctx.organization.id)
@@ -361,7 +353,7 @@ class BillingService:
         plan: str,
         success_url: str,
         cancel_url: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Start a yearly prepay checkout flow for organizations without a subscription.
 
@@ -436,7 +428,7 @@ class BillingService:
     async def update_subscription_plan(  # noqa: C901
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         new_plan: str,
         period: str = "monthly",
     ) -> str:
@@ -697,7 +689,7 @@ class BillingService:
     async def cancel_subscription(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Cancel subscription at period end."""
         billing = await billing_transactions.get_billing_record(db, ctx.organization.id)
@@ -726,7 +718,7 @@ class BillingService:
     async def reactivate_subscription(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Reactivate a canceled subscription."""
         billing = await billing_transactions.get_billing_record(db, ctx.organization.id)
@@ -758,7 +750,7 @@ class BillingService:
     async def cancel_pending_plan_change(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Cancel a pending plan change."""
         billing = await billing_transactions.get_billing_record(db, ctx.organization.id)
@@ -795,7 +787,7 @@ class BillingService:
     async def create_customer_portal_session(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         return_url: str,
     ) -> str:
         """Create Stripe customer portal session."""

@@ -894,7 +894,7 @@ class CleanupStuckSyncJobsActivity:
     async def _cancel_stuck_job(self, job, now, db, crud, logger) -> bool:
         """Cancel a single stuck job via Temporal and update database."""
         from airweave import schemas
-        from airweave.api.context import ApiContext
+        from airweave.core.context import BaseContext
         from airweave.core.shared_models import SyncJobStatus
         from airweave.core.sync_job_service import sync_job_service
         from airweave.core.temporal_service import temporal_service
@@ -918,12 +918,8 @@ class CleanupStuckSyncJobsActivity:
             logger.error(f"Failed to fetch organization {org_id} for job {job_id}: {e}")
             return False
 
-        ctx = ApiContext(
-            request_id=f"cleanup-{job_id}",
+        ctx = BaseContext(
             organization=schemas.Organization.model_validate(organization),
-            user=None,
-            auth_method="system",
-            auth_metadata={"source": "cleanup_activity"},
             logger=logger,
         )
 

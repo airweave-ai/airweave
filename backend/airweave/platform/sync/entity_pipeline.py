@@ -70,77 +70,57 @@ class EntityPipeline:
 
         Args:
             entities: Entities to process
-            sync_context: Sync context with all required components
-            runtime: Sync runtime with entity_tracker, source, etc.
+            sync_context: Sync context (frozen data)
+            runtime: Sync runtime (live services)
         """
-        # Phase 1: Track and deduplicate (FIRST - before any processing)
         unique_entities = await self._track_and_dedupe(entities, sync_context)
         if not unique_entities:
             return
 
-        # Phase 2: Prepare entities (populate fields, enrich metadata, compute hash)
-        await self._prepare_entities(unique_entities, sync_context)
+        await self._prepare_entities(unique_entities, sync_context, runtime)
 
-        # Phase 3: Resolve actions (includes bulk DB lookup)
         batch = await self._resolver.resolve(unique_entities, sync_context)
 
-        # Phase 4: Early exit for KEEP-only batches
         if not batch.has_mutations:
             await self._handle_keep_only_batch(batch, sync_context)
             return
 
-        # Phase 5: Dispatch to all handlers (handlers process content as needed)
-        # Content processing (text → chunks → embeddings) is handled by destination processors
-        # via DestinationHandler
         await self._dispatcher.dispatch(batch, sync_context, runtime)
 
-        # Phase 6: Update tracker with successes → triggers pubsub
         await self._update_tracker(batch, sync_context)
 
-        # Phase 7: Progressive cleanup: delete temp files after successful processing
         await self._cleanup_temp_files_for_batch(batch, sync_context)
 
-    async def cleanup_orphaned_entities(self, sync_context: SyncContext) -> None:
+    async def cleanup_orphaned_entities(
+        self, sync_context: SyncContext, runtime: SyncRuntime
+    ) -> None:
         """Remove entities from database/destinations that were not encountered during sync.
-
-        Called at the end of sync to clean up entities that exist in the database
-        but were not seen during this sync run (deleted at source).
-
-        Dispatches to ALL handlers via dispatcher:
-        - DestinationHandler (Qdrant/Vespa) - deletes from vector stores
-        - ArfHandler - deletes from ARF storage
-        - EntityPostgresHandler - deletes from metadata DB
 
         Args:
             sync_context: Sync context
+            runtime: Sync runtime
         """
-        # Get orphan entity IDs grouped by definition
         orphans_by_definition = await self._identify_orphans(sync_context)
         if not orphans_by_definition:
             return
 
-        # Flatten for dispatcher (it just needs all IDs)
         all_orphan_ids = [
             entity_id for entity_ids in orphans_by_definition.values() for entity_id in entity_ids
         ]
 
-        # Dispatch cleanup to ALL handlers (destinations + postgres)
         await self._dispatcher.dispatch_orphan_cleanup(all_orphan_ids, sync_context)
 
-        # Update tracker with orphan deletion counts per definition
         for definition_id, entity_ids in orphans_by_definition.items():
             await self._tracker.record_deletes(definition_id, len(entity_ids))
 
-    async def cleanup_temp_files(self, sync_context: SyncContext) -> None:
+    async def cleanup_temp_files(self, sync_context: SyncContext, runtime: SyncRuntime) -> None:
         """Remove entire sync_job_id directory (final cleanup safety net).
 
-        Called in orchestrator's finally block to ensure cleanup happens even if
-        pipeline fails.
-
         Args:
-            sync_context: Sync context with source and logger
+            sync_context: Sync context
+            runtime: Sync runtime (provides source.file_downloader)
         """
-        await cleanup_service.cleanup_temp_files(sync_context)
+        await cleanup_service.cleanup_temp_files(sync_context, runtime)
 
     # -------------------------------------------------------------------------
     # Phase 1: Track and Deduplicate
@@ -151,23 +131,10 @@ class EntityPipeline:
         entities: List[BaseEntity],
         sync_context: SyncContext,
     ) -> List[BaseEntity]:
-        """Track entities and filter duplicates.
-
-        This is the FIRST operation in the pipeline. Tracking must happen before
-        any other processing to ensure accurate encounter tracking for orphan detection.
-
-        Args:
-            entities: Raw entities from source
-            sync_context: Sync context
-
-        Returns:
-            List of unique (non-duplicate) entities
-        """
-        # Populate base fields first (needed for entity_id)
+        """Track entities and filter duplicates."""
         for entity in entities:
             self._populate_base_entity_fields_from_flags(entity)
 
-        # Track and filter duplicates
         unique = []
         skipped_count = 0
 
@@ -190,11 +157,6 @@ class EntityPipeline:
                 f"Filtered {skipped_count} duplicates from batch of {len(entities)}"
             )
 
-        # Update progress with encounter counts
-        # This is now handled implicitly by track_entity but we might want to
-        # update the detailed state publisher if we want real-time encounter stats
-        # For now, we rely on the next batch processing to trigger publish
-
         if not unique:
             sync_context.logger.debug("All entities in batch were duplicates")
 
@@ -208,18 +170,11 @@ class EntityPipeline:
         self,
         entities: List[BaseEntity],
         sync_context: SyncContext,
+        runtime: SyncRuntime,
     ) -> None:
-        """Prepare entities: enrich metadata and compute hashes.
-
-        Args:
-            entities: Unique entities to prepare
-            sync_context: Sync context
-        """
-        # Enrich with metadata
+        """Prepare entities: enrich metadata and compute hashes."""
         await self._enrich_early_metadata(entities, sync_context)
-
-        # Compute content hashes
-        await hash_computer.compute_for_batch(entities, sync_context)
+        await hash_computer.compute_for_batch(entities, sync_context, runtime)
 
     # -------------------------------------------------------------------------
     # Phase 4: Handle KEEP-only batches
@@ -230,14 +185,8 @@ class EntityPipeline:
         batch: EntityActionBatch,
         sync_context: SyncContext,
     ) -> None:
-        """Handle batch where all entities are KEEP (unchanged).
-
-        Args:
-            batch: EntityActionBatch with only KEEP actions
-            sync_context: Sync context
-        """
+        """Handle batch where all entities are KEEP (unchanged)."""
         if batch.keeps:
-            # We record kept entities and trigger publish
             await self._tracker.record_kept(len(batch.keeps))
             await self._state_publisher.check_and_publish()
 
@@ -245,7 +194,6 @@ class EntityPipeline:
                 f"All {len(batch.keeps)} entities unchanged - skipping pipeline"
             )
 
-            # Progressive cleanup: delete temp files for KEEP entities
             await self._cleanup_temp_files_for_batch(batch, sync_context)
 
     # -------------------------------------------------------------------------
@@ -257,15 +205,7 @@ class EntityPipeline:
         batch: EntityActionBatch,
         sync_context: SyncContext,
     ) -> None:
-        """Update entity tracker with successful operations.
-
-        Triggers pubsub updates via SyncStatePublisher.
-
-        Args:
-            batch: EntityActionBatch that was successfully processed
-            sync_context: Sync context
-        """
-        # Collect counts by entity definition
+        """Update entity tracker with successful operations."""
         inserts_by_def: Dict[UUID, int] = defaultdict(int)
         updates_by_def: Dict[UUID, int] = defaultdict(int)
         deletes_by_def: Dict[UUID, int] = defaultdict(int)
@@ -283,7 +223,6 @@ class EntityPipeline:
             deletes_by_def[action.entity_definition_id] += 1
             entity_names[action.entity_definition_id] = action.entity_type
 
-        # Update tracker in one call (includes kept/skipped from global stats)
         await self._tracker.record_batch_results(
             inserts_by_def=inserts_by_def,
             updates_by_def=updates_by_def,
@@ -292,7 +231,6 @@ class EntityPipeline:
             entity_names=entity_names,
         )
 
-        # Trigger pubsub update
         await self._state_publisher.check_and_publish()
 
     # -------------------------------------------------------------------------
@@ -300,25 +238,15 @@ class EntityPipeline:
     # -------------------------------------------------------------------------
 
     async def _identify_orphans(self, sync_context: SyncContext) -> Dict[UUID, List[str]]:
-        """Identify orphaned entity IDs (in DB but not encountered), grouped by definition.
-
-        Args:
-            sync_context: Sync context
-
-        Returns:
-            Dict mapping entity_definition_id to list of orphaned entity IDs
-        """
+        """Identify orphaned entity IDs (in DB but not encountered), grouped by definition."""
         from airweave import crud
         from airweave.db.session import get_db_context
 
-        # Get all encountered IDs
         encountered_ids = self._tracker.get_all_encountered_ids_flat()
 
-        # Get all stored entity IDs for this sync
         async with get_db_context() as db:
             stored_entities = await crud.entity.get_by_sync_id(db=db, sync_id=sync_context.sync.id)
 
-        # Find orphans grouped by definition
         orphans_by_definition: Dict[UUID, List[str]] = defaultdict(list)
         for entity in stored_entities:
             if entity.entity_id not in encountered_ids:
@@ -343,13 +271,7 @@ class EntityPipeline:
         batch: EntityActionBatch,
         sync_context: SyncContext,
     ) -> None:
-        """Clean up temp files for processed batch.
-
-        Args:
-            batch: EntityActionBatch that was processed
-            sync_context: Sync context
-        """
-        # Build a pseudo-partitions dict for compatibility with CleanupService
+        """Clean up temp files for processed batch."""
         partitions = {
             "inserts": [a.entity for a in batch.inserts],
             "updates": [a.entity for a in batch.updates],
@@ -358,7 +280,7 @@ class EntityPipeline:
         await cleanup_service.cleanup_processed_files(partitions, sync_context)
 
     # -------------------------------------------------------------------------
-    # Helper Methods (unchanged from original)
+    # Helper Methods
     # -------------------------------------------------------------------------
 
     def _get_flagged_field_value(self, entity: BaseEntity, flag_name: str) -> Any:
@@ -407,9 +329,6 @@ class EntityPipeline:
             if entity.airweave_system_metadata is None:
                 entity.airweave_system_metadata = AirweaveSystemMetadata()
 
-            # For snapshot sources, preserve the original source_name from the captured entity
-            # (the entity was reconstructed with its original system metadata intact).
-            # For all other sources, set source_name from the current source instance.
             is_snapshot = sync_context.source_short_name == "snapshot"
             if not (is_snapshot and entity.airweave_system_metadata.source_name):
                 entity.airweave_system_metadata.source_name = sync_context.source_short_name
@@ -417,7 +336,6 @@ class EntityPipeline:
             entity.airweave_system_metadata.sync_id = sync_context.sync.id
             entity.airweave_system_metadata.sync_job_id = sync_context.sync_job.id
 
-        # Validate
         for entity in entities:
             if entity.airweave_system_metadata is None:
                 raise SyncFailureError(

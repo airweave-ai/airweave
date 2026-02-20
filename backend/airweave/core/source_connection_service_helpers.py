@@ -13,12 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.config import settings as core_settings
 from airweave.core.constants.reserved_ids import (
     NATIVE_VESPA_UUID,
 )
+from airweave.core.context import BaseContext
 from airweave.core.shared_models import (
     AuthMethod,
     ConnectionStatus,
@@ -51,7 +51,7 @@ class SourceConnectionHelpers:
     """Helper methods for source connection service."""
 
     async def _get_destination_connection_ids(
-        self, db: AsyncSession, ctx: ApiContext
+        self, db: AsyncSession, ctx: BaseContext
     ) -> list[UUID]:
         """Get destination connection IDs based on feature flags.
 
@@ -100,7 +100,7 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         collection_readable_id: str,
         new_destination_ids: List[UUID],
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> None:
         """Validate that new source uses same destination as existing sources.
 
@@ -155,8 +155,8 @@ class SourceConnectionHelpers:
 
     async def reconstruct_context_from_session(
         self, db: AsyncSession, init_session: ConnectionInitSession
-    ) -> ApiContext:
-        """Reconstruct ApiContext from stored session data.
+    ) -> BaseContext:
+        """Reconstruct BaseContext from stored session data.
 
         Used for OAuth callbacks where the user is not authenticated with the platform.
 
@@ -165,7 +165,7 @@ class SourceConnectionHelpers:
             init_session: The ConnectionInitSession containing org and user info
 
         Returns:
-            Reconstructed ApiContext for the session's organization
+            Reconstructed BaseContext for the session's organization
         """
         import uuid
 
@@ -191,12 +191,8 @@ class SourceConnectionHelpers:
             context_base="oauth",
         )
 
-        return ApiContext(
-            request_id=request_id,
+        return BaseContext(
             organization=organization_schema,
-            user=None,  # No user context for OAuth callbacks
-            auth_method=AuthMethod.OAUTH_CALLBACK,
-            auth_metadata={"session_id": str(init_session.id)},
             logger=base_logger,
         )
 
@@ -235,7 +231,7 @@ class SourceConnectionHelpers:
 
     # [code blue] replace with source_registry.get(short_name).auth_config_ref
     async def validate_auth_fields(
-        self, db: AsyncSession, short_name: str, auth_fields: dict, ctx: ApiContext
+        self, db: AsyncSession, short_name: str, auth_fields: dict, ctx: BaseContext
     ) -> AuthConfig:
         """Validate authentication fields against source schema."""
         source = await crud.source.get_by_short_name(db, short_name=short_name)
@@ -265,7 +261,7 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         short_name: str,
         config_fields: Any,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Dict[str, Any]:
         """Validate configuration fields against source schema, returning a plain dict.
 
@@ -352,7 +348,7 @@ class SourceConnectionHelpers:
         source: schemas.Source,
         auth_fields: AuthConfig,
         config_fields: Optional[ConfigValues],
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Dict[str, Any]:
         """Validate direct authentication credentials."""
         try:
@@ -384,7 +380,7 @@ class SourceConnectionHelpers:
         source: schemas.Source,
         access_token: str,
         config_fields: Optional[ConfigValues],
-        ctx: ApiContext,
+        ctx: BaseContext,
         credentials: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Validate OAuth access token.
@@ -421,7 +417,7 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         source: schemas.Source,
         auth_fields: Dict[str, Any],
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Any,
         auth_method: AuthenticationMethod = AuthenticationMethod.DIRECT,
     ) -> Any:
@@ -470,7 +466,7 @@ class SourceConnectionHelpers:
         name: str,
         source: schemas.Source,
         credential_id: Optional[UUID],
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Any,
     ) -> Any:
         """Create connection."""
@@ -484,7 +480,7 @@ class SourceConnectionHelpers:
         return await crud.connection.create(db, obj_in=conn_in, ctx=ctx, uow=uow)
 
     async def get_collection(
-        self, db: AsyncSession, collection_id: str, ctx: ApiContext
+        self, db: AsyncSession, collection_id: str, ctx: BaseContext
     ) -> schemas.Collection:
         """Get or validate collection exists."""
         if not collection_id:
@@ -507,7 +503,7 @@ class SourceConnectionHelpers:
         collection_readable_id: str,
         cron_schedule: Optional[str],
         run_immediately: bool,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Any,
     ) -> Tuple[schemas.Sync, Optional[schemas.SyncJob]]:
         """Create sync without creating Temporal schedule (for deferred schedule creation).
@@ -548,7 +544,7 @@ class SourceConnectionHelpers:
         sync_id: Optional[UUID],
         config_fields: Optional[Dict[str, Any]],
         is_authenticated: bool,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Any,
         auth_provider_id: Optional[str] = None,
         auth_provider_config: Optional[Dict[str, Any]] = None,
@@ -600,7 +596,7 @@ class SourceConnectionHelpers:
         self,
         db: AsyncSession,
         source_conn: SourceConnection,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> schemas.SourceConnection:
         """Build complete source connection response object.
 
@@ -837,7 +833,7 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         sync_id: UUID,
         cron_schedule: Optional[str],
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: UnitOfWork,
     ) -> None:
         """Update sync schedule in database and Temporal."""
@@ -870,7 +866,7 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         source_conn: Any,
         auth_fields: Any,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Any,
     ) -> None:
         """Update authentication fields."""
@@ -926,7 +922,7 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         obj_in: Any,  # Can be OAuthBrowserCreate or legacy SourceConnectionCreate
         state: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Any,
         redirect_session_id: Optional[UUID] = None,
         template_configs: Optional[dict] = None,
@@ -1054,7 +1050,7 @@ class SourceConnectionHelpers:
         )
 
     async def create_proxy_url(
-        self, db: AsyncSession, provider_auth_url: str, ctx: ApiContext, uow: Any = None
+        self, db: AsyncSession, provider_auth_url: str, ctx: BaseContext, uow: Any = None
     ) -> Tuple[str, datetime, UUID]:
         """Create proxy URL for OAuth flow.
 
@@ -1083,7 +1079,7 @@ class SourceConnectionHelpers:
         verifier: str,
         overrides: Dict[str, Any],
         oauth_settings: OAuth1Settings,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> "OAuth1TokenResponse":
         """Exchange OAuth1 verifier for access token.
 
@@ -1114,7 +1110,7 @@ class SourceConnectionHelpers:
         short_name: str,
         code: str,
         overrides: Dict[str, Any],
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> "OAuth2TokenResponse":
         """Exchange OAuth2 authorization code for access token.
 
@@ -1156,7 +1152,7 @@ class SourceConnectionHelpers:
         source_conn_shell: schemas.SourceConnection,
         init_session: Any,
         token_response: "OAuth1TokenResponse",
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Any:
         """Complete OAuth1 connection after callback.
 
@@ -1233,7 +1229,7 @@ class SourceConnectionHelpers:
         source_conn_shell: schemas.SourceConnection,
         init_session: Any,
         token_response: "OAuth2TokenResponse",
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Any:
         """Complete OAuth2 connection after callback.
 
@@ -1312,7 +1308,7 @@ class SourceConnectionHelpers:
         auth_fields: Dict[str, Any],
         auth_method_to_save: AuthenticationMethod,
         is_oauth1: bool,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Any:
         """Common logic for completing OAuth connections (shared by OAuth1/OAuth2).
 
@@ -1489,7 +1485,7 @@ class SourceConnectionHelpers:
         self,
         db: AsyncSession,
         source_connection: SourceConnection,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> schemas.Connection:
         """Get the Connection object for a SourceConnection.
 
