@@ -85,6 +85,7 @@ from .file_stub import (
 )
 from .fireflies import (
     FirefliesTranscriptEntity,
+)
 from .freshdesk import (
     FreshdeskCompanyEntity,
     FreshdeskContactEntity,
@@ -380,6 +381,7 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
     ],
     "fireflies": [
         FirefliesTranscriptEntity,
+    ],
     "freshdesk": [
         FreshdeskCompanyEntity,
         FreshdeskContactEntity,
