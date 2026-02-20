@@ -50,7 +50,6 @@ class Settings(BaseSettings):
         TEMPORAL_PORT (int): The Temporal server port.
         TEMPORAL_NAMESPACE (str): The namespace of the Temporal server.
         TEMPORAL_TASK_QUEUE (str): The task queue for the Temporal server.
-        TEMPORAL_ENABLED (bool): Whether Temporal is enabled.
         SYNC_MAX_WORKERS (int): The maximum number of workers for sync tasks.
         SYNC_THREAD_POOL_SIZE (int): The size of the thread pool for sync tasks.
         WEB_FETCHER_MAX_CONCURRENT (int): Max concurrent web scraping requests
@@ -179,8 +178,11 @@ class Settings(BaseSettings):
     TEMPORAL_PORT: int = 7233
     TEMPORAL_NAMESPACE: str = "default"
     TEMPORAL_TASK_QUEUE: str = "airweave-sync-queue"
-    TEMPORAL_ENABLED: bool = False
     TEMPORAL_DISABLE_SANDBOX: bool = False
+
+    # Health probe configuration
+    HEALTH_CHECK_TIMEOUT: float = 5.0
+    HEALTH_CRITICAL_PROBES: str = "postgres"
 
     # Temporal worker graceful shutdown configuration
     TEMPORAL_GRACEFUL_SHUTDOWN_TIMEOUT: int = 7200  # 2 hours in seconds
@@ -235,6 +237,14 @@ class Settings(BaseSettings):
     SVIX_URL: str = "http://localhost:8071"
     SVIX_JWT_SECRET: str = "default_signing_secret"
     WEBHOOK_VERIFY_ENDPOINTS: bool = True
+
+    @field_validator("HEALTH_CHECK_TIMEOUT", mode="before")
+    def validate_health_check_timeout(cls, v: float) -> float:
+        """Validate that the health-check timeout is positive."""
+        v = float(v)
+        if v <= 0:
+            raise ValueError("HEALTH_CHECK_TIMEOUT must be positive")
+        return v
 
     @field_validator("AZURE_KEYVAULT_NAME", mode="before")
     def validate_azure_keyvault_name(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
@@ -483,3 +493,10 @@ class Settings(BaseSettings):
             str: The Temporal server address in host:port format.
         """
         return f"{self.TEMPORAL_HOST}:{self.TEMPORAL_PORT}"
+
+    @property
+    def health_critical_probes(self) -> frozenset[str]:
+        """Probe names that gate HTTP 503 on the readiness endpoint."""
+        return frozenset(
+            name.strip() for name in self.HEALTH_CRITICAL_PROBES.split(",") if name.strip()
+        )

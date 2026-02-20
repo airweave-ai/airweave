@@ -25,6 +25,12 @@ class AsanaConfig(SourceConfig):
     pass
 
 
+class ApolloConfig(SourceConfig):
+    """Apollo configuration schema."""
+
+    pass
+
+
 class AttioConfig(SourceConfig):
     """Attio configuration schema."""
 
@@ -90,6 +96,14 @@ class ConfluenceConfig(SourceConfig):
 
 class DropboxConfig(SourceConfig):
     """Dropbox configuration schema."""
+
+
+class FirefliesConfig(SourceConfig):
+    """Fireflies configuration schema.
+
+    Syncs meeting transcripts (mine: true) from the Fireflies GraphQL API.
+    No additional config required for basic sync.
+    """
 
 
 class ElasticsearchConfig(SourceConfig):
@@ -777,6 +791,16 @@ class ZendeskConfig(SourceConfig):
         default=False,
         title="Exclude Closed Tickets",
         description="Skip closed tickets during sync (recommended for faster syncing)",
+    )
+
+
+class FreshdeskConfig(SourceConfig):
+    """Freshdesk configuration schema."""
+
+    domain: str = RequiredTemplateConfig(
+        title="Freshdesk Domain",
+        description=("Your Freshdesk domain only (e.g., 'mycompany' for mycompany.freshdesk.com)"),
+        json_schema_extra={"required_for_auth": True},
     )
 
 

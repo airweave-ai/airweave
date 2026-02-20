@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from airweave.platform.auth.schemas import OAuth2TokenResponse
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -35,8 +35,6 @@ from airweave.models.connection_init_session import (
 )
 from airweave.models.integration_credential import IntegrationType
 from airweave.models.source_connection import SourceConnection
-from airweave.models.sync import Sync
-from airweave.models.sync_job import SyncJob
 from airweave.platform.auth.oauth1_service import oauth1_service
 from airweave.platform.auth.oauth2_service import oauth2_service
 from airweave.platform.auth.schemas import OAuth1Settings
@@ -154,25 +152,6 @@ class SourceConnectionHelpers:
 
             # Found a valid comparison, done
             break
-
-    def _get_default_cron_schedule(self, ctx: ApiContext) -> str:
-        """Generate a default daily cron schedule based on current UTC time.
-
-        Returns:
-            A cron expression for daily execution at the current UTC time.
-        """
-        from datetime import datetime, timezone
-
-        now_utc = datetime.now(timezone.utc)
-        minute = now_utc.minute
-        hour = now_utc.hour
-        # Format: minute hour day_of_month month day_of_week
-        # e.g., "30 14 * * *" = run at 14:30 every day
-        cron_schedule = f"{minute} {hour} * * *"
-        ctx.logger.info(
-            f"No cron schedule provided, defaulting to daily at {hour:02d}:{minute:02d} UTC"
-        )
-        return cron_schedule
 
     async def reconstruct_context_from_session(
         self, db: AsyncSession, init_session: ConnectionInitSession
@@ -519,56 +498,6 @@ class SourceConnectionHelpers:
             raise HTTPException(status_code=404, detail=f"Collection '{collection_id}' not found")
         return collection
 
-    async def create_sync(
-        self,
-        db: AsyncSession,
-        name: str,
-        connection_id: UUID,
-        collection_id: UUID,
-        collection_readable_id: str,
-        cron_schedule: Optional[str],
-        run_immediately: bool,
-        ctx: ApiContext,
-        uow: Any,
-    ) -> Tuple[schemas.Sync, Optional[schemas.SyncJob]]:
-        """Create sync and optionally trigger initial run.
-
-        Connection ID here is the model.connection.id, not the model.source_connection.id
-        Collection ID is not used directly by sync, but kept for consistency
-        """
-        from airweave.core.sync_service import sync_service
-
-        # Default to 24-hour schedule if not provided
-        if cron_schedule is None:
-            now_utc = datetime.now(timezone.utc)
-            minute = now_utc.minute
-            hour = now_utc.hour
-            # Format: minute hour day_of_month month day_of_week
-            # e.g., "30 14 * * *" = run at 14:30 every day
-            cron_schedule = f"{minute} {hour} * * *"
-            ctx.logger.info(
-                f"No cron schedule provided, defaulting to daily at {hour:02d}:{minute:02d} UTC"
-            )
-
-        # Get destination connection IDs based on feature flags
-        destination_ids = await self._get_destination_connection_ids(db, ctx)
-
-        # Validate destination consistency with existing sources in collection
-        await self._validate_destination_consistency(
-            db, collection_readable_id, destination_ids, ctx
-        )
-
-        sync_in = schemas.SyncCreate(
-            name=f"Sync for {name}",
-            description=f"Auto-generated sync for {name}",
-            source_connection_id=connection_id,
-            destination_connection_ids=destination_ids,
-            cron_schedule=cron_schedule,
-            status=SyncStatus.ACTIVE,
-            run_immediately=run_immediately,
-        )
-        return await sync_service.create_and_run_sync(db, sync_in=sync_in, ctx=ctx, uow=uow)
-
     async def create_sync_without_schedule(
         self,
         db: AsyncSession,
@@ -903,79 +832,6 @@ class SourceConnectionHelpers:
             federated_search=federated_search,
         )
 
-    def compute_status_from_data(
-        self,
-        is_authenticated: bool,
-        is_active: bool = True,
-        last_job_status: Optional[SyncJobStatus] = None,
-    ) -> SourceConnectionStatus:
-        """Compute status from provided data without accessing ORM object."""
-        from airweave.core.shared_models import SourceConnectionStatus
-
-        if not is_authenticated:
-            return SourceConnectionStatus.PENDING_AUTH
-
-        # Check if manually disabled
-        if not is_active:
-            return SourceConnectionStatus.INACTIVE
-
-        # Check last job status
-        if last_job_status:
-            if last_job_status == SyncJobStatus.RUNNING:
-                return SourceConnectionStatus.SYNCING
-            elif last_job_status == SyncJobStatus.FAILED:
-                return SourceConnectionStatus.ERROR
-
-        return SourceConnectionStatus.ACTIVE
-
-    async def bulk_fetch_last_sync_info(
-        self, db: AsyncSession, sync_ids: List[UUID], ctx: ApiContext
-    ) -> Dict[UUID, Dict[str, Any]]:
-        """Bulk fetch last sync information including job status."""
-        # Get last sync jobs with their status
-        subq = (
-            select(
-                SyncJob.sync_id,
-                SyncJob.status,
-                SyncJob.completed_at,
-                func.row_number()
-                .over(partition_by=SyncJob.sync_id, order_by=SyncJob.created_at.desc())
-                .label("rn"),
-            )
-            .where(SyncJob.sync_id.in_(sync_ids))
-            .subquery()
-        )
-
-        query = select(subq).where(subq.c.rn == 1)
-        result = await db.execute(query)
-
-        # Get next scheduled runs
-        syncs = await db.execute(select(Sync).where(Sync.id.in_(sync_ids)))
-        sync_schedules = {s.id: s.next_scheduled_run for s in syncs.scalars()}
-
-        return {
-            row.sync_id: {
-                "last_sync_at": row.completed_at,
-                "next_sync_at": sync_schedules.get(row.sync_id),
-                "last_job_status": row.status,
-            }
-            for row in result
-        }
-
-    async def bulk_fetch_entity_counts(
-        self, db: AsyncSession, sync_ids: List[UUID], ctx: ApiContext
-    ) -> Dict[UUID, int]:
-        """Bulk fetch total entity counts from EntityCount table."""
-        from airweave.models.entity_count import EntityCount
-
-        query = (
-            select(EntityCount.sync_id, func.sum(EntityCount.count).label("total_count"))
-            .where(EntityCount.sync_id.in_(sync_ids))
-            .group_by(EntityCount.sync_id)
-        )
-        result = await db.execute(query)
-        return {row.sync_id: row.total_count or 0 for row in result}
-
     async def update_sync_schedule(
         self,
         db: AsyncSession,
@@ -1040,21 +896,6 @@ class SourceConnectionHelpers:
                 await crud.integration_credential.update(
                     db, db_obj=credential, obj_in=credential_update, ctx=ctx, uow=uow
                 )
-
-    async def cleanup_destination_data(
-        self, db: AsyncSession, source_conn: Any, ctx: ApiContext
-    ) -> None:
-        """Clean up data in destinations (Qdrant, Vespa, ARF)."""
-        from airweave.platform.cleanup import cleanup_service
-
-        collection = await crud.collection.get_by_readable_id(
-            db, readable_id=source_conn.readable_collection_id, ctx=ctx
-        )
-        if not collection:
-            return
-
-        collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
-        await cleanup_service.cleanup_sync(db, source_conn.sync_id, collection_schema, ctx)
 
     # [code blue] deprecate once source_connections domain is live — replaced by
     # domains.source_connections.response.ResponseBuilder.map_sync_job
@@ -1308,79 +1149,6 @@ class SourceConnectionHelpers:
             template_configs=template_configs,
             code_verifier=code_verifier,
         )
-
-    async def _regenerate_oauth_url(
-        self,
-        db: AsyncSession,
-        source_conn: SourceConnection,
-        ctx: ApiContext,
-    ) -> Tuple[Optional[str], Optional[datetime]]:
-        """Regenerate OAuth authentication URL for an unauthenticated connection.
-
-        Returns:
-            Tuple of (auth_url, expiry_datetime) or (None, None) if not applicable
-        """
-        # Only regenerate for OAuth browser flow connections that are not authenticated
-        if source_conn.is_authenticated:
-            return None, None
-
-        # Check if this is an OAuth browser flow connection
-        if (
-            not hasattr(source_conn, "connection_init_session_id")
-            or not source_conn.connection_init_session_id
-        ):
-            return None, None
-
-        # Get the init session to retrieve OAuth settings
-        init_session = await connection_init_session.get(
-            db, id=source_conn.connection_init_session_id, ctx=ctx
-        )
-        if not init_session or init_session.status != ConnectionInitStatus.PENDING:
-            return None, None
-
-        # Get source to retrieve OAuth settings
-        source = await crud.source.get_by_short_name(db, short_name=source_conn.short_name)
-        if not source:
-            return None, None
-
-        # Generate new OAuth URL
-
-        from airweave.platform.auth.oauth2_service import oauth2_service
-        from airweave.platform.auth.settings import integration_settings
-
-        oauth_settings = await integration_settings.get_by_short_name(source.short_name)
-        if not oauth_settings:
-            return None, None
-
-        # Use existing state from init session
-        state = init_session.state
-
-        api_callback = (
-            init_session.overrides.get("oauth_redirect_uri")
-            or f"{core_settings.api_url}/source-connections/callback"
-        )
-
-        # Extract template configs from overrides
-        template_configs = init_session.overrides.get("template_configs")
-        provider_auth_url, code_verifier = await oauth2_service.generate_auth_url_with_redirect(
-            oauth_settings,
-            redirect_uri=api_callback,
-            client_id=init_session.overrides.get("client_id"),
-            state=state,
-            template_configs=template_configs,
-        )
-
-        # Store code_verifier in init_session if PKCE is being used
-        if code_verifier:
-            init_session.overrides["code_verifier"] = code_verifier
-            await crud.source_connection_init_session.update(
-                db=db, db_obj=init_session, obj_in={"overrides": init_session.overrides}, ctx=ctx
-            )
-
-        # Create new proxy URL
-        proxy_url, proxy_expiry, _ = await self.create_proxy_url(db, provider_auth_url, ctx)
-
-        return proxy_url, proxy_expiry
 
     async def complete_oauth1_connection(
         self,

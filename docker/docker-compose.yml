@@ -74,7 +74,6 @@ services:
       - TEMPORAL_HOST=temporal
       - TEMPORAL_PORT=7233
       - TEMPORAL_NAMESPACE=default
-      - TEMPORAL_ENABLED=true
       - AUTH_ENABLED=false
       # Svix configuration
       - SVIX_URL=http://svix:8071
@@ -88,7 +87,7 @@ services:
       svix:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/health/ready" ]
       interval: 10s
       timeout: 30s
       retries: 10
@@ -197,7 +196,6 @@ services:
       - TEMPORAL_PORT=7233
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_TASK_QUEUE=airweave-sync-queue
-      - TEMPORAL_ENABLED=true
       # Svix configuration
       - SVIX_URL=http://svix:8071
       - SVIX_JWT_SECRET=${SVIX_JWT_SECRET:-default_signing_secret}

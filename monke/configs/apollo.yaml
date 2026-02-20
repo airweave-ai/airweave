@@ -1,0 +1,48 @@
+name: apollo_test
+# Monke only creates and verifies Accounts and Contacts. Sequences and Email Activities
+# are not created by the test; they appear in sync only if they already exist in Apollo
+# (and a master API key is used). The connector still syncs all four entity types.
+description: End-to-end test for Apollo source (Accounts and Contacts) using Monke
+
+connector:
+  name: Apollo
+  type: apollo
+  auth_mode: direct
+  auth_fields:
+    api_key: MONKE_APOLLO_API_KEY
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+    rate_limit_delay_ms: 400
+    max_concurrency: 2
+
+# Apollo create/update require a master API key. Set MONKE_APOLLO_API_KEY to your master key.
+# Apollo does not expose delete for accounts/contacts, so we omit delete steps.
+test_flow:
+  steps:
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - cleanup
+    - collection_cleanup
+
+deletion:
+  partial_delete_count: 0
+  verify_partial_deletion: false
+  verify_remaining_entities: false
+  verify_complete_deletion: false
+
+entity_count: 2  # 2 accounts + 2 contacts
+
+collection:
+  name: Apollo Test Collection
+
+verification:
+  retry_attempts: 5
+  retry_delay_seconds: 10
+  score_threshold: 0.0
+  expected_fields:
+    - name
+    - entity_id

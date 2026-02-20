@@ -63,6 +63,18 @@ async_engine = create_async_engine(
 
 AsyncSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=async_engine)
 
+# Dedicated engine for health checks — isolated from the application pool so that
+# a fully-saturated app pool cannot cause the readiness probe to false-negative.
+health_check_engine = create_async_engine(
+    str(settings.SQLALCHEMY_ASYNC_DATABASE_URI),
+    pool_size=1,
+    max_overflow=0,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_timeout=10,
+    connect_args=connect_args_config,
+)
+
 
 @asynccontextmanager
 async def get_db_context() -> AsyncGenerator[AsyncSession, None]:

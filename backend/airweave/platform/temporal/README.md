@@ -31,7 +31,6 @@ Temporal settings are configured via environment variables:
 - `TEMPORAL_PORT` - Temporal server port (default: 7233)
 - `TEMPORAL_NAMESPACE` - Namespace to use (default: default)
 - `TEMPORAL_TASK_QUEUE` - Task queue name (default: airweave-sync-queue)
-- `TEMPORAL_ENABLED` - Enable/disable Temporal (default: false)
 
 ## Running
 
@@ -51,7 +50,7 @@ Temporal workflows can be tested using the Temporal testing framework. See the t
 
 ## Fallback Behavior
 
-If Temporal is not available or `TEMPORAL_ENABLED=false`, the system automatically falls back to using FastAPI's `BackgroundTasks` for backward compatibility.
+If Temporal is not available, the system automatically falls back to using FastAPI's `BackgroundTasks` for backward compatibility.
 
 ## Integration Points
 

@@ -1,7 +1,7 @@
 """Protocols for source connection domain."""
 
 from datetime import datetime
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,8 +15,10 @@ from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
 from airweave.schemas.source_connection import (
+    SourceConnectionCreate,
     SourceConnectionJob,
     SourceConnectionListItem,
+    SourceConnectionUpdate,
 )
 
 
@@ -42,6 +44,18 @@ class SourceConnectionRepositoryProtocol(Protocol):
         """Get a ConnectionInitSession by ID with redirect_session eagerly loaded."""
         ...
 
+    async def get_multi_with_stats(
+        self,
+        db: AsyncSession,
+        *,
+        ctx: ApiContext,
+        collection_id: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[SourceConnectionStats]:
+        """Get source connections with complete stats."""
+        ...
+
 
 class ResponseBuilderProtocol(Protocol):
     """Builds API response schemas for source connections."""
@@ -64,4 +78,40 @@ class ResponseBuilderProtocol(Protocol):
 
     def map_sync_job(self, job: SyncJob, source_connection_id: UUID) -> SourceConnectionJob:
         """Convert sync job to SourceConnectionJob schema."""
+        ...
+
+
+class SourceConnectionServiceProtocol(Protocol):
+    """Service for source connections."""
+
+    async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> SourceConnection:
+        """Get a source connection by ID."""
+        ...
+
+    async def list(
+        self,
+        db: AsyncSession,
+        *,
+        ctx: ApiContext,
+        readable_collection_id: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[SourceConnectionListItem]:
+        """List source connections."""
+        ...
+
+    async def create(
+        self, db: AsyncSession, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnection:
+        """Create a source connection."""
+        ...
+
+    async def update(
+        self, db: AsyncSession, id: UUID, obj_in: SourceConnectionUpdate, ctx: ApiContext
+    ) -> SourceConnection:
+        """Update a source connection."""
+        ...
+
+    async def delete(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnection:
+        """Delete a source connection."""
         ...
