@@ -12,6 +12,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Body, Depends, HTTPException, Query
+from pydantic import ConfigDict
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1227,6 +1228,8 @@ async def resync_with_execution_config(
 class AdminSyncInfo(schemas.Sync):
     """Extended sync info for admin listing with entity counts and status."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     total_entity_count: int = 0
     total_arf_entity_count: Optional[int] = None
     total_qdrant_entity_count: Optional[int] = None
@@ -1239,11 +1242,6 @@ class AdminSyncInfo(schemas.Sync):
     source_short_name: Optional[str] = None
     source_is_authenticated: Optional[bool] = None
     readable_collection_id: Optional[str] = None
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
 
 
 class AdminSearchDestination(str, Enum):

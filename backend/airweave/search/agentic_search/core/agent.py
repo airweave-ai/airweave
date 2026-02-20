@@ -55,17 +55,36 @@ from airweave.search.agentic_search.schemas.request import AgenticSearchMode
 from airweave.search.agentic_search.schemas.search_result import AgenticSearchResults
 from airweave.search.agentic_search.services import AgenticSearchServices
 
+from airweave.core.protocols.metrics import AgenticSearchMetrics
+
+# Maps timing-label suffixes to canonical step names used in metrics.
+_STEP_LABEL_MAP: dict[str, str] = {
+    "plan": "plan",
+    "embed": "embed",
+    "compile": "search",
+    "execute": "search",
+    "search_error": "search",
+    "evaluate": "evaluate",
+    "compose": "compose",
+}
+
 
 class AgenticSearchAgent:
     """Agentic search agent."""
 
     def __init__(
-        self, services: AgenticSearchServices, ctx: ApiContext, emitter: AgenticSearchEmitter
+        self,
+        services: AgenticSearchServices,
+        ctx: ApiContext,
+        emitter: AgenticSearchEmitter,
+        *,
+        metrics: AgenticSearchMetrics | None = None,
     ):
         """Initialize the agent."""
         self.services: AgenticSearchServices = services
         self.ctx: ApiContext = ctx
         self.emitter: AgenticSearchEmitter = emitter
+        self._metrics = metrics
 
     async def run(
         self,
@@ -76,8 +95,17 @@ class AgenticSearchAgent:
         """Run the agent."""
         start_time = time.monotonic()
         try:
-            return await self._run(collection_readable_id, request, is_streaming)
+            response = await self._run(collection_readable_id, request, is_streaming)
+            return response
         except Exception as e:
+            if self._metrics is not None:
+                try:
+                    self._metrics.inc_search_errors(request.mode.value, is_streaming)
+                except Exception:
+                    self.ctx.logger.debug(
+                        "[AgenticSearchAgent] Failed to record error metric",
+                        exc_info=True,
+                    )
             duration_ms = int((time.monotonic() - start_time) * 1000)
             await self.emitter.emit(AgenticSearchErrorEvent(message=str(e)))
             try:
@@ -96,6 +124,22 @@ class AgenticSearchAgent:
                     "[AgenticSearchAgent] Failed to track error analytics", exc_info=True
                 )
             raise
+        finally:
+            if self._metrics is not None:
+                try:
+                    self._metrics.inc_search_requests(
+                        request.mode.value,
+                        is_streaming,
+                    )
+                    self._metrics.observe_duration(
+                        request.mode.value,
+                        time.monotonic() - start_time,
+                    )
+                except Exception:
+                    self.ctx.logger.debug(
+                        "[AgenticSearchAgent] Failed to record metric",
+                        exc_info=True,
+                    )
 
     async def _run(
         self,
@@ -107,239 +151,258 @@ class AgenticSearchAgent:
         timings: list[tuple[str, int]] = []
         total_start = time.monotonic()
         t = total_start
+        # Stays 0 until the loop completes successfully, so the finally
+        # block records iteration_count=0 for both "failed before entering
+        # the loop" and "failed during the first iteration" — both mean
+        # no iteration produced usable results.
+        iteration_number = 0
+        result_count = 0
 
-        # Build collection metadata
-        collection_metadata_builder = AgenticSearchCollectionMetadataBuilder(self.services.db)
-        collection_metadata: AgenticSearchCollectionMetadata = (
-            await collection_metadata_builder.build(collection_readable_id)
-        )
-        t = self._lap(timings, "build_collection_metadata", t)
-
-        # Build initial state
-        state_builder = AgenticSearchStateBuilder()
-        state: AgenticSearchState = state_builder.build_initial(
-            request=request,
-            collection_metadata=collection_metadata,
-        )
-        t = self._lap(timings, "build_initial_state", t)
-
-        # Collect per-iteration context window stats for analytics
-        context_stats: list[dict[str, int]] = []
-
-        while True:
-            prefix = f"iter_{state.iteration_number}"
-            iter_stats: dict[str, int] = {}
-
-            # Create search plan
-            planner = AgenticSearchPlanner(
-                llm=self.services.llm,
-                tokenizer=self.services.tokenizer,
-                logger=self.ctx.logger,
+        try:
+            # Build collection metadata
+            collection_metadata_builder = AgenticSearchCollectionMetadataBuilder(self.services.db)
+            collection_metadata: AgenticSearchCollectionMetadata = (
+                await collection_metadata_builder.build(collection_readable_id)
             )
-            plan: AgenticSearchPlan = await planner.plan(state)
-            state.current_iteration.plan = plan
-            t = self._lap(timings, f"{prefix}/plan", t)
+            t = self._lap(timings, "build_collection_metadata", t)
 
-            # Capture planner context window stats
-            iter_stats["planner_history_shown"] = planner.history_shown
-            iter_stats["planner_history_total"] = planner.history_total
+            # Build initial state
+            state_builder = AgenticSearchStateBuilder()
+            state: AgenticSearchState = state_builder.build_initial(
+                request=request,
+                collection_metadata=collection_metadata,
+            )
+            t = self._lap(timings, "build_initial_state", t)
 
-            # Emit planning event (includes how much history fit in the prompt)
-            await self.emitter.emit(
-                AgenticSearchPlanningEvent(
-                    iteration=state.iteration_number,
-                    plan=plan,
-                    is_consolidation=state.is_consolidation,
-                    history_shown=planner.history_shown,
-                    history_total=planner.history_total,
+            # Collect per-iteration context window stats for analytics
+            context_stats: list[dict[str, int]] = []
+
+            while True:
+                prefix = f"iter_{state.iteration_number}"
+                iter_stats: dict[str, int] = {}
+
+                # Create search plan
+                planner = AgenticSearchPlanner(
+                    llm=self.services.llm,
+                    tokenizer=self.services.tokenizer,
+                    logger=self.ctx.logger,
                 )
-            )
+                plan: AgenticSearchPlan = await planner.plan(state)
+                state.current_iteration.plan = plan
+                t = self._lap(timings, f"{prefix}/plan", t)
 
-            # Build complete plan (LLM filters + user filters) for execution
-            complete_plan = AgenticSearchCompletePlanBuilder.build(plan, state.user_filter)
+                # Capture planner context window stats
+                iter_stats["planner_history_shown"] = planner.history_shown
+                iter_stats["planner_history_total"] = planner.history_total
 
-            # Embed queries based on retrieval strategy
-            embedder = AgenticSearchEmbedder(
-                dense_embedder=self.services.dense_embedder,
-                sparse_embedder=self.services.sparse_embedder,
-            )
-            embeddings: AgenticSearchQueryEmbeddings = await embedder.embed(
-                query=state.current_iteration.plan.query,
-                strategy=state.current_iteration.plan.retrieval_strategy,
-            )
-            state.current_iteration.query_embeddings = embeddings
-            t = self._lap(timings, f"{prefix}/embed", t)
-
-            # Compile and execute query (gracefully handle search errors)
-            search_error: str | None = None
-            try:
-                compiled_query: AgenticSearchCompiledQuery = (
-                    await self.services.vector_db.compile_query(
-                        plan=complete_plan,
-                        embeddings=state.current_iteration.query_embeddings,
-                        collection_id=state.collection_metadata.collection_id,
+                # Emit planning event (includes how much history fit in the prompt)
+                await self.emitter.emit(
+                    AgenticSearchPlanningEvent(
+                        iteration=state.iteration_number,
+                        plan=plan,
+                        is_consolidation=state.is_consolidation,
+                        history_shown=planner.history_shown,
+                        history_total=planner.history_total,
                     )
                 )
-                state.current_iteration.compiled_query = compiled_query
-                t = self._lap(timings, f"{prefix}/compile", t)
 
-                search_results: AgenticSearchResults = await self.services.vector_db.execute_query(
-                    compiled_query
-                )
-                state.current_iteration.search_results = search_results
-                t = self._lap(timings, f"{prefix}/execute", t)
-            except Exception as e:
-                search_error = str(e)
-                self.ctx.logger.warning(
-                    f"[AgenticSearchAgent] Search failed at iteration "
-                    f"{state.iteration_number}: {search_error}"
-                )
-                # Treat as empty results and record the error so the evaluator knows
-                state.current_iteration.search_results = AgenticSearchResults(results=[])
-                state.current_iteration.search_error = search_error
-                t = self._lap(timings, f"{prefix}/search_error", t)
+                # Build complete plan (LLM filters + user filters) for execution
+                complete_plan = AgenticSearchCompletePlanBuilder.build(plan, state.user_filter)
 
-            # Emit searching event
-            search_ms = timings[-1][1]
-            await self.emitter.emit(
-                AgenticSearchingEvent(
-                    iteration=state.iteration_number,
-                    result_count=len(state.current_iteration.search_results),
-                    duration_ms=search_ms,
+                # Embed queries based on retrieval strategy
+                embedder = AgenticSearchEmbedder(
+                    dense_embedder=self.services.dense_embedder,
+                    sparse_embedder=self.services.sparse_embedder,
                 )
-            )
+                embeddings: AgenticSearchQueryEmbeddings = await embedder.embed(
+                    query=state.current_iteration.plan.query,
+                    strategy=state.current_iteration.plan.retrieval_strategy,
+                )
+                state.current_iteration.query_embeddings = embeddings
+                t = self._lap(timings, f"{prefix}/embed", t)
 
-            if state.mode == AgenticSearchMode.FAST:
+                # Compile and execute query (gracefully handle search errors)
+                search_error: str | None = None
+                try:
+                    compiled_query: AgenticSearchCompiledQuery = (
+                        await self.services.vector_db.compile_query(
+                            plan=complete_plan,
+                            embeddings=state.current_iteration.query_embeddings,
+                            collection_id=state.collection_metadata.collection_id,
+                        )
+                    )
+                    state.current_iteration.compiled_query = compiled_query
+                    t = self._lap(timings, f"{prefix}/compile", t)
+
+                    search_results: AgenticSearchResults = (
+                        await self.services.vector_db.execute_query(compiled_query)
+                    )
+                    state.current_iteration.search_results = search_results
+                    t = self._lap(timings, f"{prefix}/execute", t)
+                except Exception as e:
+                    search_error = str(e)
+                    self.ctx.logger.warning(
+                        f"[AgenticSearchAgent] Search failed at iteration "
+                        f"{state.iteration_number}: {search_error}"
+                    )
+                    # Treat as empty results and record the error so the evaluator knows
+                    state.current_iteration.search_results = AgenticSearchResults(results=[])
+                    state.current_iteration.search_error = search_error
+                    t = self._lap(timings, f"{prefix}/search_error", t)
+
+                # Emit searching event
+                search_ms = timings[-1][1]
+                await self.emitter.emit(
+                    AgenticSearchingEvent(
+                        iteration=state.iteration_number,
+                        result_count=len(state.current_iteration.search_results),
+                        duration_ms=search_ms,
+                    )
+                )
+
+                if state.mode == AgenticSearchMode.FAST:
+                    context_stats.append(iter_stats)
+                    break
+
+                # Consolidation pass: after search, skip evaluation and break
+                if state.is_consolidation:
+                    context_stats.append(iter_stats)
+                    break
+
+                # Build result brief deterministically (no LLM)
+                result_brief = AgenticSearchResultBriefBuilder.build(
+                    state.current_iteration.search_results
+                )
+
+                # Evaluate results
+                evaluator = AgenticSearchEvaluator(
+                    llm=self.services.llm,
+                    tokenizer=self.services.tokenizer,
+                    logger=self.ctx.logger,
+                )
+                evaluation: AgenticSearchEvaluation = await evaluator.evaluate(state)
+                state.current_iteration.evaluation = evaluation
+                self.ctx.logger.debug(f"[AgenticSearchAgent] Evaluation: {evaluation.to_md()}")
+                t = self._lap(timings, f"{prefix}/evaluate", t)
+
+                # Capture evaluator context window stats
+                iter_stats["evaluator_results_shown"] = evaluator.results_shown
+                iter_stats["evaluator_results_total"] = evaluator.results_total
+                iter_stats["evaluator_history_shown"] = evaluator.history_shown
+                iter_stats["evaluator_history_total"] = evaluator.history_total
+
                 context_stats.append(iter_stats)
-                break
 
-            # Consolidation pass: after search, skip evaluation and break
-            if state.is_consolidation:
-                context_stats.append(iter_stats)
-                break
+                # Emit evaluating event (includes how many results/history fit in the prompt)
+                await self.emitter.emit(
+                    AgenticSearchEvaluatingEvent(
+                        iteration=state.iteration_number,
+                        evaluation=evaluation,
+                        results_shown=evaluator.results_shown,
+                        results_total=evaluator.results_total,
+                        history_shown=evaluator.history_shown,
+                        history_total=evaluator.history_total,
+                    )
+                )
 
-            # Build result brief deterministically (no LLM)
-            result_brief = AgenticSearchResultBriefBuilder.build(
-                state.current_iteration.search_results
-            )
+                # Answer found — break cleanly
+                if not evaluation.should_continue and evaluation.answer_found:
+                    break
 
-            # Evaluate results
-            evaluator = AgenticSearchEvaluator(
+                # Answer NOT found but search exhausted — trigger consolidation.
+                # Don't break: fall through to add this iteration to history, set
+                # consolidation mode, and let the loop do one more plan+search cycle.
+                if not evaluation.should_continue and not evaluation.answer_found:
+                    self.ctx.logger.debug(
+                        "[AgenticSearchAgent] Consolidation pass: answer not found, "
+                        "running one more targeted search."
+                    )
+                    state.is_consolidation = True
+
+                # Create history iteration from completed current iteration
+                history_iteration = AgenticSearchHistoryIteration(
+                    plan=state.current_iteration.plan,
+                    result_brief=result_brief,
+                    evaluation=state.current_iteration.evaluation,
+                    evaluator_results_shown=evaluator.results_shown,
+                    search_error=state.current_iteration.search_error,
+                )
+
+                # Initialize or add to history
+                if state.history is None:
+                    state.history = AgenticSearchHistory(
+                        iterations={state.iteration_number: history_iteration}
+                    )
+                else:
+                    state.history.add_iteration(state.iteration_number, history_iteration)
+
+                # Prepare for next iteration
+                state.iteration_number += 1
+                state.current_iteration = AgenticSearchCurrentIteration()
+
+            # Update tracking vars for finally block
+            iteration_number = state.iteration_number + 1
+
+            # Compose final answer
+            composer = AgenticSearchComposer(
                 llm=self.services.llm,
                 tokenizer=self.services.tokenizer,
                 logger=self.ctx.logger,
             )
-            evaluation: AgenticSearchEvaluation = await evaluator.evaluate(state)
-            state.current_iteration.evaluation = evaluation
-            self.ctx.logger.debug(f"[AgenticSearchAgent] Evaluation: {evaluation.to_md()}")
-            t = self._lap(timings, f"{prefix}/evaluate", t)
+            answer: AgenticSearchAnswer = await composer.compose(state)
+            self._lap(timings, "compose", t)
 
-            # Capture evaluator context window stats
-            iter_stats["evaluator_results_shown"] = evaluator.results_shown
-            iter_stats["evaluator_results_total"] = evaluator.results_total
-            iter_stats["evaluator_history_shown"] = evaluator.history_shown
-            iter_stats["evaluator_history_total"] = evaluator.history_total
-
-            context_stats.append(iter_stats)
-
-            # Emit evaluating event (includes how many results/history fit in the prompt)
-            await self.emitter.emit(
-                AgenticSearchEvaluatingEvent(
-                    iteration=state.iteration_number,
-                    evaluation=evaluation,
-                    results_shown=evaluator.results_shown,
-                    results_total=evaluator.results_total,
-                    history_shown=evaluator.history_shown,
-                    history_total=evaluator.history_total,
-                )
-            )
-
-            # Answer found — break cleanly
-            if not evaluation.should_continue and evaluation.answer_found:
-                break
-
-            # Answer NOT found but search exhausted — trigger consolidation.
-            # Don't break: fall through to add this iteration to history, set
-            # consolidation mode, and let the loop do one more plan+search cycle.
-            if not evaluation.should_continue and not evaluation.answer_found:
+            # Truncate results to user-requested limit (if set)
+            results: list[AgenticSearchResult] = state.current_iteration.search_results.results
+            if request.limit is not None and len(results) > request.limit:
                 self.ctx.logger.debug(
-                    "[AgenticSearchAgent] Consolidation pass: answer not found, "
-                    "running one more targeted search."
+                    f"[AgenticSearchAgent] Truncating results from {len(results)} "
+                    f"to user limit of {request.limit}"
                 )
-                state.is_consolidation = True
+                results = results[: request.limit]
+            result_count = len(results)
 
-            # Create history iteration from completed current iteration
-            history_iteration = AgenticSearchHistoryIteration(
-                plan=state.current_iteration.plan,
-                result_brief=result_brief,
-                evaluation=state.current_iteration.evaluation,
-                evaluator_results_shown=evaluator.results_shown,
-                search_error=state.current_iteration.search_error,
+            response = AgenticSearchResponse(
+                results=results,
+                answer=answer,
             )
 
-            # Initialize or add to history
-            if state.history is None:
-                state.history = AgenticSearchHistory(
-                    iterations={state.iteration_number: history_iteration}
-                )
-            else:
-                state.history.add_iteration(state.iteration_number, history_iteration)
+            # Emit done event
+            await self.emitter.emit(AgenticSearchDoneEvent(response=response))
 
-            # Prepare for next iteration
-            state.iteration_number += 1
-            state.current_iteration = AgenticSearchCurrentIteration()
+            # Log final timing summary
+            total_ms = self._log_timings(timings, total_start)
 
-        # Compose final answer
-        composer = AgenticSearchComposer(
-            llm=self.services.llm,
-            tokenizer=self.services.tokenizer,
-            logger=self.ctx.logger,
-        )
-        answer: AgenticSearchAnswer = await composer.compose(state)
-        self._lap(timings, "compose", t)
-
-        # Truncate results to user-requested limit (if set)
-        results: list[AgenticSearchResult] = state.current_iteration.search_results.results
-        if request.limit is not None and len(results) > request.limit:
-            self.ctx.logger.debug(
-                f"[AgenticSearchAgent] Truncating results from {len(results)} "
-                f"to user limit of {request.limit}"
+            # Track analytics (non-blocking, errors logged and swallowed)
+            self._track_analytics(
+                state,
+                request,
+                collection_readable_id,
+                results,
+                answer,
+                timings,
+                total_ms,
+                is_streaming,
+                context_stats,
             )
-            results = results[: request.limit]
 
-        response = AgenticSearchResponse(
-            results=results,
-            answer=answer,
-        )
+            return response
+        finally:
+            # Always record Prometheus metrics, even on partial failure.
+            self._record_metrics(
+                timings=timings,
+                mode=request.mode.value,
+                iteration_count=iteration_number,
+                result_count=result_count,
+            )
 
-        # Emit done event
-        await self.emitter.emit(AgenticSearchDoneEvent(response=response))
-
-        # Log final timing summary
-        total_ms = self._log_timings(timings, total_start)
-
-        # Track analytics (non-blocking, errors logged and swallowed)
-        self._track_analytics(
-            state,
-            request,
-            collection_readable_id,
-            results,
-            answer,
-            timings,
-            total_ms,
-            is_streaming,
-            context_stats,
-        )
-
-        return response
-
-    def _lap(self, timings: list, label: str, start: float) -> float:
+    def _lap(self, timings: list[tuple[str, int]], label: str, start: float) -> float:
         """Record a timing and return the new start time."""
         now = time.monotonic()
         timings.append((label, int((now - start) * 1000)))
         return now
 
-    def _log_timings(self, timings: list, total_start: float) -> int:
+    def _log_timings(self, timings: list[tuple[str, int]], total_start: float) -> int:
         """Log all step timings in a single summary.
 
         Returns:
@@ -354,6 +417,35 @@ class AgenticSearchAgent:
         lines.append(f"{'Total':<30} {total_ms:>6}ms")
         self.ctx.logger.debug("[AgenticSearchAgent] Timings:\n" + "\n".join(lines))
         return total_ms
+
+    def _record_metrics(
+        self,
+        timings: list[tuple[str, int]],
+        mode: str,
+        iteration_count: int,
+        result_count: int,
+    ) -> None:
+        """Record Prometheus metrics from pipeline timings.
+
+        Non-blocking: errors are logged but never affect the response.
+        """
+        if self._metrics is None:
+            return
+        try:
+            self._metrics.observe_iterations(mode, iteration_count)
+            self._metrics.observe_results_per_search(result_count)
+            for label, ms in timings:
+                # Extract the step suffix: "iter_0/plan" -> "plan",
+                # "compose" -> "compose"
+                suffix = label.rsplit("/", 1)[-1]
+                step = _STEP_LABEL_MAP.get(suffix)
+                if step is not None:
+                    self._metrics.observe_step_duration(step, ms / 1000.0)
+        except Exception:
+            self.ctx.logger.debug(
+                "[AgenticSearchAgent] Failed to record Prometheus metrics",
+                exc_info=True,
+            )
 
     def _track_analytics(
         self,

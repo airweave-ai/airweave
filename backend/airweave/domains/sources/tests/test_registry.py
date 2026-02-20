@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
 from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
-from airweave.domains.entities.fake import FakeEntityDefinitionRegistry
+from airweave.domains.entities.fakes.registry import FakeEntityDefinitionRegistry
 from airweave.domains.entities.types import EntityDefinitionEntry
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.platform.configs._base import Fields

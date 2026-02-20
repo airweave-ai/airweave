@@ -31,6 +31,7 @@ Usage:
         webhook_admin=FakeWebhookAdmin(),
         endpoint_verifier=FakeEndpointVerifier(),
         webhook_service=FakeWebhookService(),
+        metrics=FakeMetricsService(),
     )
 
 Module structure:

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from airweave.platform.configs._base import Fields
 
@@ -130,10 +130,7 @@ class SourceBase(BaseModel):
         ),
     )
 
-    class Config:
-        """Pydantic config for SourceBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SourceCreate(SourceBase):
@@ -173,10 +170,7 @@ class SourceInDBBase(SourceBase):
         description="Timestamp when this source type was last updated (ISO 8601 format).",
     )
 
-    class Config:
-        """Pydantic config for SourceInDBBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Source(SourceBase):

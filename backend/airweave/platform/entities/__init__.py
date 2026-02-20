@@ -15,6 +15,12 @@ from .airtable import (
     AirtableTableEntity,
     AirtableUserEntity,
 )
+from .apollo import (
+    ApolloAccountEntity,
+    ApolloContactEntity,
+    ApolloEmailActivityEntity,
+    ApolloSequenceEntity,
+)
 from .asana import (
     AsanaCommentEntity,
     AsanaFileEntity,
@@ -52,6 +58,12 @@ from .clickup import (
     ClickUpTaskEntity,
     ClickUpWorkspaceEntity,
 )
+from .coda import (
+    CodaDocEntity,
+    CodaPageEntity,
+    CodaRowEntity,
+    CodaTableEntity,
+)
 from .confluence import (
     ConfluenceBlogPostEntity,
     ConfluenceCommentEntity,
@@ -65,6 +77,11 @@ from .confluence import (
     ConfluenceWhiteboardEntity,
 )
 from .ctti import CTTIWebEntity
+from .document360 import (
+    Document360ArticleEntity,
+    Document360CategoryEntity,
+    Document360ProjectVersionEntity,
+)
 from .dropbox import (
     DropboxAccountEntity,
     DropboxFileEntity,
@@ -76,6 +93,16 @@ from .file_stub import (
     PdfFileStubEntity,
     PptxFileStubEntity,
     ScannedPdfFileStubEntity,
+)
+from .fireflies import (
+    FirefliesTranscriptEntity,
+)
+from .freshdesk import (
+    FreshdeskCompanyEntity,
+    FreshdeskContactEntity,
+    FreshdeskConversationEntity,
+    FreshdeskSolutionArticleEntity,
+    FreshdeskTicketEntity,
 )
 from .github import (
     GitHubCodeFileEntity,
@@ -285,6 +312,12 @@ from .zoho_crm import (
 )
 
 ENTITIES_BY_SOURCE: dict[str, list[type]] = {
+    "apollo": [
+        ApolloAccountEntity,
+        ApolloContactEntity,
+        ApolloEmailActivityEntity,
+        ApolloSequenceEntity,
+    ],
     "airtable": [
         AirtableAttachmentEntity,
         AirtableBaseEntity,
@@ -330,6 +363,12 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ClickUpTaskEntity,
         ClickUpWorkspaceEntity,
     ],
+    "coda": [
+        CodaDocEntity,
+        CodaPageEntity,
+        CodaRowEntity,
+        CodaTableEntity,
+    ],
     "confluence": [
         ConfluenceBlogPostEntity,
         ConfluenceCommentEntity,
@@ -345,6 +384,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
     "ctti": [
         CTTIWebEntity,
     ],
+    "document360": [
+        Document360ArticleEntity,
+        Document360CategoryEntity,
+        Document360ProjectVersionEntity,
+    ],
     "dropbox": [
         DropboxAccountEntity,
         DropboxFileEntity,
@@ -356,6 +400,16 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         PdfFileStubEntity,
         PptxFileStubEntity,
         ScannedPdfFileStubEntity,
+    ],
+    "fireflies": [
+        FirefliesTranscriptEntity,
+    ],
+    "freshdesk": [
+        FreshdeskCompanyEntity,
+        FreshdeskContactEntity,
+        FreshdeskConversationEntity,
+        FreshdeskSolutionArticleEntity,
+        FreshdeskTicketEntity,
     ],
     "github": [
         GitHubCodeFileEntity,

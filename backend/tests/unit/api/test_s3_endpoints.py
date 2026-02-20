@@ -23,7 +23,14 @@ from airweave.core.shared_models import ConnectionStatus, FeatureFlag
 @pytest.fixture
 def mock_db():
     """Mock AsyncSession."""
-    return AsyncMock()
+    db = MagicMock()
+    db.execute = AsyncMock()
+    db.flush = AsyncMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+    db.delete = AsyncMock()
+    db.add = MagicMock()
+    return db
 
 
 @pytest.fixture

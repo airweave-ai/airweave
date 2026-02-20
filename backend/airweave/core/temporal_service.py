@@ -153,16 +153,11 @@ class TemporalService:
             return None
 
     async def is_temporal_enabled(self) -> bool:
-        """Check if Temporal is enabled and available.
+        """Check if Temporal is available.
 
         Returns:
-            True if Temporal is enabled, False otherwise
+            True if Temporal is reachable, False otherwise
         """
-        temporal_enabled = settings.TEMPORAL_ENABLED
-
-        if not temporal_enabled:
-            return False
-
         try:
             _ = await temporal_client.get_client()
             return True

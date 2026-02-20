@@ -3,9 +3,8 @@
 from typing import Any, Dict, Optional, Protocol, Union
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext

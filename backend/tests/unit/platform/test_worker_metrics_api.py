@@ -15,7 +15,8 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.platform.temporal.worker import TemporalWorker, WorkerControlServer, WorkerState
+from airweave.adapters.metrics import FakeMetricsRenderer, FakeWorkerMetrics
+from airweave.platform.temporal.worker import WorkerControlServer, WorkerState
 from airweave.platform.temporal.worker.config import WorkerConfig
 
 
@@ -35,16 +36,14 @@ class MockAsyncWorkerPool:
 
 
 @pytest.fixture
-def mock_worker_metrics():
-    """Create mock worker metrics registry."""
-    metrics = MagicMock()
+def mock_registry():
+    """Create mock WorkerMetricsRegistry."""
+    registry = MagicMock()
 
-    # Basic metrics
-    metrics.worker_id = "test-worker-0"
-    metrics.get_pod_ordinal.return_value = "0"
+    registry.worker_id = "test-worker-0"
+    registry.get_pod_ordinal.return_value = "0"
 
-    # Mock get_metrics_summary
-    metrics.get_metrics_summary = AsyncMock(
+    registry.get_metrics_summary = AsyncMock(
         return_value={
             "worker_id": "test-worker-0",
             "uptime_seconds": 3600.5,
@@ -69,8 +68,7 @@ def mock_worker_metrics():
         }
     )
 
-    # Mock connector metrics (aggregated by connector type)
-    metrics.get_per_connector_metrics = AsyncMock(
+    registry.get_per_connector_metrics = AsyncMock(
         return_value={
             "slack": {
                 "active_syncs": 2,
@@ -83,11 +81,9 @@ def mock_worker_metrics():
         }
     )
 
-    # Mock total active and pending workers
-    metrics.get_total_active_and_pending_workers = AsyncMock(return_value=20)
+    registry.get_total_active_and_pending_workers = AsyncMock(return_value=20)
 
-    # Mock detailed sync metrics
-    metrics.get_detailed_sync_metrics = AsyncMock(
+    registry.get_detailed_sync_metrics = AsyncMock(
         return_value=[
             {
                 "sync_id": str(uuid4()),
@@ -104,17 +100,16 @@ def mock_worker_metrics():
         ]
     )
 
-    # Mock per-sync worker counts
     sync_id_1 = str(uuid4())
     sync_id_2 = str(uuid4())
-    metrics.get_per_sync_worker_counts = AsyncMock(
+    registry.get_per_sync_worker_counts = AsyncMock(
         return_value=[
             {"sync_id": sync_id_1, "active_and_pending_worker_count": 15},
             {"sync_id": sync_id_2, "active_and_pending_worker_count": 5},
         ]
     )
 
-    return metrics
+    return registry
 
 
 @pytest.fixture
@@ -137,219 +132,195 @@ def mock_settings():
         yield mock
 
 
-def create_control_server(config: WorkerConfig, running: bool = True, draining: bool = False):
-    """Helper to create a control server with state."""
+def create_control_server(
+    config: WorkerConfig,
+    mock_registry,
+    running: bool = True,
+    draining: bool = False,
+    fake_worker_metrics: FakeWorkerMetrics | None = None,
+    fake_renderer: FakeMetricsRenderer | None = None,
+):
+    """Helper to create a control server with injected fakes."""
     state = WorkerState(running=running, draining=draining)
-    return WorkerControlServer(state, config), state
+    wm = fake_worker_metrics or FakeWorkerMetrics()
+    renderer = fake_renderer or FakeMetricsRenderer()
+    server = WorkerControlServer(
+        worker_state=state,
+        config=config,
+        registry=mock_registry,
+        worker_metrics=wm,
+        renderer=renderer,
+    )
+    return server, state, wm, renderer
 
 
 @pytest.mark.asyncio
 async def test_prometheus_metrics_endpoint_running_state(
-    mock_worker_metrics, mock_settings, test_worker_config
+    mock_registry, mock_settings, test_worker_config
 ):
     """Test /metrics endpoint returns Prometheus format when worker is running."""
     with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
+        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        return_value=25,
     ):
-        with patch(
-            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=25
-        ):
-            with patch(
-                "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
-            ) as mock_update:
-                with patch(
-                    "airweave.platform.temporal.worker.control_server.get_prometheus_metrics",
-                    return_value=b"# Prometheus metrics\nairweave_worker_info{version=\"1.0\"} 1\n",
-                ):
-                    control_server, state = create_control_server(
-                        test_worker_config, running=True, draining=False
-                    )
+        server, state, fake_wm, _ = create_control_server(
+            test_worker_config, mock_registry, running=True, draining=False
+        )
 
-                    request = MagicMock()
-                    response = await control_server._handle_metrics(request)
+        request = MagicMock()
+        response = await server._handle_metrics(request)
 
-                    # Verify response format
-                    assert response.status == 200
-                    assert "text/plain" in response.content_type
-                    assert b"Prometheus metrics" in response.body
+        assert response.status == 200
+        assert "text/plain" in response.content_type
 
-                    # Verify metrics were updated with correct parameters
-                    mock_update.assert_called_once()
-                    call_kwargs = mock_update.call_args.kwargs
-                    assert call_kwargs["worker_id"] == "0"  # Pod ordinal
-                    assert call_kwargs["status"] == "running"
-                    assert call_kwargs["uptime_seconds"] == 3600.5
-                    assert call_kwargs["active_activities_count"] == 3
-                    assert call_kwargs["active_sync_jobs_count"] == 2
-                    assert call_kwargs["task_queue"] == "test-queue"
-                    assert call_kwargs["worker_pool_active_and_pending_count"] == 20
-                    assert call_kwargs["sync_max_workers"] == 20
-                    assert call_kwargs["thread_pool_size"] == 100
-                    assert call_kwargs["thread_pool_active"] == 25
+        snap = fake_wm.last_snapshot
+        assert snap is not None
+        assert snap.worker_id == "0"
+        assert snap.status == "running"
+        assert snap.uptime_seconds == 3600.5
+        assert snap.active_activities_count == 3
+        assert snap.active_sync_jobs_count == 2
+        assert snap.task_queue == "test-queue"
+        assert snap.worker_pool_active_and_pending_count == 20
+        assert snap.sync_max_workers == 20
+        assert snap.thread_pool_size == 100
+        assert snap.thread_pool_active == 25
 
-                    # Verify connector metrics passed correctly
-                    connector_metrics = call_kwargs["connector_metrics"]
-                    assert "slack" in connector_metrics
-                    assert connector_metrics["slack"]["active_syncs"] == 2
-                    assert connector_metrics["slack"]["active_and_pending_workers"] == 15
+        assert "slack" in snap.connector_metrics
+        assert snap.connector_metrics["slack"].active_syncs == 2
+        assert snap.connector_metrics["slack"].active_and_pending_workers == 15
 
 
 @pytest.mark.asyncio
 async def test_prometheus_metrics_endpoint_draining_state(
-    mock_worker_metrics, mock_settings, test_worker_config
+    mock_registry, mock_settings, test_worker_config
 ):
     """Test /metrics endpoint shows draining status when worker is draining."""
     with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
+        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        return_value=10,
     ):
-        with patch(
-            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=10
-        ):
-            with patch(
-                "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
-            ) as mock_update:
-                with patch(
-                    "airweave.platform.temporal.worker.control_server.get_prometheus_metrics",
-                    return_value=b"# Prometheus metrics\n",
-                ):
-                    control_server, state = create_control_server(
-                        test_worker_config, running=True, draining=True
-                    )
+        server, state, fake_wm, _ = create_control_server(
+            test_worker_config, mock_registry, running=True, draining=True
+        )
 
-                    request = MagicMock()
-                    await control_server._handle_metrics(request)
+        request = MagicMock()
+        await server._handle_metrics(request)
 
-                    # Verify status is draining
-                    call_kwargs = mock_update.call_args.kwargs
-                    assert call_kwargs["status"] == "draining"
+        assert fake_wm.last_snapshot.status == "draining"
 
 
 @pytest.mark.asyncio
 async def test_prometheus_metrics_endpoint_error_handling(
-    mock_worker_metrics, mock_settings, test_worker_config
+    mock_registry, mock_settings, test_worker_config
 ):
     """Test /metrics endpoint handles errors gracefully."""
-    with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
-    ):
-        mock_worker_metrics.get_metrics_summary.side_effect = Exception("Test error")
+    mock_registry.get_metrics_summary.side_effect = Exception("Test error")
 
-        control_server, state = create_control_server(test_worker_config, running=True)
+    server, state, _, _ = create_control_server(test_worker_config, mock_registry, running=True)
 
-        request = MagicMock()
-        response = await control_server._handle_metrics(request)
+    request = MagicMock()
+    response = await server._handle_metrics(request)
 
-        # Verify error response
-        assert response.status == 500
-        assert "Test error" in response.text
+    assert response.status == 500
+    assert "Test error" in response.text
 
 
 @pytest.mark.asyncio
 async def test_json_status_endpoint_complete_response(
-    mock_worker_metrics, mock_settings, test_worker_config
+    mock_registry, mock_settings, test_worker_config
 ):
     """Test /status endpoint returns complete JSON with all metrics."""
-    # Mock psutil in sys.modules
     mock_psutil = MagicMock()
     mock_process = MagicMock()
     mock_process.cpu_percent.return_value = 75.3
     mock_memory = MagicMock()
-    mock_memory.rss = 512 * 1024 * 1024  # 512 MB
+    mock_memory.rss = 512 * 1024 * 1024
     mock_process.memory_info.return_value = mock_memory
     mock_psutil.Process.return_value = mock_process
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
+        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        return_value=42,
     ):
-        with patch(
-            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=42
-        ):
-            with patch.dict("sys.modules", {"psutil": mock_psutil}):
-                control_server, state = create_control_server(
-                    test_worker_config, running=True, draining=False
-                )
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
+            server, state, _, _ = create_control_server(
+                test_worker_config, mock_registry, running=True, draining=False
+            )
 
-                request = MagicMock()
-                response = await control_server._handle_status(request)
+            request = MagicMock()
+            response = await server._handle_status(request)
 
-                # Verify response is JSON
-                assert response.status == 200
-                # Parse JSON response
-                import json
+            assert response.status == 200
+            import json
 
-                data = json.loads(response.body.decode("utf-8"))
+            data = json.loads(response.body.decode("utf-8"))
 
-                # Verify basic worker info
-                assert data["worker_id"] == "test-worker-0"
-                assert data["status"] == "running"
-                assert data["uptime_seconds"] == 3600.5
-                assert data["task_queue"] == "test-queue"
-                assert data["active_activities_count"] == 3
+            assert data["worker_id"] == "test-worker-0"
+            assert data["status"] == "running"
+            assert data["uptime_seconds"] == 3600.5
+            assert data["task_queue"] == "test-queue"
+            assert data["active_activities_count"] == 3
 
-                # Verify capacity info
-                assert data["capacity"]["max_workflow_polls"] == 8
-                assert data["capacity"]["max_activity_polls"] == 16
+            assert data["capacity"]["max_workflow_polls"] == 8
+            assert data["capacity"]["max_activity_polls"] == 16
 
-                # Verify active_syncs structure
-                assert "active_syncs" in data
-                assert len(data["active_syncs"]) == 2
-                for sync in data["active_syncs"]:
-                    assert "sync_id" in sync
-                    assert "sync_job_id" in sync
-                    assert "org_name" in sync
-                    assert "source_type" in sync
-                    assert "workers_allocated" in sync
-                    assert "duration_seconds" in sync
+            assert "active_syncs" in data
+            assert len(data["active_syncs"]) == 2
+            for sync in data["active_syncs"]:
+                assert "sync_id" in sync
+                assert "sync_job_id" in sync
+                assert "org_name" in sync
+                assert "source_type" in sync
+                assert "workers_allocated" in sync
+                assert "duration_seconds" in sync
 
-                # Verify metrics structure (new in commit 9527bc63)
-                assert "metrics" in data
-                metrics = data["metrics"]
-                assert metrics["total_workers"] == 20
-                assert metrics["active_and_pending_workers"] == 20
-                assert metrics["total_threads"] == 100
-                assert metrics["active_threads"] == 42
-                assert metrics["cpu_percent"] == 75.3
-                assert metrics["memory_mb"] == 512
+            assert "metrics" in data
+            metrics = data["metrics"]
+            assert metrics["total_workers"] == 20
+            assert metrics["active_and_pending_workers"] == 20
+            assert metrics["total_threads"] == 100
+            assert metrics["active_threads"] == 42
+            assert metrics["cpu_percent"] == 75.3
+            assert metrics["memory_mb"] == 512
 
 
 @pytest.mark.asyncio
 async def test_json_status_endpoint_psutil_fallback(
-    mock_worker_metrics, mock_settings, test_worker_config
+    mock_registry, mock_settings, test_worker_config
 ):
     """Test /status endpoint falls back gracefully when psutil unavailable."""
-    # Mock psutil to raise ImportError
     mock_psutil = MagicMock()
     mock_psutil.Process.side_effect = ImportError("psutil not available")
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
+        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        return_value=10,
     ):
-        with patch(
-            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=10
-        ):
-            with patch.dict("sys.modules", {"psutil": mock_psutil}):
-                control_server, state = create_control_server(test_worker_config, running=True)
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
+            server, state, _, _ = create_control_server(
+                test_worker_config, mock_registry, running=True
+            )
 
-                request = MagicMock()
-                response = await control_server._handle_status(request)
+            request = MagicMock()
+            response = await server._handle_status(request)
 
-                # Verify fallback values
-                assert response.status == 200
-                import json
+            assert response.status == 200
+            import json
 
-                data = json.loads(response.body.decode("utf-8"))
-                assert data["metrics"]["cpu_percent"] == 0.0
-                assert data["metrics"]["memory_mb"] == 0
+            data = json.loads(response.body.decode("utf-8"))
+            assert data["metrics"]["cpu_percent"] == 0.0
+            assert data["metrics"]["memory_mb"] == 0
 
 
 @pytest.mark.asyncio
 async def test_json_status_endpoint_handles_missing_sync_id(
-    mock_worker_metrics, mock_settings, test_worker_config
+    mock_registry, mock_settings, test_worker_config
 ):
     """Test /status endpoint handles syncs without matching worker counts."""
     orphan_sync_id = str(uuid4())
 
-    mock_worker_metrics.get_detailed_sync_metrics = AsyncMock(
+    mock_registry.get_detailed_sync_metrics = AsyncMock(
         return_value=[
             {
                 "sync_id": orphan_sync_id,
@@ -360,10 +331,9 @@ async def test_json_status_endpoint_handles_missing_sync_id(
         ]
     )
 
-    # No matching worker count
-    mock_worker_metrics.get_per_sync_worker_counts = AsyncMock(return_value=[])
+    mock_registry.get_per_sync_worker_counts = AsyncMock(return_value=[])
 
-    mock_worker_metrics.get_metrics_summary = AsyncMock(
+    mock_registry.get_metrics_summary = AsyncMock(
         return_value={
             "worker_id": "test-worker-0",
             "uptime_seconds": 50.0,
@@ -373,7 +343,6 @@ async def test_json_status_endpoint_handles_missing_sync_id(
         }
     )
 
-    # Mock psutil
     mock_psutil = MagicMock()
     mock_process = MagicMock()
     mock_process.cpu_percent.return_value = 0.0
@@ -381,74 +350,62 @@ async def test_json_status_endpoint_handles_missing_sync_id(
     mock_psutil.Process.return_value = mock_process
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
+        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        return_value=0,
     ):
-        with patch(
-            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=0
-        ):
-            with patch.dict("sys.modules", {"psutil": mock_psutil}):
-                control_server, state = create_control_server(test_worker_config, running=True)
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
+            server, state, _, _ = create_control_server(
+                test_worker_config, mock_registry, running=True
+            )
 
-                request = MagicMock()
-                response = await control_server._handle_status(request)
+            request = MagicMock()
+            response = await server._handle_status(request)
 
-                # Verify defaults are applied
-                import json
+            import json
 
-                data = json.loads(response.body.decode("utf-8"))
-                assert len(data["active_syncs"]) == 1
-                assert data["active_syncs"][0]["workers_allocated"] == 0
-                assert data["active_syncs"][0]["duration_seconds"] == 0
+            data = json.loads(response.body.decode("utf-8"))
+            assert len(data["active_syncs"]) == 1
+            assert data["active_syncs"][0]["workers_allocated"] == 0
+            assert data["active_syncs"][0]["duration_seconds"] == 0
 
 
 @pytest.mark.asyncio
 async def test_json_status_endpoint_error_handling(
-    mock_worker_metrics, mock_settings, test_worker_config
+    mock_registry, mock_settings, test_worker_config
 ):
     """Test /status endpoint handles errors gracefully."""
-    with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
-    ):
-        mock_worker_metrics.get_metrics_summary.side_effect = Exception("Test error")
+    mock_registry.get_metrics_summary.side_effect = Exception("Test error")
 
-        control_server, state = create_control_server(test_worker_config, running=True)
+    server, state, _, _ = create_control_server(test_worker_config, mock_registry, running=True)
 
-        request = MagicMock()
-        response = await control_server._handle_status(request)
+    request = MagicMock()
+    response = await server._handle_status(request)
 
-        # Verify error response
-        assert response.status == 500
-        # Parse JSON from response body
-        import json
+    assert response.status == 500
+    import json
 
-        data = json.loads(response.body.decode("utf-8"))
-        assert data["error"] == "Failed to generate status"
-        assert "Test error" in data["detail"]
+    data = json.loads(response.body.decode("utf-8"))
+    assert data["error"] == "Failed to generate status"
+    assert "Test error" in data["detail"]
 
 
 @pytest.mark.asyncio
 async def test_worker_pool_active_and_pending_count_property():
     """Test AsyncWorkerPool.active_and_pending_count property (commit 6b7cae789)."""
-    # Test with 8 tasks (5 active + 3 pending)
     pool = MockAsyncWorkerPool(active_count=5, pending_count=3)
     assert pool.active_and_pending_count == 8
 
-    # Test with 20 tasks (all slots filled)
     pool = MockAsyncWorkerPool(active_count=20, pending_count=0)
     assert pool.active_and_pending_count == 20
 
-    # Test with 25 tasks (20 active + 5 pending)
     pool = MockAsyncWorkerPool(active_count=20, pending_count=5)
     assert pool.active_and_pending_count == 25
 
 
 @pytest.mark.asyncio
-async def test_connector_metrics_aggregation(
-    mock_worker_metrics, mock_settings, test_worker_config
-):
+async def test_connector_metrics_aggregation(mock_registry, mock_settings, test_worker_config):
     """Test connector-type aggregated metrics (low cardinality)."""
-    # Test that connector metrics are aggregated by type, not by individual sync
-    mock_worker_metrics.get_per_connector_metrics = AsyncMock(
+    mock_registry.get_per_connector_metrics = AsyncMock(
         return_value={
             "slack": {"active_syncs": 5, "active_and_pending_workers": 50},
             "notion": {"active_syncs": 3, "active_and_pending_workers": 30},
@@ -457,73 +414,43 @@ async def test_connector_metrics_aggregation(
     )
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
+        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        return_value=0,
     ):
-        with patch(
-            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=0
-        ):
-            with patch(
-                "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
-            ) as mock_update:
-                with patch(
-                    "airweave.platform.temporal.worker.control_server.get_prometheus_metrics",
-                    return_value=b"",
-                ):
-                    control_server, state = create_control_server(
-                        test_worker_config, running=True
-                    )
+        server, state, fake_wm, _ = create_control_server(
+            test_worker_config, mock_registry, running=True
+        )
 
-                    request = MagicMock()
-                    await control_server._handle_metrics(request)
+        request = MagicMock()
+        await server._handle_metrics(request)
 
-                    # Verify connector metrics are passed correctly
-                    call_kwargs = mock_update.call_args.kwargs
-                    connector_metrics = call_kwargs["connector_metrics"]
+        snap = fake_wm.last_snapshot
+        assert len(snap.connector_metrics) == 3
+        assert all(key in snap.connector_metrics for key in ["slack", "notion", "google_drive"])
 
-                    # Should have 3 connector types
-                    assert len(connector_metrics) == 3
-                    assert all(
-                        key in connector_metrics for key in ["slack", "notion", "google_drive"]
-                    )
-
-                    # Verify structure includes both syncs and workers
-                    for connector, metrics in connector_metrics.items():
-                        assert "active_syncs" in metrics
-                        assert "active_and_pending_workers" in metrics
+        for cs in snap.connector_metrics.values():
+            assert cs.active_syncs > 0
+            assert cs.active_and_pending_workers > 0
 
 
 @pytest.mark.asyncio
-async def test_thread_pool_metrics_integration(
-    mock_worker_metrics, mock_settings, test_worker_config
-):
+async def test_thread_pool_metrics_integration(mock_registry, mock_settings, test_worker_config):
     """Test thread pool metrics are correctly tracked and reported."""
-    with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
-    ):
-        # Test various thread pool activity levels
-        for thread_count in [0, 25, 50, 100]:
-            with patch(
-                "airweave.platform.temporal.worker.control_server.get_active_thread_count",
-                return_value=thread_count,
-            ):
-                with patch(
-                    "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
-                ) as mock_update:
-                    with patch(
-                        "airweave.platform.temporal.worker.control_server.get_prometheus_metrics",
-                        return_value=b"",
-                    ):
-                        control_server, state = create_control_server(
-                            test_worker_config, running=True
-                        )
+    for thread_count in [0, 25, 50, 100]:
+        with patch(
+            "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+            return_value=thread_count,
+        ):
+            server, state, fake_wm, _ = create_control_server(
+                test_worker_config, mock_registry, running=True
+            )
 
-                        request = MagicMock()
-                        await control_server._handle_metrics(request)
+            request = MagicMock()
+            await server._handle_metrics(request)
 
-                        # Verify thread pool count is passed
-                        call_kwargs = mock_update.call_args.kwargs
-                        assert call_kwargs["thread_pool_active"] == thread_count
-                        assert call_kwargs["thread_pool_size"] == 100  # From settings
+            snap = fake_wm.last_snapshot
+            assert snap.thread_pool_active == thread_count
+            assert snap.thread_pool_size == 100
 
 
 @pytest.mark.asyncio
@@ -560,42 +487,28 @@ async def test_pod_ordinal_extraction_for_low_cardinality():
 
 
 @pytest.mark.asyncio
-async def test_metrics_endpoint_uses_pod_ordinal(
-    mock_worker_metrics, mock_settings, test_worker_config
-):
+async def test_metrics_endpoint_uses_pod_ordinal(mock_registry, mock_settings, test_worker_config):
     """Test /metrics endpoint uses pod ordinal instead of full worker_id."""
-    mock_worker_metrics.get_pod_ordinal.return_value = "3"
+    mock_registry.get_pod_ordinal.return_value = "3"
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
+        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        return_value=0,
     ):
-        with patch(
-            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=0
-        ):
-            with patch(
-                "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
-            ) as mock_update:
-                with patch(
-                    "airweave.platform.temporal.worker.control_server.get_prometheus_metrics",
-                    return_value=b"",
-                ):
-                    control_server, state = create_control_server(
-                        test_worker_config, running=True
-                    )
+        server, state, fake_wm, _ = create_control_server(
+            test_worker_config, mock_registry, running=True
+        )
 
-                    request = MagicMock()
-                    await control_server._handle_metrics(request)
+        request = MagicMock()
+        await server._handle_metrics(request)
 
-                    # Verify pod ordinal is used (low cardinality)
-                    call_kwargs = mock_update.call_args.kwargs
-                    assert call_kwargs["worker_id"] == "3"
+        assert fake_wm.last_snapshot.worker_id == "3"
 
 
 @pytest.mark.asyncio
-async def test_zero_active_syncs_scenario(mock_worker_metrics, mock_settings, test_worker_config):
+async def test_zero_active_syncs_scenario(mock_registry, mock_settings, test_worker_config):
     """Test endpoints handle zero active syncs correctly."""
-    # Mock empty state
-    mock_worker_metrics.get_metrics_summary = AsyncMock(
+    mock_registry.get_metrics_summary = AsyncMock(
         return_value={
             "worker_id": "test-worker-0",
             "uptime_seconds": 1000.0,
@@ -604,12 +517,11 @@ async def test_zero_active_syncs_scenario(mock_worker_metrics, mock_settings, te
             "active_activities": [],
         }
     )
-    mock_worker_metrics.get_per_connector_metrics = AsyncMock(return_value={})
-    mock_worker_metrics.get_total_active_and_pending_workers = AsyncMock(return_value=0)
-    mock_worker_metrics.get_detailed_sync_metrics = AsyncMock(return_value=[])
-    mock_worker_metrics.get_per_sync_worker_counts = AsyncMock(return_value=[])
+    mock_registry.get_per_connector_metrics = AsyncMock(return_value={})
+    mock_registry.get_total_active_and_pending_workers = AsyncMock(return_value=0)
+    mock_registry.get_detailed_sync_metrics = AsyncMock(return_value=[])
+    mock_registry.get_per_sync_worker_counts = AsyncMock(return_value=[])
 
-    # Mock psutil
     mock_psutil = MagicMock()
     mock_process = MagicMock()
     mock_process.cpu_percent.return_value = 5.0
@@ -617,38 +529,31 @@ async def test_zero_active_syncs_scenario(mock_worker_metrics, mock_settings, te
     mock_psutil.Process.return_value = mock_process
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.worker_metrics", mock_worker_metrics
+        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        return_value=0,
     ):
-        with patch(
-            "airweave.platform.temporal.worker.control_server.get_active_thread_count", return_value=0
-        ):
-            with patch.dict("sys.modules", {"psutil": mock_psutil}):
-                control_server, state = create_control_server(test_worker_config, running=True)
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
+            server, state, fake_wm, _ = create_control_server(
+                test_worker_config, mock_registry, running=True
+            )
 
-                # Test JSON status
-                request = MagicMock()
-                response = await control_server._handle_status(request)
+            # Test JSON status
+            request = MagicMock()
+            response = await server._handle_status(request)
 
-                import json
+            import json
 
-                data = json.loads(response.body.decode("utf-8"))
-                assert data["active_activities_count"] == 0
-                assert len(data["active_syncs"]) == 0
-                assert data["metrics"]["active_and_pending_workers"] == 0
-                assert data["metrics"]["active_threads"] == 0
+            data = json.loads(response.body.decode("utf-8"))
+            assert data["active_activities_count"] == 0
+            assert len(data["active_syncs"]) == 0
+            assert data["metrics"]["active_and_pending_workers"] == 0
+            assert data["metrics"]["active_threads"] == 0
 
-                # Test Prometheus metrics
-                with patch(
-                    "airweave.platform.temporal.worker.control_server.update_prometheus_metrics"
-                ) as mock_update:
-                    with patch(
-                        "airweave.platform.temporal.worker.control_server.get_prometheus_metrics",
-                        return_value=b"",
-                    ):
-                        await control_server._handle_metrics(request)
+            # Test Prometheus metrics
+            await server._handle_metrics(request)
 
-                        call_kwargs = mock_update.call_args.kwargs
-                        assert call_kwargs["active_activities_count"] == 0
-                        assert call_kwargs["active_sync_jobs_count"] == 0
-                        assert call_kwargs["worker_pool_active_and_pending_count"] == 0
-                        assert call_kwargs["connector_metrics"] == {}
+            snap = fake_wm.last_snapshot
+            assert snap.active_activities_count == 0
+            assert snap.active_sync_jobs_count == 0
+            assert snap.worker_pool_active_and_pending_count == 0
+            assert snap.connector_metrics == {}

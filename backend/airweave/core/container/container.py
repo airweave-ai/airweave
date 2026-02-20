@@ -17,6 +17,8 @@ from airweave.core.protocols import (
     CircuitBreaker,
     EndpointVerifier,
     EventBus,
+    HealthServiceProtocol,
+    MetricsService,
     OcrProvider,
     WebhookAdmin,
     WebhookPublisher,
@@ -24,14 +26,27 @@ from airweave.core.protocols import (
 )
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
+from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
-from airweave.domains.oauth.protocols import OAuth2ServiceProtocol
-from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
+from airweave.domains.oauth.protocols import OAuth1ServiceProtocol, OAuth2ServiceProtocol
+from airweave.domains.source_connections.protocols import (
+    SourceConnectionRepositoryProtocol,
+    SourceConnectionServiceProtocol,
+)
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
     SourceServiceProtocol,
+)
+from airweave.domains.syncs.protocols import (
+    SyncCursorRepositoryProtocol,
+    SyncJobRepositoryProtocol,
+    SyncRepositoryProtocol,
+)
+from airweave.domains.temporal.protocols import (
+    TemporalScheduleServiceProtocol,
+    TemporalWorkflowServiceProtocol,
 )
 
 
@@ -44,25 +59,18 @@ class Container:
         from airweave.core.container import container
         await container.event_bus.publish(SyncLifecycleEvent(...))
 
-        # Testing: construct directly with fakes
-        from airweave.adapters.event_bus import FakeEventBus
-        from airweave.adapters.circuit_breaker import FakeCircuitBreaker
-        from airweave.adapters.ocr import FakeOcrProvider
-        test_container = Container(
-            event_bus=FakeEventBus(),
-            webhook_publisher=FakeWebhookPublisher(),
-            webhook_admin=FakeWebhookAdmin(),
-            circuit_breaker=FakeCircuitBreaker(),
-            ocr_provider=FakeOcrProvider(),
-            endpoint_verifier=FakeEndpointVerifier(),
-            webhook_service=FakeWebhookService(),
-        )
+        # Testing: construct directly with fakes (see backend/conftest.py
+        # for the full test_container fixture and Fake* definitions)
+        test_container = Container(event_bus=FakeEventBus(), ...)
 
         # FastAPI endpoints: use Inject() to pull individual protocols
         from airweave.api.deps import Inject
         async def my_endpoint(event_bus: EventBus = Inject(EventBus)):
             await event_bus.publish(...)
     """
+
+    # Health service — readiness check facade
+    health: HealthServiceProtocol
 
     # Event bus for domain event fan-out
     event_bus: EventBus
@@ -79,6 +87,9 @@ class Container:
     # OCR provider (with fallback chain + circuit breaking)
     ocr_provider: OcrProvider
 
+    # Metrics (HTTP, agentic search, DB pool — via MetricsService facade)
+    metrics: MetricsService
+
     # Source service — API-facing source operations
     source_service: SourceServiceProtocol
 
@@ -88,14 +99,28 @@ class Container:
 
     # Repository protocols (thin wrappers around crud singletons)
     sc_repo: SourceConnectionRepositoryProtocol
+    collection_repo: CollectionRepositoryProtocol
     conn_repo: ConnectionRepositoryProtocol
     cred_repo: IntegrationCredentialRepositoryProtocol
 
-    # OAuth2 token operations
+    # OAuth services
+    oauth1_service: OAuth1ServiceProtocol
     oauth2_service: OAuth2ServiceProtocol
+
+    # Source connection service — domain service for source connections
+    source_connection_service: SourceConnectionServiceProtocol
 
     # Source lifecycle — creates/validates configured source instances
     source_lifecycle_service: SourceLifecycleServiceProtocol
+
+    # Sync domain repositories
+    sync_repo: SyncRepositoryProtocol
+    sync_cursor_repo: SyncCursorRepositoryProtocol
+    sync_job_repo: SyncJobRepositoryProtocol
+
+    # Temporal domain
+    temporal_workflow_service: TemporalWorkflowServiceProtocol
+    temporal_schedule_service: TemporalScheduleServiceProtocol
 
     # Billing domain
     billing_service: BillingServiceProtocol

@@ -13,8 +13,10 @@ from starlette.responses import StreamingResponse
 
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.guard_rail_service import GuardRailService
+from airweave.core.protocols import MetricsService
 from airweave.core.pubsub import core_pubsub
 from airweave.core.shared_models import ActionType, FeatureFlag
 from airweave.search.agentic_search.core.agent import AgenticSearchAgent
@@ -35,6 +37,7 @@ async def agentic_search(
     readable_id: str = Path(..., description="The unique readable identifier of the collection"),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    metrics_service: MetricsService = Inject(MetricsService),
 ) -> AgenticSearchResponse:
     """Perform agentic search."""
     if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
@@ -49,7 +52,7 @@ async def agentic_search(
 
     try:
         emitter = AgenticSearchLoggingEmitter(ctx)
-        agent = AgenticSearchAgent(services, ctx, emitter)
+        agent = AgenticSearchAgent(services, ctx, emitter, metrics=metrics_service.agentic_search)
 
         response = await agent.run(readable_id, request, is_streaming=False)
 
@@ -66,6 +69,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     readable_id: str = Path(..., description="The unique readable identifier of the collection"),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    metrics_service: MetricsService = Inject(MetricsService),
 ) -> StreamingResponse:
     """Streaming agentic search endpoint using Server-Sent Events.
 
@@ -108,7 +112,9 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
         agent_reached = False
         try:
             services = await AgenticSearchServices.create(ctx, readable_id)
-            agent = AgenticSearchAgent(services, ctx, emitter)
+            agent = AgenticSearchAgent(
+                services, ctx, emitter, metrics=metrics_service.agentic_search
+            )
             agent_reached = True
             await agent.run(readable_id, request, is_streaming=True)
         except Exception as e:

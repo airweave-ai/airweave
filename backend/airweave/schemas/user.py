@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from airweave.schemas.organization import Organization
 
@@ -17,10 +17,7 @@ class UserOrganizationBase(BaseModel):
     user_id: UUID
     organization_id: UUID
 
-    class Config:
-        """Pydantic config for UserOrganizationBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserOrganization(UserOrganizationBase):
@@ -28,10 +25,7 @@ class UserOrganization(UserOrganizationBase):
 
     organization: Organization
 
-    class Config:
-        """Pydantic config for UserOrganization."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserBase(BaseModel):
@@ -40,11 +34,7 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = "Superuser"
 
-    class Config:
-        """Pydantic config for UserBase."""
-
-        from_orm = True
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserCreate(UserBase):
@@ -62,11 +52,7 @@ class UserUpdate(BaseModel):
     permissions: Optional[list[str]] = None
     last_active_at: Optional[datetime] = None
 
-    class Config:
-        """Pydantic config for UserUpdate."""
-
-        from_orm = True
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserInDBBase(UserBase):
@@ -99,20 +85,13 @@ class UserInDBBase(UserBase):
         """Get a mapping of organization IDs to roles."""
         return {org.organization.id: org.role for org in self.user_organizations}
 
-    class Config:
-        """Pydantic config for UserInDBBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class User(UserInDBBase):
     """Schema for User."""
 
-    class Config:
-        """Pydantic config for User."""
-
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class UserInDB(UserInDBBase):

@@ -101,6 +101,7 @@ services:
 
     ports:
       - "9001:8001"
+      - "9090:9090"
     volumes:
       - ../backend:/app
       - ../local_storage:/app/local_storage

@@ -412,3 +412,7 @@ integrations:
       prompt: "consent"
 
   qdrant:
+
+  fireflies:
+  freshdesk:
+  document360:

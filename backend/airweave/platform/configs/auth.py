@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from airweave.platform.configs._base import BaseConfig
 
@@ -81,17 +81,36 @@ class URLAndAPIKeyAuthConfig(AuthConfig):
 class ODBCAuthConfig(AuthConfig):
     """ODBC authentication credentials schema."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     host: str = Field(title="Host", description="The host of the ODBC database")
     port: int = Field(title="Port", description="The port of the ODBC database")
     database: str = Field(title="Database", description="The name of the ODBC database")
     username: str = Field(title="Username", description="The username for the ODBC database")
     password: str = Field(title="Password", description="The password for the ODBC database")
-    schema: str = Field(title="Schema", description="The schema of the ODBC database")
+    db_schema: str = Field(
+        alias="schema", title="Schema", description="The schema of the ODBC database"
+    )
     tables: str = Field(title="Tables", description="The tables of the ODBC database")
 
 
 class BaseDatabaseAuthConfig(AuthConfig):
     """Base database authentication configuration."""
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "host": "localhost",
+                "port": 5432,
+                "database": "mydb",
+                "user": "postgres",
+                "password": "secret",
+                "schema": "public",
+                "tables": "users,orders",
+            }
+        },
+    )
 
     host: str = Field(
         title="Host",
@@ -119,8 +138,9 @@ class BaseDatabaseAuthConfig(AuthConfig):
         description="The password for the PostgreSQL database",
         min_length=1,
     )
-    schema: str = Field(
+    db_schema: str = Field(
         default="public",
+        alias="schema",
         title="Schema",
         description="The schema of the PostgreSQL database",
         min_length=1,
@@ -157,7 +177,7 @@ class BaseDatabaseAuthConfig(AuthConfig):
             raise ValueError("Port must be between 1 and 65535")
         return v
 
-    @field_validator("database", "user", "password", "schema")
+    @field_validator("database", "user", "password", "db_schema")
     @classmethod
     def validate_not_empty(cls, v: str, info) -> str:
         """Validate that required fields are not empty."""
@@ -189,21 +209,6 @@ class BaseDatabaseAuthConfig(AuthConfig):
                 )
         return v
 
-    class Config:
-        """Pydantic config."""
-
-        json_schema_extra = {
-            "example": {
-                "host": "localhost",
-                "port": 5432,
-                "database": "mydb",
-                "user": "postgres",
-                "password": "secret",
-                "schema": "public",
-                "tables": "users,orders",
-            }
-        }
-
 
 # Destination auth configs
 class WeaviateAuthConfig(AuthConfig):
@@ -234,6 +239,28 @@ class AsanaAuthConfig(OAuth2WithRefreshAuthConfig):
     """Asana authentication credentials schema."""
 
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
+
+
+class ApolloAuthConfig(APIKeyAuthConfig):
+    """Apollo authentication credentials schema.
+
+    Use your Apollo API key (Settings > API in Apollo). Master API key is
+    required for Sequences and Email Activities.
+    """
+
+    api_key: str = Field(
+        title="API Key",
+        description="The API key for Apollo. Create in Apollo: Settings > API.",
+        min_length=10,
+    )
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate Apollo API key."""
+        if not v or not v.strip():
+            raise ValueError("API key is required")
+        return v.strip()
 
 
 class AttioAuthConfig(APIKeyAuthConfig):
@@ -321,16 +348,60 @@ class ClickUpAuthConfig(OAuth2AuthConfig):
     # Inherits access_token from OAuth2AuthConfig
 
 
+class CodaAuthConfig(APIKeyAuthConfig):
+    """Coda authentication credentials schema.
+
+    Uses Personal API Token from Coda Account settings (Generate API token).
+    Pipedream maps this to their 'api_token' via SOURCE_FIELD_MAPPING in PipedreamAuthProvider.
+    """
+
+    api_key: str = Field(
+        title="Personal API Token",
+        description="Coda Personal API Token from Account settings",
+        min_length=10,
+    )
+
+
 class ConfluenceAuthConfig(OAuth2WithRefreshAuthConfig):
     """Confluence authentication credentials schema."""
 
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
 
 
+class Document360AuthConfig(AuthConfig):
+    """Document360 authentication credentials schema.
+
+    Uses API token from Settings > Knowledge base portal > API tokens.
+    """
+
+    api_token: str = Field(
+        title="API Token",
+        description=(
+            "Document360 API token. Generate from Settings > Knowledge base portal > API tokens."
+        ),
+        min_length=10,
+    )
+
+    @field_validator("api_token")
+    @classmethod
+    def validate_api_token(cls, v: str) -> str:
+        """Validate Document360 API token."""
+        if not v or not v.strip():
+            raise ValueError("API token is required")
+        return v.strip()
+
+
 class DropboxAuthConfig(OAuth2BYOCAuthConfig):
     """Dropbox authentication credentials schema."""
 
     # Inherits client_id, client_secret, refresh_token and access_token from OAuth2BYOCAuthConfig
+
+
+class FirefliesAuthConfig(APIKeyAuthConfig):
+    """Fireflies authentication credentials schema.
+
+    API key from https://app.fireflies.ai/integrations (API & Webhooks).
+    """
 
 
 class ElasticsearchAuthConfig(AuthConfig):
@@ -650,6 +721,20 @@ class StripeAuthConfig(AuthConfig):
         if not v.startswith(("sk_test_", "sk_live_")):
             raise ValueError("Stripe API key must start with 'sk_test_' or 'sk_live_'")
         return v
+
+
+class FreshdeskAuthConfig(AuthConfig):
+    """Freshdesk authentication credentials schema.
+
+    Uses API key as Basic auth username (password is 'X').
+    See: https://developers.freshdesk.com/api/#authentication
+    """
+
+    api_key: str = Field(
+        title="API Key",
+        description="Your Freshdesk API key. Find it in Profile Settings in your Freshdesk portal.",
+        min_length=1,
+    )
 
 
 class TodoistAuthConfig(OAuth2AuthConfig):
