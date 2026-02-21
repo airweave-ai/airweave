@@ -1948,7 +1948,7 @@ async def admin_delete_sync(
     """
     from sqlalchemy import select as sa_select
 
-    from airweave.core.source_connection_service import source_connection_service
+    from airweave.core.container import container
     from airweave.models.source_connection import SourceConnection
     from airweave.models.sync import Sync
 
@@ -1979,7 +1979,7 @@ async def admin_delete_sync(
 
     # Use the existing source connection delete logic which handles all cleanup
     try:
-        await source_connection_service.delete(
+        await container.source_connection_service.delete(
             db,
             id=source_conn.id,
             ctx=sync_org_ctx,

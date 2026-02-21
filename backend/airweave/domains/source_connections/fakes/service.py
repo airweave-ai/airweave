@@ -7,8 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
+from airweave.domains.source_connections.protocols import (
+    SourceConnectionDeletionServiceProtocol,
+    SourceConnectionUpdateServiceProtocol,
+)
 from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.source_connection import SourceConnection
+from airweave.schemas.source_connection import (
+    SourceConnection as SourceConnectionSchema,
+)
 from airweave.schemas.source_connection import (
     SourceConnectionCreate,
     SourceConnectionJob,
@@ -20,11 +27,18 @@ from airweave.schemas.source_connection import (
 class FakeSourceConnectionService:
     """In-memory fake for SourceConnectionServiceProtocol."""
 
-    def __init__(self, sync_lifecycle: SyncLifecycleServiceProtocol) -> None:
+    def __init__(
+        self,
+        sync_lifecycle: SyncLifecycleServiceProtocol,
+        update_service: Optional[SourceConnectionUpdateServiceProtocol] = None,
+        deletion_service: Optional[SourceConnectionDeletionServiceProtocol] = None,
+    ) -> None:
         self._store: dict[UUID, SourceConnection] = {}
         self._list_items: List[SourceConnectionListItem] = []
         self._calls: list[tuple[Any, ...]] = []
         self._sync_lifecycle = sync_lifecycle
+        self._update_service = update_service
+        self._deletion_service = deletion_service
 
     def seed(self, id: UUID, obj: SourceConnection) -> None:
         self._store[id] = obj
@@ -62,12 +76,16 @@ class FakeSourceConnectionService:
 
     async def update(
         self, db: AsyncSession, id: UUID, obj_in: SourceConnectionUpdate, ctx: ApiContext
-    ) -> SourceConnection:
+    ) -> SourceConnectionSchema:
         self._calls.append(("update", db, id, obj_in, ctx))
-        raise NotImplementedError("FakeSourceConnectionService.update not implemented")
+        if self._update_service:
+            return await self._update_service.update(db, id=id, obj_in=obj_in, ctx=ctx)
+        raise NotImplementedError("FakeSourceConnectionService.update not wired")
 
-    async def delete(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnection:
+    async def delete(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnectionSchema:
         self._calls.append(("delete", db, id, ctx))
+        if self._deletion_service:
+            return await self._deletion_service.delete(db, id=id, ctx=ctx)
         obj = self._store.get(id)
         if not obj:
             raise NotFoundException("Source connection not found")

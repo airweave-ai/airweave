@@ -317,9 +317,10 @@ async def update(
     ),
     source_connection_in: schemas.SourceConnectionUpdate,
     ctx: ApiContext = Depends(deps.get_context),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Update a source connection's configuration."""
-    return await source_connection_service.update(
+    return await sc_service.update(
         db,
         id=source_connection_id,
         obj_in=source_connection_in,
@@ -365,9 +366,10 @@ async def delete(
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
     event_bus: EventBus = Inject(EventBus),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Delete a source connection and all related data."""
-    result = await source_connection_service.delete(
+    result = await sc_service.delete(
         db,
         id=source_connection_id,
         ctx=ctx,

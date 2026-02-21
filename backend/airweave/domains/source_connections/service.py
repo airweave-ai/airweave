@@ -12,15 +12,21 @@ from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
+    SourceConnectionDeletionServiceProtocol,
     SourceConnectionRepositoryProtocol,
     SourceConnectionServiceProtocol,
+    SourceConnectionUpdateServiceProtocol,
 )
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
+    SourceConnection as SourceConnectionSchema,
+)
+from airweave.schemas.source_connection import (
     SourceConnectionJob,
     SourceConnectionListItem,
+    SourceConnectionUpdate,
 )
 
 
@@ -39,6 +45,9 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         # Helpers
         response_builder: ResponseBuilderProtocol,
         sync_lifecycle: SyncLifecycleServiceProtocol,
+        # Sub-services
+        update_service: SourceConnectionUpdateServiceProtocol,
+        deletion_service: SourceConnectionDeletionServiceProtocol,
     ) -> None:
         self.sc_repo = sc_repo
         self.collection_repo = collection_repo
@@ -47,6 +56,8 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         self.auth_provider_registry = auth_provider_registry
         self.response_builder = response_builder
         self._sync_lifecycle = sync_lifecycle
+        self._update_service = update_service
+        self._deletion_service = deletion_service
 
     async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> SourceConnection:
         """Get a source connection by ID."""
@@ -93,6 +104,16 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
             )
 
         return result
+
+    async def update(
+        self, db: AsyncSession, id: UUID, obj_in: SourceConnectionUpdate, ctx: ApiContext
+    ) -> SourceConnectionSchema:
+        """Update a source connection."""
+        return await self._update_service.update(db, id=id, obj_in=obj_in, ctx=ctx)
+
+    async def delete(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnectionSchema:
+        """Delete a source connection."""
+        return await self._deletion_service.delete(db, id=id, ctx=ctx)
 
     # ------------------------------------------------------------------
     # Sync lifecycle proxies
