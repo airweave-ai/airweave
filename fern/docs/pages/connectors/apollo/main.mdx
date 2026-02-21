@@ -1,0 +1,144 @@
+---
+title: "Apollo"
+description: "Apollo integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Apollo logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Apollo</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Apollo through Airweave's unified search layer.
+
+## Configuration
+
+Apollo source connector.
+
+Syncs Contacts, Accounts, Sequences, and Email Activities from your
+team's Apollo account. Requires an Apollo API key (master key for
+Sequences and Email Activities).
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/apollo.py"
+>
+  Explore the Apollo connector implementation
+</Card>
+
+### Authentication
+
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="ApolloAccountEntity">
+
+Schema for Apollo account (company) entities.
+
+From POST /accounts/search. Accounts are companies added to your Apollo database.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| account_id | str | Apollo account ID. |
+| name | str | Account/company name. |
+| domain | Optional[str] | Primary domain of the account. |
+| created_at | Optional[datetime] | When the account was created. |
+| updated_at | Optional[datetime] | When the account was last updated. |
+| source | Optional[str] | Source of the account (e.g. api, csv_import). |
+| source_display_name | Optional[str] | Human-readable source name. |
+| num_contacts | Optional[int] | Number of contacts linked to this account. |
+| last_activity_date | Optional[datetime] | Last activity date on the account. |
+| label_ids | List[str] | Label IDs applied to the account. |
+| web_url_value | Optional[str] | URL to view this account in Apollo. |
+
+</Accordion>
+<Accordion title="ApolloContactEntity">
+
+Schema for Apollo contact entities.
+
+From POST /contacts/search. Contacts are people added to your Apollo database.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| contact_id | str | Apollo contact ID. |
+| name | str | Full name of the contact. |
+| first_name | Optional[str] | First name. |
+| last_name | Optional[str] | Last name. |
+| email | Optional[str] | Email address. |
+| title | Optional[str] | Job title. |
+| organization_name | Optional[str] | Current organization name. |
+| account_id | Optional[str] | Apollo account ID this contact belongs to. |
+| account_name | Optional[str] | Account/company name. |
+| created_at | Optional[datetime] | When the contact was created. |
+| updated_at | Optional[datetime] | When the contact was last updated. |
+| email_status | Optional[str] | Email verification status. |
+| source_display_name | Optional[str] | Human-readable source. |
+| emailer_campaign_ids | List[str] | Sequence IDs the contact is in. |
+| web_url_value | Optional[str] | URL to view this contact in Apollo. |
+
+</Accordion>
+<Accordion title="ApolloSequenceEntity">
+
+Schema for Apollo sequence (email campaign) entities.
+
+From POST /emailer_campaigns/search.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| sequence_id | str | Apollo sequence/campaign ID. |
+| name | str | Sequence name. |
+| created_at | Optional[datetime] | When the sequence was created. |
+| active | Optional[bool] | Whether the sequence is active. |
+| archived | Optional[bool] | Whether the sequence is archived. |
+| num_steps | Optional[int] | Number of steps in the sequence. |
+| unique_scheduled | Optional[int] | Count of scheduled emails. |
+| unique_delivered | Optional[int] | Count of delivered emails. |
+| unique_opened | Optional[int] | Count of opened emails. |
+| unique_replied | Optional[int] | Count of replies. |
+| permissions | Optional[str] | Sequence permissions (e.g. team_can_use). |
+| web_url_value | Optional[str] | URL to view this sequence in Apollo. |
+
+</Accordion>
+<Accordion title="ApolloEmailActivityEntity">
+
+Schema for Apollo email activity (outreach message) entities.
+
+From GET /emailer_messages/search. Represents emails sent as part of sequences.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| message_id | str | Apollo emailer message ID. |
+| name | str | Display name (subject or 'Email to recipient'). |
+| subject | Optional[str] | Email subject line. |
+| status | Optional[str] | Status (e.g. delivered, scheduled, failed). |
+| from_email | Optional[str] | Sender email. |
+| from_name | Optional[str] | Sender display name. |
+| to_email | Optional[str] | Recipient email. |
+| to_name | Optional[str] | Recipient display name. |
+| body_text | Optional[str] | Plain-text body (searchable). |
+| campaign_name | Optional[str] | Sequence/campaign name. |
+| emailer_campaign_id | Optional[str] | Apollo sequence ID. |
+| contact_id | Optional[str] | Apollo contact ID. |
+| account_id | Optional[str] | Apollo account ID. |
+| created_at | Optional[datetime] | When the message was created. |
+| completed_at | Optional[datetime] | When the email was delivered. |
+| due_at | Optional[datetime] | Scheduled send time. |
+| failure_reason | Optional[str] | Reason for failure if status is failed. |
+| not_sent_reason | Optional[str] | Reason email was not sent. |
+| web_url_value | Optional[str] | URL to view this email in Apollo. |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

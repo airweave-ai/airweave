@@ -1,0 +1,117 @@
+---
+title: "Coda"
+description: "Coda integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Coda logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Coda</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Coda through Airweave's unified search layer.
+
+## Configuration
+
+Coda source connector.
+
+Syncs docs, pages (with content), and tables/rows from Coda.
+Auth: Personal API Token or OAuth (via Packs).
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/coda.py"
+>
+  Explore the Coda connector implementation
+</Card>
+
+### Authentication
+
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="CodaDocEntity">
+
+Schema for a Coda doc (top-level container).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| doc_id | str | ID of the Coda doc. |
+| name | str | Name/title of the doc. |
+| owner | Optional[str] | Email of the doc owner. |
+| owner_name | Optional[str] | Display name of the doc owner. |
+| created_at | Optional[datetime] | When the doc was created. |
+| updated_at | Optional[datetime] | When the doc was last modified. |
+| workspace_name | Optional[str] | Name of the workspace containing the doc. |
+| folder_name | Optional[str] | Name of the folder containing the doc. |
+| browser_link | Optional[str] | Browser URL for the doc. |
+
+</Accordion>
+<Accordion title="CodaPageEntity">
+
+Schema for a Coda page (canvas with content).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| page_id | str | ID of the page. |
+| name | str | Name of the page. |
+| subtitle | Optional[str] | Subtitle of the page. |
+| doc_id | str | ID of the parent doc. |
+| doc_name | Optional[str] | Name of the parent doc. |
+| content | Optional[str] | Aggregated page content (plain text). |
+| content_type | Optional[str] | Page type (canvas, embed, syncPage). |
+| created_at | Optional[datetime] | When the page was created. |
+| updated_at | Optional[datetime] | When the page was last modified. |
+| browser_link | Optional[str] | Browser URL for the page. |
+
+</Accordion>
+<Accordion title="CodaTableEntity">
+
+Schema for a Coda table or view.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| table_id | str | ID of the table. |
+| name | str | Name of the table. |
+| table_type | Optional[str] | Type (table or view). |
+| doc_id | str | ID of the parent doc. |
+| doc_name | Optional[str] | Name of the parent doc. |
+| page_name | Optional[str] | Name of the parent page if any. |
+| row_count | int | Number of rows in the table. |
+| created_at | Optional[datetime] | When the table was created. |
+| updated_at | Optional[datetime] | When the table was last modified. |
+| browser_link | Optional[str] | Browser URL for the table. |
+
+</Accordion>
+<Accordion title="CodaRowEntity">
+
+Schema for a row in a Coda table.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| row_id | str | ID of the row. |
+| name | str | Display name of the row (identifying column value). |
+| table_id | str | ID of the parent table. |
+| table_name | Optional[str] | Name of the parent table. |
+| doc_id | str | ID of the doc containing the table. |
+| values | Dict[str, Any] | Cell values keyed by column ID. |
+| values_text | Optional[str] | Human-readable row content for search. |
+| created_at | Optional[datetime] | When the row was created. |
+| updated_at | Optional[datetime] | When the row was last modified. |
+| browser_link | Optional[str] | Browser URL for the row. |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

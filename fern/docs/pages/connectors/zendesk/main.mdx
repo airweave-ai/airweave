@@ -46,31 +46,7 @@ This connector uses **OAuth 2.0 with custom credentials**. You need to provide y
 
 ### Configuration Options
 
-The following configuration options are available for this connector:
-
-<Card
-  title="Configuration Parameters"
-  className="config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
->
-
-Zendesk configuration schema.
-<ParamField
-  path="subdomain"
-  type="str"
-  required={true}
->
-  Your Zendesk subdomain only (e.g., 'mycompany' NOT 'mycompany.zendesk.com')
-</ParamField>
-<ParamField
-  path="exclude_closed_tickets"
-  type="Optional[bool]"
-  required={false}
-  default={false}
->
-  Skip closed tickets during sync (recommended for faster syncing)
-</ParamField>
-</Card>
+This connector does not have any additional configuration options.
 
 ## Data Models
 

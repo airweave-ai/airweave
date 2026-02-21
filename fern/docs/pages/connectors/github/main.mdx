@@ -33,52 +33,13 @@ configurable filtering options for branches and file types.
 
 ### Authentication
 
-This connector uses a custom authentication configuration.
-
-<Card
-  title="Authentication Configuration"
-  className="auth-config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
->
-
-GitHub authentication credentials schema.
-
-<ParamField
-  path="personal_access_token"
-  type="str"
-  required={true}
->
-  GitHub PAT with read rights (code, contents, metadata) to the repository
-</ParamField>
-</Card>
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
 
 ### Configuration Options
 
-The following configuration options are available for this connector:
-
-<Card
-  title="Configuration Parameters"
-  className="config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
->
-
-Github configuration schema.
-<ParamField
-  path="repo_name"
-  type="str"
-  required={true}
->
-  Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')
-</ParamField>
-<ParamField
-  path="branch"
-  type="str"
-  required={false}
-  default=""
->
-  Specific branch to sync (e.g., 'main', 'development'). If empty, uses the default branch.
-</ParamField>
-</Card>
+This connector does not have any additional configuration options.
 
 ## Data Models
 

@@ -1,0 +1,116 @@
+---
+title: "Document360"
+description: "Document360 integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Document360 logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Document360</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Document360 through Airweave's unified search layer.
+
+## Configuration
+
+Document360 source connector.
+
+Syncs project versions, categories, and articles from Document360
+knowledge bases. Uses API token authentication.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/document360.py"
+>
+  Explore the Document360 connector implementation
+</Card>
+
+### Authentication
+
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="Document360ProjectVersionEntity">
+
+Schema for Document360 project version (knowledge base version).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | str | Unique ID of the project version |
+| name | str | Display name of the version (e.g. version_code_name or version number) |
+| version_number | Optional[float] | Project version number |
+| version_code_name | Optional[str] | Custom version name (e.g. v1) |
+| is_main_version | bool | True if this is the main version after loading documentation |
+| is_public | bool | True if this version is visible to the public |
+| is_beta | bool | True if this version is marked as Beta |
+| is_deprecated | bool | True if this version is marked as deprecated |
+| created_at | Optional[datetime] | When the version was created |
+| modified_at | Optional[datetime] | When the version was last modified |
+| slug | Optional[str] | URL slug for the version |
+| order | Optional[int] | Display order |
+| version_type | Optional[int] | 0 = KB workspace, 1 = API Reference workspace |
+| web_url_value | Optional[str] | Base URL to the knowledge base (if known) |
+
+</Accordion>
+<Accordion title="Document360CategoryEntity">
+
+Schema for Document360 category (folder/page/index in the TOC).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | str | Unique ID of the category |
+| name | str | Name of the category |
+| description | Optional[str] | Description of the category |
+| project_version_id | Optional[str] | ID of the project version this category belongs to |
+| project_version_name | Optional[str] | Name of the project version |
+| parent_category_id | Optional[str] | ID of the parent category (null if top-level) |
+| order | Optional[int] | Position inside the parent category |
+| slug | Optional[str] | URL slug of the category |
+| category_type | Optional[int] | 0 = Folder, 1 = Page, 2 = Index |
+| hidden | bool | Whether the category is visible on the site |
+| created_at | Optional[datetime] | When the category was created |
+| modified_at | Optional[datetime] | When the category was last modified |
+| web_url_value | Optional[str] | URL to view the category in Document360 |
+
+</Accordion>
+<Accordion title="Document360ArticleEntity">
+
+Schema for Document360 article (document with content).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | str | Unique ID of the article |
+| name | str | Title of the article |
+| content | Optional[str] | Main text content (Markdown or plain text) |
+| html_content | Optional[str] | HTML content when editor is WYSIWYG |
+| description | Optional[str] | Short description of the article |
+| category_id | Optional[str] | ID of the parent category |
+| category_name | Optional[str] | Name of the parent category |
+| project_version_id | Optional[str] | ID of the project version |
+| project_version_name | Optional[str] | Name of the project version |
+| slug | Optional[str] | URL slug of the article |
+| status | Optional[int] | 0 = Draft, 3 = Published |
+| language_code | Optional[str] | Language code of the article |
+| public_version | Optional[int] | Published version number |
+| latest_version | Optional[int] | Latest version number |
+| authors | List[Dict[str, Any]] | List of authors/contributors |
+| created_at | Optional[datetime] | When the article was created |
+| modified_at | Optional[datetime] | When the article was last modified |
+| article_url | Optional[str] | Full URL of the article from list API (if provided) |
+| web_url_value | Optional[str] | URL to view the article in Document360 |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

@@ -33,24 +33,9 @@ including transactions, customers, subscriptions, and account analytics.
 
 ### Authentication
 
-This connector uses a custom authentication configuration.
-
-<Card
-  title="Authentication Configuration"
-  className="auth-config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
->
-
-Stripe authentication credentials schema.
-
-<ParamField
-  path="api_key"
-  type="str"
-  required={true}
->
-  The API key for the Stripe account. Should start with 'sk_test_' for test mode or 'sk_live_' for live mode.
-</ParamField>
-</Card>
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
 
 ### Configuration Options
 

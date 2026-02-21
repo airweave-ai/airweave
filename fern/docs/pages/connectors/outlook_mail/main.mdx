@@ -42,39 +42,7 @@ This connector uses **OAuth 2.0 authentication**. You can connect through the Ai
 
 ### Configuration Options
 
-The following configuration options are available for this connector:
-
-<Card
-  title="Configuration Parameters"
-  className="config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
->
-
-Outlook Mail configuration schema.
-<ParamField
-  path="after_date"
-  type="Optional[str]"
-  required={true}
->
-  Sync emails after this date (format: YYYY/MM/DD or YYYY-MM-DD).
-</ParamField>
-<ParamField
-  path="included_folders"
-  type="list[str]"
-  required={false}
-  default="[]"
->
-  Well-known folder names to include (e.g., 'inbox', 'sentitems', 'drafts'). Defaults to inbox and sent items.
-</ParamField>
-<ParamField
-  path="excluded_folders"
-  type="list[str]"
-  required={false}
-  default="[]"
->
-  Well-known folder names to exclude (e.g., 'junkemail', 'deleteditems'). Defaults to junk email and deleted items.
-</ParamField>
-</Card>
+This connector does not have any additional configuration options.
 
 ## Data Models
 
