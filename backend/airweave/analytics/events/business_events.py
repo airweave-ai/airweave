@@ -40,12 +40,12 @@ class BusinessEventTracker:
             "webhook_domain": domain,
             "event_types": event_types,
             "event_types_count": len(event_types),
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
         }
 
         analytics.track_event(
             event_name="webhook_subscription_created",
-            distinct_id=ctx.organization.id,
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
@@ -72,7 +72,7 @@ class BusinessEventTracker:
             "endpoint_id": endpoint_id,
             "url_changed": url_changed,
             "event_types_changed": event_types_changed,
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
         }
 
         if new_event_types is not None:
@@ -81,7 +81,7 @@ class BusinessEventTracker:
 
         analytics.track_event(
             event_name="webhook_subscription_updated",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
@@ -102,7 +102,7 @@ class BusinessEventTracker:
 
         analytics.track_event(
             event_name="webhook_subscription_deleted",
-            distinct_id=ctx.organization.id,
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
@@ -125,7 +125,7 @@ class BusinessEventTracker:
 
         analytics.track_event(
             event_name="webhook_secret_viewed",
-            distinct_id=ctx.organization.id,
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
@@ -154,7 +154,7 @@ class BusinessEventTracker:
 
         analytics.track_event(
             event_name="source_connection_created",
-            distinct_id=ctx.organization.id,
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
@@ -198,7 +198,7 @@ class BusinessEventTracker:
 
         analytics.track_event(
             event_name="sync_completed",
-            distinct_id=ctx.organization.id,
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
@@ -223,7 +223,7 @@ class BusinessEventTracker:
 
         analytics.track_event(
             event_name="sync_failed",
-            distinct_id=ctx.organization.id,
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
@@ -250,7 +250,7 @@ class BusinessEventTracker:
 
         analytics.track_event(
             event_name="sync_cancelled",
-            distinct_id=ctx.organization.id,
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
