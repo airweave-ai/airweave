@@ -61,3 +61,22 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
             db, ctx=ctx, collection_id=collection_id, skip=skip, limit=limit
         )
         return [SourceConnectionStats.from_dict(d) for d in raw]
+
+    async def get_sync_ids_for_collection(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: UUID,
+        readable_collection_id: str,
+    ) -> List[UUID]:
+        """Get all sync IDs for source connections in a collection."""
+        rows = await db.execute(
+            select(SourceConnection.sync_id)
+            .where(
+                SourceConnection.organization_id == organization_id,
+                SourceConnection.readable_collection_id == readable_collection_id,
+                SourceConnection.sync_id.is_not(None),
+            )
+            .distinct()
+        )
+        return [row[0] for row in rows if row[0]]

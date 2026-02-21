@@ -164,7 +164,20 @@ class SyncJobServiceProtocol(Protocol):
 
 
 class SyncLifecycleServiceProtocol(Protocol):
-    """Sync lifecycle: provision, run, get jobs, cancel."""
+    """Sync lifecycle: provision, run, get jobs, cancel, teardown."""
+
+    async def teardown_syncs_for_collection(
+        self,
+        db: AsyncSession,
+        *,
+        sync_ids: List[UUID],
+        collection_id: UUID,
+        organization_id: UUID,
+        ctx: ApiContext,
+        cancel_timeout_seconds: int = 15,
+    ) -> None:
+        """Cancel running workflows and schedule async cleanup for a collection's syncs."""
+        ...
 
     async def provision_sync(
         self,

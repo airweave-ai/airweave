@@ -1,5 +1,6 @@
-"""Sync lifecycle service: provision, run, get_jobs, cancel_job."""
+"""Sync lifecycle service: provision, run, get_jobs, cancel_job, teardown."""
 
+import asyncio
 import re
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -76,6 +77,26 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
     # ------------------------------------------------------------------
     # Public API (protocol surface)
     # ------------------------------------------------------------------
+
+    async def teardown_syncs_for_collection(
+        self,
+        db: AsyncSession,
+        *,
+        sync_ids: List[UUID],
+        collection_id: UUID,
+        organization_id: UUID,
+        ctx: ApiContext,
+        cancel_timeout_seconds: int = 15,
+    ) -> None:
+        """Cancel running workflows and schedule async cleanup for a collection's syncs.
+
+        1. Cancels PENDING/RUNNING workflows via Temporal.
+        2. Polls until terminal state (up to cancel_timeout_seconds).
+        3. Schedules async cleanup workflow for Vespa/ARF/schedules.
+        """
+        syncs_to_wait = await self._cancel_active_syncs(db, sync_ids, ctx)
+        await self._wait_for_terminal(db, syncs_to_wait, cancel_timeout_seconds, ctx)
+        await self._schedule_collection_cleanup(sync_ids, collection_id, organization_id, ctx)
 
     async def provision_sync(
         self,
@@ -288,6 +309,82 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    async def _cancel_active_syncs(
+        self,
+        db: AsyncSession,
+        sync_ids: List[UUID],
+        ctx: ApiContext,
+    ) -> List[UUID]:
+        """Cancel PENDING/RUNNING jobs and return IDs that need waiting."""
+        non_terminal = {SyncJobStatus.PENDING, SyncJobStatus.RUNNING, SyncJobStatus.CANCELLING}
+        syncs_to_wait: List[UUID] = []
+        for sync_id in sync_ids:
+            latest_job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=sync_id)
+            if not latest_job or latest_job.status not in non_terminal:
+                continue
+            if latest_job.status in (SyncJobStatus.PENDING, SyncJobStatus.RUNNING):
+                try:
+                    await self._temporal_workflow_service.cancel_sync_job_workflow(
+                        str(latest_job.id), ctx
+                    )
+                    ctx.logger.info(f"Cancelled job {latest_job.id} before deletion")
+                except Exception as e:
+                    ctx.logger.warning(f"Failed to cancel job {latest_job.id}: {e}")
+            syncs_to_wait.append(sync_id)
+        return syncs_to_wait
+
+    async def _wait_for_terminal(
+        self,
+        db: AsyncSession,
+        syncs_to_wait: List[UUID],
+        timeout_seconds: int,
+        ctx: ApiContext,
+    ) -> None:
+        """Poll until all syncs reach a terminal state or timeout."""
+        if not syncs_to_wait:
+            return
+        terminal = {SyncJobStatus.COMPLETED, SyncJobStatus.FAILED, SyncJobStatus.CANCELLED}
+        elapsed = 0.0
+        remaining = list(syncs_to_wait)
+        while elapsed < timeout_seconds and remaining:
+            await asyncio.sleep(1.0)
+            elapsed += 1.0
+            db.expire_all()
+            still_waiting = []
+            for sid in remaining:
+                job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=sid)
+                if job and job.status not in terminal:
+                    still_waiting.append(sid)
+            remaining = still_waiting
+        if remaining:
+            ctx.logger.warning(
+                f"{len(remaining)} sync(s) did not reach terminal state "
+                f"within {timeout_seconds}s -- proceeding with deletion anyway"
+            )
+
+    async def _schedule_collection_cleanup(
+        self,
+        sync_ids: List[UUID],
+        collection_id: UUID,
+        organization_id: UUID,
+        ctx: ApiContext,
+    ) -> None:
+        """Schedule a Temporal workflow for async Vespa/ARF cleanup."""
+        if not sync_ids:
+            return
+        try:
+            await self._temporal_workflow_service.start_cleanup_sync_data_workflow(
+                sync_ids=[str(sid) for sid in sync_ids],
+                collection_id=str(collection_id),
+                organization_id=str(organization_id),
+                ctx=ctx,
+            )
+        except Exception as e:
+            ctx.logger.error(
+                f"Failed to schedule async cleanup for collection {collection_id}: {e}. "
+                f"Data may be orphaned in Vespa/ARF."
+            )
 
     async def _validate_force_full_sync(
         self, db: AsyncSession, sync_id: UUID, ctx: ApiContext

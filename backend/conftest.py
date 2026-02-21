@@ -372,6 +372,14 @@ def fake_payment_gateway():
 
 
 @pytest.fixture
+def fake_collection_service():
+    """Fake CollectionService."""
+    from airweave.domains.collections.fakes.service import FakeCollectionService
+
+    return FakeCollectionService()
+
+
+@pytest.fixture
 def test_container(
     fake_health_service,
     fake_event_bus,
@@ -405,6 +413,7 @@ def test_container(
     fake_billing_service,
     fake_billing_webhook,
     fake_payment_gateway,
+    fake_collection_service,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -429,6 +438,7 @@ def test_container(
         source_service=fake_source_service,
         source_registry=fake_source_registry,
         auth_provider_registry=fake_auth_provider_registry,
+        collection_service=fake_collection_service,
         sc_repo=fake_sc_repo,
         collection_repo=fake_collection_repo,
         conn_repo=fake_conn_repo,

@@ -44,6 +44,23 @@ class FakeSyncLifecycleService:
         """Make all subsequent calls raise this error."""
         self._should_raise = error
 
+    async def teardown_syncs_for_collection(
+        self,
+        db: AsyncSession,
+        *,
+        sync_ids: List[UUID],
+        collection_id: UUID,
+        organization_id: UUID,
+        ctx: ApiContext,
+        cancel_timeout_seconds: int = 15,
+    ) -> None:
+        """Record call — no-op fake."""
+        self._calls.append(
+            ("teardown_syncs_for_collection", db, sync_ids, collection_id, organization_id, ctx)
+        )
+        if self._should_raise:
+            raise self._should_raise
+
     async def provision_sync(
         self,
         db: AsyncSession,

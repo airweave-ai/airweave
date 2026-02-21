@@ -10,8 +10,7 @@ from typing import List
 from fastapi import Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud, schemas
-from airweave.analytics.service import analytics
+from airweave import schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
@@ -19,9 +18,11 @@ from airweave.api.examples import (
     create_collection_list_response,
 )
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.collection_service import collection_service
-from airweave.core.events.collection import CollectionLifecycleEvent
-from airweave.core.protocols import EventBus
+from airweave.domains.collections.exceptions import (
+    CollectionAlreadyExistsError,
+    CollectionNotFoundError,
+)
+from airweave.domains.collections.protocols import CollectionServiceProtocol
 from airweave.schemas.errors import (
     NotFoundErrorResponse,
     RateLimitErrorResponse,
@@ -69,16 +70,10 @@ async def list(
     ),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    service: CollectionServiceProtocol = Inject(CollectionServiceProtocol),
 ) -> List[schemas.Collection]:
     """List all collections belonging to your organization."""
-    collections = await crud.collection.get_multi(
-        db,
-        ctx=ctx,
-        skip=skip,
-        limit=limit,
-        search_query=search,
-    )
-    return collections
+    return await service.list(db, ctx=ctx, skip=skip, limit=limit, search_query=search)
 
 
 @router.get("/count", response_model=int)
@@ -86,9 +81,10 @@ async def count(
     search: str = Query(None, description="Search term to filter by name or readable_id"),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    service: CollectionServiceProtocol = Inject(CollectionServiceProtocol),
 ) -> int:
     """Get total count of collections for the organization with optional search filtering."""
-    return await crud.collection.count(db, ctx=ctx, search_query=search)
+    return await service.count(db, ctx=ctx, search_query=search)
 
 
 @router.post(
@@ -115,35 +111,13 @@ async def create(
     collection: schemas.CollectionCreate,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    event_bus: EventBus = Inject(EventBus),
+    service: CollectionServiceProtocol = Inject(CollectionServiceProtocol),
 ) -> schemas.Collection:
     """Create a new collection."""
-    # Create the collection
-    collection_obj = await collection_service.create(db, collection_in=collection, ctx=ctx)
-
-    analytics.track_event(
-        "collection_created",
-        {
-            "collection_id": str(collection_obj.id),
-            "collection_name": collection_obj.name,
-        },
-        ctx=ctx,
-    )
-
-    # Publish collection.created event
     try:
-        await event_bus.publish(
-            CollectionLifecycleEvent.created(
-                organization_id=ctx.organization.id,
-                collection_id=collection_obj.id,
-                collection_name=collection_obj.name,
-                collection_readable_id=collection_obj.readable_id,
-            )
-        )
-    except Exception as e:
-        ctx.logger.warning(f"Failed to publish collection.created event: {e}")
-
-    return collection_obj
+        return await service.create(db, collection_in=collection, ctx=ctx)
+    except CollectionAlreadyExistsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get(
@@ -169,12 +143,13 @@ async def get(
     ),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    service: CollectionServiceProtocol = Inject(CollectionServiceProtocol),
 ) -> schemas.Collection:
     """Retrieve a specific collection by its readable ID."""
-    db_obj = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
-    if db_obj is None:
+    try:
+        return await service.get(db, readable_id=readable_id, ctx=ctx)
+    except CollectionNotFoundError:
         raise HTTPException(status_code=404, detail="Collection not found")
-    return db_obj
 
 
 @router.patch(
@@ -205,28 +180,13 @@ async def update(
     ),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    event_bus: EventBus = Inject(EventBus),
+    service: CollectionServiceProtocol = Inject(CollectionServiceProtocol),
 ) -> schemas.Collection:
     """Update a collection's properties."""
-    db_obj = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
-    if db_obj is None:
-        raise HTTPException(status_code=404, detail="Collection not found")
-    result = await crud.collection.update(db, db_obj=db_obj, obj_in=collection, ctx=ctx)
-
-    # Publish collection.updated event
     try:
-        await event_bus.publish(
-            CollectionLifecycleEvent.updated(
-                organization_id=ctx.organization.id,
-                collection_id=result.id,
-                collection_name=result.name,
-                collection_readable_id=result.readable_id,
-            )
-        )
-    except Exception as e:
-        ctx.logger.warning(f"Failed to publish collection.updated event: {e}")
-
-    return result
+        return await service.update(db, readable_id=readable_id, collection_in=collection, ctx=ctx)
+    except CollectionNotFoundError:
+        raise HTTPException(status_code=404, detail="Collection not found")
 
 
 @router.delete(
@@ -256,26 +216,10 @@ async def delete(
     ),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    event_bus: EventBus = Inject(EventBus),
+    service: CollectionServiceProtocol = Inject(CollectionServiceProtocol),
 ) -> schemas.Collection:
     """Delete a collection and all associated data."""
-    result = await collection_service.delete(
-        db,
-        readable_id=readable_id,
-        ctx=ctx,
-    )
-
-    # Publish collection.deleted event
     try:
-        await event_bus.publish(
-            CollectionLifecycleEvent.deleted(
-                organization_id=ctx.organization.id,
-                collection_id=result.id,
-                collection_name=result.name,
-                collection_readable_id=result.readable_id,
-            )
-        )
-    except Exception as e:
-        ctx.logger.warning(f"Failed to publish collection.deleted event: {e}")
-
-    return result
+        return await service.delete(db, readable_id=readable_id, ctx=ctx)
+    except CollectionNotFoundError:
+        raise HTTPException(status_code=404, detail="Collection not found")

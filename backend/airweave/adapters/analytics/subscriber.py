@@ -4,12 +4,13 @@ import logging
 from typing import Callable, Dict, Union
 
 from airweave.adapters.analytics.protocols import AnalyticsTrackerProtocol
+from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 
 logger = logging.getLogger(__name__)
 
-_Event = Union[SourceConnectionLifecycleEvent, SyncLifecycleEvent]
+_Event = Union[CollectionLifecycleEvent, SourceConnectionLifecycleEvent, SyncLifecycleEvent]
 
 
 class AnalyticsEventSubscriber:
@@ -21,6 +22,7 @@ class AnalyticsEventSubscriber:
     """
 
     EVENT_PATTERNS = [
+        "collection.*",
         "source_connection.*",
         "sync.*",
     ]
@@ -32,6 +34,9 @@ class AnalyticsEventSubscriber:
             "source_connection.created": self._handle_sc_created,
             "source_connection.auth_completed": self._handle_sc_auth_completed,
             "source_connection.deleted": self._handle_sc_deleted,
+            "collection.created": self._handle_collection_created,
+            "collection.updated": self._handle_collection_updated,
+            "collection.deleted": self._handle_collection_deleted,
             "sync.completed": self._handle_sync_completed,
             "sync.failed": self._handle_sync_failed,
             "sync.cancelled": self._handle_sync_cancelled,
@@ -51,6 +56,46 @@ class AnalyticsEventSubscriber:
                 event_type_value,
                 e,
             )
+
+    # ------------------------------------------------------------------
+    # Collection events
+    # ------------------------------------------------------------------
+
+    def _handle_collection_created(self, event: CollectionLifecycleEvent) -> None:
+        self._tracker.track(
+            event_name="collection_created",
+            distinct_id=str(event.organization_id),
+            properties={
+                "collection_id": str(event.collection_id),
+                "collection_name": event.collection_name,
+                "collection_readable_id": event.collection_readable_id,
+            },
+            groups={"organization": str(event.organization_id)},
+        )
+
+    def _handle_collection_updated(self, event: CollectionLifecycleEvent) -> None:
+        self._tracker.track(
+            event_name="collection_updated",
+            distinct_id=str(event.organization_id),
+            properties={
+                "collection_id": str(event.collection_id),
+                "collection_name": event.collection_name,
+                "collection_readable_id": event.collection_readable_id,
+            },
+            groups={"organization": str(event.organization_id)},
+        )
+
+    def _handle_collection_deleted(self, event: CollectionLifecycleEvent) -> None:
+        self._tracker.track(
+            event_name="collection_deleted",
+            distinct_id=str(event.organization_id),
+            properties={
+                "collection_id": str(event.collection_id),
+                "collection_name": event.collection_name,
+                "collection_readable_id": event.collection_readable_id,
+            },
+            groups={"organization": str(event.organization_id)},
+        )
 
     # ------------------------------------------------------------------
     # Source connection events

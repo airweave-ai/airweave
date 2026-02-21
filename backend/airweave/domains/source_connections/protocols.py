@@ -1,7 +1,7 @@
 """Protocols for source connection domain."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Protocol
+from typing import List, Optional, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,6 +60,16 @@ class SourceConnectionRepositoryProtocol(Protocol):
         limit: int = 100,
     ) -> List[SourceConnectionStats]:
         """Get source connections with complete stats."""
+        ...
+
+    async def get_sync_ids_for_collection(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: UUID,
+        readable_collection_id: str,
+    ) -> List[UUID]:
+        """Get all sync IDs for source connections in a collection."""
         ...
 
 
