@@ -57,15 +57,15 @@ class CleanupContextBuilder:
             logger=logger,
         )
 
-        return CleanupContext(
+        cleanup_ctx = CleanupContext(
             organization=ctx.organization,
-            user=ctx.user,
-            logger=logger,
             sync_id=sync.id,
             collection_id=collection.id,
             source_connection_id=source_connection_id,
             destinations=destinations,
         )
+        cleanup_ctx.logger = logger
+        return cleanup_ctx
 
     @classmethod
     async def build_for_collection(

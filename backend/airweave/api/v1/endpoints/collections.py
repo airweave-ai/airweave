@@ -11,6 +11,7 @@ from fastapi import BackgroundTasks, Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
+from airweave.analytics.service import analytics
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
@@ -127,7 +128,7 @@ async def create(
     # Create the collection
     collection_obj = await collection_service.create(db, collection_in=collection, ctx=ctx)
 
-    ctx.analytics.track_event(
+    analytics.track_event(
         "collection_created",
         {
             "collection_id": str(collection_obj.id),

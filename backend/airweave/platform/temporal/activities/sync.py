@@ -80,9 +80,8 @@ class RunSyncActivity:
         connection = schemas.Connection(**connection_dict)
 
         organization = schemas.Organization(**ctx_dict["organization"])
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
 
-        ctx = BaseContext(organization=organization, user=user)
+        ctx = BaseContext(organization=organization)
         ctx.logger = ctx.logger.with_context(sync_job_id=str(sync_job.id))
 
         # Fetch fresh sync and collection from DB to avoid stale data
@@ -519,9 +518,8 @@ class MarkSyncJobCancelledActivity:
         from airweave.core.sync_job_service import sync_job_service
 
         organization = schemas.Organization(**ctx_dict["organization"])
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
 
-        ctx = BaseContext(organization=organization, user=user)
+        ctx = BaseContext(organization=organization)
         ctx.logger = ctx.logger.with_context(sync_job_id=sync_job_id)
 
         failed_at = None
@@ -593,9 +591,8 @@ class CreateSyncJobActivity:
         from airweave.db.session import get_db_context
 
         organization = schemas.Organization(**ctx_dict["organization"])
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
 
-        ctx = BaseContext(organization=organization, user=user)
+        ctx = BaseContext(organization=organization)
         ctx.logger = ctx.logger.with_context(sync_id=sync_id)
 
         ctx.logger.info(f"Creating sync job for sync {sync_id} (force_full_sync={force_full_sync})")
@@ -920,8 +917,8 @@ class CleanupStuckSyncJobsActivity:
 
         ctx = BaseContext(
             organization=schemas.Organization.model_validate(organization),
-            logger=logger,
         )
+        ctx.logger = logger
 
         try:
             cancel_success = await temporal_service.cancel_sync_job_workflow(job_id, ctx)

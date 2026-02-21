@@ -40,9 +40,8 @@ class SelfDestructOrphanedSyncActivity:
         from airweave.core.context import BaseContext
 
         organization = schemas.Organization(**ctx_dict["organization"])
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
 
-        ctx = BaseContext(organization=organization, user=user)
+        ctx = BaseContext(organization=organization)
         ctx.logger = ctx.logger.with_context(sync_id=sync_id)
 
         ctx.logger.info(f"🧹 Starting self-destruct cleanup for sync {sync_id}. Reason: {reason}")

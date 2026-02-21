@@ -14,13 +14,13 @@ if TYPE_CHECKING:
 class CleanupContext(BaseContext):
     """Minimal context for cleanup/deletion operations.
 
-    Inherits organization, user, logger from BaseContext.
+    Inherits organization and logger from BaseContext.
     Can be passed directly as ctx to CRUD operations.
     """
 
-    sync_id: UUID = None
-    collection_id: UUID = None
-    source_connection_id: UUID = None
+    sync_id: UUID
+    collection_id: UUID
+    source_connection_id: UUID
     destinations: List["BaseDestination"] = field(default_factory=list)
 
     @property

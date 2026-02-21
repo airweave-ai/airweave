@@ -34,13 +34,14 @@ def _make_fake_context() -> ApiContext:
         created_at=now,
         modified_at=now,
     )
-    return ApiContext(
+    ctx = ApiContext(
         request_id=TEST_REQUEST_ID,
         organization=org,
         auth_method=AuthMethod.SYSTEM,
         auth_metadata={"test": True},
-        logger=logger.with_context(request_id=TEST_REQUEST_ID),
     )
+    ctx.logger = logger.with_context(request_id=TEST_REQUEST_ID)
+    return ctx
 
 
 @pytest_asyncio.fixture

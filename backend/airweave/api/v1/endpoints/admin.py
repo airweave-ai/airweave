@@ -158,23 +158,24 @@ async def _build_org_context(
     target_org = schemas.Organization.model_validate(org_obj, from_attributes=True)
 
     # Build new context with target org but preserve admin's request tracing
-    return ApiContext(
+    ctx = ApiContext(
         request_id=admin_ctx.request_id,
         organization=target_org,
-        user=admin_ctx.user,  # Preserve user if any (for audit trail)
+        user=admin_ctx.user,
         auth_method=admin_ctx.auth_method,
         auth_metadata=admin_ctx.auth_metadata,
-        logger=LoggerConfigurator.configure_logger(
-            "airweave.admin.cross_org",
-            dimensions={
-                "request_id": admin_ctx.request_id,
-                "organization_id": str(target_org.id),
-                "organization_name": target_org.name,
-                "admin_org_id": str(admin_ctx.organization.id),
-                "auth_method": admin_ctx.auth_method.value,
-            },
-        ),
     )
+    ctx.logger = LoggerConfigurator.configure_logger(
+        "airweave.admin.cross_org",
+        dimensions={
+            "request_id": admin_ctx.request_id,
+            "organization_id": str(target_org.id),
+            "organization_name": target_org.name,
+            "admin_org_id": str(admin_ctx.organization.id),
+            "auth_method": admin_ctx.auth_method.value,
+        },
+    )
+    return ctx
 
 
 def _build_sort_subqueries(query, sort_by: str):
@@ -967,7 +968,7 @@ async def resync_with_execution_config(
     ctx: ApiContext = Depends(deps.get_context),
     execution_config: Optional[SyncConfig] = Body(
         None,
-        description="Optional nested SyncConfig for sync behavior (destinations, handlers, cursor, behavior)",
+        description="Optional nested SyncConfig for sync behavior",
         examples=[
             {
                 "summary": "ARF Capture Only",
@@ -1001,7 +1002,7 @@ async def resync_with_execution_config(
     ),
     tags: Optional[List[str]] = Body(
         None,
-        description="Optional tags for filtering and organizing sync jobs (e.g., ['vespa-backfill-01-22-2026', 'manual'])",
+        description="Optional tags for filtering and organizing sync jobs",
         examples=[
             ["vespa-backfill-01-22-2026", "manual"],
             ["production"],
@@ -1298,19 +1299,16 @@ async def admin_search_collection_as_user(
     ),
 ) -> schemas.SearchResponse:
     """Admin-only: Search collection with access control for a specific user.
-    This endpoint allows testing access control filtering by searching as a
-    specific user. It resolves the user's group memberships from the
-    access_control_membership table and filters results accordingly.
-    Use this for:
-    - Testing ACL sync correctness
-    - Verifying user permissions
-    - Debugging access control issues
+
+    Resolves the user's group memberships from the access_control_membership
+    table and filters results accordingly.
 
     Args:
         readable_id: The readable ID of the collection to search
         search_request: The search request parameters
         user_principal: Username to search as (e.g., "john" or "john@example.com")
         db: Database session
+        ctx: API context
         destination: Search destination ('qdrant' or 'vespa')
 
     Returns:
@@ -1546,11 +1544,11 @@ async def admin_list_all_syncs(
     source_type: Optional[str] = Query(None, description="Filter by source short name"),
     has_source_connection: bool = Query(
         True,
-        description="Include only syncs with source connections (excludes orphaned syncs by default)",
+        description="Include only syncs with source connections",
     ),
     is_authenticated: Optional[bool] = Query(
         None,
-        description="Filter by source connection authentication status (true=authenticated, false=needs reauth)",
+        description="Filter by source connection auth status",
     ),
     status: Optional[str] = Query(
         None, description="Filter by sync status (active, inactive, error)"
@@ -1563,7 +1561,7 @@ async def admin_list_all_syncs(
         None,
         ge=1,
         le=10,
-        description="Filter to 'ghost syncs' - syncs where the last N jobs all failed (e.g., 5 for last 5 failures)",
+        description="Filter to ghost syncs where the last N jobs all failed",
     ),
     include_destination_counts: bool = Query(
         False,
@@ -1579,7 +1577,7 @@ async def admin_list_all_syncs(
     ),
     exclude_tags: Optional[str] = Query(
         None,
-        description="Comma-separated list of tags to exclude (hides syncs with jobs having ANY of these tags)",
+        description="Comma-separated tags to exclude from results",
     ),
 ) -> List[AdminSyncInfo]:
     """Admin-only: List all syncs across organizations with entity counts.
@@ -1792,15 +1790,15 @@ async def admin_cancel_sync_by_id(
     ctx: ApiContext = Depends(deps.get_context),
 ) -> dict:
     """Admin-only: Cancel all pending/running jobs for a sync.
-    This is a convenience endpoint that finds active jobs for a sync and cancels them.
-    More practical than /sync-jobs/{job_id}/cancel when you know the sync ID.
 
     Args:
         sync_id: The sync ID whose jobs should be cancelled
         db: Database session
         ctx: API context
+
     Returns:
         Dict with cancelled job IDs and results
+
     Raises:
         HTTPException: If not admin or sync not found
     """

@@ -9,8 +9,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, Optional
 from uuid import UUID
 
+from airweave import schemas
+
 if TYPE_CHECKING:
-    from airweave import schemas
     from airweave.core.logging import ContextualLogger
     from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 
@@ -22,46 +23,43 @@ class BaseContext:
     Carries organization identity for CRUD access control and a contextual
     logger with identity dimensions. All specialized contexts inherit from this.
 
-    The logger auto-derives from organization/user if not explicitly provided.
-    - API layer overrides with richer logger (request_id, session_id).
-    - Sync engine overrides with sync-specific logger (sync_id, job_id).
-    - System operations accept the auto-derived default.
+    The only __init__ field is ``organization`` (no defaults), so subclasses
+    can freely add required fields without dataclass ordering conflicts.
+
+    Logger is auto-derived from organization in __post_init__. Override it
+    after construction when a richer logger is needed (e.g. with sync_id).
     """
 
-    organization: "schemas.Organization"
-    user: Optional["schemas.User"] = None
-    logger: "ContextualLogger" = field(default=None, repr=False)
+    organization: schemas.Organization
+
+    logger: "ContextualLogger" = field(init=False, repr=False)
 
     def __post_init__(self):
-        """Auto-derive logger from identity if not explicitly provided."""
-        if self.logger is None:
-            from airweave.core.logging import logger as base_logger
+        """Auto-derive logger from organization identity."""
+        from airweave.core.logging import logger as base_logger
 
-            dims: Dict[str, str] = {
-                "organization_id": str(self.organization.id),
-                "organization_name": self.organization.name,
-            }
-            if self.user:
-                dims["user_id"] = str(self.user.id)
-                dims["user_email"] = self.user.email
-            self.logger = base_logger.with_context(**dims)
+        dims: Dict[str, str] = {
+            "organization_id": str(self.organization.id),
+            "organization_name": self.organization.name,
+        }
+        self.logger = base_logger.with_context(**dims)
 
     # --- Properties used by CRUD base class (_base_organization.py) ---
 
     @property
     def has_user_context(self) -> bool:
         """Whether this context has user info (for audit tracking)."""
-        return self.user is not None
+        return False
 
     @property
     def tracking_email(self) -> Optional[str]:
         """Email for created_by/modified_by audit fields."""
-        return self.user.email if self.user else None
+        return None
 
     @property
     def user_id(self) -> Optional[UUID]:
         """User ID if available."""
-        return self.user.id if self.user else None
+        return None
 
     def has_feature(self, flag: "FeatureFlagEnum") -> bool:
         """Check if organization has a feature enabled.
