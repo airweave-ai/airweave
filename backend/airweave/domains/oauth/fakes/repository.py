@@ -9,6 +9,7 @@ from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.connection import Connection
 from airweave.models.integration_credential import IntegrationCredential
+from airweave.models.redirect_session import RedirectSession
 from airweave.models.source import Source
 from airweave.schemas.connection import ConnectionCreate
 from airweave.schemas.integration_credential import (
@@ -99,3 +100,18 @@ class FakeOAuthSourceRepository:
     async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[Source]:
         self._calls.append(("get_by_short_name", db, short_name))
         return self._store.get(short_name)
+
+
+class FakeOAuthRedirectSessionRepository:
+    """In-memory fake for OAuthRedirectSessionRepositoryProtocol."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, RedirectSession] = {}
+        self._calls: list[tuple[Any, ...]] = []
+
+    def seed(self, code: str, obj: RedirectSession) -> None:
+        self._store[code] = obj
+
+    async def get_by_code(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+        self._calls.append(("get_by_code", db, code))
+        return self._store.get(code)

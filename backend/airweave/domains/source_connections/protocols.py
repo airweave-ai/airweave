@@ -154,3 +154,11 @@ class SourceConnectionServiceProtocol(Protocol):
     ) -> SourceConnectionJob:
         """Cancel a running sync job."""
         ...
+
+    async def get_sync_id(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> dict:
+        """Get the sync_id for a source connection."""
+        ...
+
+    async def get_redirect_url(self, db: AsyncSession, *, code: str) -> str:
+        """Resolve a short redirect code to its final OAuth authorization URL."""
+        ...

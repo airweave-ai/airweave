@@ -11,6 +11,7 @@ from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.models.connection import Connection
 from airweave.models.integration_credential import IntegrationCredential
+from airweave.models.redirect_session import RedirectSession
 from airweave.models.source import Source
 from airweave.platform.auth.schemas import OAuth2Settings, OAuth2TokenResponse
 from airweave.schemas.connection import ConnectionCreate
@@ -184,4 +185,12 @@ class OAuthSourceRepositoryProtocol(Protocol):
 
     async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[Source]:
         """Get a source by short_name. Returns None if not found."""
+        ...
+
+
+class OAuthRedirectSessionRepositoryProtocol(Protocol):
+    """Redirect session data access for OAuth authorization flows."""
+
+    async def get_by_code(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+        """Get a redirect session by its unique code."""
         ...

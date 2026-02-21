@@ -23,6 +23,7 @@ class FakeSourceConnectionService:
     def __init__(self, sync_lifecycle: SyncLifecycleServiceProtocol) -> None:
         self._store: dict[UUID, SourceConnection] = {}
         self._list_items: List[SourceConnectionListItem] = []
+        self._redirect_urls: dict[str, str] = {}
         self._calls: list[tuple[Any, ...]] = []
         self._sync_lifecycle = sync_lifecycle
 
@@ -31,6 +32,9 @@ class FakeSourceConnectionService:
 
     def seed_list_items(self, items: List[SourceConnectionListItem]) -> None:
         self._list_items = list(items)
+
+    def seed_redirect_url(self, code: str, url: str) -> None:
+        self._redirect_urls[code] = url
 
     async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> SourceConnection:
         self._calls.append(("get", db, id, ctx))
@@ -108,3 +112,19 @@ class FakeSourceConnectionService:
         return await self._sync_lifecycle.cancel_job(
             db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
         )
+
+    async def get_sync_id(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> dict:
+        self._calls.append(("get_sync_id", db, id, ctx))
+        obj = self._store.get(id)
+        if not obj:
+            raise NotFoundException("Source connection not found")
+        if not obj.sync_id:
+            raise NotFoundException("No sync found for this source connection")
+        return {"sync_id": str(obj.sync_id)}
+
+    async def get_redirect_url(self, db: AsyncSession, *, code: str) -> str:
+        self._calls.append(("get_redirect_url", db, code))
+        url = self._redirect_urls.get(code)
+        if not url:
+            raise NotFoundException("Authorization link expired or invalid")
+        return url

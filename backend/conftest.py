@@ -250,6 +250,14 @@ def fake_oauth1_service():
 
 
 @pytest.fixture
+def fake_redirect_session_repo():
+    """Fake OAuthRedirectSessionRepository."""
+    from airweave.domains.oauth.fakes.repository import FakeOAuthRedirectSessionRepository
+
+    return FakeOAuthRedirectSessionRepository()
+
+
+@pytest.fixture
 def fake_response_builder():
     """Fake ResponseBuilder."""
     from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
@@ -391,6 +399,7 @@ def test_container(
     fake_cred_repo,
     fake_oauth1_service,
     fake_oauth2_service,
+    fake_redirect_session_repo,
     fake_source_connection_service,
     fake_source_lifecycle_service,
     fake_response_builder,
@@ -435,6 +444,7 @@ def test_container(
         cred_repo=fake_cred_repo,
         oauth1_service=fake_oauth1_service,
         oauth2_service=fake_oauth2_service,
+        redirect_session_repo=fake_redirect_session_repo,
         source_connection_service=fake_source_connection_service,
         source_lifecycle_service=fake_source_lifecycle_service,
         response_builder=fake_response_builder,

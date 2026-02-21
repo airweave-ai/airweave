@@ -18,7 +18,7 @@ from uuid import UUID
 from fastapi import Depends, HTTPException, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
@@ -556,22 +556,16 @@ async def get_sync_id(
     db: AsyncSession = Depends(get_db),
     source_connection_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> dict:
     """Get the sync_id for a source connection.
 
     This is a private endpoint not documented in Fern.
     Used internally for Temporal sync testing and debugging.
     """
-    source_connection = await crud.source_connection.get(
-        db,
-        id=source_connection_id,
-        ctx=ctx,
-    )
-
-    if not source_connection.sync_id:
-        raise HTTPException(status_code=404, detail="No sync found for this source connection")
-
-    return {"sync_id": str(source_connection.sync_id)}
+    return await source_connection_service.get_sync_id(db, id=source_connection_id, ctx=ctx)
 
 
 @router.get("/authorize/{code}")
@@ -579,6 +573,9 @@ async def authorize_redirect(
     *,
     db: AsyncSession = Depends(get_db),
     code: str,
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> Response:
     """Proxy redirect to OAuth provider.
 
@@ -587,14 +584,8 @@ async def authorize_redirect(
     This endpoint does not require authentication as it's accessed by users
     who are not yet authenticated with the platform.
     """
-    from airweave.crud import redirect_session
-
-    redirect_info = await redirect_session.get_by_code(db, code=code)
-    if not redirect_info:
-        raise HTTPException(status_code=404, detail="Authorization link expired or invalid")
-
-    # Redirect to the OAuth provider
+    final_url = await source_connection_service.get_redirect_url(db, code=code)
     return Response(
         status_code=303,
-        headers={"Location": redirect_info.final_url},
+        headers={"Location": final_url},
     )

@@ -30,7 +30,11 @@ from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWe
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
-from airweave.domains.oauth.protocols import OAuth1ServiceProtocol, OAuth2ServiceProtocol
+from airweave.domains.oauth.protocols import (
+    OAuth1ServiceProtocol,
+    OAuth2ServiceProtocol,
+    OAuthRedirectSessionRepositoryProtocol,
+)
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
@@ -108,6 +112,7 @@ class Container:
     # OAuth services
     oauth1_service: OAuth1ServiceProtocol
     oauth2_service: OAuth2ServiceProtocol
+    redirect_session_repo: OAuthRedirectSessionRepositoryProtocol
 
     # Source connection service — domain service for source connections
     source_connection_service: SourceConnectionServiceProtocol

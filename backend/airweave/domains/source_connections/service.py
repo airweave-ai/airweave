@@ -10,6 +10,7 @@ from airweave.core.exceptions import NotFoundException
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
+from airweave.domains.oauth.protocols import OAuthRedirectSessionRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
@@ -33,6 +34,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         sc_repo: SourceConnectionRepositoryProtocol,
         collection_repo: CollectionRepositoryProtocol,
         connection_repo: ConnectionRepositoryProtocol,
+        redirect_session_repo: OAuthRedirectSessionRepositoryProtocol,
         # Registries
         source_registry: SourceRegistryProtocol,
         auth_provider_registry: AuthProviderRegistryProtocol,
@@ -43,6 +45,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         self.sc_repo = sc_repo
         self.collection_repo = collection_repo
         self.connection_repo = connection_repo
+        self._redirect_session_repo = redirect_session_repo
         self.source_registry = source_registry
         self.auth_provider_registry = auth_provider_registry
         self.response_builder = response_builder
@@ -132,3 +135,19 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         return await self._sync_lifecycle.cancel_job(
             db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
         )
+
+    async def get_sync_id(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> dict:
+        """Get the sync_id for a source connection."""
+        source_connection = await self.sc_repo.get(db, id=id, ctx=ctx)
+        if not source_connection:
+            raise NotFoundException("Source connection not found")
+        if not source_connection.sync_id:
+            raise NotFoundException("No sync found for this source connection")
+        return {"sync_id": str(source_connection.sync_id)}
+
+    async def get_redirect_url(self, db: AsyncSession, *, code: str) -> str:
+        """Resolve a short redirect code to its final OAuth authorization URL."""
+        redirect_info = await self._redirect_session_repo.get_by_code(db, code=code)
+        if not redirect_info:
+            raise NotFoundException("Authorization link expired or invalid")
+        return redirect_info.final_url

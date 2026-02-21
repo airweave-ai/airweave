@@ -53,6 +53,7 @@ from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.oauth.repository import (
     OAuthConnectionRepository,
     OAuthCredentialRepository,
+    OAuthRedirectSessionRepository,
     OAuthSourceRepository,
 )
 from airweave.domains.source_connections.repository import SourceConnectionRepository
@@ -168,6 +169,7 @@ def create_container(settings: Settings) -> Container:
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
         connection_repo=source_deps["conn_repo"],
+        redirect_session_repo=source_deps["redirect_session_repo"],
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],
         response_builder=sync_deps["response_builder"],
@@ -198,6 +200,7 @@ def create_container(settings: Settings) -> Container:
         cred_repo=source_deps["cred_repo"],
         oauth1_service=source_deps["oauth1_service"],
         oauth2_service=source_deps["oauth2_service"],
+        redirect_session_repo=source_deps["redirect_session_repo"],
         source_connection_service=source_connection_service,
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
@@ -370,6 +373,7 @@ def _create_source_services(settings: Settings) -> dict:
     sync_repo = SyncRepository()
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
+    redirect_session_repo = OAuthRedirectSessionRepository()
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
         settings=settings,
@@ -411,6 +415,7 @@ def _create_source_services(settings: Settings) -> dict:
         "cred_repo": cred_repo,
         "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
+        "redirect_session_repo": redirect_session_repo,
         "source_lifecycle_service": source_lifecycle_service,
         "sync_repo": sync_repo,
         "sync_cursor_repo": sync_cursor_repo,

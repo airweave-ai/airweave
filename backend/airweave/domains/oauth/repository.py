@@ -10,6 +10,7 @@ from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.connection import Connection
 from airweave.models.integration_credential import IntegrationCredential
+from airweave.models.redirect_session import RedirectSession
 from airweave.models.source import Source
 from airweave.schemas.connection import ConnectionCreate
 from airweave.schemas.integration_credential import (
@@ -69,3 +70,10 @@ class OAuthSourceRepository:
 
     async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[Source]:
         return await crud.source.get_by_short_name(db, short_name)
+
+
+class OAuthRedirectSessionRepository:
+    """Delegates to crud.redirect_session for redirect lookups."""
+
+    async def get_by_code(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+        return await crud.redirect_session.get_by_code(db, code)

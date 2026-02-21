@@ -1,4 +1,4 @@
-"""Unit tests for SourceConnectionService.list.
+"""Unit tests for SourceConnectionService.
 
 Verifies parity with the old core.source_connection_service.list implementation
 and ensures no regressions in the new domain-based architecture.
@@ -9,10 +9,12 @@ Uses table-driven tests wherever possible.
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+
+from airweave.core.exceptions import NotFoundException
 
 from airweave.api.context import ApiContext
 from airweave.core.logging import logger
@@ -20,6 +22,7 @@ from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, Sync
 from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
+from airweave.domains.oauth.fakes.repository import FakeOAuthRedirectSessionRepository
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
@@ -82,11 +85,13 @@ def _make_stats(
 
 def _build_service(
     sc_repo: Optional[FakeSourceConnectionRepository] = None,
+    redirect_session_repo: Optional[FakeOAuthRedirectSessionRepository] = None,
 ) -> SourceConnectionService:
     return SourceConnectionService(
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
         collection_repo=FakeCollectionRepository(),
         connection_repo=FakeConnectionRepository(),
+        redirect_session_repo=redirect_session_repo or FakeOAuthRedirectSessionRepository(),
         source_registry=FakeSourceRegistry(),
         auth_provider_registry=FakeAuthProviderRegistry(),
         response_builder=FakeResponseBuilder(),
@@ -292,3 +297,58 @@ async def test_computed_auth_method(case: AuthMethodCase):
 async def test_federated_search_propagated(value: bool):
     item = await _list_single(_make_stats(federated_search=value))
     assert item.federated_search is value
+
+
+# ---------------------------------------------------------------------------
+# get_sync_id
+# ---------------------------------------------------------------------------
+
+
+async def test_get_sync_id_returns_sync_id():
+    sc = MagicMock()
+    sc.sync_id = uuid4()
+    repo = FakeSourceConnectionRepository()
+    repo.seed(sc.id, sc)
+    svc = _build_service(sc_repo=repo)
+
+    result = await svc.get_sync_id(AsyncMock(), id=sc.id, ctx=_make_ctx())
+    assert result == {"sync_id": str(sc.sync_id)}
+
+
+async def test_get_sync_id_not_found_raises():
+    svc = _build_service()
+    with pytest.raises(NotFoundException, match="Source connection not found"):
+        await svc.get_sync_id(AsyncMock(), id=uuid4(), ctx=_make_ctx())
+
+
+async def test_get_sync_id_no_sync_raises():
+    sc = MagicMock()
+    sc.sync_id = None
+    repo = FakeSourceConnectionRepository()
+    repo.seed(sc.id, sc)
+    svc = _build_service(sc_repo=repo)
+
+    with pytest.raises(NotFoundException, match="No sync found"):
+        await svc.get_sync_id(AsyncMock(), id=sc.id, ctx=_make_ctx())
+
+
+# ---------------------------------------------------------------------------
+# get_redirect_url
+# ---------------------------------------------------------------------------
+
+
+async def test_get_redirect_url_returns_url():
+    redirect_repo = FakeOAuthRedirectSessionRepository()
+    session = MagicMock()
+    session.final_url = "https://provider.example.com/auth?state=abc"
+    redirect_repo.seed("abc123", session)
+    svc = _build_service(redirect_session_repo=redirect_repo)
+
+    result = await svc.get_redirect_url(AsyncMock(), code="abc123")
+    assert result == "https://provider.example.com/auth?state=abc"
+
+
+async def test_get_redirect_url_missing_code_raises():
+    svc = _build_service()
+    with pytest.raises(NotFoundException, match="Authorization link expired or invalid"):
+        await svc.get_redirect_url(AsyncMock(), code="nonexistent")
