@@ -213,4 +213,4 @@ def track_search_completion(
         state=state,  # Pass state for automatic metrics extraction
         **additional_properties,
     )
-    analytics.track_event("search_query", properties)
+    analytics.track_event("search_query", properties, ctx=ctx)

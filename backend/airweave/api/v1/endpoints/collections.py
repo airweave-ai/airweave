@@ -134,6 +134,7 @@ async def create(
             "collection_id": str(collection_obj.id),
             "collection_name": collection_obj.name,
         },
+        ctx=ctx,
     )
 
     # Publish collection.created event
