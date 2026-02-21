@@ -593,6 +593,13 @@ async def authorize_redirect(
     if not redirect_info:
         raise HTTPException(status_code=404, detail="Authorization link expired or invalid")
 
+    # Check if expired (security: enforce TTL)
+    if redirect_session.is_expired(redirect_info):
+        raise HTTPException(status_code=404, detail="Authorization link expired or invalid")
+
+    # Consume the code immediately to prevent reuse
+    await redirect_session.consume(db, code=code)
+
     # Redirect to the OAuth provider
     return Response(
         status_code=303,
