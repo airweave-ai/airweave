@@ -1,7 +1,7 @@
-"""Stripe API client for billing operations.
+"""Stripe payment gateway adapter.
 
-This module provides a clean interface to Stripe API,
-handling all direct Stripe interactions without business logic.
+Implements PaymentGatewayProtocol by wrapping the Stripe API.
+Moved from integrations/stripe_client.py.
 """
 
 from typing import Any, Dict, Optional
@@ -11,17 +11,15 @@ from stripe.error import StripeError
 
 from airweave.core.config import settings
 from airweave.core.exceptions import ExternalServiceError
+from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.schemas.organization_billing import BillingPlan
 
 
-class StripeClient:
-    """Client for Stripe API operations."""
+class StripePaymentGateway(PaymentGatewayProtocol):
+    """Stripe implementation of PaymentGatewayProtocol."""
 
     def __init__(self):
         """Initialize Stripe client."""
-        if not settings.STRIPE_ENABLED:
-            raise ValueError("Stripe is not enabled in settings")
-
         stripe.api_key = settings.STRIPE_SECRET_KEY
         self.webhook_secret = settings.STRIPE_WEBHOOK_SECRET
 
@@ -94,16 +92,6 @@ class StripeClient:
         except StripeError:
             # Don't raise on cleanup failures
             pass
-
-    async def get_customer(self, customer_id: str) -> stripe.Customer:
-        """Retrieve a Stripe customer."""
-        try:
-            return await stripe.Customer.retrieve_async(customer_id)
-        except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to retrieve customer: {str(e)}",
-            ) from e
 
     # Subscription operations
 
@@ -349,10 +337,7 @@ class StripeClient:
         cancel_url: str,
         metadata: Optional[Dict[str, str]] = None,
     ) -> stripe.checkout.Session:
-        """Create a one-time payment checkout session for yearly prepay credit.
-
-        Uses Payment mode instead of Subscription mode.
-        """
+        """Create a one-time payment checkout session for yearly prepay credit."""
         try:
             clean_metadata = self._clean_metadata(metadata)
             return await stripe.checkout.Session.create_async(
@@ -371,7 +356,7 @@ class StripeClient:
                     }
                 ],
                 payment_intent_data={
-                    "setup_future_usage": "off_session",  # Save payment method for future use
+                    "setup_future_usage": "off_session",
                 },
                 metadata=clean_metadata,
             )
@@ -382,11 +367,7 @@ class StripeClient:
             ) from e
 
     async def get_customer_balance_cents(self, *, customer_id: str) -> int:
-        """Return the customer's current account balance in cents.
-
-        Stripe semantics: positive balance = amount owed; negative balance = credit.
-        We return the raw integer (can be negative). Remaining credit is max(0, -balance).
-        """
+        """Return the customer's current account balance in cents."""
         try:
             customer = await stripe.Customer.retrieve_async(customer_id)
             balance = getattr(customer, "balance", 0) or 0
@@ -437,13 +418,8 @@ class StripeClient:
         idempotency_key: Optional[str] = None,
         metadata: Optional[Dict[str, str]] = None,
     ) -> stripe.Coupon:
-        """Create a reusable coupon for yearly prepay discount or retrieve by metadata key.
-
-        We use metadata keys to dedupe (e.g., organization_id + plan + year marker).
-        Default: 20% off for 12 months (repeating duration).
-        """
+        """Create a reusable coupon for yearly prepay discount or retrieve by metadata key."""
         try:
-            # Try to search existing coupon by metadata idempotency key if provided
             if idempotency_key:
                 try:
                     coupons = await stripe.Coupon.search_async(
@@ -464,7 +440,6 @@ class StripeClient:
                 ),
             }
 
-            # Add duration_in_months only if duration is "repeating"
             if duration == "repeating":
                 params["duration_in_months"] = duration_in_months
 
@@ -503,14 +478,6 @@ class StripeClient:
                 message=f"Failed to remove subscription discount: {str(e)}",
             ) from e
 
-    async def delete_coupon(self, *, coupon_id: str) -> None:
-        """Delete a coupon (cleanup)."""
-        try:
-            await stripe.Coupon.delete_async(coupon_id)
-        except StripeError:
-            # Best-effort cleanup
-            pass
-
     async def credit_customer_balance(
         self,
         *,
@@ -519,10 +486,7 @@ class StripeClient:
         currency: str = "usd",
         description: Optional[str] = None,
     ) -> Any:
-        """Credit customer's balance by the given amount (in cents).
-
-        Stripe expects credits as negative amounts.
-        """
+        """Credit customer's balance by the given amount (in cents)."""
         try:
             return await stripe.Customer.create_balance_transaction_async(
                 customer_id,
@@ -535,7 +499,3 @@ class StripeClient:
                 service_name="Stripe",
                 message=f"Failed to credit customer balance: {str(e)}",
             ) from e
-
-
-# Singleton instance
-stripe_client = StripeClient() if settings.STRIPE_ENABLED else None

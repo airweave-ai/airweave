@@ -20,17 +20,18 @@ from sqlalchemy.orm import selectinload
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.billing.service import billing_service
 from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import InvalidStateError, NotFoundException
 from airweave.core.organization_service import organization_service
+from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 from airweave.core.temporal_service import temporal_service
 from airweave.crud.crud_organization_billing import organization_billing
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.billing.operations import BillingOperations
 from airweave.integrations.auth0_management import auth0_management_client
-from airweave.integrations.stripe_client import stripe_client
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
 from airweave.models.user_organization import UserOrganization
@@ -614,6 +615,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
     organization_id: UUID,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    payment_gw: PaymentGatewayProtocol = Inject(PaymentGatewayProtocol),
 ) -> schemas.Organization:
     """Upgrade an organization to enterprise plan (admin only).
 
@@ -627,6 +629,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
         organization_id: The organization to upgrade
         db: Database session
         ctx: API context
+        payment_gw: Payment gateway protocol
 
     Returns:
         The updated organization
@@ -675,13 +678,10 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
         await db.flush()
 
         # Create system context for billing operations
-        internal_ctx = billing_service._create_system_context(org_schema, "admin_upgrade")
+        internal_ctx = ApiContext.for_system(org_schema, "admin_upgrade")
 
         # Create Stripe customer
-        if not stripe_client:
-            raise InvalidStateError("Stripe is not enabled")
-
-        customer = await stripe_client.create_customer(
+        customer = await payment_gw.create_customer(
             email=owner_email,
             name=org.name,
             metadata={
@@ -689,17 +689,22 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
                 "plan": "enterprise",
             },
         )
+        if not customer:
+            raise HTTPException(
+                status_code=400,
+                detail="Billing is not enabled for this instance",
+            )
 
-        # Use billing service to create record (handles $0 subscription)
+        # Use billing operations to create record (handles $0 subscription)
+        billing_ops = BillingOperations(payment_gateway=payment_gw)
         async with UnitOfWork(db) as uow:
-            await billing_service.create_billing_record(
+            await billing_ops.create_billing_record(
                 db=db,
                 organization=org,
                 stripe_customer_id=customer.id,
                 billing_email=owner_email,
                 ctx=internal_ctx,
                 uow=uow,
-                contextual_logger=ctx.logger,
             )
             await uow.commit()
 
@@ -712,7 +717,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
         # Cancel existing subscription if any
         if billing.stripe_subscription_id:
             try:
-                await stripe_client.cancel_subscription(
+                await payment_gw.cancel_subscription(
                     billing.stripe_subscription_id, at_period_end=False
                 )
                 ctx.logger.info(f"Cancelled subscription {billing.stripe_subscription_id}")
@@ -721,25 +726,21 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
 
         # Create new $0 enterprise subscription
         # Webhook will update billing record with subscription_id, plan, periods, etc.
-        if stripe_client:
-            price_id = stripe_client.get_price_for_plan(BillingPlan.ENTERPRISE)
-            if price_id:
-                sub = await stripe_client.create_subscription(
-                    customer_id=billing.stripe_customer_id,
-                    price_id=price_id,
-                    metadata={
-                        "organization_id": str(organization_id),
-                        "plan": "enterprise",
-                    },
-                )
-                ctx.logger.info(
-                    f"Created $0 enterprise subscription {sub.id}, "
-                    f"webhook will update billing record"
-                )
-            else:
-                raise InvalidStateError("Enterprise price ID not configured")
+        price_id = payment_gw.get_price_for_plan(BillingPlan.ENTERPRISE)
+        if price_id:
+            sub = await payment_gw.create_subscription(
+                customer_id=billing.stripe_customer_id,
+                price_id=price_id,
+                metadata={
+                    "organization_id": str(organization_id),
+                    "plan": "enterprise",
+                },
+            )
+            ctx.logger.info(
+                f"Created $0 enterprise subscription {sub.id}, webhook will update billing record"
+            )
         else:
-            raise InvalidStateError("Stripe is not enabled")
+            raise InvalidStateError("Enterprise price ID not configured")
 
         await db.commit()
         ctx.logger.info(f"Enterprise subscription created for org {organization_id}")
@@ -756,6 +757,7 @@ async def create_enterprise_organization(
     owner_email: str,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    payment_gw: PaymentGatewayProtocol = Inject(PaymentGatewayProtocol),
 ) -> schemas.Organization:
     """Create a new enterprise organization (admin only).
 
@@ -766,6 +768,7 @@ async def create_enterprise_organization(
         owner_email: Email of the user who will own this organization
         db: Database session
         ctx: API context
+        payment_gw: Payment gateway protocol
 
     Returns:
         The created organization
@@ -808,11 +811,16 @@ async def create_enterprise_organization(
 
         # Create Stripe customer
         try:
-            customer = await stripe_client.create_customer(
+            customer = await payment_gw.create_customer(
                 email=owner_email,
                 name=org.name,
                 metadata={"organization_id": str(org.id), "plan": "enterprise"},
             )
+            if not customer:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Billing is not enabled for this instance",
+                )
 
             # Create enterprise billing record
             billing = OrganizationBilling(
@@ -1306,16 +1314,16 @@ async def admin_search_collection_as_user(
     Args:
         readable_id: The readable ID of the collection to search
         search_request: The search request parameters
-        user_principal: Username to search as (e.g., "john" or "john@example.com")
+        user_principal: Username to search as
         db: Database session
         ctx: API context
         destination: Search destination ('qdrant' or 'vespa')
 
     Returns:
-        SearchResponse with results filtered by user's access permissions
+        SearchResponse with results filtered by user's access permissions.
 
     Raises:
-        HTTPException: If not admin or collection not found
+        HTTPException: If not admin or collection not found.
     """
     from airweave.search.service import service
 

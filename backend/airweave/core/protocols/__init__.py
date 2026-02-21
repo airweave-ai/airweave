@@ -19,6 +19,7 @@ from airweave.core.protocols.metrics import (
     WorkerMetrics,
 )
 from airweave.core.protocols.ocr import OcrProvider
+from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import (
     EndpointVerifier,
     WebhookAdmin,
@@ -43,6 +44,7 @@ __all__ = [
     "MetricsRenderer",
     "MetricsService",
     "OcrProvider",
+    "PaymentGatewayProtocol",
     "WebhookAdmin",
     "WebhookPublisher",
     "WebhookServiceProtocol",
