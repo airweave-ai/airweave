@@ -173,6 +173,103 @@ class GoogleDocsSource(BaseSource):
         except ValueError:
             return None
 
+    def _has_file_changed(self, file_obj: Dict) -> bool:
+        """Check if file metadata indicates change without downloading.
+
+        Compares: modifiedTime, md5Checksum, size
+        Returns True if file is new or changed, False if unchanged.
+
+        Args:
+            file_obj: File metadata from Google Drive API
+
+        Returns:
+            True if file should be processed (new or changed), False if unchanged
+        """
+        if not self.cursor:
+            return True
+
+        file_id = file_obj.get("id")
+        if not file_id:
+            return True
+
+        cursor_data = self.cursor.data
+        file_metadata = cursor_data.get("file_metadata", {})
+        stored_meta = file_metadata.get(file_id)
+
+        if not stored_meta:
+            return True
+
+        current_modified = file_obj.get("modifiedTime")
+        current_md5 = file_obj.get("md5Checksum")
+        current_size = file_obj.get("size")
+
+        if (
+            stored_meta.get("modified_time") != current_modified
+            or stored_meta.get("md5_checksum") != current_md5
+            or stored_meta.get("size") != current_size
+        ):
+            return True
+
+        return False
+
+    def _store_file_metadata(self, file_obj: Dict) -> None:
+        """Store file metadata in cursor for future change detection.
+
+        Args:
+            file_obj: File metadata from Google Drive API
+        """
+        if not self.cursor:
+            return
+
+        file_id = file_obj.get("id")
+        if not file_id:
+            return
+
+        cursor_data = self.cursor.data
+        file_metadata = cursor_data.get("file_metadata", {})
+
+        file_metadata[file_id] = {
+            "modified_time": file_obj.get("modifiedTime"),
+            "md5_checksum": file_obj.get("md5Checksum"),
+            "size": file_obj.get("size"),
+        }
+
+        self.cursor.update(file_metadata=file_metadata)
+
+    async def _store_next_start_page_token(self, client: httpx.AsyncClient) -> None:
+        """Fetch and store the next start page token for future incremental syncs.
+
+        Args:
+            client: HTTP client for API requests
+        """
+        if not self.cursor:
+            return
+
+        try:
+            url = "https://www.googleapis.com/drive/v3/changes/startPageToken"
+            access_token = await self.get_access_token()
+            headers = {"Authorization": f"Bearer {access_token}"}
+
+            response = await client.get(url, headers=headers)
+
+            if response.status_code == 401:
+                await self.refresh_on_unauthorized()
+                access_token = await self.get_access_token()
+                headers = {"Authorization": f"Bearer {access_token}"}
+                response = await client.get(url, headers=headers)
+
+            response.raise_for_status()
+            data = response.json()
+            token = data.get("startPageToken")
+
+            if token:
+                self.cursor.update(start_page_token=token)
+                self.logger.info(
+                    f"Stored new start page token for next incremental sync: {token[:20]}..."
+                )
+        except Exception as e:
+            self.logger.error(f"Failed to fetch/store next start page token: {e}")
+
     # --- Main sync method ---
     async def generate_entities(
         self, existing_cursor_value: Optional[Dict[str, Any]] = None
@@ -186,19 +283,27 @@ class GoogleDocsSource(BaseSource):
             GoogleDocsDocumentEntity objects for each document found
         """
         async with httpx.AsyncClient(timeout=60.0) as client:
+            # Check cursor data
+            cursor_data = self.cursor.data if self.cursor else {}
+            start_token = cursor_data.get("start_page_token")
+
             # If we have a cursor, do incremental sync via changes API
-            if existing_cursor_value and "start_page_token" in existing_cursor_value:
-                start_token = existing_cursor_value["start_page_token"]
-                self.logger.debug(f"Starting incremental sync from page token: {start_token}")
+            if start_token:
+                self.logger.info(
+                    f"📊 Incremental sync mode - processing changes only (token={start_token[:20]}...)"
+                )
 
                 async for entity in self._process_changes(client, start_token):
                     yield entity
             else:
                 # Full sync: list all Google Docs
-                self.logger.debug("Starting full sync of Google Docs")
+                self.logger.info("🔄 Full sync mode - listing all documents")
 
                 async for entity in self._list_and_process_documents(client):
                     yield entity
+
+                # Store start page token for next incremental sync
+                await self._store_next_start_page_token(client)
 
     # --- Incremental sync via Changes API ---
     async def _process_changes(  # noqa: C901
@@ -252,6 +357,13 @@ class GoogleDocsSource(BaseSource):
                     and file_data.get("mimeType") == "application/vnd.google-apps.document"
                 ):
                     if not removed and not self._should_filter_document(file_data):
+                        # Check if file actually changed using metadata
+                        if not self._has_file_changed(file_data):
+                            self.logger.debug(
+                                f"Document {file_data.get('name')} unchanged (metadata match) - skipping"
+                            )
+                            continue
+
                         entity = await self._create_document_entity(client, file_data)
                         if entity:
                             # Download the file using file downloader
@@ -269,6 +381,9 @@ class GoogleDocsSource(BaseSource):
                                         f"Download failed - no local path set for {entity.name}"
                                     )
                                     continue
+
+                                # Store metadata for future change detection
+                                self._store_file_metadata(file_data)
 
                                 self.logger.debug(
                                     f"Successfully downloaded document: {entity.name}"
@@ -297,8 +412,11 @@ class GoogleDocsSource(BaseSource):
                 break
 
         # Update cursor for next incremental sync
-        if latest_new_start:
-            self._latest_new_start_page_token = latest_new_start
+        if latest_new_start and self.cursor:
+            self.cursor.update(start_page_token=latest_new_start)
+            self.logger.info(
+                f"Updated cursor with new start page token: {latest_new_start[:20]}..."
+            )
 
     # --- Full sync: list all documents ---
     async def _list_and_process_documents(  # noqa: C901
@@ -383,6 +501,9 @@ class GoogleDocsSource(BaseSource):
                                     f"Download failed - no local path set for {entity.name}"
                                 )
                                 continue
+
+                            # Store metadata for future change detection
+                            self._store_file_metadata(file_data)
 
                             self.logger.debug(f"Successfully downloaded document: {entity.name}")
                             yield entity
