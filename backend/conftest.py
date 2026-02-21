@@ -290,6 +290,56 @@ def fake_sync_job_repo():
 
 
 @pytest.fixture
+def fake_billing_service():
+    """Fake BillingService."""
+    from airweave.adapters.payment.fake import FakePaymentGateway
+    from airweave.domains.billing.fakes.operations import FakeBillingOperations
+    from airweave.domains.billing.fakes.repository import (
+        FakeBillingPeriodRepository,
+        FakeOrganizationBillingRepository,
+    )
+    from airweave.domains.billing.service import BillingService
+    from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
+
+    return BillingService(
+        payment_gateway=FakePaymentGateway(),
+        billing_repo=FakeOrganizationBillingRepository(),
+        period_repo=FakeBillingPeriodRepository(),
+        billing_ops=FakeBillingOperations(),
+        org_repo=FakeOrganizationRepository(),
+    )
+
+
+@pytest.fixture
+def fake_billing_webhook():
+    """Fake BillingWebhookProcessor."""
+    from airweave.adapters.payment.fake import FakePaymentGateway
+    from airweave.domains.billing.fakes.operations import FakeBillingOperations
+    from airweave.domains.billing.fakes.repository import (
+        FakeBillingPeriodRepository,
+        FakeOrganizationBillingRepository,
+    )
+    from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
+    from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
+
+    return BillingWebhookProcessor(
+        payment_gateway=FakePaymentGateway(),
+        billing_repo=FakeOrganizationBillingRepository(),
+        period_repo=FakeBillingPeriodRepository(),
+        billing_ops=FakeBillingOperations(),
+        org_repo=FakeOrganizationRepository(),
+    )
+
+
+@pytest.fixture
+def fake_payment_gateway():
+    """Fake PaymentGateway."""
+    from airweave.adapters.payment.fake import FakePaymentGateway
+
+    return FakePaymentGateway()
+
+
+@pytest.fixture
 def test_container(
     fake_health_service,
     fake_event_bus,
@@ -316,6 +366,9 @@ def test_container(
     fake_sync_repo,
     fake_sync_cursor_repo,
     fake_sync_job_repo,
+    fake_billing_service,
+    fake_billing_webhook,
+    fake_payment_gateway,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -353,4 +406,7 @@ def test_container(
         sync_repo=fake_sync_repo,
         sync_cursor_repo=fake_sync_cursor_repo,
         sync_job_repo=fake_sync_job_repo,
+        billing_service=fake_billing_service,
+        billing_webhook=fake_billing_webhook,
+        payment_gateway=fake_payment_gateway,
     )
