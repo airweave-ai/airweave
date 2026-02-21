@@ -10,7 +10,7 @@ from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.syncs.protocols import SyncRepositoryProtocol
 from airweave.models.sync import Sync
-from airweave.schemas.sync import SyncUpdate
+from airweave.schemas.sync import SyncCreate, SyncUpdate
 
 
 class SyncRepository(SyncRepositoryProtocol):
@@ -25,6 +25,16 @@ class SyncRepository(SyncRepositoryProtocol):
     ) -> Optional[Sync]:
         """Get a sync by ID without connections."""
         return await crud.sync.get(db, id=id, ctx=ctx, with_connections=False)
+
+    async def create(
+        self,
+        db: AsyncSession,
+        obj_in: SyncCreate,
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> schemas.Sync:
+        """Create a new sync with its connection associations."""
+        return await crud.sync.create(db=db, obj_in=obj_in, ctx=ctx, uow=uow)
 
     async def update(
         self,

@@ -32,6 +32,7 @@ from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.oauth.protocols import OAuth1ServiceProtocol, OAuth2ServiceProtocol
 from airweave.domains.source_connections.protocols import (
+    ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
     SourceConnectionServiceProtocol,
 )
@@ -43,6 +44,9 @@ from airweave.domains.sources.protocols import (
 from airweave.domains.syncs.protocols import (
     SyncCursorRepositoryProtocol,
     SyncJobRepositoryProtocol,
+    SyncJobServiceProtocol,
+    SyncLifecycleServiceProtocol,
+    SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
 )
 from airweave.domains.temporal.protocols import (
@@ -114,10 +118,16 @@ class Container:
     # Source lifecycle — creates/validates configured source instances
     source_lifecycle_service: SourceLifecycleServiceProtocol
 
-    # Sync domain repositories
+    # Response builder — constructs API responses for source connections
+    response_builder: ResponseBuilderProtocol
+
+    # Sync domain
     sync_repo: SyncRepositoryProtocol
     sync_cursor_repo: SyncCursorRepositoryProtocol
     sync_job_repo: SyncJobRepositoryProtocol
+    sync_record_service: SyncRecordServiceProtocol
+    sync_job_service: SyncJobServiceProtocol
+    sync_lifecycle: SyncLifecycleServiceProtocol
 
     # Temporal domain
     temporal_workflow_service: TemporalWorkflowServiceProtocol

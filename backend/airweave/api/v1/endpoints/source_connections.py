@@ -426,18 +426,19 @@ async def run(
         ),
         json_schema_extra={"example": False},
     ),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> schemas.SourceConnectionJob:
     """Trigger a sync run for a source connection."""
-    # Check if organization is allowed to process entities
     await guard_rail.is_allowed(ActionType.ENTITIES)
 
-    run = await source_connection_service.run(
+    return await source_connection_service.run(
         db,
         id=source_connection_id,
         ctx=ctx,
         force_full_sync=force_full_sync,
     )
-    return run
 
 
 @router.get(
@@ -482,6 +483,9 @@ async def get_source_connection_jobs(
         le=1000,
         description="Maximum number of jobs to return (1-1000)",
         json_schema_extra={"example": 100},
+    ),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
     ),
 ) -> List[schemas.SourceConnectionJob]:
     """Get sync jobs for a source connection."""
@@ -533,6 +537,9 @@ async def cancel_job(
         json_schema_extra={"example": "660e8400-e29b-41d4-a716-446655440001"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> schemas.SourceConnectionJob:
     """Cancel a running sync job."""
     return await source_connection_service.cancel_job(

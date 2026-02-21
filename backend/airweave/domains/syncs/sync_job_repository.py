@@ -7,10 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.api.context import ApiContext
+from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
 from airweave.models.sync_job import SyncJob
-from airweave.schemas.sync_job import SyncJobCreate
+from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
 
 
 class SyncJobRepository(SyncJobRepositoryProtocol):
@@ -27,9 +28,15 @@ class SyncJobRepository(SyncJobRepositoryProtocol):
     async def get_active_for_sync(
         self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
     ) -> List[SyncJob]:
-        """Get all active (PENDING, RUNNING, CANCELLING) jobs for a sync."""
+        """Get all active (pending, running, cancelling) jobs for a sync."""
         return await crud.sync_job.get_all_by_sync_id(
-            db, sync_id=sync_id, status=["PENDING", "RUNNING", "CANCELLING"]
+            db,
+            sync_id=sync_id,
+            status=[
+                SyncJobStatus.PENDING.value,
+                SyncJobStatus.RUNNING.value,
+                SyncJobStatus.CANCELLING.value,
+            ],
         )
 
     async def get_all_by_sync_id(
@@ -47,3 +54,13 @@ class SyncJobRepository(SyncJobRepositoryProtocol):
     ) -> SyncJob:
         """Create a new sync job."""
         return await crud.sync_job.create(db, obj_in=obj_in, ctx=ctx, uow=uow)
+
+    async def update(
+        self,
+        db: AsyncSession,
+        db_obj: SyncJob,
+        obj_in: SyncJobUpdate,
+        ctx: ApiContext,
+    ) -> SyncJob:
+        """Update an existing sync job."""
+        return await crud.sync_job.update(db=db, db_obj=db_obj, obj_in=obj_in, ctx=ctx)

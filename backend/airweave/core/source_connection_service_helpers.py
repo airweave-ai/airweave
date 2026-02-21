@@ -41,10 +41,7 @@ from airweave.platform.auth.schemas import OAuth1Settings
 from airweave.platform.configs._base import ConfigValues
 from airweave.platform.configs.auth import AuthConfig
 from airweave.platform.locator import resource_locator
-from airweave.schemas.source_connection import (
-    AuthenticationMethod,
-    SourceConnectionJob,
-)
+from airweave.schemas.source_connection import AuthenticationMethod, SourceConnectionJob
 
 
 class SourceConnectionHelpers:

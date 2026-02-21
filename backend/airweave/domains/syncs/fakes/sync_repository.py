@@ -9,7 +9,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.sync import Sync
-from airweave.schemas.sync import SyncUpdate
+from airweave.schemas.sync import SyncCreate, SyncUpdate
 
 
 class FakeSyncRepository:
@@ -20,6 +20,7 @@ class FakeSyncRepository:
         self._store: dict[UUID, schemas.Sync] = {}
         self._models: dict[UUID, Sync] = {}
         self._calls: list[tuple] = []
+        self._create_result: Optional[schemas.Sync] = None
 
     def seed(self, id: UUID, sync_schema: schemas.Sync) -> None:
         """Seed a sync by ID (with-connections variant)."""
@@ -28,6 +29,10 @@ class FakeSyncRepository:
     def seed_model(self, id: UUID, sync_model: Sync) -> None:
         """Seed a raw Sync ORM model (without-connections variant)."""
         self._models[id] = sync_model
+
+    def set_create_result(self, sync_schema: schemas.Sync) -> None:
+        """Configure create() return value."""
+        self._create_result = sync_schema
 
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[schemas.Sync]:
         """Return seeded sync schema or None."""
@@ -40,6 +45,19 @@ class FakeSyncRepository:
         """Return seeded sync model or None."""
         self._calls.append(("get_without_connections", db, id, ctx))
         return self._models.get(id)
+
+    async def create(
+        self,
+        db: AsyncSession,
+        obj_in: SyncCreate,
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> schemas.Sync:
+        """Record call and return canned result."""
+        self._calls.append(("create", db, obj_in, ctx, uow))
+        if self._create_result is None:
+            raise RuntimeError("FakeSyncRepository.create_result not configured")
+        return self._create_result
 
     async def update(
         self,

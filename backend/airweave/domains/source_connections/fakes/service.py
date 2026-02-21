@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
+from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
     SourceConnectionCreate,
+    SourceConnectionJob,
     SourceConnectionListItem,
     SourceConnectionUpdate,
 )
@@ -18,10 +20,11 @@ from airweave.schemas.source_connection import (
 class FakeSourceConnectionService:
     """In-memory fake for SourceConnectionServiceProtocol."""
 
-    def __init__(self) -> None:
+    def __init__(self, sync_lifecycle: SyncLifecycleServiceProtocol) -> None:
         self._store: dict[UUID, SourceConnection] = {}
         self._list_items: List[SourceConnectionListItem] = []
         self._calls: list[tuple[Any, ...]] = []
+        self._sync_lifecycle = sync_lifecycle
 
     def seed(self, id: UUID, obj: SourceConnection) -> None:
         self._store[id] = obj
@@ -70,3 +73,38 @@ class FakeSourceConnectionService:
             raise NotFoundException("Source connection not found")
         del self._store[id]
         return obj
+
+    async def run(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+        force_full_sync: bool = False,
+    ) -> SourceConnectionJob:
+        self._calls.append(("run", db, id, ctx, force_full_sync))
+        return await self._sync_lifecycle.run(db, id=id, ctx=ctx, force_full_sync=force_full_sync)
+
+    async def get_jobs(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+        limit: int = 100,
+    ) -> List[SourceConnectionJob]:
+        self._calls.append(("get_jobs", db, id, ctx, limit))
+        return await self._sync_lifecycle.get_jobs(db, id=id, ctx=ctx, limit=limit)
+
+    async def cancel_job(
+        self,
+        db: AsyncSession,
+        *,
+        source_connection_id: UUID,
+        job_id: UUID,
+        ctx: ApiContext,
+    ) -> SourceConnectionJob:
+        self._calls.append(("cancel_job", db, source_connection_id, job_id, ctx))
+        return await self._sync_lifecycle.cancel_job(
+            db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
+        )

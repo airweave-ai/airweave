@@ -121,3 +121,36 @@ class SourceConnectionServiceProtocol(Protocol):
     async def delete(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnection:
         """Delete a source connection."""
         ...
+
+    async def run(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+        force_full_sync: bool = False,
+    ) -> SourceConnectionJob:
+        """Trigger a sync run for this source connection."""
+        ...
+
+    async def get_jobs(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+        limit: int = 100,
+    ) -> List[SourceConnectionJob]:
+        """List sync jobs for this source connection."""
+        ...
+
+    async def cancel_job(
+        self,
+        db: AsyncSession,
+        *,
+        source_connection_id: UUID,
+        job_id: UUID,
+        ctx: ApiContext,
+    ) -> SourceConnectionJob:
+        """Cancel a running sync job."""
+        ...

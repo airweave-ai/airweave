@@ -17,12 +17,17 @@ import pytest
 from airweave.api.context import ApiContext
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, SyncJobStatus
+from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
+from airweave.domains.collections.fakes.repository import FakeCollectionRepository
+from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
 from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.source_connections.types import LastJobInfo, SourceConnectionStats
+from airweave.domains.sources.fakes.registry import FakeSourceRegistry
+from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import AuthenticationMethod, SourceConnectionListItem
 
@@ -80,11 +85,12 @@ def _build_service(
 ) -> SourceConnectionService:
     return SourceConnectionService(
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
-        collection_repo=AsyncMock(),
-        connection_repo=AsyncMock(),
-        source_registry=AsyncMock(),
-        auth_provider_registry=AsyncMock(),
+        collection_repo=FakeCollectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        source_registry=FakeSourceRegistry(),
+        auth_provider_registry=FakeAuthProviderRegistry(),
         response_builder=FakeResponseBuilder(),
+        sync_lifecycle=FakeSyncLifecycleService(),
     )
 
 

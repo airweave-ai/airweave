@@ -16,8 +16,10 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionServiceProtocol,
 )
 from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
+    SourceConnectionJob,
     SourceConnectionListItem,
 )
 
@@ -29,7 +31,6 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         self,
         # Repositories
         sc_repo: SourceConnectionRepositoryProtocol,
-        # To be implemented
         collection_repo: CollectionRepositoryProtocol,
         connection_repo: ConnectionRepositoryProtocol,
         # Registries
@@ -37,6 +38,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         auth_provider_registry: AuthProviderRegistryProtocol,
         # Helpers
         response_builder: ResponseBuilderProtocol,
+        sync_lifecycle: SyncLifecycleServiceProtocol,
     ) -> None:
         self.sc_repo = sc_repo
         self.collection_repo = collection_repo
@@ -44,6 +46,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         self.source_registry = source_registry
         self.auth_provider_registry = auth_provider_registry
         self.response_builder = response_builder
+        self._sync_lifecycle = sync_lifecycle
 
     async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> SourceConnection:
         """Get a source connection by ID."""
@@ -90,3 +93,42 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
             )
 
         return result
+
+    # ------------------------------------------------------------------
+    # Sync lifecycle proxies
+    # ------------------------------------------------------------------
+
+    async def run(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+        force_full_sync: bool = False,
+    ) -> SourceConnectionJob:
+        """Trigger a sync run for this source connection."""
+        return await self._sync_lifecycle.run(db, id=id, ctx=ctx, force_full_sync=force_full_sync)
+
+    async def get_jobs(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+        limit: int = 100,
+    ) -> List[SourceConnectionJob]:
+        """List sync jobs for this source connection."""
+        return await self._sync_lifecycle.get_jobs(db, id=id, ctx=ctx, limit=limit)
+
+    async def cancel_job(
+        self,
+        db: AsyncSession,
+        *,
+        source_connection_id: UUID,
+        job_id: UUID,
+        ctx: ApiContext,
+    ) -> SourceConnectionJob:
+        """Cancel a running sync job."""
+        return await self._sync_lifecycle.cancel_job(
+            db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
+        )

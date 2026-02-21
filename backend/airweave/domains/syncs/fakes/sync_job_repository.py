@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.sync_job import SyncJob
-from airweave.schemas.sync_job import SyncJobCreate
+from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
 
 
 class FakeSyncJobRepository:
@@ -75,3 +75,17 @@ class FakeSyncJobRepository:
         self._store[job.id] = job
         self._created.append(job)
         return job
+
+    async def update(
+        self,
+        db: AsyncSession,
+        db_obj: SyncJob,
+        obj_in: SyncJobUpdate,
+        ctx: ApiContext,
+    ) -> SyncJob:
+        """Apply update fields to the db_obj and store it."""
+        self._calls.append(("update", db, db_obj, obj_in, ctx))
+        for field, value in obj_in.model_dump(exclude_unset=True).items():
+            setattr(db_obj, field, value)
+        self._store[db_obj.id] = db_obj
+        return db_obj
