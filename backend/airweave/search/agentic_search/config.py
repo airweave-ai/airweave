@@ -2,6 +2,9 @@
 
 from enum import Enum
 
+# Shared constant: approximate characters per token for budget estimation.
+CHARS_PER_TOKEN = 4
+
 
 class DatabaseImpl(str, Enum):
     """Supported database implementations."""
@@ -31,6 +34,7 @@ class LLMModel(str, Enum):
     GPT_OSS_120B = "gpt-oss-120b"
     ZAI_GLM_4_7 = "zai-glm-4.7"
     CLAUDE_SONNET_4_5 = "claude-sonnet-4.5"
+    CLAUDE_SONNET_4_6 = "claude-sonnet-4.6"
 
 
 # --- Tokenizer ---
@@ -106,9 +110,7 @@ class AgenticSearchConfig:
     # provider. For example, to use GPT_OSS_120B on Cerebras instead of GLM:
     #   (LLMProvider.CEREBRAS, LLMModel.GPT_OSS_120B),
     LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = [
-        (LLMProvider.CEREBRAS, LLMModel.ZAI_GLM_4_7),
-        (LLMProvider.GROQ, LLMModel.GPT_OSS_120B),
-        (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_5),
+        (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_6),
     ]
 
     # Tokenizer
@@ -117,13 +119,9 @@ class AgenticSearchConfig:
     TOKENIZER_ENCODING = TokenizerEncoding.O200K_HARMONY
 
     # Dense embedder
-    # Must match the model used by the sync pipeline's embedder.
-    # The sync pipeline uses text-embedding-3-small for dims <= 1536
-    # and text-embedding-3-large for dims > 1536. Using the wrong model
-    # here produces query embeddings in a different vector space than
-    # the stored document embeddings, making semantic search useless.
+    # The model (small vs large) is derived from the collection's vector_size
+    # at runtime in services.py, matching the sync pipeline's logic.
     DENSE_EMBEDDER_PROVIDER = DenseEmbedderProvider.OPENAI
-    DENSE_EMBEDDER_MODEL = DenseEmbedderModel.TEXT_EMBEDDING_3_LARGE
 
     # Sparse embedder
     SPARSE_EMBEDDER_PROVIDER = SparseEmbedderProvider.FASTEMBED

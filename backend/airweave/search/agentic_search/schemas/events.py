@@ -4,40 +4,31 @@ Typed events emitted during agentic search to give users transparency
 into the agent's reasoning process. Each event has a `type` literal
 discriminator for clean JSON serialization and frontend consumption.
 
-Planning and evaluating events carry the full plan/evaluation objects
-so consumers (frontend, evals, scripts) can pick out whatever they need.
+Events:
+- thinking: Model's reasoning text between tool calls
+- searching: Search execution completed (result count + timing)
+- done: Search complete with final response
+- error: An error occurred during search
 """
 
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
-from airweave.search.agentic_search.schemas.evaluation import AgenticSearchEvaluation
-from airweave.search.agentic_search.schemas.plan import AgenticSearchPlan
 from airweave.search.agentic_search.schemas.response import AgenticSearchResponse
 
 
-class AgenticSearchPlanningEvent(BaseModel):
-    """Emitted after the planner generates a search plan.
+class AgenticSearchThinkingEvent(BaseModel):
+    """Emitted when the model produces reasoning text.
 
-    Contains the full plan so consumers can access reasoning, query,
-    strategy, filters, limit, offset -- whatever they need.
-
-    Also includes history_shown / history_total so consumers can see
-    how much of the search history the planner actually saw.
+    Contains the model's inner monologue — its reasoning about what
+    it's found so far and what to try next. Replaces the old separate
+    PlanningEvent and EvaluatingEvent.
     """
 
-    type: Literal["planning"] = "planning"
+    type: Literal["thinking"] = "thinking"
     iteration: int = Field(..., description="Current iteration number (0-indexed).")
-    plan: AgenticSearchPlan = Field(..., description="The full search plan.")
-    is_consolidation: bool = Field(
-        default=False,
-        description="Whether this is a consolidation pass (final search after exhaustion).",
-    )
-    history_shown: int = Field(
-        ..., description="Number of detailed history iterations included in the planner prompt."
-    )
-    history_total: int = Field(..., description="Total number of past iterations.")
+    text: str = Field(..., description="The model's reasoning text.")
 
 
 class AgenticSearchingEvent(BaseModel):
@@ -52,30 +43,6 @@ class AgenticSearchingEvent(BaseModel):
     duration_ms: int = Field(
         ..., description="Time taken for query compilation and execution (ms)."
     )
-
-
-class AgenticSearchEvaluatingEvent(BaseModel):
-    """Emitted after the evaluator assesses search results.
-
-    Contains the full evaluation (reasoning + should_continue).
-
-    Also includes results_shown / results_total and history_shown / history_total
-    so consumers can see how much context the evaluator actually saw.
-    """
-
-    type: Literal["evaluating"] = "evaluating"
-    iteration: int = Field(..., description="Current iteration number (0-indexed).")
-    evaluation: AgenticSearchEvaluation = Field(..., description="The full evaluation.")
-    results_shown: int = Field(
-        ..., description="Number of search results included in the evaluator prompt."
-    )
-    results_total: int = Field(
-        ..., description="Total number of search results returned by the search engine."
-    )
-    history_shown: int = Field(
-        ..., description="Number of detailed history iterations included in the evaluator prompt."
-    )
-    history_total: int = Field(..., description="Total number of past iterations.")
 
 
 class AgenticSearchDoneEvent(BaseModel):
@@ -97,9 +64,8 @@ class AgenticSearchErrorEvent(BaseModel):
 
 AgenticSearchEvent = Annotated[
     Union[
-        AgenticSearchPlanningEvent,
+        AgenticSearchThinkingEvent,
         AgenticSearchingEvent,
-        AgenticSearchEvaluatingEvent,
         AgenticSearchDoneEvent,
         AgenticSearchErrorEvent,
     ],

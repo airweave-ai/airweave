@@ -260,16 +260,20 @@ schema base_entity {
         # No need for expensive rescoring with float32 like in Qdrant
 
         # -----------------------------------------------------------------------
-        # GLOBAL PHASE: RRF fusion - normalizes by rank, not raw scores
-        # reciprocal_rank converts each score to 1/(k+rank) where k=60
-        # This makes scores comparable without training data
+        # GLOBAL PHASE: Linear normalization fusion
+        # normalize_linear does min-max scaling across the rerank window,
+        # preserving score magnitude (unlike reciprocal_rank which is purely
+        # ordinal and discards the actual score values).
+        # This matters because keyword_score has wide variance (0-15) while
+        # semantic_score has narrow variance (0.39-0.41) — RRF would treat
+        # a 11.47 vs 0.0 keyword difference the same as rank 1 vs rank 2.
         # rerank-count: 100 for final ranking
         # -----------------------------------------------------------------------
         global-phase {
             rerank-count: 100
             expression {
-                reciprocal_rank(keyword_score) +
-                reciprocal_rank(semantic_score)
+                normalize_linear(keyword_score) +
+                normalize_linear(semantic_score)
             }
         }
 

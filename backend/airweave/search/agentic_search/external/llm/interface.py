@@ -5,6 +5,7 @@ from typing import Protocol, TypeVar
 from pydantic import BaseModel
 
 from airweave.search.agentic_search.external.llm.registry import LLMModelSpec
+from airweave.search.agentic_search.external.llm.tool_response import LLMToolResponse
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -31,6 +32,24 @@ class AgenticSearchLLMInterface(Protocol):
             system_prompt: System prompt (static instructions: task description, rules).
                 Sent as a system message so the model treats these as higher-priority
                 instructions separate from the user context.
+        """
+        ...
+
+    async def create_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        system_prompt: str,
+    ) -> LLMToolResponse:
+        """Send a conversation with tools and get a response.
+
+        Args:
+            messages: Conversation messages in provider-generic format.
+            tools: Tool definitions (OpenAI-compatible function format).
+            system_prompt: System prompt (static instructions).
+
+        Returns:
+            LLMToolResponse with text, tool_calls, stop_reason, and usage.
         """
         ...
 

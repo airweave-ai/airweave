@@ -10,6 +10,7 @@ from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.search.agentic_search.config import (
     DatabaseImpl,
+    DenseEmbedderModel,
     DenseEmbedderProvider,
     LLMProvider,
     SparseEmbedderProvider,
@@ -346,10 +347,12 @@ class AgenticSearchServices:
 
     @staticmethod
     def _create_dense_embedder(vector_size: int) -> AgenticSearchDenseEmbedderInterface:
-        """Create dense embedder based on config.
+        """Create dense embedder based on config and collection vector_size.
 
-        Gets the model spec from the registry and validates that it supports
-        the collection's vector_size.
+        The model is derived from vector_size using the same logic as the sync
+        pipeline's embedder: text-embedding-3-small for dims <= 1536,
+        text-embedding-3-large for dims > 1536. This ensures query embeddings
+        are always in the same vector space as stored document embeddings.
 
         Args:
             vector_size: Embedding dimension for the collection.
@@ -361,9 +364,17 @@ class AgenticSearchServices:
             ValueError: If dense embedder provider or model is unknown.
             ValueError: If vector_size exceeds model's maximum.
         """
+        # Derive model from vector_size to match the sync pipeline's logic
+        # (see platform/embedders/openai.py). This prevents vector space
+        # mismatches between ingestion and query embeddings.
+        if vector_size <= 1536:
+            dense_model = DenseEmbedderModel.TEXT_EMBEDDING_3_SMALL
+        else:
+            dense_model = DenseEmbedderModel.TEXT_EMBEDDING_3_LARGE
+
         model_spec = get_dense_model_spec(
             config.DENSE_EMBEDDER_PROVIDER,
-            config.DENSE_EMBEDDER_MODEL,
+            dense_model,
         )
         validate_vector_size(model_spec, vector_size)
 
