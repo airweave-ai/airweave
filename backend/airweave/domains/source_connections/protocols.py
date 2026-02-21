@@ -1,14 +1,16 @@
 """Protocols for source connection domain."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Union
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
 from airweave.models.connection_init_session import ConnectionInitSession
+from airweave.models.redirect_session import RedirectSession
 from airweave.models.source_connection import SourceConnection
 from airweave.models.sync_job import SyncJob
 from airweave.schemas.source_connection import (
@@ -62,6 +64,45 @@ class SourceConnectionRepositoryProtocol(Protocol):
         """Get source connections with complete stats."""
         ...
 
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: Union[Dict[str, Any], Any],
+        ctx: ApiContext,
+        uow: UnitOfWork,
+    ) -> SourceConnection:
+        """Create a source connection record."""
+        ...
+
+    async def create_init_session(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: Dict[str, Any],
+        ctx: ApiContext,
+        uow: UnitOfWork,
+    ) -> ConnectionInitSession:
+        """Create a ConnectionInitSession for an OAuth flow."""
+        ...
+
+    async def create_redirect_session(
+        self,
+        db: AsyncSession,
+        *,
+        code: str,
+        final_url: str,
+        expires_at: datetime,
+        ctx: ApiContext,
+        uow: UnitOfWork,
+    ) -> RedirectSession:
+        """Create a RedirectSession for OAuth proxy URL."""
+        ...
+
+    async def generate_unique_redirect_code(self, db: AsyncSession, *, length: int = 8) -> str:
+        """Generate a unique short code for redirect sessions."""
+        ...
+
 
 class ResponseBuilderProtocol(Protocol):
     """Builds API response schemas for source connections."""
@@ -84,6 +125,16 @@ class ResponseBuilderProtocol(Protocol):
 
     def map_sync_job(self, job: SyncJob, source_connection_id: UUID) -> SourceConnectionJob:
         """Convert sync job to SourceConnectionJob schema."""
+        ...
+
+
+class SourceConnectionCreationServiceProtocol(Protocol):
+    """Handles all source-connection creation logic."""
+
+    async def create(
+        self, db: AsyncSession, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnectionSchema:
+        """Create a source connection (any auth method)."""
         ...
 
 

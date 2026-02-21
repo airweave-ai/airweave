@@ -694,7 +694,6 @@ class ProvisionCase:
     expected_error: Optional[str] = None
     expected_status: Optional[int] = None
     expected_cron: Optional[str] = None
-    expect_schedule_call: bool = False
 
 
 PROVISION_CASES = [
@@ -714,14 +713,14 @@ PROVISION_CASES = [
         name="default_continuous_schedule",
         source_entry=_source_entry(supports_continuous=True),
         expected_cron=CONTINUOUS_SOURCE_DEFAULT_CRON,
-        expect_schedule_call=True,
+
     ),
     ProvisionCase(
         name="explicit_cron_used",
         source_entry=_source_entry(),
         schedule_config=ScheduleConfig(cron="0 3 * * *"),
         expected_cron="0 3 * * *",
-        expect_schedule_call=True,
+
     ),
     ProvisionCase(
         name="sub_hourly_rejected_for_non_continuous",
@@ -742,7 +741,7 @@ PROVISION_CASES = [
         source_entry=_source_entry(supports_continuous=True),
         schedule_config=ScheduleConfig(cron="*/5 * * * *"),
         expected_cron="*/5 * * * *",
-        expect_schedule_call=True,
+
     ),
     ProvisionCase(
         name="happy_path_immediate_no_schedule",
@@ -751,7 +750,7 @@ PROVISION_CASES = [
         run_immediately=True,
         expected_none=False,
         expected_cron=None,
-        expect_schedule_call=False,
+
     ),
 ]
 
@@ -824,11 +823,7 @@ async def test_provision_sync(case: ProvisionCase):
     schedule_calls = [
         c for c in temporal_schedule_service._calls if c[0] == "create_or_update_schedule"
     ]
-    if case.expect_schedule_call:
-        assert len(schedule_calls) == 1
-        assert schedule_calls[0][2] == case.expected_cron
-    else:
-        assert len(schedule_calls) == 0
+    assert len(schedule_calls) == 0, "provision_sync must not create schedules"
 
 
 @pytest.mark.asyncio
@@ -868,4 +863,4 @@ async def test_provision_sync_default_daily_schedule():
     schedule_calls = [
         c for c in temporal_schedule_service._calls if c[0] == "create_or_update_schedule"
     ]
-    assert len(schedule_calls) == 1
+    assert len(schedule_calls) == 0, "provision_sync must not create schedules"

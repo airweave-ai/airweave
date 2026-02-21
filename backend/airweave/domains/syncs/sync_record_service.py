@@ -71,6 +71,7 @@ class SyncRecordService(SyncRecordServiceProtocol):
                 ctx,
                 uow=uow,
             )
+            await uow.session.flush()
             sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
 
         return sync_schema, sync_job_schema

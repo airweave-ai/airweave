@@ -35,7 +35,13 @@ class FakeResponseBuilder:
         self._should_raise = should_raise
 
     async def build_response(
-        self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        source_conn: SourceConnection,
+        ctx: ApiContext,
+        *,
+        auth_url_override: Optional[str] = None,
+        auth_url_expiry_override: Optional["datetime"] = None,
     ) -> SourceConnectionSchema:
         """Build a minimal SourceConnection from source_conn attributes."""
         if self._should_raise:

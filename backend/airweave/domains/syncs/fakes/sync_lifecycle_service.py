@@ -65,6 +65,18 @@ class FakeSyncLifecycleService:
             raise self._should_raise
         return self._provision_result
 
+    async def create_schedule(
+        self,
+        db: AsyncSession,
+        *,
+        sync_id: UUID,
+        cron_schedule: str,
+        ctx: ApiContext,
+        uow: UnitOfWork,
+    ) -> None:
+        """Record call (no-op in tests)."""
+        self._calls.append(("create_schedule", sync_id, cron_schedule))
+
     async def run(
         self,
         db: AsyncSession,
