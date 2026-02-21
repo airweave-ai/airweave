@@ -16,20 +16,40 @@ from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.shared_models import AuthMethod
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.operations import BillingOperations
+from airweave.domains.billing.repository import (
+    BillingPeriodRepository,
+    OrganizationBillingRepository,
+)
+from airweave.domains.usage.repository import UsageRepository
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models import Organization, User, UserOrganization
 from airweave.schemas.api_key import APIKeyCreate
 
+_billing_repo = OrganizationBillingRepository()
+_period_repo = BillingPeriodRepository()
+_usage_repo = UsageRepository()
+
+# TODO: Remove this once we have refctored the org service to use DI
 if settings.STRIPE_ENABLED:
     from airweave.adapters.payment.stripe import StripePaymentGateway
 
     _payment_gateway: PaymentGatewayProtocol = StripePaymentGateway()
+    _billing_ops = BillingOperations(
+        payment_gateway=_payment_gateway,
+        billing_repo=_billing_repo,
+        period_repo=_period_repo,
+        usage_repo=_usage_repo,
+    )
 else:
     from airweave.adapters.payment.null import NullPaymentGateway
 
     _payment_gateway: PaymentGatewayProtocol = NullPaymentGateway()
-
-_billing_ops = BillingOperations(payment_gateway=_payment_gateway)
+    _billing_ops = BillingOperations(
+        payment_gateway=_payment_gateway,
+        billing_repo=_billing_repo,
+        period_repo=_period_repo,
+        usage_repo=_usage_repo,
+    )
 
 
 class OrganizationService:
