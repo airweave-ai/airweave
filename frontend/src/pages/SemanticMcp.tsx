@@ -872,8 +872,14 @@ const SemanticMcp = () => {
                                                 onError={(e) => {
                                                     // Fallback to initials if icon fails to load
                                                     e.currentTarget.style.display = 'none';
-                                                    e.currentTarget.parentElement!.classList.add('bg-blue-500');
-                                                    e.currentTarget.parentElement!.innerHTML = `<span class="text-white font-semibold text-sm">${connection.short_name.substring(0, 2).toUpperCase()}</span>`;
+                                                    const parent = e.currentTarget.parentElement!;
+                                                    parent.classList.add('bg-blue-500');
+
+                                                    // Create span element safely without innerHTML to prevent XSS
+                                                    const span = document.createElement('span');
+                                                    span.className = 'text-white font-semibold text-sm';
+                                                    span.textContent = connection.short_name.substring(0, 2).toUpperCase();
+                                                    parent.appendChild(span);
                                                 }}
                                             />
                                         </div>
@@ -944,7 +950,12 @@ const SemanticMcp = () => {
                                             e.currentTarget.style.display = 'none';
                                             const parent = e.currentTarget.parentElement!;
                                             parent.classList.add('bg-blue-500');
-                                            parent.innerHTML = `<span class="text-white font-semibold text-xs">${selectedSource.short_name.substring(0, 2).toUpperCase()}</span>`;
+
+                                            // Create span element safely without innerHTML to prevent XSS
+                                            const span = document.createElement('span');
+                                            span.className = 'text-white font-semibold text-xs';
+                                            span.textContent = selectedSource.short_name.substring(0, 2).toUpperCase();
+                                            parent.appendChild(span);
                                         }}
                                     />
                                 </div>
