@@ -316,6 +316,9 @@ def fake_billing_service():
         billing_ops=FakeBillingOperations(),
         org_repo=FakeOrganizationRepository(),
     )
+
+
+@pytest.fixture
 def fake_sync_record_service():
     """Fake SyncRecordService."""
     from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
@@ -337,14 +340,6 @@ def fake_sync_lifecycle():
     from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
 
     return FakeSyncLifecycleService()
-
-
-@pytest.fixture
-def fake_billing_service():
-    """AsyncMock satisfying BillingServiceProtocol."""
-    from unittest.mock import AsyncMock
-
-    return AsyncMock()
 
 
 @pytest.fixture
