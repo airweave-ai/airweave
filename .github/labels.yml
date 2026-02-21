@@ -1,0 +1,209 @@
+# Declarative label configuration for airweave-ai/airweave.
+# Synced via EndBug/label-sync — this file is the single source of truth.
+# delete-other-labels: true means any label NOT listed here will be removed.
+
+# ─── General ────────────────────────────────────────────────────────────────
+
+- name: bug
+  description: Confirmed defect or unexpected behavior
+  color: "d73a4a"
+
+- name: enhancement
+  description: New feature or request
+  color: "a2eeef"
+
+- name: documentation
+  description: Improvements or additions to documentation
+  color: "0075ca"
+
+- name: duplicate
+  description: Already tracked in another issue
+  color: "cfd3d7"
+
+- name: good first issue
+  description: Approachable for first-time contributors
+  color: "7057ff"
+
+- name: help wanted
+  description: Open for community contributions
+  color: "008672"
+
+- name: question
+  description: Needs more information or discussion
+  color: "d876e3"
+
+- name: wontfix
+  description: Will not be addressed
+  color: "ffffff"
+
+- name: on hold
+  description: Intentionally paused, waiting on other work
+  color: "fef2c0"
+
+# ─── Type ────────────────────────────────────────────────────────────────────
+
+- name: refactor
+  description: Code restructuring without behavior change
+  color: "fbca04"
+
+- name: performance
+  description: Improves speed, memory usage, or efficiency
+  color: "f9d0c4"
+
+- name: security
+  description: Related to security, vulnerabilities, or hardening
+  color: "e11d48"
+
+- name: breaking change
+  description: Introduces incompatible API or behavior changes
+  color: "b60205"
+
+- name: dx
+  description: Improves developer experience or ergonomics
+  color: "c2e0c6"
+
+- name: chore
+  description: Routine maintenance, dependency updates, or tooling
+  color: "ededed"
+
+# ─── Area ────────────────────────────────────────────────────────────────────
+
+- name: "area:backend"
+  description: Python backend and FastAPI services
+  color: "1d76db"
+
+- name: "area:frontend"
+  description: React frontend and UI components
+  color: "1d9cd4"
+
+- name: "area:mcp"
+  description: Model Context Protocol server
+  color: "5319e7"
+
+- name: "area:sdk"
+  description: Python or TypeScript client SDKs
+  color: "006b75"
+
+- name: "area:api"
+  description: REST API routes and request handling
+  color: "0052cc"
+
+- name: "area:sync"
+  description: Sync engine, pipelines, and Temporal workflows
+  color: "d4c5f9"
+
+- name: "area:search"
+  description: Search functionality and vector retrieval
+  color: "c5def5"
+
+- name: "area:auth"
+  description: Authentication, authorization, and credentials
+  color: "4a154b"
+
+- name: "area:billing"
+  description: Billing, subscriptions, and usage tracking
+  color: "0e8a16"
+
+- name: "area:webhooks"
+  description: Webhook delivery and event notifications
+  color: "bfd4f2"
+
+- name: "area:infra"
+  description: Infrastructure, CI/CD, and deployment
+  color: "bfd4f2"
+
+- name: "area:database"
+  description: Database schema, migrations, and data models
+  color: "1d76db"
+
+- name: "area:embeddings"
+  description: Embedding models and vector generation
+  color: "c5def5"
+
+- name: "area:testing"
+  description: Test suites, frameworks, and test infrastructure
+  color: "bfd4f2"
+
+# ─── Connector category ─────────────────────────────────────────────────────
+
+- name: "connector:crm"
+  description: CRM connectors (HubSpot, Salesforce, etc.)
+  color: "0e8a16"
+
+- name: "connector:project-mgmt"
+  description: Project management connectors (Jira, Asana, etc.)
+  color: "0e8a16"
+
+- name: "connector:communication"
+  description: Email and messaging connectors (Gmail, Slack, etc.)
+  color: "0e8a16"
+
+- name: "connector:file-storage"
+  description: File and document storage connectors (GDrive, etc.)
+  color: "0e8a16"
+
+- name: "connector:code"
+  description: Code repository connectors (GitHub, GitLab, etc.)
+  color: "0e8a16"
+
+- name: "connector:knowledge-base"
+  description: Knowledge base connectors (Notion, Confluence, etc.)
+  color: "0e8a16"
+
+# ─── Priority ────────────────────────────────────────────────────────────────
+
+- name: "priority:critical"
+  description: Critical issue with major impact
+  color: "b60205"
+
+- name: "priority:high"
+  description: High-impact issue requiring prompt attention
+  color: "d93f0b"
+
+- name: "priority:medium"
+  description: Moderate impact, should be addressed soon
+  color: "fbca04"
+
+- name: "priority:low"
+  description: Minor issue or improvement, low urgency
+  color: "0e8a16"
+
+# ─── Size ────────────────────────────────────────────────────────────────────
+
+- name: "size:xs"
+  description: Minimal change, quick fix
+  color: "ededed"
+
+- name: "size:s"
+  description: Small, well-scoped change
+  color: "d4c5f9"
+
+- name: "size:m"
+  description: Moderate scope across a few files
+  color: "bfd4f2"
+
+- name: "size:l"
+  description: Significant effort across multiple components
+  color: "c5def5"
+
+- name: "size:xl"
+  description: Major effort, likely spanning multiple PRs
+  color: "1d76db"
+
+# ─── Status ──────────────────────────────────────────────────────────────────
+
+- name: needs triage
+  description: Awaiting initial review and categorization
+  color: "e4e669"
+
+- name: needs reproduction
+  description: Awaiting a minimal reproducible example
+  color: "f9d0c4"
+
+- name: stale
+  description: Inactive for an extended period
+  color: "ededed"
+
+- name: blocked
+  description: Waiting on an external dependency or decision
+  color: "b60205"

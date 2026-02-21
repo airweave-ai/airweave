@@ -7,7 +7,7 @@ more source connections, enabling unified search across multiple data sources.
 
 from typing import List
 
-from fastapi import BackgroundTasks, Depends, HTTPException, Path, Query
+from fastapi import Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -17,18 +17,11 @@ from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.examples import (
     create_collection_list_response,
-    create_job_list_response,
 )
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.collection_service import collection_service
 from airweave.core.events.collection import CollectionLifecycleEvent
-from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.protocols import EventBus
-from airweave.core.shared_models import ActionType
-from airweave.core.source_connection_service import source_connection_service
-from airweave.core.source_connection_service_helpers import source_connection_helpers
-from airweave.core.sync_service import sync_service
-from airweave.core.temporal_service import temporal_service
 from airweave.schemas.errors import (
     NotFoundErrorResponse,
     RateLimitErrorResponse,
@@ -286,118 +279,3 @@ async def delete(
         ctx.logger.warning(f"Failed to publish collection.deleted event: {e}")
 
     return result
-
-
-@router.post(
-    "/{readable_id}/refresh_all",
-    response_model=List[schemas.SourceConnectionJob],
-    summary="Refresh All Sources",
-    description="""Trigger data synchronization for all source connections in a collection.
-
-Starts sync jobs for every source connection in the collection, pulling the latest
-data from each connected source. Jobs run asynchronously in the background.
-
-Returns a list of sync jobs that were created. Use the source connection endpoints
-to monitor the progress and status of individual sync jobs.
-
-""",
-    responses={
-        **create_job_list_response(["completed"], "Multiple sync jobs triggered"),
-        404: {"model": NotFoundErrorResponse, "description": "Collection Not Found"},
-        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
-    },
-)
-async def refresh_all_source_connections(
-    *,
-    readable_id: str = Path(
-        ...,
-        description="The unique readable identifier of the collection to refresh",
-        json_schema_extra={"example": "customer-support-tickets-x7k9m"},
-    ),
-    db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
-    background_tasks: BackgroundTasks,
-) -> List[schemas.SourceConnectionJob]:
-    """Trigger data synchronization for all source connections in the collection."""
-    # Check if collection exists
-    collection = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
-    if collection is None:
-        raise HTTPException(status_code=404, detail="Collection not found")
-
-    # Convert to Pydantic model immediately
-    collection_obj = schemas.Collection.model_validate(collection, from_attributes=True)
-
-    # Get all source connections for this collection
-    source_connections = await source_connection_service.get_source_connections_by_collection(
-        db=db, collection=readable_id, ctx=ctx
-    )
-
-    if not source_connections:
-        return []
-
-    # Check if we're allowed to process entities
-    await guard_rail.is_allowed(ActionType.ENTITIES)
-
-    # Create a sync job for each source connection and run it in the background
-    sync_jobs = []
-
-    for sc in source_connections:
-        # Create the sync job
-        sync_job = await source_connection_service.run_source_connection(
-            db=db, source_connection_id=sc.id, ctx=ctx
-        )
-
-        # Get necessary objects for running the sync
-        sync = await crud.sync.get(db=db, id=sync_job.sync_id, ctx=ctx, with_connections=True)
-
-        # Get source connection with auth_fields for temporal processing
-        source_connection = await source_connection_service.get_source_connection(
-            db=db,
-            source_connection_id=sc.id,
-            show_auth_fields=True,  # Important: Need actual auth_fields for temporal
-            ctx=ctx,
-        )
-
-        # Prepare objects for background task
-        sync = schemas.Sync.model_validate(sync, from_attributes=True)
-        source_connection = schemas.SourceConnection.from_orm_with_collection_mapping(
-            source_connection
-        )
-
-        # Add to jobs list
-        sync_jobs.append(sync_job.to_source_connection_job(sc.id))
-
-        try:
-            # Start the sync job in the background or via Temporal
-            if await temporal_service.is_temporal_enabled():
-                # Get the Connection object (not SourceConnection)
-                connection_schema = (
-                    await source_connection_helpers.get_connection_for_source_connection(
-                        db=db, source_connection=sc, ctx=ctx
-                    )
-                )
-                # Use Temporal workflow
-                await temporal_service.run_source_connection_workflow(
-                    sync=sync,
-                    sync_job=sync_job,
-                    collection=collection_obj,  # Use the already converted object
-                    connection=connection_schema,  # Pass Connection, not SourceConnection
-                    ctx=ctx,
-                )
-            else:
-                # Fall back to background tasks
-                background_tasks.add_task(
-                    sync_service.run,
-                    sync,
-                    sync_job,
-                    collection_obj,  # Use the already converted object
-                    source_connection,
-                    ctx,
-                )
-
-        except Exception as e:
-            # Log the error but continue with other source connections
-            ctx.logger.error(f"Failed to create sync job for source connection {sc.id}: {e}")
-
-    return sync_jobs

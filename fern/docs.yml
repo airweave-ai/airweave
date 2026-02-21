@@ -159,7 +159,6 @@ navigation:
     - POST /collections/{readable_id}/search
     - POST /collections
     - PATCH /collections/{readable_id}
-    - POST /collections/{readable_id}/refresh_all
     - DELETE /collections/{readable_id}
   - section: Source Connections
     contents:

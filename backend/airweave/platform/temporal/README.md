@@ -56,7 +56,6 @@ If Temporal is not available, the system automatically falls back to using FastA
 
 The Temporal integration is used in:
 - `POST /source-connections/{id}/run` - Run individual source connection
-- `POST /collections/{id}/refresh_all` - Run all source connections in a collection
 
 Both endpoints check if Temporal is available and fall back to background tasks if needed.
 

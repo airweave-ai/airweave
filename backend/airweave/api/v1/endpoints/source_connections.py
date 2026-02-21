@@ -543,26 +543,6 @@ async def cancel_job(
     )
 
 
-@router.post("/{source_connection_id}/make-continuous", response_model=schemas.SourceConnection)
-async def make_continuous(
-    *,
-    db: AsyncSession = Depends(get_db),
-    source_connection_id: UUID,
-    cursor_field: Optional[str] = Query(None, description="Field to use for incremental sync"),
-    ctx: ApiContext = Depends(deps.get_context),
-) -> schemas.SourceConnection:
-    """Convert source connection to continuous sync mode.
-
-    Only available for sources that support incremental sync.
-    """
-    return await source_connection_service.make_continuous(
-        db,
-        id=source_connection_id,
-        cursor_field=cursor_field,
-        ctx=ctx,
-    )
-
-
 @router.get("/{source_connection_id}/sync-id", include_in_schema=False)
 async def get_sync_id(
     *,
