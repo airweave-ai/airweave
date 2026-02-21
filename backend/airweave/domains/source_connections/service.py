@@ -7,20 +7,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
-from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
-from airweave.domains.collections.protocols import CollectionRepositoryProtocol
-from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
+    SourceConnectionCreationServiceProtocol,
     SourceConnectionRepositoryProtocol,
     SourceConnectionServiceProtocol,
 )
-from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
-from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
+    SourceConnectionCreate,
     SourceConnectionJob,
     SourceConnectionListItem,
+)
+from airweave.schemas.source_connection import (
+    SourceConnection as SourceConnectionSchema,
 )
 
 
@@ -29,32 +29,29 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
 
     def __init__(
         self,
-        # Repositories
         sc_repo: SourceConnectionRepositoryProtocol,
-        collection_repo: CollectionRepositoryProtocol,
-        connection_repo: ConnectionRepositoryProtocol,
-        # Registries
-        source_registry: SourceRegistryProtocol,
-        auth_provider_registry: AuthProviderRegistryProtocol,
-        # Helpers
         response_builder: ResponseBuilderProtocol,
         sync_lifecycle: SyncLifecycleServiceProtocol,
+        creation_service: SourceConnectionCreationServiceProtocol,
     ) -> None:
-        self.sc_repo = sc_repo
-        self.collection_repo = collection_repo
-        self.connection_repo = connection_repo
-        self.source_registry = source_registry
-        self.auth_provider_registry = auth_provider_registry
-        self.response_builder = response_builder
+        self._sc_repo = sc_repo
+        self._response_builder = response_builder
         self._sync_lifecycle = sync_lifecycle
+        self._creation_service = creation_service
 
-    async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> SourceConnection:
-        """Get a source connection by ID."""
-        source_connection = await self.sc_repo.get(db, id=id, ctx=ctx)
+        # Keep public attrs used by router/other modules
+        self.sc_repo = sc_repo
+        self.response_builder = response_builder
+
+    # ------------------------------------------------------------------
+    # Read operations
+    # ------------------------------------------------------------------
+
+    async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> SourceConnectionSchema:
+        source_connection = await self._sc_repo.get(db, id=id, ctx=ctx)
         if not source_connection:
             raise NotFoundException("Source connection not found")
-
-        return await self.response_builder.build_response(db, source_connection, ctx)
+        return await self._response_builder.build_response(db, source_connection, ctx)
 
     async def list(
         self,
@@ -65,16 +62,13 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         skip: int = 0,
         limit: int = 100,
     ) -> List[SourceConnectionListItem]:
-        """List source connections with complete stats."""
-        connections_with_stats = await self.sc_repo.get_multi_with_stats(
+        connections_with_stats = await self._sc_repo.get_multi_with_stats(
             db, ctx=ctx, collection_id=readable_collection_id, skip=skip, limit=limit
         )
-
         result = []
         for stats in connections_with_stats:
             last_job = stats.last_job
             last_job_status = last_job.status if last_job else None
-
             result.append(
                 SourceConnectionListItem(
                     id=stats.id,
@@ -91,8 +85,16 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
                     last_job_status=last_job_status,
                 )
             )
-
         return result
+
+    # ------------------------------------------------------------------
+    # Create (delegates to SourceConnectionCreationService)
+    # ------------------------------------------------------------------
+
+    async def create(
+        self, db: AsyncSession, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnectionSchema:
+        return await self._creation_service.create(db, obj_in, ctx)
 
     # ------------------------------------------------------------------
     # Sync lifecycle proxies
@@ -106,7 +108,6 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         ctx: ApiContext,
         force_full_sync: bool = False,
     ) -> SourceConnectionJob:
-        """Trigger a sync run for this source connection."""
         return await self._sync_lifecycle.run(db, id=id, ctx=ctx, force_full_sync=force_full_sync)
 
     async def get_jobs(
@@ -117,7 +118,6 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         ctx: ApiContext,
         limit: int = 100,
     ) -> List[SourceConnectionJob]:
-        """List sync jobs for this source connection."""
         return await self._sync_lifecycle.get_jobs(db, id=id, ctx=ctx, limit=limit)
 
     async def cancel_job(
@@ -128,7 +128,6 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         job_id: UUID,
         ctx: ApiContext,
     ) -> SourceConnectionJob:
-        """Cancel a running sync job."""
         return await self._sync_lifecycle.cancel_job(
             db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
         )

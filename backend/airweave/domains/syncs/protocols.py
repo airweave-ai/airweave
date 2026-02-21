@@ -181,10 +181,22 @@ class SyncLifecycleServiceProtocol(Protocol):
         ctx: ApiContext,
         uow: UnitOfWork,
     ) -> Optional[SyncProvisionResult]:
-        """Create sync + job + Temporal schedule atomically.
+        """Create sync record + optional job. Does NOT create the Temporal schedule.
 
         Returns None for federated search sources (no sync needed).
         """
+        ...
+
+    async def create_schedule(
+        self,
+        db: AsyncSession,
+        *,
+        sync_id: UUID,
+        cron_schedule: str,
+        ctx: ApiContext,
+        uow: UnitOfWork,
+    ) -> None:
+        """Create the Temporal schedule for an already-provisioned sync."""
         ...
 
     async def run(

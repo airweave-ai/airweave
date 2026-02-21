@@ -1,9 +1,6 @@
-"""Unit tests for SourceConnectionService.list.
+"""Unit tests for SourceConnectionService (list + read operations).
 
-Verifies parity with the old core.source_connection_service.list implementation
-and ensures no regressions in the new domain-based architecture.
-
-Uses table-driven tests wherever possible.
+Create tests live in test_create.py (testing SourceConnectionCreationService).
 """
 
 from dataclasses import dataclass
@@ -17,19 +14,21 @@ import pytest
 from airweave.api.context import ApiContext
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, SyncJobStatus
-from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
-from airweave.domains.collections.fakes.repository import FakeCollectionRepository
-from airweave.domains.connections.fakes.repository import FakeConnectionRepository
+from airweave.domains.source_connections.fakes.create import (
+    FakeSourceConnectionCreationService,
+)
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
 from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.source_connections.types import LastJobInfo, SourceConnectionStats
-from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
 from airweave.schemas.organization import Organization
-from airweave.schemas.source_connection import AuthenticationMethod, SourceConnectionListItem
+from airweave.schemas.source_connection import (
+    AuthenticationMethod,
+    SourceConnectionListItem,
+)
 
 NOW = datetime.now(timezone.utc)
 ORG_ID = uuid4()
@@ -41,7 +40,13 @@ ORG_ID = uuid4()
 
 
 def _make_ctx() -> ApiContext:
-    org = Organization(id=str(ORG_ID), name="Test Org", created_at=NOW, modified_at=NOW)
+    org = Organization(
+        id=str(ORG_ID),
+        name="Test Org",
+        created_at=NOW,
+        modified_at=NOW,
+        enabled_features=[],
+    )
     return ApiContext(
         request_id="test-req",
         organization=org,
@@ -82,20 +87,19 @@ def _make_stats(
 
 def _build_service(
     sc_repo: Optional[FakeSourceConnectionRepository] = None,
+    response_builder: Optional[FakeResponseBuilder] = None,
+    sync_lifecycle: Optional[FakeSyncLifecycleService] = None,
+    creation_service: Optional[FakeSourceConnectionCreationService] = None,
 ) -> SourceConnectionService:
     return SourceConnectionService(
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
-        collection_repo=FakeCollectionRepository(),
-        connection_repo=FakeConnectionRepository(),
-        source_registry=FakeSourceRegistry(),
-        auth_provider_registry=FakeAuthProviderRegistry(),
-        response_builder=FakeResponseBuilder(),
-        sync_lifecycle=FakeSyncLifecycleService(),
+        response_builder=response_builder or FakeResponseBuilder(),
+        sync_lifecycle=sync_lifecycle or FakeSyncLifecycleService(),
+        creation_service=creation_service or FakeSourceConnectionCreationService(),
     )
 
 
 async def _list_single(stats: SourceConnectionStats) -> SourceConnectionListItem:
-    """Seed one stats object, run list, return the single item."""
     repo = FakeSourceConnectionRepository()
     repo.seed_stats([stats])
     svc = _build_service(sc_repo=repo)

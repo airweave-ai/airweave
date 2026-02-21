@@ -10,6 +10,7 @@ from airweave.core.exceptions import NotFoundException
 from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
+    SourceConnection as SourceConnectionSchema,
     SourceConnectionCreate,
     SourceConnectionJob,
     SourceConnectionListItem,
@@ -25,12 +26,16 @@ class FakeSourceConnectionService:
         self._list_items: List[SourceConnectionListItem] = []
         self._calls: list[tuple[Any, ...]] = []
         self._sync_lifecycle = sync_lifecycle
+        self._create_result: Optional[SourceConnectionSchema] = None
 
     def seed(self, id: UUID, obj: SourceConnection) -> None:
         self._store[id] = obj
 
     def seed_list_items(self, items: List[SourceConnectionListItem]) -> None:
         self._list_items = list(items)
+
+    def set_create_result(self, result: SourceConnectionSchema) -> None:
+        self._create_result = result
 
     async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> SourceConnection:
         self._calls.append(("get", db, id, ctx))
@@ -56,9 +61,11 @@ class FakeSourceConnectionService:
 
     async def create(
         self, db: AsyncSession, obj_in: SourceConnectionCreate, ctx: ApiContext
-    ) -> SourceConnection:
+    ) -> SourceConnectionSchema:
         self._calls.append(("create", db, obj_in, ctx))
-        raise NotImplementedError("FakeSourceConnectionService.create not implemented")
+        if self._create_result is not None:
+            return self._create_result
+        raise NotImplementedError("FakeSourceConnectionService.create: call set_create_result()")
 
     async def update(
         self, db: AsyncSession, id: UUID, obj_in: SourceConnectionUpdate, ctx: ApiContext

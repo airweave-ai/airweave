@@ -53,6 +53,7 @@ from airweave.domains.oauth.repository import (
     OAuthCredentialRepository,
     OAuthSourceRepository,
 )
+from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.domains.source_connections.response import ResponseBuilder
 from airweave.domains.source_connections.service import SourceConnectionService
@@ -160,16 +161,28 @@ def create_container(settings: Settings) -> Container:
         sync_job_repo=source_deps["sync_job_repo"],
     )
 
-    # SourceConnectionService is built here (not in _create_source_services)
-    # because it needs sync_lifecycle which is built in _create_sync_services.
-    source_connection_service = SourceConnectionService(
+    # SourceConnectionCreationService holds all creation deps.
+    # SourceConnectionService is a thin coordinator that delegates create() to it.
+    creation_service = SourceConnectionCreationService(
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
         connection_repo=source_deps["conn_repo"],
+        cred_repo=source_deps["cred_repo"],
         source_registry=source_deps["source_registry"],
-        auth_provider_registry=source_deps["auth_provider_registry"],
         response_builder=sync_deps["response_builder"],
         sync_lifecycle=sync_deps["sync_lifecycle"],
+        oauth1_service=source_deps["oauth1_service"],
+        oauth2_service=source_deps["oauth2_service"],
+        source_lifecycle_service=source_deps["source_lifecycle_service"],
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
+        event_bus=event_bus,
+    )
+
+    source_connection_service = SourceConnectionService(
+        sc_repo=source_deps["sc_repo"],
+        response_builder=sync_deps["response_builder"],
+        sync_lifecycle=sync_deps["sync_lifecycle"],
+        creation_service=creation_service,
     )
 
     # -----------------------------------------------------------------
