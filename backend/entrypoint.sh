@@ -51,6 +51,18 @@ echo "Running database migrations..."
 cd /app && poetry run alembic upgrade heads
 # cd /app #dev time to not rerun alembic on conflicting branches
 
-# Start application
+# Start application with conditional reload based on environment
 echo "Starting application..."
-poetry run uvicorn airweave.main:app --host 0.0.0.0 --port 8001 --reload
+
+# Determine if we should enable hot-reload
+RELOAD_FLAG=""
+ENVIRONMENT=${ENVIRONMENT:-local}
+
+if [ "$ENVIRONMENT" = "local" ] || [ "$ENVIRONMENT" = "dev" ]; then
+    RELOAD_FLAG="--reload"
+    echo "Environment: $ENVIRONMENT - Hot reload ENABLED"
+else
+    echo "Environment: $ENVIRONMENT - Hot reload DISABLED (production mode)"
+fi
+
+poetry run uvicorn airweave.main:app --host 0.0.0.0 --port 8001 $RELOAD_FLAG
