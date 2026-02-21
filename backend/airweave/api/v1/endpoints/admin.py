@@ -159,24 +159,23 @@ async def _build_org_context(
     target_org = schemas.Organization.model_validate(org_obj, from_attributes=True)
 
     # Build new context with target org but preserve admin's request tracing
-    ctx = ApiContext(
+    return ApiContext(
         request_id=admin_ctx.request_id,
         organization=target_org,
         user=admin_ctx.user,
         auth_method=admin_ctx.auth_method,
         auth_metadata=admin_ctx.auth_metadata,
+        logger=LoggerConfigurator.configure_logger(
+            "airweave.admin.cross_org",
+            dimensions={
+                "request_id": admin_ctx.request_id,
+                "organization_id": str(target_org.id),
+                "organization_name": target_org.name,
+                "admin_org_id": str(admin_ctx.organization.id),
+                "auth_method": admin_ctx.auth_method.value,
+            },
+        ),
     )
-    ctx.logger = LoggerConfigurator.configure_logger(
-        "airweave.admin.cross_org",
-        dimensions={
-            "request_id": admin_ctx.request_id,
-            "organization_id": str(target_org.id),
-            "organization_name": target_org.name,
-            "admin_org_id": str(admin_ctx.organization.id),
-            "auth_method": admin_ctx.auth_method.value,
-        },
-    )
-    return ctx
 
 
 def _build_sort_subqueries(query, sort_by: str):

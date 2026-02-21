@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Dict, Optional
 from uuid import UUID
 
 from airweave import schemas
+from airweave.core.logging import ContextualLogger
 
 if TYPE_CHECKING:
-    from airweave.core.logging import ContextualLogger
     from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 
 
@@ -23,26 +23,26 @@ class BaseContext:
     Carries organization identity for CRUD access control and a contextual
     logger with identity dimensions. All specialized contexts inherit from this.
 
-    The only __init__ field is ``organization`` (no defaults), so subclasses
-    can freely add required fields without dataclass ordering conflicts.
-
-    Logger is auto-derived from organization in __post_init__. Override it
-    after construction when a richer logger is needed (e.g. with sync_id).
+    ``organization`` is the only positional __init__ field (no default), so
+    subclasses can freely add required fields without dataclass ordering
+    conflicts. ``logger`` is keyword-only with a default of None; when
+    omitted it is auto-derived from the organization in __post_init__.
     """
 
     organization: schemas.Organization
 
-    logger: "ContextualLogger" = field(init=False, repr=False)
+    logger: ContextualLogger = field(default=None, kw_only=True, repr=False)
 
     def __post_init__(self):
-        """Auto-derive logger from organization identity."""
-        from airweave.core.logging import logger as base_logger
+        """Auto-derive logger from organization identity if not provided."""
+        if self.logger is None:
+            from airweave.core.logging import logger as base_logger
 
-        dims: Dict[str, str] = {
-            "organization_id": str(self.organization.id),
-            "organization_name": self.organization.name,
-        }
-        self.logger = base_logger.with_context(**dims)
+            dims: Dict[str, str] = {
+                "organization_id": str(self.organization.id),
+                "organization_name": self.organization.name,
+            }
+            self.logger = base_logger.with_context(**dims)
 
     # --- Properties used by CRUD base class (_base_organization.py) ---
 

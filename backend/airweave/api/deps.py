@@ -416,8 +416,8 @@ async def get_context(
         auth_method=auth_method,
         auth_metadata=auth_metadata,
         analytics=analytics_service,
+        logger=base_logger,
     )
-    ctx.logger = base_logger
 
     if user_context:
         analytics_service.identify_user()

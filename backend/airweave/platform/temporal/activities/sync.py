@@ -917,8 +917,8 @@ class CleanupStuckSyncJobsActivity:
 
         ctx = BaseContext(
             organization=schemas.Organization.model_validate(organization),
+            logger=logger,
         )
-        ctx.logger = logger
 
         try:
             cancel_success = await temporal_service.cancel_sync_job_workflow(job_id, ctx)

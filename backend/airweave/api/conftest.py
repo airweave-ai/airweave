@@ -17,6 +17,7 @@ from httpx import ASGITransport, AsyncClient
 
 from airweave.api.context import ApiContext
 from airweave.api.deps import get_container, get_context
+from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
 from airweave.schemas.organization import Organization
 
@@ -33,14 +34,13 @@ def _make_fake_context() -> ApiContext:
         created_at=now,
         modified_at=now,
     )
-    ctx = ApiContext(
+    return ApiContext(
         request_id=TEST_REQUEST_ID,
         organization=org,
         auth_method=AuthMethod.SYSTEM,
         auth_metadata={"test": True},
+        logger=logger.with_context(request_id=TEST_REQUEST_ID),
     )
-    ctx.logger = ctx.logger.with_context(request_id=TEST_REQUEST_ID)
-    return ctx
 
 
 @pytest_asyncio.fixture

@@ -63,7 +63,7 @@ class SyncContextBuilder:
             ctx=ctx,
         )
 
-        sync_ctx = SyncContext(
+        return SyncContext(
             organization=ctx.organization,
             sync_id=sync.id,
             sync_job_id=sync_job.id,
@@ -77,9 +77,8 @@ class SyncContextBuilder:
             force_full_sync=force_full_sync,
             entity_map=entity_map,
             source_short_name=source_short_name,
+            logger=logger,
         )
-        sync_ctx.logger = logger
-        return sync_ctx
 
     @classmethod
     def _build_logger(
