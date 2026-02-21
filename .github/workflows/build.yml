@@ -20,6 +20,8 @@ jobs:
             context: ./frontend
           - name: mcp
             context: ./mcp
+          - name: connect
+            context: ./connect
         platform:
           - runner: ubuntu-latest
             arch: linux/amd64
@@ -79,7 +81,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        component: [backend, frontend, mcp]
+        component: [backend, frontend, mcp, connect]
 
     permissions:
       contents: read

@@ -169,6 +169,7 @@ app.exception_handler(AirweaveException)(airweave_exception_handler)
 # Default CORS origins - white labels and environment variables can extend this
 CORS_ORIGINS = [
     "http://localhost:5173",
+    "http://localhost:5174",
     "localhost:8001",
     "http://localhost:8080",
     "https://app.dev-airweave.com",
