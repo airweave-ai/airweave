@@ -1,6 +1,6 @@
 """Fake source connection service for testing."""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,7 @@ class FakeSourceConnectionService:
     def __init__(self) -> None:
         self._store: dict[UUID, SourceConnection] = {}
         self._list_items: List[SourceConnectionListItem] = []
-        self._calls: list[tuple] = []
+        self._calls: list[tuple[Any, ...]] = []
 
     def seed(self, id: UUID, obj: SourceConnection) -> None:
         self._store[id] = obj

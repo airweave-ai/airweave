@@ -1,6 +1,6 @@
 """Fake OAuth2 service for testing."""
 
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,7 @@ class FakeOAuth2Service:
         self._exchange_responses: dict[str, OAuth2TokenResponse] = {}
         self._auth_urls: dict[str, str] = {}
         self._auth_url_with_redirect_responses: dict[str, Tuple[str, Optional[str]]] = {}
-        self._calls: list[tuple] = []
+        self._calls: list[tuple[Any, ...]] = []
         self._should_raise: Optional[Exception] = None
 
     # -- seeding helpers --
@@ -54,10 +54,10 @@ class FakeOAuth2Service:
         self._should_raise = None
 
     @property
-    def calls(self) -> list[tuple]:
+    def calls(self) -> list[tuple[Any, ...]]:
         return list(self._calls)
 
-    def calls_for(self, method: str) -> list[tuple]:
+    def calls_for(self, method: str) -> list[tuple[Any, ...]]:
         return [c for c in self._calls if c[0] == method]
 
     # -- public methods matching OAuth2ServiceProtocol + extras --
@@ -67,7 +67,7 @@ class FakeOAuth2Service:
         oauth2_settings: OAuth2Settings,
         client_id: Optional[str] = None,
         state: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
     ) -> str:
         self._calls.append(("generate_auth_url", oauth2_settings, client_id, state))
         if self._should_raise:
@@ -84,7 +84,7 @@ class FakeOAuth2Service:
         code: str,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
     ) -> OAuth2TokenResponse:
         self._calls.append(
             (
@@ -111,7 +111,7 @@ class FakeOAuth2Service:
         redirect_uri: str,
         client_id: Optional[str] = None,
         state: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
     ) -> Tuple[str, Optional[str]]:
         self._calls.append(
             (
@@ -140,7 +140,7 @@ class FakeOAuth2Service:
         redirect_uri: str,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
         code_verifier: Optional[str] = None,
     ) -> OAuth2TokenResponse:
         self._calls.append(
@@ -169,8 +169,8 @@ class FakeOAuth2Service:
         integration_short_name: str,
         ctx: ApiContext,
         connection_id: UUID,
-        decrypted_credential: dict,
-        config_fields: Optional[dict] = None,
+        decrypted_credential: dict[str, Any],
+        config_fields: Optional[dict[str, str]] = None,
     ) -> OAuth2TokenResponse:
         self._calls.append(
             (

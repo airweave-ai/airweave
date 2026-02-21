@@ -10,12 +10,20 @@ Design principles:
 - Testable: can unit test factory logic with mock settings
 """
 
+from prometheus_client import CollectorRegistry
+
 from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
+from airweave.adapters.metrics import (
+    PrometheusAgenticSearchMetrics,
+    PrometheusDbPoolMetrics,
+    PrometheusHttpMetrics,
+    PrometheusMetricsRenderer,
+)
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
@@ -25,6 +33,7 @@ from airweave.core.config import Settings
 from airweave.core.container.container import Container
 from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
+from airweave.core.metrics_service import PrometheusMetricsService
 from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
@@ -49,7 +58,11 @@ from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
+from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
+from airweave.domains.syncs.sync_repository import SyncRepository
+from airweave.domains.temporal.schedule_service import TemporalScheduleService
+from airweave.domains.temporal.service import TemporalWorkflowService
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.platform.temporal.client import TemporalClient
@@ -115,12 +128,28 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     health = _create_health_service(settings)
 
+    # -----------------------------------------------------------------
+    # Metrics (Prometheus adapters, shared registry, wrapped in service)
+    # -----------------------------------------------------------------
+    metrics = _create_metrics_service(settings)
+
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
     # registry so it can compute supported_auth_providers per source.
     # Both services share the same source_registry instance.
     # -----------------------------------------------------------------
     source_deps = _create_source_services(settings)
+
+    # -----------------------------------------------------------------
+    # Temporal domain services
+    # -----------------------------------------------------------------
+    temporal_workflow_service = TemporalWorkflowService()
+    temporal_schedule_service = TemporalScheduleService(
+        sync_repo=source_deps["sync_repo"],
+        sc_repo=source_deps["sc_repo"],
+        collection_repo=source_deps["collection_repo"],
+        connection_repo=source_deps["conn_repo"],
+    )
 
     return Container(
         health=health,
@@ -129,6 +158,7 @@ def create_container(settings: Settings) -> Container:
         webhook_admin=svix_adapter,
         circuit_breaker=circuit_breaker,
         ocr_provider=ocr_provider,
+        metrics=metrics,
         source_service=source_deps["source_service"],
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],
@@ -140,8 +170,13 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         source_connection_service=source_deps["source_connection_service"],
         source_lifecycle_service=source_deps["source_lifecycle_service"],
+        sync_repo=source_deps["sync_repo"],
+        sync_cursor_repo=source_deps["sync_cursor_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
+        temporal_workflow_service=temporal_workflow_service,
+        temporal_schedule_service=temporal_schedule_service,
     )
 
 
@@ -179,6 +214,22 @@ def _create_health_service(settings: Settings) -> HealthService:
         critical=critical,
         informational=informational,
         timeout=settings.HEALTH_CHECK_TIMEOUT,
+    )
+
+
+def _create_metrics_service(settings: Settings) -> PrometheusMetricsService:
+    """Build the PrometheusMetricsService with Prometheus adapters and a shared registry."""
+    registry = CollectorRegistry()
+    return PrometheusMetricsService(
+        http=PrometheusHttpMetrics(registry=registry),
+        agentic_search=PrometheusAgenticSearchMetrics(registry=registry),
+        db_pool=PrometheusDbPoolMetrics(
+            registry=registry,
+            max_overflow=settings.db_pool_max_overflow,
+        ),
+        renderer=PrometheusMetricsRenderer(registry=registry),
+        host=settings.METRICS_HOST,
+        port=settings.METRICS_PORT,
     )
 
 
@@ -276,6 +327,8 @@ def _create_source_services(settings: Settings) -> dict:
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
     entity_count_repo = EntityCountRepository()
+    sync_repo = SyncRepository()
+    sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
@@ -329,4 +382,7 @@ def _create_source_services(settings: Settings) -> dict:
         "oauth2_service": oauth2_svc,
         "source_connection_service": source_connection_service,
         "source_lifecycle_service": source_lifecycle_service,
+        "sync_repo": sync_repo,
+        "sync_cursor_repo": sync_cursor_repo,
+        "sync_job_repo": sync_job_repo,
     }

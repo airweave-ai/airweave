@@ -42,7 +42,7 @@ class OAuth1Service(OAuth1ServiceProtocol):
         """
         return quote(str(value), safe="~")
 
-    def _build_signature_base_string(self, method: str, url: str, params: dict) -> str:
+    def _build_signature_base_string(self, method: str, url: str, params: dict[str, str]) -> str:
         """Build the signature base string per RFC 5849.
 
         Format: HTTP_METHOD&URL&NORMALIZED_PARAMS
@@ -75,7 +75,7 @@ class OAuth1Service(OAuth1ServiceProtocol):
         signature_bytes = hmac.new(key_bytes, base_bytes, hashlib.sha1).digest()
         return base64.b64encode(signature_bytes).decode("utf-8")
 
-    def _build_authorization_header(self, params: dict) -> str:
+    def _build_authorization_header(self, params: dict[str, str]) -> str:
         """Build OAuth1 Authorization header.
 
         Format: OAuth oauth_consumer_key="...", oauth_nonce="...", ...

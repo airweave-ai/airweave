@@ -187,6 +187,8 @@ class Settings(BaseSettings):
     # Temporal worker graceful shutdown configuration
     TEMPORAL_GRACEFUL_SHUTDOWN_TIMEOUT: int = 7200  # 2 hours in seconds
     WORKER_METRICS_PORT: int = 8888  # Port for /drain and /health endpoints
+    METRICS_PORT: int = 9090  # Port for Prometheus metrics endpoint
+    METRICS_HOST: str = "0.0.0.0"  # Bind address for metrics server
 
     # Stripe billing settings
     STRIPE_ENABLED: bool = False
@@ -484,6 +486,16 @@ class Settings(BaseSettings):
         if env_str == Environment.PRD or env_str == "prd":
             return "https://docs.airweave.ai"
         return f"https://docs.{env_str}-airweave.com"
+
+    @property
+    def db_pool_size(self) -> int:
+        """Base SQLAlchemy pool size derived from worker count."""
+        return min(100, max(20, self.SYNC_MAX_WORKERS))
+
+    @property
+    def db_pool_max_overflow(self) -> int:
+        """SQLAlchemy pool max overflow derived from worker count."""
+        return max(20, int(self.SYNC_MAX_WORKERS * 2))
 
     @property
     def temporal_address(self) -> str:

@@ -1,6 +1,6 @@
 """Source connection repository wrapping crud.source_connection."""
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
-from airweave.domains.source_connections.types import SourceConnectionStats
+from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.source_connection import SourceConnection
 
@@ -22,9 +22,15 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
         """Get a source connection by ID within org scope."""
         return await crud.source_connection.get(db, id, ctx)
 
+    async def get_by_sync_id(
+        self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
+    ) -> Optional[SourceConnection]:
+        """Get a source connection by sync ID within org scope."""
+        return await crud.source_connection.get_by_sync_id(db, sync_id=sync_id, ctx=ctx)
+
     async def get_schedule_info(
         self, db: AsyncSession, source_connection: SourceConnection
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[ScheduleInfo]:
         """Get schedule info for a source connection."""
         return await crud.source_connection.get_schedule_info(db, source_connection)
 

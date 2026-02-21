@@ -1,6 +1,6 @@
 """Protocols for OAuth domain dependencies."""
 
-from typing import Optional, Protocol, Tuple
+from typing import Any, Optional, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,7 +70,7 @@ class OAuth2ServiceProtocol(Protocol):
         oauth2_settings: OAuth2Settings,
         client_id: Optional[str] = None,
         state: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
     ) -> str:
         """Generate the OAuth2 authorization URL for an integration."""
         ...
@@ -82,7 +82,7 @@ class OAuth2ServiceProtocol(Protocol):
         code: str,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
     ) -> OAuth2TokenResponse:
         """Exchange an authorization code for an OAuth2 token."""
         ...
@@ -94,7 +94,7 @@ class OAuth2ServiceProtocol(Protocol):
         redirect_uri: str,
         client_id: Optional[str] = None,
         state: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
     ) -> Tuple[str, Optional[str]]:
         """Generate an OAuth2 authorization URL with PKCE support if required.
 
@@ -111,7 +111,7 @@ class OAuth2ServiceProtocol(Protocol):
         redirect_uri: str,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
         code_verifier: Optional[str] = None,
     ) -> OAuth2TokenResponse:
         """Exchange an OAuth2 code using an explicit redirect_uri."""
@@ -123,8 +123,8 @@ class OAuth2ServiceProtocol(Protocol):
         integration_short_name: str,
         ctx: ApiContext,
         connection_id: UUID,
-        decrypted_credential: dict,
-        config_fields: Optional[dict] = None,
+        decrypted_credential: dict[str, Any],
+        config_fields: Optional[dict[str, str]] = None,
     ) -> OAuth2TokenResponse:
         """Refresh an OAuth2 access token."""
         ...

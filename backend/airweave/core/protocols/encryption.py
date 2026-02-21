@@ -17,17 +17,17 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
 class CredentialEncryptor(Protocol):
     """Encrypt/decrypt credential dicts to/from opaque strings."""
 
-    def encrypt(self, data: dict) -> str:
+    def encrypt(self, data: dict[str, Any]) -> str:
         """Encrypt a credential dict to an opaque string."""
         ...
 
-    def decrypt(self, encrypted: str) -> dict:
+    def decrypt(self, encrypted: str) -> dict[str, Any]:
         """Decrypt an opaque string back to a credential dict."""
         ...

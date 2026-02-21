@@ -21,11 +21,11 @@ class FakeOAuthConnectionRepository:
     """In-memory fake for OAuthConnectionRepositoryProtocol."""
 
     def __init__(self) -> None:
-        self._store: dict[UUID, Any] = {}
-        self._calls: list[tuple] = []
-        self._created: list[Any] = []
+        self._store: dict[UUID, Connection] = {}
+        self._calls: list[tuple[Any, ...]] = []
+        self._created: list[ConnectionCreate] = []
 
-    def seed(self, id: UUID, obj: Any) -> None:
+    def seed(self, id: UUID, obj: Connection) -> None:
         self._store[id] = obj
 
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Connection:
@@ -49,12 +49,12 @@ class FakeOAuthCredentialRepository:
     """In-memory fake for OAuthCredentialRepositoryProtocol."""
 
     def __init__(self) -> None:
-        self._store: dict[UUID, Any] = {}
-        self._calls: list[tuple] = []
-        self._created: list[Any] = []
-        self._updated: list[tuple] = []
+        self._store: dict[UUID, IntegrationCredential] = {}
+        self._calls: list[tuple[Any, ...]] = []
+        self._created: list[IntegrationCredentialCreateEncrypted] = []
+        self._updated: list[tuple[Any, ...]] = []
 
-    def seed(self, id: UUID, obj: Any) -> None:
+    def seed(self, id: UUID, obj: IntegrationCredential) -> None:
         self._store[id] = obj
 
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> IntegrationCredential:
@@ -90,10 +90,10 @@ class FakeOAuthSourceRepository:
     """In-memory fake for OAuthSourceRepositoryProtocol."""
 
     def __init__(self) -> None:
-        self._store: dict[str, Any] = {}
-        self._calls: list[tuple] = []
+        self._store: dict[str, Source] = {}
+        self._calls: list[tuple[Any, ...]] = []
 
-    def seed(self, short_name: str, obj: Any) -> None:
+    def seed(self, short_name: str, obj: Source) -> None:
         self._store[short_name] = obj
 
     async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[Source]:

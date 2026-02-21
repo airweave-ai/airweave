@@ -6,7 +6,7 @@ Records calls for assertions.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 
 class FakeCredentialEncryptor:
@@ -23,19 +23,19 @@ class FakeCredentialEncryptor:
     """
 
     def __init__(self) -> None:
-        self._encrypt_calls: list[dict] = []
+        self._encrypt_calls: list[dict[str, Any]] = []
         self._decrypt_calls: list[str] = []
-        self._decrypt_return: Optional[dict] = None
+        self._decrypt_return: Optional[dict[str, Any]] = None
 
-    def seed_decrypt(self, result: dict) -> None:
+    def seed_decrypt(self, result: dict[str, Any]) -> None:
         """Set the dict that :meth:`decrypt` will return."""
         self._decrypt_return = result
 
-    def encrypt(self, data: dict) -> str:
+    def encrypt(self, data: dict[str, Any]) -> str:
         self._encrypt_calls.append(data)
         return f"encrypted:{id(data)}"
 
-    def decrypt(self, encrypted: str) -> dict:
+    def decrypt(self, encrypted: str) -> dict[str, Any]:
         self._decrypt_calls.append(encrypted)
         if self._decrypt_return is not None:
             return dict(self._decrypt_return)

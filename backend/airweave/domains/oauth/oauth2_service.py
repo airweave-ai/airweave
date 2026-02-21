@@ -5,7 +5,7 @@ import base64
 import hashlib
 import random
 import secrets
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -59,7 +59,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         oauth2_settings: OAuth2Settings,
         client_id: Optional[str] = None,
         state: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
     ) -> str:
         """Generate the OAuth2 authorization URL for an integration.
 
@@ -124,7 +124,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         code: str,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
     ) -> OAuth2TokenResponse:
         """Exchange an authorization code for an OAuth2 token.
 
@@ -172,7 +172,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         redirect_uri: str,
         client_id: Optional[str] = None,
         state: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
     ) -> Tuple[str, Optional[str]]:
         """Generate an OAuth2 authorization URL with PKCE support if required.
 
@@ -245,7 +245,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         redirect_uri: str,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
-        template_configs: Optional[dict] = None,
+        template_configs: Optional[dict[str, str]] = None,
         code_verifier: Optional[str] = None,
     ) -> OAuth2TokenResponse:
         """Exchange an OAuth2 code using an explicit redirect_uri.
@@ -295,8 +295,8 @@ class OAuth2Service(OAuth2ServiceProtocol):
         integration_short_name: str,
         ctx: ApiContext,
         connection_id: UUID,
-        decrypted_credential: dict,
-        config_fields: Optional[dict] = None,
+        decrypted_credential: dict[str, Any],
+        config_fields: Optional[dict[str, str]] = None,
     ) -> OAuth2TokenResponse:
         """Refresh an access token using a refresh token.
 
@@ -404,7 +404,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         self,
         oauth2_settings: OAuth2Settings,
         source_short_name: str,
-        template_configs: Optional[dict],
+        template_configs: Optional[dict[str, str]],
     ) -> str:
         """Resolve the backend token URL, rendering templates if needed."""
         if oauth2_settings.backend_url_template:
@@ -418,7 +418,9 @@ class OAuth2Service(OAuth2ServiceProtocol):
                 ) from e
         return oauth2_settings.backend_url
 
-    async def _get_refresh_token(self, logger: ContextualLogger, decrypted_credential: dict) -> str:
+    async def _get_refresh_token(
+        self, logger: ContextualLogger, decrypted_credential: dict[str, Any]
+    ) -> str:
         """Get refresh token from decrypted credentials.
 
         Raises:
@@ -459,8 +461,8 @@ class OAuth2Service(OAuth2ServiceProtocol):
     async def _get_client_credentials(
         self,
         integration_config: OAuth2Settings,
-        auth_fields: Optional[dict] = None,
-        decrypted_credential: Optional[dict] = None,
+        auth_fields: Optional[dict[str, str]] = None,
+        decrypted_credential: Optional[dict[str, Any]] = None,
     ) -> tuple[str, str]:
         """Get client credentials based on priority ordering.
 
@@ -489,7 +491,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         refresh_token: str,
         client_id: str,
         client_secret: str,
-    ) -> tuple[dict, dict]:
+    ) -> tuple[dict[str, str], dict[str, str]]:
         """Prepare headers and payload for token refresh request."""
         headers = {
             "Content-Type": integration_config.content_type,
@@ -559,7 +561,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         return False
 
     async def _make_token_request(
-        self, logger: ContextualLogger, url: str, headers: dict, payload: dict
+        self, logger: ContextualLogger, url: str, headers: dict[str, str], payload: dict[str, str]
     ) -> httpx.Response:
         """Make the token refresh request with retry on rate limit."""
         logger.info(f"Making token request to: {url}")
@@ -680,8 +682,8 @@ class OAuth2Service(OAuth2ServiceProtocol):
         return code_verifier, code_challenge
 
     def _normalize_token_response(
-        self, response_data: dict, integration_short_name: str, logger: ContextualLogger
-    ) -> dict:
+        self, response_data: dict[str, Any], integration_short_name: str, logger: ContextualLogger
+    ) -> dict[str, Any]:
         """Normalize non-standard OAuth2 token responses to standard format.
 
         Some OAuth providers return tokens in non-standard nested structures.

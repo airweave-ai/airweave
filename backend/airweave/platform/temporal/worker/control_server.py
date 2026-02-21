@@ -20,14 +20,16 @@ from aiohttp import web
 
 from airweave.core.config import settings
 from airweave.core.logging import logger
+from airweave.core.protocols import (
+    MetricsRenderer,
+    WorkerMetrics,
+    WorkerMetricsRegistryProtocol,
+)
 from airweave.platform.sync.async_helpers import get_active_thread_count
-from airweave.platform.temporal.prometheus_metrics import (
-    get_prometheus_metrics,
+from airweave.platform.temporal.worker_metrics_snapshot import (
+    ConnectorSnapshot,
+    WorkerMetricsSnapshot,
 )
-from airweave.platform.temporal.prometheus_metrics import (
-    update_worker_metrics as update_prometheus_metrics,
-)
-from airweave.platform.temporal.worker_metrics import worker_metrics
 
 from .config import WorkerConfig
 
@@ -53,10 +55,20 @@ class WorkerState:
 class WorkerControlServer:
     """HTTP server for worker health, metrics, and drain control."""
 
-    def __init__(self, worker_state: WorkerState, config: WorkerConfig) -> None:
+    def __init__(
+        self,
+        worker_state: WorkerState,
+        config: WorkerConfig,
+        registry: WorkerMetricsRegistryProtocol,
+        worker_metrics: WorkerMetrics,
+        renderer: MetricsRenderer,
+    ) -> None:
         """Initialize the control server."""
         self._state = worker_state
         self._config = config
+        self._registry = registry
+        self._worker_metrics = worker_metrics
+        self._renderer = renderer
         self._runner: web.AppRunner | None = None
 
     async def start(self) -> None:
@@ -108,13 +120,12 @@ class WorkerControlServer:
         return web.Response(text="Drain initiated")
 
     async def _handle_metrics(self, request: web.Request) -> web.Response:
-        """Prometheus metrics endpoint."""
+        """Metrics endpoint."""
         try:
             metrics_data = await self._collect_prometheus_metrics()
             return web.Response(
                 body=metrics_data,
-                content_type="text/plain; version=0.0.4",
-                charset="utf-8",
+                content_type=self._renderer.content_type,
             )
         except Exception as e:
             logger.error(f"Error generating Prometheus metrics: {e}", exc_info=True)
@@ -137,35 +148,40 @@ class WorkerControlServer:
 
     async def _collect_prometheus_metrics(self) -> bytes:
         """Collect and format Prometheus metrics."""
-        metrics = await worker_metrics.get_metrics_summary()
-        connector_metrics = await worker_metrics.get_per_connector_metrics()
-        worker_pool_count = await worker_metrics.get_total_active_and_pending_workers()
+        summary = await self._registry.get_metrics_summary()
+        connector_metrics = await self._registry.get_per_connector_metrics()
+        worker_pool_count = await self._registry.get_total_active_and_pending_workers()
         thread_pool_active = get_active_thread_count()
 
-        status = self._get_status_string()
-
-        update_prometheus_metrics(
-            worker_id=worker_metrics.get_pod_ordinal(),
-            status=status,
-            uptime_seconds=metrics["uptime_seconds"],
-            active_activities_count=metrics["active_activities_count"],
-            active_sync_jobs_count=len(metrics["active_sync_jobs"]),
+        snapshot = WorkerMetricsSnapshot(
+            worker_id=self._registry.get_pod_ordinal(),
+            status=self._get_status_string(),
+            uptime_seconds=summary["uptime_seconds"],
+            active_activities_count=summary["active_activities_count"],
+            active_sync_jobs_count=len(summary["active_sync_jobs"]),
             task_queue=self._config.task_queue,
             worker_pool_active_and_pending_count=worker_pool_count,
-            connector_metrics=connector_metrics,
+            connector_metrics={
+                ct: ConnectorSnapshot(
+                    active_syncs=m.get("active_syncs", 0),
+                    active_and_pending_workers=m.get("active_and_pending_workers", 0),
+                )
+                for ct, m in connector_metrics.items()
+            },
             sync_max_workers=settings.SYNC_MAX_WORKERS,
             thread_pool_size=settings.SYNC_THREAD_POOL_SIZE,
             thread_pool_active=thread_pool_active,
         )
 
-        return get_prometheus_metrics()
+        self._worker_metrics.update(snapshot)
+        return self._renderer.generate()
 
-    async def _collect_json_status(self) -> dict:
+    async def _collect_json_status(self) -> dict[str, Any]:
         """Collect detailed JSON status for debugging."""
-        metrics = await worker_metrics.get_metrics_summary()
-        detailed_syncs = await worker_metrics.get_detailed_sync_metrics()
-        per_sync_workers = await worker_metrics.get_per_sync_worker_counts()
-        active_and_pending = await worker_metrics.get_total_active_and_pending_workers()
+        metrics = await self._registry.get_metrics_summary()
+        detailed_syncs = await self._registry.get_detailed_sync_metrics()
+        per_sync_workers = await self._registry.get_per_sync_worker_counts()
+        active_and_pending = await self._registry.get_total_active_and_pending_workers()
         thread_pool_active = get_active_thread_count()
 
         # Merge worker counts into detailed_syncs

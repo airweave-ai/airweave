@@ -18,13 +18,8 @@ from airweave.core.config import settings
 # - Base pool = worker count, overflow = 2× workers for peak concurrent DB operations
 # - Example: 20 workers → 20 base + 40 overflow = 60 total connections per pod
 
-# Determine pool size based on worker count
-worker_count = getattr(settings, "SYNC_MAX_WORKERS", 100)
-# Base pool matches worker count (each worker can hold 1 connection during active batch)
-POOL_SIZE = min(100, max(20, worker_count))
-# Overflow handles multiple connections per worker during batch processing
-# Each worker can need 2-3 simultaneous connections: resolver + postgres write + guardrail flush
-MAX_OVERFLOW = max(20, int(worker_count * 2))
+POOL_SIZE = settings.db_pool_size
+MAX_OVERFLOW = settings.db_pool_max_overflow
 
 # Connection Pool Timeout Behavior:
 # - pool_timeout=30: Wait up to 30 seconds for a connection to become available

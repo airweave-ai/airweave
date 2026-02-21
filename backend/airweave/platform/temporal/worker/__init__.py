@@ -45,11 +45,31 @@ class TemporalWorker:
     """
 
     def __init__(self, config: WorkerConfig) -> None:
-        """Initialize the Temporal worker."""
+        """Initialize the Temporal worker.
+
+        Worker metrics are wired inline here rather than through the shared
+        Container because they are worker-process-only concerns.  The API
+        server has its own MetricsService facade; putting worker gauges in
+        the Container would pollute its dependency graph with adapters that
+        only make sense inside a Temporal worker OS process.
+        """
+        from prometheus_client import CollectorRegistry
+
+        from airweave.adapters.metrics import PrometheusMetricsRenderer, PrometheusWorkerMetrics
+        from airweave.platform.temporal.worker_metrics import worker_metrics as metrics_registry
+
         self._config = config
         self._worker: Worker | None = None
         self._state = WorkerState()
-        self._control_server = WorkerControlServer(self._state, config)
+
+        registry = CollectorRegistry()
+        self._control_server = WorkerControlServer(
+            worker_state=self._state,
+            config=config,
+            registry=metrics_registry,
+            worker_metrics=PrometheusWorkerMetrics(registry=registry),
+            renderer=PrometheusMetricsRenderer(registry=registry),
+        )
 
     async def start(self) -> None:
         """Start the worker and control server."""
@@ -152,7 +172,7 @@ async def main() -> None:
 
     initialize_converters(ocr_provider=container_mod.container.ocr_provider)
 
-    # 2. Create worker with config
+    # 3. Create worker with config
     config = WorkerConfig.from_settings()
     worker = TemporalWorker(config)
 

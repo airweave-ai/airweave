@@ -20,6 +20,7 @@ from airweave.api.middleware import (
     airweave_exception_handler,
     analytics_middleware,
     exception_logging_middleware,
+    http_metrics_middleware,
     invalid_state_exception_handler,
     log_requests,
     not_found_exception_handler,
@@ -112,7 +113,12 @@ async def lifespan(app: FastAPI):
             f"(Temporal may not be available): {e}"
         )
 
-    yield
+    # Start metrics sidecar + DB pool sampler; wire app.state.http_metrics
+    from airweave.core.metrics_service import metrics_lifespan
+    from airweave.db.session import async_engine
+
+    async with metrics_lifespan(app, container_mod.container.metrics, async_engine.pool):
+        yield
 
     container_mod.container.health.shutting_down = True
 
@@ -133,9 +139,13 @@ app = FastAPI(
 
 app.include_router(api_router)
 
-# Register middleware directly in the correct order
-# Order matters: first registered = outermost middleware (processes request first)
+# Register middleware directly in the correct order.
+# Order matters: first registered = outermost (processes request first).
+# http_metrics_middleware is intentionally early so it captures
+# end-to-end latency and counts 413/408/429 responses generated
+# by inner middlewares (body-size, timeout, rate-limit).
 app.middleware("http")(add_request_id)
+app.middleware("http")(http_metrics_middleware)
 app.middleware("http")(request_body_size_middleware)
 app.middleware("http")(request_timeout_middleware)
 app.middleware("http")(rate_limit_headers_middleware)

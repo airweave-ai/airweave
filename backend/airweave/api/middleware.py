@@ -7,7 +7,7 @@ import asyncio
 import time
 import traceback
 import uuid
-from typing import List, Union
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 from fastapi import Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -29,6 +29,7 @@ from airweave.core.exceptions import (
     unpack_validation_error,
 )
 from airweave.core.logging import logger
+from airweave.core.protocols import HttpMetrics
 
 
 async def add_request_id(request: Request, call_next: callable) -> Response:
@@ -61,8 +62,6 @@ async def log_requests(request: Request, call_next: callable) -> Response:
         Response: The response to the incoming request.
 
     """
-    import time
-
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time
@@ -230,7 +229,7 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
     Simple CORS handling that permits OPTIONS preflight requests and adds appropriate headers.
     """
 
-    def __init__(self, app, default_origins: List[str]):
+    def __init__(self, app, default_origins: list[str]):
         """Initialize the middleware.
 
         Args:
@@ -297,7 +296,7 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
 
 # Exception handlers
 async def validation_exception_handler(
-    request: Request, exc: Union[RequestValidationError, ValidationError]
+    request: Request, exc: RequestValidationError | ValidationError
 ) -> JSONResponse:
     """Exception handler for validation errors that occur during request processing.
 
@@ -309,7 +308,7 @@ async def validation_exception_handler(
     Args:
     ----
         request (Request): The incoming request that triggered the exception.
-        exc (Union[RequestValidationError, ValidationError]): The exception object that was raised.
+        exc (RequestValidationError | ValidationError): The exception object that was raised.
             This can either be a RequestValidationError for request body/schema validation issues,
             or a ValidationError for other data model validations within FastAPI.
 
@@ -513,6 +512,162 @@ async def rate_limit_exception_handler(
     )
 
 
+_METRICS_SKIP_PATHS = frozenset(
+    {
+        "/health",
+        "/metrics",
+        "/docs",
+        "/openapi.json",
+        "/favicon.ico",
+        "/redoc",
+    }
+)
+
+
+async def http_metrics_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Middleware to record HTTP metrics (counts, latency, in-flight).
+
+    Reads the ``HttpMetrics`` implementation from ``request.app.state.http_metrics``
+    so the middleware is decoupled from any concrete metrics library.
+
+    Streaming responses (no ``content-length`` header) are wrapped so that
+    duration and response-size are recorded when the body stream finishes
+    rather than when headers are sent.
+    """
+    if request.url.path in _METRICS_SKIP_PATHS:
+        return await call_next(request)
+
+    metrics = request.app.state.http_metrics
+    method = request.method
+    metrics.inc_in_progress(method)
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        metrics.dec_in_progress(method)
+        raise
+
+    endpoint = _build_endpoint_name(request, fallback="unmatched")
+    content_length = response.headers.get("content-length")
+
+    if content_length is not None:
+        # Non-streaming: record immediately (existing behaviour).
+        duration = time.perf_counter() - start
+        metrics.dec_in_progress(method)
+        metrics.observe_request(
+            method=method,
+            endpoint=endpoint,
+            status_code=str(response.status_code),
+            duration=duration,
+        )
+        metrics.observe_response_size(
+            method=method,
+            endpoint=endpoint,
+            size=int(content_length),
+        )
+    else:
+        # Streaming: defer recording until the body stream completes.
+        response.body_iterator = _StreamingMetricsIterator(
+            response.body_iterator,
+            metrics=metrics,
+            method=method,
+            endpoint=endpoint,
+            status_code=str(response.status_code),
+            start=start,
+        )
+
+    return response
+
+
+class _StreamingMetricsIterator:
+    """Wrap a streaming body iterator to record metrics on completion.
+
+    Accumulates total bytes while proxying chunks.  Cleanup runs in
+    ``aclose()`` which ASGI servers call on iterator disposal — even
+    when the body is never iterated or the client disconnects.
+    """
+
+    __slots__ = (
+        "_body_iterator",
+        "_inner_iter",
+        "_metrics",
+        "_method",
+        "_endpoint",
+        "_status_code",
+        "_start",
+        "_total_bytes",
+        "_closed",
+    )
+
+    def __init__(
+        self,
+        body_iterator: AsyncIterator[bytes | str],
+        *,
+        metrics: HttpMetrics,
+        method: str,
+        endpoint: str,
+        status_code: str,
+        start: float,
+    ) -> None:
+        self._body_iterator = body_iterator
+        self._inner_iter = body_iterator.__aiter__()
+        self._metrics = metrics
+        self._method = method
+        self._endpoint = endpoint
+        self._status_code = status_code
+        self._start = start
+        self._total_bytes = 0
+        self._closed = False
+
+    def __aiter__(self) -> "_StreamingMetricsIterator":
+        return self
+
+    async def __anext__(self) -> bytes | str:
+        try:
+            chunk = await self._inner_iter.__anext__()
+        except StopAsyncIteration:
+            await self.aclose()
+            raise
+        # BaseException is intentional: we must record metrics on
+        # GeneratorExit (client disconnect) and CancelledError
+        # (task cancellation), both BaseException subclasses.
+        except BaseException:
+            await self.aclose()
+            raise
+
+        if isinstance(chunk, str):
+            self._total_bytes += len(chunk.encode("utf-8"))
+        else:
+            self._total_bytes += len(chunk)
+        return chunk
+
+    async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+
+        duration = time.perf_counter() - self._start
+        self._metrics.dec_in_progress(self._method)
+        self._metrics.observe_request(
+            method=self._method,
+            endpoint=self._endpoint,
+            status_code=self._status_code,
+            duration=duration,
+        )
+        self._metrics.observe_response_size(
+            method=self._method,
+            endpoint=self._endpoint,
+            size=self._total_bytes,
+        )
+
+        # Propagate close to the underlying iterator if possible.
+        inner_close = getattr(self._body_iterator, "aclose", None)
+        if inner_close is not None:
+            await inner_close()
+
+
 async def analytics_middleware(request: Request, call_next):
     """Track API calls automatically via middleware.
 
@@ -538,11 +693,18 @@ async def analytics_middleware(request: Request, call_next):
     return response
 
 
-def _build_endpoint_name(request: Request) -> str:
+def _build_endpoint_name(request: Request, *, fallback: str | None = None) -> str:
     """Build endpoint name using FastAPI's route information.
 
     Uses the matched route path template from FastAPI, which already contains
     parameter placeholders like {uuid}, {readable_id}, etc.
+
+    Args:
+        request: The incoming request.
+        fallback: Value to return when no route is matched.  Defaults to the
+            raw request path (stripped of trailing slash).  The Prometheus
+            middleware passes ``"unmatched"`` to cap label cardinality from
+            404-scanning bots.
 
     Returns:
         str: endpoint_path_template like "/collections/{readable_id}/search"
@@ -556,7 +718,7 @@ def _build_endpoint_name(request: Request) -> str:
         return route.path
 
     # Fallback to raw path if route not available (shouldn't happen in normal operation)
-    return request.url.path.rstrip("/")
+    return fallback if fallback is not None else request.url.path.rstrip("/")
 
 
 def _should_skip_analytics(request: Request) -> bool:

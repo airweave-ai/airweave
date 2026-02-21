@@ -4,10 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TypedDict
 from uuid import UUID
 
 from airweave.core.shared_models import SyncJobStatus
+
+
+class ScheduleInfo(TypedDict):
+    """Typed return value from get_schedule_info (replaces Dict[str, Any])."""
+
+    cron_expression: Optional[str]
+    next_run_at: Optional[datetime]
+    is_continuous: bool
+    cursor_field: Optional[str]
+    cursor_value: Optional[str]
 
 
 @dataclass(frozen=True, slots=True)

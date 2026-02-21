@@ -19,7 +19,7 @@ class FakeHealthService(HealthServiceProtocol):
             status="ready",
             checks={"fake": DependencyCheck(status=CheckStatus.up)},
         )
-        self.check_readiness_calls: list[dict] = []
+        self.check_readiness_calls: list[dict[str, bool]] = []
 
     # -- shutdown flag -------------------------------------------------------
 

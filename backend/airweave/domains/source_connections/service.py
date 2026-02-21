@@ -37,7 +37,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         auth_provider_registry: AuthProviderRegistryProtocol,
         # Helpers
         response_builder: ResponseBuilderProtocol,
-    ):
+    ) -> None:
         self.sc_repo = sc_repo
         self.collection_repo = collection_repo
         self.connection_repo = connection_repo
