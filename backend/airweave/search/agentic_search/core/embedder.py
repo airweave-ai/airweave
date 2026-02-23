@@ -1,23 +1,23 @@
 """AgenticSearch query embedder.
 
 Orchestrates embedding based on retrieval strategy.
+Uses domain embedder protocols directly.
 """
 
-from airweave.search.agentic_search.external.dense_embedder import (
-    AgenticSearchDenseEmbedderInterface,
-)
-from airweave.search.agentic_search.external.sparse_embedder import (
-    AgenticSearchSparseEmbedderInterface,
-)
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.search.agentic_search.schemas.plan import AgenticSearchQuery
-from airweave.search.agentic_search.schemas.query_embeddings import AgenticSearchQueryEmbeddings
+from airweave.search.agentic_search.schemas.query_embeddings import (
+    AgenticSearchDenseEmbedding,
+    AgenticSearchQueryEmbeddings,
+    AgenticSearchSparseEmbedding,
+)
 from airweave.search.agentic_search.schemas.retrieval_strategy import AgenticSearchRetrievalStrategy
 
 
 class AgenticSearchEmbedder:
     """Orchestrates query embedding based on retrieval strategy.
 
-    Calls the appropriate embedder(s) based on the retrieval strategy:
+    Calls the domain embedder protocols directly:
     - semantic: dense embedder only
     - keyword: sparse embedder only
     - hybrid: both embedders
@@ -25,15 +25,10 @@ class AgenticSearchEmbedder:
 
     def __init__(
         self,
-        dense_embedder: AgenticSearchDenseEmbedderInterface,
-        sparse_embedder: AgenticSearchSparseEmbedderInterface,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
     ) -> None:
-        """Initialize with embedder interfaces.
-
-        Args:
-            dense_embedder: Dense embedder for semantic search.
-            sparse_embedder: Sparse embedder for keyword search.
-        """
+        """Initialize with dense and sparse embedders."""
         self._dense_embedder = dense_embedder
         self._sparse_embedder = sparse_embedder
 
@@ -42,31 +37,31 @@ class AgenticSearchEmbedder:
         query: AgenticSearchQuery,
         strategy: AgenticSearchRetrievalStrategy,
     ) -> AgenticSearchQueryEmbeddings:
-        """Embed query based on retrieval strategy.
-
-        Args:
-            query: Search query with primary and optional variations.
-            strategy: Retrieval strategy determining which embeddings to create.
-
-        Returns:
-            AgenticSearchQueryEmbeddings with appropriate embeddings populated.
-        """
+        """Embed query based on retrieval strategy."""
         dense_embeddings = None
         sparse_embedding = None
 
-        # Semantic or hybrid: embed with dense embedder
+        # Semantic or hybrid: embed all variations with dense embedder
         if strategy in (
             AgenticSearchRetrievalStrategy.SEMANTIC,
             AgenticSearchRetrievalStrategy.HYBRID,
         ):
-            dense_embeddings = await self._dense_embedder.embed_batch(query)
+            texts = [query.primary] + list(query.variations)
+            domain_embeddings = await self._dense_embedder.embed_many(texts)
+            dense_embeddings = [
+                AgenticSearchDenseEmbedding(vector=emb.vector) for emb in domain_embeddings
+            ]
 
-        # Keyword or hybrid: embed with sparse embedder
+        # Keyword or hybrid: embed primary with sparse embedder
         if strategy in (
             AgenticSearchRetrievalStrategy.KEYWORD,
             AgenticSearchRetrievalStrategy.HYBRID,
         ):
-            sparse_embedding = await self._sparse_embedder.embed(query)
+            domain_sparse = await self._sparse_embedder.embed(query.primary)
+            sparse_embedding = AgenticSearchSparseEmbedding(
+                indices=domain_sparse.indices,
+                values=domain_sparse.values,
+            )
 
         return AgenticSearchQueryEmbeddings(
             dense_embeddings=dense_embeddings,

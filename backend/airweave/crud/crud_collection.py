@@ -260,5 +260,35 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         result = await db.execute(query)
         return result.scalar_one()
 
+    async def stamp_embedding_config(
+        self,
+        db: AsyncSession,
+        collection_id: UUID,
+        vector_size: int,
+        model_name: str,
+    ) -> None:
+        """Stamp embedding config on a collection (first sync only, idempotent).
+
+        Only updates if embedding_model_name is currently NULL, preventing
+        accidental overwrites on concurrent syncs.
+
+        Args:
+            db: Database session.
+            collection_id: Collection UUID.
+            vector_size: Embedding dimensions.
+            model_name: Embedding model name.
+        """
+        from sqlalchemy import update
+
+        stmt = (
+            update(Collection)
+            .where(
+                Collection.id == collection_id,
+                Collection.embedding_model_name.is_(None),
+            )
+            .values(vector_size=vector_size, embedding_model_name=model_name)
+        )
+        await db.execute(stmt)
+
 
 collection = CRUDCollection(Collection)

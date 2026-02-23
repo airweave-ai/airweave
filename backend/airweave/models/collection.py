@@ -20,9 +20,11 @@ class Collection(OrganizationBase, UserMixin):
 
     name: Mapped[str] = mapped_column(String, nullable=False)
     readable_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
-    vector_size: Mapped[int] = mapped_column(Integer, nullable=False)
-    embedding_model_name: Mapped[str] = mapped_column(String, nullable=False)
     sync_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    # Embedding config — stamped on first sync, used at query time
+    vector_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    embedding_model_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
     if TYPE_CHECKING:

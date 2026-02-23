@@ -31,6 +31,7 @@ from airweave.core.temporal_service import temporal_service
 from airweave.crud.crud_organization_billing import organization_billing
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.operations import BillingOperations
+from airweave.domains.embedders.protocols import EmbedderServiceProtocol
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
@@ -1225,7 +1226,6 @@ class AdminSyncInfo(schemas.Sync):
 
     total_entity_count: int = 0
     total_arf_entity_count: Optional[int] = None
-    total_qdrant_entity_count: Optional[int] = None
     total_vespa_entity_count: Optional[int] = None
 
     last_job_status: Optional[str] = None
@@ -1240,7 +1240,6 @@ class AdminSyncInfo(schemas.Sync):
 class AdminSearchDestination(str, Enum):
     """Destination options for admin search."""
 
-    QDRANT = "qdrant"
     VESPA = "vespa"
 
 
@@ -1251,23 +1250,23 @@ async def admin_search_collection(
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     destination: AdminSearchDestination = Query(
-        AdminSearchDestination.QDRANT,
-        description="Search destination: 'qdrant' (default) or 'vespa'",
+        AdminSearchDestination.VESPA,
+        description="Search destination: 'vespa'",
     ),
+    embedder_service: EmbedderServiceProtocol = Inject(EmbedderServiceProtocol),
 ) -> schemas.SearchResponse:
     """Admin-only: Search any collection regardless of organization.
 
     This endpoint allows admins or API keys with `api_key_admin_sync` permission
-    to search collections across organizations for migration and support purposes.
-
-    Supports selecting the search destination (Qdrant or Vespa) for migration testing.
+    to search collections across organizations for support purposes.
 
     Args:
         readable_id: The readable ID of the collection to search
         search_request: The search request parameters
         db: Database session
         ctx: API context
-        destination: Search destination ('qdrant' or 'vespa')
+        destination: Search destination ('vespa')
+        embedder_service: Injected embedder service for embedding queries
 
     Returns:
         SearchResponse with results
@@ -1285,6 +1284,7 @@ async def admin_search_collection(
         search_request=search_request,
         db=db,
         ctx=ctx,
+        embedder_service=embedder_service,
         destination=destination.value,
     )
 
@@ -1302,8 +1302,9 @@ async def admin_search_collection_as_user(
     ctx: ApiContext = Depends(deps.get_context),
     destination: AdminSearchDestination = Query(
         AdminSearchDestination.VESPA,
-        description="Search destination: 'qdrant' or 'vespa' (default)",
+        description="Search destination: 'vespa'",
     ),
+    embedder_service: EmbedderServiceProtocol = Inject(EmbedderServiceProtocol),
 ) -> schemas.SearchResponse:
     """Admin-only: Search collection with access control for a specific user.
 
@@ -1316,7 +1317,8 @@ async def admin_search_collection_as_user(
         user_principal: Username to search as
         db: Database session
         ctx: API context
-        destination: Search destination ('qdrant' or 'vespa')
+        destination: Search destination ('vespa')
+        embedder_service: Injected embedder service for embedding queries
 
     Returns:
         SearchResponse with results filtered by user's access permissions.
@@ -1334,6 +1336,7 @@ async def admin_search_collection_as_user(
         search_request=search_request,
         db=db,
         ctx=ctx,
+        embedder_service=embedder_service,
         user_principal=user_principal,
         destination=destination.value,
     )
@@ -1439,6 +1442,7 @@ async def _build_admin_search_context(
     search_request: schemas.SearchRequest,
     destination,
     ctx: ApiContext,
+    embedder_service: EmbedderServiceProtocol,
 ):
     """Build search context with custom destination for admin search.
 
@@ -1470,11 +1474,10 @@ async def _build_admin_search_context(
     if not has_federated_sources and not has_vector_sources:
         raise ValueError("Collection has no sources")
 
-    vector_size = collection.vector_size
-    if vector_size is None:
-        raise ValueError(f"Collection {collection.readable_id} has no vector_size set.")
+    # Use deployment-level vector size from embedder service
+    vector_size = embedder_service.vector_size
 
-    # Select providers for operations
+    # Select providers for operations (LLM, rerank — NOT embedding)
     api_keys = factory._get_available_api_keys()
     providers = factory._create_provider_for_each_operation(
         api_keys,
@@ -1482,7 +1485,6 @@ async def _build_admin_search_context(
         has_federated_sources,
         has_vector_sources,
         ctx,
-        vector_size,
         requires_client_embedding=requires_embedding,
     )
 
@@ -1491,21 +1493,6 @@ async def _build_admin_search_context(
 
     emitter = EventEmitter(request_id=ctx.request_id, stream=False)
 
-    # Get temporal supporting sources if needed
-    temporal_supporting_sources = None
-    if params["temporal_weight"] > 0 and has_vector_sources and supports_temporal:
-        try:
-            temporal_supporting_sources = await factory._get_temporal_supporting_sources(
-                db, collection, ctx, emitter
-            )
-        except Exception as e:
-            raise ValueError(f"Failed to check temporal relevance support: {e}") from e
-    elif params["temporal_weight"] > 0 and not supports_temporal:
-        ctx.logger.info(
-            "[AdminSearch] Skipping temporal relevance: destination does not support it"
-        )
-        temporal_supporting_sources = []
-
     # Build operations with custom destination
     operations = factory._build_operations(
         params,
@@ -1513,12 +1500,12 @@ async def _build_admin_search_context(
         federated_sources,
         has_vector_sources,
         search_request,
-        temporal_supporting_sources,
         vector_size,
         destination=destination,
         requires_client_embedding=requires_embedding,
         db=db,
         ctx=ctx,
+        embedder_service=embedder_service,
     )
 
     return SearchContext(
@@ -1526,7 +1513,6 @@ async def _build_admin_search_context(
         collection_id=collection.id,
         readable_collection_id=readable_id,
         stream=False,
-        vector_size=vector_size,
         offset=params["offset"],
         limit=params["limit"],
         emitter=emitter,
@@ -1572,7 +1558,7 @@ async def admin_list_all_syncs(
     ),
     include_destination_counts: bool = Query(
         False,
-        description="Include Qdrant and Vespa document counts (slower, queries destinations)",
+        description="Include Vespa document counts (slower, queries destinations)",
     ),
     include_arf_counts: bool = Query(
         False,
@@ -1597,7 +1583,6 @@ async def admin_list_all_syncs(
     **Entity Counts**:
         - total_entity_count: Count from Postgres (EntityCount table) - always included
         - total_arf_entity_count: Count from ARF storage (None unless include_arf_counts=true)
-        - total_qdrant_entity_count: Count from Qdrant (None unless include_destination_counts=true)
         - total_vespa_entity_count: Count from Vespa (None unless include_destination_counts=true)
 
     **Performance Note**: Setting `include_destination_counts=true` or `include_arf_counts=true`
@@ -1620,7 +1605,7 @@ async def admin_list_all_syncs(
         ghost_syncs_last_n: Optional filter to syncs with N consecutive failures
         tags: Optional comma-separated list of tags to filter by
         exclude_tags: Optional comma-separated list of tags to exclude
-        include_destination_counts: Whether to fetch Qdrant/Vespa counts (slower)
+        include_destination_counts: Whether to fetch Vespa counts (slower)
         include_arf_counts: Whether to fetch ARF entity counts (slower)
 
     Returns:
@@ -1680,7 +1665,6 @@ async def admin_list_all_syncs(
         f"arf_counts={timings.get('arf_counts', 0):.1f}ms, "
         f"last_job={timings.get('last_job_info', 0):.1f}ms, "
         f"source_conn={timings.get('source_connections', 0):.1f}ms, "
-        f"dest_qdrant={timings.get('destination_counts_qdrant', 0):.1f}ms, "
         f"dest_vespa={timings.get('destination_counts_vespa', 0):.1f}ms, "
         f"sync_conn={timings.get('sync_connections', 0):.1f}ms, "
         f"build={timings.get('build_response', 0):.1f}ms | "
@@ -1930,7 +1914,6 @@ async def admin_delete_sync(
     This endpoint reuses the existing source connection deletion logic which handles:
     - Cancelling active jobs
     - Cleaning up Temporal schedules
-    - Removing data from Qdrant
     - Removing data from Vespa
     - Removing ARF storage
     - Cascading deletes in Postgres (sync, connection, source_connection)

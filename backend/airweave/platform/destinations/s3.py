@@ -277,7 +277,7 @@ class S3Destination(BaseDestination):
                 ) from e
             raise ConnectionError(f"Failed to connect to S3: {e}") from e
 
-    async def setup_collection(self, vector_size: int | None = None) -> None:
+    async def setup_collection(self, **kwargs) -> None:
         """No-op for S3 - paths created on write."""
         pass
 

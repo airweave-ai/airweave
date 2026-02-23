@@ -8,10 +8,9 @@ the retrieval strategy (hybrid, neural, or keyword).
 from typing import TYPE_CHECKING, List, Optional
 
 from airweave.api.context import ApiContext
-from airweave.platform.embedders import SparseEmbedder
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.schemas.search import RetrievalStrategy
 from airweave.search.context import SearchContext
-from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
 
@@ -23,11 +22,16 @@ class EmbedQuery(SearchOperation):
     """Generate vector embeddings for queries."""
 
     def __init__(
-        self, strategy: RetrievalStrategy, provider: BaseProvider, vector_size: int
+        self,
+        strategy: RetrievalStrategy,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
+        vector_size: int,
     ) -> None:
-        """Initialize with retrieval strategy, provider, and vector dimensions."""
+        """Initialize with retrieval strategy, embedders, and vector dimensions."""
         self.strategy = strategy
-        self.provider = provider
+        self.dense_embedder = dense_embedder
+        self.sparse_embedder = sparse_embedder
         self.vector_size = vector_size
 
     def depends_on(self) -> List[str]:
@@ -104,19 +108,18 @@ class EmbedQuery(SearchOperation):
     async def _generate_dense_embeddings(
         self, queries: List[str], ctx: ApiContext
     ) -> List[List[float]]:
-        """Generate dense neural embeddings using provider.
+        """Generate dense neural embeddings using domain embedder.
 
-        Uses Matryoshka truncation to get embeddings at the configured vector_size.
-        This ensures embeddings match the destination's requirements:
-        - Qdrant: 3072-dim (text-embedding-3-large native)
-        - Vespa: 768-dim (Matryoshka truncated for binary packing)
+        The domain embedder is already configured with the correct vector_size
+        (including Matryoshka truncation for OpenAI models).
         """
-        # Pass vector_size for Matryoshka truncation
-        # OpenAI's text-embedding-3 models support arbitrary truncation
         ctx.logger.debug(
             f"[EmbedQuery] Generating {self.vector_size}-dim embeddings for {len(queries)} queries"
         )
-        dense_embeddings = await self.provider.embed(queries, dimensions=self.vector_size)
+        results = await self.dense_embedder.embed_many(queries)
+
+        # Extract raw vectors from DenseEmbedding objects
+        dense_embeddings = [r.vector for r in results]
 
         # Validate we got embeddings for all queries
         if len(dense_embeddings) != len(queries):
@@ -140,15 +143,7 @@ class EmbedQuery(SearchOperation):
 
     async def _generate_sparse_embeddings(self, queries: List[str], ctx: ApiContext) -> List:
         """Generate sparse BM25 embeddings for keyword search."""
-        # Use SparseEmbedder from platform/embedders/
-        bm25_embedder = SparseEmbedder()
-
-        # Generate sparse embeddings
-        if len(queries) == 1:
-            sparse_embedding = await bm25_embedder.embed(queries[0])
-            sparse_embeddings = [sparse_embedding]
-        else:
-            sparse_embeddings = await bm25_embedder.embed_many(queries)
+        sparse_embeddings = await self.sparse_embedder.embed_many(queries)
 
         # Validate we got embeddings for all queries
         if len(sparse_embeddings) != len(queries):
@@ -192,18 +187,12 @@ class EmbedQuery(SearchOperation):
             except Exception:
                 pass
 
-        # Determine model used
-        model = None
-        if dense_embeddings and self.provider.model_spec.embedding_model:
-            model = self.provider.model_spec.embedding_model.name
-
         await emitter.emit(
             "embedding_done",
             {
                 "neural_count": neural_count,
                 "sparse_count": sparse_count,
                 "dim": dim,
-                "model": model,
                 "avg_nonzeros": avg_nonzeros,
             },
             op_name=self.__class__.__name__,

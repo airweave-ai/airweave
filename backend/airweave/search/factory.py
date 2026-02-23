@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.domains.embedders.protocols import EmbedderServiceProtocol
+from airweave.domains.embedders.service import EmbedderService
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.embedders.config import get_provider_for_model
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.token_manager import TokenManager
@@ -48,7 +49,7 @@ from airweave.search.providers.schemas import (
 )
 
 # Type alias for destination override
-DestinationOverride = Literal["qdrant", "vespa"]
+DestinationOverride = Literal["vespa"]
 
 # Rebuild SearchContext model now that all operation classes are imported
 SearchContext.model_rebuild()
@@ -71,6 +72,7 @@ class SearchFactory:
         stream: bool,
         ctx: ApiContext,
         db: AsyncSession,
+        embedder_service: EmbedderServiceProtocol,
         # --- Optional parameters for admin/ACL search ---
         destination_override: Optional[DestinationOverride] = None,
         user_principal_override: Optional[str] = None,
@@ -86,8 +88,9 @@ class SearchFactory:
             stream: Whether to enable SSE streaming
             ctx: API context with auth info
             db: Database session
-            destination_override: Override destination ("qdrant" or "vespa").
-                If None, uses collection's default destination (Qdrant).
+            embedder_service: Embedder service for generating query embeddings
+            destination_override: Override destination ("vespa").
+                If None, uses Vespa (default).
             user_principal_override: Username to use for ACL filtering.
                 If None, uses ctx.user for ACL (normal behavior).
             skip_organization_check: If True, skip organization filtering when
@@ -117,6 +120,9 @@ class SearchFactory:
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
 
+        # Resolve query-time embedder: use collection's stored model if available
+        query_embedder = self._resolve_query_embedder(collection, embedder_service, ctx)
+
         federated_sources = await self.get_federated_sources(db, collection, ctx)
         has_federated_sources = bool(federated_sources)
         has_vector_sources = await self._has_vector_sources(db, collection, ctx)
@@ -134,25 +140,17 @@ class SearchFactory:
         if not has_federated_sources and not has_vector_sources:
             raise ValueError("Collection has no sources")
 
-        # Use collection's stored vector_size for provider initialization
-        vector_size = collection.vector_size
+        # Use query embedder's vector size (from collection's model or global config)
+        vector_size = query_embedder.vector_size
 
-        # Fail-fast: vector_size must be set
-        if vector_size is None:
-            raise ValueError(f"Collection {collection.readable_id} has no vector_size set.")
-
-        # Select providers for operations
-        # Note: Skip embedding provider if destination embeds server-side (e.g., Vespa)
+        # Select providers for operations (LLM, rerank — NOT embedding)
         api_keys = self._get_available_api_keys()
-        embedding_provider = get_provider_for_model(collection.embedding_model_name)
         providers = self._create_provider_for_each_operation(
             api_keys,
             params,
             has_federated_sources,
             has_vector_sources,
             ctx,
-            vector_size,
-            embedding_provider=embedding_provider,
             requires_client_embedding=requires_embedding,
         )
 
@@ -174,6 +172,7 @@ class SearchFactory:
             ctx=ctx,
             user_principal_override=user_principal_override,
             organization_id=collection.organization_id,
+            embedder_service=query_embedder,
         )
 
         search_context = SearchContext(
@@ -181,7 +180,6 @@ class SearchFactory:
             collection_id=collection_id,
             readable_collection_id=readable_collection_id,
             stream=stream,
-            vector_size=vector_size,
             offset=params["offset"],
             limit=params["limit"],
             emitter=emitter,
@@ -222,8 +220,6 @@ class SearchFactory:
 
         # Disable query expansion for keyword-only search
         # Reason: Vespa uses a single sparse embedding for keyword scoring, not per-expanded-query.
-        # Qdrant does support expanded sparse queries, but for consistency across destinations,
-        # we disable expansion for keyword-only searches entirely.
         if retrieval_strategy == RetrievalStrategy.KEYWORD and expand_query:
             if ctx:
                 ctx.logger.warning(
@@ -264,9 +260,48 @@ class SearchFactory:
             pass
         ctx.logger.info(f"[SearchFactory] Vector-backed sources present: {has_vector_sources}")
 
-    def _get_vector_size(self) -> int:
-        """Get the default vector size for embeddings."""
-        return settings.EMBEDDING_DIMENSIONS
+    def _resolve_query_embedder(
+        self,
+        collection,
+        embedder_service: EmbedderServiceProtocol,
+        ctx: ApiContext,
+    ) -> EmbedderServiceProtocol:
+        """Resolve which embedder to use for query embedding.
+
+        If the collection has been synced (embedding_model_name is set), uses
+        the collection's stored model. This ensures queries always use the same
+        model that produced the stored embeddings, even if the global config
+        has since changed.
+
+        Returns:
+            The embedder service to use for this query.
+        """
+        col_model = getattr(collection, "embedding_model_name", None)
+        col_dims = getattr(collection, "vector_size", None)
+
+        if col_model is None or col_dims is None:
+            # Collection never synced — use global config
+            return embedder_service
+
+        if col_model == embedder_service.model_name and col_dims == embedder_service.vector_size:
+            # Collection matches global config — reuse cached embedder
+            return embedder_service
+
+        # Collection was synced with a different model — build a one-off embedder
+        ctx.logger.info(
+            f"[SearchFactory] Collection uses model '{col_model}' ({col_dims}d) "
+            f"but global config is '{embedder_service.model_name}' "
+            f"({embedder_service.vector_size}d). Building query-time embedder."
+        )
+        return EmbedderService.for_model(
+            model=col_model,
+            dimensions=col_dims,
+            settings=settings,
+        )
+
+    def _get_vector_size(self, embedder_service: "EmbedderServiceProtocol") -> int:
+        """Get the vector size from the embedder service."""
+        return embedder_service.vector_size
 
     async def _emit_skip_notices_if_needed(
         self,
@@ -275,7 +310,7 @@ class SearchFactory:
         params: Dict[str, Any],
         search_request: SearchRequest,
     ):
-        """Emit skip notices for Qdrant-only features when no vector sources exist."""
+        """Emit skip notices for vector-only features when no vector sources exist."""
         if has_vector_sources:
             return
 
@@ -297,7 +332,7 @@ class SearchFactory:
                     },
                 )
         except Exception:
-            raise ValueError("Failed to emit skip notices for Qdrant-only features")
+            raise ValueError("Failed to emit skip notices for vector-only features")
 
     def _build_operations(
         self,
@@ -313,6 +348,7 @@ class SearchFactory:
         ctx: Optional[ApiContext] = None,
         user_principal_override: Optional[str] = None,
         organization_id: Optional[UUID] = None,
+        embedder_service: Optional[EmbedderServiceProtocol] = None,
     ) -> Dict[str, Any]:
         """Build operation instances for the search context.
 
@@ -324,8 +360,8 @@ class SearchFactory:
             federated_sources: List of instantiated federated source objects
             has_vector_sources: Whether collection has any vector-backed sources
             search_request: Original search request from user
-            vector_size: Vector dimensions for this collection (used by EmbedQuery)
-            destination: The destination instance for search (Qdrant, Vespa, etc.)
+            vector_size: Vector dimensions (used by EmbedQuery)
+            destination: The destination instance for search (Vespa)
             requires_client_embedding: Whether destination needs client-side embeddings
             db: Database session for access control queries
             ctx: API context with user and organization info
@@ -333,9 +369,9 @@ class SearchFactory:
                 instead of ctx.user. Used for admin "search as user" functionality.
             organization_id: Organization ID for access control queries. Required
                 when user_principal_override is provided.
+            embedder_service: Embedder service for generating query embeddings
         """
-        # Operations that need client-side embeddings (Qdrant-specific for now)
-        # TODO: Make these destination-agnostic when filter DSL is abstracted
+        # Operations that need client-side embeddings
         needs_embedding_ops = has_vector_sources and requires_client_embedding
 
         # Build access control filter operation if we have user context
@@ -375,7 +411,7 @@ class SearchFactory:
             "query_expansion": (
                 QueryExpansion(providers=providers["expansion"]) if params["expand_query"] else None
             ),
-            # Query interpretation - destination-agnostic (filters are translated by destination)
+            # Query interpretation - filters are translated to native format by destination
             "query_interpretation": (
                 QueryInterpretation(providers=providers["interpretation"])
                 if (params["interpret_filters"] and has_vector_sources)
@@ -384,10 +420,11 @@ class SearchFactory:
             "embed_query": (
                 EmbedQuery(
                     strategy=params["retrieval_strategy"],
-                    provider=providers["embed"],  # Single provider - embeddings must be consistent
+                    dense_embedder=embedder_service.get_dense_embedder(),
+                    sparse_embedder=embedder_service.get_sparse_embedder(),
                     vector_size=vector_size,
                 )
-                if needs_embedding_ops
+                if (needs_embedding_ops and embedder_service is not None)
                 else None
             ),
             # User filter - destination-agnostic (filters are translated by destination)
@@ -464,18 +501,13 @@ class SearchFactory:
         has_federated_sources: bool,
         has_vector_sources: bool,
         ctx: ApiContext,
-        vector_size: int,
-        embedding_provider: Optional[str] = None,
         requires_client_embedding: bool = True,
     ) -> Dict[str, BaseProvider]:
-        """Select and validate all required providers."""
-        providers = {}
+        """Select and validate all required LLM providers.
 
-        # Create embedding provider if needed (skip if destination embeds server-side)
-        if has_vector_sources and requires_client_embedding:
-            providers["embed"] = self._create_embedding_provider(
-                api_keys, ctx, vector_size, preferred_provider=embedding_provider
-            )
+        Note: Embedding is handled by the domain embedder service, not providers.
+        """
+        providers = {}
 
         # Create LLM providers for enabled operations
         providers.update(
@@ -491,30 +523,6 @@ class SearchFactory:
 
         ctx.logger.debug(f"[SearchFactory] Providers: {providers}")
         return providers
-
-    def _create_embedding_provider(
-        self,
-        api_keys: Dict[str, Optional[str]],
-        ctx: ApiContext,
-        vector_size: int,
-        preferred_provider: Optional[str] = None,
-    ) -> BaseProvider:
-        """Create embedding provider for vector-backed search.
-
-        Note: Returns single provider, not a list. Embeddings must use consistent
-        models within a collection and cannot fallback to different providers.
-        """
-        providers = self._init_all_providers_for_operation(
-            "embed_query",
-            api_keys,
-            ctx,
-            vector_size,
-            preferred_provider=preferred_provider,
-        )
-        if not providers:
-            raise ValueError("Embedding provider required for vector-backed search.")
-        # Return first (and only) available embedding provider
-        return providers[0]
 
     def _create_llm_providers(
         self,
@@ -555,8 +563,7 @@ class SearchFactory:
                 "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
             )
 
-        # Query interpretation - works with any destination (filters are translated)
-        # Produces Qdrant-style filters which destinations translate to their native format
+        # Query interpretation - destination-agnostic (filters are translated to native format)
         if params["interpret_filters"] and has_vector_sources:
             self._add_provider_list_or_error(
                 providers,
@@ -644,16 +651,16 @@ class SearchFactory:
         """Resolve the destination for search.
 
         If destination_override is provided, creates that specific destination.
-        Otherwise, uses collection's default destination (currently always Qdrant).
+        Otherwise, uses collection's default destination (Vespa).
 
         Args:
             db: Database session
             collection: Collection object
             ctx: API context
-            destination_override: Override destination ("qdrant" or "vespa")
+            destination_override: Override destination ("vespa")
 
         Returns:
-            Destination instance (Qdrant or Vespa)
+            Destination instance (Vespa)
         """
         if destination_override == "vespa":
             from airweave.platform.destinations.vespa import VespaDestination
@@ -665,20 +672,6 @@ class SearchFactory:
             return await VespaDestination.create(
                 collection_id=collection.id,
                 organization_id=collection.organization_id,
-                vector_size=collection.vector_size,
-                logger=ctx.logger,
-            )
-        elif destination_override == "qdrant":
-            from airweave.platform.destinations.qdrant import QdrantDestination
-
-            ctx.logger.info(
-                f"[SearchFactory] Using Qdrant destination (override) for "
-                f"collection {collection.readable_id}"
-            )
-            return await QdrantDestination.create(
-                collection_id=collection.id,
-                organization_id=collection.organization_id,
-                vector_size=collection.vector_size,
                 logger=ctx.logger,
             )
         else:
@@ -706,20 +699,18 @@ class SearchFactory:
         operation_name: str,
         api_keys: Dict[str, Optional[str]],
         ctx: ApiContext,
-        vector_size: Optional[int] = None,
-        preferred_provider: Optional[str] = None,
     ) -> List[BaseProvider]:
         """Initialize ALL available providers for an operation in preference order.
 
         Returns list of working providers that can be used for fallback.
         Operations will try providers in order until one succeeds.
 
+        Note: Embedding is handled by the domain embedder service, not providers.
+
         Args:
-            operation_name: Name of the operation (e.g., "embed_query")
+            operation_name: Name of the operation (e.g., "query_expansion")
             api_keys: Dict of provider API keys
             ctx: API context
-            vector_size: Optional vector dimensions for embedding model selection
-            preferred_provider: Optional preferred provider name to filter to
         """
         preferences = operation_preferences.get(operation_name, {})
         order = preferences.get("order", [])
@@ -732,8 +723,6 @@ class SearchFactory:
             if not provider_name:
                 # Skip malformed entries
                 continue
-            if preferred_provider and provider_name != preferred_provider:
-                continue
 
             api_key = api_keys.get(provider_name)
             if not api_key:
@@ -745,9 +734,7 @@ class SearchFactory:
 
             # Build model configs for each type
             llm_config = self._build_llm_config(provider_spec, entry.get("llm"))
-            embedding_config = self._build_embedding_config_for_vector_size(
-                provider_spec, entry.get("embedding"), vector_size
-            )
+            embedding_config = self._build_embedding_config(provider_spec, entry.get("embedding"))
             rerank_config = self._build_rerank_config(provider_spec, entry.get("rerank"))
 
             model_spec = ProviderModelSpec(
@@ -825,56 +812,6 @@ class SearchFactory:
             return None
 
         return EmbeddingModelConfig(**model_dict)
-
-    def _build_embedding_config_for_vector_size(
-        self, provider_spec: dict, model_key: Optional[str], vector_size: Optional[int]
-    ) -> Optional[EmbeddingModelConfig]:
-        """Build EmbeddingModelConfig by selecting the right model key from defaults.yml.
-
-        For OpenAI embeddings, selects between embedding_small and embedding_large:
-        - 3072: uses embedding_large (text-embedding-3-large)
-        - 1536: uses embedding_small (text-embedding-3-small)
-        For other providers, supports explicit embedding_{vector_size} keys.
-        - Other: uses the provided model_key (e.g., "embedding" as fallback)
-
-        Args:
-            provider_spec: Provider specification from defaults.yml
-            model_key: Key to look up model config (e.g., "embedding")
-            vector_size: Vector dimensions for this collection
-
-        Returns:
-            EmbeddingModelConfig from the appropriate model key, or None if not applicable
-        """
-        if not model_key:
-            return None
-
-        # For OpenAI provider, select the right model key based on vector_size
-        actual_model_key = model_key
-        if vector_size == 3072:
-            actual_model_key = "embedding_large"
-        elif vector_size == 1536:
-            actual_model_key = "embedding_small"
-        elif vector_size:
-            vector_key = f"embedding_{vector_size}"
-            if vector_key in provider_spec:
-                actual_model_key = vector_key
-        # else: use provided model_key (fallback to "embedding" for other sizes)
-
-        model_dict = provider_spec.get(actual_model_key)
-        if not model_dict:
-            # Fallback to original model_key if specific one not found
-            model_dict = provider_spec.get(model_key)
-            if not model_dict:
-                return None
-
-        embedding_config = EmbeddingModelConfig(**model_dict)
-        if vector_size and embedding_config.dimensions != vector_size:
-            raise ValueError(
-                "Embedding dimensions mismatch for provider config: "
-                f"requested {vector_size}, model {embedding_config.name} "
-                f"({embedding_config.dimensions}-dim)."
-            )
-        return embedding_config
 
     def _build_rerank_config(
         self, provider_spec: dict, model_key: Optional[str]

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, ClassVar, List, Optional, Type
+from typing import ClassVar, List, Optional, Type
 from uuid import UUID
 
 from fastembed import SparseEmbedding

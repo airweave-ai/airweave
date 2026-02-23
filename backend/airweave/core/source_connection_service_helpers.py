@@ -65,7 +65,7 @@ class SourceConnectionHelpers:
 
         from airweave.models.connection import Connection
 
-        # Vespa is the sole vector database destination (Qdrant deprecated)
+        # Vespa is the sole vector database destination
         destination_ids = [NATIVE_VESPA_UUID]
 
         # Add S3 if feature flag enabled

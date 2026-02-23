@@ -1,14 +1,14 @@
 """Unified chunk and embed processor for vector databases.
 
-Used by: Qdrant, Vespa, Pinecone, and similar vector DBs.
+Used by: Vespa and similar vector DBs.
 
-Both destinations use chunk-as-document model where each chunk becomes
-a separate document with its own embedding. Both Qdrant and Vespa use:
+Uses chunk-as-document model where each chunk becomes a separate document
+with its own embedding:
 - Dense embeddings (3072-dim) for neural/semantic search
-- Sparse embeddings (FastEmbed Qdrant/bm25) for keyword search scoring
+- Sparse embeddings (FastEmbed BM25) for keyword search scoring
 
-This ensures consistent keyword search behavior across both vector databases,
-with benefits of pre-trained vocabulary/IDF, stopword removal, and learned term weights.
+This ensures consistent keyword search behavior with benefits of pre-trained
+vocabulary/IDF, stopword removal, and learned term weights.
 """
 
 import json
@@ -33,7 +33,7 @@ class ChunkEmbedProcessor(ContentProcessor):
     2. Chunk text (semantic for text, AST for code)
     3. Compute embeddings:
        - Dense embeddings (3072-dim for neural/semantic search)
-       - Sparse embeddings (FastEmbed Qdrant/bm25 for keyword search scoring)
+       - Sparse embeddings (FastEmbed BM25 for keyword search scoring)
 
     Output:
         Chunk entities with:
@@ -45,6 +45,8 @@ class ChunkEmbedProcessor(ContentProcessor):
         - airweave_system_metadata.chunk_index: chunk position
     """
 
+    _embedding_config_validated = False
+
     async def process(
         self,
         entities: List[BaseEntity],
@@ -54,6 +56,11 @@ class ChunkEmbedProcessor(ContentProcessor):
         """Process entities through full chunk+embed pipeline."""
         if not entities:
             return []
+
+        # Step 0: Validate/stamp embedding config (once per sync)
+        if not self._embedding_config_validated:
+            await self._validate_and_stamp_embedding_config(sync_context, runtime)
+            self._embedding_config_validated = True
 
         # Step 1: Build textual representations
         processed = await text_builder.build_for_batch(entities, sync_context, runtime)
@@ -74,13 +81,65 @@ class ChunkEmbedProcessor(ContentProcessor):
             entity.textual_representation = None
 
         # Step 5: Embed chunks
-        await self._embed_entities(chunk_entities, sync_context)
+        await self._embed_entities(chunk_entities, sync_context, runtime)
 
         sync_context.logger.debug(
             f"[ChunkEmbedProcessor] {len(entities)} entities -> {len(chunk_entities)} chunks"
         )
 
         return chunk_entities
+
+    # -------------------------------------------------------------------------
+    # Embedding config validation
+    # -------------------------------------------------------------------------
+
+    async def _validate_and_stamp_embedding_config(
+        self,
+        sync_context: "SyncContext",
+        runtime: "SyncRuntime",
+    ) -> None:
+        """Validate embedding config against collection, stamp on first sync.
+
+        On the first sync for a collection, stamps the current model and
+        dimensions onto the collection record. On subsequent syncs, validates
+        that the current config matches what the collection was originally
+        synced with.
+        """
+        collection = sync_context.collection
+        current_model = runtime.embedder_service.model_name
+        current_dims = runtime.embedder_service.vector_size
+
+        if collection.embedding_model_name is None:
+            # First sync — stamp collection with current embedding config
+            if runtime.collection_repo and runtime.db_session:
+                await runtime.collection_repo.stamp_embedding_config(
+                    runtime.db_session,
+                    collection_id=collection.id,
+                    vector_size=current_dims,
+                    model_name=current_model,
+                )
+            # Update in-memory schema for the rest of this sync
+            collection.embedding_model_name = current_model
+            collection.vector_size = current_dims
+            sync_context.logger.info(
+                f"[ChunkEmbedProcessor] Stamped collection '{collection.readable_id}' "
+                f"with model={current_model}, dims={current_dims}"
+            )
+        else:
+            # Subsequent sync — validate config matches
+            if collection.embedding_model_name != current_model:
+                raise SyncFailureError(
+                    f"Embedding model mismatch: collection '{collection.readable_id}' "
+                    f"was synced with '{collection.embedding_model_name}' but current "
+                    f"config uses '{current_model}'. Update embedding_config.yml or "
+                    f"delete and recreate the collection."
+                )
+            if collection.vector_size != current_dims:
+                raise SyncFailureError(
+                    f"Embedding dimensions mismatch: collection "
+                    f"'{collection.readable_id}' uses {collection.vector_size}d but "
+                    f"config specifies {current_dims}d."
+                )
 
     # -------------------------------------------------------------------------
     # Chunking
@@ -218,41 +277,34 @@ class ChunkEmbedProcessor(ContentProcessor):
         self,
         chunk_entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime" = None,
     ) -> None:
-        """Compute dense and sparse embeddings for all destinations.
+        """Compute dense and sparse embeddings for all chunks.
 
-        Both Qdrant and Vespa use:
-        - Dense embeddings (provider-specific dim) for neural/semantic search
-        - Sparse embeddings (FastEmbed Qdrant/bm25) for keyword search scoring
-
-        This ensures consistent keyword search behavior across both vector databases,
-        with benefits of pre-trained vocabulary/IDF, stopword removal, and learned term weights.
+        Uses the domain embedder service from runtime for deployment-level config.
         """
         if not chunk_entities:
             return
 
-        from airweave.platform.embedders import SparseEmbedder, get_dense_embedder
+        embedder_service = runtime.embedder_service
+        dense_embedder = embedder_service.get_dense_embedder()
+        sparse_embedder = embedder_service.get_sparse_embedder()
 
-        # Dense embeddings (provider-specific dimensions for neural search)
+        # Dense embeddings
         dense_texts = [e.textual_representation for e in chunk_entities]
-        dense_embedder = get_dense_embedder(
-            vector_size=sync_context.collection.vector_size,
-            model_name=sync_context.collection.embedding_model_name,
-        )
-        dense_embeddings = await dense_embedder.embed_many(dense_texts, sync_context)
+        dense_embeddings = await dense_embedder.embed_many(dense_texts)
         if (
             dense_embeddings
             and dense_embeddings[0] is not None
-            and len(dense_embeddings[0]) != sync_context.collection.vector_size
+            and len(dense_embeddings[0].vector) != embedder_service.vector_size
         ):
             raise SyncFailureError(
                 "[ChunkEmbedProcessor] Dense embedding dimensions mismatch: "
-                f"got {len(dense_embeddings[0])}, "
-                f"expected {sync_context.collection.vector_size}."
+                f"got {len(dense_embeddings[0].vector)}, "
+                f"expected {embedder_service.vector_size}."
             )
 
-        # Sparse embeddings (FastEmbed Qdrant/bm25 for keyword search scoring)
-        # Uses full entity JSON (minus system metadata) to capture all searchable content
+        # Sparse embeddings (full entity JSON for comprehensive indexing)
         sparse_texts = [
             json.dumps(
                 e.model_dump(mode="json", exclude={"airweave_system_metadata"}),
@@ -260,12 +312,11 @@ class ChunkEmbedProcessor(ContentProcessor):
             )
             for e in chunk_entities
         ]
-        sparse_embedder = SparseEmbedder()
-        sparse_embeddings = await sparse_embedder.embed_many(sparse_texts, sync_context)
+        sparse_embeddings = await sparse_embedder.embed_many(sparse_texts)
 
         # Assign embeddings to entities
         for i, entity in enumerate(chunk_entities):
-            entity.airweave_system_metadata.dense_embedding = dense_embeddings[i]
+            entity.airweave_system_metadata.dense_embedding = dense_embeddings[i].vector
             entity.airweave_system_metadata.sparse_embedding = sparse_embeddings[i]
 
         # Validate

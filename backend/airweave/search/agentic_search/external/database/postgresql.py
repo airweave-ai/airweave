@@ -58,15 +58,9 @@ class PostgreSQLAgenticSearchDatabase:
         )
         if not collection:
             raise ValueError(f"Collection not found: {readable_id}")
-        if collection.vector_size is None:
-            raise ValueError(
-                f"Collection '{readable_id}' has no vector_size set. "
-                "This should be configured at collection creation time."
-            )
         return AgenticSearchCollection(
             id=collection.id,
             readable_id=collection.readable_id,
-            vector_size=collection.vector_size,
         )
 
     async def get_source_connections_in_collection(
@@ -155,29 +149,3 @@ class PostgreSQLAgenticSearchDatabase:
 
         # Return zero count if not found
         return AgenticSearchEntityCount(count=0)
-
-    async def get_collection_vector_size(self, readable_id: str) -> int:
-        """Get vector size for a collection.
-
-        Args:
-            readable_id: The collection's readable identifier.
-
-        Returns:
-            The vector size (embedding dimension) for the collection.
-
-        Raises:
-            ValueError: If collection not found or has no vector_size.
-        """
-        collection = await crud.collection.get_by_readable_id(
-            self._session,
-            readable_id=readable_id,
-            ctx=self._ctx,
-        )
-        if not collection:
-            raise ValueError(f"Collection not found: {readable_id}")
-        if collection.vector_size is None:
-            raise ValueError(
-                f"Collection '{readable_id}' has no vector_size set. "
-                "This should be configured at collection creation time."
-            )
-        return collection.vector_size

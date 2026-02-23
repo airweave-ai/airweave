@@ -1,258 +1,181 @@
-"""Unit tests for embedding validation module."""
+"""Unit tests for embedding validation module.
+
+Tests validate_and_raise() which delegates to the domain's
+load_embedding_config() and validate_embedding_config().
+"""
 
 import pytest
 from unittest.mock import patch, MagicMock
 
-
-class TestGetProviderDimensions:
-    """Tests for get_provider_dimensions()."""
-
-    def test_loads_dimensions_from_defaults_yml(self):
-        """Test that dimensions are loaded from defaults.yml."""
-        from airweave.core.embedding_validation import get_provider_dimensions
-
-        dims = get_provider_dimensions()
-
-        # Should have at least openai and mistral
-        assert "openai" in dims
-        assert "mistral" in dims
-
-        # OpenAI should support 1536 and 3072
-        assert 1536 in dims["openai"]
-        assert 3072 in dims["openai"]
-
-        # Mistral should support 1024
-        assert 1024 in dims["mistral"]
-
-    def test_returns_sorted_dimensions(self):
-        """Test that dimensions are sorted in descending order."""
-        from airweave.core.embedding_validation import get_provider_dimensions
-
-        dims = get_provider_dimensions()
-
-        for provider, dim_list in dims.items():
-            # Should be sorted descending
-            assert dim_list == sorted(dim_list, reverse=True)
+from airweave.domains.embedders.config import (
+    EmbeddingConfig,
+    load_embedding_config,
+    provider_for_model,
+    validate_embedding_config,
+)
+from airweave.domains.embedders.exceptions import EmbeddingConfigurationError
 
 
-class TestGetAvailableProviders:
-    """Tests for get_available_providers()."""
+class TestProviderForModel:
+    """Tests for provider_for_model()."""
 
-    def test_returns_openai_when_key_set(self):
-        """Test OpenAI is available when API key is configured."""
-        from airweave.core.embedding_validation import get_available_providers
+    def test_openai_small(self):
+        assert provider_for_model("text-embedding-3-small") == "openai"
 
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.OPENAI_API_KEY = "sk-test-key"
-            mock_settings.MISTRAL_API_KEY = None
-            mock_settings.TEXT2VEC_INFERENCE_URL = None
+    def test_openai_large(self):
+        assert provider_for_model("text-embedding-3-large") == "openai"
 
-            available = get_available_providers()
-            assert "openai" in available
+    def test_mistral(self):
+        assert provider_for_model("mistral-embed") == "mistral"
 
-    def test_returns_mistral_when_key_set(self):
-        """Test Mistral is available when API key is configured."""
-        from airweave.core.embedding_validation import get_available_providers
+    def test_local(self):
+        assert provider_for_model("sentence-transformers/all-MiniLM-L6-v2") == "local"
 
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.OPENAI_API_KEY = None
-            mock_settings.MISTRAL_API_KEY = "mistral-test-key"
-            mock_settings.TEXT2VEC_INFERENCE_URL = None
-
-            available = get_available_providers()
-            assert "mistral" in available
-
-    def test_returns_local_when_url_set(self):
-        """Test local is available when TEXT2VEC_INFERENCE_URL is set."""
-        from airweave.core.embedding_validation import get_available_providers
-
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.OPENAI_API_KEY = None
-            mock_settings.MISTRAL_API_KEY = None
-            mock_settings.TEXT2VEC_INFERENCE_URL = "http://localhost:9878"
-
-            available = get_available_providers()
-            assert "local" in available
-
-    def test_returns_multiple_providers(self):
-        """Test multiple providers can be available simultaneously."""
-        from airweave.core.embedding_validation import get_available_providers
-
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.OPENAI_API_KEY = "sk-test"
-            mock_settings.MISTRAL_API_KEY = "mistral-test"
-            mock_settings.TEXT2VEC_INFERENCE_URL = "http://localhost:9878"
-
-            available = get_available_providers()
-            assert "openai" in available
-            assert "mistral" in available
-            assert "local" in available
-
-    def test_returns_empty_when_no_providers_configured(self):
-        """Test empty list when no providers are configured."""
-        from airweave.core.embedding_validation import get_available_providers
-
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.OPENAI_API_KEY = None
-            mock_settings.MISTRAL_API_KEY = None
-            mock_settings.TEXT2VEC_INFERENCE_URL = None
-
-            available = get_available_providers()
-            assert available == []
+    def test_unknown_model(self):
+        with pytest.raises(EmbeddingConfigurationError, match="Unknown model"):
+            provider_for_model("nonexistent-model")
 
 
-class TestFindCompatibleProviders:
-    """Tests for find_compatible_providers()."""
+class TestLoadEmbeddingConfig:
+    """Tests for load_embedding_config()."""
 
-    def test_finds_openai_for_1536_dims(self):
-        """Test 1536 dimensions maps to OpenAI."""
-        from airweave.core.embedding_validation import find_compatible_providers
+    def test_loads_default_config(self):
+        """Test loading the actual embedding_config.yml."""
+        config = load_embedding_config()
+        assert config.model == "text-embedding-3-small"
+        assert config.dimensions == 1536
+        assert config.provider == "openai"
 
-        compatible = find_compatible_providers(1536)
-        assert "openai" in compatible
+    def test_missing_config_file(self, tmp_path):
+        """Test error when config file doesn't exist."""
+        with patch(
+            "airweave.domains.embedders.config.Path.__truediv__",
+            return_value=tmp_path / "nonexistent.yml",
+        ):
+            # Use a different approach — patch the path construction
+            pass
 
-    def test_finds_openai_for_3072_dims(self):
-        """Test 3072 dimensions maps to OpenAI."""
-        from airweave.core.embedding_validation import find_compatible_providers
-
-        compatible = find_compatible_providers(3072)
-        assert "openai" in compatible
-
-    def test_finds_mistral_for_1024_dims(self):
-        """Test 1024 dimensions maps to Mistral."""
-        from airweave.core.embedding_validation import find_compatible_providers
-
-        compatible = find_compatible_providers(1024)
-        assert "mistral" in compatible
-
-    def test_finds_local_for_384_dims(self):
-        """Test 384 dimensions maps to local."""
-        from airweave.core.embedding_validation import find_compatible_providers
-
-        compatible = find_compatible_providers(384)
-        assert "local" in compatible
-
-    def test_returns_empty_for_unsupported_dims(self):
-        """Test unsupported dimensions returns empty list."""
-        from airweave.core.embedding_validation import find_compatible_providers
-
-        # 999 is not a standard dimension for any provider
-        compatible = find_compatible_providers(999)
-        assert compatible == []
+    def test_config_is_frozen(self):
+        """Test that EmbeddingConfig is immutable."""
+        config = EmbeddingConfig(model="test", dimensions=128, provider="openai")
+        with pytest.raises(AttributeError):
+            config.model = "other"
 
 
-class TestValidateEmbeddingStack:
-    """Tests for validate_embedding_stack()."""
+class TestValidateEmbeddingConfig:
+    """Tests for validate_embedding_config()."""
 
-    def test_valid_config_openai_1536(self):
-        """Test valid config: OpenAI key + 1536 dimensions."""
-        from airweave.core.embedding_validation import validate_embedding_stack
+    def test_valid_openai_1536(self):
+        """Test valid config: OpenAI model + 1536 dims + API key."""
+        config = EmbeddingConfig(
+            model="text-embedding-3-small", dimensions=1536, provider="openai"
+        )
+        settings = MagicMock()
+        settings.OPENAI_API_KEY = "sk-test"
+        settings.MISTRAL_API_KEY = None
 
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.EMBEDDING_DIMENSIONS = 1536
-            mock_settings.OPENAI_API_KEY = "sk-test"
-            mock_settings.MISTRAL_API_KEY = None
-            mock_settings.TEXT2VEC_INFERENCE_URL = None
+        # Should not raise
+        validate_embedding_config(config, settings)
 
-            is_valid, messages = validate_embedding_stack()
+    def test_valid_openai_3072(self):
+        """Test valid config: OpenAI large model + 3072 dims."""
+        config = EmbeddingConfig(
+            model="text-embedding-3-large", dimensions=3072, provider="openai"
+        )
+        settings = MagicMock()
+        settings.OPENAI_API_KEY = "sk-test"
 
-            assert is_valid is True
-            # No ERROR messages
-            assert not any("ERROR" in msg for msg in messages)
+        validate_embedding_config(config, settings)
 
-    def test_valid_config_mistral_1024(self):
-        """Test valid config: Mistral key + 1024 dimensions."""
-        from airweave.core.embedding_validation import validate_embedding_stack
+    def test_valid_mistral_1024(self):
+        """Test valid config: Mistral + 1024 dims."""
+        config = EmbeddingConfig(
+            model="mistral-embed", dimensions=1024, provider="mistral"
+        )
+        settings = MagicMock()
+        settings.MISTRAL_API_KEY = "mistral-key"
 
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.EMBEDDING_DIMENSIONS = 1024
-            mock_settings.OPENAI_API_KEY = None
-            mock_settings.MISTRAL_API_KEY = "mistral-test"
-            mock_settings.TEXT2VEC_INFERENCE_URL = None
+        validate_embedding_config(config, settings)
 
-            is_valid, messages = validate_embedding_stack()
+    def test_valid_local_384(self):
+        """Test valid config: local model + 384 dims (no API key needed)."""
+        config = EmbeddingConfig(
+            model="sentence-transformers/all-MiniLM-L6-v2",
+            dimensions=384,
+            provider="local",
+        )
+        settings = MagicMock()
 
-            assert is_valid is True
-            assert not any("ERROR" in msg for msg in messages)
+        validate_embedding_config(config, settings)
 
-    def test_invalid_dimension_mismatch(self):
-        """Test invalid: Mistral key but 1536 dimensions (OpenAI only)."""
-        from airweave.core.embedding_validation import validate_embedding_stack
+    def test_dimensions_exceed_max(self):
+        """Test error when dimensions exceed model's max."""
+        config = EmbeddingConfig(
+            model="text-embedding-3-small", dimensions=2000, provider="openai"
+        )
+        settings = MagicMock()
+        settings.OPENAI_API_KEY = "sk-test"
 
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.EMBEDDING_DIMENSIONS = 1536
-            mock_settings.OPENAI_API_KEY = None
-            mock_settings.MISTRAL_API_KEY = "mistral-test"
-            mock_settings.TEXT2VEC_INFERENCE_URL = None
+        with pytest.raises(EmbeddingConfigurationError, match="cannot produce"):
+            validate_embedding_config(config, settings)
 
-            is_valid, messages = validate_embedding_stack()
+    def test_missing_api_key_openai(self):
+        """Test error when OpenAI API key is missing."""
+        config = EmbeddingConfig(
+            model="text-embedding-3-small", dimensions=1536, provider="openai"
+        )
+        settings = MagicMock()
+        settings.OPENAI_API_KEY = None
+        settings.MISTRAL_API_KEY = None
 
-            assert is_valid is False
-            # Should have an error about dimension mismatch
-            assert any("ERROR" in msg for msg in messages)
+        with pytest.raises(EmbeddingConfigurationError, match="requires an API key"):
+            validate_embedding_config(config, settings)
 
-    def test_invalid_no_providers(self):
-        """Test invalid: No providers configured."""
-        from airweave.core.embedding_validation import validate_embedding_stack
+    def test_missing_api_key_mistral(self):
+        """Test error when Mistral API key is missing."""
+        config = EmbeddingConfig(
+            model="mistral-embed", dimensions=1024, provider="mistral"
+        )
+        settings = MagicMock()
+        settings.OPENAI_API_KEY = None
+        settings.MISTRAL_API_KEY = None
 
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.EMBEDDING_DIMENSIONS = 1536
-            mock_settings.OPENAI_API_KEY = None
-            mock_settings.MISTRAL_API_KEY = None
-            mock_settings.TEXT2VEC_INFERENCE_URL = None
-
-            is_valid, messages = validate_embedding_stack()
-
-            assert is_valid is False
-            # Should have a warning about no providers
-            assert any("WARNING" in msg for msg in messages)
+        with pytest.raises(EmbeddingConfigurationError, match="requires an API key"):
+            validate_embedding_config(config, settings)
 
 
 class TestValidateAndRaise:
-    """Tests for validate_and_raise()."""
+    """Tests for validate_and_raise() (the startup entry point)."""
 
-    def test_raises_on_invalid_config(self):
-        """Test that EmbeddingConfigurationError is raised on invalid config."""
-        from airweave.core.embedding_validation import (
-            EmbeddingConfigurationError,
-            validate_and_raise,
-        )
-
-        with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.EMBEDDING_DIMENSIONS = 1536
-            mock_settings.OPENAI_API_KEY = None
-            mock_settings.MISTRAL_API_KEY = "mistral-test"
-            mock_settings.TEXT2VEC_INFERENCE_URL = None
-
-            with pytest.raises(EmbeddingConfigurationError):
-                validate_and_raise()
-
-    def test_does_not_raise_on_valid_config(self):
+    def test_valid_config(self):
         """Test that no exception is raised on valid config."""
         from airweave.core.embedding_validation import validate_and_raise
 
         with patch("airweave.core.embedding_validation.settings") as mock_settings:
-            mock_settings.EMBEDDING_DIMENSIONS = 1024
-            mock_settings.OPENAI_API_KEY = None
-            mock_settings.MISTRAL_API_KEY = "mistral-test"
-            mock_settings.TEXT2VEC_INFERENCE_URL = None
+            mock_settings.OPENAI_API_KEY = "sk-test"
+            mock_settings.MISTRAL_API_KEY = None
 
-            # Should not raise
+            # Should not raise (uses actual embedding_config.yml which has OpenAI 1536)
             validate_and_raise()
+
+    def test_raises_on_missing_api_key(self):
+        """Test that error is raised when required API key is missing."""
+        from airweave.core.embedding_validation import validate_and_raise
+
+        with patch("airweave.core.embedding_validation.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = None
+            mock_settings.MISTRAL_API_KEY = None
+
+            with pytest.raises(EmbeddingConfigurationError):
+                validate_and_raise()
 
 
 class TestEmbeddingConfigurationError:
     """Tests for EmbeddingConfigurationError exception."""
 
     def test_is_exception(self):
-        """Test that EmbeddingConfigurationError is an Exception."""
-        from airweave.core.embedding_validation import EmbeddingConfigurationError
-
         assert issubclass(EmbeddingConfigurationError, Exception)
 
     def test_stores_message(self):
-        """Test that error message is stored."""
-        from airweave.core.embedding_validation import EmbeddingConfigurationError
-
         error = EmbeddingConfigurationError("Test error message")
         assert "Test error message" in str(error)

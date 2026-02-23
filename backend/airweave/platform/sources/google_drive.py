@@ -22,8 +22,8 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
-from airweave.platform.cursors import GoogleDriveCursor
 from airweave.platform.configs.config import GoogleDriveConfig
+from airweave.platform.cursors import GoogleDriveCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.google_drive import (
@@ -1227,7 +1227,8 @@ class GoogleDriveSource(BaseSource):
                 # INCREMENTAL MODE: Use Changes API exclusively
                 if start_page_token:
                     self.logger.info(
-                        f"📊 Incremental sync mode - processing changes only (token={start_page_token[:20]}...)"
+                        f"📊 Incremental sync mode - processing changes only "
+                        f"(token={start_page_token[:20]}...)"
                     )
                     async for change_entity in self._emit_changes_since_token(
                         client, start_page_token
@@ -1359,7 +1360,8 @@ class GoogleDriveSource(BaseSource):
 
                                             except Exception as e:
                                                 self.logger.error(
-                                                    f"Failed to download file {file_entity.name}: {e}"
+                                                    f"Failed to download file "
+                                                    f"{file_entity.name}: {e}"
                                                 )
                                                 continue
 
@@ -1441,7 +1443,8 @@ class GoogleDriveSource(BaseSource):
 
                                             except Exception as e:
                                                 self.logger.error(
-                                                    f"Failed to download file {file_entity.name}: {e}"
+                                                    f"Failed to download file "
+                                                    f"{file_entity.name}: {e}"
                                                 )
                                                 continue
 

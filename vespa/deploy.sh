@@ -4,8 +4,8 @@ set -euo pipefail
 # Deploy Vespa application package to config server
 # Usage: ./deploy.sh
 #
-# Reads EMBEDDING_DIMENSIONS from .env to configure schema dimensions.
-# Default: 1536 (OpenAI text-embedding-3-small)
+# Reads embedding dimensions from the application-level config YAML.
+# Falls back to EMBEDDING_DIMENSIONS env var if YAML is not available.
 
 CONFIG_SERVER="http://localhost:19071"
 SCRIPT_DIR="$(dirname "$0")"
@@ -20,9 +20,22 @@ if [ -f "${ENV_FILE}" ]; then
     source "${ENV_FILE}"
 fi
 
-# Get embedding dimensions (default: 1536 for OpenAI)
-EMBEDDING_DIM="${EMBEDDING_DIMENSIONS:-1536}"
-echo "Using EMBEDDING_DIMENSIONS=${EMBEDDING_DIM}"
+# Read embedding dimensions from domain config YAML (single source of truth)
+EMBEDDING_CONFIG="${SCRIPT_DIR}/../backend/airweave/domains/embedders/embedding_config.yml"
+if [ -f "${EMBEDDING_CONFIG}" ]; then
+    EMBEDDING_DIM=$(python3 -c "import yaml; print(yaml.safe_load(open('${EMBEDDING_CONFIG}'))['embedding']['dimensions'])" 2>/dev/null || echo "")
+    if [ -n "${EMBEDDING_DIM}" ]; then
+        echo "Using dimensions=${EMBEDDING_DIM} from embedding_config.yml"
+    fi
+fi
+
+# Fallback to env var if YAML read failed
+if [ -z "${EMBEDDING_DIM:-}" ]; then
+    EMBEDDING_DIM="${EMBEDDING_DIMENSIONS:-1536}"
+    echo "WARNING: Could not read embedding_config.yml, falling back to EMBEDDING_DIMENSIONS=${EMBEDDING_DIM}"
+fi
+
+echo "Embedding dimensions: ${EMBEDDING_DIM}"
 
 echo ""
 echo "Waiting for config server to be ready..."

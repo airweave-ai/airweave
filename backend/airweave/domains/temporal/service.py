@@ -22,8 +22,8 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.platform.temporal.client import temporal_client
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.platform.temporal.client import temporal_client
 from airweave.platform.temporal.workflows import (
     CleanupSyncDataWorkflow,
     RunSourceConnectionWorkflow,

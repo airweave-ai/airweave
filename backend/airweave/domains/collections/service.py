@@ -21,7 +21,6 @@ from airweave.domains.collections.protocols import (
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.collection import Collection
-from airweave.platform.embedders.config import get_default_provider, get_embedding_model
 
 
 class CollectionService(CollectionServiceProtocol):
@@ -77,14 +76,7 @@ class CollectionService(CollectionServiceProtocol):
         if existing:
             raise CollectionAlreadyExistsError(collection_in.readable_id)
 
-        # Resolve embedding config
-        vector_size = self._settings.EMBEDDING_DIMENSIONS
-        embedding_provider = get_default_provider()
-        embedding_model_name = get_embedding_model(embedding_provider)
-
         collection_data = collection_in.model_dump()
-        collection_data["vector_size"] = vector_size
-        collection_data["embedding_model_name"] = embedding_model_name
 
         async with UnitOfWork(db) as uow:
             collection = await self._collection_repo.create(
