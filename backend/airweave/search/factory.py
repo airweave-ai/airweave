@@ -299,10 +299,6 @@ class SearchFactory:
             settings=settings,
         )
 
-    def _get_vector_size(self, embedder_service: "EmbedderServiceProtocol") -> int:
-        """Get the vector size from the embedder service."""
-        return embedder_service.vector_size
-
     async def _emit_skip_notices_if_needed(
         self,
         emitter: EventEmitter,

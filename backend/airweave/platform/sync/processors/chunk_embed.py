@@ -4,7 +4,7 @@ Used by: Vespa and similar vector DBs.
 
 Uses chunk-as-document model where each chunk becomes a separate document
 with its own embedding:
-- Dense embeddings (3072-dim) for neural/semantic search
+- Dense embeddings (dimensions from embedding_config.yml) for neural/semantic search
 - Sparse embeddings (FastEmbed BM25) for keyword search scoring
 
 This ensures consistent keyword search behavior with benefits of pre-trained
@@ -32,20 +32,22 @@ class ChunkEmbedProcessor(ContentProcessor):
     1. Build textual representation (text extraction from files/web)
     2. Chunk text (semantic for text, AST for code)
     3. Compute embeddings:
-       - Dense embeddings (3072-dim for neural/semantic search)
+       - Dense embeddings (dimensions from embedding_config.yml)
        - Sparse embeddings (FastEmbed BM25 for keyword search scoring)
 
     Output:
         Chunk entities with:
         - entity_id: "{original_id}__chunk_{idx}"
         - textual_representation: chunk text
-        - airweave_system_metadata.dense_embedding: 3072-dim vector
+        - airweave_system_metadata.dense_embedding: dense vector
         - airweave_system_metadata.sparse_embedding: FastEmbed BM25 sparse vector
         - airweave_system_metadata.original_entity_id: original entity_id
         - airweave_system_metadata.chunk_index: chunk position
     """
 
-    _embedding_config_validated = False
+    def __init__(self) -> None:
+        """Initialize processor with per-instance validation flag."""
+        self._embedding_config_validated = False
 
     async def process(
         self,
