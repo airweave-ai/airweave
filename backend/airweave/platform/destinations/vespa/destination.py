@@ -80,7 +80,6 @@ class VespaDestination(VectorDBDestination):
         config: Optional[dict] = None,
         collection_id: Optional[UUID] = None,
         organization_id: Optional[UUID] = None,
-        vector_size: Optional[int] = None,
         logger: Optional[ContextualLogger] = None,
         soft_fail: bool = False,
         **kwargs,
@@ -92,7 +91,6 @@ class VespaDestination(VectorDBDestination):
             config: Optional configuration (unused)
             collection_id: SQL collection UUID for multi-tenant filtering
             organization_id: Organization UUID
-            vector_size: Vector dimensions (unused - Vespa handles embeddings)
             logger: Logger instance
             soft_fail: If True, errors won't fail the sync (default False - Vespa is primary)
             **kwargs: Additional keyword arguments (unused)
@@ -124,7 +122,7 @@ class VespaDestination(VectorDBDestination):
     # Public API - WHAT (not HOW)
     # -------------------------------------------------------------------------
 
-    async def setup_collection(self, vector_size: Optional[int] = None) -> None:
+    async def setup_collection(self, **kwargs) -> None:
         """Set up collection in Vespa.
 
         Note: Vespa schema is deployed separately via vespa-deploy.

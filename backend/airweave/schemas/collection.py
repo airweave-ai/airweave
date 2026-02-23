@@ -194,28 +194,20 @@ class CollectionInDBBase(CollectionBase):
             "once the collection is created."
         ),
     )
-    vector_size: int = Field(
-        ...,
-        description=(
-            "Vector dimensions used by this collection. Determines which embedding model "
-            "is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), "
-            "1024 (mistral-embed), or 384 (MiniLM-L6-v2)."
-        ),
-    )
-    embedding_model_name: str = Field(
-        ...,
-        description=(
-            "Name of the embedding model used for this collection "
-            "(e.g., 'text-embedding-3-large', 'text-embedding-3-small', 'mistral-embed'). "
-            "This ensures queries use the same model as the indexed data."
-        ),
-    )
     sync_config: Optional[SyncConfig] = Field(
         None,
         description=(
             "Default sync configuration for all syncs in this collection. "
             "Overridable at sync and job level."
         ),
+    )
+    vector_size: Optional[int] = Field(
+        None,
+        description="Embedding dimensions used by this collection (set on first sync).",
+    )
+    embedding_model_name: Optional[str] = Field(
+        None,
+        description="Embedding model used by this collection (set on first sync).",
     )
     created_at: datetime = Field(
         ...,
@@ -270,8 +262,6 @@ class Collection(CollectionInDBBase):
                 "id": "550e8400-e29b-41d4-a716-446655440000",
                 "name": "Finance Data",
                 "readable_id": "finance-data-ab123",
-                "vector_size": 3072,
-                "embedding_model_name": "text-embedding-3-large",
                 "sync_config": None,
                 "created_at": "2024-01-15T09:30:00Z",
                 "modified_at": "2024-01-15T14:22:15Z",

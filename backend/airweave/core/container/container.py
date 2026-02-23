@@ -33,6 +33,7 @@ from airweave.domains.collections.protocols import (
 )
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
+from airweave.domains.embedders.protocols import EmbedderServiceProtocol
 from airweave.domains.oauth.protocols import OAuth1ServiceProtocol, OAuth2ServiceProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
@@ -141,6 +142,9 @@ class Container:
     billing_webhook: BillingWebhookProtocol
 
     payment_gateway: PaymentGatewayProtocol
+
+    # Embedder service — deployment-level embedding config
+    embedder_service: EmbedderServiceProtocol
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured

@@ -68,6 +68,16 @@ class CollectionRepositoryProtocol(Protocol):
         """Delete a collection by ID."""
         ...
 
+    async def stamp_embedding_config(
+        self,
+        db: AsyncSession,
+        collection_id: UUID,
+        vector_size: int,
+        model_name: str,
+    ) -> None:
+        """Stamp embedding config on a collection (first sync only)."""
+        ...
+
 
 class CollectionServiceProtocol(Protocol):
     """Service for collection lifecycle operations."""

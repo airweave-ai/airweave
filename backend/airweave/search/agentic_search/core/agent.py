@@ -18,6 +18,7 @@ from airweave.analytics.agentic_search_analytics import (
     track_agentic_search_error,
 )
 from airweave.api.context import ApiContext
+from airweave.core.protocols.metrics import AgenticSearchMetrics
 from airweave.search.agentic_search.builders import (
     AgenticSearchCollectionMetadataBuilder,
     AgenticSearchCompletePlanBuilder,
@@ -54,8 +55,6 @@ from airweave.search.agentic_search.schemas.events import (
 from airweave.search.agentic_search.schemas.request import AgenticSearchMode
 from airweave.search.agentic_search.schemas.search_result import AgenticSearchResults
 from airweave.search.agentic_search.services import AgenticSearchServices
-
-from airweave.core.protocols.metrics import AgenticSearchMetrics
 
 # Maps timing-label suffixes to canonical step names used in metrics.
 _STEP_LABEL_MAP: dict[str, str] = {

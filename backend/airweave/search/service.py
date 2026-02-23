@@ -15,13 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
+from airweave.domains.embedders.protocols import EmbedderServiceProtocol
 from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.search.factory import factory
 from airweave.search.helpers import search_helpers
 from airweave.search.orchestrator import orchestrator
 
 # Type alias for destination
-SearchDestination = Literal["qdrant", "vespa"]
+SearchDestination = Literal["vespa"]
 
 
 class SearchService:
@@ -35,6 +36,7 @@ class SearchService:
         stream: bool,
         db: AsyncSession,
         ctx: ApiContext,
+        embedder_service: EmbedderServiceProtocol,
         destination_override: SearchDestination | None = None,
     ) -> SearchResponse:
         """Search a collection.
@@ -46,8 +48,9 @@ class SearchService:
             stream: Whether to enable SSE streaming
             db: Database session
             ctx: API context
+            embedder_service: Embedder service for generating query embeddings
             destination_override: If provided, override the default destination
-                ('qdrant' or 'vespa'). If None, uses SyncConfig default.
+                ('vespa'). If None, uses SyncConfig default.
 
         Returns:
             SearchResponse with results
@@ -69,6 +72,7 @@ class SearchService:
             stream,
             ctx,
             db,
+            embedder_service=embedder_service,
             destination_override=destination_override,
         )
 
@@ -132,13 +136,13 @@ class SearchService:
         search_request: SearchRequest,
         db: AsyncSession,
         ctx: ApiContext,
-        destination: SearchDestination = "qdrant",
+        embedder_service: EmbedderServiceProtocol,
+        destination: SearchDestination = "vespa",
     ) -> SearchResponse:
         """Admin search with destination selection (no ACL filtering by logged-in user).
 
         Allows searching any collection regardless of organization with selectable
-        destination (Qdrant or Vespa). This is primarily for migration testing
-        and admin support operations.
+        destination (Vespa). This is primarily for admin support operations.
 
         Args:
             request_id: Unique request identifier
@@ -146,7 +150,8 @@ class SearchService:
             search_request: Search parameters
             db: Database session
             ctx: API context
-            destination: Search destination ('qdrant' or 'vespa')
+            embedder_service: Embedder service for generating query embeddings
+            destination: Search destination ('vespa')
 
         Returns:
             SearchResponse with results
@@ -178,6 +183,7 @@ class SearchService:
             stream=False,
             ctx=ctx,
             db=db,
+            embedder_service=embedder_service,
             destination_override=destination,
             skip_organization_check=True,
         )
@@ -200,6 +206,7 @@ class SearchService:
         search_request: SearchRequest,
         db: AsyncSession,
         ctx: ApiContext,
+        embedder_service: EmbedderServiceProtocol,
         user_principal: str,
         destination: SearchDestination = "vespa",
     ) -> SearchResponse:
@@ -216,8 +223,9 @@ class SearchService:
             search_request: Search parameters
             db: Database session
             ctx: API context
+            embedder_service: Embedder service for generating query embeddings
             user_principal: Username to search as (e.g., "john" or "john@example.com")
-            destination: Search destination ('qdrant' or 'vespa')
+            destination: Search destination ('vespa')
 
         Returns:
             SearchResponse with results filtered by user's access permissions
@@ -272,6 +280,7 @@ class SearchService:
             stream=False,
             ctx=ctx,
             db=db,
+            embedder_service=embedder_service,
             destination_override=destination,
             user_principal_override=user_principal_for_factory,
             skip_organization_check=True,

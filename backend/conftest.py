@@ -380,6 +380,14 @@ def fake_collection_service():
 
 
 @pytest.fixture
+def fake_embedder_service():
+    """Fake EmbedderService."""
+    from airweave.domains.embedders.fakes.service import FakeEmbedderService
+
+    return FakeEmbedderService()
+
+
+@pytest.fixture
 def test_container(
     fake_health_service,
     fake_event_bus,
@@ -414,6 +422,7 @@ def test_container(
     fake_billing_webhook,
     fake_payment_gateway,
     fake_collection_service,
+    fake_embedder_service,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -459,4 +468,5 @@ def test_container(
         billing_service=fake_billing_service,
         billing_webhook=fake_billing_webhook,
         payment_gateway=fake_payment_gateway,
+        embedder_service=fake_embedder_service,
     )

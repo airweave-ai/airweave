@@ -40,6 +40,14 @@ def search_request():
 
 
 @pytest.fixture
+def mock_embedder_service():
+    """Mock embedder service."""
+    mock = MagicMock()
+    mock.vector_size = 3072
+    return mock
+
+
+@pytest.fixture
 def search_response():
     """Sample search response."""
     return SearchResponse(
@@ -60,7 +68,7 @@ class TestAdminSearchCollection:
     """Test admin_search_collection endpoint."""
 
     async def test_admin_search_requires_admin_permission(
-        self, mock_ctx, mock_db, search_request
+        self, mock_ctx, mock_db, search_request, mock_embedder_service
     ):
         """Test that admin permission is required."""
         from airweave.api.v1.endpoints.admin import AdminSearchDestination
@@ -75,13 +83,15 @@ class TestAdminSearchCollection:
                     search_request=search_request,
                     db=mock_db,
                     ctx=mock_ctx,
-                    destination=AdminSearchDestination.QDRANT,
+                    destination=AdminSearchDestination.VESPA,
+                    embedder_service=mock_embedder_service,
                 )
 
             assert "Admin permission required" in str(exc_info.value)
 
     async def test_admin_search_returns_results(
-        self, mock_ctx, mock_db, search_request, search_response, mock_service
+        self, mock_ctx, mock_db, search_request, search_response, mock_service,
+        mock_embedder_service
     ):
         """Test that admin search returns results."""
         from airweave.api.v1.endpoints.admin import AdminSearchDestination
@@ -97,7 +107,8 @@ class TestAdminSearchCollection:
                 search_request=search_request,
                 db=mock_db,
                 ctx=mock_ctx,
-                destination=AdminSearchDestination.QDRANT,
+                destination=AdminSearchDestination.VESPA,
+                embedder_service=mock_embedder_service,
             )
 
             assert isinstance(result, SearchResponse)
@@ -111,7 +122,8 @@ class TestAdminSearchCollection:
                 search_request=search_request,
                 db=mock_db,
                 ctx=mock_ctx,
-                destination="qdrant",
+                embedder_service=mock_embedder_service,
+                destination="vespa",
             )
 
 
@@ -120,7 +132,7 @@ class TestAdminSearchCollectionAsUser:
     """Test admin_search_collection_as_user endpoint."""
 
     async def test_admin_search_as_user_requires_admin_permission(
-        self, mock_ctx, mock_db, search_request
+        self, mock_ctx, mock_db, search_request, mock_embedder_service
     ):
         """Test that admin permission is required."""
         with patch("airweave.api.v1.endpoints.admin._require_admin_permission") as mock_require:
@@ -133,12 +145,14 @@ class TestAdminSearchCollectionAsUser:
                     user_principal="john@acme.com",
                     db=mock_db,
                     ctx=mock_ctx,
+                    embedder_service=mock_embedder_service,
                 )
 
             assert "Admin permission required" in str(exc_info.value)
 
     async def test_admin_search_as_user_filters_by_user_principals(
-        self, mock_ctx, mock_db, search_request, search_response, mock_service
+        self, mock_ctx, mock_db, search_request, search_response, mock_service,
+        mock_embedder_service
     ):
         """Test that search is filtered by user's principals."""
         from airweave.api.v1.endpoints.admin import AdminSearchDestination
@@ -154,6 +168,7 @@ class TestAdminSearchCollectionAsUser:
                 db=mock_db,
                 ctx=mock_ctx,
                 destination=AdminSearchDestination.VESPA,
+                embedder_service=mock_embedder_service,
             )
 
             assert isinstance(result, SearchResponse)
@@ -167,7 +182,7 @@ class TestAdminSearchCollectionAsUser:
             assert call_kwargs["destination"] == "vespa"
 
     async def test_admin_search_as_user_returns_filtered_results(
-        self, mock_ctx, mock_db, search_request, mock_service
+        self, mock_ctx, mock_db, search_request, mock_service, mock_embedder_service
     ):
         """Test that results are filtered by user's access."""
         from airweave.api.v1.endpoints.admin import AdminSearchDestination
@@ -194,13 +209,14 @@ class TestAdminSearchCollectionAsUser:
                 db=mock_db,
                 ctx=mock_ctx,
                 destination=AdminSearchDestination.VESPA,
+                embedder_service=mock_embedder_service,
             )
 
             assert len(result.results) == 1
             assert result.results[0]["entity_id"] == "1"
 
     async def test_admin_search_as_user_handles_nonexistent_collection(
-        self, mock_ctx, mock_db, search_request, mock_service
+        self, mock_ctx, mock_db, search_request, mock_service, mock_embedder_service
     ):
         """Test handling of non-existent collection."""
         from airweave.api.v1.endpoints.admin import AdminSearchDestination
@@ -221,12 +237,14 @@ class TestAdminSearchCollectionAsUser:
                     db=mock_db,
                     ctx=mock_ctx,
                     destination=AdminSearchDestination.VESPA,
+                    embedder_service=mock_embedder_service,
                 )
 
             assert "Collection not found" in str(exc_info.value)
 
     async def test_admin_search_as_user_handles_collection_without_ac(
-        self, mock_ctx, mock_db, search_request, search_response, mock_service
+        self, mock_ctx, mock_db, search_request, search_response, mock_service,
+        mock_embedder_service
     ):
         """Test searching collection without AC sources returns all results."""
         from airweave.api.v1.endpoints.admin import AdminSearchDestination
@@ -242,6 +260,7 @@ class TestAdminSearchCollectionAsUser:
                 db=mock_db,
                 ctx=mock_ctx,
                 destination=AdminSearchDestination.VESPA,
+                embedder_service=mock_embedder_service,
             )
 
             assert isinstance(result, SearchResponse)
@@ -254,7 +273,8 @@ class TestAdminSearchDestinationParameter:
     """Test destination parameter handling."""
 
     async def test_admin_search_respects_destination_parameter(
-        self, mock_ctx, mock_db, search_request, search_response, mock_service
+        self, mock_ctx, mock_db, search_request, search_response, mock_service,
+        mock_embedder_service
     ):
         """Test that destination parameter is passed to service."""
         with patch("airweave.api.v1.endpoints.admin._require_admin_permission"):
@@ -265,17 +285,19 @@ class TestAdminSearchDestinationParameter:
             await admin_search_collection(
                 readable_id="test-collection",
                 search_request=search_request,
-                destination=AdminSearchDestination.QDRANT,
+                destination=AdminSearchDestination.VESPA,
                 db=mock_db,
                 ctx=mock_ctx,
+                embedder_service=mock_embedder_service,
             )
 
-            # Verify qdrant destination was used
+            # Verify vespa destination was used
             call_kwargs = mock_service.search_admin.call_args.kwargs
-            assert call_kwargs["destination"] == "qdrant"
+            assert call_kwargs["destination"] == "vespa"
 
     async def test_admin_search_as_user_respects_destination_parameter(
-        self, mock_ctx, mock_db, search_request, search_response, mock_service
+        self, mock_ctx, mock_db, search_request, search_response, mock_service,
+        mock_embedder_service
     ):
         """Test that destination parameter is passed for as_user search."""
         with patch("airweave.api.v1.endpoints.admin._require_admin_permission"):
@@ -287,12 +309,12 @@ class TestAdminSearchDestinationParameter:
                 readable_id="test-collection",
                 search_request=search_request,
                 user_principal="john@acme.com",
-                destination=AdminSearchDestination.QDRANT,
+                destination=AdminSearchDestination.VESPA,
                 db=mock_db,
                 ctx=mock_ctx,
+                embedder_service=mock_embedder_service,
             )
 
-            # Verify qdrant destination was used
+            # Verify vespa destination was used
             call_kwargs = mock_service.search_as_user.call_args.kwargs
-            assert call_kwargs["destination"] == "qdrant"
-
+            assert call_kwargs["destination"] == "vespa"

@@ -10,7 +10,7 @@ Usage:
 import asyncio
 import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from uuid import UUID
 
 import asyncpg
@@ -55,7 +55,7 @@ async def get_non_orphaned_syncs(conn) -> List[Dict]:
     - collection_readable_id
     """
     query = """
-        SELECT 
+        SELECT
             s.id AS sync_id,
             s.organization_id,
             o.name AS organization_name,
@@ -102,8 +102,8 @@ async def get_postgres_entity_count(conn, sync_id: UUID) -> int:
 async def get_arf_entity_count(sync_id: UUID) -> int:
     """Get entity count from ARF storage."""
     try:
-        from airweave.platform.sync.arf.service import ArfService
         from airweave.platform.storage import storage_backend
+        from airweave.platform.sync.arf.service import ArfService
 
         arf_service = ArfService(storage=storage_backend)
         count = await arf_service.get_entity_count(str(sync_id))
@@ -258,7 +258,8 @@ async def main():
             if bucket_syncs:
                 total_entities = sum(s["pg_entity_count"] for s in bucket_syncs)
                 print(
-                    f"\n{label}: {len(bucket_syncs)} syncs, {format_number(total_entities)} total entities"
+                    f"\n{label}: {len(bucket_syncs)} syncs, "
+                    f"{format_number(total_entities)} total entities"
                 )
                 print("-" * 80)
                 for sync in bucket_syncs:

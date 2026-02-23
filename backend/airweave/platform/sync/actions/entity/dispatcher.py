@@ -21,7 +21,7 @@ class EntityActionDispatcher:
     """Dispatches entity actions to all registered handlers concurrently.
 
     Implements all-or-nothing semantics:
-    - Destination handlers (Qdrant, RawData) run concurrently
+    - Destination handlers (Vespa, RawData) run concurrently
     - If ANY destination handler fails, SyncFailureError bubbles up
     - PostgreSQL metadata handler runs ONLY AFTER all destination handlers succeed
     - This ensures consistency between vector stores and metadata
@@ -63,7 +63,7 @@ class EntityActionDispatcher:
         """Dispatch action batch to all handlers.
 
         Execution order:
-        1. All destination handlers concurrently (Qdrant, RawData, etc.)
+        1. All destination handlers concurrently (Vespa, RawData, etc.)
         2. If all succeed → PostgreSQL metadata handler
         3. If any fails → SyncFailureError propagates
 
@@ -104,7 +104,7 @@ class EntityActionDispatcher:
         encountered during this sync run.
 
         Each handler independently cleans up its own storage:
-        - DestinationHandler → vector stores (Qdrant, Vespa)
+        - DestinationHandler → vector stores (Vespa)
         - ArfHandler → ARF storage
         - EntityPostgresHandler → postgres DB
 

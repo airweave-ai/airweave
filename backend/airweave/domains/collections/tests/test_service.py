@@ -57,6 +57,8 @@ def _collection(
     col.name = name
     col.readable_id = readable_id
     col.organization_id = ORG_ID
+    col.vector_size = None
+    col.embedding_model_name = None
     return col
 
 
@@ -73,7 +75,6 @@ class _FakeEventBus:
 def _fake_settings(**overrides) -> MagicMock:
     """Build a fake Settings with sensible defaults."""
     s = MagicMock(spec=Settings)
-    s.EMBEDDING_DIMENSIONS = overrides.get("EMBEDDING_DIMENSIONS", 1536)
     return s
 
 
@@ -197,7 +198,7 @@ async def test_create_happy_path():
     svc = _build_service(
         collection_repo=repo,
         event_bus=event_bus,
-        settings=_fake_settings(EMBEDDING_DIMENSIONS=3072),
+        settings=_fake_settings(),
     )
 
     collection_in = schemas.CollectionCreate(name="New Collection", readable_id="new-collection")
@@ -227,24 +228,24 @@ async def test_create_duplicate_raises():
 
 
 @pytest.mark.asyncio
-async def test_create_sets_embedding_config():
-    """create() sets vector_size and embedding_model_name from config."""
+async def test_create_does_not_set_embedding_config():
+    """create() no longer sets embedding config — it's deployment-level."""
     repo = FakeCollectionRepository()
     svc = _build_service(
         collection_repo=repo,
-        settings=_fake_settings(EMBEDDING_DIMENSIONS=1536),
+        settings=_fake_settings(),
     )
 
     collection_in = schemas.CollectionCreate(name="Embedding Test", readable_id="embed-test")
 
     await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
 
-    # Verify repo.create was called with embedding fields
+    # Verify repo.create was called WITHOUT embedding fields
     create_calls = [c for c in repo._calls if c[0] == "create"]
     assert len(create_calls) == 1
     obj_in = create_calls[0][2]  # obj_in dict
-    assert obj_in["vector_size"] == 1536
-    assert "embedding_model_name" in obj_in
+    assert "vector_size" not in obj_in
+    assert "embedding_model_name" not in obj_in
 
 
 # ---------------------------------------------------------------------------

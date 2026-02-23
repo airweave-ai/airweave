@@ -4,7 +4,7 @@
 # - original_entity_id: tracks parent entity
 # - Single {{EMBEDDING_DIM}}-dim bfloat16 embedding for both matching and ranking
 #
-# EMBEDDING DIMENSIONS: Controlled by EMBEDDING_DIMENSIONS in .env
+# EMBEDDING DIMENSIONS: Controlled by domains/embedders/embedding_config.yml
 # This schema uses {{EMBEDDING_DIM}} dimensions - must match your embedding provider:
 #   - 1024 = Mistral (mistral-embed)
 #   - 1536 = OpenAI (text-embedding-3-small)

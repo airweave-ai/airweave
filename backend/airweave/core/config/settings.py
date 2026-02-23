@@ -44,7 +44,7 @@ class Settings(BaseSettings):
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
-        EMBEDDING_DIMENSIONS (int): Embedding dimensions for the stack (provider, Vespa).
+        # Embedding config lives in domains/embedders/embedding_config.yml
         FIRECRAWL_API_KEY (Optional[str]): The FireCrawl API key.
         TEMPORAL_HOST (str): The host of the Temporal server.
         TEMPORAL_PORT (int): The Temporal server port.
@@ -120,10 +120,8 @@ class Settings(BaseSettings):
 
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
-    # Embedding configuration (source of truth for entire stack)
-    # Must match: provider model dimensions and Vespa schema
-    # Common values: 384 (local), 1024 (Mistral), 1536 (OpenAI small), 3072 (OpenAI large)
-    EMBEDDING_DIMENSIONS: int = 1536
+    # Embedding configuration lives in domains/embedders/embedding_config.yml
+    # (application-level, not infra). No EMBEDDING_DIMENSIONS env var needed.
 
     # Vespa configuration
     VESPA_URL: str = "http://localhost"

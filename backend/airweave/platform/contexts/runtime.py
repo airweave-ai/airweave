@@ -8,7 +8,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from airweave.core.guard_rail_service import GuardRailService
+    from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+    from airweave.domains.embedders.protocols import EmbedderServiceProtocol
     from airweave.platform.destinations._base import BaseDestination
     from airweave.platform.sources._base import BaseSource
     from airweave.platform.sync.cursor import SyncCursor
@@ -30,3 +34,6 @@ class SyncRuntime:
     entity_tracker: "EntityTracker" = None
     state_publisher: "SyncStatePublisher" = None
     guard_rail: "GuardRailService" = None
+    embedder_service: "EmbedderServiceProtocol" = None
+    collection_repo: "CollectionRepositoryProtocol" = None
+    db_session: "AsyncSession" = None

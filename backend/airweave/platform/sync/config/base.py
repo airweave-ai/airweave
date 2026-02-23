@@ -120,7 +120,7 @@ class SyncConfig(BaseSettings):
 
     @classmethod
     def vespa_only(cls) -> "SyncConfig":
-        """Write to Vespa only (default since Qdrant deprecation)."""
+        """Write to Vespa only (default)."""
         return cls(destinations=DestinationConfig(skip_vespa=False))
 
     @classmethod

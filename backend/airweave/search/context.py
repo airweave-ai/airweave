@@ -31,7 +31,6 @@ class SearchContext(BaseModel):
     collection_id: UUID = Field()
     readable_collection_id: str = Field()
     stream: bool = Field()
-    vector_size: int = Field()
     # Pagination config available even if Retrieval operation is disabled
     offset: int = Field()
     limit: int = Field()

@@ -233,7 +233,6 @@ class DestinationsContextBuilder:
             config=None,
             collection_id=collection.id,
             organization_id=collection.organization_id,
-            vector_size=None,  # Vespa handles embeddings internally
             logger=logger,
         )
 

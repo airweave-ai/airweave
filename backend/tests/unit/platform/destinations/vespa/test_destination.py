@@ -46,15 +46,15 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient') as MockClient, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer') as MockTransformer, \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder') as MockBuilder:
-            
+
             mock_client_instance = AsyncMock()
             MockClient.connect = AsyncMock(return_value=mock_client_instance)
-            
+
             dest = await VespaDestination.create(
                 collection_id=collection_id,
                 organization_id=organization_id
             )
-            
+
             assert dest._client == mock_client_instance
             assert dest.collection_id == collection_id
             assert dest.organization_id == organization_id
@@ -68,12 +68,12 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock), \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             dest = await VespaDestination.create(
                 collection_id=collection_id,
                 soft_fail=True
             )
-            
+
             assert dest.soft_fail is True
 
     @pytest.mark.asyncio
@@ -82,11 +82,11 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock), \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             # Should not raise or do anything
-            await dest.setup_collection(vector_size=3072)
+            await dest.setup_collection()
 
     @pytest.mark.asyncio
     async def test_bulk_insert_empty_list(self, collection_id):
@@ -94,9 +94,9 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock), \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             # Should return early without error
             await dest.bulk_insert([])
 
@@ -106,24 +106,24 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer') as MockTransformer, \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             # Setup mocks
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             mock_transformer = MockTransformer.return_value
             mock_transformer.transform_batch.return_value = {
                 "base_entity": [VespaDocument(schema="base_entity", id="test-1", fields={})]
             }
-            
+
             feed_result = FeedResult(success_count=1, failed_docs=[])
             mock_client.feed_documents = AsyncMock(return_value=feed_result)
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             # Execute
             await dest.bulk_insert([mock_entity])
-            
+
             # Verify
             mock_transformer.transform_batch.assert_called_once_with([mock_entity])
             mock_client.feed_documents.assert_called_once()
@@ -133,10 +133,10 @@ class TestVespaDestination:
         """Test bulk_insert() raises if client not initialized."""
         dest = VespaDestination()
         dest._client = None
-        
+
         with pytest.raises(RuntimeError) as exc_info:
             await dest.bulk_insert([mock_entity])
-        
+
         assert "not initialized" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -145,27 +145,27 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer') as MockTransformer, \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             mock_transformer = MockTransformer.return_value
             mock_transformer.transform_batch.return_value = {
                 "base_entity": [VespaDocument(schema="base_entity", id="test-1", fields={})]
             }
-            
+
             # Simulate feed failure
             feed_result = FeedResult(
                 success_count=0,
                 failed_docs=[("doc-1", 500, {"error": "Internal error"})]
             )
             mock_client.feed_documents = AsyncMock(return_value=feed_result)
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             with pytest.raises(RuntimeError) as exc_info:
                 await dest.bulk_insert([mock_entity])
-            
+
             assert "Vespa feed failed" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -174,18 +174,18 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer') as MockTransformer, \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             mock_transformer = MockTransformer.return_value
             mock_transformer.transform_batch.return_value = {}  # No documents
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             # Should return without feeding
             await dest.bulk_insert([mock_entity])
-            
+
             mock_client.feed_documents.assert_not_called()
 
     @pytest.mark.asyncio
@@ -194,15 +194,15 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
             mock_client.delete_by_sync_id = AsyncMock()
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             await dest.delete_by_sync_id(sync_id)
-            
+
             mock_client.delete_by_sync_id.assert_called_once_with(sync_id, collection_id)
 
     @pytest.mark.asyncio
@@ -210,10 +210,10 @@ class TestVespaDestination:
         """Test delete_by_sync_id() raises if client not initialized."""
         dest = VespaDestination()
         dest._client = None
-        
+
         with pytest.raises(RuntimeError) as exc_info:
             await dest.delete_by_sync_id(sync_id)
-        
+
         assert "not initialized" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -222,15 +222,15 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
             mock_client.delete_by_collection_id = AsyncMock()
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             await dest.delete_by_collection_id(collection_id)
-            
+
             mock_client.delete_by_collection_id.assert_called_once_with(collection_id)
 
     @pytest.mark.asyncio
@@ -238,7 +238,7 @@ class TestVespaDestination:
         """Test delete_by_collection_id() raises if client not initialized."""
         dest = VespaDestination()
         dest._client = None
-        
+
         with pytest.raises(RuntimeError):
             await dest.delete_by_collection_id(collection_id)
 
@@ -248,16 +248,16 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
             mock_client.delete_by_parent_ids = AsyncMock()
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             parent_ids = ["parent-1", "parent-2"]
             await dest.bulk_delete_by_parent_ids(parent_ids, sync_id)
-            
+
             mock_client.delete_by_parent_ids.assert_called_once_with(parent_ids, collection_id)
 
     @pytest.mark.asyncio
@@ -266,15 +266,15 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             # Should return without calling client
             await dest.bulk_delete_by_parent_ids([], sync_id)
-            
+
             mock_client.delete_by_parent_ids.assert_not_called()
 
     @pytest.mark.asyncio
@@ -283,21 +283,21 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder') as MockBuilder:
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             mock_builder = MockBuilder.return_value
             mock_builder.build_yql.return_value = "select * from base_entity"
             mock_builder.build_params.return_value = {"hits": 10}
-            
+
             mock_response = MagicMock()
             mock_response.hits = []
             mock_client.execute_query = AsyncMock(return_value=mock_response)
             mock_client.convert_hits_to_results = MagicMock(return_value=[])
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             results = await dest.search(
                 queries=["test query"],
                 airweave_collection_id=collection_id,
@@ -307,7 +307,7 @@ class TestVespaDestination:
                 sparse_embeddings=[MagicMock()],
                 retrieval_strategy="hybrid"
             )
-            
+
             assert isinstance(results, list)
             mock_builder.build_yql.assert_called_once()
             mock_builder.build_params.assert_called_once()
@@ -318,7 +318,7 @@ class TestVespaDestination:
         """Test search() raises if client not initialized."""
         dest = VespaDestination()
         dest._client = None
-        
+
         with pytest.raises(RuntimeError):
             await dest.search(
                 queries=["test"],
@@ -333,12 +333,12 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             with pytest.raises(ValueError) as exc_info:
                 await dest.search(
                     queries=["test query"],
@@ -348,7 +348,7 @@ class TestVespaDestination:
                     retrieval_strategy="neural",
                     dense_embeddings=None  # Missing!
                 )
-            
+
             assert "dense embeddings" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
@@ -357,12 +357,12 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             with pytest.raises(ValueError) as exc_info:
                 await dest.search(
                     queries=["test query"],
@@ -372,7 +372,7 @@ class TestVespaDestination:
                     retrieval_strategy="keyword",
                     sparse_embeddings=None  # Missing!
                 )
-            
+
             assert "sparse embeddings" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
@@ -381,12 +381,12 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             with pytest.raises(ValueError) as exc_info:
                 await dest.search(
                     queries=["query1", "query2"],  # 2 queries
@@ -397,7 +397,7 @@ class TestVespaDestination:
                     dense_embeddings=[[0.1] * 3072],  # Only 1 embedding!
                     sparse_embeddings=[MagicMock(), MagicMock()]
                 )
-            
+
             assert "does not match" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
@@ -406,23 +406,23 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder') as MockBuilder:
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             mock_builder = MockBuilder.return_value
             mock_builder.build_yql.return_value = "select * from base_entity where ..."
             mock_builder.build_params.return_value = {"hits": 10}
-            
+
             mock_response = MagicMock()
             mock_response.hits = []
             mock_client.execute_query = AsyncMock(return_value=mock_response)
             mock_client.convert_hits_to_results = MagicMock(return_value=[])
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             filter_dict = {"must": [{"key": "name", "match": {"value": "test"}}]}
-            
+
             await dest.search(
                 queries=["test query"],
                 airweave_collection_id=collection_id,
@@ -433,7 +433,7 @@ class TestVespaDestination:
                 sparse_embeddings=[MagicMock()],
                 retrieval_strategy="hybrid"
             )
-            
+
             # Verify filter was passed
             call_args = mock_builder.build_yql.call_args
             assert call_args[0][2] == filter_dict
@@ -444,21 +444,21 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder') as MockBuilder:
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
-            
+
             mock_builder = MockBuilder.return_value
             mock_builder.build_yql.return_value = "select * from base_entity"
             mock_builder.build_params.return_value = {"hits": 10}
-            
+
             mock_response = MagicMock()
             mock_response.hits = []
             mock_client.execute_query = AsyncMock(return_value=mock_response)
             mock_client.convert_hits_to_results = MagicMock(return_value=[])
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             queries = ["query1", "query2", "query3"]
             await dest.search(
                 queries=queries,
@@ -469,7 +469,7 @@ class TestVespaDestination:
                 sparse_embeddings=[MagicMock()] * 3,
                 retrieval_strategy="hybrid"
             )
-            
+
             # Verify all queries were passed
             call_args = mock_builder.build_yql.call_args
             assert call_args[0][0] == queries
@@ -480,25 +480,25 @@ class TestVespaDestination:
             mock_builder = MockBuilder.return_value
             mock_builder.filter_translator = MagicMock()
             mock_builder.filter_translator.translate.return_value = "name == 'test'"
-            
+
             dest = VespaDestination()
             dest._query_builder = mock_builder
-            
+
             filter_dict = {"must": [{"key": "name", "match": {"value": "test"}}]}
             result = dest.translate_filter(filter_dict)
-            
+
             assert result == "name == 'test'"
             mock_builder.filter_translator.translate.assert_called_once_with(filter_dict)
 
     def test_translate_temporal_returns_none(self, collection_id):
         """Test translate_temporal() returns None (not implemented)."""
         dest = VespaDestination()
-        
+
         from airweave.schemas.search import AirweaveTemporalConfig
         config = MagicMock(spec=AirweaveTemporalConfig)
-        
+
         result = dest.translate_temporal(config)
-        
+
         assert result is None
 
     @pytest.mark.asyncio
@@ -507,11 +507,11 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock), \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             names = await dest.get_vector_config_names()
-            
+
             assert names == ["dense_embedding"]
 
     @pytest.mark.asyncio
@@ -520,15 +520,15 @@ class TestVespaDestination:
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
              patch('airweave.platform.destinations.vespa.destination.EntityTransformer'), \
              patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
-            
+
             mock_client = AsyncMock()
             mock_connect.return_value = mock_client
             mock_client.close = AsyncMock()
-            
+
             dest = await VespaDestination.create(collection_id=collection_id)
-            
+
             await dest.close_connection()
-            
+
             mock_client.close.assert_called_once()
             assert dest._client is None
 
@@ -537,7 +537,6 @@ class TestVespaDestination:
         """Test close_connection() when client is None."""
         dest = VespaDestination()
         dest._client = None
-        
+
         # Should not raise
         await dest.close_connection()
-

@@ -12,8 +12,18 @@ BUILD_DIR="/tmp/vespa-build"
 MAX_RETRIES=60
 RETRY_INTERVAL=5
 
-# Get embedding dimensions from environment (default: 1536 for OpenAI)
-EMBEDDING_DIM="${EMBEDDING_DIMENSIONS:-1536}"
+# Read embedding dimensions from domain config YAML (single source of truth)
+# In Docker, the config is mounted at /config/embedding_config.yml
+EMBEDDING_CONFIG="/config/embedding_config.yml"
+if [ -f "${EMBEDDING_CONFIG}" ]; then
+    # Try python3 first, then python
+    EMBEDDING_DIM=$(python3 -c "import yaml; print(yaml.safe_load(open('${EMBEDDING_CONFIG}'))['embedding']['dimensions'])" 2>/dev/null || \
+                    python -c "import yaml; print(yaml.safe_load(open('${EMBEDDING_CONFIG}'))['embedding']['dimensions'])" 2>/dev/null || echo "")
+fi
+# Fallback to env var
+if [ -z "${EMBEDDING_DIM:-}" ]; then
+    EMBEDDING_DIM="${EMBEDDING_DIMENSIONS:-1536}"
+fi
 
 echo "=== Vespa Init Container ==="
 echo "Config server: ${CONFIG_SERVER}"

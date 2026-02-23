@@ -21,11 +21,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.pubsub import core_pubsub
 from airweave.core.shared_models import ActionType
 from airweave.db.session import AsyncSessionLocal
+from airweave.domains.embedders.protocols import EmbedderServiceProtocol
 from airweave.schemas.errors import (
     NotFoundErrorResponse,
     RateLimitErrorResponse,
@@ -105,6 +107,7 @@ async def search_get_legacy(
     db: AsyncSession = Depends(deps.get_db),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
     ctx: ApiContext = Depends(deps.get_context),
+    embedder_service: EmbedderServiceProtocol = Inject(EmbedderServiceProtocol),
 ) -> LegacySearchResponse:
     """Legacy GET search endpoint for backwards compatibility."""
     await guard_rail.is_allowed(ActionType.QUERIES)
@@ -138,6 +141,7 @@ async def search_get_legacy(
         stream=False,
         db=db,
         ctx=ctx,
+        embedder_service=embedder_service,
     )
 
     # Convert back to legacy format
@@ -187,6 +191,7 @@ async def search(
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    embedder_service: EmbedderServiceProtocol = Inject(EmbedderServiceProtocol),
 ) -> Union[SearchResponse, LegacySearchResponse]:
     """Search your collection with AI-powered semantic search."""
     await guard_rail.is_allowed(ActionType.QUERIES)
@@ -226,6 +231,7 @@ async def search(
         stream=False,
         db=db,
         ctx=ctx,
+        embedder_service=embedder_service,
         destination_override="vespa",
     )
 
@@ -248,6 +254,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    embedder_service: EmbedderServiceProtocol = Inject(EmbedderServiceProtocol),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming endpoint for advanced search.
 
@@ -291,6 +298,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                     stream=True,
                     db=search_db,
                     ctx=ctx,
+                    embedder_service=embedder_service,
                     destination_override="vespa",
                 )
         except ValueError as e:

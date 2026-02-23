@@ -11,7 +11,7 @@ search_defaults:
 
 # Model specifications per provider
 # These define what each provider's models support.
-# EMBEDDING_DIMENSIONS in .env defines what the user wants to use.
+# Embedding dimensions are configured in domains/embedders/embedding_config.yml.
 # At startup, we validate that the selected provider supports the configured dimensions.
 provider_models:
   openai:
@@ -153,20 +153,8 @@ operation_preferences:
         embedding: null
         rerank: null
 
-  embed_query:
-    order:
-      - provider: openai
-        llm: null
-        embedding: embedding
-        rerank: null
-      - provider: mistral
-        llm: null
-        embedding: embedding
-        rerank: null
-      - provider: local
-        llm: null
-        embedding: embedding
-        rerank: null
+  # NOTE: embed_query is handled by domains/embedders/ (EmbedderService),
+  # not by provider-based operation preferences. No entry needed here.
 
   reranking:
     order:

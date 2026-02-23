@@ -1,21 +1,21 @@
-"""Query embedding schemas for agentic search."""
+"""Query embedding schemas for agentic search.
+
+These are thin aliases importing from the embedder domain schemas.
+"""
 
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from airweave.domains.embedders.schemas import DenseEmbedding as AgenticSearchDenseEmbedding
+from airweave.domains.embedders.schemas import SparseEmbedding as AgenticSearchSparseEmbedding
 
-class AgenticSearchSparseEmbedding(BaseModel):
-    """Sparse embedding schema."""
-
-    indices: list[int] = Field(..., description="Token indices with non-zero values.")
-    values: list[float] = Field(..., description="Weights for each token index.")
-
-
-class AgenticSearchDenseEmbedding(BaseModel):
-    """Dense embedding schema."""
-
-    vector: list[float] = Field(..., description="The dense embedding of the query.")
+# Re-export for backward compatibility
+__all__ = [
+    "AgenticSearchDenseEmbedding",
+    "AgenticSearchSparseEmbedding",
+    "AgenticSearchQueryEmbeddings",
+]
 
 
 class AgenticSearchQueryEmbeddings(BaseModel):

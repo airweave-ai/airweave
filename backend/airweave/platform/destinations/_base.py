@@ -60,7 +60,7 @@ class BaseDestination(ABC):
         """Create a new destination with credentials and config (matches source pattern).
 
         Args:
-            credentials: Authentication credentials (e.g., S3AuthConfig, QdrantAuthConfig)
+            credentials: Authentication credentials (e.g., S3AuthConfig)
             config: Configuration parameters (e.g., bucket_name, url)
             collection_id: Collection UUID
             organization_id: Organization UUID
@@ -69,7 +69,7 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def setup_collection(self, collection_id: UUID, vector_size: int) -> None:
+    async def setup_collection(self, **kwargs) -> None:
         """Set up the collection for storing entities."""
         pass
 

@@ -124,6 +124,8 @@ class SyncFactory:
         )
 
         # Step 4: Assemble SyncRuntime (live services)
+        from airweave.core.container import container as app_container
+
         runtime = SyncRuntime(
             source=source,
             cursor=cursor,
@@ -131,6 +133,9 @@ class SyncFactory:
             entity_tracker=entity_tracker,
             state_publisher=state_publisher,
             guard_rail=guard_rail,
+            embedder_service=app_container.embedder_service,
+            collection_repo=app_container.collection_repo,
+            db_session=db,
         )
 
         logger.debug(f"Context + runtime built in {time.time() - init_start:.2f}s")

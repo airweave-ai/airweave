@@ -31,7 +31,7 @@ class JSONFormatter(logging.Formatter):
 
         Returns:
         -------
-            str: Full module path (e.g., 'airweave.integrations.qdrant')
+            str: Full module path (e.g., 'airweave.platform.destinations.vespa')
 
         """
         # Check cache first

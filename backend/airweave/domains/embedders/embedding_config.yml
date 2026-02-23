@@ -1,0 +1,7 @@
+# Embedding configuration — single source of truth for the entire stack.
+#
+# Read by: EmbedderService (Python), Vespa deploy scripts (shell).
+# Changes here affect new syncs. Existing collections keep their stored config.
+embedding:
+  model: "text-embedding-3-small"     # Required. Must exist in model registry.
+  dimensions: 1536                     # Required. Must be supported by the model.

@@ -47,6 +47,7 @@ from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.collections.service import CollectionService
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
+from airweave.domains.embedders.service import EmbedderService
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.oauth.oauth1_service import OAuth1Service
@@ -187,11 +188,17 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # Embedder service (deployment-level embedding config)
+    # -----------------------------------------------------------------
+    embedder_service = EmbedderService(settings)
+
+    # -----------------------------------------------------------------
     # Billing services
     # -----------------------------------------------------------------
     billing_services = _create_billing_services(settings)
 
     return Container(
+        embedder_service=embedder_service,
         billing_service=billing_services["billing_service"],
         billing_webhook=billing_services["billing_webhook"],
         collection_service=collection_service,

@@ -100,6 +100,8 @@ class FakeCollectionRepository:
         col.modified_at = datetime.now(timezone.utc)
         col.created_by_email = None
         col.modified_by_email = None
+        col.vector_size = None
+        col.embedding_model_name = None
         from airweave.core.shared_models import CollectionStatus
 
         col.status = CollectionStatus.NEEDS_SOURCE
@@ -121,6 +123,23 @@ class FakeCollectionRepository:
         for k, v in update_data.items():
             setattr(db_obj, k, v)
         return db_obj
+
+    async def stamp_embedding_config(
+        self,
+        db: AsyncSession,
+        collection_id: UUID,
+        vector_size: int,
+        model_name: str,
+    ) -> None:
+        """Stamp embedding config on a fake collection."""
+        self._calls.append(("stamp_embedding_config", db, collection_id, vector_size, model_name))
+        # Find and update the collection in stores
+        for col in list(self._store.values()) + list(self._readable_store.values()):
+            if getattr(col, "id", None) == collection_id:
+                if getattr(col, "embedding_model_name", None) is None:
+                    col.embedding_model_name = model_name
+                    col.vector_size = vector_size
+                break
 
     async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Collection]:
         """Remove a collection from the fake store."""

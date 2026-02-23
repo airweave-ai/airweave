@@ -3,7 +3,7 @@
 Pydantic models for ARF data structures.
 """
 
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,3 @@ class SyncManifest(BaseModel):
     updated_at: str
     # Track sync jobs that have written to this store
     sync_jobs: List[str] = Field(default_factory=list)
-    # Optional config reference
-    vector_size: Optional[int] = None
-    embedding_model_name: Optional[str] = None

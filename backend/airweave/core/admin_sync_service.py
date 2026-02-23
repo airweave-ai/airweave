@@ -262,7 +262,7 @@ class AdminSyncService:
             ghost_syncs_last_n: Filter to syncs with N consecutive failures
             tags: Filter by job tags (comma-separated)
             exclude_tags: Exclude syncs with these tags
-            include_destination_counts: Query Qdrant/Vespa (slow)
+            include_destination_counts: Query Vespa (slow)
             include_arf_counts: Query ARF storage (slow)
 
         Returns:
@@ -319,23 +319,11 @@ class AdminSyncService:
 
         # Phase 2: Fetch destination counts that depend on source_conn_map
         if include_destination_counts:
-            qdrant_count_map, vespa_count_map = await asyncio.gather(
-                self._fetch_destination_counts(
-                    syncs, source_conn_map, include_destination_counts, ctx, timings, is_qdrant=True
-                ),
-                self._fetch_destination_counts(
-                    syncs,
-                    source_conn_map,
-                    include_destination_counts,
-                    ctx,
-                    timings,
-                    is_qdrant=False,
-                ),
+            vespa_count_map = await self._fetch_destination_counts(
+                syncs, source_conn_map, include_destination_counts, ctx, timings
             )
         else:
-            qdrant_count_map = {s.id: None for s in syncs}
             vespa_count_map = {s.id: None for s in syncs}
-            timings["destination_counts_qdrant"] = 0
             timings["destination_counts_vespa"] = 0
 
         # Build response data
@@ -348,7 +336,6 @@ class AdminSyncService:
             all_tags_map=all_tags_map,
             entity_count_map=entity_count_map,
             arf_count_map=arf_count_map,
-            qdrant_count_map=qdrant_count_map,
             vespa_count_map=vespa_count_map,
         )
         timings["build_response"] = (time.monotonic() - build_start) * 1000
@@ -463,7 +450,7 @@ class AdminSyncService:
                     all_tags_map[row.sync_id].update(tags)
 
         # Convert to sorted lists
-        all_tags_map = {sync_id: sorted(list(tag_set)) for sync_id, tag_set in all_tags_map.items()}
+        all_tags_map = {sync_id: sorted(tag_set) for sync_id, tag_set in all_tags_map.items()}
         timings["all_tags"] = (time.monotonic() - start) * 1000
         return all_tags_map
 
@@ -538,16 +525,13 @@ class AdminSyncService:
         include_counts: bool,
         ctx: ApiContext,
         timings: Dict[str, float],
-        is_qdrant: bool = True,
     ) -> Dict[UUID, Optional[int]]:
-        """Fetch document counts from either Qdrant or Vespa.
+        """Fetch document counts from Vespa.
 
         Optimized to reuse destination instances per collection and limit concurrency.
         """
-        timing_key = "destination_counts_qdrant" if is_qdrant else "destination_counts_vespa"
-
         if not include_counts:
-            timings[timing_key] = 0
+            timings["destination_counts_vespa"] = 0
             return {s.id: None for s in syncs}
 
         start = time.monotonic()
@@ -568,19 +552,9 @@ class AdminSyncService:
         # Process each collection (reuse connection per collection)
         async def process_collection(collection_id: UUID, collection_syncs: List[Sync]):
             try:
-                if is_qdrant:
-                    return await self._count_qdrant_for_collection(
-                        collection_id, collection_syncs, ctx
-                    )
-                else:
-                    return await self._count_vespa_for_collection(
-                        collection_id, collection_syncs, ctx
-                    )
+                return await self._count_vespa_for_collection(collection_id, collection_syncs, ctx)
             except Exception as e:
-                ctx.logger.error(
-                    f"Failed to count {'Qdrant' if is_qdrant else 'Vespa'} "
-                    f"for collection {collection_id}: {e}"
-                )
+                ctx.logger.error(f"Failed to count Vespa for collection {collection_id}: {e}")
                 return {sync.id: None for sync in collection_syncs}
 
         # Process all collections in parallel
@@ -599,54 +573,8 @@ class AdminSyncService:
                 continue
             count_map.update(result)
 
-        timings[timing_key] = (time.monotonic() - start) * 1000
+        timings["destination_counts_vespa"] = (time.monotonic() - start) * 1000
         return count_map
-
-    async def _count_qdrant_for_collection(
-        self, collection_id: UUID, syncs: List[Sync], ctx: ApiContext
-    ) -> Dict[UUID, Optional[int]]:
-        """Count Qdrant documents for all syncs in a collection (reuse client)."""
-        from airweave.platform.destinations.qdrant import QdrantDestination
-
-        try:
-            # Create destination once for the collection
-            qdrant = await QdrantDestination.create(
-                collection_id=collection_id,
-                organization_id=syncs[0].organization_id,
-                logger=ctx.logger,
-            )
-
-            # Count with limited concurrency
-            semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_DESTINATION_QUERIES)
-
-            async def count_sync(sync: Sync) -> Tuple[UUID, Optional[int]]:
-                async with semaphore:
-                    try:
-                        scroll_filter = {
-                            "must": [
-                                {
-                                    "key": "airweave_system_metadata.sync_id",
-                                    "match": {"value": str(sync.id)},
-                                }
-                            ]
-                        }
-                        # Use exact=False for faster approximate counts
-                        count_result = await qdrant.client.count(
-                            collection_name=qdrant.collection_name,
-                            count_filter=scroll_filter,
-                            exact=False,  # Much faster, slight inaccuracy acceptable
-                        )
-                        return sync.id, count_result.count
-                    except Exception as e:
-                        ctx.logger.warning(f"Failed to count Qdrant for sync {sync.id}: {e}")
-                        return sync.id, None
-
-            results = await asyncio.gather(*[count_sync(s) for s in syncs])
-            return dict(results)
-
-        except Exception as e:
-            ctx.logger.error(f"Failed to create Qdrant destination: {e}")
-            return {s.id: None for s in syncs}
 
     async def _count_vespa_for_collection(
         self, collection_id: UUID, syncs: List[Sync], ctx: ApiContext
@@ -675,7 +603,8 @@ class AdminSyncService:
                         yql = (
                             f"select * from sources {schemas} "
                             f"where airweave_system_metadata_sync_id contains '{sync.id}' "
-                            f"and airweave_system_metadata_collection_id contains '{collection_id}' "
+                            f"and airweave_system_metadata_collection_id contains "
+                            f"'{collection_id}' "
                             f"limit 0"
                         )
 
@@ -703,7 +632,6 @@ class AdminSyncService:
         all_tags_map: Dict[UUID, List[str]],
         entity_count_map: Dict[UUID, int],
         arf_count_map: Dict[UUID, Optional[int]],
-        qdrant_count_map: Dict[UUID, Optional[int]],
         vespa_count_map: Dict[UUID, Optional[int]],
     ) -> List[Dict[str, Any]]:
         """Build response data list from fetched information."""
@@ -723,7 +651,6 @@ class AdminSyncService:
             sync_dict["destination_connection_ids"] = conn_info["destinations"]
             sync_dict["total_entity_count"] = entity_count_map.get(sync.id, 0)
             sync_dict["total_arf_entity_count"] = arf_count_map.get(sync.id)
-            sync_dict["total_qdrant_entity_count"] = qdrant_count_map.get(sync.id)
             sync_dict["total_vespa_entity_count"] = vespa_count_map.get(sync.id)
 
             # Handle status enum
