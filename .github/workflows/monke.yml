@@ -280,6 +280,8 @@ jobs:
           MONKE_CODA_API_TOKEN: ${{ secrets.MONKE_CODA_API_TOKEN }}
           MONKE_DOCUMENT360_API_TOKEN: ${{ secrets.MONKE_DOCUMENT360_API_TOKEN }}
 
+          MONKE_SLITE_API_KEY: ${{ secrets.MONKE_SLITE_API_KEY }}
+
           # All SaaS app credentials (Composio configs, API tokens, etc.)
           # will be fetched from Azure Key Vault at runtime
         run: |

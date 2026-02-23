@@ -334,6 +334,16 @@ class HubspotConfig(SourceConfig):
     pass
 
 
+class SliteConfig(SourceConfig):
+    """Slite configuration schema."""
+
+    include_archived: bool = Field(
+        default=False,
+        title="Include archived notes",
+        description="If enabled, archived notes will be synced. Default: only active notes.",
+    )
+
+
 class IntercomConfig(SourceConfig):
     """Intercom configuration schema."""
 

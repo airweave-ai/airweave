@@ -1,0 +1,52 @@
+name: slite_test
+description: End-to-end test for Slite source using Monke
+
+connector:
+  name: Slite
+  type: slite
+  auth_mode: direct
+  auth_fields:
+    api_key: MONKE_SLITE_API_KEY
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+    rate_limit_delay_ms: 500
+    max_concurrency: 2
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+    - collection_cleanup
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+entity_count: 3
+
+collection:
+  name: Slite Test Collection
+
+verification:
+  retry_attempts: 5
+  retry_delay_seconds: 10
+  score_threshold: 0.0
+  expected_fields:
+    - name
+    - content
+    - note_id

@@ -247,6 +247,7 @@ from .shopify import (
     ShopifyThemeEntity,
 )
 from .slack import SlackMessageEntity
+from .slite import SliteNoteEntity
 from .stripe import (
     StripeBalanceEntity,
     StripeBalanceTransactionEntity,
@@ -537,6 +538,9 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         SharePoint2019V2ItemEntity,
         SharePoint2019V2ListEntity,
         SharePoint2019V2SiteEntity,
+    ],
+    "slite": [
+        SliteNoteEntity,
     ],
     "shopify": [
         ShopifyCollectionEntity,

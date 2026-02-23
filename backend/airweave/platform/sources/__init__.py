@@ -37,6 +37,7 @@ from .sharepoint import SharePointSource
 from .sharepoint2019v2.source import SharePoint2019V2Source
 from .shopify import ShopifySource
 from .slack import SlackSource
+from .slite import SliteSource
 from .snapshot import SnapshotSource
 from .stripe import StripeSource
 from .stub import StubSource
@@ -84,6 +85,7 @@ ALL_SOURCES: list[type] = [
     SharePointSource,
     SharePoint2019V2Source,
     ShopifySource,
+    SliteSource,
     SlackSource,
     SnapshotSource,
     StripeSource,

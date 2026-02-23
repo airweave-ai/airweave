@@ -286,6 +286,29 @@ class AttioAuthConfig(APIKeyAuthConfig):
         return v
 
 
+class SliteAuthConfig(APIKeyAuthConfig):
+    """Slite authentication credentials schema.
+
+    API key from Slite Settings > API (Create a new key). The key is shown only once.
+    """
+
+    api_key: str = Field(
+        title="API Key",
+        description=(
+            "Slite API key. Generate in your organization: Settings > API > Create a new key."
+        ),
+        min_length=1,
+    )
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate Slite API key."""
+        if not v or not v.strip():
+            raise ValueError("API key is required")
+        return v.strip()
+
+
 class BitbucketAuthConfig(AuthConfig):
     """Bitbucket authentication credentials schema.
 

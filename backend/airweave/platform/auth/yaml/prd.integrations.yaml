@@ -304,6 +304,8 @@ integrations:
       response_type: "code"
       response_mode: "query"
 
+  slite:
+
   slack:
     oauth_type: "access_only"
     url: "https://slack.com/oauth/v2/authorize"
