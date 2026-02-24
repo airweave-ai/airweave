@@ -753,8 +753,8 @@ class SourceConnectionService:
             "refresh_token": obj_in.authentication.refresh_token,
             "token_type": "Bearer",
         }
-        if obj_in.authentication.expires_at:
-            oauth_creds["expires_at"] = obj_in.authentication.expires_at.isoformat()
+        if obj_in.authentication.expires_in:
+            oauth_creds["expires_in"] = obj_in.authentication.expires_in
 
         # Validate config
         validated_config = await self._validate_config_fields(
