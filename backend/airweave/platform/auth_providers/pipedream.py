@@ -70,6 +70,8 @@ class PipedreamAuthProvider(BaseAuthProvider):
         "bitbucket",
         "onenote",
         "word",
+        # ServiceNow seems to be broken for now
+        "servicenow",
     ]
 
     # Mapping of Airweave field names to Pipedream field names

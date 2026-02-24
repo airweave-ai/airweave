@@ -383,6 +383,8 @@ integrations:
     additional_frontend_params:
       response_type: "code"
 
+  servicenow:
+
   word:
     oauth_type: "with_rotating_refresh"
     url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"

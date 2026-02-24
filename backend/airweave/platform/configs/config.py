@@ -847,6 +847,12 @@ class FreshdeskConfig(SourceConfig):
     )
 
 
+class ServiceNowConfig(SourceConfig):
+    """ServiceNow configuration schema."""
+
+    pass
+
+
 # AUTH PROVIDER CONFIGURATION CLASSES
 # These are for configuring auth provider behavior
 

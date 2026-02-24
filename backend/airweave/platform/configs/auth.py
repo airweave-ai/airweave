@@ -1,6 +1,6 @@
 """Auth config."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
@@ -707,6 +707,57 @@ class ShopifyAuthConfig(AuthConfig):
         description="Client Secret from your Shopify app in the Dev Dashboard",
         min_length=10,
     )
+
+
+class ServiceNowAuthConfig(AuthConfig):
+    """ServiceNow instance authentication credentials schema.
+
+    Uses Basic Auth with instance URL (or subdomain), username, and password.
+    Provide either full instance URL or subdomain (e.g. your-instance for
+    https://your-instance.service-now.com). Composio returns subdomain.
+    """
+
+    url: Optional[str] = Field(
+        default=None,
+        title="Instance URL",
+        description="Your ServiceNow instance URL (e.g. https://your-instance.service-now.com)",
+        min_length=1,
+    )
+    subdomain: Optional[str] = Field(
+        default=None,
+        title="Instance subdomain",
+        description="Instance subdomain (e.g. your-instance). Used to build URL if url is not set.",
+        min_length=1,
+    )
+    username: str = Field(
+        title="Username",
+        description="ServiceNow username for API access",
+        min_length=1,
+    )
+    password: str = Field(
+        title="Password",
+        description="ServiceNow password for API access",
+        min_length=1,
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def url_or_subdomain(cls, data: Any) -> Any:
+        """Set url from subdomain when url is not provided (so __init__ receives url)."""
+        if not isinstance(data, dict):
+            return data
+        url = data.get("url")
+        subdomain = data.get("subdomain")
+        if url:
+            return data
+        if subdomain:
+            base = str(subdomain).strip().rstrip("/")
+            if "://" in base:
+                data = {**data, "url": base}
+            else:
+                data = {**data, "url": f"https://{base}.service-now.com"}
+            return data
+        raise ValueError("Either 'url' or 'subdomain' must be provided")
 
 
 class SlackAuthConfig(OAuth2AuthConfig):

@@ -213,6 +213,13 @@ from .salesforce import (
     SalesforceContactEntity,
     SalesforceOpportunityEntity,
 )
+from .servicenow import (
+    ServiceNowCatalogItemEntity,
+    ServiceNowChangeRequestEntity,
+    ServiceNowIncidentEntity,
+    ServiceNowKnowledgeArticleEntity,
+    ServiceNowProblemEntity,
+)
 from .sharepoint import (
     SharePointDriveEntity,
     SharePointDriveItemEntity,
@@ -611,6 +618,13 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
     ],
     "word": [
         WordDocumentEntity,
+    ],
+    "servicenow": [
+        ServiceNowCatalogItemEntity,
+        ServiceNowChangeRequestEntity,
+        ServiceNowIncidentEntity,
+        ServiceNowKnowledgeArticleEntity,
+        ServiceNowProblemEntity,
     ],
     "zendesk": [
         ZendeskAttachmentEntity,

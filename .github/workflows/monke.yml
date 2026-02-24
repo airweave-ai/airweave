@@ -282,6 +282,10 @@ jobs:
 
           MONKE_SLITE_API_KEY: ${{ secrets.MONKE_SLITE_API_KEY }}
 
+          MONKE_SERVICENOW_URL: ${{ secrets.MONKE_SERVICENOW_URL }}
+          MONKE_SERVICENOW_USERNAME: ${{ secrets.MONKE_SERVICENOW_USERNAME }}
+          MONKE_SERVICENOW_PASSWORD: ${{ secrets.MONKE_SERVICENOW_PASSWORD }}
+
           # All SaaS app credentials (Composio configs, API tokens, etc.)
           # will be fetched from Azure Key Vault at runtime
         run: |

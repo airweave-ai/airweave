@@ -33,6 +33,7 @@ from .outlook_calendar import OutlookCalendarSource
 from .outlook_mail import OutlookMailSource
 from .pipedrive import PipedriveSource
 from .salesforce import SalesforceSource
+from .servicenow import ServiceNowSource
 from .sharepoint import SharePointSource
 from .sharepoint2019v2.source import SharePoint2019V2Source
 from .shopify import ShopifySource
@@ -82,6 +83,7 @@ ALL_SOURCES: list[type] = [
     OutlookMailSource,
     PipedriveSource,
     SalesforceSource,
+    ServiceNowSource,
     SharePointSource,
     SharePoint2019V2Source,
     ShopifySource,
