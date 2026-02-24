@@ -16,13 +16,19 @@
 
 import express from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { createMcpServer, VERSION } from './server.js';
 import { AirweaveConfig } from './api/types.js';
 import { DEFAULT_BASE_URL } from './config/constants.js';
 import { initPostHog, shutdownPostHog, trackMcpRequest, trackMcpError } from './analytics/posthog.js';
+import { createAuth0CallbackRouter } from './auth/auth0-callback.js';
+import { Auth0OAuthServerProvider, readAuth0ProviderConfigFromEnv } from './auth/auth0-provider.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
+
+type RequestWithAuth = express.Request & { auth?: AuthInfo };
 
 /**
  * Extract Bearer token per RFC 6750.
@@ -41,6 +47,24 @@ function extractApiKey(req: express.Request): string | undefined {
     return (req.headers['x-api-key'] as string) ||
         extractBearerToken(req.headers['authorization'] as string) ||
         undefined;
+}
+
+function extractAuthToken(req: RequestWithAuth): string | undefined {
+    return req.auth?.token || extractApiKey(req);
+}
+
+const auth0Config = readAuth0ProviderConfigFromEnv();
+const auth0Provider = auth0Config ? new Auth0OAuthServerProvider(auth0Config) : null;
+
+if (auth0Provider && auth0Config) {
+    app.use(mcpAuthRouter({
+        provider: auth0Provider,
+        issuerUrl: new URL(`https://${auth0Config.domain}/`),
+        baseUrl: new URL(auth0Config.mcpBaseUrl),
+        scopesSupported: ['openid', 'profile', 'email'],
+        resourceName: 'Airweave MCP Search Server'
+    }));
+    app.use(createAuth0CallbackRouter(auth0Provider));
 }
 
 // Health check endpoint
@@ -93,7 +117,8 @@ app.post('/mcp', async (req, res) => {
     const startTime = Date.now();
 
     try {
-        const apiKey = extractApiKey(req);
+        const requestWithAuth = req as RequestWithAuth;
+        const apiKey = extractAuthToken(requestWithAuth);
 
         if (!apiKey) {
             trackMcpError(undefined, {
@@ -146,7 +171,7 @@ app.post('/mcp', async (req, res) => {
 
     } catch (error) {
         console.error(`[${new Date().toISOString()}] Error handling MCP request:`, error);
-        trackMcpError(extractApiKey(req), {
+        trackMcpError(extractAuthToken(req as RequestWithAuth), {
             errorCode: -32603,
             errorMessage: error instanceof Error ? error.message : 'Internal server error'
         });

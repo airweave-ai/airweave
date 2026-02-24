@@ -12,6 +12,7 @@ export class AirweaveClient {
             apiKey: config.apiKey,
             baseUrl: config.baseUrl,
             headers: {
+                'Authorization': `Bearer ${config.apiKey}`,
                 'X-Client-Name': 'airweave-mcp-search',
                 'X-Client-Version': VERSION,
             }
