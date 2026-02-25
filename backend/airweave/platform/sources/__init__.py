@@ -37,6 +37,7 @@ from .servicenow import ServiceNowSource
 from .sharepoint import SharePointSource
 from .sharepoint2019v2.source import SharePoint2019V2Source
 from .shopify import ShopifySource
+from .slab import SlabSource
 from .slack import SlackSource
 from .slite import SliteSource
 from .snapshot import SnapshotSource
@@ -88,6 +89,7 @@ ALL_SOURCES: list[type] = [
     SharePointSource,
     SharePoint2019V2Source,
     ShopifySource,
+    SlabSource,
     SliteSource,
     SlackSource,
     SnapshotSource,

@@ -286,6 +286,9 @@ jobs:
           MONKE_SERVICENOW_USERNAME: ${{ secrets.MONKE_SERVICENOW_USERNAME }}
           MONKE_SERVICENOW_PASSWORD: ${{ secrets.MONKE_SERVICENOW_PASSWORD }}
 
+          MONKE_SLAB_API_TOKEN: ${{ secrets.MONKE_SLAB_API_TOKEN }}
+          MONKE_SLAB_HOST: ${{ secrets.MONKE_SLAB_HOST }}
+
           # All SaaS app credentials (Composio configs, API tokens, etc.)
           # will be fetched from Azure Key Vault at runtime
         run: |

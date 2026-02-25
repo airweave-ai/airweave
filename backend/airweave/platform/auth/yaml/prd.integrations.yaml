@@ -304,6 +304,8 @@ integrations:
       response_type: "code"
       response_mode: "query"
 
+  slab:
+
   slite:
 
   slack:

@@ -311,6 +311,8 @@ integrations:
 
   servicenow:
 
+  slab:
+
   slite:
 
   slack:
