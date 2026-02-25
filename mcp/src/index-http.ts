@@ -16,13 +16,39 @@
 
 import express from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { createMcpServer, VERSION } from './server.js';
 import { AirweaveConfig } from './api/types.js';
 import { DEFAULT_BASE_URL } from './config/constants.js';
 import { initPostHog, shutdownPostHog, trackMcpRequest, trackMcpError } from './analytics/posthog.js';
+import { Auth0OAuthProvider } from './auth/auth0-provider.js';
+import { createAuth0CallbackHandler } from './auth/auth0-callback.js';
+import { ensureRedisReady } from './auth/redis.js';
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
+
+const oauthEnabled = process.env.MCP_OAUTH_ENABLED === 'true';
+let auth0Provider: Auth0OAuthProvider | null = null;
+
+if (oauthEnabled) {
+    auth0Provider = new Auth0OAuthProvider();
+    const baseUrl = new URL(process.env.MCP_BASE_URL || 'https://mcp.airweave.ai');
+
+    app.use(
+        mcpAuthRouter({
+            provider: auth0Provider,
+            issuerUrl: baseUrl,
+            baseUrl,
+            scopesSupported: ['openid', 'profile', 'email', 'offline_access'],
+            resourceName: 'Airweave MCP',
+        })
+    );
+
+    app.get('/oauth/callback', createAuth0CallbackHandler(auth0Provider));
+}
 
 /**
  * Extract Bearer token per RFC 6750.
@@ -41,6 +67,10 @@ function extractApiKey(req: express.Request): string | undefined {
     return (req.headers['x-api-key'] as string) ||
         extractBearerToken(req.headers['authorization'] as string) ||
         undefined;
+}
+
+function extractMcpCredential(req: express.Request & { auth?: AuthInfo }): string | undefined {
+    return req.auth?.token || extractApiKey(req);
 }
 
 // Health check endpoint
@@ -71,7 +101,7 @@ app.get('/', (req, res) => {
             required: true,
             methods: [
                 "X-API-Key: <your-api-key> (recommended)",
-                "Authorization: Bearer <your-api-key>"
+                "Authorization: Bearer <your-api-key-or-oauth-token>"
             ],
             headers: {
                 "X-API-Key": "Your Airweave API key (required)",
@@ -83,17 +113,22 @@ app.get('/', (req, res) => {
                     "X-API-Key": "<your-airweave-api-key>",
                     "X-Collection-Readable-ID": "<your-collection-readable-id>"
                 }
-            }
+            },
+            oauth: oauthEnabled ? {
+                enabled: true,
+                discovery: "/.well-known/oauth-authorization-server",
+                callback: "/oauth/callback"
+            } : { enabled: false }
         }
     });
 });
 
 // Main MCP endpoint - fully stateless, fresh server per request
-app.post('/mcp', async (req, res) => {
+app.post('/mcp', async (req: express.Request & { auth?: AuthInfo }, res) => {
     const startTime = Date.now();
 
     try {
-        const apiKey = extractApiKey(req);
+        const apiKey = extractMcpCredential(req);
 
         if (!apiKey) {
             trackMcpError(undefined, {
@@ -105,7 +140,7 @@ app.post('/mcp', async (req, res) => {
                 error: {
                     code: -32001,
                     message: 'Authentication required',
-                    data: 'Please provide an API key via X-API-Key header or Authorization: Bearer header'
+                    data: 'Please provide API key or complete OAuth authorization flow'
                 },
                 id: req.body?.id || null
             });
@@ -126,7 +161,7 @@ app.post('/mcp', async (req, res) => {
         });
 
         await server.connect(transport);
-        await transport.handleRequest(req, res, req.body);
+        await transport.handleRequest(req as express.Request & { auth?: AuthInfo }, res, req.body);
 
         trackMcpRequest(apiKey, {
             method,
@@ -193,6 +228,10 @@ async function startServer() {
     const collection = process.env.AIRWEAVE_COLLECTION || 'default';
     const baseUrl = process.env.AIRWEAVE_BASE_URL || DEFAULT_BASE_URL;
 
+    if (oauthEnabled) {
+        await ensureRedisReady();
+    }
+
     initPostHog();
 
     const server = app.listen(PORT, () => {
@@ -201,6 +240,9 @@ async function startServer() {
         console.log(`Endpoint: http://localhost:${PORT}/mcp`);
         console.log(`Health: http://localhost:${PORT}/health`);
         console.log(`Default collection: ${collection} | Base URL: ${baseUrl}`);
+        if (oauthEnabled) {
+            console.log('OAuth enabled with mcpAuthRouter');
+        }
     });
 
     const shutdown = async (signal: string) => {
