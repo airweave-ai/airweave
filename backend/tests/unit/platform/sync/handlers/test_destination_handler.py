@@ -262,9 +262,11 @@ class TestTimingLogs:
         mock_entity = MagicMock()
         mock_entity.model_copy = MagicMock(return_value=mock_entity)
 
+        mock_runtime = MagicMock()
+
         with patch("asyncio.get_running_loop", return_value=mock_loop), \
              patch.object(handler, "_get_processor", return_value=mock_processor):
-            await handler._do_process_and_insert([mock_entity], ctx)
+            await handler._do_process_and_insert([mock_entity], ctx, mock_runtime)
 
         # Should log warning about slow processing
         warning_calls = ctx.logger.warning.call_args_list

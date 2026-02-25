@@ -309,6 +309,10 @@ integrations:
       response_type: "code"
       response_mode: "query"
 
+  servicenow:
+
+  slite:
+
   slack:
     oauth_type: "access_only"
     url: "https://slack.com/oauth/v2/authorize"
@@ -412,3 +416,7 @@ integrations:
       prompt: "consent"
 
   qdrant:
+
+  fireflies:
+  freshdesk:
+  document360:

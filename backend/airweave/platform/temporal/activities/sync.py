@@ -71,8 +71,7 @@ class RunSyncActivity:
         """
         # Import here to avoid Temporal sandboxing issues
         from airweave import crud, schemas
-        from airweave.api.context import ApiContext
-        from airweave.core.logging import LoggerConfigurator
+        from airweave.core.context import BaseContext
         from airweave.db.session import get_db_context
         from airweave.platform.temporal.worker_metrics import worker_metrics
 
@@ -80,24 +79,10 @@ class RunSyncActivity:
         sync_job = schemas.SyncJob(**sync_job_dict)
         connection = schemas.Connection(**connection_dict)
 
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
         organization = schemas.Organization(**ctx_dict["organization"])
 
-        ctx = ApiContext(
-            request_id=ctx_dict["request_id"],
-            organization=organization,
-            user=user,
-            auth_method=ctx_dict["auth_method"],
-            auth_metadata=ctx_dict.get("auth_metadata"),
-            logger=LoggerConfigurator.configure_logger(
-                "airweave.temporal.activity",
-                dimensions={
-                    "sync_job_id": str(sync_job.id),
-                    "organization_id": str(organization.id),
-                    "organization_name": organization.name,
-                },
-            ),
-        )
+        ctx = BaseContext(organization=organization)
+        ctx.logger = ctx.logger.with_context(sync_job_id=str(sync_job.id))
 
         # Fetch fresh sync and collection from DB to avoid stale data
         # (Temporal schedules bake sync_dict at creation time, which can
@@ -538,29 +523,14 @@ class MarkSyncJobCancelledActivity:
             when_iso: Optional ISO timestamp for failed_at
         """
         from airweave import schemas
-        from airweave.api.context import ApiContext
-        from airweave.core.logging import LoggerConfigurator
+        from airweave.core.context import BaseContext
         from airweave.core.shared_models import SyncJobStatus
         from airweave.core.sync_job_service import sync_job_service
 
         organization = schemas.Organization(**ctx_dict["organization"])
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
 
-        ctx = ApiContext(
-            request_id=ctx_dict["request_id"],
-            organization=organization,
-            user=user,
-            auth_method=ctx_dict["auth_method"],
-            auth_metadata=ctx_dict.get("auth_metadata"),
-            logger=LoggerConfigurator.configure_logger(
-                "airweave.temporal.activity.cancel_pre_activity",
-                dimensions={
-                    "sync_job_id": sync_job_id,
-                    "organization_id": str(organization.id),
-                    "organization_name": organization.name,
-                },
-            ),
-        )
+        ctx = BaseContext(organization=organization)
+        ctx.logger = ctx.logger.with_context(sync_job_id=sync_job_id)
 
         failed_at = None
         if when_iso:
@@ -625,30 +595,15 @@ class CreateSyncJobActivity:
             Exception: If a sync job is already running and force_full_sync is False
         """
         from airweave import crud, schemas
-        from airweave.api.context import ApiContext
+        from airweave.core.context import BaseContext
         from airweave.core.exceptions import NotFoundException
-        from airweave.core.logging import LoggerConfigurator
         from airweave.core.shared_models import SyncJobStatus
         from airweave.db.session import get_db_context
 
         organization = schemas.Organization(**ctx_dict["organization"])
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
 
-        ctx = ApiContext(
-            request_id=ctx_dict["request_id"],
-            organization=organization,
-            user=user,
-            auth_method=ctx_dict["auth_method"],
-            auth_metadata=ctx_dict.get("auth_metadata"),
-            logger=LoggerConfigurator.configure_logger(
-                "airweave.temporal.activity.create_sync_job",
-                dimensions={
-                    "sync_id": sync_id,
-                    "organization_id": str(organization.id),
-                    "organization_name": organization.name,
-                },
-            ),
-        )
+        ctx = BaseContext(organization=organization)
+        ctx.logger = ctx.logger.with_context(sync_id=sync_id)
 
         ctx.logger.info(f"Creating sync job for sync {sync_id} (force_full_sync={force_full_sync})")
 
@@ -946,7 +901,7 @@ class CleanupStuckSyncJobsActivity:
     async def _cancel_stuck_job(self, job, now, db, crud, logger) -> bool:
         """Cancel a single stuck job via Temporal and update database."""
         from airweave import schemas
-        from airweave.api.context import ApiContext
+        from airweave.core.context import BaseContext
         from airweave.core.shared_models import SyncJobStatus
         from airweave.core.sync_job_service import sync_job_service
         from airweave.core.temporal_service import temporal_service
@@ -970,12 +925,8 @@ class CleanupStuckSyncJobsActivity:
             logger.error(f"Failed to fetch organization {org_id} for job {job_id}: {e}")
             return False
 
-        ctx = ApiContext(
-            request_id=f"cleanup-{job_id}",
+        ctx = BaseContext(
             organization=schemas.Organization.model_validate(organization),
-            user=None,
-            auth_method="system",
-            auth_metadata={"source": "cleanup_activity"},
             logger=logger,
         )
 

@@ -49,8 +49,9 @@ def mock_settings():
 def mock_redis():
     """Mock Redis client."""
     with patch("airweave.core.rate_limiter_service.redis_client") as mock:
-        # Setup mock pipeline
-        mock_pipeline = AsyncMock()
+        # Setup mock pipeline — pipeline methods (zremrangebyscore, zadd, zcount)
+        # are synchronous queue operations; only execute() is async.
+        mock_pipeline = MagicMock()
         mock_pipeline.execute = AsyncMock(return_value=[None, 0])  # zremrangebyscore, zcount
         mock.client.pipeline.return_value = mock_pipeline
         mock.client.zrange = AsyncMock(return_value=[])

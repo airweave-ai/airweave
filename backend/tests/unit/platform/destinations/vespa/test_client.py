@@ -121,7 +121,7 @@ class TestVespaClient:
         result = DeleteResult(deleted_count=5, schema=schema)
         
         assert result.deleted_count == 5
-        assert result.schema == schema
+        assert result.schema_name == schema
 
     @pytest.mark.asyncio
     async def test_delete_by_sync_id(self, client):

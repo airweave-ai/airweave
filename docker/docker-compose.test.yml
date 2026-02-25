@@ -54,7 +54,7 @@ services:
       WAIT_FOR: "true"
       SVIX_REDIS_DSN: "redis://redis:6379"
       SVIX_DB_DSN: "postgresql://airweave:airweave1234!@postgres:5432/svix"
-      SVIX_JWT_SECRET: "test_signing_secret"
+      SVIX_JWT_SECRET: "test_signing_secret_change_me!!!"
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,11 +96,12 @@ services:
       - AUTH_ENABLED=false
       # Svix configuration
       - SVIX_URL=http://svix:8071
-      - SVIX_JWT_SECRET=test_signing_secret
+      - SVIX_JWT_SECRET=test_signing_secret_change_me!!!
       - SVIX_AUTH_TOKEN=
 
     ports:
       - "9001:8001"
+      - "9090:9090"
     volumes:
       - ../backend:/app
       - ../local_storage:/app/local_storage

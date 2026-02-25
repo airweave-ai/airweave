@@ -17,6 +17,7 @@ from airweave.domains.usage.exceptions import (
 )
 from airweave.domains.usage.types import ActionType
 from airweave.platform.contexts import SyncContext
+from airweave.platform.contexts.runtime import SyncRuntime
 from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
@@ -42,13 +43,15 @@ class SyncOrchestrator:
         worker_pool: AsyncWorkerPool,
         stream: AsyncSourceStream,
         sync_context: SyncContext,
+        runtime: SyncRuntime,
         access_control_pipeline: AccessControlPipeline,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
         self.worker_pool = worker_pool
-        self.stream = stream  # Stream is now passed in, not created here!
+        self.stream = stream
         self.sync_context = sync_context
+        self.runtime = runtime
         self.access_control_pipeline = access_control_pipeline
 
         # Batch config from context
@@ -155,7 +158,7 @@ class SyncOrchestrator:
             try:
                 self.sync_context.logger.info("Flushing usage service usage data...")
                 async with get_db_context() as db:
-                    await self.sync_context.usage_service.flush_all(db)
+                    await self.runtime.guard_rail.flush_all(db)
             except Exception as flush_error:
                 self.sync_context.logger.error(
                     f"Failed to flush usage service usage: {flush_error}", exc_info=True
@@ -166,7 +169,7 @@ class SyncOrchestrator:
             # We don't raise cleanup errors to avoid masking the original sync error
             try:
                 self.sync_context.logger.info("Running final temp file cleanup...")
-                await self.entity_pipeline.cleanup_temp_files(self.sync_context)
+                await self.entity_pipeline.cleanup_temp_files(self.sync_context, self.runtime)
             except Exception as cleanup_error:
                 # Never raise from cleanup - we want the original sync error to propagate
                 # If sync succeeded but cleanup failed, that's logged but not re-raised
@@ -186,7 +189,7 @@ class SyncOrchestrator:
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.RUNNING,
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             started_at=started_at,
         )
 
@@ -194,7 +197,7 @@ class SyncOrchestrator:
 
     async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
-        source_name = self.sync_context.source_instance.source_name
+        source_name = self.runtime.source.source_name
         self.sync_context.logger.info(
             f"Starting pull-based processing from source {source_name} "
             f"(max workers: {self.worker_pool.max_workers}, "
@@ -215,9 +218,7 @@ class SyncOrchestrator:
                 if not self.sync_context.execution_config.behavior.skip_guardrails:
                     try:
                         async with get_db_context() as db:
-                            await self.sync_context.usage_service.is_allowed(
-                                db, ActionType.ENTITIES
-                            )
+                            await self.runtime.guard_rail.is_allowed(db, ActionType.ENTITIES)
                     except (
                         UsageLimitExceededError,
                         PaymentRequiredError,
@@ -297,6 +298,7 @@ class SyncOrchestrator:
             self.entity_pipeline.process,
             entities=list(batch),
             sync_context=self.sync_context,
+            runtime=self.runtime,
         )
         pending_tasks.add(task)
 
@@ -329,7 +331,7 @@ class SyncOrchestrator:
 
         # Track entity failures
         if entity_failures:
-            await self.sync_context.entity_tracker.record_skipped(len(entity_failures))
+            await self.runtime.entity_tracker.record_skipped(len(entity_failures))
 
         return pending_tasks
 
@@ -384,7 +386,7 @@ class SyncOrchestrator:
 
         # Increment skipped count for entity failures
         if entity_failures:
-            await self.sync_context.entity_tracker.record_skipped(len(entity_failures))
+            await self.runtime.entity_tracker.record_skipped(len(entity_failures))
             self.sync_context.logger.info(
                 f"Skipped {len(entity_failures)} entities due to processing errors"
             )
@@ -404,7 +406,7 @@ class SyncOrchestrator:
 
             # Increment skipped count for entity failures
             if entity_failures:
-                await self.sync_context.entity_tracker.record_skipped(len(entity_failures))
+                await self.runtime.entity_tracker.record_skipped(len(entity_failures))
                 self.sync_context.logger.info(
                     f"Skipped {len(entity_failures)} entities due to processing errors"
                 )
@@ -437,12 +439,12 @@ class SyncOrchestrator:
         """Cleanup orphaned entities based on sync type."""
         has_cursor_data = bool(
             hasattr(self.sync_context, "cursor")
-            and self.sync_context.cursor
-            and self.sync_context.cursor.cursor_data
+            and self.runtime.cursor
+            and self.runtime.cursor.cursor_data
         )
 
         # Check if source supports continuous/incremental sync (class attribute)
-        source_class = type(self.sync_context.source_instance)
+        source_class = type(self.runtime.source)
         source_supports_continuous = getattr(source_class, "supports_continuous", False)
 
         self.sync_context.logger.debug(
@@ -477,7 +479,7 @@ class SyncOrchestrator:
                     "🧹 Starting orphaned entity cleanup phase (first sync - no cursor data)"
                 )
             # Dispatcher handles ALL handlers: Destination, ARF, and Postgres
-            await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context)
+            await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context, self.runtime)
         elif (
             has_cursor_data and not self.sync_context.force_full_sync and source_supports_continuous
         ):
@@ -488,7 +490,7 @@ class SyncOrchestrator:
 
     def _source_supports_access_control(self) -> bool:
         """Check if the source supports access control membership syncing."""
-        return getattr(self.sync_context.source_instance, "supports_access_control", False)
+        return getattr(self.runtime.source, "supports_access_control", False)
 
     async def _process_access_control_memberships(self) -> None:
         """Process access control memberships from the source.
@@ -503,7 +505,7 @@ class SyncOrchestrator:
         Publishes progress heartbeats before and after to prevent the
         stuck-job cleanup from cancelling during long-running ACL expansion.
         """
-        source = self.sync_context.source_instance
+        source = self.runtime.source
         source_name = getattr(source, "_name", "unknown")
 
         self.sync_context.logger.info(f"Starting access control sync for {source_name}")
@@ -511,12 +513,13 @@ class SyncOrchestrator:
         # Publish a progress heartbeat so the stuck-job detector knows we're alive.
         # ACL expansion (especially with 50K+ users) can take a long time without
         # producing entity progress updates, which would otherwise trigger cancellation.
-        await self.sync_context.state_publisher.publish_progress()
+        await self.runtime.state_publisher.publish_progress()
 
         try:
             await self.access_control_pipeline.process(
                 source=source,
                 sync_context=self.sync_context,
+                runtime=self.runtime,
             )
         except Exception as e:
             self.sync_context.logger.error(
@@ -525,7 +528,7 @@ class SyncOrchestrator:
             )
 
         # Publish another heartbeat after ACL sync completes
-        await self.sync_context.state_publisher.publish_progress()
+        await self.runtime.state_publisher.publish_progress()
         # Don't fail the entire sync for ACL errors
 
     async def _finalize_progress_and_trackers(
@@ -538,11 +541,11 @@ class SyncOrchestrator:
             error: Optional error message if the sync failed
         """
         # Publish completion via SyncStatePublisher
-        await self.sync_context.state_publisher.publish_completion(status, error)
+        await self.runtime.state_publisher.publish_completion(status, error)
 
     async def _complete_sync(self) -> None:
         """Mark sync job as completed with final statistics."""
-        stats = self.sync_context.entity_tracker.get_stats()
+        stats = self.runtime.entity_tracker.get_stats()
 
         # Save cursor data if it exists (for incremental syncs)
         await self._save_cursor_data()
@@ -554,7 +557,7 @@ class SyncOrchestrator:
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.COMPLETED,
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             completed_at=utc_now_naive(),
             stats=stats,
         )
@@ -585,7 +588,7 @@ class SyncOrchestrator:
             )
 
         business_events.track_sync_completed(
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             sync_id=self.sync_context.sync.id,
             entities_processed=entities_processed,
             entities_synced=entities_synced,  # NEW parameter
@@ -607,7 +610,7 @@ class SyncOrchestrator:
 
         Re-syncing a completed snapshot is blocked by a guard in SourceBuilder.
         """
-        if self.sync_context.source_instance.short_name != "snapshot":
+        if self.runtime.source.short_name != "snapshot":
             return
 
         try:
@@ -633,7 +636,7 @@ class SyncOrchestrator:
 
                 # Update source_connection short_name
                 source_connection = await crud.source_connection.get_by_sync_id(
-                    db, sync_id=self.sync_context.sync.id, ctx=self.sync_context.ctx
+                    db, sync_id=self.sync_context.sync.id, ctx=self.sync_context
                 )
                 if source_connection:
                     source_connection.short_name = original_source_name
@@ -656,7 +659,7 @@ class SyncOrchestrator:
             self.sync_context.logger.info("⏭️ Skipping cursor update (disabled by execution_config)")
             return
 
-        if not hasattr(self.sync_context, "cursor") or not self.sync_context.cursor.cursor_data:
+        if not hasattr(self.sync_context, "cursor") or not self.runtime.cursor.cursor_data:
             if self.sync_context.force_full_sync:
                 self.sync_context.logger.info(
                     "📝 No cursor data to save from forced "
@@ -669,9 +672,9 @@ class SyncOrchestrator:
                 await sync_cursor_service.create_or_update_cursor(
                     db=db,
                     sync_id=self.sync_context.sync.id,
-                    cursor_data=self.sync_context.cursor.cursor_data,
-                    ctx=self.sync_context.ctx,
-                    cursor_field=self.sync_context.cursor.cursor_field,
+                    cursor_data=self.runtime.cursor.cursor_data,
+                    ctx=self.sync_context,
+                    cursor_field=self.runtime.cursor.cursor_field,
                 )
                 if self.sync_context.force_full_sync:
                     self.sync_context.logger.info(
@@ -695,12 +698,12 @@ class SyncOrchestrator:
             f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
         )
 
-        stats = self.sync_context.entity_tracker.get_stats()
+        stats = self.runtime.entity_tracker.get_stats()
 
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.FAILED,
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             error=error_message,
             failed_at=utc_now_naive(),
             stats=stats,
@@ -720,7 +723,7 @@ class SyncOrchestrator:
             )
 
         business_events.track_sync_failed(
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             sync_id=self.sync_context.sync.id,
             error=error_message,
             duration_ms=duration_ms,
@@ -741,7 +744,7 @@ class SyncOrchestrator:
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.CANCELLED,
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             completed_at=utc_now_naive(),
         )
 
@@ -759,7 +762,7 @@ class SyncOrchestrator:
             )
 
         business_events.track_sync_cancelled(
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             source_short_name=self.sync_context.connection.short_name,
             source_connection_id=self.sync_context.connection.id,
             duration_ms=duration_ms,

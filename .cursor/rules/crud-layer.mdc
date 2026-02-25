@@ -16,7 +16,7 @@ The CRUD layer provides a consistent interface for database operations across al
 #### 1. CRUDBaseOrganization (_base_organization.py)
 - **Purpose**: For resources scoped to organizations (most common pattern)
 - **Key Features**:
-  - Enforces organization-level access control via `ApiContext`
+  - Enforces organization-level access control via `BaseContext`
   - Tracks user modifications with `created_by_email` and `modified_by_email`
   - Validates organization access on every operation
   - Supports both user and API key authentication contexts
@@ -39,23 +39,25 @@ The CRUD layer provides a consistent interface for database operations across al
 
 ## Core Concepts
 
-### ApiContext
-The `ApiContext` (from `api.context`) is central to the CRUD layer:
+### BaseContext
+The `BaseContext` (from `core.context`) is the universal context type for the CRUD layer. `ApiContext` and `SyncContext` both inherit from it:
 ```python
-class ApiContext:
-    organization_id: UUID          # Always present
-    user: Optional[User] = None    # Present for user auth, None for API keys
-    auth_method: str              # "auth0", "api_key", or "system"
-    auth_metadata: Optional[Dict]  # Additional auth-specific data
-    logger: ContextualLogger      # Pre-configured logger with request context
+@dataclass
+class BaseContext:
+    organization: schemas.Organization  # Always present
+    user: Optional[schemas.User] = None # Present for user auth, None for API keys/system
+    logger: ContextualLogger            # Auto-derived from org/user if not provided
 ```
 
 **Key Properties**:
-- `has_user_context`: True if authenticated via Auth0 (user present)
+- `has_user_context`: True if user is present (Auth0 or system with user)
 - `tracking_email`: Returns user email for audit tracking
-- `is_api_key_auth`: True for API key authentication
-- `is_user_auth`: True for Auth0 user authentication
-- `logger`: Contextual logger with request ID and org/user metadata
+- `user_id`: Returns user UUID if available
+- `has_feature(flag)`: Check organization feature flags
+- `logger`: Contextual logger (auto-derived from identity, overridable)
+
+`ApiContext(BaseContext)` adds HTTP-specific fields (`request_id`, `auth_method`, `analytics`).
+`SyncContext(BaseContext)` adds sync-specific data (`sync_id`, `sync_job`, `collection`, etc.).
 
 ### Unit of Work Pattern
 The `UnitOfWork` class manages database transactions:
@@ -164,7 +166,7 @@ class CRUDOrganization:
 - Let context manager handle commit/rollback
 
 ### 3. Access Control
-- Always pass `ApiContext` to CRUD operations
+- Always pass `BaseContext` (or any subclass like `ApiContext`, `SyncContext`) to CRUD operations
 - Never bypass `_validate_organization_access()`
 - Handle both user and API key contexts
 - Use `ctx.logger` for contextual logging with request metadata
@@ -200,7 +202,7 @@ collection = await crud.collection.get(db, id, ctx)
 
 ## Key Invariants
 
-1. **Every operation requires ApiContext** - No exceptions
+1. **Every operation requires BaseContext** (or a subclass) - No exceptions
 2. **Organization resources are isolated** - Cross-org access is prevented
 3. **User tracking is automatic** - When enabled, audit fields are managed
 4. **Transactions are explicit** - Use UoW for multi-step operations

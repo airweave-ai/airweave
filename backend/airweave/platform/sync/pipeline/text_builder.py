@@ -12,6 +12,7 @@ from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 class TextualRepresentationBuilder:
@@ -34,12 +35,14 @@ class TextualRepresentationBuilder:
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> List[BaseEntity]:
         """Build textual_representation for all entities in batch.
 
         Args:
             entities: Entities to build representations for
             sync_context: Sync context with logger
+            runtime: Sync runtime with live services
 
         Returns:
             List of entities that succeeded (failed ones removed)
@@ -48,7 +51,7 @@ class TextualRepresentationBuilder:
             Modifies entities in-place, setting textual_representation.
             Failed entities are removed and counted as skipped.
         """
-        source_name = sync_context.source_instance.short_name
+        source_name = sync_context.source_short_name
 
         # Step 1: Build metadata section for all entities
         await self._build_metadata_for_all(entities, source_name)
@@ -61,7 +64,7 @@ class TextualRepresentationBuilder:
         failed_entities.extend(additional_failures)
 
         # Step 4: Handle failures
-        await self._handle_conversion_failures(entities, failed_entities, sync_context)
+        await self._handle_conversion_failures(entities, failed_entities, sync_context, runtime)
 
         return entities
 
@@ -468,6 +471,7 @@ class TextualRepresentationBuilder:
         entities: List[BaseEntity],
         failed_entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Remove failed entities and update progress.
 
@@ -475,6 +479,7 @@ class TextualRepresentationBuilder:
             entities: Original entity list (modified in-place)
             failed_entities: Entities that failed conversion
             sync_context: Sync context for progress tracking
+            runtime: Sync runtime with live services
         """
         if not failed_entities:
             return
@@ -483,7 +488,7 @@ class TextualRepresentationBuilder:
             if entity in entities:
                 entities.remove(entity)
 
-        await sync_context.entity_tracker.record_skipped(len(failed_entities))
+        await runtime.entity_tracker.record_skipped(len(failed_entities))
         sync_context.logger.warning(
             f"Removed {len(failed_entities)} entities that failed conversion"
         )

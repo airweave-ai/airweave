@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -19,7 +19,6 @@ from airweave.core.config import settings as core_settings
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.source_connection_service_helpers import source_connection_helpers
-from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
 from airweave.crud import connection_init_session
 from airweave.db.unit_of_work import UnitOfWork
@@ -35,7 +34,6 @@ from airweave.schemas.source_connection import (
     OAuthTokenAuthentication,
     SourceConnection,
     SourceConnectionCreate,
-    SourceConnectionListItem,
     SourceConnectionUpdate,
 )
 
@@ -374,230 +372,6 @@ class SourceConnectionService:
         )
 
         return source_connection
-
-    async def get(
-        self,
-        db: AsyncSession,
-        *,
-        id: UUID,
-        ctx: ApiContext,
-    ) -> SourceConnection:
-        """Get a source connection with complete details."""
-        source_conn = await crud.source_connection.get(db, id=id, ctx=ctx)
-        if not source_conn:
-            raise HTTPException(status_code=404, detail="Source connection not found")
-
-        return await self._build_source_connection_response(db, source_conn, ctx)
-
-    async def list(
-        self,
-        db: AsyncSession,
-        *,
-        ctx: ApiContext,
-        readable_collection_id: Optional[str] = None,
-        skip: int = 0,
-        limit: int = 100,
-    ) -> List[SourceConnectionListItem]:
-        """List source connections with complete stats."""
-        # Use the new CRUD method that fetches all data efficiently
-        connections_with_stats = await crud.source_connection.get_multi_with_stats(
-            db, ctx=ctx, collection_id=readable_collection_id, skip=skip, limit=limit
-        )
-
-        # Transform to schema objects
-        result = []
-        for data in connections_with_stats:
-            # Extract last job status for status computation
-            last_job = data.get("last_job", {})
-            last_job_status = last_job.get("status") if last_job else None
-
-            # Build clean list item
-            result.append(
-                SourceConnectionListItem(
-                    # Core fields
-                    id=data["id"],
-                    name=data["name"],
-                    short_name=data["short_name"],
-                    readable_collection_id=data["readable_collection_id"],
-                    created_at=data["created_at"],
-                    modified_at=data["modified_at"],
-                    # Authentication
-                    is_authenticated=data["is_authenticated"],
-                    authentication_method=data.get("authentication_method"),
-                    # Stats
-                    entity_count=data.get("entity_count", 0),
-                    # Hidden fields for status computation
-                    is_active=data.get("is_active", True),
-                    last_job_status=last_job_status,
-                )
-            )
-
-        return result
-
-    async def update(
-        self,
-        db: AsyncSession,
-        *,
-        id: UUID,
-        obj_in: SourceConnectionUpdate,
-        ctx: ApiContext,
-    ) -> SourceConnection:
-        """Update a source connection.
-
-        Handles:
-        - Config field updates with validation
-        - Schedule updates (create, update, or remove)
-        - Credential updates for direct auth only
-        """
-        async with UnitOfWork(db) as uow:
-            # Re-fetch the source_conn within the UoW session to avoid session mismatch
-            source_conn = await crud.source_connection.get(uow.session, id=id, ctx=ctx)
-            if not source_conn:
-                raise HTTPException(status_code=404, detail="Source connection not found")
-
-            # Update fields
-            update_data = obj_in.model_dump(exclude_unset=True)
-
-            # Normalize nested authentication payloads (Direct auth updates)
-            if "authentication" in update_data:
-                auth_payload = update_data.get("authentication") or {}
-                credentials = auth_payload.get("credentials")
-                if credentials:
-                    update_data["credentials"] = credentials
-                # Remove authentication object so we don't try to persist it on the model
-                del update_data["authentication"]
-
-            # Handle config update
-            if "config" in update_data:
-                validated_config = await self._validate_config_fields(
-                    uow.session, source_conn.short_name, update_data["config"], ctx
-                )
-                update_data["config_fields"] = validated_config
-                del update_data["config"]
-
-            # Handle schedule update
-            await self._handle_schedule_update(uow, source_conn, update_data, ctx)
-
-            # Handle credential update (direct auth only)
-            if "credentials" in update_data:
-                # Use the schema function that works with database models
-                from airweave.schemas.source_connection import determine_auth_method
-
-                auth_method = determine_auth_method(source_conn)
-                if auth_method != AuthenticationMethod.DIRECT:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Credentials can only be updated for direct authentication",
-                    )
-                await self._update_auth_fields(
-                    uow.session, source_conn, update_data["credentials"], ctx, uow
-                )
-                del update_data["credentials"]
-
-            # Update source connection
-            if update_data:
-                source_conn = await crud.source_connection.update(
-                    uow.session,
-                    db_obj=source_conn,
-                    obj_in=update_data,
-                    ctx=ctx,
-                    uow=uow,
-                )
-
-            await uow.commit()
-            await uow.session.refresh(source_conn)
-
-        return await self._build_source_connection_response(db, source_conn, ctx)
-
-    async def delete(
-        self,
-        db: AsyncSession,
-        *,
-        id: UUID,
-        ctx: ApiContext,
-    ) -> SourceConnection:
-        """Delete a source connection and all related data.
-
-        The flow is:
-        1. Cancel any running sync workflows and wait for them to stop.
-        2. CASCADE-delete the DB records (source connection, sync, jobs, entities).
-        3. Fire-and-forget a Temporal cleanup workflow for the slow external
-           data deletion (Vespa, ARF, schedules) which can take minutes.
-        """
-        source_conn = await crud.source_connection.get(db, id=id, ctx=ctx)
-        if not source_conn:
-            raise HTTPException(status_code=404, detail="Source connection not found")
-
-        # Capture attributes upfront to avoid lazy-loading issues after session changes
-        sync_id = source_conn.sync_id
-        collection = await crud.collection.get_by_readable_id(
-            db, readable_id=source_conn.readable_collection_id, ctx=ctx
-        )
-        if not collection:
-            raise HTTPException(status_code=404, detail="Collection not found")
-        collection_id = str(collection.id)
-        organization_id = str(collection.organization_id)
-
-        # Build response before deletion
-        response = await self._build_source_connection_response(db, source_conn, ctx)
-
-        # Cancel any running jobs and wait for the Temporal workflow to
-        # terminate before we cascade-delete the DB rows.
-        if sync_id:
-            latest_job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=sync_id)
-            if latest_job and latest_job.status in [
-                SyncJobStatus.PENDING,
-                SyncJobStatus.RUNNING,
-                SyncJobStatus.CANCELLING,
-            ]:
-                if latest_job.status in [SyncJobStatus.PENDING, SyncJobStatus.RUNNING]:
-                    ctx.logger.info(
-                        f"Cancelling job {latest_job.id} for source connection {id} before deletion"
-                    )
-                    try:
-                        await self.cancel_job(
-                            db,
-                            source_connection_id=id,
-                            job_id=latest_job.id,
-                            ctx=ctx,
-                        )
-                    except Exception as e:
-                        ctx.logger.warning(
-                            f"Failed to cancel job {latest_job.id} during deletion: {e}"
-                        )
-
-                # BARRIER: Wait for the workflow to reach a terminal state so
-                # the worker stops writing before we cascade-delete the rows.
-                reached_terminal = await self._wait_for_sync_job_terminal_state(
-                    db, sync_id, timeout_seconds=15
-                )
-                if not reached_terminal:
-                    ctx.logger.warning(
-                        f"Job for sync {sync_id} did not reach terminal state within 15s "
-                        f"-- proceeding with deletion anyway"
-                    )
-
-        # Delete the source connection first (CASCADE removes sync, jobs, entities).
-        await crud.source_connection.remove(db, id=id, ctx=ctx)
-
-        # Fire-and-forget: schedule async cleanup of external data (Vespa, ARF,
-        # Temporal schedules). This can take minutes for Vespa and must not
-        # block the API response.
-        if sync_id:
-            try:
-                await temporal_service.start_cleanup_sync_data_workflow(
-                    sync_ids=[str(sync_id)],
-                    collection_id=collection_id,
-                    organization_id=organization_id,
-                    ctx=ctx,
-                )
-            except Exception as e:
-                ctx.logger.error(
-                    f"Failed to schedule async cleanup for sync {sync_id}: {e}. "
-                    f"Data may be orphaned in Vespa/ARF."
-                )
-
-        return response
 
     # Private creation handlers
     async def _create_with_direct_auth(
@@ -1355,108 +1129,6 @@ class SourceConnectionService:
                 uow=uow,
             )
 
-    async def _handle_schedule_update(
-        self,
-        uow,
-        source_conn,
-        update_data: dict,
-        ctx: ApiContext,
-    ) -> None:
-        """Handle schedule updates for a source connection.
-
-        This method handles three cases:
-        1. Updating an existing sync's schedule
-        2. Creating a new sync when adding a schedule to a connection without one
-        3. Removing a schedule (setting cron to None)
-
-        Args:
-            uow: Unit of work
-            source_conn: Source connection being updated
-            update_data: Update data dictionary (modified in place)
-            ctx: API context
-        """
-        if "schedule" not in update_data:
-            return
-
-        # If schedule is None, treat it as removing the schedule
-        if update_data["schedule"] is None:
-            new_cron = None
-        else:
-            new_cron = update_data["schedule"].get("cron")
-
-        if source_conn.sync_id:
-            # Update existing sync's schedule
-            if new_cron:
-                # Get the source to validate schedule
-                source = await self._get_and_validate_source(uow.session, source_conn.short_name)
-                self._validate_cron_schedule_for_source(new_cron, source, ctx)
-            await self._update_sync_schedule(
-                uow.session,
-                source_conn.sync_id,
-                new_cron,
-                ctx,
-                uow,
-            )
-        elif new_cron:
-            # No sync exists but we're adding a schedule - create a new sync
-            # Get the source to validate schedule
-            source = await self._get_and_validate_source(uow.session, source_conn.short_name)
-            self._validate_cron_schedule_for_source(new_cron, source, ctx)
-
-            # Check if connection_id exists (might be None for OAuth flows)
-            if not source_conn.connection_id:
-                ctx.logger.warning(
-                    f"Cannot create schedule for SC {source_conn.id} without connection_id"
-                )
-                # Skip schedule creation for connections without connection_id
-                del update_data["schedule"]
-                return
-
-            # Get the collection
-            collection = await self._get_collection(
-                uow.session, source_conn.readable_collection_id, ctx
-            )
-
-            # Create a new sync with the schedule
-            sync, _ = await self._create_sync_without_schedule(
-                uow.session,
-                source_conn.name,
-                source_conn.connection_id,
-                collection.id,
-                collection.readable_id,
-                new_cron,
-                False,  # Don't run immediately on update
-                ctx,
-                uow,
-            )
-
-            # Apply the sync_id update to the source connection now
-            # so that temporal_schedule_service can find it
-            source_conn = await crud.source_connection.update(
-                uow.session,
-                db_obj=source_conn,
-                obj_in={"sync_id": sync.id},
-                ctx=ctx,
-                uow=uow,
-            )
-            await uow.session.flush()
-
-            # Create the Temporal schedule
-            from airweave.platform.temporal.schedule_service import (
-                temporal_schedule_service,
-            )
-
-            await temporal_schedule_service.create_or_update_schedule(
-                sync_id=sync.id,
-                cron_schedule=new_cron,
-                db=uow.session,
-                ctx=ctx,
-                uow=uow,
-            )
-
-        if "schedule" in update_data:
-            del update_data["schedule"]
-
     async def _prepare_sync_schemas_for_workflow(
         self,
         uow,
@@ -1564,124 +1236,6 @@ class SourceConnectionService:
         module = __import__(f"airweave.platform.sources.{module_name}", fromlist=[class_name])
         return getattr(module, class_name)
 
-    async def run(
-        self,
-        db: AsyncSession,
-        *,
-        id: UUID,
-        ctx: ApiContext,
-        force_full_sync: bool = False,
-    ) -> schemas.SourceConnectionJob:
-        """Trigger a sync run for a source connection.
-
-        Args:
-            db: Database session
-            id: Source connection ID
-            ctx: API context
-            force_full_sync: If True, forces a full sync with orphaned entity cleanup.
-                           Only allowed for continuous syncs (syncs with cursor data).
-                           Raises HTTPException if used on non-continuous syncs.
-        """
-        source_conn = await crud.source_connection.get(db, id=id, ctx=ctx)
-        if not source_conn:
-            raise HTTPException(status_code=404, detail="Source connection not found")
-
-        if not source_conn.sync_id:
-            raise HTTPException(status_code=400, detail="Source connection has no associated sync")
-
-        # Validate force_full_sync is only used with continuous syncs
-        if force_full_sync:
-            # Check if sync has cursor data (indicates continuous sync)
-            cursor = await crud.sync_cursor.get_by_sync_id(db, sync_id=source_conn.sync_id, ctx=ctx)
-
-            if not cursor or not cursor.cursor_data:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "force_full_sync can only be used with continuous syncs "
-                        "(syncs with cursor data). This sync is non-continuous and "
-                        "always performs full syncs by default."
-                    ),
-                )
-
-            ctx.logger.info(
-                f"Force full sync requested for continuous sync {source_conn.sync_id}. "
-                "Will ignore cursor data and perform full sync with orphaned entity cleanup."
-            )
-
-        # Run through Temporal
-        collection = await crud.collection.get_by_readable_id(
-            db, readable_id=source_conn.readable_collection_id, ctx=ctx
-        )
-
-        collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
-        source_connection_schema = await self._build_source_connection_response(
-            db, source_conn, ctx
-        )
-
-        # Get the actual Connection object (not SourceConnection!)
-        connection_schema = await source_connection_helpers.get_connection_for_source_connection(
-            db=db, source_connection=source_conn, ctx=ctx
-        )
-
-        # Trigger sync through Temporal only
-        sync, sync_job = await sync_service.trigger_sync_run(
-            db, sync_id=source_conn.sync_id, ctx=ctx
-        )
-        sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
-
-        # Publish PENDING event via the event bus (fans out to webhooks, pubsub, etc.)
-        from airweave.core.container import container
-
-        if container is not None:
-            await container.event_bus.publish(
-                SyncLifecycleEvent.pending(
-                    organization_id=ctx.organization.id,
-                    source_connection_id=source_connection_schema.id,
-                    sync_job_id=sync_job_schema.id,
-                    sync_id=source_connection_schema.sync_id,
-                    collection_id=collection_schema.id,
-                    source_type=connection_schema.short_name,
-                    collection_name=collection_schema.name,
-                    collection_readable_id=collection_schema.readable_id,
-                )
-            )
-
-        await temporal_service.run_source_connection_workflow(
-            sync=sync,
-            sync_job=sync_job,
-            collection=collection_schema,
-            connection=connection_schema,  # Pass Connection, not SourceConnection
-            ctx=ctx,
-            force_full_sync=force_full_sync,
-        )
-
-        # Convert sync_job to SourceConnectionJob using the built-in conversion method
-        sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
-        return sync_job_schema.to_source_connection_job(source_connection_schema.id)
-
-    async def get_jobs(
-        self,
-        db: AsyncSession,
-        *,
-        id: UUID,
-        ctx: ApiContext,
-        limit: int = 100,
-    ) -> List[schemas.SourceConnectionJob]:
-        """Get sync jobs for a source connection."""
-        source_conn = await crud.source_connection.get(db, id=id, ctx=ctx)
-        if not source_conn:
-            raise HTTPException(status_code=404, detail="Source connection not found")
-
-        if not source_conn.sync_id:
-            return []
-
-        sync_jobs = await sync_service.list_sync_jobs(
-            db, ctx=ctx, sync_id=source_conn.sync_id, limit=limit
-        )
-
-        return [self._sync_job_to_source_connection_job(job, source_conn.id) for job in sync_jobs]
-
     async def cancel_job(
         self,
         db: AsyncSession,
@@ -1767,45 +1321,6 @@ class SourceConnectionService:
         # Convert to SourceConnectionJob response
         sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
         return sync_job_schema.to_source_connection_job(source_connection_id)
-
-    async def _wait_for_sync_job_terminal_state(
-        self,
-        db: AsyncSession,
-        sync_id: UUID,
-        *,
-        timeout_seconds: int = 30,
-        poll_interval: float = 1.0,
-    ) -> bool:
-        """Wait for the latest sync job to reach a terminal state.
-
-        Polls the database until the job reaches COMPLETED, FAILED, or CANCELLED.
-        Used as a cancellation barrier to prevent cleanup from running while
-        a Temporal worker is still actively writing.
-
-        Args:
-            db: Database session.
-            sync_id: Sync ID whose latest job to monitor.
-            timeout_seconds: Maximum time to wait before giving up.
-            poll_interval: Seconds between poll attempts.
-
-        Returns:
-            True if a terminal state was reached, False on timeout.
-        """
-        terminal_states = {
-            SyncJobStatus.COMPLETED,
-            SyncJobStatus.FAILED,
-            SyncJobStatus.CANCELLED,
-        }
-        elapsed = 0.0
-        while elapsed < timeout_seconds:
-            await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
-            # Expire cached ORM objects to force a fresh read from the database
-            db.expire_all()
-            job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=sync_id)
-            if job and job.status in terminal_states:
-                return True
-        return False
 
     async def complete_oauth1_callback(
         self,
@@ -2018,15 +1533,12 @@ class SourceConnectionService:
     _get_connection_for_source_connection = (
         source_connection_helpers.get_connection_for_source_connection
     )
-    _create_sync = source_connection_helpers.create_sync
     _create_sync_without_schedule = source_connection_helpers.create_sync_without_schedule
     _create_source_connection = source_connection_helpers.create_source_connection
+    # [code blue] deprecate once source_connections domain is live
     _build_source_connection_response = source_connection_helpers.build_source_connection_response
     _create_init_session = source_connection_helpers.create_init_session
     _create_proxy_url = source_connection_helpers.create_proxy_url
-    _update_sync_schedule = source_connection_helpers.update_sync_schedule
-    _update_auth_fields = source_connection_helpers.update_auth_fields
-    _sync_job_to_source_connection_job = source_connection_helpers.sync_job_to_source_connection_job
     _reconstruct_context_from_session = source_connection_helpers.reconstruct_context_from_session
     _exchange_oauth1_code = source_connection_helpers.exchange_oauth1_code
     _exchange_oauth2_code = source_connection_helpers.exchange_oauth2_code

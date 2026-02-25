@@ -6,18 +6,21 @@ from airweave.platform.entities._base import BaseEntity
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 async def filter_empty_representations(
     entities: List[BaseEntity],
     sync_context: "SyncContext",
+    runtime: "SyncRuntime",
     processor_name: str = "Processor",
 ) -> List[BaseEntity]:
     """Filter entities with empty textual_representation.
 
     Args:
         entities: Entities to filter
-        sync_context: Sync context for logging and tracking
+        sync_context: Sync context for logging
+        runtime: Sync runtime for entity_tracker
         processor_name: Name for logging
 
     Returns:
@@ -35,6 +38,6 @@ async def filter_empty_representations(
 
     skipped = len(entities) - len(valid)
     if skipped:
-        await sync_context.entity_tracker.record_skipped(skipped)
+        await runtime.entity_tracker.record_skipped(skipped)
 
     return valid

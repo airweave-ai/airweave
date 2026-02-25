@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SourceRateLimitBase(BaseModel):
@@ -44,10 +44,7 @@ class SourceRateLimit(SourceRateLimitBase):
     created_at: datetime
     modified_at: datetime
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SourceRateLimitUpdateRequest(BaseModel):

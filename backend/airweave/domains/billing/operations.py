@@ -6,17 +6,21 @@ Simple CRUD wrappers are inlined at their call sites instead.
 """
 
 from datetime import datetime, timedelta
-from typing import Any, Optional, Protocol
+from typing import Optional, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core.logging import ContextualLogger, logger
+from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.exceptions import BillingStateError
-from airweave.domains.billing.repository import OrganizationBillingRepositoryProtocol
+from airweave.domains.billing.repository import (
+    BillingPeriodRepositoryProtocol,
+    OrganizationBillingRepositoryProtocol,
+)
+from airweave.domains.usage.repository import UsageRepositoryProtocol
 from airweave.models import Organization
 from airweave.schemas.billing_period import (
     BillingPeriodCreate,
@@ -48,7 +52,7 @@ class BillingOperationsProtocol(Protocol):
         plan: BillingPlan,
         transition: BillingTransition,
         ctx: ApiContext,
-        stripe_subscription_id: Optional[str] = None,
+        stripe_subscription_id: str,
         previous_period_id: Optional[UUID] = None,
         status: BillingPeriodStatus = BillingPeriodStatus.ACTIVE,
     ) -> schemas.BillingPeriod:
@@ -63,7 +67,6 @@ class BillingOperationsProtocol(Protocol):
         billing_email: str,
         ctx: ApiContext,
         uow: UnitOfWork,
-        contextual_logger: Optional[ContextualLogger] = None,
     ) -> schemas.OrganizationBilling:
         """Create initial billing record for an organization."""
         ...
@@ -75,15 +78,19 @@ class BillingOperationsProtocol(Protocol):
 
 
 class BillingOperations(BillingOperationsProtocol):
-    """Billing write operations backed by crud layer."""
+    """Billing write operations backed by repository layer."""
 
     def __init__(
         self,
-        billing_repo: Optional["OrganizationBillingRepositoryProtocol"] = None,
-        payment_gateway: Optional[Any] = None,
+        billing_repo: OrganizationBillingRepositoryProtocol,
+        period_repo: BillingPeriodRepositoryProtocol,
+        usage_repo: UsageRepositoryProtocol,
+        payment_gateway: PaymentGatewayProtocol,
     ) -> None:
-        """Initialize with optional billing repo and payment gateway."""
+        """Initialize with required repository and payment dependencies."""
         self._billing_repo = billing_repo
+        self._period_repo = period_repo
+        self._usage_repo = usage_repo
         self._payment_gateway = payment_gateway
 
     async def create_billing_record(
@@ -94,35 +101,24 @@ class BillingOperations(BillingOperationsProtocol):
         billing_email: str,
         ctx: ApiContext,
         uow: UnitOfWork,
-        contextual_logger: Optional[ContextualLogger] = None,
     ) -> schemas.OrganizationBilling:
         """Create initial billing record for an organization.
 
         Handles both paid and free (developer) plans.
         """
-        from airweave.domains.billing.repository import OrganizationBillingRepository
-
-        billing_repo = self._billing_repo or OrganizationBillingRepository()
-        log = contextual_logger or logger
-
-        # Extract plan from organization metadata
-        # SECURITY: Only self-serve plans allowed via user input;
-        # enterprise requires sales
+        # SECURITY: Only self-serve plans allowed via user input; enterprise requires sales
         SELF_SERVE_PLANS = ["developer", "pro", "team"]
 
-        selected_plan = BillingPlan.PRO  # Default
-        if hasattr(organization, "org_metadata") and organization.org_metadata:
-            # Check for plan in onboarding metadata (from test/frontend)
+        selected_plan = BillingPlan.PRO
+        if organization.org_metadata:
             onboarding = organization.org_metadata.get("onboarding", {})
-            subscription_plan = onboarding.get("subscriptionPlan")
-            # Also check direct plan field for backwards compatibility
-            direct_plan = organization.org_metadata.get("plan")
-
-            plan_from_metadata = subscription_plan or direct_plan
+            plan_from_metadata = onboarding.get(
+                "subscriptionPlan"
+            ) or organization.org_metadata.get("plan")
             if plan_from_metadata:
                 plan_lower = plan_from_metadata.lower()
                 if plan_lower == "enterprise":
-                    log.warning(
+                    ctx.logger.warning(
                         f"Blocked enterprise plan self-provisioning attempt for org "
                         f"{organization.id}. This may indicate abuse."
                     )
@@ -133,8 +129,7 @@ class BillingOperations(BillingOperationsProtocol):
                 elif plan_lower in SELF_SERVE_PLANS:
                     selected_plan = BillingPlan(plan_lower)
 
-        # Create billing record
-        existing = await billing_repo.get_by_org_id(db, organization_id=organization.id)
+        existing = await self._billing_repo.get_by_org_id(db, organization_id=organization.id)
         if existing:
             raise BillingStateError("Billing record already exists for organization")
 
@@ -145,16 +140,15 @@ class BillingOperations(BillingOperationsProtocol):
             billing_status=BillingStatus.ACTIVE,
             billing_email=billing_email,
         )
-        billing_model = await billing_repo.create(db, obj_in=billing_create, ctx=ctx, uow=uow)
+        billing_model = await self._billing_repo.create(db, obj_in=billing_create, ctx=ctx, uow=uow)
         await db.flush()
         await db.refresh(billing_model)
         billing = schemas.OrganizationBilling.model_validate(billing_model, from_attributes=True)
 
-        log.info(f"Created billing record for org {organization.id} with plan {selected_plan}")
+        ctx.logger.info(f"Created billing record with plan {selected_plan}")
 
         # For developer plan, create $0 subscription for webhook-driven periods
-        # Note: Enterprise is handled via sales, not self-serve creation
-        if selected_plan == BillingPlan.DEVELOPER and self._payment_gateway:
+        if selected_plan == BillingPlan.DEVELOPER:
             price_id = self._payment_gateway.get_price_for_plan(selected_plan)
             plan_str = selected_plan.value
             if price_id:
@@ -168,7 +162,7 @@ class BillingOperations(BillingOperationsProtocol):
                         },
                     )
 
-                    await billing_repo.update(
+                    await self._billing_repo.update(
                         db,
                         db_obj=billing_model,
                         obj_in=OrganizationBillingUpdate(
@@ -177,13 +171,11 @@ class BillingOperations(BillingOperationsProtocol):
                         ctx=ctx,
                     )
 
-                    log.info(
-                        f"Created $0 {plan_str} subscription {sub.id} for org {organization.id}"
-                    )
+                    ctx.logger.info(f"Created $0 {plan_str} subscription {sub.id}")
                 except Exception as e:
-                    log.warning(f"Failed to create {plan_str} subscription: {e}")
+                    ctx.logger.warning(f"Failed to create {plan_str} subscription: {e}")
             else:
-                log.warning(
+                ctx.logger.warning(
                     f"{selected_plan.value.title()} price ID not configured; "
                     f"{plan_str} plan will be local-only"
                 )
@@ -199,7 +191,7 @@ class BillingOperations(BillingOperationsProtocol):
         plan: BillingPlan,
         transition: BillingTransition,
         ctx: ApiContext,
-        stripe_subscription_id: Optional[str] = None,
+        stripe_subscription_id: str,
         previous_period_id: Optional[UUID] = None,
         status: BillingPeriodStatus = BillingPeriodStatus.ACTIVE,
     ) -> schemas.BillingPeriod:
@@ -209,18 +201,16 @@ class BillingOperations(BillingOperationsProtocol):
         the new one. Creates the period and its usage record in a single
         UnitOfWork transaction.
         """
-        # Check for a period active just before the new period starts
         check_time = period_start - timedelta(seconds=1)
-        current = await crud.billing_period.get_current_period_at(
+        current = await self._period_repo.get_current_period_at(
             db, organization_id=organization_id, at=check_time
         )
 
         if current and current.status in [BillingPeriodStatus.ACTIVE, BillingPeriodStatus.GRACE]:
-            db_period = await crud.billing_period.get(db, id=current.id, ctx=ctx)
+            db_period = await self._period_repo.get(db, id=current.id, ctx=ctx)
             if db_period:
-                # Only update if the new period actually starts after the current one
                 if db_period.period_start < period_start:
-                    await crud.billing_period.update(
+                    await self._period_repo.update(
                         db,
                         db_obj=db_period,
                         obj_in={
@@ -232,7 +222,6 @@ class BillingOperations(BillingOperationsProtocol):
                     if not previous_period_id:
                         previous_period_id = db_period.id
 
-        # Create new period
         period_create = BillingPeriodCreate(
             organization_id=organization_id,
             period_start=period_start,
@@ -244,23 +233,19 @@ class BillingOperations(BillingOperationsProtocol):
             previous_period_id=previous_period_id,
         )
 
-        period_id = None
-
         async with UnitOfWork(db) as uow:
-            period = await crud.billing_period.create(db, obj_in=period_create, ctx=ctx, uow=uow)
+            period = await self._period_repo.create(db, obj_in=period_create, ctx=ctx, uow=uow)
             await db.flush()
             period_id = period.id
 
-            # Create usage record
             usage_create = UsageCreate(
                 organization_id=organization_id,
                 billing_period_id=period.id,
             )
-            await crud.usage.create(db, obj_in=usage_create, ctx=ctx, uow=uow)
+            await self._usage_repo.create(db, obj_in=usage_create, ctx=ctx, uow=uow)
             await uow.commit()
 
-        # After commit, fetch the period fresh to avoid greenlet issues
-        created_period = await crud.billing_period.get(db, id=period_id, ctx=ctx)
+        created_period = await self._period_repo.get(db, id=period_id, ctx=ctx)
         if not created_period:
             raise BillingStateError("Failed to create billing period")
 

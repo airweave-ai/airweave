@@ -103,7 +103,8 @@
             "consoleName": "✨ Temporal Worker",
             "cwd": "${workspaceFolder}",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/backend"
+                "PYTHONPATH": "${workspaceFolder}/backend",
+                "TEMPORAL_SDK_METRICS_PORT": "9091"
                 // "LOG_LEVEL": "DEBUG"
             },
             "justMyCode": false,
@@ -119,7 +120,8 @@
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/backend",
-                "AIRWEAVE_DEBUGPY_WORKER_PORT": "7233"
+                "AIRWEAVE_DEBUGPY_WORKER_PORT": "7233",
+                "TEMPORAL_SDK_METRICS_PORT": "9091"
             },
             "envFile": "${workspaceFolder}/.env",
             "justMyCode": false,

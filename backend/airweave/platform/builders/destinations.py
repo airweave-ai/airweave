@@ -16,9 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.core import credentials
 from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
+from airweave.core.context import BaseContext
 from airweave.core.logging import ContextualLogger
-from airweave.platform.contexts.destinations import DestinationsContext
-from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.locator import resource_locator
@@ -34,24 +33,23 @@ class DestinationsContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         collection: schemas.Collection,
-        infra: InfraContext,
+        ctx: BaseContext,
+        logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
-    ) -> DestinationsContext:
-        """Build complete destinations context.
+    ) -> tuple:
+        """Build destinations and entity map.
 
         Args:
             db: Database session
             sync: Sync configuration
             collection: Target collection
-            infra: Infrastructure context (provides ctx and logger)
+            ctx: Base context (provides org identity for CRUD)
+            logger: Contextual logger
             execution_config: Optional execution config for filtering
 
         Returns:
-            DestinationsContext with configured destinations and entity map.
+            Tuple of (destinations, entity_map).
         """
-        ctx = infra.ctx
-        logger = infra.logger
-
         # Build in parallel: destinations and entity map
         destinations, entity_map = await asyncio.gather(
             cls._create_destinations(
@@ -65,10 +63,7 @@ class DestinationsContextBuilder:
             cls._get_entity_definition_map(db=db),
         )
 
-        return DestinationsContext(
-            destinations=destinations,
-            entity_map=entity_map,
-        )
+        return destinations, entity_map
 
     @classmethod
     async def build_for_collection(
@@ -76,9 +71,10 @@ class DestinationsContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         collection: schemas.Collection,
-        infra: InfraContext,
-    ) -> DestinationsContext:
-        """Build destinations context for collection-level operations.
+        ctx: BaseContext,
+        logger: ContextualLogger,
+    ) -> tuple:
+        """Build destinations for collection-level operations.
 
         Simplified version without execution_config filtering.
 
@@ -86,16 +82,18 @@ class DestinationsContextBuilder:
             db: Database session
             sync: Sync configuration
             collection: Target collection
-            infra: Infrastructure context
+            ctx: Base context
+            logger: Contextual logger
 
         Returns:
-            DestinationsContext with all configured destinations.
+            Tuple of (destinations, entity_map).
         """
         return await cls.build(
             db=db,
             sync=sync,
             collection=collection,
-            infra=infra,
+            ctx=ctx,
+            logger=logger,
             execution_config=None,
         )
 
@@ -339,9 +337,8 @@ class DestinationsContextBuilder:
 
         # Priority 1: target_destinations (explicit whitelist overrides everything)
         if execution_config.destinations.target_destinations:
-            logger.info(
-                f"Using target_destinations from config: {execution_config.destinations.target_destinations}"
-            )
+            targets = execution_config.destinations.target_destinations
+            logger.info(f"Using target_destinations from config: {targets}")
             return execution_config.destinations.target_destinations
 
         # Priority 2: Build combined exclusion set from all exclusion flags

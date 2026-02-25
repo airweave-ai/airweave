@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class EntityBase(BaseModel):
@@ -16,10 +16,7 @@ class EntityBase(BaseModel):
     entity_definition_id: Optional[UUID] = None
     hash: str
 
-    class Config:
-        """Pydantic config for EntityBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EntityCreate(EntityBase):
@@ -47,10 +44,7 @@ class EntityInDBBase(EntityBase):
 
     modified_at: datetime
 
-    class Config:
-        """Pydantic config for EntityInDBBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Entity(EntityInDBBase):

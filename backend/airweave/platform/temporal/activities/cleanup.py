@@ -37,26 +37,12 @@ class SelfDestructOrphanedSyncActivity:
             Summary of cleanup actions performed
         """
         from airweave import schemas
-        from airweave.api.context import ApiContext
-        from airweave.core.logging import LoggerConfigurator
+        from airweave.core.context import BaseContext
 
         organization = schemas.Organization(**ctx_dict["organization"])
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
 
-        ctx = ApiContext(
-            request_id=ctx_dict["request_id"],
-            organization=organization,
-            user=user,
-            auth_method=ctx_dict["auth_method"],
-            auth_metadata=ctx_dict.get("auth_metadata"),
-            logger=LoggerConfigurator.configure_logger(
-                "airweave.temporal.cleanup",
-                dimensions={
-                    "sync_id": sync_id,
-                    "organization_id": str(organization.id),
-                },
-            ),
-        )
+        ctx = BaseContext(organization=organization)
+        ctx.logger = ctx.logger.with_context(sync_id=sync_id)
 
         ctx.logger.info(f"🧹 Starting self-destruct cleanup for sync {sync_id}. Reason: {reason}")
 

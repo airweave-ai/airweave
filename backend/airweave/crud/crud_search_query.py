@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.models.search_query import SearchQuery
 from airweave.schemas.search_query import SearchQueryCreate, SearchQueryUpdate
@@ -21,7 +21,7 @@ class CRUDSearchQuery(CRUDBaseOrganization[SearchQuery, SearchQueryCreate, Searc
         *,
         user_id: UUID,
         collection_id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
         limit: int = 50,
         offset: int = 0,
     ) -> List[SearchQuery]:

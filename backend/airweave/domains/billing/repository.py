@@ -11,6 +11,7 @@ from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models import OrganizationBilling
 from airweave.models.billing_period import BillingPeriod
+from airweave.schemas.billing_period import BillingPeriodCreate
 from airweave.schemas.organization_billing import (
     OrganizationBillingCreate,
     OrganizationBillingUpdate,
@@ -112,7 +113,22 @@ class OrganizationBillingRepository(OrganizationBillingRepositoryProtocol):
 
 
 class BillingPeriodRepositoryProtocol(Protocol):
-    """Read-only access to billing period records."""
+    """Access to billing period records."""
+
+    async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[BillingPeriod]:
+        """Get a billing period by ID."""
+        ...
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: BillingPeriodCreate,
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> BillingPeriod:
+        """Create a billing period."""
+        ...
 
     async def get_current_period(
         self, db: AsyncSession, *, organization_id: UUID
@@ -146,6 +162,21 @@ class BillingPeriodRepositoryProtocol(Protocol):
 
 class BillingPeriodRepository(BillingPeriodRepositoryProtocol):
     """Delegates to the crud.billing_period singleton."""
+
+    async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[BillingPeriod]:
+        """Get a billing period by ID."""
+        return await crud.billing_period.get(db, id=id, ctx=ctx)
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: BillingPeriodCreate,
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> BillingPeriod:
+        """Create a billing period."""
+        return await crud.billing_period.create(db, obj_in=obj_in, ctx=ctx, uow=uow)
 
     async def get_current_period(
         self, db: AsyncSession, *, organization_id: UUID

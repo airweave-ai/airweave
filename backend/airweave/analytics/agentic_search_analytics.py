@@ -10,6 +10,7 @@ Two events are tracked:
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from airweave.analytics.service import analytics
 from airweave.api.context import ApiContext
 
 
@@ -384,7 +385,7 @@ def track_agentic_search_completion(
         fallback_stats=fallback_stats,
         **additional_properties,
     )
-    ctx.analytics.track_event("agentic_search_query", properties)
+    analytics.track_event("agentic_search_query", properties, ctx=ctx)
 
 
 def track_agentic_search_error(
@@ -421,4 +422,4 @@ def track_agentic_search_error(
         "organization_name": ctx.organization.name,
         "auth_method": ctx.auth_method,
     }
-    ctx.analytics.track_event("agentic_search_error", properties)
+    analytics.track_event("agentic_search_error", properties, ctx=ctx)

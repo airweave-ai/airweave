@@ -1,4 +1,8 @@
-"""Source context for sync operations."""
+"""Source context — compatibility shim.
+
+Kept temporarily because SourceContextBuilder returns SourceContext.
+Will be removed when SourceContextBuilder is inlined into SyncContextBuilder.
+"""
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -10,12 +14,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class SourceContext:
-    """Everything needed to run the source pipeline.
-
-    Attributes:
-        source: Configured source instance
-        cursor: Sync cursor for incremental syncs
-    """
+    """Source pipeline components."""
 
     source: "BaseSource"
     cursor: "SyncCursor"

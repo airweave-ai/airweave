@@ -1,24 +1,21 @@
-"""Infrastructure context."""
+"""Infrastructure context — compatibility shim.
+
+Kept temporarily because sub-builders (source.py, destinations.py, tracking.py)
+still accept InfraContext as a parameter. Will be removed when those builders
+are refactored to accept (ctx, logger) directly.
+"""
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from airweave.api.context import ApiContext
+    from airweave.core.context import BaseContext
     from airweave.core.logging import ContextualLogger
 
 
 @dataclass
 class InfraContext:
-    """Core infrastructure needed by all operations.
+    """Thin wrapper around (ctx, logger) for sub-builder compatibility."""
 
-    Contains API context and logger. Other contexts and builders
-    can extract what they need from this.
-
-    Attributes:
-        ctx: API context for auth and audit
-        logger: Contextual logger with operation metadata
-    """
-
-    ctx: "ApiContext"
+    ctx: "BaseContext"
     logger: "ContextualLogger"

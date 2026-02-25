@@ -24,6 +24,7 @@ from airweave.platform.sync.handlers.protocol import EntityActionHandler
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 class EntityPostgresHandler(EntityActionHandler):
@@ -38,6 +39,14 @@ class EntityPostgresHandler(EntityActionHandler):
     Runs AFTER destination handlers succeed (dispatcher handles ordering).
     """
 
+    def __init__(self, guard_rail=None):
+        """Initialize with optional guard rail service.
+
+        Args:
+            guard_rail: GuardRailService for usage tracking (injected by factory)
+        """
+        self._guard_rail = guard_rail
+
     @property
     def name(self) -> str:
         """Handler name."""
@@ -51,6 +60,7 @@ class EntityPostgresHandler(EntityActionHandler):
         self,
         batch: EntityActionBatch,
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Handle full batch in a single transaction."""
         if not batch.has_mutations:
@@ -68,15 +78,14 @@ class EntityPostgresHandler(EntityActionHandler):
             total_synced = len(batch.inserts) + len(batch.updates)
             if total_synced > 0:
                 async with get_db_context() as db:
-                    await sync_context.usage_service.increment(
-                        db, ActionType.ENTITIES, amount=total_synced
-                    )
-                sync_context.logger.debug(f"[EntityPostgres] usage_service += {total_synced}")
+                    await self._guard_rail.increment(db, ActionType.ENTITIES, amount=total_synced)
+                sync_context.logger.debug(f"[EntityPostgres] guard_rail += {total_synced}")
 
     async def handle_inserts(
         self,
         actions: List[EntityInsertAction],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Handle inserts - create entity records."""
         if not actions:
@@ -90,6 +99,7 @@ class EntityPostgresHandler(EntityActionHandler):
         self,
         actions: List[EntityUpdateAction],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Handle updates - update entity hashes."""
         if not actions:
@@ -203,7 +213,7 @@ class EntityPostgresHandler(EntityActionHandler):
         sync_context.logger.debug(
             f"[EntityPostgres] Upserting {len(create_objs)} (sample: {sample_ids})"
         )
-        await crud.entity.bulk_create(db, objs=create_objs, ctx=sync_context.ctx)
+        await crud.entity.bulk_create(db, objs=create_objs, ctx=sync_context)
 
     async def _do_updates(
         self,
@@ -251,7 +261,7 @@ class EntityPostgresHandler(EntityActionHandler):
             return
 
         sync_context.logger.debug(f"[EntityPostgres] Deleting {len(db_ids)} records")
-        await crud.entity.bulk_remove(db, ids=db_ids, ctx=sync_context.ctx)
+        await crud.entity.bulk_remove(db, ids=db_ids, ctx=sync_context)
 
     # -------------------------------------------------------------------------
     # Private: Orphan Cleanup
@@ -277,7 +287,7 @@ class EntityPostgresHandler(EntityActionHandler):
                 return
 
             db_ids = [e.id for e in entity_map.values()]
-            await crud.entity.bulk_remove(db=db, ids=db_ids, ctx=sync_context.ctx)
+            await crud.entity.bulk_remove(db=db, ids=db_ids, ctx=sync_context)
             await db.commit()
 
             sync_context.logger.info(f"[EntityPostgres] Deleted {len(db_ids)} orphan records")

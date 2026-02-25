@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from airweave.platform.configs._base import Fields
 
@@ -22,10 +22,7 @@ class DestinationBase(BaseModel):
     config_schema: Optional[dict] = None
     labels: Optional[List[str]] = None
 
-    class Config:
-        """Pydantic config for DestinationBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DestinationCreate(DestinationBase):
@@ -47,10 +44,7 @@ class DestinationInDBBase(DestinationBase):
     created_at: datetime
     modified_at: datetime
 
-    class Config:
-        """Pydantic config for DestinationInDBBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Destination(DestinationInDBBase):

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from airweave import schemas
 from airweave.core.shared_models import SyncStatus
@@ -60,10 +60,7 @@ class SyncBase(BaseModel):
             raise ValueError("sync_type must be 'full' or 'incremental'")
         return v
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SyncCreate(SyncBase):
@@ -137,10 +134,7 @@ class SyncInDBBase(SyncBase):
     modified_by_email: Optional[EmailStr] = None
     status: SyncStatus
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Sync(SyncInDBBase):
@@ -175,10 +169,7 @@ class SyncWithoutConnections(BaseModel):
             raise ValueError("sync_type must be 'full' or 'incremental'")
         return v
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SyncWithSourceConnection(SyncInDBBase):

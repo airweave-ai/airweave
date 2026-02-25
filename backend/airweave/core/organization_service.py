@@ -2,34 +2,55 @@
 
 import uuid
 from typing import Dict, List
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.api.context import ApiContext
+
+# Import billing dependencies only if Stripe is enabled
 from airweave.core.config import settings
+from airweave.core.context import BaseContext
 from airweave.core.context_cache_service import context_cache
 from airweave.core.logging import logger
 from airweave.core.protocols.payment import PaymentGatewayProtocol
-from airweave.core.shared_models import AuthMethod
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.operations import BillingOperations
+from airweave.domains.billing.repository import (
+    BillingPeriodRepository,
+    OrganizationBillingRepository,
+)
+from airweave.domains.usage.repository import UsageRepository
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models import Organization, User, UserOrganization
 from airweave.schemas.api_key import APIKeyCreate
 
+_billing_repo = OrganizationBillingRepository()
+_period_repo = BillingPeriodRepository()
+_usage_repo = UsageRepository()
+
+# TODO: Remove this once we have refctored the org service to use DI
 if settings.STRIPE_ENABLED:
     from airweave.adapters.payment.stripe import StripePaymentGateway
 
     _payment_gateway: PaymentGatewayProtocol = StripePaymentGateway()
+    _billing_ops = BillingOperations(
+        payment_gateway=_payment_gateway,
+        billing_repo=_billing_repo,
+        period_repo=_period_repo,
+        usage_repo=_usage_repo,
+    )
 else:
     from airweave.adapters.payment.null import NullPaymentGateway
 
     _payment_gateway: PaymentGatewayProtocol = NullPaymentGateway()
-
-_billing_ops = BillingOperations(payment_gateway=_payment_gateway)
+    _billing_ops = BillingOperations(
+        payment_gateway=_payment_gateway,
+        billing_repo=_billing_repo,
+        period_repo=_period_repo,
+        usage_repo=_usage_repo,
+    )
 
 
 class OrganizationService:
@@ -144,19 +165,7 @@ class OrganizationService:
                 if stripe_customer:
                     local_org_schema = schemas.Organization.model_validate(local_org)
 
-                    # Create system auth context for billing record creation
-                    ctx = ApiContext(
-                        request_id=str(uuid4()),
-                        organization=local_org_schema,
-                        user=None,
-                        auth_method=AuthMethod.SYSTEM,
-                        auth_metadata={"source": "organization_creation"},
-                        logger=logger.with_context(
-                            organization_id=str(local_org_schema.id),
-                            auth_method=AuthMethod.SYSTEM.value,
-                            source="organization_creation",
-                        ),
-                    )
+                    ctx = BaseContext(organization=local_org_schema)
 
                     # Create billing record
                     _ = await _billing_ops.create_billing_record(
@@ -206,27 +215,9 @@ class OrganizationService:
                 # Create API key for the organization
                 logger.info(f"Creating API key for organization {org_id}")
 
-                # Create system auth context for API key creation
-                # Generate a request ID for the API key creation context
-                request_id = str(uuid4())
-
-                # Create logger with organization context
-                contextual_logger = logger.with_context(
-                    request_id=request_id,
-                    organization_id=str(org_id),
-                    auth_method=AuthMethod.SYSTEM.value,
-                    context_base="organization_service",
-                    user_id=str(owner_user.id),
-                    user_email=owner_user.email,
-                )
-
-                api_key_auth = ApiContext(
-                    request_id=request_id,
-                    organization=organization,  # Use the full organization object
-                    user=owner_user,  # Set the owner as the creator
-                    auth_method=AuthMethod.SYSTEM,
-                    auth_metadata={"source": "organization_creation"},
-                    logger=contextual_logger,
+                api_key_auth = BaseContext(
+                    organization=organization,
+                    user=owner_user,
                 )
 
                 # Create API key with default expiration (180 days)
@@ -569,7 +560,7 @@ class OrganizationService:
             else:
                 await _payment_gateway.cancel_subscription(
                     subscription_id=org_billing.stripe_subscription_id,
-                    cancel_at_period_end=False,
+                    at_period_end=False,
                 )
             logger.info(f"Successfully deleted billing record for organization: {org_name}")
         except Exception as e:

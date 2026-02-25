@@ -162,7 +162,7 @@ class BaseEntity(BaseModel):
 
             # Validate the flagged field is not Optional in type definition
             flagged_field_name = flagged_fields[0]
-            field_info = self.model_fields[flagged_field_name]
+            field_info = self.__class__.model_fields[flagged_field_name]
             if field_info.is_required() is False:
                 raise ValueError(
                     f"{self.__class__.__name__}.{flagged_field_name} is marked with {flag_label} "

@@ -61,15 +61,20 @@ del _mod
 _singletons: dict | None = None
 
 
-def initialize_converters(ocr_provider: "OcrProvider") -> None:
+def initialize_converters(ocr_provider: "OcrProvider | None" = None) -> None:
     """Initialize converter singletons with the given OCR provider.
 
     Called once at startup from ``main.py`` lifespan and ``worker main()``.
     The OCR provider is passed explicitly — no container import needed.
 
+    When *ocr_provider* is ``None`` (no OCR credentials configured), the
+    hybrid document converters (PDF, DOCX, PPTX) still work for local text
+    extraction and only log a warning when OCR fallback would be needed.
+
     Args:
         ocr_provider: The OCR provider (e.g., FallbackOcrProvider with
-            circuit breaking) to inject into document converters.
+            circuit breaking) to inject into document converters, or
+            ``None`` if OCR is unavailable.
     """
     global _singletons
     if _singletons is not None:

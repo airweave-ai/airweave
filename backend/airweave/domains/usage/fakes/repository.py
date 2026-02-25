@@ -1,7 +1,7 @@
 """Fake usage repository for testing."""
 
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,7 @@ class FakeUsageRepository:
         self._current: dict[UUID, Usage] = {}  # org_id -> current usage record
         self._by_period: dict[UUID, Usage] = {}  # billing_period_id -> usage record
         self._all: dict[UUID, list[Usage]] = {}  # org_id -> all usage records
+        self._store: list[Usage] = []
         self._calls: list[tuple] = []
 
     def seed_current(self, organization_id: UUID, usage: Usage) -> None:
@@ -34,6 +35,19 @@ class FakeUsageRepository:
     def call_count(self, method: str) -> int:
         """Return the number of times a method was called."""
         return sum(1 for name, *_ in self._calls if name == method)
+
+    async def create(
+        self, db: AsyncSession, *, obj_in: object, ctx: object, uow: object = None
+    ) -> Usage:
+        """Create a usage record (fake)."""
+        self._calls.append(("create", db, obj_in, ctx, uow))
+        usage = Usage(
+            id=uuid4(),
+            organization_id=obj_in.organization_id,  # type: ignore[union-attr]
+            billing_period_id=obj_in.billing_period_id,  # type: ignore[union-attr]
+        )
+        self._store.append(usage)
+        return usage
 
     async def get_current_usage(
         self, db: AsyncSession, *, organization_id: UUID
@@ -54,7 +68,6 @@ class FakeUsageRepository:
         usage = self._current.get(organization_id)
         if usage is None:
             return None
-        # Apply increments in memory to mimic DB behavior
         for action_type, amount in increments.items():
             field = action_type.value
             current = getattr(usage, field, 0) or 0

@@ -35,7 +35,7 @@ class TestGenerateToken:
     """Tests for _generate_token."""
 
     def test_returns_decodable_jwt(self):
-        secret = "test_secret_key"
+        secret = "test-secret-key-that-is-at-least-32-bytes!"
         token = _generate_token(secret)
         payload = jwt.decode(token, secret, algorithms=["HS256"])
 
@@ -46,7 +46,7 @@ class TestGenerateToken:
         assert "nbf" in payload
 
     def test_expiry_is_far_future(self):
-        secret = "test_secret_key"
+        secret = "test-secret-key-that-is-at-least-32-bytes!"
         token = _generate_token(secret)
         payload = jwt.decode(token, secret, algorithms=["HS256"])
 
@@ -54,8 +54,8 @@ class TestGenerateToken:
         assert duration == TOKEN_DURATION_SECONDS
 
     def test_different_secrets_produce_different_tokens(self):
-        t1 = _generate_token("secret_a")
-        t2 = _generate_token("secret_b")
+        t1 = _generate_token("secret-a-padding-to-reach-32-bytes!")
+        t2 = _generate_token("secret-b-padding-to-reach-32-bytes!")
         assert t1 != t2
 
 

@@ -12,7 +12,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.domains.billing.exceptions import (
     BillingNotFoundError,
@@ -152,7 +152,7 @@ class BillingService(BillingServiceProtocol):
         *,
         billing: schemas.OrganizationBilling,
         target_plan: BillingPlan,
-        ctx: ApiContext,
+        ctx: BaseContext,
         db: AsyncSession,
         update_price_immediately: bool,
     ) -> str:
@@ -270,7 +270,7 @@ class BillingService(BillingServiceProtocol):
         plan: str,
         success_url: str,
         cancel_url: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Start a subscription checkout flow."""
         billing = await self._billing_repo.get_by_org_id(db, organization_id=ctx.organization.id)
@@ -334,7 +334,7 @@ class BillingService(BillingServiceProtocol):
         plan: str,
         success_url: str,
         cancel_url: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Start a yearly prepay checkout flow for organizations without a subscription.
 
@@ -402,7 +402,7 @@ class BillingService(BillingServiceProtocol):
     async def update_subscription_plan(  # noqa: C901
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         new_plan: str,
         period: str = "monthly",
     ) -> str:
@@ -645,7 +645,7 @@ class BillingService(BillingServiceProtocol):
     async def cancel_subscription(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Cancel subscription at period end."""
         billing = await self._billing_repo.get_by_org_id(db, organization_id=ctx.organization.id)
@@ -672,7 +672,7 @@ class BillingService(BillingServiceProtocol):
     async def reactivate_subscription(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Reactivate a canceled subscription."""
         billing = await self._billing_repo.get_by_org_id(db, organization_id=ctx.organization.id)
@@ -702,7 +702,7 @@ class BillingService(BillingServiceProtocol):
     async def cancel_pending_plan_change(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Cancel a pending plan change."""
         billing = await self._billing_repo.get_by_org_id(db, organization_id=ctx.organization.id)
@@ -737,7 +737,7 @@ class BillingService(BillingServiceProtocol):
     async def create_customer_portal_session(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         return_url: str,
     ) -> str:
         """Create Stripe customer portal session."""
@@ -758,7 +758,7 @@ class BillingService(BillingServiceProtocol):
     async def get_subscription_info(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         at: Optional[datetime] = None,
     ) -> SubscriptionInfo:
         """Get comprehensive subscription information."""

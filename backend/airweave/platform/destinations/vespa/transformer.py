@@ -202,7 +202,7 @@ class EntityTransformer:
         for entity in entities:
             try:
                 doc = self.transform(entity)
-                docs_by_schema[doc.schema].append(doc)
+                docs_by_schema[doc.schema_name].append(doc)
 
                 # Debug logging
                 has_dense = "dense_embedding" in doc.fields

@@ -1,11 +1,11 @@
 """Protocols for source services."""
 
+from collections.abc import Mapping
 from typing import Any, Dict, Optional, Protocol, Union
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
@@ -17,11 +17,11 @@ from airweave.platform.sources._base import BaseSource
 class SourceServiceProtocol(Protocol):
     """Protocol for source services."""
 
-    async def get(self, short_name: str) -> schemas.Source:
+    async def get(self, short_name: str, ctx: ApiContext) -> schemas.Source:
         """Get a source by short name."""
         ...
 
-    async def list(self) -> list[schemas.Source]:
+    async def list(self, ctx: ApiContext) -> list[schemas.Source]:
         """List all sources."""
         ...
 
@@ -30,6 +30,24 @@ class SourceRegistryProtocol(RegistryProtocol[SourceRegistryEntry], Protocol):
     """Source registry protocol."""
 
     pass
+
+
+class SourceValidationServiceProtocol(Protocol):
+    """Validates source config and direct-auth fields against source schemas.
+
+    This protocol is intentionally scoped to source schemas only (not auth-provider
+    credential validation).
+    """
+
+    def validate_config(
+        self, short_name: str, config_fields: Mapping[str, Any] | None, ctx: ApiContext
+    ) -> dict[str, Any]:
+        """Validate source config against source schema."""
+        ...
+
+    def validate_auth_schema(self, short_name: str, auth_fields: dict[str, Any]) -> BaseModel:
+        """Validate direct-auth fields against source auth schema."""
+        ...
 
 
 class SourceLifecycleServiceProtocol(Protocol):

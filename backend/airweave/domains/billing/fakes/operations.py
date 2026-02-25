@@ -7,7 +7,6 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
-from airweave.core.logging import ContextualLogger
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models import Organization
 from airweave.schemas.billing_period import BillingPeriodStatus, BillingTransition
@@ -32,7 +31,7 @@ class FakeBillingOperations:
         plan: BillingPlan,
         transition: BillingTransition,
         ctx: ApiContext,
-        stripe_subscription_id: Optional[str] = None,
+        stripe_subscription_id: str,
         previous_period_id: Optional[UUID] = None,
         status: BillingPeriodStatus = BillingPeriodStatus.ACTIVE,
     ) -> object:
@@ -60,7 +59,6 @@ class FakeBillingOperations:
         billing_email: str,
         ctx: ApiContext,
         uow: UnitOfWork,
-        contextual_logger: Optional[ContextualLogger] = None,
     ) -> object:
         """Create a billing record (fake)."""
         self._calls.append(("create_billing_record", db, organization.id))

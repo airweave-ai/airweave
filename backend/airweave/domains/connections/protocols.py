@@ -21,3 +21,9 @@ class ConnectionRepositoryProtocol(Protocol):
     ) -> Optional[Connection]:
         """Get a connection by human-readable ID within an organization."""
         ...
+
+    async def get_s3_destination_for_org(
+        self, db: AsyncSession, ctx: ApiContext
+    ) -> Optional[Connection]:
+        """Get the org-scoped S3 destination connection if configured."""
+        ...

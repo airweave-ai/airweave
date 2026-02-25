@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SyncCursorBase(BaseModel):
@@ -49,7 +49,4 @@ class SyncCursor(SyncCursorBase):
         None, description="The field name used as cursor (e.g., 'last_repository_pushed_at')"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

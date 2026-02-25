@@ -16,6 +16,8 @@ from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
+from airweave.core.shared_models import FeatureFlag
+from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import (
     IntegrationCredentialRepositoryProtocol,
@@ -24,15 +26,15 @@ from airweave.domains.oauth.protocols import OAuth2ServiceProtocol
 from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
 )
-from airweave.domains.sources.protocols import SourceLifecycleServiceProtocol
-from airweave.core.shared_models import FeatureFlag
-from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.sources.exceptions import (
     SourceCreationError,
     SourceNotFoundError,
     SourceValidationError,
 )
-from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.domains.sources.protocols import (
+    SourceLifecycleServiceProtocol,
+    SourceRegistryProtocol,
+)
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthProviderMode

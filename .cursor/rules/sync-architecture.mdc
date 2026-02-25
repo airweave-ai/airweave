@@ -23,52 +23,48 @@ The sync module orchestrates data flow from sources to destinations using a high
 ## Component Deep Dive
 
 ### SyncFactory
-**Purpose**: Factory pattern for creating fully-initialized sync orchestrators
+**Purpose**: Factory that builds SyncContext (data), SyncRuntime (services), and wires them into the orchestrator
 
 **Key Responsibilities**:
-- Creates `SyncContext` with all required dependencies
-- Initializes transformer cache to eliminate runtime database lookups
+- Builds SyncContext (frozen data) via SyncContextBuilder
+- Builds live services (source, destinations, trackers) via sub-builders directly
+- Assembles SyncRuntime from the services
 - Configures contextual logging with sync metadata
-- Manages OAuth token initialization
+- Wires pipelines, handlers, worker pool, and stream
 
-**Critical Implementation Details**:
-```python
-# CRITICAL FIX: Pre-loads transformers to avoid 1.5s database lookups per entity
-await sync_context.router.initialize_transformer_cache(db)
-```
+### SyncContext (frozen data)
+**Purpose**: Immutable data describing a sync run. Inherits from `BaseContext` (sibling to `ApiContext`).
 
-### SyncContext
-**Purpose**: Immutable container holding all resources needed during sync execution
-
-**Components**:
-- `source`: Source instance with OAuth token management
-- `destinations`: List of destination instances (vector/graph databases)
-- `embedding_model`: Model for text vectorization
-- `transformers`: Dictionary of callable transformers
-- `sync`, `sync_job`, `dag`: Configuration objects
-- `entity_tracker`: Centralized entity state tracker (dedup + progress + encounter tracking)
-- `state_publisher`: Publishes entity state to Redis pubsub
-- `router`: DAG-based entity routing engine
+**Fields** (flat, no sub-contexts):
+- `sync_id`, `sync_job_id`, `collection_id`, `source_connection_id`: Scope IDs
+- `sync`, `sync_job`, `collection`, `connection`: Schema objects
+- `execution_config`, `force_full_sync`, `batch_size`, `max_batch_latency_ms`: Config
 - `entity_map`: Maps entity types to UUIDs
-- `logger`: Contextual logger with sync metadata
+- `source_short_name`: Derived from source at build time
+- From `BaseContext`: `organization`, `user`, `logger`
 
-**Design Pattern**: Context Object - passes all dependencies as a single parameter
+Can be passed directly as `ctx` to CRUD operations (it IS a `BaseContext`).
 
-### Context Builders (`platform/builders/`)
-**Purpose**: Factory classes that construct context objects with complex initialization logic
+### SyncRuntime (live services)
+**Purpose**: Holds live services and mutable state for a sync run. Separate from SyncContext.
 
-**Architecture**:
-- **Contexts** (`platform/contexts/`): Dataclass containers grouping related dependencies
-- **Builders** (`platform/builders/`): Factory classes that construct contexts, encapsulating DB queries, credential handling, etc.
-- **Orchestration**: `SyncContextBuilder.build()` runs multiple builders in parallel where possible
+**Fields**:
+- `source`: Source instance with OAuth token management
+- `cursor`: Mutable sync cursor for incremental syncs
+- `destinations`: List of destination instances
+- `entity_tracker`: Centralized entity state tracker
+- `state_publisher`: Publishes progress to Redis pubsub
+- `guard_rail`: Rate limiting / usage guard
 
-**Usage**:
-```python
-# SyncFactory delegates to SyncContextBuilder
-sync_context = await SyncContextBuilder.build(db=db, sync=sync, ...)
-```
+Built by the factory, held by the orchestrator, injected into pipeline/handler constructors.
 
-**Benefits**: Separation of concerns, parallel initialization, easier testing
+### Builders
+- **SyncContextBuilder** (`builders/sync.py`): Builds data-only SyncContext
+- **SourceContextBuilder** (`builders/source.py`): Builds source + cursor (returns tuple)
+- **DestinationsContextBuilder** (`builders/destinations.py`): Builds destinations + entity_map
+- **TrackingContextBuilder** (`builders/tracking.py`): Builds entity_tracker, state_publisher, guard_rail
+
+The factory calls sub-builders in parallel where possible, then assembles SyncRuntime.
 
 ### SyncOrchestrator
 **Purpose**: Coordinates the entire sync workflow with error handling and progress tracking

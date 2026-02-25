@@ -9,7 +9,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException, PermissionException
 from airweave.core.shared_models import CollectionStatus
 from airweave.crud._base_organization import CRUDBaseOrganization
@@ -85,7 +85,7 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         return CollectionStatus.NEEDS_SOURCE
 
     async def _attach_ephemeral_status(
-        self, db: AsyncSession, collections: List[Collection], ctx: ApiContext
+        self, db: AsyncSession, collections: List[Collection], ctx: BaseContext
     ) -> List[Collection]:
         """Attach ephemeral status to collections.
 
@@ -120,9 +120,9 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
             return collections
 
         # 2. Bulk fetch all related data using existing optimized methods (4 queries)
-        auth_methods = await crud.source_connection._fetch_auth_methods(db, all_connections)
+        _auth_methods = await crud.source_connection._fetch_auth_methods(db, all_connections)
         last_jobs = await crud.source_connection._fetch_last_jobs(db, all_connections)
-        entity_counts = await crud.source_connection._fetch_entity_counts(db, all_connections)
+        _entity_counts = await crud.source_connection._fetch_entity_counts(db, all_connections)
         federated_flags = await crud.source_connection._fetch_federated_search_flags(
             db, all_connections
         )
@@ -149,7 +149,7 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
 
         return collections
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Collection]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[Collection]:
         """Get a collection by its ID with computed ephemeral status."""
         # Get the collection using the parent method
         collection = await super().get(db, id=id, ctx=ctx)
@@ -161,7 +161,7 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         return collection
 
     async def get_by_readable_id(
-        self, db: AsyncSession, readable_id: str, ctx: ApiContext
+        self, db: AsyncSession, readable_id: str, ctx: BaseContext
     ) -> Optional[Collection]:
         """Get a collection by its readable ID with computed ephemeral status."""
         result = await db.execute(select(Collection).where(Collection.readable_id == readable_id))
@@ -189,7 +189,7 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         *,
         skip: int = 0,
         limit: int = 100,
-        ctx: ApiContext,
+        ctx: BaseContext,
         search_query: Optional[str] = None,
     ) -> List[Collection]:
         """Get multiple collections with computed ephemeral statuses and search.
@@ -231,7 +231,7 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         return collections
 
     async def count(
-        self, db: AsyncSession, ctx: ApiContext, search_query: Optional[str] = None
+        self, db: AsyncSession, ctx: BaseContext, search_query: Optional[str] = None
     ) -> int:
         """Get total count of collections for the organization.
 

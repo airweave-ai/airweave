@@ -53,6 +53,8 @@ async def client(test_container):
     app.dependency_overrides[get_container] = lambda: test_container
     app.dependency_overrides[get_context] = lambda: fake_ctx
 
+    app.state.http_metrics = test_container.metrics.http
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

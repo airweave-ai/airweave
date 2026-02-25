@@ -3,7 +3,7 @@
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TransformerBase(BaseModel):
@@ -52,7 +52,4 @@ class Transformer(TransformerBase):
     created_by_email: str
     modified_by_email: str
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

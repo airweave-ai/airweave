@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 
@@ -55,7 +55,4 @@ class OrganizationMetrics(BaseModel):
         default_factory=list, description="List of enabled feature flags for this organization"
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

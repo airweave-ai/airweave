@@ -32,3 +32,16 @@ class FakeConnectionRepository:
     ) -> Optional[Connection]:
         self._calls.append(("get_by_readable_id", db, readable_id, ctx))
         return self._readable_store.get(readable_id)
+
+    async def get_s3_destination_for_org(
+        self, db: AsyncSession, ctx: ApiContext
+    ) -> Optional[Connection]:
+        self._calls.append(("get_s3_destination_for_org", db, ctx))
+        for connection in self._store.values():
+            if (
+                connection.organization_id == ctx.organization.id
+                and connection.short_name == "s3"
+                and str(connection.integration_type).upper().endswith("DESTINATION")
+            ):
+                return connection
+        return None

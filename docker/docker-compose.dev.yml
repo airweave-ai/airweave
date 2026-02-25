@@ -125,7 +125,7 @@ services:
       WAIT_FOR: "true"
       SVIX_REDIS_DSN: "redis://redis:6379"
       SVIX_DB_DSN: "postgresql://airweave:airweave1234!@postgres:5432/svix"
-      SVIX_JWT_SECRET: 'default_signing_secret'
+      SVIX_JWT_SECRET: 'default_signing_secret_change_me!'
       SVIX_QUEUE_TYPE: "redis"
       SVIX_QUEUE_MAX_POLL_SECS: "1"   # Poll Redis every 1s (default 20s causes multi-minute delays)
       SVIX_CACHE_TYPE: "none"         # "memory" cache causes stale endpoint lookups — messages published before an endpoint exists poison the cache

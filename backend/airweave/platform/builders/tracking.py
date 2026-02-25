@@ -1,4 +1,4 @@
-"""Tracking context builder for sync operations.
+"""Tracking builder for sync operations.
 
 Builds progress tracking components:
 - EntityTracker: Centralized entity state tracking
@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.platform.contexts.infra import InfraContext
-from airweave.platform.contexts.tracking import TrackingContext
+from airweave.core.context import BaseContext
+from airweave.core.logging import ContextualLogger
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
 from airweave.platform.sync.state_publisher import SyncStatePublisher
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class TrackingContextBuilder:
-    """Builds progress tracking context for sync operations."""
+    """Builds progress tracking components for sync operations."""
 
     @classmethod
     async def build(
@@ -29,23 +29,23 @@ class TrackingContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        infra: InfraContext,
+        ctx: BaseContext,
+        logger: ContextualLogger,
         usage_service: Optional["UsageEnforcementProtocol"] = None,
-    ) -> TrackingContext:
-        """Build complete tracking context.
+    ) -> tuple:
+        """Build tracking components.
 
         Args:
             db: Database session
             sync: Sync configuration
             sync_job: The sync job being tracked
-            infra: Infrastructure context (provides ctx and logger)
+            ctx: Base context (provides org identity)
+            logger: Contextual logger
             usage_service: Optional usage enforcement service for limit tracking
 
         Returns:
-            TrackingContext with all tracking components.
+            Tuple of (entity_tracker, state_publisher, usage_service).
         """
-        logger = infra.logger
-
         # Load initial entity counts from database
         initial_counts = await crud.entity_count.get_counts_per_sync_and_type(db, sync.id)
 
@@ -73,8 +73,4 @@ class TrackingContextBuilder:
 
         logger.info(f"✅ Created EntityTracker and SyncStatePublisher for job {sync_job.id}")
 
-        return TrackingContext(
-            entity_tracker=entity_tracker,
-            state_publisher=state_publisher,
-            usage_service=usage_service,
-        )
+        return entity_tracker, state_publisher, usage_service
