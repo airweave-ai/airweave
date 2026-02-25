@@ -141,7 +141,7 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
         const last = events[events.length - 1] as any;
         const ended = last?.type === 'done';
         const error = events.some((e: any) => e?.type === 'error');
-        const started = events.some((e: any) => e?.type === 'connected' || e?.type === 'start' || e?.type === 'operator_start' || e?.type === 'planning');
+        const started = events.some((e: any) => e?.type === 'connected' || e?.type === 'start' || e?.type === 'operator_start' || e?.type === 'thinking');
         const answering = events.some((e: any) => e?.type === 'completion_start' || e?.type === 'completion_delta');
         const cancelled = events.some((e: any) => e?.type === 'cancelled');
         return {
@@ -228,11 +228,10 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
             }
 
             // ─── Agentic search events ───────────────────────────────────
-            if (event.type === 'planning') {
+            if (event.type === 'thinking') {
                 const e = event as any;
-                const plan = e.plan;
                 rows.push(
-                    <div key={`planning-${i}`} className="space-y-2">
+                    <div key={`thinking-${i}`} className="space-y-2">
                         <div className="flex items-center gap-2">
                             <div className={cn(
                                 "h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold",
@@ -241,15 +240,15 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
                                 {e.iteration + 1}
                             </div>
                             <span className={cn(DESIGN_SYSTEM.typography.sizes.body, DESIGN_SYSTEM.typography.weights.semibold)}>
-                                {e.is_consolidation ? 'Consolidation' : `Iteration ${e.iteration + 1}`}
+                                {`Iteration ${e.iteration + 1}`}
                             </span>
                         </div>
-                        {plan?.reasoning && (
+                        {e.text && (
                             <div className={cn(
                                 "ml-7 px-3 py-2 rounded-md text-xs leading-relaxed italic",
                                 isDark ? "bg-muted/50 text-muted-foreground" : "bg-muted/30 text-muted-foreground"
                             )}>
-                                {plan.reasoning}
+                                {e.text}
                             </div>
                         )}
                     </div>
@@ -267,24 +266,6 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
                         </span>
                     </div>
                 );
-                continue;
-            }
-
-            if (event.type === 'evaluating') {
-                const e = event as any;
-                const eval_ = e.evaluation;
-                if (eval_?.reasoning) {
-                    rows.push(
-                        <div key={`evaluating-${i}`}>
-                            <div className={cn(
-                                "ml-7 px-3 py-2 rounded-md text-xs leading-relaxed italic",
-                                isDark ? "bg-muted/50 text-muted-foreground" : "bg-muted/30 text-muted-foreground"
-                            )}>
-                                {eval_.reasoning}
-                            </div>
-                        </div>
-                    );
-                }
                 continue;
             }
 

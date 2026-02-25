@@ -351,6 +351,28 @@ class VespaVectorDB:
             sparse_tensor = self._convert_sparse_to_tensor(embeddings.sparse_embedding)
             if sparse_tensor:
                 params["input.query(q_sparse)"] = sparse_tensor
+                num_tokens = len(sparse_tensor.get("cells", {}))
+                self._logger.debug(f"[VespaVectorDB] Sparse embedding: {num_tokens} tokens")
+            else:
+                self._logger.warning("[VespaVectorDB] Sparse embedding conversion returned None")
+        elif plan.retrieval_strategy in (
+            AgenticSearchRetrievalStrategy.KEYWORD,
+            AgenticSearchRetrievalStrategy.HYBRID,
+        ):
+            self._logger.warning(
+                f"[VespaVectorDB] No sparse embedding for {plan.retrieval_strategy.value} query"
+            )
+
+        # Log embedding summary
+        has_dense = any(
+            k.startswith("input.query(q") and k != "input.query(q_sparse)" for k in params
+        )
+        has_sparse = "input.query(q_sparse)" in params
+        self._logger.debug(
+            f"[VespaVectorDB] Query params: dense={has_dense}, sparse={has_sparse}, "
+            f"profile={params.get('ranking.profile')}, "
+            f"rerankCount={global_phase_rerank}"
+        )
 
         return params
 
@@ -441,9 +463,13 @@ class VespaVectorDB:
         entity_name = fields.get("name", "N/A")
         entity_type = fields.get("airweave_system_metadata_entity_type", "N/A")
         truncated_name = entity_name[:40] if entity_name else "N/A"
+        match_features = fields.get("matchfeatures", {})
+        kw = match_features.get("keyword_score", "-")
+        sem = match_features.get("semantic_score", "-")
         self._logger.debug(
             f"[VespaVectorDB] Hit {index}: name='{truncated_name}' "
-            f"type={entity_type} relevance={relevance:.4f}"
+            f"type={entity_type} relevance={relevance:.4f} "
+            f"kw={kw} sem={sem}"
         )
 
     def _extract_system_metadata(

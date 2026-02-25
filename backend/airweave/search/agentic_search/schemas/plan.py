@@ -1,4 +1,8 @@
-"""AgenticSearch plan schema."""
+"""AgenticSearch plan schema.
+
+Used as the search tool's input schema. The model's reasoning is expressed
+in free-form text between tool calls, not in a schema field.
+"""
 
 from typing import List
 
@@ -23,11 +27,7 @@ class AgenticSearchQuery(BaseModel):
     )
 
     def to_md(self) -> str:
-        """Render the search query as markdown.
-
-        Returns:
-            Markdown string with primary query and variations.
-        """
+        """Render the search query as markdown."""
         lines = [f"- Primary: `{self.primary}`"]
         if self.variations:
             variations_md = ", ".join(f"`{v}`" for v in self.variations)
@@ -36,25 +36,8 @@ class AgenticSearchQuery(BaseModel):
 
 
 class AgenticSearchPlan(BaseModel):
-    """AgenticSearch plan.
+    """AgenticSearch plan — the search tool's input schema."""
 
-    Field order matters — the model generates JSON fields sequentially.
-    By placing reasoning first, the model must think through the strategy ledger
-    and articulate its plan BEFORE committing to parameters. This prevents
-    post-hoc rationalization.
-    """
-
-    reasoning: str = Field(
-        ...,
-        description=(
-            "Your reasoning as natural inner monologue — think out loud. "
-            "e.g. 'Let me try a hybrid search here since the query is broad...', "
-            "'Hmm, the keyword search missed it — maybe the document uses different wording...' "
-            "Don't restate the user query or collection info. "
-            "Focus on: what changed from the last iteration, why this approach, "
-            "what you expect to find. Be incremental, not exhaustive."
-        ),
-    )
     query: AgenticSearchQuery = Field(..., description="Search query.")
     filter_groups: List[AgenticSearchFilterGroup] = Field(
         default_factory=list,
@@ -78,33 +61,3 @@ class AgenticSearchPlan(BaseModel):
         "results. ALWAYS use 'semantic' when filtering by original_entity_id or "
         "chunk_index to get all chunks of a document.",
     )
-
-    def to_md(self) -> str:
-        """Render the plan as markdown for history context.
-
-        Uses nested to_md() methods for query and filter groups.
-
-        Returns:
-            Markdown string representing this plan.
-        """
-        lines = ["**Plan:**"]
-
-        lines.append(f"- Reasoning: {self.reasoning}")
-
-        # Query (uses AgenticSearchQuery.to_md())
-        lines.append("**Query:**")
-        lines.append(self.query.to_md())
-
-        lines.append(f"- Strategy: {self.retrieval_strategy.value}")
-        lines.append(f"- Limit: {self.limit}, Offset: {self.offset}")
-
-        # Filter groups (uses AgenticSearchFilterGroup.to_md())
-        if self.filter_groups:
-            lines.append("- Filters:")
-            for i, group in enumerate(self.filter_groups, 1):
-                prefix = "  - " if i == 1 else "  - OR "
-                lines.append(f"{prefix}{group.to_md()}")
-        else:
-            lines.append("- Filters: none")
-
-        return "\n".join(lines)
