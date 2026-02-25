@@ -1025,3 +1025,14 @@ class SnapshotAuthConfig(BaseConfig):
             "If not provided, uses DefaultAzureCredential (az login)."
         ),
     )
+
+
+class HerbAuthConfig(BaseConfig):
+    """Placeholder authentication for HERB benchmark sources (no real credentials needed)."""
+
+    placeholder: str = Field(
+        default="herb",
+        title="Placeholder",
+        description="Internal placeholder (ignored)",
+        json_schema_extra={"exclude_from_ui": True},
+    )

@@ -966,3 +966,17 @@ class SnapshotConfig(BaseConfig):
         if not v or not v.strip():
             raise ValueError("Path is required")
         return v.strip().rstrip("/")
+
+
+class HerbConfig(SourceConfig):
+    """Configuration for HERB benchmark sources.
+
+    Points to the HERB /data directory containing product JSON files and metadata/.
+    """
+
+    data_dir: str = Field(
+        ...,
+        title="HERB Data Directory",
+        description="Path to the HERB /data directory (e.g. '/tmp/HERB/data')",
+        min_length=1,
+    )

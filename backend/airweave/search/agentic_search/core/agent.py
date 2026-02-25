@@ -295,7 +295,11 @@ class AgenticSearchAgent:
         if request.limit is not None and len(results) > request.limit:
             results = results[: request.limit]
 
-        resp = AgenticSearchResponse(results=results, answer=state.answer)
+        resp = AgenticSearchResponse(
+            results=results,
+            answer=state.answer,
+            answer_found=state.consolidation_plan is None,
+        )
         await self.emitter.emit(AgenticSearchDoneEvent(response=resp))
 
         total_ms = self._log_timings(state, total_start)
