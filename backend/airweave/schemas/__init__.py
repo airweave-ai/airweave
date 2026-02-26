@@ -9,8 +9,6 @@ from .auth_provider import (
     AuthProviderConnection,
     AuthProviderConnectionCreate,
     AuthProviderConnectionUpdate,
-    AuthProviderCreate,
-    AuthProviderUpdate,
 )
 from .billing_period import (
     BillingPeriod,

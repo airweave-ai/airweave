@@ -51,21 +51,6 @@ class AuthProviderBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class AuthProviderCreate(AuthProviderBase):
-    """Schema for creating an auth provider."""
-
-    pass
-
-
-class AuthProviderUpdate(BaseModel):
-    """Schema for updating an auth provider."""
-
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = Field(None, max_length=1000)
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # Auth Provider Connection Schemas
 
 
