@@ -9,7 +9,7 @@ from airweave.platform.configs.auth import HerbAuthConfig
 from airweave.platform.configs.config import HerbConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
-from airweave.platform.entities.herb import HerbMessageEntity
+from airweave.platform.entities.herb_messaging import HerbMessageEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 
