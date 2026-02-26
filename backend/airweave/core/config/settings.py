@@ -161,6 +161,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
     FIRECRAWL_API_KEY: Optional[str] = None
+    TAVILY_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
     COHERE_API_KEY: Optional[str] = None
     CEREBRAS_API_KEY: Optional[str] = None
@@ -226,6 +227,7 @@ class Settings(BaseSettings):
     WEB_FETCHER_MAX_CONCURRENT: int = 10  # Max concurrent web scraping requests
     OPENAI_MAX_CONCURRENT: int = 20  # Max concurrent OpenAI API requests
     CTTI_MAX_CONCURRENT: int = 3  # Max concurrent CTTI (ClinicalTrials.gov) requests
+    WEB_EXTRACTOR_BACKEND: str = "firecrawl"  # Web extraction backend: "firecrawl" or "tavily"
 
     API_REQUEST_BODY_SIZE_LIMIT: int = 10 * 1024 * 1024  # 10MB default
     API_REQUEST_TIMEOUT_SECONDS: int = 60
