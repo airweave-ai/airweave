@@ -31,7 +31,7 @@ from .filter import (
 )
 from .plan import AgenticSearchPlan, AgenticSearchQuery
 from .query_embeddings import AgenticSearchQueryEmbeddings
-from .request import AgenticSearchRequest
+from .request import AgenticSearchRequest, InternalAgenticSearchRequest
 from .response import AgenticSearchResponse
 from .retrieval_strategy import AgenticSearchRetrievalStrategy
 from .search_result import (
@@ -76,6 +76,7 @@ __all__ = [
     "AgenticSearchQueryEmbeddings",
     # Request/Response
     "AgenticSearchRequest",
+    "InternalAgenticSearchRequest",
     "AgenticSearchResponse",
     # Retrieval strategy
     "AgenticSearchRetrievalStrategy",

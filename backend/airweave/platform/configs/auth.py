@@ -1034,5 +1034,4 @@ class HerbAuthConfig(BaseConfig):
         default="herb",
         title="Placeholder",
         description="Internal placeholder (ignored)",
-        json_schema_extra={"exclude_from_ui": True},
     )

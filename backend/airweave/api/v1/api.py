@@ -57,4 +57,5 @@ api_router.include_router(transformers.router, prefix="/transformers", tags=["tr
 api_router.include_router(file_retrieval.router, prefix="/files", tags=["files"])
 api_router.include_router(s3.router, prefix="/s3", tags=["s3"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(agentic_search.admin_router, prefix="/admin/collections", tags=["admin"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
