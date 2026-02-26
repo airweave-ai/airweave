@@ -100,7 +100,7 @@ export function StatusBadge({ statusCode }: { statusCode: number | null }) {
  */
 export function EventTypeBadge({ eventType }: { eventType: string }) {
   const getVariant = () => {
-    if (eventType.includes("completed"))
+    if (eventType.includes("completed") || eventType.includes("auth_completed"))
       return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800";
     if (eventType.includes("failed"))
       return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800";
@@ -110,6 +110,12 @@ export function EventTypeBadge({ eventType }: { eventType: string }) {
       return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800";
     if (eventType.includes("cancelled"))
       return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400 border-gray-200 dark:border-gray-800";
+    if (eventType.includes("created"))
+      return "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400 border-sky-200 dark:border-sky-800";
+    if (eventType.includes("updated"))
+      return "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-violet-200 dark:border-violet-800";
+    if (eventType.includes("deleted"))
+      return "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-rose-200 dark:border-rose-800";
     return "bg-muted text-muted-foreground";
   };
 
@@ -125,10 +131,33 @@ export function EventTypeBadge({ eventType }: { eventType: string }) {
  */
 export function getMessageSummary(payload: Record<string, unknown>): string {
   // Try to build a meaningful summary from the payload
+  const eventType = payload.event_type as string | undefined;
   const collectionName = payload.collection_name as string | undefined;
+  const collectionReadableId = payload.collection_readable_id as string | undefined;
   const sourceType = payload.source_type as string | undefined;
   const status = payload.status as string | undefined;
 
+  // Source connection events
+  if (eventType?.startsWith("source_connection.")) {
+    if (sourceType && collectionReadableId) {
+      return `${sourceType} → ${collectionReadableId}`;
+    }
+    if (sourceType) {
+      return sourceType;
+    }
+  }
+
+  // Collection events
+  if (eventType?.startsWith("collection.")) {
+    if (collectionName) {
+      return collectionName;
+    }
+    if (collectionReadableId) {
+      return collectionReadableId;
+    }
+  }
+
+  // Sync events (and fallback)
   if (collectionName && sourceType) {
     return `${sourceType} → ${collectionName}`;
   }
@@ -146,13 +175,29 @@ export function getMessageSummary(payload: Record<string, unknown>): string {
  */
 export const EVENT_TYPES_CONFIG = {
   sync: {
-    label: "Sync Events",
+    label: "sync",
     events: [
       { id: "sync.pending", label: "Pending" },
       { id: "sync.running", label: "Running" },
       { id: "sync.completed", label: "Completed" },
       { id: "sync.failed", label: "Failed" },
       { id: "sync.cancelled", label: "Cancelled" },
+    ],
+  },
+  source_connection: {
+    label: "source_connection",
+    events: [
+      { id: "source_connection.created", label: "Created" },
+      { id: "source_connection.auth_completed", label: "Auth Completed" },
+      { id: "source_connection.deleted", label: "Deleted" },
+    ],
+  },
+  collection: {
+    label: "collection",
+    events: [
+      { id: "collection.created", label: "Created" },
+      { id: "collection.updated", label: "Updated" },
+      { id: "collection.deleted", label: "Deleted" },
     ],
   },
 } as const;

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { AlertCircle, ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCreateSubscription, type CreateSubscriptionRequest } from "@/hooks/use-webhooks";
 import { EVENT_TYPES_CONFIG, type EventTypeGroup } from "./shared";
@@ -83,7 +83,7 @@ function EventTypeSelector({
   };
 
   return (
-    <div className="h-[280px] overflow-auto border rounded-lg">
+    <div className="h-[380px] overflow-auto border rounded-lg">
       {(Object.keys(EVENT_TYPES_CONFIG) as EventTypeGroup[]).map((group) => {
         const config = EVENT_TYPES_CONFIG[group];
         const isExpanded = expandedGroups.has(group);
@@ -110,7 +110,7 @@ function EventTypeSelector({
                 }}
                 className="size-4"
               />
-              <span className="text-[13px] font-medium">{config.label}</span>
+              <span className="text-[13px] font-mono font-medium">{config.label}</span>
             </div>
             {isExpanded && (
               <div className="ml-6 border-l border-border/50">
@@ -151,25 +151,39 @@ export function CreateWebhookModal({
   const [url, setUrl] = useState("");
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [secret, setSecret] = useState("");
+  const [endpointError, setEndpointError] = useState<string | null>(null);
 
   const secretError = validateWebhookSecret(secret);
   const isValid = url && selectedEventTypes.length > 0 && !secretError;
 
+  const handleUrlChange = (value: string) => {
+    setUrl(value);
+    if (endpointError) setEndpointError(null);
+  };
+
   const handleCreate = async () => {
+    setEndpointError(null);
     const request: CreateSubscriptionRequest = {
       url,
       event_types: selectedEventTypes,
       ...(secret ? { secret: formatSecretForApi(secret) } : {}),
     };
-    await createMutation.mutateAsync(request);
-    onOpenChange(false);
-    resetForm();
+    try {
+      await createMutation.mutateAsync(request);
+      onOpenChange(false);
+      resetForm();
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create webhook";
+      setEndpointError(message);
+    }
   };
 
   const resetForm = () => {
     setUrl("");
     setSelectedEventTypes([]);
     setSecret("");
+    setEndpointError(null);
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -179,14 +193,14 @@ export function CreateWebhookModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-[600px] p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-[680px] p-0 gap-0 overflow-hidden">
         {/* Header */}
         <div className="px-6 pt-6 pb-5 border-b border-border/40">
           <h2 className="text-[18px] font-semibold tracking-tight">
-            Create webhook
+            Create subscription
           </h2>
           <p className="text-[13px] text-muted-foreground/60 mt-1">
-            Set up a new endpoint to receive event notifications.
+            Set up a new subscription to receive webhook notifications.
           </p>
         </div>
 
@@ -194,15 +208,31 @@ export function CreateWebhookModal({
         <div className="px-6 py-5 space-y-4">
           <div>
             <label className="text-[11px] text-muted-foreground/50 uppercase tracking-wide block mb-1.5">
-              Endpoint URL
+              URL
             </label>
             <Input
               type="url"
               placeholder="https://example.com/webhooks"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="h-8 text-[12px] font-mono"
+              onChange={(e) => handleUrlChange(e.target.value)}
+              className={cn(
+                "h-8 text-[12px] font-mono",
+                endpointError && "border-destructive focus-visible:ring-destructive/30"
+              )}
             />
+            {endpointError && (
+              <div className="mt-2 flex items-start gap-2 rounded-md bg-destructive/5 border border-destructive/20 px-3 py-2.5">
+                <AlertCircle className="size-3.5 text-destructive shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-[12px] font-medium text-destructive">
+                    Failed to create subscription
+                  </p>
+                  <p className="text-[11px] text-destructive/80 mt-0.5 leading-relaxed">
+                    {endpointError}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
@@ -250,7 +280,7 @@ export function CreateWebhookModal({
             className="h-8 px-5 text-[12px]"
           >
             {createMutation.isPending && <Loader2 className="mr-1.5 size-3 animate-spin" />}
-            Create webhook
+            Create subscription
           </Button>
         </div>
       </DialogContent>

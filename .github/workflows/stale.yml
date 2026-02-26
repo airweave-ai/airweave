@@ -1,0 +1,47 @@
+---
+name: Stale issues and PRs
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    name: Close stale issues and PRs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Mark and close stale items
+        uses: actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f # v10.2.0
+        with:
+          days-before-stale: 90
+          days-before-close: 30
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: "security,priority:critical,blocked,on hold"
+          exempt-pr-labels: "security,priority:critical,blocked,on hold"
+          stale-issue-message: >
+            This issue has been automatically marked as **stale**
+            because there has been no activity for 90 days. It will
+            be closed in 30 days if no further updates occur.
+
+            If this is still relevant, leaving a comment or removing
+            the `stale` label will keep it open.
+          stale-pr-message: >
+            This pull request has been automatically marked as
+            **stale** because there has been no activity for 90
+            days. It will be closed in 30 days if no further
+            updates occur.
+
+            If you are still working on this, pushing a commit or
+            leaving a comment will keep it open.
+          close-issue-message: >
+            Closed due to inactivity. If this is still relevant,
+            feel free to reopen or file a new issue.
+          close-pr-message: >
+            Closed due to inactivity. If you would like to pick
+            this back up, feel free to reopen or open a fresh PR.

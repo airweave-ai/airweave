@@ -72,6 +72,7 @@ class MistralOCR:
             concurrency: Maximum number of concurrent OCR calls.
         """
         self._client = MistralOcrClient(concurrency=concurrency)
+        self._client.ensure_initialized()
 
     # ==================================================================
     # Public API (OcrProvider protocol)

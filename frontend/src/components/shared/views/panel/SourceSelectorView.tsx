@@ -21,8 +21,6 @@ import { SourceButton } from "@/components/dashboard/SourceButton";
  * Interface for source data from API
  */
 interface Source {
-    /** Unique identifier */
-    id: string;
     /** Display name */
     name: string;
     /** Optional description */
@@ -137,7 +135,7 @@ export const SourceSelectorView: React.FC<SourceSelectorViewProps> = ({
 
         // Include collection data from viewData in the data passed to next view
         onNext?.({
-            sourceId: source.id,
+            sourceId: source.short_name,
             sourceName: source.name,
             sourceShortName: source.short_name,
             // Preserve collection data
@@ -201,8 +199,8 @@ export const SourceSelectorView: React.FC<SourceSelectorViewProps> = ({
                     <div className="grid grid-cols-2 gap-3">
                         {sortedFilteredSources.map((source) => (
                             <SourceButton
-                                key={source.id}
-                                id={source.id}
+                                key={source.short_name}
+                                id={source.short_name}
                                 name={source.name}
                                 shortName={source.short_name}
                                 onClick={() => handleSourceSelect(source)}

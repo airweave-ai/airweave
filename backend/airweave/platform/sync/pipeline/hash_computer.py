@@ -5,14 +5,14 @@ import hashlib
 import json
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
-import aiofiles
-
 from airweave.core.shared_models import AirweaveFieldFlag
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity
+from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 class HashComputer:
@@ -32,12 +32,14 @@ class HashComputer:
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Compute hashes for entire batch and set on entity.airweave_system_metadata.hash.
 
         Args:
             entities: List of entities to compute hashes for
             sync_context: Sync context with logger
+            runtime: Sync runtime with live services
 
         Note:
             Modifies entities in-place, setting airweave_system_metadata.hash.
@@ -53,7 +55,7 @@ class HashComputer:
         results = await self._compute_hashes_concurrently(entities, sync_context)
 
         # Process results and handle failures
-        await self._process_hash_results(entities, results, sync_context)
+        await self._process_hash_results(entities, results, sync_context, runtime)
 
         # Validate all remaining entities have hash set
         self._validate_hashes(entities)
@@ -139,6 +141,7 @@ class HashComputer:
         entities: List[BaseEntity],
         results: List[Tuple[Tuple[str, str], Optional[str]]],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Process hash computation results, handling failures.
 
@@ -146,6 +149,7 @@ class HashComputer:
             entities: Original entity list (modified in-place)
             results: List of ((entity_type, entity_id), hash_value) tuples
             sync_context: Sync context for logging and progress tracking
+            runtime: Sync runtime with live services
         """
         failed_entities = []
         file_count = 0
@@ -168,7 +172,7 @@ class HashComputer:
 
         if failed_entities:
             # TODO: Record this through exception handling instead
-            await sync_context.entity_tracker.record_skipped(len(failed_entities))
+            await runtime.entity_tracker.record_skipped(len(failed_entities))
 
             sync_context.logger.warning(
                 f"Skipped {len(failed_entities)} entities with hash computation failures"
@@ -219,21 +223,21 @@ class HashComputer:
             )
 
         try:
-            content_hash = hashlib.sha256()
-            async with aiofiles.open(local_path, "rb") as f:
-                while True:
-                    chunk = await f.read(8192)  # 8KB chunks
-                    if not chunk:
-                        break
-                    content_hash.update(chunk)
-
-            return content_hash.hexdigest()
-
+            return await run_in_thread_pool(self._sync_hash_file, str(local_path))
         except Exception as e:
             raise EntityProcessingError(
                 f"Failed to read file for {entity.__class__.__name__}[{entity.entity_id}] "
                 f"at {local_path}: {e}"
             ) from e
+
+    @staticmethod
+    def _sync_hash_file(path: str) -> str:
+        """Hash file content synchronously in a single thread-pool dispatch."""
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            while chunk := f.read(65536):  # 64KB chunks
+                h.update(chunk)
+        return h.hexdigest()
 
     # ------------------------------------------------------------------------------------
     # Serialization and Hashing

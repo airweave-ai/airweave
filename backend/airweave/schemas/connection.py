@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 
@@ -97,10 +97,7 @@ class ConnectionBase(BaseModel):
             raise ValueError("readable_id must not start or end with a hyphen")
         return v
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ConnectionCreate(ConnectionBase):
@@ -154,10 +151,7 @@ class ConnectionInDBBase(ConnectionBase):
     created_by_email: Optional[EmailStr] = None
     modified_by_email: Optional[EmailStr] = None
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Connection(ConnectionInDBBase):

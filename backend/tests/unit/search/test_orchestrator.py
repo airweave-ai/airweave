@@ -28,7 +28,6 @@ def mock_context():
     context.query_interpretation = None
     context.embed_query = None
     context.user_filter = None
-    context.temporal_relevance = None
     context.retrieval = None
     context.federated_search = None
     context.reranking = None

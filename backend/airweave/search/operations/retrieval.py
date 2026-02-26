@@ -45,7 +45,7 @@ class Retrieval(SearchOperation):
         self.limit = limit
 
     def depends_on(self) -> List[str]:
-        """Depends on operations that may provide embeddings, filter, and decay config.
+        """Depends on operations that may provide embeddings and filters.
 
         Note: EmbedQuery may not run for destinations that embed server-side (e.g., Vespa).
         In that case, embeddings will be None in state and the destination handles it.
@@ -55,7 +55,6 @@ class Retrieval(SearchOperation):
             "EmbedQuery",
             "AccessControlFilter",  # Must run before retrieval to build ACL filter
             "UserFilter",
-            "TemporalRelevance",
         ]
 
     async def execute(
@@ -71,7 +70,6 @@ class Retrieval(SearchOperation):
         dense_embeddings = state.dense_embeddings
         sparse_embeddings = state.sparse_embeddings
         filter_obj = state.filter
-        temporal_config = state.temporal_config
 
         # Determine search strategy from strategy enum
         retrieval_strategy = self._get_search_method()
@@ -90,7 +88,6 @@ class Retrieval(SearchOperation):
             f"{len(dense_embeddings[0]) if dense_embeddings else 0}-dim\n"
             f"  Sparse embeddings: {'yes' if sparse_embeddings else 'no'}\n"
             f"  Filter: {filter_obj}\n"
-            f"  Temporal config: {temporal_config}\n"
             f"  Strategy: {retrieval_strategy}\n"
             f"  Destination: {self.destination.__class__.__name__}\n"
         )
@@ -102,7 +99,6 @@ class Retrieval(SearchOperation):
                 "method": retrieval_strategy,
                 "embeddings": num_embeddings,
                 "has_filter": filter_obj is not None,
-                "temporal_weight": temporal_config.weight if temporal_config else None,
             },
             op_name=self.__class__.__name__,
         )
@@ -128,10 +124,10 @@ class Retrieval(SearchOperation):
             dense_embeddings=dense_embeddings,
             sparse_embeddings=sparse_embeddings,
             retrieval_strategy=retrieval_strategy,
-            temporal_config=temporal_config,
+            temporal_config=None,
         )
 
-        # Convert SearchResult objects to dicts for downstream compatibility
+        # Convert AirweaveSearchResult objects to dicts for downstream compatibility
         results_as_dicts = self._results_to_dicts(raw_results)
 
         # For bulk search (query expansion), deduplicate results by chunk ID
@@ -178,8 +174,8 @@ class Retrieval(SearchOperation):
             final_count=final_count,
             search_method=retrieval_strategy,
             has_filter=filter_obj is not None,
-            has_temporal_decay=temporal_config is not None,
-            decay_weight=temporal_config.weight if temporal_config else 0.0,
+            has_temporal_decay=False,
+            decay_weight=0.0,
             prefetch_multiplier=self.RERANK_PREFETCH_MULTIPLIER if has_reranking else 1.0,
             actual_fetch_limit=fetch_limit,
             embeddings_used=num_embeddings,

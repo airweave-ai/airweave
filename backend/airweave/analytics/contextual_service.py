@@ -117,11 +117,10 @@ class ContextualAnalyticsService:
         if properties:
             event_properties.update(properties)
 
-        # Delegate to base service
         self.base_service.track_event(
-            event_name=event_name,
+            event_name,
+            event_properties,
             distinct_id=self._get_distinct_id(),
-            properties=event_properties,
             groups=self._get_groups(),
         )
 

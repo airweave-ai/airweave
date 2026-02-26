@@ -11,6 +11,7 @@ from airweave.platform.entities._base import BaseEntity
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 @runtime_checkable
@@ -29,12 +30,14 @@ class ContentProcessor(Protocol):
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> List[BaseEntity]:
         """Process entities into the format the destination needs.
 
         Args:
             entities: Raw entities with entity_id and base metadata set
             sync_context: Sync context with logger, collection info, etc.
+            runtime: Sync runtime with entity_tracker, source, etc.
 
         Returns:
             Processed entities ready for bulk_insert().
@@ -44,6 +47,6 @@ class ContentProcessor(Protocol):
         Contract:
             - Must not modify input entities in ways that affect other processors
             - Must set all fields required by the destination's bulk_insert()
-            - Should record skipped entities via sync_context.entity_tracker
+            - Should record skipped entities via runtime.entity_tracker
         """
         ...

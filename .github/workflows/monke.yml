@@ -66,7 +66,7 @@ jobs:
         id: set-matrix
         env:
           BASE_BRANCH: ${{ github.base_ref || 'main' }}
-          MONKE_MIN_CONNECTORS: 0  # Don't pad to minimum - only test what's needed
+          MONKE_MIN_CONNECTORS: 0 # Don't pad to minimum - only test what's needed
         run: |
           # Use monke.sh CLI to determine connectors (keeps logic DRY)
           # This returns space-separated list: core + changed, minimum 4 connectors
@@ -262,10 +262,32 @@ jobs:
           # Pipedrive direct auth credentials
           MONKE_PIPEDRIVE_API_TOKEN: ${{ secrets.MONKE_PIPEDRIVE_API_TOKEN }}
 
+          # Apollo direct auth (master API key for sequences/email activities)
+          MONKE_APOLLO_API_KEY: ${{ secrets.MONKE_APOLLO_API_KEY }}
+
           # Shopify direct auth credentials (client credentials grant)
           MONKE_SHOPIFY_CLIENT_ID: ${{ secrets.MONKE_SHOPIFY_CLIENT_ID }}
           MONKE_SHOPIFY_CLIENT_SECRET: ${{ secrets.MONKE_SHOPIFY_CLIENT_SECRET }}
           MONKE_SHOPIFY_SHOP_DOMAIN: ${{ secrets.MONKE_SHOPIFY_SHOP_DOMAIN }}
+
+          # FireFlies API key & audio fixture URL
+          MONKE_FIREFLIES_API_KEY: ${{ secrets.MONKE_FIREFLIES_API_KEY }}
+          MONKE_FIREFLIES_AUDIO_URL: ${{ secrets.MONKE_FIREFLIES_AUDIO_URL }}
+          # Freshdesk API key and domain
+          MONKE_FRESHDESK_API_KEY: ${{ secrets.MONKE_FRESHDESK_API_KEY }}
+          MONKE_FRESHDESK_DOMAIN: ${{ secrets.MONKE_FRESHDESK_DOMAIN }}
+
+          MONKE_CODA_API_TOKEN: ${{ secrets.MONKE_CODA_API_TOKEN }}
+          MONKE_DOCUMENT360_API_TOKEN: ${{ secrets.MONKE_DOCUMENT360_API_TOKEN }}
+
+          MONKE_SLITE_API_KEY: ${{ secrets.MONKE_SLITE_API_KEY }}
+
+          MONKE_SERVICENOW_URL: ${{ secrets.MONKE_SERVICENOW_URL }}
+          MONKE_SERVICENOW_USERNAME: ${{ secrets.MONKE_SERVICENOW_USERNAME }}
+          MONKE_SERVICENOW_PASSWORD: ${{ secrets.MONKE_SERVICENOW_PASSWORD }}
+
+          MONKE_SLAB_API_TOKEN: ${{ secrets.MONKE_SLAB_API_TOKEN }}
+          MONKE_SLAB_HOST: ${{ secrets.MONKE_SLAB_HOST }}
 
           # All SaaS app credentials (Composio configs, API tokens, etc.)
           # will be fetched from Azure Key Vault at runtime

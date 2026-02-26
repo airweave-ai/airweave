@@ -9,3 +9,4 @@ python-dotenv>=1.0.0
 qdrant-client>=1.13.3
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+pyngrok>=5.1.0

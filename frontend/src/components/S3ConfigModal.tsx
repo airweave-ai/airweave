@@ -486,7 +486,7 @@ export function S3ConfigModal({ isOpen, onClose, onSuccess }: S3ConfigModalProps
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground pt-2 border-t border-border/30">
-                  Once configured, all future syncs will automatically write data to both Qdrant
+                  Once configured, all future syncs will automatically write data to both Vespa
                   (for search) and your S3 bucket (in ARF format).
                 </p>
               </div>

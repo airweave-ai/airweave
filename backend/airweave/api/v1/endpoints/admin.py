@@ -12,24 +12,27 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Body, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_, select
+from pydantic import ConfigDict
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.billing.service import billing_service
 from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import InvalidStateError, NotFoundException
+from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.core.organization_service import organization_service
+from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 from airweave.core.temporal_service import temporal_service
 from airweave.crud.crud_organization_billing import organization_billing
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.billing.operations import BillingOperations
 from airweave.integrations.auth0_management import auth0_management_client
-from airweave.integrations.stripe_client import stripe_client
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
 from airweave.models.user_organization import UserOrganization
@@ -160,7 +163,7 @@ async def _build_org_context(
     return ApiContext(
         request_id=admin_ctx.request_id,
         organization=target_org,
-        user=admin_ctx.user,  # Preserve user if any (for audit trail)
+        user=admin_ctx.user,
         auth_method=admin_ctx.auth_method,
         auth_metadata=admin_ctx.auth_metadata,
         logger=LoggerConfigurator.configure_logger(
@@ -612,6 +615,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
     organization_id: UUID,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    payment_gw: PaymentGatewayProtocol = Inject(PaymentGatewayProtocol),
 ) -> schemas.Organization:
     """Upgrade an organization to enterprise plan (admin only).
 
@@ -625,6 +629,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
         organization_id: The organization to upgrade
         db: Database session
         ctx: API context
+        payment_gw: Payment gateway protocol
 
     Returns:
         The updated organization
@@ -673,13 +678,10 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
         await db.flush()
 
         # Create system context for billing operations
-        internal_ctx = billing_service._create_system_context(org_schema, "admin_upgrade")
+        internal_ctx = ApiContext.for_system(org_schema, "admin_upgrade")
 
         # Create Stripe customer
-        if not stripe_client:
-            raise InvalidStateError("Stripe is not enabled")
-
-        customer = await stripe_client.create_customer(
+        customer = await payment_gw.create_customer(
             email=owner_email,
             name=org.name,
             metadata={
@@ -687,17 +689,22 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
                 "plan": "enterprise",
             },
         )
+        if not customer:
+            raise HTTPException(
+                status_code=400,
+                detail="Billing is not enabled for this instance",
+            )
 
-        # Use billing service to create record (handles $0 subscription)
+        # Use billing operations to create record (handles $0 subscription)
+        billing_ops = BillingOperations(payment_gateway=payment_gw)
         async with UnitOfWork(db) as uow:
-            await billing_service.create_billing_record(
+            await billing_ops.create_billing_record(
                 db=db,
                 organization=org,
                 stripe_customer_id=customer.id,
                 billing_email=owner_email,
                 ctx=internal_ctx,
                 uow=uow,
-                contextual_logger=ctx.logger,
             )
             await uow.commit()
 
@@ -710,7 +717,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
         # Cancel existing subscription if any
         if billing.stripe_subscription_id:
             try:
-                await stripe_client.cancel_subscription(
+                await payment_gw.cancel_subscription(
                     billing.stripe_subscription_id, at_period_end=False
                 )
                 ctx.logger.info(f"Cancelled subscription {billing.stripe_subscription_id}")
@@ -719,25 +726,21 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
 
         # Create new $0 enterprise subscription
         # Webhook will update billing record with subscription_id, plan, periods, etc.
-        if stripe_client:
-            price_id = stripe_client.get_price_for_plan(BillingPlan.ENTERPRISE)
-            if price_id:
-                sub = await stripe_client.create_subscription(
-                    customer_id=billing.stripe_customer_id,
-                    price_id=price_id,
-                    metadata={
-                        "organization_id": str(organization_id),
-                        "plan": "enterprise",
-                    },
-                )
-                ctx.logger.info(
-                    f"Created $0 enterprise subscription {sub.id}, "
-                    f"webhook will update billing record"
-                )
-            else:
-                raise InvalidStateError("Enterprise price ID not configured")
+        price_id = payment_gw.get_price_for_plan(BillingPlan.ENTERPRISE)
+        if price_id:
+            sub = await payment_gw.create_subscription(
+                customer_id=billing.stripe_customer_id,
+                price_id=price_id,
+                metadata={
+                    "organization_id": str(organization_id),
+                    "plan": "enterprise",
+                },
+            )
+            ctx.logger.info(
+                f"Created $0 enterprise subscription {sub.id}, webhook will update billing record"
+            )
         else:
-            raise InvalidStateError("Stripe is not enabled")
+            raise InvalidStateError("Enterprise price ID not configured")
 
         await db.commit()
         ctx.logger.info(f"Enterprise subscription created for org {organization_id}")
@@ -754,6 +757,7 @@ async def create_enterprise_organization(
     owner_email: str,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    payment_gw: PaymentGatewayProtocol = Inject(PaymentGatewayProtocol),
 ) -> schemas.Organization:
     """Create a new enterprise organization (admin only).
 
@@ -764,6 +768,7 @@ async def create_enterprise_organization(
         owner_email: Email of the user who will own this organization
         db: Database session
         ctx: API context
+        payment_gw: Payment gateway protocol
 
     Returns:
         The created organization
@@ -806,11 +811,16 @@ async def create_enterprise_organization(
 
         # Create Stripe customer
         try:
-            customer = await stripe_client.create_customer(
+            customer = await payment_gw.create_customer(
                 email=owner_email,
                 name=org.name,
                 metadata={"organization_id": str(org.id), "plan": "enterprise"},
             )
+            if not customer:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Billing is not enabled for this instance",
+                )
 
             # Create enterprise billing record
             billing = OrganizationBilling(
@@ -966,7 +976,7 @@ async def resync_with_execution_config(
     ctx: ApiContext = Depends(deps.get_context),
     execution_config: Optional[SyncConfig] = Body(
         None,
-        description="Optional nested SyncConfig for sync behavior (destinations, handlers, cursor, behavior)",
+        description="Optional nested SyncConfig for sync behavior",
         examples=[
             {
                 "summary": "ARF Capture Only",
@@ -1000,7 +1010,7 @@ async def resync_with_execution_config(
     ),
     tags: Optional[List[str]] = Body(
         None,
-        description="Optional tags for filtering and organizing sync jobs (e.g., ['vespa-backfill-01-22-2026', 'manual'])",
+        description="Optional tags for filtering and organizing sync jobs",
         examples=[
             ["vespa-backfill-01-22-2026", "manual"],
             ["production"],
@@ -1018,7 +1028,7 @@ async def resync_with_execution_config(
     can use API keys to access this endpoint programmatically.
 
     **Config Structure**: Nested config with 4 sub-objects:
-        - destinations: skip_qdrant, skip_vespa, target_destinations, exclude_destinations
+        - destinations: skip_vespa, target_destinations, exclude_destinations
         - handlers: enable_vector_handlers, enable_raw_data_handler, enable_postgres_handler
         - cursor: skip_load, skip_updates
         - behavior: skip_hash_comparison, replay_from_arf
@@ -1044,7 +1054,6 @@ async def resync_with_execution_config(
         - Normal sync: SyncConfig.default()
         - ARF capture only: SyncConfig.arf_capture_only()
         - ARF replay to vector DBs: SyncConfig.replay_from_arf_to_vector_dbs()
-        - Qdrant only: SyncConfig.qdrant_only()
         - Vespa only: SyncConfig.vespa_only()
     """
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
@@ -1213,6 +1222,8 @@ async def resync_with_execution_config(
 class AdminSyncInfo(schemas.Sync):
     """Extended sync info for admin listing with entity counts and status."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     total_entity_count: int = 0
     total_arf_entity_count: Optional[int] = None
     total_qdrant_entity_count: Optional[int] = None
@@ -1225,11 +1236,6 @@ class AdminSyncInfo(schemas.Sync):
     source_short_name: Optional[str] = None
     source_is_authenticated: Optional[bool] = None
     readable_collection_id: Optional[str] = None
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
 
 
 class AdminSearchDestination(str, Enum):
@@ -1301,26 +1307,23 @@ async def admin_search_collection_as_user(
     ),
 ) -> schemas.SearchResponse:
     """Admin-only: Search collection with access control for a specific user.
-    This endpoint allows testing access control filtering by searching as a
-    specific user. It resolves the user's group memberships from the
-    access_control_membership table and filters results accordingly.
-    Use this for:
-    - Testing ACL sync correctness
-    - Verifying user permissions
-    - Debugging access control issues
+
+    Resolves the user's group memberships from the access_control_membership
+    table and filters results accordingly.
 
     Args:
         readable_id: The readable ID of the collection to search
         search_request: The search request parameters
-        user_principal: Username to search as (e.g., "john" or "john@example.com")
+        user_principal: Username to search as
         db: Database session
+        ctx: API context
         destination: Search destination ('qdrant' or 'vespa')
 
     Returns:
-        SearchResponse with results filtered by user's access permissions
+        SearchResponse with results filtered by user's access permissions.
 
     Raises:
-        HTTPException: If not admin or collection not found
+        HTTPException: If not admin or collection not found.
     """
     from airweave.search.service import service
 
@@ -1335,6 +1338,99 @@ async def admin_search_collection_as_user(
         user_principal=user_principal,
         destination=destination.value,
     )
+
+
+@router.get("/source-connections/{source_connection_id}/cursor")
+async def admin_get_cursor(
+    source_connection_id: str,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Admin-only: Get cursor data for a source connection.
+
+    Returns the sync cursor (change tokens, DirSync cookies, timestamps)
+    for the sync associated with this source connection. Used for debugging
+    and verifying continuous sync state.
+
+    Args:
+        source_connection_id: UUID of the source connection
+        db: Database session
+        ctx: API context
+
+    Returns:
+        Cursor data dict, or 404 if no cursor exists
+    """
+    from airweave.core.sync_cursor_service import sync_cursor_service
+
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    # Find the source connection and its sync_id
+    source_connections = await crud.source_connection.get_multi(db, ctx=ctx)
+    target_sc = None
+    for sc in source_connections:
+        if str(sc.id) == source_connection_id:
+            target_sc = sc
+            break
+
+    if not target_sc:
+        raise HTTPException(status_code=404, detail="Source connection not found")
+
+    # source_connection has a sync_id field linking to the sync
+    sync_id = getattr(target_sc, "sync_id", None)
+    if not sync_id:
+        raise HTTPException(status_code=404, detail="No sync found for this source connection")
+
+    # Get cursor data
+    cursor_data = await sync_cursor_service.get_cursor_data(db=db, sync_id=sync_id, ctx=ctx)
+
+    if not cursor_data:
+        raise HTTPException(status_code=404, detail="No cursor found for this sync")
+
+    return {
+        "sync_id": str(sync_id),
+        "source_connection_id": source_connection_id,
+        "cursor_data": cursor_data,
+    }
+
+
+@router.delete("/source-connections/{source_connection_id}/cursor")
+async def admin_delete_cursor(
+    source_connection_id: str,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Admin-only: Delete cursor for a source connection to force full sync.
+
+    Removes the sync cursor, which forces the next sync to do a full crawl
+    instead of incremental. Useful for debugging or resetting sync state.
+    """
+    from airweave.core.sync_cursor_service import sync_cursor_service
+
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    # Find source connection and its sync_id
+    source_connections = await crud.source_connection.get_multi(db, ctx=ctx)
+    target_sc = None
+    for sc in source_connections:
+        if str(sc.id) == source_connection_id:
+            target_sc = sc
+            break
+
+    if not target_sc:
+        raise HTTPException(status_code=404, detail="Source connection not found")
+
+    sync_id = getattr(target_sc, "sync_id", None)
+    if not sync_id:
+        raise HTTPException(status_code=404, detail="No sync found for this source connection")
+
+    # Delete cursor
+    deleted = await sync_cursor_service.delete_cursor(db=db, sync_id=sync_id, ctx=ctx)
+
+    return {
+        "sync_id": str(sync_id),
+        "deleted": deleted,
+        "message": "Cursor deleted. Next sync will be a full sync.",
+    }
 
 
 async def _build_admin_search_context(
@@ -1363,8 +1459,8 @@ async def _build_admin_search_context(
     has_vector_sources = await factory._has_vector_sources(db, collection, ctx)
 
     # Determine destination capabilities
-    requires_embedding = getattr(destination, "_requires_client_embedding", True)
-    supports_temporal = getattr(destination, "_supports_temporal_relevance", True)
+    requires_embedding = getattr(destination, "requires_client_embedding", True)
+    supports_temporal = getattr(destination, "supports_temporal_relevance", True)
 
     ctx.logger.info(
         f"[AdminSearch] Destination: {destination.__class__.__name__}, "
@@ -1456,11 +1552,11 @@ async def admin_list_all_syncs(
     source_type: Optional[str] = Query(None, description="Filter by source short name"),
     has_source_connection: bool = Query(
         True,
-        description="Include only syncs with source connections (excludes orphaned syncs by default)",
+        description="Include only syncs with source connections",
     ),
     is_authenticated: Optional[bool] = Query(
         None,
-        description="Filter by source connection authentication status (true=authenticated, false=needs reauth)",
+        description="Filter by source connection auth status",
     ),
     status: Optional[str] = Query(
         None, description="Filter by sync status (active, inactive, error)"
@@ -1473,7 +1569,7 @@ async def admin_list_all_syncs(
         None,
         ge=1,
         le=10,
-        description="Filter to 'ghost syncs' - syncs where the last N jobs all failed (e.g., 5 for last 5 failures)",
+        description="Filter to ghost syncs where the last N jobs all failed",
     ),
     include_destination_counts: bool = Query(
         False,
@@ -1489,7 +1585,7 @@ async def admin_list_all_syncs(
     ),
     exclude_tags: Optional[str] = Query(
         None,
-        description="Comma-separated list of tags to exclude (hides syncs with jobs having ANY of these tags)",
+        description="Comma-separated tags to exclude from results",
     ),
 ) -> List[AdminSyncInfo]:
     """Admin-only: List all syncs across organizations with entity counts.
@@ -1702,14 +1798,15 @@ async def admin_cancel_sync_by_id(
     ctx: ApiContext = Depends(deps.get_context),
 ) -> dict:
     """Admin-only: Cancel all pending/running jobs for a sync.
-    This is a convenience endpoint that finds active jobs for a sync and cancels them.
-    More practical than /sync-jobs/{job_id}/cancel when you know the sync ID.
+
     Args:
         sync_id: The sync ID whose jobs should be cancelled
         db: Database session
         ctx: API context
+
     Returns:
         Dict with cancelled job IDs and results
+
     Raises:
         HTTPException: If not admin or sync not found
     """
@@ -1828,6 +1925,7 @@ async def admin_delete_sync(
     sync_id: UUID,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> dict:
     """Admin-only: Delete a sync and all related data.
 
@@ -1852,7 +1950,6 @@ async def admin_delete_sync(
     """
     from sqlalchemy import select as sa_select
 
-    from airweave.core.source_connection_service import source_connection_service
     from airweave.models.source_connection import SourceConnection
     from airweave.models.sync import Sync
 
@@ -1883,7 +1980,7 @@ async def admin_delete_sync(
 
     # Use the existing source connection delete logic which handles all cleanup
     try:
-        await source_connection_service.delete(
+        await sc_service.delete(
             db,
             id=source_conn.id,
             ctx=sync_org_ctx,

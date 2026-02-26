@@ -8,6 +8,8 @@ import { apiClient } from "@/lib/api";
 /**
  * Subscription type (snake_case to match API response)
  */
+export type HealthStatus = "healthy" | "degraded" | "failing" | "unknown";
+
 export interface Subscription {
   id: string;
   url: string;
@@ -16,6 +18,13 @@ export interface Subscription {
   updated_at: string;
   description?: string;
   disabled?: boolean;
+  health_status?: HealthStatus;
+}
+
+/**
+ * Detail type returned by GET /subscriptions/{id} — includes delivery attempts and secret
+ */
+export interface SubscriptionDetail extends Subscription {
   delivery_attempts?: MessageAttempt[] | null;
   secret?: string | null;
 }
@@ -110,7 +119,7 @@ async function fetchSubscriptions(): Promise<Subscription[]> {
 async function fetchSubscription(
   id: string,
   includeSecret = false
-): Promise<Subscription> {
+): Promise<SubscriptionDetail> {
   const params = new URLSearchParams();
   if (includeSecret) {
     params.set("include_secret", "true");
@@ -162,6 +171,17 @@ async function fetchMessages(): Promise<Message[]> {
 async function createSubscription(data: CreateSubscriptionRequest): Promise<Subscription> {
   const response = await apiClient.post("/webhooks/subscriptions", data);
   if (!response.ok) {
+    // Extract error detail from the response body (e.g. endpoint verification failures)
+    try {
+      const body = await response.json();
+      if (body?.detail) {
+        throw new Error(body.detail);
+      }
+    } catch (e) {
+      if (e instanceof Error && !e.message.startsWith("Failed to create")) {
+        throw e;
+      }
+    }
     throw new Error(`Failed to create subscription: ${response.status}`);
   }
   return response.json();
@@ -219,12 +239,12 @@ export function useSubscriptions() {
 }
 
 /**
- * Hook to fetch a single subscription with delivery attempts
+ * Hook to fetch a single subscription detail (delivery attempts + optional secret)
  * @param id - Subscription ID
  * @param includeSecret - Whether to include the signing secret
  */
 export function useSubscription(id: string | null, includeSecret = false) {
-  return useQuery({
+  return useQuery<SubscriptionDetail>({
     queryKey: webhookKeys.subscription(id ?? "", includeSecret),
     queryFn: () => fetchSubscription(id!, includeSecret),
     enabled: !!id,

@@ -5,9 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core.constants.reserved_ids import (
     NATIVE_NEO4J_UUID,
-    NATIVE_QDRANT_UUID,
     NATIVE_VESPA_UUID,
-    RESERVED_TABLE_ENTITY_ID,
 )
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.models.connection import Connection
@@ -17,25 +15,16 @@ async def init_db_with_native_connections(db: AsyncSession) -> None:
     """Initialize the database with native connections.
 
     Creates the built-in connections for:
-    - qdrant_native (vector database destination)
     - neo4j_native (graph database destination)
     - vespa_native (vector database destination with internal chunking/embedding)
 
-    Note: Embedding models are no longer managed as connections.
-    They are handled internally by DenseEmbedder and SparseEmbedder.
+    Note: Qdrant has been deprecated. Vespa is the sole vector database destination.
+    Embedding models are handled internally by DenseEmbedder and SparseEmbedder.
 
     These connections are system-level and don't belong to any organization.
     """
     # Check if connections already exist to avoid duplication on restarts
     native_connections = {
-        "qdrant_native": {
-            "id": NATIVE_QDRANT_UUID,
-            "name": "Native Qdrant",
-            "readable_id": "native-qdrant",
-            "integration_type": IntegrationType.DESTINATION,
-            "short_name": "qdrant_native",
-            "status": ConnectionStatus.ACTIVE,
-        },
         "neo4j_native": {
             "id": NATIVE_NEO4J_UUID,
             "name": "Native Neo4j",
@@ -77,33 +66,3 @@ async def init_db_with_native_connections(db: AsyncSession) -> None:
             db.add(connection)
 
     await db.commit()
-
-
-async def init_db_with_entity_definitions(db: AsyncSession) -> None:
-    """Initialize the database with entity definitions.
-
-    Creates the reserved ID for the PolymorphicEntity class.
-    """
-    from airweave.models.entity_definition import EntityDefinition, EntityType
-
-    # Check if the polymorphic entity definition already exists
-    result = await db.execute(
-        text("SELECT id FROM entity_definition WHERE id = :id"),
-        {"id": str(RESERVED_TABLE_ENTITY_ID)},
-    )
-    existing_entity = result.scalar_one_or_none()
-
-    if not existing_entity:
-        # Create the polymorphic table entity definition
-        entity_def = EntityDefinition(
-            id=RESERVED_TABLE_ENTITY_ID,
-            name="Polymorphic Table Entity",
-            description="Base entity type for polymorphic table entities",
-            type=EntityType.JSON,
-            entity_schema={},  # Empty schema for polymorphic entities
-            module_name="airweave.platform.entities.polymorphic",
-            class_name="PolymorphicEntity",
-            # organization_id is NULL for system-level entity definitions
-        )
-        db.add(entity_def)
-        await db.commit()

@@ -212,10 +212,7 @@ async def handle_auth_config_credentials(
         # This is critical for sources like Salesforce that need instance_url
         updated_credentials = decrypted_credential.copy()
         updated_credentials["access_token"] = oauth2_response.access_token
-
-        # Return the updated credentials dict (NOT just the access token)
-        # This preserves fields like instance_url, client_id, etc.
-        return updated_credentials
+        return auth_config.model_validate(updated_credentials)
 
     return source_credentials
 
@@ -431,6 +428,7 @@ async def get_auth_configuration(
     }
 
 
+# [code blue] remove once callers migrated to SourceLifecycleService.create()
 def wrap_source_with_airweave_client(
     source: Any,
     source_short_name: str,

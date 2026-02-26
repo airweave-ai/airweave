@@ -12,6 +12,7 @@ from airweave.platform.sync.processors.utils import filter_empty_representations
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 class TextOnlyProcessor(ContentProcessor):
@@ -33,16 +34,17 @@ class TextOnlyProcessor(ContentProcessor):
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> List[BaseEntity]:
         """Build text representations only - no chunking or embedding."""
         if not entities:
             return []
 
         # Build textual representations
-        processed = await text_builder.build_for_batch(entities, sync_context)
+        processed = await text_builder.build_for_batch(entities, sync_context, runtime)
 
         # Filter empty representations
-        processed = await filter_empty_representations(processed, sync_context, "TextOnly")
+        processed = await filter_empty_representations(processed, sync_context, runtime, "TextOnly")
 
         sync_context.logger.debug(
             f"[TextOnlyProcessor] Built text for {len(processed)}/{len(entities)} entities"

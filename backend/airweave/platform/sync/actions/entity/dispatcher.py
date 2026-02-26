@@ -14,6 +14,7 @@ from airweave.platform.sync.handlers.protocol import EntityActionHandler
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 class EntityActionDispatcher:
@@ -57,6 +58,7 @@ class EntityActionDispatcher:
         self,
         batch: EntityActionBatch,
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Dispatch action batch to all handlers.
 
@@ -68,6 +70,7 @@ class EntityActionDispatcher:
         Args:
             batch: Resolved and processed action batch (with chunk_entities populated)
             sync_context: Sync context
+            runtime: Sync runtime with entity_tracker, source, etc.
 
         Raises:
             SyncFailureError: If any handler fails
@@ -82,11 +85,11 @@ class EntityActionDispatcher:
         )
 
         # Step 1: Execute destination handlers concurrently
-        await self._dispatch_to_destinations(batch, sync_context)
+        await self._dispatch_to_destinations(batch, sync_context, runtime)
 
         # Step 2: Execute postgres handler (only after destinations succeed)
         if self._postgres_handler:
-            await self._dispatch_to_postgres(batch, sync_context)
+            await self._dispatch_to_postgres(batch, sync_context, runtime)
 
         sync_context.logger.debug("[EntityDispatcher] All handlers completed successfully")
 
@@ -159,12 +162,14 @@ class EntityActionDispatcher:
         self,
         batch: EntityActionBatch,
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Dispatch to all destination handlers concurrently.
 
         Args:
             batch: Action batch
             sync_context: Sync context
+            runtime: Sync runtime
 
         Raises:
             SyncFailureError: If any destination handler fails
@@ -175,7 +180,7 @@ class EntityActionDispatcher:
         # Create tasks for all destination handlers
         tasks = [
             asyncio.create_task(
-                self._dispatch_to_handler(handler, batch, sync_context),
+                self._dispatch_to_handler(handler, batch, sync_context, runtime),
                 name=f"handler-{handler.name}",
             )
             for handler in self._destination_handlers
@@ -201,18 +206,20 @@ class EntityActionDispatcher:
         self,
         batch: EntityActionBatch,
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Dispatch to PostgreSQL metadata handler (after destinations succeed).
 
         Args:
             batch: Action batch
             sync_context: Sync context
+            runtime: Sync runtime
 
         Raises:
             SyncFailureError: If postgres handler fails
         """
         try:
-            await self._postgres_handler.handle_batch(batch, sync_context)
+            await self._postgres_handler.handle_batch(batch, sync_context, runtime)
         except SyncFailureError:
             raise
         except Exception as e:
@@ -226,6 +233,7 @@ class EntityActionDispatcher:
         handler: EntityActionHandler,
         batch: EntityActionBatch,
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Dispatch to single handler with error wrapping.
 
@@ -233,12 +241,13 @@ class EntityActionDispatcher:
             handler: Handler to dispatch to
             batch: Action batch
             sync_context: Sync context
+            runtime: Sync runtime
 
         Raises:
             SyncFailureError: If handler fails
         """
         try:
-            await handler.handle_batch(batch, sync_context)
+            await handler.handle_batch(batch, sync_context, runtime)
         except SyncFailureError:
             raise
         except Exception as e:

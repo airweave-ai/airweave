@@ -13,7 +13,6 @@ integrations:
     additional_frontend_params:
       response_type: "code"
 
-
   asana:
     oauth_type: "with_refresh"
     url: "https://app.asana.com/-/oauth_authorize"
@@ -66,20 +65,6 @@ integrations:
     client_credential_location: "body"
     additional_frontend_params:
       token_access_type: "offline"
-
-  excel:
-    oauth_type: "with_rotating_refresh"
-    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-    grant_type: "authorization_code"
-    client_id: "466350dc-4dbb-4100-bea9-fb4f0d763f32"
-    client_secret: "excel-client-secret-key"
-    content_type: "application/x-www-form-urlencoded"
-    client_credential_location: "body"
-    scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All"
-    additional_frontend_params:
-      response_type: "code"
-      response_mode: "query"
 
   github:
 
@@ -227,7 +212,6 @@ integrations:
       response_type: "code"
       response_mode: "query"
 
-
   monday:
     oauth_type: "access_only"
     url: "https://auth.monday.com/oauth2/authorize"
@@ -320,6 +304,10 @@ integrations:
       response_type: "code"
       response_mode: "query"
 
+  slab:
+
+  slite:
+
   slack:
     oauth_type: "access_only"
     url: "https://slack.com/oauth/v2/authorize"
@@ -338,8 +326,8 @@ integrations:
     request_token_url: "https://trello.com/1/OAuthGetRequestToken"
     authorization_url: "https://trello.com/1/OAuthAuthorizeToken"
     access_token_url: "https://trello.com/1/OAuthGetAccessToken"
-    consumer_key: "65319d6cb1a017fafcb23b1f0d3c8dea"  # Get from https://trello.com/power-ups/admin
-    consumer_secret: "trello-consumer-secret-key"  # Fetched from Azure Key Vault
+    consumer_key: "65319d6cb1a017fafcb23b1f0d3c8dea" # Get from https://trello.com/power-ups/admin
+    consumer_secret: "trello-consumer-secret-key" # Fetched from Azure Key Vault
     scope: "read,write"
     expiration: "never"
 
@@ -367,6 +355,9 @@ integrations:
     url_template: true
     backend_url_template: true
 
+  coda:
+    # Coda API v1 uses Personal API Token (DIRECT auth). OAuth via Packs can be added later.
+
   clickup:
     oauth_type: "access_only"
     url: "https://app.clickup.com/api"
@@ -393,6 +384,8 @@ integrations:
     scope: "api refresh_token"
     additional_frontend_params:
       response_type: "code"
+
+  servicenow:
 
   word:
     oauth_type: "with_rotating_refresh"
@@ -423,3 +416,7 @@ integrations:
       prompt: "consent"
 
   qdrant:
+
+  fireflies:
+  freshdesk:
+  document360:

@@ -60,7 +60,7 @@ class InMemoryEventBus:
         ]
 
         if not matching_handlers:
-            logger.debug(f"EventBus: no subscribers for '{event_type}'")
+            logger.warning(f"EventBus: no subscribers for '{event_type}'")
             return
 
         logger.debug(f"EventBus: publishing '{event_type}' to {len(matching_handlers)} subscribers")

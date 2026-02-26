@@ -15,7 +15,6 @@ Sources can be:
 - **Productivity tools**: Notion, Slack, Asana, Jira, Confluence
 - **Cloud storage**: Google Drive, Dropbox, OneDrive, SharePoint
 - **CRMs and sales tools**: Salesforce, HubSpot, Pipedrive
-- **Databases**: PostgreSQL
 - **Developer tools**: GitHub, GitLab, Bitbucket
 
 Each source type has its own data structures, authentication methods, and API patterns. Airweave abstracts these differences so your agents can query across all of them through a single interface.
@@ -54,7 +53,7 @@ Examples of entities:
 - A GitHub issue, pull request, or code file
 - A Google Doc or spreadsheet
 - A Zendesk ticket or customer conversation
-- A row from a PostgreSQL table
+- An Airtable record or row
 
 Each entity is processed through Airweave's pipeline:
 1. **Extracted** from the source via its connector

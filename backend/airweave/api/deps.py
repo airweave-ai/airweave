@@ -415,8 +415,8 @@ async def get_context(
         user=user_context,
         auth_method=auth_method,
         auth_metadata=auth_metadata,
-        logger=base_logger,
         analytics=analytics_service,
+        logger=base_logger,
     )
 
     if user_context:

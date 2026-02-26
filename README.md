@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml/badge.svg" alt="Ruff"></a>
+  <a href="https://github.com/airweave-ai/airweave/actions/workflows/code-quality.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/code-quality.yml/badge.svg" alt="Code Quality"></a>
   <a href="https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml/badge.svg" alt="ESLint"></a>
   <a href="https://github.com/airweave-ai/airweave/actions/workflows/test-public-api.yml"><img src="https://github.com/airweave-ai/airweave/actions/workflows/test-public-api.yml/badge.svg" alt="System Tests"></a>
   <a href="https://pepy.tech/projects/airweave-sdk"><img src="https://static.pepy.tech/badge/airweave-sdk" alt="PyPI Downloads"></a>
@@ -65,13 +65,17 @@ cd airweave
 
 <p align="center">
 <img src="frontend/src/components/icons/apps/airtable.svg" alt="Airtable" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/apollo.svg" alt="Apollo.io" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/asana.svg" alt="Asana" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/attio.svg" alt="Attio" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/bitbucket.svg" alt="Bitbucket" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/box.svg" alt="Box" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/clickup.svg" alt="ClickUp" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/coda.svg" alt="Coda" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/confluence.svg" alt="Confluence" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/dropbox.svg" alt="Dropbox" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/fireflies.svg" alt="FireFlies" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/freshdesk.svg" alt="Freshdesk" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/github.svg" alt="Github" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/gitlab.svg" alt="Gitlab" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/gmail.svg" alt="Gmail" width="40" height="40" style="margin: 6px;" />
@@ -84,8 +88,11 @@ cd airweave
 <img src="frontend/src/components/icons/apps/notion.svg" alt="Notion" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/onedrive.svg" alt="Onedrive" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/salesforce.svg" alt="Salesforce" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/servicenow.svg" alt="ServiceNow" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/sharepoint.svg" alt="Sharepoint" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/slab.svg" alt="Slab" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/slack.svg" alt="Slack" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/slite.svg" alt="Slite" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/stripe.svg" alt="Stripe" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/trello.svg" alt="Trello" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/zendesk.svg" alt="Zendesk" width="40" height="40" style="margin: 6px;" />
@@ -119,7 +126,7 @@ results = client.collections.search(
 
 - **Frontend**: [React/TypeScript](https://react.dev/) with [ShadCN](https://ui.shadcn.com/)
 - **Backend**: [FastAPI](https://fastapi.tiangolo.com/) (Python)
-- **Databases**: [PostgreSQL](https://www.postgresql.org/) (metadata), [Qdrant](https://qdrant.tech/) (vectors)
+- **Databases**: [PostgreSQL](https://www.postgresql.org/) (metadata), [Vespa](https://vespa.ai/) (vectors)
 - **Workers**: [Temporal](https://temporal.io/) (orchestration), [Redis](https://redis.io/) (pub/sub)
 - **Deployment**: [Docker Compose](https://docs.docker.com/compose/) (dev), [Kubernetes](https://kubernetes.io/) (prod)
 

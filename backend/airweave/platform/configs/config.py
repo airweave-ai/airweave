@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from pydantic import Field, field_validator, validator
+from pydantic import Field, field_validator
 
 from airweave.platform.configs._base import BaseConfig, RequiredTemplateConfig
 
@@ -21,6 +21,12 @@ class AirtableConfig(SourceConfig):
 
 class AsanaConfig(SourceConfig):
     """Asana configuration schema."""
+
+    pass
+
+
+class ApolloConfig(SourceConfig):
+    """Apollo configuration schema."""
 
     pass
 
@@ -50,7 +56,8 @@ class BitbucketConfig(SourceConfig):
         ),
     )
 
-    @validator("file_extensions", pre=True)
+    @field_validator("file_extensions", mode="before")
+    @classmethod
     def parse_file_extensions(cls, value):
         """Convert string input to list if needed."""
         if isinstance(value, str):
@@ -81,6 +88,21 @@ class ClickUpConfig(SourceConfig):
     pass
 
 
+class CodaConfig(SourceConfig):
+    """Coda configuration schema."""
+
+    doc_id: Optional[str] = Field(
+        default=None,
+        title="Doc ID",
+        description="Sync only this doc (leave empty to sync all docs the token can access).",
+    )
+    folder_id: Optional[str] = Field(
+        default=None,
+        title="Folder ID",
+        description="Limit docs to this folder (optional).",
+    )
+
+
 class ConfluenceConfig(SourceConfig):
     """Confluence configuration schema."""
 
@@ -89,6 +111,32 @@ class ConfluenceConfig(SourceConfig):
 
 class DropboxConfig(SourceConfig):
     """Dropbox configuration schema."""
+
+
+class FirefliesConfig(SourceConfig):
+    """Fireflies configuration schema.
+
+    Syncs meeting transcripts (mine: true) from the Fireflies GraphQL API.
+    No additional config required for basic sync.
+    """
+
+
+class Document360Config(SourceConfig):
+    """Document360 configuration schema."""
+
+    base_url: Optional[str] = Field(
+        default=None,
+        title="API Base URL",
+        description=(
+            "Document360 API base URL (e.g. https://apihub.document360.io or "
+            "https://apihub.us.document360.io for US). Leave empty to use default."
+        ),
+    )
+    lang_code: str = Field(
+        default="en",
+        title="Language Code",
+        description="Language code for article content (e.g. 'en', 'es'). Default: en.",
+    )
 
 
 class ElasticsearchConfig(SourceConfig):
@@ -201,7 +249,8 @@ class GmailConfig(SourceConfig):
         ),
     )
 
-    @validator("included_labels", "excluded_labels", "excluded_categories", pre=True)
+    @field_validator("included_labels", "excluded_labels", "excluded_categories", mode="before")
+    @classmethod
     def parse_list_fields(cls, value):
         """Convert comma-separated string to list if needed."""
         if isinstance(value, str):
@@ -210,7 +259,8 @@ class GmailConfig(SourceConfig):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @validator("after_date")
+    @field_validator("after_date")
+    @classmethod
     def validate_date_format(cls, value):
         """Validate date format and convert to YYYY/MM/DD."""
         if not value:
@@ -254,7 +304,8 @@ class GoogleDriveConfig(SourceConfig):
         ),
     )
 
-    @validator("include_patterns", pre=True)
+    @field_validator("include_patterns", mode="before")
+    @classmethod
     def _parse_include_patterns(cls, value):
         if isinstance(value, str):
             return [p.strip() for p in value.split(",") if p.strip()]
@@ -281,6 +332,16 @@ class HubspotConfig(SourceConfig):
     """Hubspot configuration schema."""
 
     pass
+
+
+class SliteConfig(SourceConfig):
+    """Slite configuration schema."""
+
+    include_archived: bool = Field(
+        default=False,
+        title="Include archived notes",
+        description="If enabled, archived notes will be synced. Default: only active notes.",
+    )
 
 
 class IntercomConfig(SourceConfig):
@@ -385,7 +446,8 @@ class OutlookMailConfig(SourceConfig):
         ),
     )
 
-    @validator("included_folders", "excluded_folders", pre=True)
+    @field_validator("included_folders", "excluded_folders", mode="before")
+    @classmethod
     def parse_list_fields(cls, value):
         """Convert comma-separated string to list if needed."""
         if isinstance(value, str):
@@ -394,19 +456,14 @@ class OutlookMailConfig(SourceConfig):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @validator("after_date")
+    @field_validator("after_date")
+    @classmethod
     def validate_date_format(cls, value):
         """Validate date format and convert to YYYY/MM/DD."""
         if not value:
             return value
         # Accept both YYYY/MM/DD and YYYY-MM-DD formats
         return value.replace("-", "/")
-
-
-class ExcelConfig(SourceConfig):
-    """Microsoft Excel configuration schema."""
-
-    pass
 
 
 class OneNoteConfig(SourceConfig):
@@ -439,7 +496,8 @@ class CTTIConfig(SourceConfig):
         ),
     )
 
-    @validator("limit", pre=True)
+    @field_validator("limit", mode="before")
+    @classmethod
     def parse_limit(cls, value):
         """Convert string input to integer if needed."""
         if isinstance(value, str):
@@ -451,7 +509,8 @@ class CTTIConfig(SourceConfig):
                 raise ValueError("Limit must be a valid integer") from e
         return value
 
-    @validator("skip", pre=True)
+    @field_validator("skip", mode="before")
+    @classmethod
     def parse_skip(cls, value):
         """Convert string input to integer if needed."""
         if isinstance(value, str):
@@ -471,12 +530,6 @@ class CTTIConfig(SourceConfig):
                 raise ValueError("Skip must be non-negative")
             return int(value)
         return value
-
-
-class PostgreSQLConfig(SourceConfig):
-    """Postgres configuration schema."""
-
-    pass
 
 
 class SharePointConfig(SourceConfig):
@@ -526,6 +579,21 @@ class ShopifyConfig(SourceConfig):
         title="Shop Domain",
         description="Your Shopify store domain (e.g., 'my-store.myshopify.com')",
         min_length=3,
+    )
+
+
+class SlabConfig(SourceConfig):
+    """Slab configuration schema."""
+
+    host: str = Field(
+        default="app.slab.com",
+        title="Slab host",
+        description=(
+            "Your Slab workspace host (e.g. 'myteam.slab.com'). "
+            "Find it in your Slab URL when logged in. Required by the Slab API. "
+            "Default: app.slab.com"
+        ),
+        min_length=1,
     )
 
 
@@ -587,6 +655,35 @@ class TodoistConfig(SourceConfig):
     """Todoist configuration schema."""
 
     pass
+
+
+class TimedConfig(SourceConfig):
+    """Timed source configuration schema for testing sync lifecycle.
+
+    Controls the generation of N entities spread evenly over a configurable
+    duration. Designed for precise timing control in cancellation and
+    state transition tests.
+    """
+
+    entity_count: int = Field(
+        default=100,
+        title="Entity Count",
+        description="Total number of entities to generate",
+        ge=1,
+        le=10000,
+    )
+    duration_seconds: float = Field(
+        default=10.0,
+        title="Duration (seconds)",
+        description="Total time to spread entity generation over, in seconds",
+        ge=0.1,
+        le=600,
+    )
+    seed: int = Field(
+        default=42,
+        title="Random Seed",
+        description="Random seed for reproducible content generation",
+    )
 
 
 class StubConfig(SourceConfig):
@@ -677,6 +774,14 @@ class StubConfig(SourceConfig):
         ),
     )
 
+    fail_after: int = Field(
+        default=-1,
+        title="Fail After",
+        description="Number of entities to generate before failing the sync",
+        ge=0,
+        le=100000,
+    )
+
     @field_validator(
         "small_entity_weight",
         "medium_entity_weight",
@@ -745,6 +850,22 @@ class ZendeskConfig(SourceConfig):
         title="Exclude Closed Tickets",
         description="Skip closed tickets during sync (recommended for faster syncing)",
     )
+
+
+class FreshdeskConfig(SourceConfig):
+    """Freshdesk configuration schema."""
+
+    domain: str = RequiredTemplateConfig(
+        title="Freshdesk Domain",
+        description=("Your Freshdesk domain only (e.g., 'mycompany' for mycompany.freshdesk.com)"),
+        json_schema_extra={"required_for_auth": True},
+    )
+
+
+class ServiceNowConfig(SourceConfig):
+    """ServiceNow configuration schema."""
+
+    pass
 
 
 # AUTH PROVIDER CONFIGURATION CLASSES

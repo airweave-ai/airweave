@@ -4,16 +4,13 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class APIKeyBase(BaseModel):
     """Base schema for APIKey."""
 
-    class Config:
-        """Pydantic config for APIKeyBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class APIKeyCreate(BaseModel):
@@ -50,10 +47,7 @@ class APIKeyCreate(BaseModel):
             raise ValueError("Expiration days cannot be more than 365.")
         return v
 
-    class Config:
-        """Pydantic config for APIKeyCreate."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class APIKeyUpdate(BaseModel):
@@ -61,10 +55,7 @@ class APIKeyUpdate(BaseModel):
 
     expiration_date: Optional[datetime] = None
 
-    class Config:
-        """Pydantic config for APIKeyUpdate."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class APIKeyInDBBase(APIKeyBase):
@@ -79,10 +70,7 @@ class APIKeyInDBBase(APIKeyBase):
     created_by_email: Optional[EmailStr] = None
     modified_by_email: Optional[EmailStr] = None
 
-    class Config:
-        """Pydantic config for APIKeyInDBBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class APIKey(APIKeyInDBBase):
@@ -90,7 +78,4 @@ class APIKey(APIKeyInDBBase):
 
     decrypted_key: Optional[str] = None
 
-    class Config:
-        """Pydantic config for APIKey."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

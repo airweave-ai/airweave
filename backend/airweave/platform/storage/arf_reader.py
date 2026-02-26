@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 from uuid import UUID
 
+import aiofiles
+
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.storage.exceptions import StorageNotFoundError
@@ -245,8 +247,8 @@ class ArfReader:
             local_path = self._temp_dir / filename
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(local_path, "wb") as f:
-                f.write(content)
+            async with aiofiles.open(local_path, "wb") as f:
+                await f.write(content)
 
             return str(local_path)
 

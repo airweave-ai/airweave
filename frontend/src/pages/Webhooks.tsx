@@ -126,13 +126,13 @@ const WebhooksPage = () => {
         </h1>
         <Button onClick={() => setCreateModalOpen(true)} size="sm" className="h-8">
           <Plus className="mr-1.5 size-3.5" />
-          Add webhook
+          Add subscription
         </Button>
       </div>
       <p className="text-sm text-muted-foreground mb-4">
         Get notified when syncs complete or fail.{" "}
         <a
-          href="https://docs.airweave.ai/webhooks"
+          href="https://docs.airweave.ai/webhooks/overview"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center text-primary hover:underline"
@@ -146,7 +146,7 @@ const WebhooksPage = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="h-8 p-0.5 bg-muted/50 mb-3">
           <TabsTrigger value="webhooks" className="h-7 text-xs px-3">
-            Webhooks
+            Subscriptions
             {subscriptions.length > 0 && (
               <span className="ml-1.5 text-[10px] text-muted-foreground">
                 {subscriptions.length}

@@ -155,7 +155,8 @@ class QueryBuilder:
             # Server-side pagination: Vespa applies offset/hits after ranking
             "hits": limit,
             "offset": offset,
-            "presentation.summary": "full",
+            # Note: We don't specify presentation.summary - Vespa's default summary includes
+            # ALL fields with "summary" indexing, including fields from child schemas (e.g., url)
             # Timeout: increase from default 500ms to prevent soft doom during setup
             # Soft timeout: enable graceful degradation with partial results
             # See: https://docs.vespa.ai/en/performance/graceful-degradation.html
@@ -231,12 +232,11 @@ class QueryBuilder:
         Returns:
             Vespa ranking profile name
         """
+        # Map "neural" to "semantic" profile (Vespa uses "semantic" profile name)
         if retrieval_strategy == "neural":
-            return "semantic-only"
-        elif retrieval_strategy == "keyword":
-            return "keyword-only"
-        else:
-            return "hybrid-rrf"
+            return "semantic"
+        # Other strategies (keyword, hybrid) map directly
+        return retrieval_strategy
 
     def escape_query(self, query: str) -> str:
         """Escape a query string for safe inclusion in YQL.

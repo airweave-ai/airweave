@@ -46,6 +46,9 @@ class WorkerConfig:
     # Sandbox (disable only for debugging)
     disable_sandbox: bool = False
 
+    # Temporal SDK built-in Prometheus exporter
+    sdk_metrics_port: int = 9090
+
     @classmethod
     def from_settings(cls) -> "WorkerConfig":
         """Build config from environment settings."""
@@ -54,4 +57,5 @@ class WorkerConfig:
             metrics_port=settings.WORKER_METRICS_PORT,
             graceful_shutdown_timeout_seconds=settings.TEMPORAL_GRACEFUL_SHUTDOWN_TIMEOUT,
             disable_sandbox=settings.TEMPORAL_DISABLE_SANDBOX,
+            sdk_metrics_port=settings.TEMPORAL_SDK_METRICS_PORT,
         )

@@ -21,32 +21,6 @@ class CRUDBillingPeriod(
 ):
     """CRUD operations for BillingPeriod model."""
 
-    async def get_by_organization(
-        self,
-        db: AsyncSession,
-        *,
-        organization_id: UUID,
-        limit: int = 10,
-    ) -> List[BillingPeriod]:
-        """Get billing periods for an organization.
-
-        Args:
-            db: Database session
-            organization_id: Organization ID
-            limit: Maximum number of periods to return
-
-        Returns:
-            List of billing periods ordered by period_start desc
-        """
-        query = (
-            select(self.model)
-            .where(self.model.organization_id == organization_id)
-            .order_by(desc(self.model.period_start))
-            .limit(limit)
-        )
-        result = await db.execute(query)
-        return list(result.scalars().all())
-
     async def get_current_period(
         self,
         db: AsyncSession,
@@ -117,93 +91,6 @@ class CRUDBillingPeriod(
         )
         result = await db.execute(query)
         return result.scalar_one_or_none()
-
-    async def get_by_stripe_subscription(
-        self,
-        db: AsyncSession,
-        *,
-        stripe_subscription_id: str,
-        status: Optional[BillingPeriodStatus] = None,
-    ) -> Optional[BillingPeriod]:
-        """Get billing period by Stripe subscription ID.
-
-        Args:
-            db: Database session
-            stripe_subscription_id: Stripe subscription ID
-            status: Optional status filter
-
-        Returns:
-            Billing period or None
-        """
-        query = select(self.model).where(
-            self.model.stripe_subscription_id == stripe_subscription_id
-        )
-        if status:
-            query = query.where(self.model.status == status)
-
-        result = await db.execute(query)
-        return result.scalar_one_or_none()
-
-    async def get_by_stripe_invoice(
-        self,
-        db: AsyncSession,
-        *,
-        stripe_invoice_id: str,
-    ) -> Optional[BillingPeriod]:
-        """Get billing period by Stripe invoice ID.
-
-        Args:
-            db: Database session
-            stripe_invoice_id: Stripe invoice ID
-
-        Returns:
-            Billing period or None
-        """
-        query = select(self.model).where(self.model.stripe_invoice_id == stripe_invoice_id)
-        result = await db.execute(query)
-        return result.scalar_one_or_none()
-
-    async def complete_active_periods(
-        self,
-        db: AsyncSession,
-        *,
-        organization_id: UUID,
-        end_time: datetime,
-    ) -> int:
-        """Complete all active periods for an organization.
-
-        Args:
-            db: Database session
-            organization_id: Organization ID
-            end_time: Time to set as period end
-
-        Returns:
-            Number of periods updated
-        """
-        # Get active periods
-        query = select(self.model).where(
-            and_(
-                self.model.organization_id == organization_id,
-                self.model.status.in_(
-                    [
-                        BillingPeriodStatus.ACTIVE,
-                        BillingPeriodStatus.TRIAL,
-                        BillingPeriodStatus.GRACE,
-                    ]
-                ),
-            )
-        )
-        result = await db.execute(query)
-        periods = list(result.scalars().all())
-
-        # Update each period
-        for period in periods:
-            period.status = BillingPeriodStatus.COMPLETED
-            period.period_end = end_time
-            period.modified_at = datetime.utcnow()
-
-        await db.flush()
-        return len(periods)
 
     async def get_previous_periods(
         self,

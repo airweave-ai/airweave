@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 from uuid import UUID
 
+from airweave.core.protocols.worker_metrics_registry import SyncMetricDetail, SyncWorkerCount
+
 
 class WorkerMetricsRegistry:
     """Global registry for tracking active activities in this worker process."""
@@ -172,7 +174,7 @@ class WorkerMetricsRegistry:
                 if info["sync_job_id"]
             }
 
-    async def get_detailed_sync_metrics(self) -> List[Dict[str, Any]]:
+    async def get_detailed_sync_metrics(self) -> list[SyncMetricDetail]:
         """Get detailed metrics for each active sync.
 
         Returns:
@@ -213,7 +215,7 @@ class WorkerMetricsRegistry:
                     total += pool.active_and_pending_count
             return total
 
-    async def get_per_sync_worker_counts(self) -> List[Dict[str, Any]]:
+    async def get_per_sync_worker_counts(self) -> list[SyncWorkerCount]:
         """Get worker count for each active sync.
 
         Returns:

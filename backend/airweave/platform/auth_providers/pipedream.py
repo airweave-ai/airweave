@@ -9,6 +9,8 @@ from fastapi import HTTPException
 from airweave.core.credential_sanitizer import safe_log_credentials
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthResult
+from airweave.platform.configs.auth import PipedreamAuthConfig
+from airweave.platform.configs.config import PipedreamConfig
 from airweave.platform.decorators import auth_provider
 
 
@@ -35,8 +37,8 @@ class PipedreamDefaultOAuthException(Exception):
 @auth_provider(
     name="Pipedream",
     short_name="pipedream",
-    auth_config_class="PipedreamAuthConfig",
-    config_class="PipedreamConfig",
+    auth_config_class=PipedreamAuthConfig,
+    config_class=PipedreamConfig,
 )
 class PipedreamAuthProvider(BaseAuthProvider):
     """Pipedream authentication provider.
@@ -67,14 +69,16 @@ class PipedreamAuthProvider(BaseAuthProvider):
         # Workspace needs to be moved to the regular config, which will conflict with composio
         "bitbucket",
         "onenote",
-        "excel",
         "word",
+        # ServiceNow seems to be broken for now
+        "servicenow",
     ]
 
     # Mapping of Airweave field names to Pipedream field names
     # Key: Airweave field name, Value: Pipedream field name
     FIELD_NAME_MAPPING = {
         "api_key": "api_key",
+        "api_token": "api_key",  # Document360 and other sources use api_token
         "access_token": "oauth_access_token",
         "refresh_token": "oauth_refresh_token",
         "client_id": "oauth_client_id",
@@ -87,10 +91,18 @@ class PipedreamAuthProvider(BaseAuthProvider):
     # Key: Airweave short name, Value: Pipedream app name_slug
     # Only include mappings where names differ between Airweave and Pipedream
     SLUG_NAME_MAPPING = {
+        "apollo": "apollo_io",  # Pipedream app name_slug is apollo_io
         "outlook_mail": "outlook",
         "outlook_calendar": "outlook",
         "slack": "slack_v2",  # Pipedream uses slack_v2 for their newer Slack app
         # Add more mappings as needed when names differ
+    }
+
+    # Per-source override for field names (Airweave field -> Pipedream field).
+    # Use when a source's auth config uses one name but Pipedream returns another.
+    SOURCE_FIELD_MAPPING = {
+        "coda": {"api_key": "api_token"},  # Pipedream Coda app uses api_token
+        "slab": {"api_key": "api_token"},  # Pipedream Slab app uses api_token
     }
 
     @classmethod
@@ -136,15 +148,20 @@ class PipedreamAuthProvider(BaseAuthProvider):
         """
         return self.SLUG_NAME_MAPPING.get(airweave_short_name, airweave_short_name)
 
-    def _map_field_name(self, airweave_field: str) -> str:
+    def _map_field_name(self, airweave_field: str, source_short_name: Optional[str] = None) -> str:
         """Map an Airweave field name to the corresponding Pipedream field name.
 
         Args:
             airweave_field: The Airweave field name
+            source_short_name: Optional source short name for per-source override
 
         Returns:
             The corresponding Pipedream field name
         """
+        if source_short_name:
+            source_map = self.SOURCE_FIELD_MAPPING.get(source_short_name, {})
+            if airweave_field in source_map:
+                return source_map[airweave_field]
         return self.FIELD_NAME_MAPPING.get(airweave_field, airweave_field)
 
     async def _ensure_valid_token(self) -> str:
@@ -443,8 +460,10 @@ class PipedreamAuthProvider(BaseAuthProvider):
         self.logger.info(f"📦 [Pipedream] Available credential fields: {list(credentials.keys())}")
 
         for airweave_field in source_auth_config_fields:
-            # Map the field name if needed
-            pipedream_field = self._map_field_name(airweave_field)
+            # Map the field name if needed (per-source override, then global)
+            pipedream_field = self._map_field_name(
+                airweave_field, source_short_name=source_short_name
+            )
 
             if airweave_field != pipedream_field:
                 self.logger.info(

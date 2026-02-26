@@ -18,11 +18,18 @@ def mock_sync_context():
     """Create mock SyncContext."""
     context = MagicMock()
     context.logger = MagicMock()
-    context.entity_tracker = AsyncMock()
     context.collection = MagicMock()
     context.collection.vector_size = 3072
     context.collection.embedding_model_name = "text-embedding-3-large"
     return context
+
+
+@pytest.fixture
+def mock_runtime():
+    """Create mock SyncRuntime."""
+    runtime = MagicMock()
+    runtime.entity_tracker = AsyncMock()
+    return runtime
 
 
 @pytest.fixture
@@ -44,14 +51,14 @@ class TestChunkEmbedProcessor:
     """Test ChunkEmbedProcessor chunks text and computes embeddings."""
 
     @pytest.mark.asyncio
-    async def test_process_empty_list(self, processor, mock_sync_context):
+    async def test_process_empty_list(self, processor, mock_sync_context, mock_runtime):
         """Test processing empty entity list returns empty."""
-        result = await processor.process([], mock_sync_context)
+        result = await processor.process([], mock_sync_context, mock_runtime)
         assert result == []
 
     @pytest.mark.asyncio
     async def test_chunk_textual_entities_uses_semantic_chunker(
-        self, processor, mock_sync_context, mock_entity
+        self, processor, mock_sync_context, mock_runtime, mock_entity
     ):
         """Test textual entities routed to SemanticChunker."""
         with patch('airweave.platform.sync.processors.chunk_embed.text_builder') as mock_builder, \
@@ -65,7 +72,7 @@ class TestChunkEmbedProcessor:
                 [{"text": "Chunk 1"}, {"text": "Chunk 2"}]
             ])
 
-            result = await processor.process([mock_entity], mock_sync_context)
+            result = await processor.process([mock_entity], mock_sync_context, mock_runtime)
 
             # Verify SemanticChunker was called
             mock_chunker.chunk_batch.assert_called_once()
@@ -289,7 +296,7 @@ class TestChunkEmbedProcessor:
 
     @pytest.mark.asyncio
     async def test_full_pipeline_with_mocks(
-        self, processor, mock_sync_context
+        self, processor, mock_sync_context, mock_runtime
     ):
         """Test full pipeline with all mocked dependencies."""
         mock_entity = MagicMock()
@@ -335,7 +342,7 @@ class TestChunkEmbedProcessor:
                 MagicMock()
             ])
 
-            result = await processor.process([mock_entity], mock_sync_context)
+            result = await processor.process([mock_entity], mock_sync_context, mock_runtime)
 
             # Should have 2 chunks
             assert len(result) == 2
@@ -347,7 +354,7 @@ class TestChunkEmbedProcessor:
 
     @pytest.mark.asyncio
     async def test_memory_optimization_clears_parent_text(
-        self, processor, mock_sync_context
+        self, processor, mock_sync_context, mock_runtime
     ):
         """Test parent entity text released after chunking."""
         mock_entity = MagicMock()
@@ -380,14 +387,14 @@ class TestChunkEmbedProcessor:
             mock_sparse = MockSparse.return_value
             mock_sparse.embed_many = AsyncMock(return_value=[MagicMock()])
 
-            await processor.process([mock_entity], mock_sync_context)
+            await processor.process([mock_entity], mock_sync_context, mock_runtime)
 
             # Parent entity's textual_representation should be None
             assert mock_entity.textual_representation is None
 
     @pytest.mark.asyncio
     async def test_skips_entities_without_text(
-        self, processor, mock_sync_context
+        self, processor, mock_sync_context, mock_runtime
     ):
         """Test entities with no textual_representation are skipped."""
         mock_entity = MagicMock()
@@ -398,14 +405,14 @@ class TestChunkEmbedProcessor:
         with patch('airweave.platform.sync.processors.chunk_embed.text_builder') as mock_builder:
             mock_builder.build_for_batch = AsyncMock(return_value=[mock_entity])
 
-            result = await processor.process([mock_entity], mock_sync_context)
+            result = await processor.process([mock_entity], mock_sync_context, mock_runtime)
 
             # Should return empty list (skipped)
             assert len(result) == 0
 
     @pytest.mark.asyncio
     async def test_handles_empty_chunks_from_chunker(
-        self, processor, mock_sync_context
+        self, processor, mock_sync_context, mock_runtime
     ):
         """Test handling when chunker returns empty list."""
         mock_entity = MagicMock()
@@ -421,7 +428,7 @@ class TestChunkEmbedProcessor:
             mock_chunker = MockChunker.return_value
             mock_chunker.chunk_batch = AsyncMock(return_value=[[]])  # Empty chunks
 
-            result = await processor.process([mock_entity], mock_sync_context)
+            result = await processor.process([mock_entity], mock_sync_context, mock_runtime)
 
             # Should skip entity with no chunks
             assert len(result) == 0

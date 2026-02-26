@@ -15,7 +15,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class DestinationConfig(BaseModel):
     """Controls where entities are written."""
 
-    skip_qdrant: bool = Field(False, description="Skip writing to native Qdrant")
     skip_vespa: bool = Field(False, description="Skip writing to native Vespa")
     target_destinations: Optional[List[UUID]] = Field(
         None, description="If set, ONLY write to these destination UUIDs"
@@ -54,7 +53,6 @@ class SyncConfig(BaseSettings):
     """Sync configuration with automatic env var loading.
 
     Env vars use double underscore as delimiter:
-        SYNC_CONFIG__DESTINATIONS__SKIP_QDRANT=true
         SYNC_CONFIG__HANDLERS__ENABLE_VECTOR_HANDLERS=false
     """
 
@@ -72,11 +70,11 @@ class SyncConfig(BaseSettings):
     @model_validator(mode="after")
     def validate_config_logic(self):
         """Validate that config combinations make sense."""
-        # At least one native vector DB must be enabled
-        if self.destinations.skip_qdrant and self.destinations.skip_vespa:
+        # Vespa must be enabled (sole vector database)
+        if self.destinations.skip_vespa:
             raise ValueError(
-                "Invalid config: both skip_qdrant and skip_vespa are True. "
-                "At least one vector database must be enabled."
+                "Invalid config: skip_vespa is True. "
+                "Vespa is the only vector database and must be enabled."
             )
 
         if self.destinations.target_destinations and self.destinations.exclude_destinations:
@@ -121,14 +119,9 @@ class SyncConfig(BaseSettings):
         return cls()
 
     @classmethod
-    def qdrant_only(cls) -> "SyncConfig":
-        """Write to Qdrant only, skip Vespa."""
-        return cls(destinations=DestinationConfig(skip_vespa=True))
-
-    @classmethod
     def vespa_only(cls) -> "SyncConfig":
-        """Write to Vespa only, skip Qdrant."""
-        return cls(destinations=DestinationConfig(skip_qdrant=True, skip_vespa=False))
+        """Write to Vespa only (default since Qdrant deprecation)."""
+        return cls(destinations=DestinationConfig(skip_vespa=False))
 
     @classmethod
     def arf_capture_only(cls) -> "SyncConfig":

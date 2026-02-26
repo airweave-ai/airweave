@@ -37,9 +37,6 @@ def convert_legacy_request_to_new(legacy_request: LegacySearchRequest) -> Search
             # AUTO or LLM both mean "enable expansion"
             expand_query = True
 
-    # Map recency_bias to temporal_relevance (same concept, just renamed)
-    temporal_relevance = legacy_request.recency_bias
-
     # Map enable_reranking to rerank
     rerank = legacy_request.enable_reranking
 
@@ -59,7 +56,6 @@ def convert_legacy_request_to_new(legacy_request: LegacySearchRequest) -> Search
         filter=legacy_request.filter,
         offset=legacy_request.offset,
         limit=legacy_request.limit,
-        temporal_relevance=temporal_relevance,
         expand_query=expand_query,
         interpret_filters=interpret_filters,
         rerank=rerank,

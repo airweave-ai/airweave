@@ -157,7 +157,18 @@ class VespaClient:
                 )
 
             schema_start = time.perf_counter()
-            await asyncio.to_thread(_feed_sync)
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(_feed_sync),
+                    timeout=settings.VESPA_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                schema_ms = (time.perf_counter() - schema_start) * 1000
+                self._logger.error(
+                    f"[VespaClient] Feed to schema '{schema}' TIMED OUT after "
+                    f"{schema_ms:.0f}ms ({len(docs)} docs)"
+                )
+                raise
             schema_ms = (time.perf_counter() - schema_start) * 1000
 
             self._logger.info(
@@ -376,7 +387,7 @@ class VespaClient:
         """Convert Vespa hits to AirweaveSearchResult objects.
 
         Transforms Vespa's flat field structure into the unified AirweaveSearchResult
-        format that matches what Qdrant returns.
+        format.
 
         Args:
             hits: List of Vespa hit dictionaries

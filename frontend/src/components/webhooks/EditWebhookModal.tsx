@@ -8,15 +8,23 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Info,
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   useSubscription,
   useUpdateSubscription,
   useDeleteSubscription,
   useEnableEndpoint,
   useDisableEndpoint,
+  type HealthStatus,
 } from "@/hooks/use-webhooks";
 import { toast } from "sonner";
 import { EVENT_TYPES_CONFIG, type EventTypeGroup, formatFullDate } from "./shared";
@@ -76,7 +84,7 @@ function EventTypeSelector({
   };
 
   return (
-    <div className="h-[320px] overflow-auto border rounded-lg">
+    <div className="h-[380px] overflow-auto border rounded-lg">
       {(Object.keys(EVENT_TYPES_CONFIG) as EventTypeGroup[]).map((group) => {
         const config = EVENT_TYPES_CONFIG[group];
         const isExpanded = expandedGroups.has(group);
@@ -103,7 +111,7 @@ function EventTypeSelector({
                 }}
                 className="size-4"
               />
-              <span className="text-[13px] font-medium">{config.label}</span>
+              <span className="text-[13px] font-mono font-medium">{config.label}</span>
             </div>
             {isExpanded && (
               <div className="ml-6 border-l border-border/50">
@@ -214,7 +222,7 @@ function EnableConfirmDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[400px] p-6">
-        <h3 className="text-[16px] font-semibold">Enable endpoint</h3>
+        <h3 className="text-[16px] font-semibold">Enable subscription</h3>
         <p className="text-[13px] text-muted-foreground mt-2 leading-relaxed">
           Would you also like to recover failed messages from the last 7 days?
         </p>
@@ -243,6 +251,38 @@ function EnableConfirmDialog({
     </Dialog>
   );
 }
+
+// ============ Health Status Display ============
+
+const HEALTH_DISPLAY: Record<
+  HealthStatus,
+  { label: string; dotClass: string; textClass: string; description: string }
+> = {
+  healthy: {
+    label: "Delivering",
+    dotClass: "bg-emerald-500",
+    textClass: "text-emerald-600 dark:text-emerald-400",
+    description: "All recent deliveries succeeded.",
+  },
+  degraded: {
+    label: "Degraded",
+    dotClass: "bg-amber-500",
+    textClass: "text-amber-600 dark:text-amber-400",
+    description: "Some recent deliveries failed. Check the logs for details.",
+  },
+  failing: {
+    label: "Failing",
+    dotClass: "bg-red-500",
+    textClass: "text-red-600 dark:text-red-400",
+    description: "Multiple consecutive deliveries have failed. Your endpoint may be down.",
+  },
+  unknown: {
+    label: "No data",
+    dotClass: "bg-muted-foreground/40",
+    textClass: "text-muted-foreground/60",
+    description: "No deliveries yet. Events will appear once a sync runs.",
+  },
+};
 
 // ============ Edit Modal ============
 
@@ -298,9 +338,9 @@ export function EditWebhookModal({
       // Disable directly
       try {
         await disableMutation.mutateAsync(subscriptionId);
-        toast.success("Endpoint disabled");
+        toast.success("Subscription disabled");
       } catch {
-        toast.error("Failed to disable endpoint");
+        toast.error("Failed to disable subscription");
       }
     }
   };
@@ -313,10 +353,10 @@ export function EditWebhookModal({
         : undefined;
 
       await enableMutation.mutateAsync({ id: subscriptionId, recoverSince });
-      toast.success(withRecovery ? "Endpoint enabled. Recovering messages..." : "Endpoint enabled");
+      toast.success(withRecovery ? "Subscription enabled. Recovering messages..." : "Subscription enabled");
       setShowEnableDialog(false);
     } catch {
-      toast.error("Failed to enable endpoint");
+      toast.error("Failed to enable subscription");
     }
   };
 
@@ -330,7 +370,7 @@ export function EditWebhookModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[820px] p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-[940px] p-0 gap-0 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-24">
             <Loader2 className="size-5 animate-spin text-muted-foreground/40" />
@@ -344,21 +384,45 @@ export function EditWebhookModal({
                   Status
                 </p>
                 {isDisabled ? (
-                  <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-red-600 dark:text-red-400">
-                    <span className="size-2 rounded-full bg-red-500" />
+                  <span className="text-[13px] font-medium text-red-600 dark:text-red-400">
                     Disabled
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-emerald-600 dark:text-emerald-400">
-                    <span className="size-2 rounded-full bg-emerald-500" />
-                    Active
+                  <span className="text-[13px] font-medium text-foreground/70">
+                    Enabled
                   </span>
                 )}
               </div>
 
               <div>
                 <p className="text-[11px] text-muted-foreground/50 uppercase tracking-wide mb-2">
-                  Endpoint ID
+                  Health
+                </p>
+                {(() => {
+                  const healthStatus = (subscription?.health_status || "unknown") as HealthStatus;
+                  const config = HEALTH_DISPLAY[healthStatus] || HEALTH_DISPLAY.unknown;
+                  return (
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium cursor-default ${config.textClass}`}>
+                            <span className={`size-2 rounded-full ${config.dotClass}`} />
+                            {config.label}
+                            <Info className="size-3 text-muted-foreground/40" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[220px]">
+                          <p className="text-[11px] leading-relaxed">{config.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  );
+                })()}
+              </div>
+
+              <div>
+                <p className="text-[11px] text-muted-foreground/50 uppercase tracking-wide mb-2">
+                  Subscription ID
                 </p>
                 <p className="text-[12px] font-mono text-muted-foreground/70 break-all leading-relaxed">
                   {subscription?.id}
@@ -388,17 +452,17 @@ export function EditWebhookModal({
             <div className="flex flex-col">
               <div className="px-6 pt-6 pb-5 border-b border-border/40">
                 <h2 className="text-[18px] font-semibold tracking-tight">
-                  Edit webhook
+                  Edit subscription
                 </h2>
                 <p className="text-[13px] text-muted-foreground/60 mt-1">
-                  Configure your endpoint URL and subscribed events.
+                  Configure your subscription URL and subscribed events.
                 </p>
               </div>
 
               <div className="px-6 py-5 space-y-4 flex-1">
                 <div>
                   <label className="text-[11px] text-muted-foreground/50 uppercase tracking-wide block mb-1.5">
-                    Endpoint URL
+                    URL
                   </label>
                   <input
                     type="url"

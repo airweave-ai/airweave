@@ -86,7 +86,7 @@ class TestEntityTransformer:
         result = transformer.transform(mock_entity)
         
         assert isinstance(result, VespaDocument)
-        assert result.schema == "base_entity"
+        assert result.schema_name == "base_entity"
         assert "entity-123" in result.id
 
     def test_transform_extracts_core_fields(self, transformer, mock_entity):

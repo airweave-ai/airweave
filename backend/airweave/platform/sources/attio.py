@@ -19,6 +19,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import AttioAuthConfig
+from airweave.platform.configs.config import AttioConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.attio import (
@@ -40,8 +41,8 @@ from airweave.schemas.source_connection import AuthenticationMethod
     short_name="attio",
     auth_methods=[AuthenticationMethod.DIRECT, AuthenticationMethod.AUTH_PROVIDER],
     oauth_type=None,
-    auth_config_class="AttioAuthConfig",
-    config_class="AttioConfig",
+    auth_config_class=AttioAuthConfig,
+    config_class=AttioConfig,
     labels=["CRM"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

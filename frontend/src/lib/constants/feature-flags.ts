@@ -18,6 +18,9 @@ export const FeatureFlags = {
 
   // Rate Limiting
   SOURCE_RATE_LIMITING: 'source_rate_limiting',
+
+  // Search
+  AGENTIC_SEARCH: 'agentic_search',
 } as const;
 
 export type FeatureFlag = typeof FeatureFlags[keyof typeof FeatureFlags];

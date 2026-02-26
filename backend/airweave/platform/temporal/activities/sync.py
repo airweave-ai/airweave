@@ -8,6 +8,7 @@ Each class declares its dependencies in __init__, making them:
 """
 
 import asyncio
+import json
 import sys
 import time
 import traceback
@@ -16,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 from uuid import UUID
+
+from airweave.core.redis_client import redis_client
 
 if TYPE_CHECKING:
     from airweave.core.protocols import EventBus
@@ -68,38 +71,46 @@ class RunSyncActivity:
         """
         # Import here to avoid Temporal sandboxing issues
         from airweave import crud, schemas
-        from airweave.api.context import ApiContext
-        from airweave.core.logging import LoggerConfigurator
+        from airweave.core.context import BaseContext
         from airweave.db.session import get_db_context
         from airweave.platform.temporal.worker_metrics import worker_metrics
 
         # Convert dicts back to Pydantic models
-        sync = schemas.Sync(**sync_dict)
         sync_job = schemas.SyncJob(**sync_job_dict)
         connection = schemas.Connection(**connection_dict)
 
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
         organization = schemas.Organization(**ctx_dict["organization"])
 
-        ctx = ApiContext(
-            request_id=ctx_dict["request_id"],
-            organization=organization,
-            user=user,
-            auth_method=ctx_dict["auth_method"],
-            auth_metadata=ctx_dict.get("auth_metadata"),
-            logger=LoggerConfigurator.configure_logger(
-                "airweave.temporal.activity",
-                dimensions={
-                    "sync_job_id": str(sync_job.id),
-                    "organization_id": str(organization.id),
-                    "organization_name": organization.name,
-                },
-            ),
-        )
+        ctx = BaseContext(organization=organization)
+        ctx.logger = ctx.logger.with_context(sync_job_id=str(sync_job.id))
 
-        # Fetch fresh collection from DB
+        # Fetch fresh sync and collection from DB to avoid stale data
+        # (Temporal schedules bake sync_dict at creation time, which can
+        # contain outdated destination_connection_ids after migrations)
+        sync_id = UUID(sync_dict["id"])
         collection_id = UUID(collection_dict["id"])
         async with get_db_context() as db:
+            # Fetch sync with connections to get current destination_connection_ids
+            try:
+                sync = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=True)
+                if not sync.destination_connection_ids:
+                    ctx.logger.warning(
+                        f"Sync {sync_id} has no destination connections in DB. "
+                        f"Falling back to workflow-provided sync_dict."
+                    )
+                    sync = schemas.Sync(**sync_dict)
+                else:
+                    ctx.logger.info(
+                        f"Fetched fresh sync data from DB: {sync.id} "
+                        f"(destinations={sync.destination_connection_ids})"
+                    )
+            except Exception as e:
+                ctx.logger.warning(
+                    f"Failed to fetch sync {sync_id} from DB: {e}. "
+                    f"Falling back to workflow-provided sync_dict."
+                )
+                sync = schemas.Sync(**sync_dict)
+
             collection_model = await crud.collection.get(db=db, id=collection_id, ctx=ctx)
             if not collection_model:
                 raise ValueError(f"Collection {collection_id} not found in database")
@@ -109,6 +120,31 @@ class RunSyncActivity:
                 f"Fetched fresh collection data from DB: {collection.readable_id} "
                 f"(vector_size={collection.vector_size}, model={collection.embedding_model_name})"
             )
+
+            # Fetch the SourceConnection to get its user-facing ID for webhook events.
+            # sync.source_connection_id is the internal Connection.id, NOT the
+            # SourceConnection.id that users see in the API and webhook payloads.
+            source_connection_id = sync.source_connection_id  # fallback: internal ID
+            try:
+                source_conn = await crud.source_connection.get_by_sync_id(
+                    db=db, sync_id=sync_id, ctx=ctx
+                )
+                if source_conn:
+                    source_connection_id = source_conn.id
+                    ctx.logger.info(
+                        f"Resolved SourceConnection.id={source_connection_id} "
+                        f"(internal Connection.id={sync.source_connection_id})"
+                    )
+                else:
+                    ctx.logger.warning(
+                        f"No SourceConnection found for sync {sync_id}. "
+                        f"Falling back to sync.source_connection_id={sync.source_connection_id}"
+                    )
+            except Exception as e:
+                ctx.logger.warning(
+                    f"Failed to fetch SourceConnection for sync {sync_id}: {e}. "
+                    f"Falling back to sync.source_connection_id={sync.source_connection_id}"
+                )
 
         ctx.logger.debug(f"\n\nStarting sync activity for job {sync_job.id}\n\n")
 
@@ -153,7 +189,7 @@ class RunSyncActivity:
             await self.event_bus.publish(
                 SyncLifecycleEvent.running(
                     organization_id=organization.id,
-                    source_connection_id=sync.source_connection_id,
+                    source_connection_id=source_connection_id,
                     sync_job_id=sync_job.id,
                     sync_id=sync.id,
                     collection_id=collection.id,
@@ -168,6 +204,69 @@ class RunSyncActivity:
             last_stack_dump_time = heartbeat_start_time
             stack_dump_interval = 600  # 10 minutes
 
+            # Stall detection via Redis progress snapshot
+            last_redis_check_time = heartbeat_start_time
+            redis_check_interval = 30  # check every 30 seconds
+            last_known_timestamp = None
+            stall_start_time = None
+            stall_dump_emitted = False
+            stall_threshold = 300  # 5 minutes without progress
+
+            def _emit_stack_dump(reason: str, elapsed_s: int):
+                """Collect and emit a chunked stack trace dump."""
+                traces = []
+                for thread_id, frame in sys._current_frames().items():
+                    traces.append(f"\n=== Thread {thread_id} ===")
+                    traces.append("".join(traceback.format_stack(frame)))
+                all_tasks = asyncio.all_tasks()
+                traces.append(f"\n=== Async Tasks ({len(all_tasks)} total) ===")
+                for task in all_tasks:
+                    if not task.done():
+                        task_name = task.get_name()
+                        coro = task.get_coro()
+                        if hasattr(coro, "cr_frame") and coro.cr_frame:
+                            frame = coro.cr_frame
+                            traces.append(f"\nTask: {task_name}")
+                            loc = f"{frame.f_code.co_filename}:{frame.f_lineno}"
+                            traces.append(f"  at {loc} in {frame.f_code.co_name}")
+
+                thread_parts = []
+                async_parts = []
+                in_async = False
+                for trace in traces:
+                    if "=== Async Tasks" in trace:
+                        in_async = True
+                    (async_parts if in_async else thread_parts).append(trace)
+
+                base_extra = {
+                    "elapsed_seconds": elapsed_s,
+                    "sync_id": str(sync.id),
+                    "sync_job_id": str(sync_job.id),
+                }
+
+                ctx.logger.debug(
+                    f"[STACK_TRACE_DUMP] sync={sync.id} "
+                    f"sync_job={sync_job.id} elapsed={elapsed_s}s "
+                    f"reason={reason} part=threads",
+                    extra={**base_extra, "stack_traces": "".join(thread_parts)},
+                )
+
+                async_str = "".join(async_parts)
+                chunk_size = 12000
+                chunk_idx = 0
+                for i in range(0, max(len(async_str), 1), chunk_size):
+                    chunk_idx += 1
+                    ctx.logger.debug(
+                        f"[STACK_TRACE_DUMP] sync={sync.id} "
+                        f"sync_job={sync_job.id} elapsed={elapsed_s}s "
+                        f"reason={reason} part=async_tasks chunk={chunk_idx}",
+                        extra={
+                            **base_extra,
+                            "stack_traces": async_str[i : i + chunk_size],
+                            "chunk": chunk_idx,
+                        },
+                    )
+
             try:
                 while True:
                     done, _ = await asyncio.wait({sync_task}, timeout=1)
@@ -178,44 +277,46 @@ class RunSyncActivity:
                     current_time = time.time()
                     elapsed_seconds = int(current_time - heartbeat_start_time)
 
-                    # Dump stack trace for long-running syncs
-                    # (every 10 minutes after initial 10 minutes)
+                    # Stall detection: read Redis progress snapshot periodically
+                    if (current_time - last_redis_check_time) >= redis_check_interval:
+                        last_redis_check_time = current_time
+                        try:
+                            snapshot_key = f"sync_progress_snapshot:{sync_job.id}"
+                            snapshot_raw = await redis_client.client.get(snapshot_key)
+                            if snapshot_raw:
+                                snapshot = json.loads(snapshot_raw)
+                                current_timestamp = snapshot.get("last_update_timestamp")
+
+                                if current_timestamp != last_known_timestamp:
+                                    last_known_timestamp = current_timestamp
+                                    stall_start_time = None
+                                    stall_dump_emitted = False
+                                elif stall_start_time is None:
+                                    stall_start_time = current_time
+                        except Exception:
+                            pass
+
+                    # Emit stall dump if no progress for 5 minutes
+                    if (
+                        stall_start_time is not None
+                        and not stall_dump_emitted
+                        and (current_time - stall_start_time) >= stall_threshold
+                    ):
+                        stall_seconds = int(current_time - stall_start_time)
+                        ctx.logger.warning(
+                            f"[STALL_DETECTED] sync={sync.id} "
+                            f"sync_job={sync_job.id} "
+                            f"no entity progress for {stall_seconds}s"
+                        )
+                        _emit_stack_dump("stall", elapsed_seconds)
+                        stall_dump_emitted = True
+
+                    # Regular periodic stack trace dump (every 10 min after 10 min)
                     if (
                         elapsed_seconds > 600
                         and (current_time - last_stack_dump_time) >= stack_dump_interval
                     ):
-                        # Collect all thread/task stack traces
-                        stack_traces = []
-
-                        # Main thread stack
-                        for thread_id, frame in sys._current_frames().items():
-                            stack_traces.append(f"\n=== Thread {thread_id} ===")
-                            stack_traces.append("".join(traceback.format_stack(frame)))
-
-                        # All async tasks
-                        all_tasks = asyncio.all_tasks()
-                        stack_traces.append(f"\n=== Async Tasks ({len(all_tasks)} total) ===")
-                        for task in all_tasks:
-                            if not task.done():
-                                task_name = task.get_name()
-                                coro = task.get_coro()
-                                if hasattr(coro, "cr_frame") and coro.cr_frame:
-                                    frame = coro.cr_frame
-                                    stack_traces.append(f"\nTask: {task_name}")
-                                    loc = f"{frame.f_code.co_filename}:{frame.f_lineno}"
-                                    stack_traces.append(f"  at {loc} in {frame.f_code.co_name}")
-
-                        stack_trace_str = "".join(stack_traces)
-                        ctx.logger.debug(
-                            f"[STACK_TRACE_DUMP] sync={sync.id} "
-                            f"sync_job={sync_job.id} elapsed={elapsed_seconds}s",
-                            extra={
-                                "elapsed_seconds": elapsed_seconds,
-                                "sync_id": str(sync.id),
-                                "sync_job_id": str(sync_job.id),
-                                "stack_traces": stack_trace_str,
-                            },
-                        )
+                        _emit_stack_dump("periodic", elapsed_seconds)
                         last_stack_dump_time = current_time
 
                     ctx.logger.debug("HEARTBEAT: Sync in progress")
@@ -225,7 +326,7 @@ class RunSyncActivity:
                 await self.event_bus.publish(
                     SyncLifecycleEvent.completed(
                         organization_id=organization.id,
-                        source_connection_id=sync.source_connection_id,
+                        source_connection_id=source_connection_id,
                         sync_job_id=sync_job.id,
                         sync_id=sync.id,
                         collection_id=collection.id,
@@ -238,7 +339,14 @@ class RunSyncActivity:
 
             except asyncio.CancelledError:
                 await self._handle_cancellation(
-                    sync, sync_job, collection, connection, organization, ctx, sync_task
+                    sync,
+                    sync_job,
+                    collection,
+                    connection,
+                    organization,
+                    ctx,
+                    sync_task,
+                    source_connection_id,
                 )
                 raise
 
@@ -247,7 +355,7 @@ class RunSyncActivity:
                 await self.event_bus.publish(
                     SyncLifecycleEvent.failed(
                         organization_id=organization.id,
-                        source_connection_id=sync.source_connection_id,
+                        source_connection_id=source_connection_id,
                         sync_job_id=sync_job.id,
                         sync_id=sync.id,
                         collection_id=collection.id,
@@ -318,7 +426,15 @@ class RunSyncActivity:
             raise
 
     async def _handle_cancellation(
-        self, sync, sync_job, collection, connection, organization, ctx, sync_task
+        self,
+        sync,
+        sync_job,
+        collection,
+        connection,
+        organization,
+        ctx,
+        sync_task,
+        source_connection_id=None,
     ):
         """Handle activity cancellation."""
         from airweave.core.datetime_utils import utc_now_naive
@@ -343,7 +459,7 @@ class RunSyncActivity:
             await self.event_bus.publish(
                 SyncLifecycleEvent.cancelled(
                     organization_id=organization.id,
-                    source_connection_id=sync.source_connection_id,
+                    source_connection_id=source_connection_id or sync.source_connection_id,
                     sync_job_id=sync_job.id,
                     sync_id=sync.id,
                     collection_id=collection.id,
@@ -397,29 +513,14 @@ class MarkSyncJobCancelledActivity:
             when_iso: Optional ISO timestamp for failed_at
         """
         from airweave import schemas
-        from airweave.api.context import ApiContext
-        from airweave.core.logging import LoggerConfigurator
+        from airweave.core.context import BaseContext
         from airweave.core.shared_models import SyncJobStatus
         from airweave.core.sync_job_service import sync_job_service
 
         organization = schemas.Organization(**ctx_dict["organization"])
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
 
-        ctx = ApiContext(
-            request_id=ctx_dict["request_id"],
-            organization=organization,
-            user=user,
-            auth_method=ctx_dict["auth_method"],
-            auth_metadata=ctx_dict.get("auth_metadata"),
-            logger=LoggerConfigurator.configure_logger(
-                "airweave.temporal.activity.cancel_pre_activity",
-                dimensions={
-                    "sync_job_id": sync_job_id,
-                    "organization_id": str(organization.id),
-                    "organization_name": organization.name,
-                },
-            ),
-        )
+        ctx = BaseContext(organization=organization)
+        ctx.logger = ctx.logger.with_context(sync_job_id=sync_job_id)
 
         failed_at = None
         if when_iso:
@@ -484,30 +585,15 @@ class CreateSyncJobActivity:
             Exception: If a sync job is already running and force_full_sync is False
         """
         from airweave import crud, schemas
-        from airweave.api.context import ApiContext
+        from airweave.core.context import BaseContext
         from airweave.core.exceptions import NotFoundException
-        from airweave.core.logging import LoggerConfigurator
         from airweave.core.shared_models import SyncJobStatus
         from airweave.db.session import get_db_context
 
         organization = schemas.Organization(**ctx_dict["organization"])
-        user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
 
-        ctx = ApiContext(
-            request_id=ctx_dict["request_id"],
-            organization=organization,
-            user=user,
-            auth_method=ctx_dict["auth_method"],
-            auth_metadata=ctx_dict.get("auth_metadata"),
-            logger=LoggerConfigurator.configure_logger(
-                "airweave.temporal.activity.create_sync_job",
-                dimensions={
-                    "sync_id": sync_id,
-                    "organization_id": str(organization.id),
-                    "organization_name": organization.name,
-                },
-            ),
-        )
+        ctx = BaseContext(organization=organization)
+        ctx.logger = ctx.logger.with_context(sync_id=sync_id)
 
         ctx.logger.info(f"Creating sync job for sync {sync_id} (force_full_sync={force_full_sync})")
 
@@ -805,7 +891,7 @@ class CleanupStuckSyncJobsActivity:
     async def _cancel_stuck_job(self, job, now, db, crud, logger) -> bool:
         """Cancel a single stuck job via Temporal and update database."""
         from airweave import schemas
-        from airweave.api.context import ApiContext
+        from airweave.core.context import BaseContext
         from airweave.core.shared_models import SyncJobStatus
         from airweave.core.sync_job_service import sync_job_service
         from airweave.core.temporal_service import temporal_service
@@ -829,12 +915,8 @@ class CleanupStuckSyncJobsActivity:
             logger.error(f"Failed to fetch organization {org_id} for job {job_id}: {e}")
             return False
 
-        ctx = ApiContext(
-            request_id=f"cleanup-{job_id}",
+        ctx = BaseContext(
             organization=schemas.Organization.model_validate(organization),
-            user=None,
-            auth_method="system",
-            auth_metadata={"source": "cleanup_activity"},
             logger=logger,
         )
 

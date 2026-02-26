@@ -11,26 +11,35 @@ Key operations:
 - Update connection settings and credentials
 """
 
+import logging
 from typing import List, Optional
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.config import settings
+from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.guard_rail_service import GuardRailService
+from airweave.core.protocols import EventBus
 from airweave.core.shared_models import ActionType
-from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
+from airweave.domains.oauth.protocols import OAuthCallbackServiceProtocol
+from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.schemas.errors import (
     ConflictErrorResponse,
     NotFoundErrorResponse,
     RateLimitErrorResponse,
     ValidationErrorResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = TrailingSlashRouter()
 
@@ -40,6 +49,7 @@ router = TrailingSlashRouter()
 async def oauth_callback(
     *,
     db: AsyncSession = Depends(get_db),
+    oauth_callback_svc: OAuthCallbackServiceProtocol = Inject(OAuthCallbackServiceProtocol),
     # OAuth2 parameters
     state: Optional[str] = Query(None, description="OAuth2 state parameter"),
     code: Optional[str] = Query(None, description="OAuth2 authorization code"),
@@ -57,53 +67,25 @@ async def oauth_callback(
     This endpoint does not require authentication as it's accessed by users
     who are connecting their source.
     """
-    # Determine OAuth1 vs OAuth2 based on parameters
-    if oauth_token and oauth_verifier:
-        # OAuth1 callback
-        source_conn = await source_connection_service.complete_oauth1_callback(
-            db,
-            oauth_token=oauth_token,
-            oauth_verifier=oauth_verifier,
-        )
-    elif state and code:
-        # OAuth2 callback
-        source_conn = await source_connection_service.complete_oauth2_callback(
-            db,
-            state=state,
-            code=code,
-        )
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Invalid OAuth callback: missing required parameters. "
-                "Expected either (state + code) for OAuth2 or "
-                "(oauth_token + oauth_verifier) for OAuth1"
-            ),
-        )
+    source_conn = await oauth_callback_svc.complete_oauth_callback(
+        db,
+        state=state,
+        code=code,
+        oauth_token=oauth_token,
+        oauth_verifier=oauth_verifier,
+    )
 
-    # Redirect to the app with success
     redirect_url = source_conn.auth.redirect_url
 
     if not redirect_url:
-        # Fallback to app URL if redirect_url is not set
-        from airweave.core.config import settings
-
         redirect_url = settings.app_url
-
-    connection_id = source_conn.id
-
-    # Parse the redirect URL to preserve existing query parameters
-    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
     parsed = urlparse(redirect_url)
     query_params = parse_qs(parsed.query, keep_blank_values=True)
 
-    # Add success parameters (using frontend-expected param names)
     query_params["status"] = ["success"]
-    query_params["source_connection_id"] = [str(connection_id)]
+    query_params["source_connection_id"] = [str(source_conn.id)]
 
-    # Reconstruct the URL with all query parameters
     new_query = urlencode(query_params, doseq=True)
     final_url = urlunparse(
         (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
@@ -141,6 +123,7 @@ async def create(
     source_connection_in: schemas.SourceConnectionCreate,
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Create a new source connection."""
     # Check if organization is allowed to create a source connection
@@ -151,7 +134,7 @@ async def create(
     if source_connection_in.sync_immediately:
         await guard_rail.is_allowed(ActionType.ENTITIES)
 
-    result = await source_connection_service.create(
+    result = await sc_service.create(
         db,
         obj_in=source_connection_in,
         ctx=ctx,
@@ -202,6 +185,9 @@ async def list(
         description="Maximum number of connections to return (1-1000)",
         json_schema_extra={"example": 100},
     ),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> List[schemas.SourceConnectionListItem]:
     """List source connections with minimal fields for performance."""
     return await source_connection_service.list(
@@ -239,6 +225,9 @@ async def get(
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> schemas.SourceConnection:
     """Get a source connection with full details."""
     result = await source_connection_service.get(
@@ -279,9 +268,10 @@ async def update(
     ),
     source_connection_in: schemas.SourceConnectionUpdate,
     ctx: ApiContext = Depends(deps.get_context),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Update a source connection's configuration."""
-    return await source_connection_service.update(
+    return await sc_service.update(
         db,
         id=source_connection_id,
         obj_in=source_connection_in,
@@ -295,12 +285,21 @@ async def update(
     summary="Delete Source Connection",
     description="""Permanently delete a source connection and all its synced data.
 
-This operation:
-- Removes all entities synced from this source from the vector database
-- Cancels any scheduled or running sync jobs
-- Deletes the connection configuration and credentials
+**What happens when you delete:**
 
-**Warning**: This action cannot be undone. All synced data will be permanently deleted.""",
+1. Any running sync is cancelled and the API waits (up to 15 s) for the
+   worker to stop writing.
+2. The source connection, sync configuration, job history, and entity
+   metadata are cascade-deleted from the database.
+3. A background cleanup workflow is scheduled to remove data from the
+   vector database (Vespa) and raw data storage (ARF). This may take
+   several minutes for large datasets but does **not** block the response.
+
+The API returns immediately after step 2. Vector database cleanup happens
+asynchronously -- the data becomes unsearchable as soon as the database
+records are deleted.
+
+**Warning**: This action cannot be undone.""",
     responses={
         200: {"model": schemas.SourceConnection, "description": "Deleted source connection"},
         404: {"model": NotFoundErrorResponse, "description": "Source Connection Not Found"},
@@ -317,13 +316,28 @@ async def delete(
     ),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    event_bus: EventBus = Inject(EventBus),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Delete a source connection and all related data."""
-    result = await source_connection_service.delete(
+    result = await sc_service.delete(
         db,
         id=source_connection_id,
         ctx=ctx,
     )
+
+    # Publish source_connection.deleted event
+    try:
+        await event_bus.publish(
+            SourceConnectionLifecycleEvent.deleted(
+                organization_id=ctx.organization.id,
+                source_connection_id=source_connection_id,
+                source_type=result.short_name,
+                collection_readable_id=result.readable_collection_id,
+            )
+        )
+    except Exception as e:
+        ctx.logger.warning(f"Failed to publish source_connection.deleted event: {e}")
 
     return result
 
@@ -365,18 +379,19 @@ async def run(
         ),
         json_schema_extra={"example": False},
     ),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> schemas.SourceConnectionJob:
     """Trigger a sync run for a source connection."""
-    # Check if organization is allowed to process entities
     await guard_rail.is_allowed(ActionType.ENTITIES)
 
-    run = await source_connection_service.run(
+    return await source_connection_service.run(
         db,
         id=source_connection_id,
         ctx=ctx,
         force_full_sync=force_full_sync,
     )
-    return run
 
 
 @router.get(
@@ -389,12 +404,14 @@ Returns a list of sync jobs ordered by creation time (newest first). Each job
 includes status, timing information, and entity counts.
 
 Job statuses:
-- **PENDING**: Job is queued and waiting to start
+- **PENDING**: Job is queued, waiting for the worker to pick it up
 - **RUNNING**: Sync is actively pulling and processing data
 - **COMPLETED**: Sync finished successfully
-- **FAILED**: Sync encountered an error
-- **CANCELLED**: Sync was manually cancelled
-- **CANCELLING**: Cancellation has been requested""",
+- **FAILED**: Sync encountered an unrecoverable error
+- **CANCELLING**: Cancellation has been requested. The worker is
+  gracefully stopping the pipeline and cleaning up destination data.
+- **CANCELLED**: Sync was cancelled. The worker has fully stopped
+  and destination data cleanup has been scheduled.""",
     responses={
         200: {
             "model": List[schemas.SourceConnectionJob],
@@ -420,6 +437,9 @@ async def get_source_connection_jobs(
         description="Maximum number of jobs to return (1-1000)",
         json_schema_extra={"example": 100},
     ),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> List[schemas.SourceConnectionJob]:
     """Get sync jobs for a source connection."""
     return await source_connection_service.get_jobs(
@@ -436,11 +456,19 @@ async def get_source_connection_jobs(
     summary="Cancel Sync Job",
     description="""Request cancellation of a running sync job.
 
-The job will be marked as CANCELLING and the sync workflow will stop at the
-next checkpoint. Already-processed entities are retained.
+**State lifecycle**: `PENDING` / `RUNNING` → `CANCELLING` → `CANCELLED`
 
-**Note**: Cancellation is asynchronous. The job status will change to CANCELLED
-once the workflow has fully stopped.""",
+1. The API immediately marks the job as **CANCELLING** in the database.
+2. A cancellation signal is sent to the Temporal workflow.
+3. The worker receives the signal, gracefully stops the sync pipeline
+   (cancels worker pool, source stream), and marks the job as **CANCELLED**.
+
+Already-processed entities are retained in the vector database.
+If the worker is unresponsive, a background cleanup job will force the
+transition to CANCELLED after 3 minutes.
+
+**Note**: Only jobs in `PENDING` or `RUNNING` state can be cancelled.
+Attempting to cancel a `COMPLETED`, `FAILED`, or `CANCELLED` job returns 400.""",
     responses={
         200: {"model": schemas.SourceConnectionJob, "description": "Job with cancellation status"},
         404: {"model": NotFoundErrorResponse, "description": "Job Not Found"},
@@ -462,6 +490,9 @@ async def cancel_job(
         json_schema_extra={"example": "660e8400-e29b-41d4-a716-446655440001"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> schemas.SourceConnectionJob:
     """Cancel a running sync job."""
     return await source_connection_service.cancel_job(
@@ -472,48 +503,22 @@ async def cancel_job(
     )
 
 
-@router.post("/{source_connection_id}/make-continuous", response_model=schemas.SourceConnection)
-async def make_continuous(
-    *,
-    db: AsyncSession = Depends(get_db),
-    source_connection_id: UUID,
-    cursor_field: Optional[str] = Query(None, description="Field to use for incremental sync"),
-    ctx: ApiContext = Depends(deps.get_context),
-) -> schemas.SourceConnection:
-    """Convert source connection to continuous sync mode.
-
-    Only available for sources that support incremental sync.
-    """
-    return await source_connection_service.make_continuous(
-        db,
-        id=source_connection_id,
-        cursor_field=cursor_field,
-        ctx=ctx,
-    )
-
-
 @router.get("/{source_connection_id}/sync-id", include_in_schema=False)
 async def get_sync_id(
     *,
     db: AsyncSession = Depends(get_db),
     source_connection_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> dict:
     """Get the sync_id for a source connection.
 
     This is a private endpoint not documented in Fern.
     Used internally for Temporal sync testing and debugging.
     """
-    source_connection = await crud.source_connection.get(
-        db,
-        id=source_connection_id,
-        ctx=ctx,
-    )
-
-    if not source_connection.sync_id:
-        raise HTTPException(status_code=404, detail="No sync found for this source connection")
-
-    return {"sync_id": str(source_connection.sync_id)}
+    return await source_connection_service.get_sync_id(db, id=source_connection_id, ctx=ctx)
 
 
 @router.get("/authorize/{code}")
@@ -521,6 +526,9 @@ async def authorize_redirect(
     *,
     db: AsyncSession = Depends(get_db),
     code: str,
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
 ) -> Response:
     """Proxy redirect to OAuth provider.
 
@@ -529,14 +537,8 @@ async def authorize_redirect(
     This endpoint does not require authentication as it's accessed by users
     who are not yet authenticated with the platform.
     """
-    from airweave.crud import redirect_session
-
-    redirect_info = await redirect_session.get_by_code(db, code=code)
-    if not redirect_info:
-        raise HTTPException(status_code=404, detail="Authorization link expired or invalid")
-
-    # Redirect to the OAuth provider
+    final_url = await source_connection_service.get_redirect_url(db, code=code)
     return Response(
         status_code=303,
-        headers={"Location": redirect_info.final_url},
+        headers={"Location": final_url},
     )

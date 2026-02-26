@@ -17,6 +17,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt
 
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import OutlookMailConfig
 from airweave.platform.cursors import OutlookMailCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -56,7 +57,7 @@ def _should_retry_outlook_request(exception: Exception) -> bool:
     ],
     oauth_type=OAuthType.WITH_REFRESH,
     auth_config_class=None,
-    config_class="OutlookMailConfig",
+    config_class=OutlookMailConfig,
     labels=["Communication", "Email"],
     supports_continuous=True,
     rate_limit_level=RateLimitLevel.ORG,

@@ -14,6 +14,7 @@ from airweave.platform.sync.processors.utils import filter_empty_representations
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 class QdrantChunkEmbedProcessor(ContentProcessor):
@@ -37,22 +38,25 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> List[BaseEntity]:
         """Process entities through full chunk+embed pipeline."""
         if not entities:
             return []
 
         # Step 1: Build textual representations
-        processed = await text_builder.build_for_batch(entities, sync_context)
+        processed = await text_builder.build_for_batch(entities, sync_context, runtime)
 
         # Step 2: Filter empty representations
-        processed = await filter_empty_representations(processed, sync_context, "ChunkEmbed")
+        processed = await filter_empty_representations(
+            processed, sync_context, runtime, "QdrantChunkEmbed"
+        )
         if not processed:
             sync_context.logger.debug("[QdrantChunkEmbedProcessor] No entities after text building")
             return []
 
         # Step 3: Chunk entities
-        chunk_entities = await self._chunk_entities(processed, sync_context)
+        chunk_entities = await self._chunk_entities(processed, sync_context, runtime)
 
         # Step 4: Release parent text (memory optimization)
         for entity in processed:
@@ -75,6 +79,7 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> List[BaseEntity]:
         """Route entities to appropriate chunker."""
         code_entities = [e for e in entities if isinstance(e, CodeFileEntity)]
@@ -83,7 +88,7 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         all_chunks: List[BaseEntity] = []
 
         if code_entities:
-            chunks = await self._chunk_code_entities(code_entities, sync_context)
+            chunks = await self._chunk_code_entities(code_entities, sync_context, runtime)
             all_chunks.extend(chunks)
 
         if textual_entities:
@@ -96,6 +101,7 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> List[BaseEntity]:
         """Chunk code with AST-aware CodeChunker."""
         from airweave.platform.chunkers.code import CodeChunker
@@ -103,8 +109,7 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         # Filter unsupported languages
         supported, unsupported = await self._filter_unsupported_languages(entities)
         if unsupported:
-            # TODO: Record skipped entities through exception handling
-            await sync_context.entity_tracker.record_skipped(len(unsupported))
+            await runtime.entity_tracker.record_skipped(len(unsupported))
 
         if not supported:
             return []

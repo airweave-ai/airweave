@@ -5,10 +5,9 @@ from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
+from airweave.core.logging import LoggerConfigurator
 from airweave.platform.builders.destinations import DestinationsContextBuilder
-from airweave.platform.builders.infra import InfraContextBuilder
-from airweave.platform.builders.scope import ScopeContextBuilder
 from airweave.platform.contexts.cleanup import CleanupContext
 
 
@@ -21,7 +20,7 @@ class CleanupContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         collection: schemas.Collection,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> CleanupContext:
         """Build cleanup context for a single sync's entities.
 
@@ -29,46 +28,42 @@ class CleanupContextBuilder:
             db: Database session
             sync: Sync to clean up
             collection: Collection the sync belongs to
-            ctx: API context
+            ctx: Base context (provides org identity)
 
         Returns:
             CleanupContext ready for deletion operations.
         """
-        # Get source connection ID for scope
+        # Get source connection ID
         source_connection = await crud.source_connection.get_by_sync_id(
             db, sync_id=sync.id, ctx=ctx
         )
         source_connection_id = source_connection.id if source_connection else sync.id
 
-        # Build scope
-        scope = ScopeContextBuilder.build_minimal(
-            sync_id=sync.id,
-            collection_id=collection.id,
-            organization_id=collection.organization_id,
-            source_connection_id=source_connection_id,
-            job_id=None,  # No job for cleanup
+        # Build cleanup-specific logger
+        logger = LoggerConfigurator.configure_logger(
+            "airweave.platform.cleanup",
+            dimensions={
+                "operation": "cleanup",
+                "sync_id": str(sync.id),
+                "collection_id": str(collection.id),
+                "organization_id": str(ctx.organization.id),
+            },
         )
 
-        # Build infra (minimal)
-        infra = InfraContextBuilder.build_minimal(
-            ctx=ctx,
-            operation="cleanup",
-            sync_id=sync.id,
-            collection_id=collection.id,
-        )
-
-        # Build destinations
-        destinations = await DestinationsContextBuilder.build_for_collection(
+        # Build destinations for cleanup
+        destinations = await DestinationsContextBuilder.build_for_cleanup(
             db=db,
-            sync=sync,
             collection=collection,
-            infra=infra,
+            logger=logger,
         )
 
         return CleanupContext(
-            scope=scope,
-            infra=infra,
+            organization=ctx.organization,
+            sync_id=sync.id,
+            collection_id=collection.id,
+            source_connection_id=source_connection_id,
             destinations=destinations,
+            logger=logger,
         )
 
     @classmethod
@@ -76,19 +71,18 @@ class CleanupContextBuilder:
         cls,
         db: AsyncSession,
         collection: schemas.Collection,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> List[CleanupContext]:
         """Build cleanup contexts for all syncs in a collection.
 
         Args:
             db: Database session
             collection: Collection to clean up
-            ctx: API context
+            ctx: Base context
 
         Returns:
             List of CleanupContext, one per sync.
         """
-        # Get all syncs for this collection
         syncs = await crud.sync.get_by_collection(db, collection.id, ctx)
 
         contexts = []

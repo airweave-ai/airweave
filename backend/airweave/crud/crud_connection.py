@@ -7,7 +7,7 @@ from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException, PermissionException
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.db.unit_of_work import UnitOfWork
@@ -47,14 +47,14 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
             and connection.modified_by_email is None
         )
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[Connection]:
         """Get a single connection by ID, with special handling for native connections.
 
         Args:
         ----
             db (AsyncSession): The database session.
             id (UUID): The UUID of the connection to get.
-            ctx (ApiContext): The current authentication context.
+            ctx (BaseContext): The current authentication context.
 
         Returns:
         -------
@@ -75,7 +75,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         return db_obj
 
     async def get_multi(
-        self, db: AsyncSession, ctx: ApiContext, *, skip: int = 0, limit: int = 100
+        self, db: AsyncSession, ctx: BaseContext, *, skip: int = 0, limit: int = 100
     ) -> list[Connection]:
         """Get all connections for a user, including native connections.
 
@@ -84,7 +84,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         Args:
         ----
             db (AsyncSession): The database session.
-            ctx (ApiContext): The current authentication context.
+            ctx (BaseContext): The current authentication context.
             skip (int): The number of objects to skip.
             limit (int): The number of objects to return.
 
@@ -123,7 +123,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         return user_connections + native_connections
 
     async def get_by_integration_type(
-        self, db: AsyncSession, integration_type: IntegrationType, ctx: ApiContext
+        self, db: AsyncSession, integration_type: IntegrationType, ctx: BaseContext
     ) -> list[Connection]:
         """Get all active connections for a specific integration type, including native connections.
 
@@ -172,7 +172,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         return org_connections + native_connections
 
     async def get_all_by_short_name(
-        self, db: AsyncSession, short_name: str, ctx: ApiContext
+        self, db: AsyncSession, short_name: str, ctx: BaseContext
     ) -> list[Connection]:
         """Get all connections for a specific short name, with proper organization filtering.
 
@@ -221,7 +221,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         return org_connections + native_connections
 
     async def get_by_readable_id(
-        self, db: AsyncSession, readable_id: str, ctx: ApiContext
+        self, db: AsyncSession, readable_id: str, ctx: BaseContext
     ) -> Optional[Connection]:
         """Get a connection by its readable_id, with special handling for native connections.
 
@@ -255,7 +255,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         db: AsyncSession,
         *,
         id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Optional[Connection]:
         """Delete a connection, with special handling for native connections.
@@ -266,7 +266,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         ----
             db (AsyncSession): The database session.
             id (UUID): The UUID of the connection to delete.
-            ctx (ApiContext): The current authentication context.
+            ctx (BaseContext): The current authentication context.
             uow (Optional[UnitOfWork]): The unit of work to use for the transaction.
 
         Returns:
@@ -307,7 +307,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         *,
         db_obj: Connection,
         obj_in: Union[ConnectionUpdate, dict[str, Any]],
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Connection:
         """Update a connection, with special handling for native connections.
@@ -319,7 +319,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
             db (AsyncSession): The database session.
             db_obj (Connection): The connection to update.
             obj_in (Union[ConnectionUpdate, dict[str, Any]]): The new connection data.
-            ctx (ApiContext): The current authentication context.
+            ctx (BaseContext): The current authentication context.
             uow (Optional[UnitOfWork]): The unit of work to use for the transaction.
 
         Returns:

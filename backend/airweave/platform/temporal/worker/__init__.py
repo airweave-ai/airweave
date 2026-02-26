@@ -45,11 +45,39 @@ class TemporalWorker:
     """
 
     def __init__(self, config: WorkerConfig) -> None:
-        """Initialize the Temporal worker."""
+        """Initialize the Temporal worker.
+
+        Worker metrics are wired inline here rather than through the shared
+        Container because they are worker-process-only concerns.  The API
+        server has its own MetricsService facade; putting worker gauges in
+        the Container would pollute its dependency graph with adapters that
+        only make sense inside a Temporal worker OS process.
+        """
+        from prometheus_client import CollectorRegistry
+        from temporalio.runtime import PrometheusConfig, Runtime, TelemetryConfig
+
+        from airweave.adapters.metrics import PrometheusMetricsRenderer, PrometheusWorkerMetrics
+        from airweave.platform.temporal.worker_metrics import worker_metrics as metrics_registry
+
         self._config = config
+        self._runtime = Runtime(
+            telemetry=TelemetryConfig(
+                metrics=PrometheusConfig(
+                    bind_address=f"0.0.0.0:{config.sdk_metrics_port}",
+                ),
+            ),
+        )
         self._worker: Worker | None = None
         self._state = WorkerState()
-        self._control_server = WorkerControlServer(self._state, config)
+
+        registry = CollectorRegistry()
+        self._control_server = WorkerControlServer(
+            worker_state=self._state,
+            config=config,
+            registry=metrics_registry,
+            worker_metrics=PrometheusWorkerMetrics(registry=registry),
+            renderer=PrometheusMetricsRenderer(registry=registry),
+        )
 
     async def start(self) -> None:
         """Start the worker and control server."""
@@ -62,7 +90,7 @@ class TemporalWorker:
         # Connect to Temporal
         from airweave.platform.temporal.client import temporal_client
 
-        client = await temporal_client.get_client()
+        client = await temporal_client.get_client(runtime=self._runtime)
         logger.info(f"Starting Temporal worker on task queue: {self._config.task_queue}")
 
         # Create worker
@@ -140,17 +168,31 @@ class TemporalWorker:
 async def main() -> None:
     """Main entry point for the worker process."""
     # 1. Initialize DI container (fail fast if wiring is broken)
+    from airweave.core import container as container_mod
     from airweave.core.container import initialize_container
 
     logger.info("Initializing dependency injection container...")
     initialize_container(settings)
     logger.info("Container initialized successfully")
 
-    # 2. Create worker with config
+    # 2. Require OCR backend for the sync worker
+    if container_mod.container.ocr_provider is None:
+        logger.error(
+            "Temporal worker requires an OCR backend. "
+            "Set MISTRAL_API_KEY or DOCLING_BASE_URL and restart."
+        )
+        raise SystemExit(1)
+
+    # 3. Initialize converters with OCR from the container
+    from airweave.platform.converters import initialize_converters
+
+    initialize_converters(ocr_provider=container_mod.container.ocr_provider)
+
+    # 4. Create worker with config
     config = WorkerConfig.from_settings()
     worker = TemporalWorker(config)
 
-    # 3. Set up signal handlers
+    # 5. Set up signal handlers
     def signal_handler(signum: int, frame: Any) -> None:
         logger.info(f"Received signal {signum}, shutting down...")
         asyncio.create_task(worker.stop())
@@ -158,7 +200,7 @@ async def main() -> None:
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # 4. Run worker
+    # 6. Run worker
     try:
         await worker.start()
     except KeyboardInterrupt:

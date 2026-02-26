@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.redirect_session import RedirectSession
 
@@ -40,7 +40,7 @@ class CRUDRedirectSession:
         code: str,
         final_url: str,
         expires_at: datetime,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> RedirectSession:
         """Create a new redirect session with the given parameters.

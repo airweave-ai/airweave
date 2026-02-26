@@ -29,6 +29,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import ShopifyAuthConfig
+from airweave.platform.configs.config import ShopifyConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.shopify import (
@@ -63,8 +64,8 @@ SHOPIFY_API_VERSION = "2024-01"
     name="Shopify",
     short_name="shopify",
     auth_methods=[AuthenticationMethod.DIRECT],
-    auth_config_class="ShopifyAuthConfig",
-    config_class="ShopifyConfig",
+    auth_config_class=ShopifyAuthConfig,
+    config_class=ShopifyConfig,
     labels=["E-commerce", "Retail"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

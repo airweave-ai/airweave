@@ -7,9 +7,21 @@ slug: webhooks/setup
 
 This guide walks you through setting up webhook subscriptions, handling incoming events, verifying signatures, and managing your event delivery.
 
+<video
+  src="./create-webhook-splitscreen-demo.mp4"
+  controls
+  loop
+  autoplay
+  muted
+  playsinline
+  style={{ aspectRatio: '16 / 9', width: '100%' }}
+>
+  Your browser does not support the video tag.
+</video>
+
 ## Creating a Subscription
 
-Register your endpoint to start receiving events:
+Register your endpoint to start receiving events. You can subscribe to any combination of [event types](/webhooks/types-and-formats) across sync, source connection, and collection lifecycles:
 
 <CodeBlocks>
 ```bash title="cURL"
@@ -18,7 +30,7 @@ curl -X POST 'https://api.airweave.ai/webhooks/subscriptions' \
   -H 'Content-Type: application/json' \
   -d '{
     "url": "https://your-server.com/webhooks/airweave",
-    "event_types": ["sync.completed", "sync.failed"]
+    "event_types": ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"]
   }'
 ```
 
@@ -30,7 +42,7 @@ response = requests.post(
     headers={"x-api-key": "YOUR_API_KEY"},
     json={
         "url": "https://your-server.com/webhooks/airweave",
-        "event_types": ["sync.completed", "sync.failed"]
+        "event_types": ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"]
     }
 )
 subscription = response.json()
@@ -46,7 +58,7 @@ const response = await fetch("https://api.airweave.ai/webhooks/subscriptions", {
   },
   body: JSON.stringify({
     url: "https://your-server.com/webhooks/airweave",
-    event_types: ["sync.completed", "sync.failed"]
+    event_types: ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"]
   })
 });
 const subscription = await response.json();
@@ -60,7 +72,7 @@ console.log(`Subscription ID: ${subscription.id}`);
 {
   "id": "ep_2bVxUn3RFnLYHa8z6ZKHMT9PqPX",
   "url": "https://your-server.com/webhooks/airweave",
-  "filter_types": ["sync.completed", "sync.failed"],
+  "filter_types": ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"],
   "disabled": false,
   "created_at": "2025-01-15T10:30:00Z",
   "updated_at": "2025-01-15T10:30:00Z"
@@ -77,7 +89,7 @@ Your endpoint receives POST requests with event payloads. Here's how to handle t
 
 <CodeBlocks>
 ```python title="Python (FastAPI)"
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 
 app = FastAPI()
 
@@ -86,10 +98,11 @@ async def handle_webhook(request: Request):
     event = await request.json()
 
     match event["event_type"]:
+        # Sync events
         case "sync.completed":
-            job_id = event["job_id"]
             collection = event["collection_name"]
-            print(f"Sync completed: {collection} (job: {job_id})")
+            inserted = event.get("entities_inserted", 0)
+            print(f"Sync completed: {collection} ({inserted} entities inserted)")
             # Trigger your downstream workflow here
 
         case "sync.failed":
@@ -98,8 +111,25 @@ async def handle_webhook(request: Request):
             print(f"Sync failed: {collection} - {error}")
             # Send alert or log the failure
 
-        case "sync.running":
-            print(f"Sync started: {event['collection_name']}")
+        # Source connection events
+        case "source_connection.created":
+            source = event["source_type"]
+            print(f"New {source} connection created")
+
+        case "source_connection.auth_completed":
+            source = event["source_type"]
+            print(f"{source} connection authenticated")
+
+        case "source_connection.deleted":
+            source = event["source_type"]
+            print(f"{source} connection removed")
+
+        # Collection events
+        case "collection.created":
+            print(f"Collection created: {event['collection_name']}")
+
+        case "collection.deleted":
+            print(f"Collection deleted: {event['collection_name']}")
 
     return {"status": "ok"}
 ```
@@ -114,18 +144,31 @@ app.post("/webhooks/airweave", (req, res) => {
   const event = req.body;
 
   switch (event.event_type) {
+    // Sync events
     case "sync.completed":
-      console.log(`Sync completed: ${event.collection_name} (job: ${event.job_id})`);
-      // Trigger your downstream workflow here
+      console.log(`Sync completed: ${event.collection_name} (${event.entities_inserted} inserted)`);
       break;
-
     case "sync.failed":
       console.log(`Sync failed: ${event.collection_name} - ${event.error}`);
-      // Send alert or log the failure
       break;
 
-    case "sync.running":
-      console.log(`Sync started: ${event.collection_name}`);
+    // Source connection events
+    case "source_connection.created":
+      console.log(`New ${event.source_type} connection created`);
+      break;
+    case "source_connection.auth_completed":
+      console.log(`${event.source_type} connection authenticated`);
+      break;
+    case "source_connection.deleted":
+      console.log(`${event.source_type} connection removed`);
+      break;
+
+    // Collection events
+    case "collection.created":
+      console.log(`Collection created: ${event.collection_name}`);
+      break;
+    case "collection.deleted":
+      console.log(`Collection deleted: ${event.collection_name}`);
       break;
   }
 
@@ -143,6 +186,8 @@ app.listen(3000);
 ## Signature Verification
 
 Every webhook delivery is signed. Verify signatures to ensure requests actually come from Airweave and haven't been tampered with.
+
+Svix signs every outbound delivery using HMAC-SHA256. It generates a per-endpoint secret, computes the signature over the payload, and attaches `svix-id`, `svix-timestamp`, and `svix-signature` headers. Verifying these signatures is your responsibility as the receiver. You can either implement HMAC-SHA256 verification manually (shown below) or use the Svix client library's `Webhook.verify()` helper.
 
 ### Get Your Signing Secret
 
@@ -268,7 +313,7 @@ curl -X PATCH 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}'
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
-    "event_types": ["sync.completed", "sync.failed", "sync.running"],
+    "event_types": ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"],
     "disabled": false
   }'
 ```
@@ -278,7 +323,7 @@ response = requests.patch(
     f"https://api.airweave.ai/webhooks/subscriptions/{subscription_id}",
     headers={"x-api-key": "YOUR_API_KEY"},
     json={
-        "event_types": ["sync.completed", "sync.failed", "sync.running"],
+        "event_types": ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"],
         "disabled": False
     }
 )
@@ -407,14 +452,14 @@ This triggers a recovery task that replays failed messages in chronological orde
   </Accordion>
 
   <Accordion title="Handle all event types gracefully">
-    Even if you only care about `sync.completed`, your handler should gracefully ignore unknown event types rather than failing.
+    Even if you only subscribe to specific events like `sync.completed`, your handler should gracefully ignore unknown event types rather than failing. This ensures forward compatibility as new event types are added.
   </Accordion>
 </AccordionGroup>
 
 ## Sample Application
 
 <Note>
-A complete sample application demonstrating webhook handling, signature verification, and event processing is coming soon.
+A sample webhook receiver is available in the Airweave repository under `examples/webhook-demo`. It handles incoming webhooks, verifies signatures, and provides a real-time event viewer for inspecting deliveries as they arrive.
 </Note>
 
 ## Next Steps

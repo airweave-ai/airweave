@@ -17,6 +17,7 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import ZohoCRMAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.zoho_crm import (
@@ -47,7 +48,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.WITH_REFRESH,
-    auth_config_class="ZohoCRMAuthConfig",
+    auth_config_class=ZohoCRMAuthConfig,
     labels=["CRM", "Sales"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

@@ -103,6 +103,7 @@ class FeatureFlag(str, Enum):
     SOURCE_RATE_LIMITING = "source_rate_limiting"
     ZEPHYR_SCALE = "zephyr_scale"  # Enables Zephyr Scale test management sync for Jira
     SHAREPOINT_2019_V2 = "sharepoint_2019_v2"  # Enables SharePoint 2019 On-Premise V2 source
+    AGENTIC_SEARCH = "agentic_search"  # Enables agentic search endpoints for collections
 
     # Scoped admin API key permissions (CASA-compliant granular access)
     # These allow specific admin operations via API key authentication

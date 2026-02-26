@@ -17,6 +17,7 @@ from airweave.platform.sync.handlers.protocol import EntityActionHandler
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
     from airweave.platform.entities import BaseEntity
 
 
@@ -42,7 +43,7 @@ class ArfHandler(EntityActionHandler):
         """Handler name."""
         return "arf"
 
-    async def _ensure_manifest(self, sync_context: "SyncContext") -> None:
+    async def _ensure_manifest(self, sync_context: "SyncContext", runtime: "SyncRuntime") -> None:
         """Ensure manifest exists for this sync (called once per sync)."""
         if self._manifest_initialized:
             return
@@ -50,7 +51,7 @@ class ArfHandler(EntityActionHandler):
         from airweave.platform.sync.arf import arf_service
 
         try:
-            await arf_service.upsert_manifest(sync_context)
+            await arf_service.upsert_manifest(sync_context, runtime)
             self._manifest_initialized = True
         except Exception as e:
             sync_context.logger.warning(f"[ARF] Failed to upsert manifest: {e}")
@@ -63,27 +64,29 @@ class ArfHandler(EntityActionHandler):
         self,
         batch: EntityActionBatch,
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Handle a full action batch."""
         # Order: deletes first, then updates, then inserts
         if batch.deletes:
             await self.handle_deletes(batch.deletes, sync_context)
         if batch.updates:
-            await self.handle_updates(batch.updates, sync_context)
+            await self.handle_updates(batch.updates, sync_context, runtime)
         if batch.inserts:
-            await self.handle_inserts(batch.inserts, sync_context)
+            await self.handle_inserts(batch.inserts, sync_context, runtime)
 
     async def handle_inserts(
         self,
         actions: List[EntityInsertAction],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Store inserted entities to ARF."""
         if not actions:
             return
 
         # Ensure manifest exists (lazily created on first write)
-        await self._ensure_manifest(sync_context)
+        await self._ensure_manifest(sync_context, runtime)
 
         entities = [action.entity for action in actions]
         await self._do_upsert(entities, "insert", sync_context)
@@ -92,13 +95,14 @@ class ArfHandler(EntityActionHandler):
         self,
         actions: List[EntityUpdateAction],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Update entities in ARF."""
         if not actions:
             return
 
         # Ensure manifest exists (lazily created on first write)
-        await self._ensure_manifest(sync_context)
+        await self._ensure_manifest(sync_context, runtime)
 
         entities = [action.entity for action in actions]
         await self._do_upsert(entities, "update", sync_context)

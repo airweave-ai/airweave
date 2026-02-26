@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UsageBase(BaseModel):
@@ -39,10 +39,7 @@ class UsageBase(BaseModel):
         description="Current number of team members in the organization. Computed dynamically from user_organization table.",
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UsageCreate(BaseModel):
@@ -91,10 +88,7 @@ class UsageInDBBase(UsageBase):
         description="Timestamp when the usage record was last updated.",
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Usage(UsageInDBBase):

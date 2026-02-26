@@ -12,6 +12,7 @@ import shutil
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 from uuid import UUID, uuid4
 
+import aiofiles
 import httpx
 from tenacity import retry, stop_after_attempt
 
@@ -40,8 +41,8 @@ class FileService:
     - Cleanup temp directory after sync
     """
 
-    # Maximum file size we'll download (1GB)
-    MAX_FILE_SIZE_BYTES = 1073741824
+    # Maximum file size we'll download (200MB)
+    MAX_FILE_SIZE_BYTES = 209715200
 
     def __init__(
         self,
@@ -147,7 +148,7 @@ class FileService:
                         size_bytes = int(content_length)
                         if size_bytes > self.MAX_FILE_SIZE_BYTES:
                             size_mb = size_bytes / (1024 * 1024)
-                            return False, f"File too large: {size_mb:.1f}MB (max 1GB)"
+                            return False, f"File too large: {size_mb:.1f}MB (max 200MB)"
 
                 except (httpx.HTTPError, ValueError) as e:
                     logger.debug(
@@ -179,10 +180,29 @@ class FileService:
                 "GET", url, headers=headers, follow_redirects=True
             ) as response:
                 response.raise_for_status()
+
+                # Check Content-Length header before reading body
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > self.MAX_FILE_SIZE_BYTES:
+                    size_mb = int(content_length) / (1024 * 1024)
+                    max_mb = self.MAX_FILE_SIZE_BYTES // (1024 * 1024)
+                    raise FileSkippedException(
+                        reason=f"File too large: {size_mb:.1f}MB (max {max_mb}MB)",
+                        filename=temp_path,
+                    )
+
                 os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-                with open(temp_path, "wb") as f:
+                bytes_written = 0
+                async with aiofiles.open(temp_path, "wb") as f:
                     async for chunk in response.aiter_bytes():
-                        f.write(chunk)
+                        bytes_written += len(chunk)
+                        if bytes_written > self.MAX_FILE_SIZE_BYTES:
+                            max_mb = self.MAX_FILE_SIZE_BYTES // (1024 * 1024)
+                            raise FileSkippedException(
+                                reason=f"File exceeded {max_mb}MB during download",
+                                filename=temp_path,
+                            )
+                        await f.write(chunk)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
                 retry_after = e.response.headers.get("Retry-After", "unknown")
@@ -285,8 +305,8 @@ class FileService:
         temp_path = f"{self.base_temp_dir}/{file_uuid}-{safe_filename}"
 
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-        with open(temp_path, "wb") as f:
-            f.write(content)
+        async with aiofiles.open(temp_path, "wb") as f:
+            await f.write(content)
 
         logger.debug(f"Restored file from ARF to {temp_path}")
         return temp_path
@@ -348,8 +368,8 @@ class FileService:
 
         try:
             os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-            with open(temp_path, "wb") as f:
-                f.write(content)
+            async with aiofiles.open(temp_path, "wb") as f:
+                await f.write(content)
 
             logger.debug(f"Saved file to: {temp_path}")
             entity.local_path = temp_path

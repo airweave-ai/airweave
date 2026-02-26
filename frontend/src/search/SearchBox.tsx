@@ -8,10 +8,12 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowUp, CodeXml, X, Loader2, Square, ListStart, ChartScatter, RefreshCw } from "lucide-react";
+import { ArrowUp, CodeXml, X, Loader2, Square, ListStart, ChartScatter, RefreshCw, Brain, Zap } from "lucide-react";
 import { FiGitMerge, FiType, FiLayers, FiFilter, FiSliders, FiMessageSquare } from "react-icons/fi";
 import { ApiIntegrationDoc } from "@/search/CodeBlock";
 import { JsonFilterEditor } from "@/search/JsonFilterEditor";
+import { FilterBuilderPopover, FilterGroup, toBackendFilterGroups, countActiveFilters } from "@/search/FilterBuilderModal";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { apiClient } from "@/lib/api";
 import type { SearchEvent, PartialStreamUpdate, StreamPhase } from "@/search/types";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
@@ -19,6 +21,10 @@ import { SingleActionCheckResponse } from "@/types";
 
 // Search method types
 type SearchMethod = "hybrid" | "neural" | "keyword";
+
+// Search mode: regular pipeline search vs agentic multi-step search
+export type SearchMode = "search" | "agent";
+type AgenticMode = "fast" | "thinking";
 
 // Toggle state interface
 interface SearchToggles {
@@ -52,6 +58,10 @@ interface SearchBoxProps {
     onStreamEvent?: (event: SearchEvent) => void;
     onStreamUpdate?: (partial: PartialStreamUpdate) => void;
     onCancel?: () => void;
+    // Search mode
+    agenticEnabled?: boolean;
+    searchMode?: SearchMode;
+    onSearchModeChange?: (mode: SearchMode) => void;
 }
 
 class TransientStreamError extends Error {
@@ -82,7 +92,10 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     onStreamUpdate: onStreamUpdateProp,
     onCancel,
     className,
-    disabled = false
+    disabled = false,
+    agenticEnabled = true,
+    searchMode = "agent",
+    onSearchModeChange,
 }) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
@@ -92,9 +105,17 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     const [searchMethod, setSearchMethod] = useState<SearchMethod>("hybrid");
     const [isSearching, setIsSearching] = useState(false);
 
+    // Agentic search sub-mode (fast/thinking)
+    const [agenticMode, setAgenticMode] = useState<AgenticMode>("thinking");
+    const isAgenticMode = searchMode === "agent";
+
     // Filter state
     const [filterJson, setFilterJson] = useState("");
     const [isFilterValid, setIsFilterValid] = useState(true);
+
+    // Agentic filter builder state
+    const [agenticFilterGroups, setAgenticFilterGroups] = useState<FilterGroup[]>([]);
+    const [showFilterBuilder, setShowFilterBuilder] = useState(false);
 
     // API key state
     const [apiKey, setApiKey] = useState<string>("YOUR_API_KEY");
@@ -178,6 +199,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
     const hasQuery = query.trim().length > 0;
     const canRetrySearch = Boolean(transientIssue) && !isSearching;
+    const activeFilterCount = countActiveFilters(agenticFilterGroups);
 
     // Streaming controls
     const abortRef = useRef<AbortController | null>(null);
@@ -244,7 +266,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
         abortRef.current = abortController;
 
         // Store the response type being used for this search
-        const currentResponseType = toggles.answer ? "completion" : "raw";
+        // Agentic mode always generates a completion answer
+        const currentResponseType = isAgenticMode ? "completion" : (toggles.answer ? "completion" : "raw");
 
         setIsSearching(true);
         onSearchStart?.(currentResponseType);
@@ -263,36 +286,51 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 }
             }
 
-            // Build request body with all parameters (matching new backend schema)
-            // Note: temporal_relevance is always 0 as the feature is under construction
-            const requestBody: any = {
-                query: query,
-                retrieval_strategy: searchMethod,
-                expand_query: toggles.queryExpansion,
-                interpret_filters: toggles.queryInterpretation,
-                temporal_relevance: 0,  // Feature disabled - under construction
-                rerank: toggles.reRanking,
-                generate_answer: toggles.answer,
-            };
+            // Build request body and stream URL based on search mode
+            let requestBody: any;
+            let streamUrl: string;
 
-            // Add filter only if it's valid
-            if (parsedFilter) {
-                requestBody.filter = parsedFilter;
+            if (isAgenticMode) {
+                // Agentic search: query + optional filters + mode
+                requestBody = {
+                    query: query,
+                    filter: toBackendFilterGroups(agenticFilterGroups),
+                    mode: agenticMode,
+                };
+                streamUrl = `/collections/${collectionId}/agentic-search/stream`;
+            } else {
+                // Regular pipeline search
+                requestBody = {
+                    query: query,
+                    retrieval_strategy: searchMethod,
+                    expand_query: toggles.queryExpansion,
+                    interpret_filters: toggles.queryInterpretation,
+                    temporal_relevance: 0,  // Feature disabled - under construction
+                    rerank: toggles.reRanking,
+                    generate_answer: toggles.answer,
+                };
+
+                // Add filter only if it's valid
+                if (parsedFilter) {
+                    requestBody.filter = parsedFilter;
+                }
+
+                const debugParams = new URLSearchParams();
+                if (typeof window !== 'undefined') {
+                    if (window.localStorage.getItem('airweave-debug-force-transient-search-error') === 'true') {
+                        debugParams.set('debug_force_transient_error', 'true');
+                    }
+                    if (window.localStorage.getItem('airweave-debug-force-search-error') === 'true') {
+                        debugParams.set('debug_force_search_error', 'true');
+                    }
+                }
+                const debugQuery = debugParams.toString();
+                streamUrl = `/collections/${collectionId}/search/stream${debugQuery ? `?${debugQuery}` : ''}`;
             }
 
-            console.log("Sending search request:", requestBody);
-
-            const debugParams = new URLSearchParams();
-            if (typeof window !== 'undefined') {
-                if (window.localStorage.getItem('airweave-debug-force-transient-search-error') === 'true') {
-                    debugParams.set('debug_force_transient_error', 'true');
-                }
-                if (window.localStorage.getItem('airweave-debug-force-search-error') === 'true') {
-                    debugParams.set('debug_force_search_error', 'true');
-                }
-            }
-            const debugQuery = debugParams.toString();
-            const streamUrl = `/collections/${collectionId}/search/stream${debugQuery ? `?${debugQuery}` : ''}`;
+            console.log(`[SearchBox] ---- ${isAgenticMode ? 'AGENTIC' : 'REGULAR'} SEARCH ----`);
+            console.log(`[SearchBox] URL: POST ${streamUrl}`);
+            console.log(`[SearchBox] Body:`, JSON.stringify(requestBody, null, 2));
 
             // Make the streaming API call
             const response = await apiClient.post(
@@ -301,8 +339,59 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 { signal: abortController.signal, extraHeaders: {} }
             );
 
+            console.log(`[SearchBox] Response status: ${response.status} ${response.statusText}`);
+            console.log(`[SearchBox] Response has body: ${!!response.body}`);
+
             if (!response.ok || !response.body) {
                 const errorText = await response.text().catch(() => "");
+                console.error(`[SearchBox] Stream failed (${response.status}):`, errorText);
+
+                // Surface validation errors (422) with the actual message
+                if (response.status === 422) {
+                    let detail = "Invalid filter configuration.";
+                    try {
+                        const parsed = JSON.parse(errorText);
+
+                        // Helper: extract human-readable messages from the custom
+                        // error_messages / errors shape used by the Airweave middleware.
+                        const extractFromErrors = (errArr: any[]): string[] => {
+                            const out: string[] = [];
+                            for (const entry of errArr) {
+                                if (typeof entry === "string") { out.push(entry); continue; }
+                                if (typeof entry === "object" && entry !== null) {
+                                    for (const v of Object.values(entry)) {
+                                        if (typeof v === "string") out.push(v);
+                                    }
+                                }
+                            }
+                            return out;
+                        };
+
+                        // Dev mode: { error_messages: { errors: [...] }, ... }
+                        const errRoot = parsed.error_messages ?? parsed;
+                        if (errRoot.errors && Array.isArray(errRoot.errors)) {
+                            const msgs = extractFromErrors(errRoot.errors);
+                            if (msgs.length) detail = msgs.join("; ");
+                        } else if (parsed.detail) {
+                            // FastAPI default: { detail: [...] } or { detail: "string" }
+                            detail = Array.isArray(parsed.detail)
+                                ? parsed.detail.map((d: any) => d.msg ?? JSON.stringify(d)).join("; ")
+                                : String(parsed.detail);
+                        }
+                    } catch { /* use default detail */ }
+
+                    const endTime = performance.now();
+                    const responseTime = Math.round(endTime - startTime);
+                    onSearch(
+                        { error: detail, errorIsTransient: false, status: 422 },
+                        currentResponseType,
+                        responseTime,
+                    );
+                    setIsSearching(false);
+                    onSearchEnd?.();
+                    return;
+                }
+
                 throw new Error(errorText || `Stream failed: ${response.status} ${response.statusText}`);
             }
 
@@ -345,8 +434,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                     try {
                         event = JSON.parse(payloadStr);
                     } catch {
+                        console.log(`[SearchBox] SSE non-JSON frame:`, payloadStr);
                         continue; // non-JSON heartbeat or noise
                     }
+
+                    console.log(`[SearchBox] SSE event:`, event.type, event);
 
                     emitEvent(event as SearchEvent);
 
@@ -395,17 +487,31 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                         case 'done': {
                             const endTime = performance.now();
                             const responseTime = Math.round(endTime - startTime);
-                            // Build final response from collected data
-                            const finalResponse = {
-                                completion: latestCompletion || null,
-                                results: latestResults || [],
-                                responseTime,
-                            };
+
+                            let finalResponse;
+                            if (isAgenticMode && event.response) {
+                                // Agentic done: extract answer + results from response envelope
+                                finalResponse = {
+                                    completion: event.response.answer?.text || null,
+                                    citations: event.response.answer?.citations || [],
+                                    results: event.response.results || [],
+                                    responseTime,
+                                };
+                            } else {
+                                // Regular done: assemble from accumulated stream data
+                                finalResponse = {
+                                    completion: latestCompletion || null,
+                                    results: latestResults || [],
+                                    responseTime,
+                                };
+                            }
+
                             console.log('[SearchBox] Done event - sending final response:', {
-                                hasCompletion: !!latestCompletion,
-                                completionLength: latestCompletion?.length,
+                                hasCompletion: !!finalResponse.completion,
+                                completionLength: finalResponse.completion?.length,
                                 responseType: currentResponseType,
-                                resultsCount: latestResults?.length
+                                resultsCount: finalResponse.results?.length,
+                                agentic: isAgenticMode,
                             });
                             onSearch(finalResponse, currentResponseType, responseTime);
                             break;
@@ -453,7 +559,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 }
             }
         }
-    }, [hasQuery, collectionId, query, searchMethod, toggles, filterJson, isFilterValid, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, queriesAllowed, isCheckingUsage, disabled, checkQueriesAllowed]);
+    }, [hasQuery, collectionId, query, searchMethod, toggles, filterJson, isFilterValid, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, queriesAllowed, isCheckingUsage, disabled, checkQueriesAllowed, searchMode, agenticMode, isAgenticMode]);
 
     // Handle search method change
     const handleMethodChange = useCallback((newMethod: SearchMethod) => {
@@ -514,6 +620,43 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     return (
         <>
             <div className={cn("w-full", className)}>
+                {/* Mode toggle (above search box) — only shown when agentic search is enabled */}
+                {agenticEnabled && (
+                    <div className="flex items-center justify-end gap-2 mb-1.5">
+                        <div
+                            className={cn(
+                                "inline-flex items-center h-6 rounded-md border p-0.5",
+                                isDark ? "border-border/50 bg-background" : "border-border bg-white"
+                            )}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => onSearchModeChange?.("agent")}
+                                className={cn(
+                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all",
+                                    isAgenticMode
+                                        ? "text-primary bg-primary/10"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                Agentic Search
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onSearchModeChange?.("search")}
+                                className={cn(
+                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all",
+                                    !isAgenticMode
+                                        ? "text-primary bg-primary/10"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                Classic Search
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div
                     className={cn(
                         DESIGN_SYSTEM.radius.card,
@@ -585,12 +728,10 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                         handleSendQuery();
                                                     }
                                                 }}
-                                                placeholder="Ask a question about your data"
+                                                placeholder={isAgenticMode ? "Ask your agent a question..." : "Ask a question about your data"}
                                                 disabled={!queriesAllowed || isCheckingUsage || disabled}
                                                 className={cn(
-                                                    // pr-16 ensures text wraps before overlay button
-                                                    // increase right padding to prevent text from flowing under the top-right Code button at all widths
-                                                    "w-full h-20 px-2 pr-28 sm:pr-24 md:pr-28 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
+                                                    "w-full h-20 px-2 pr-32 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
                                                     DESIGN_SYSTEM.typography.sizes.header,
                                                     isDark ? "placeholder:text-gray-500" : "placeholder:text-gray-500",
                                                     (!queriesAllowed || isCheckingUsage || disabled) && "opacity-60 cursor-not-allowed"
@@ -646,11 +787,9 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         handleSendQuery();
                                     }
                                 }}
-                                placeholder="Ask a question about your data"
+                                placeholder={isAgenticMode ? "Ask your agent a question..." : "Ask a question about your data"}
                                 className={cn(
-                                    // pr-16 ensures text wraps before overlay button
-                                    // increase right padding to prevent text from flowing under the top-right Code button at all widths
-                                    "w-full h-20 px-2 pr-28 sm:pr-24 md:pr-28 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
+                                    "w-full h-20 px-2 pr-32 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
                                     DESIGN_SYSTEM.typography.sizes.header,
                                     isDark ? "placeholder:text-gray-500" : "placeholder:text-gray-500"
                                 )}
@@ -665,6 +804,108 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                         <TooltipProvider delayDuration={0}>
                             {/* Left side controls */}
                             <div className="flex items-center gap-1.5">
+                                {isAgenticMode ? (
+                                    <>
+                                        {/* Agent mode controls */}
+
+                                        {/* 1. Filter popover */}
+                                        <Popover open={showFilterBuilder} onOpenChange={setShowFilterBuilder}>
+                                            <PopoverTrigger asChild>
+                                                <div className="relative">
+                                                    <div
+                                                        className={cn(
+                                                            DESIGN_SYSTEM.buttons.heights.secondary,
+                                                            "w-8 p-0 border cursor-pointer",
+                                                            DESIGN_SYSTEM.radius.button,
+                                                            activeFilterCount > 0
+                                                                ? "border-primary"
+                                                                : isDark ? "border-border/50 bg-background" : "border-border bg-white"
+                                                        )}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            className={cn(
+                                                                "h-full w-full flex items-center justify-center",
+                                                                DESIGN_SYSTEM.radius.button,
+                                                                DESIGN_SYSTEM.transitions.standard,
+                                                                activeFilterCount > 0
+                                                                    ? "text-primary hover:bg-primary/10"
+                                                                    : "text-foreground hover:bg-muted"
+                                                            )}
+                                                        >
+                                                            <FiSliders className="h-4 w-4" strokeWidth={1.5} />
+                                                        </button>
+                                                    </div>
+                                                    {activeFilterCount > 0 && (
+                                                        <span className={cn(
+                                                            "absolute -top-1.5 -right-1.5 h-4 min-w-4 rounded-full",
+                                                            "bg-primary text-primary-foreground text-[9px] font-bold",
+                                                            "flex items-center justify-center px-1 pointer-events-none"
+                                                        )}>
+                                                            {activeFilterCount}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </PopoverTrigger>
+                                            <PopoverContent
+                                                side="bottom"
+                                                align="start"
+                                                sideOffset={6}
+                                                className={cn(
+                                                    "w-[620px] h-[340px] p-0 overflow-hidden",
+                                                    isDark ? "bg-background" : "bg-background",
+                                                )}
+                                            >
+                                                <FilterBuilderPopover
+                                                    value={agenticFilterGroups}
+                                                    onChange={setAgenticFilterGroups}
+                                                    onClose={() => setShowFilterBuilder(false)}
+                                                />
+                                            </PopoverContent>
+                                        </Popover>
+
+                                        {/* 2. Thinking mode slider */}
+                                        <div
+                                            className={cn(
+                                                DESIGN_SYSTEM.buttons.heights.secondary,
+                                                "inline-flex items-center rounded-md border p-0.5",
+                                                isDark ? "border-border/50 bg-background" : "border-border bg-white"
+                                            )}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => setAgenticMode("fast")}
+                                                className={cn(
+                                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all flex items-center gap-1",
+                                                    agenticMode === "fast"
+                                                        ? "text-primary bg-primary/10"
+                                                        : "text-muted-foreground hover:text-foreground"
+                                                )}
+                                                title="Single-pass fast search"
+                                            >
+                                                <Zap className="h-3 w-3" strokeWidth={1.5} />
+                                                Fast
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAgenticMode("thinking")}
+                                                className={cn(
+                                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all flex items-center gap-1",
+                                                    agenticMode === "thinking"
+                                                        ? "text-primary bg-primary/10"
+                                                        : "text-muted-foreground hover:text-foreground"
+                                                )}
+                                                title="Multi-step reasoning search"
+                                            >
+                                                <Brain className="h-3 w-3" strokeWidth={1.5} />
+                                                Thinking
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                <>
+                                {/* Regular search controls */}
+
                                 {/* 1. Method segmented control (icons) */}
                                 <div className={cn(DESIGN_SYSTEM.buttons.heights.secondary, "inline-block")}>
                                     <div
@@ -1128,6 +1369,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         </div>
                                     </TooltipContent>
                                 </Tooltip>
+                                </>
+                                )}
                             </div>
 
                             {/* Right side send button with usage gating */}
@@ -1259,15 +1502,25 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                             <ApiIntegrationDoc
                                 collectionReadableId={collectionId}
                                 query={query || "Ask a question about your data"}
-                                searchConfig={{
-                                    search_method: searchMethod,
-                                    expansion_strategy: toggles.queryExpansion ? "auto" : "no_expansion",
-                                    enable_query_interpretation: toggles.queryInterpretation,
-                                    recency_bias: 0,  // Feature under construction
-                                    enable_reranking: toggles.reRanking,
-                                    response_type: toggles.answer ? "completion" : "raw"
-                                }}
-                                filter={toggles.filter ? filterJson : null}
+                                {...(isAgenticMode
+                                    ? {
+                                          agenticConfig: {
+                                              mode: agenticMode,
+                                              filter: toBackendFilterGroups(agenticFilterGroups),
+                                          },
+                                      }
+                                    : {
+                                          searchConfig: {
+                                              search_method: searchMethod,
+                                              expansion_strategy: toggles.queryExpansion ? "auto" : "no_expansion",
+                                              enable_query_interpretation: toggles.queryInterpretation,
+                                              recency_bias: 0,
+                                              enable_reranking: toggles.reRanking,
+                                              response_type: toggles.answer ? "completion" : "raw",
+                                          },
+                                          filter: toggles.filter ? filterJson : null,
+                                      }
+                                )}
                                 apiKey={apiKey}
                             />
                         </div>

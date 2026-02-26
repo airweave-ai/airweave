@@ -19,7 +19,6 @@ SUPPORTED_FILE_EXTENSIONS = {
     ".htm",
     # Text files
     ".txt",
-    ".csv",
     ".json",
     ".xml",
     ".md",

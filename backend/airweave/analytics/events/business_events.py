@@ -4,6 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from airweave.analytics.service import analytics
+from airweave.core.context import BaseContext
 
 
 class BusinessEventTracker:
@@ -14,7 +15,9 @@ class BusinessEventTracker:
     # =========================================================================
 
     @staticmethod
-    def track_webhook_subscription_created(ctx, endpoint_id: str, url: str, event_types: List[str]):
+    def track_webhook_subscription_created(
+        ctx: BaseContext, endpoint_id: str, url: str, event_types: List[str]
+    ):
         """Track when a user creates a webhook subscription.
 
         Args:
@@ -37,19 +40,19 @@ class BusinessEventTracker:
             "webhook_domain": domain,
             "event_types": event_types,
             "event_types_count": len(event_types),
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
         }
 
         analytics.track_event(
             event_name="webhook_subscription_created",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
 
     @staticmethod
     def track_webhook_subscription_updated(
-        ctx,
+        ctx: BaseContext,
         endpoint_id: str,
         url_changed: bool,
         event_types_changed: bool,
@@ -69,7 +72,7 @@ class BusinessEventTracker:
             "endpoint_id": endpoint_id,
             "url_changed": url_changed,
             "event_types_changed": event_types_changed,
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
         }
 
         if new_event_types is not None:
@@ -78,13 +81,13 @@ class BusinessEventTracker:
 
         analytics.track_event(
             event_name="webhook_subscription_updated",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
 
     @staticmethod
-    def track_webhook_subscription_deleted(ctx, endpoint_id: str):
+    def track_webhook_subscription_deleted(ctx: BaseContext, endpoint_id: str):
         """Track when a user deletes a webhook subscription.
 
         Args:
@@ -94,18 +97,18 @@ class BusinessEventTracker:
         """
         properties = {
             "endpoint_id": endpoint_id,
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
         }
 
         analytics.track_event(
             event_name="webhook_subscription_deleted",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
 
     @staticmethod
-    def track_webhook_secret_viewed(ctx, endpoint_id: str):
+    def track_webhook_secret_viewed(ctx: BaseContext, endpoint_id: str):
         """Track when a user views their webhook signing secret.
 
         This is useful for security auditing - knowing when secrets are accessed.
@@ -117,12 +120,12 @@ class BusinessEventTracker:
         """
         properties = {
             "endpoint_id": endpoint_id,
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
         }
 
         analytics.track_event(
             event_name="webhook_secret_viewed",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
@@ -132,7 +135,9 @@ class BusinessEventTracker:
     # =========================================================================
 
     @staticmethod
-    def track_source_connection_created(ctx, connection_id: UUID, source_short_name: str):
+    def track_source_connection_created(
+        ctx: BaseContext, connection_id: UUID, source_short_name: str
+    ):
         """Track when a new source connection is created.
 
         Args:
@@ -144,19 +149,19 @@ class BusinessEventTracker:
         properties = {
             "connection_id": str(connection_id),
             "source_type": source_short_name,
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
         }
 
         analytics.track_event(
             event_name="source_connection_created",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
 
     @staticmethod
     def track_sync_completed(
-        ctx,
+        ctx: BaseContext,
         sync_id: UUID,
         entities_processed: int,
         entities_synced: int,
@@ -188,18 +193,18 @@ class BusinessEventTracker:
             "entities_skipped": stats.skipped if stats else 0,
             # Other
             "duration_ms": duration_ms,
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
         }
 
         analytics.track_event(
             event_name="sync_completed",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
 
     @staticmethod
-    def track_sync_failed(ctx, sync_id: UUID, error: str, duration_ms: int):
+    def track_sync_failed(ctx: BaseContext, sync_id: UUID, error: str, duration_ms: int):
         """Track when a sync operation fails.
 
         Args:
@@ -213,19 +218,19 @@ class BusinessEventTracker:
             "sync_id": str(sync_id),
             "error": error,
             "duration_ms": duration_ms,
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
         }
 
         analytics.track_event(
             event_name="sync_failed",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
 
     @staticmethod
     def track_sync_cancelled(
-        ctx, source_short_name: str, source_connection_id: UUID, duration_ms: int
+        ctx: BaseContext, source_short_name: str, source_connection_id: UUID, duration_ms: int
     ):
         """Track when a sync operation is cancelled.
 
@@ -239,13 +244,13 @@ class BusinessEventTracker:
         properties = {
             "source_short_name": source_short_name,
             "source_connection_id": str(source_connection_id),
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
+            "organization_name": ctx.organization.name,
             "duration_ms": duration_ms,
         }
 
         analytics.track_event(
             event_name="sync_cancelled",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            distinct_id=str(ctx.organization.id),
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )

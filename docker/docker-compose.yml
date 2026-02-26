@@ -52,6 +52,7 @@ services:
       - ../.env
     ports:
       - "8001:8001"
+      - "9090:9090"
     volumes:
       - ../backend:/app
       - ../local_storage:/app/local_storage
@@ -64,8 +65,6 @@ services:
       # Override any localhost references for container networking
       - POSTGRES_HOST=postgres
       - REDIS_HOST=redis
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
       - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
       - VESPA_URL=http://vespa
       - VESPA_PORT=8081
@@ -76,23 +75,20 @@ services:
       - TEMPORAL_HOST=temporal
       - TEMPORAL_PORT=7233
       - TEMPORAL_NAMESPACE=default
-      - TEMPORAL_ENABLED=true
       - AUTH_ENABLED=false
       # Svix configuration
       - SVIX_URL=http://svix:8071
-      - SVIX_JWT_SECRET=${SVIX_JWT_SECRET:-default_signing_secret}
+      - SVIX_JWT_SECRET=${SVIX_JWT_SECRET:-default_signing_secret_change_me!}
       - SVIX_AUTH_TOKEN=${SVIX_AUTH_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      qdrant:
-        condition: service_healthy
       svix:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/health/ready" ]
       interval: 10s
       timeout: 30s
       retries: 10
@@ -164,21 +160,6 @@ services:
       retries: 3
     restart: on-failure
 
-  qdrant:
-    container_name: airweave-qdrant
-    image: qdrant/qdrant:latest
-    command: bash -c "apt-get update && apt-get install -y curl && ./entrypoint.sh" # we need to install curl to check health
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:6333/healthz" ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    restart: on-failure
-
   temporal:
     container_name: airweave-temporal
     image: temporalio/auto-setup:1.24.2
@@ -228,8 +209,6 @@ services:
       # Override any localhost references for container networking
       - POSTGRES_HOST=postgres
       - REDIS_HOST=redis
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
       - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
       - VESPA_URL=http://vespa
       - VESPA_PORT=8081
@@ -241,10 +220,9 @@ services:
       - TEMPORAL_PORT=7233
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_TASK_QUEUE=airweave-sync-queue
-      - TEMPORAL_ENABLED=true
       # Svix configuration
       - SVIX_URL=http://svix:8071
-      - SVIX_JWT_SECRET=${SVIX_JWT_SECRET:-default_signing_secret}
+      - SVIX_JWT_SECRET=${SVIX_JWT_SECRET:-default_signing_secret_change_me!}
       - SVIX_AUTH_TOKEN=${SVIX_AUTH_TOKEN:-}
     volumes:
       - ../backend:/app
@@ -300,12 +278,18 @@ services:
     image: svix/svix-server
     ports:
       - "8071:8071"
+    # Enable host.docker.internal on Linux (needed for webhook e2e tests —
+    # Svix delivers webhooks to the test receiver running on the host)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      SVIX_WHITELIST_SUBNETS: "[127.0.0.1/32, 172.17.0.0/16, 192.168.0.0/16, 10.0.0.0/8]"
+      SVIX_WHITELIST_SUBNETS: "[0.0.0.0/0, ::/0]"
       WAIT_FOR: "true"
       SVIX_REDIS_DSN: "redis://redis:6379"
       SVIX_DB_DSN: "postgresql://${POSTGRES_USER:-airweave}:${POSTGRES_PASSWORD:-airweave1234!}@postgres:5432/svix"
-      SVIX_JWT_SECRET: ${SVIX_JWT_SECRET:-default_signing_secret}
+      SVIX_JWT_SECRET: ${SVIX_JWT_SECRET:-default_signing_secret_change_me!}
+      SVIX_QUEUE_TYPE: "redis"
+      SVIX_CACHE_TYPE: "none"         # "memory" cache causes stale endpoint lookups when messages arrive before endpoints exist
     depends_on:
       postgres:
         condition: service_healthy
@@ -321,5 +305,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  qdrant_data:
   vespa_data:

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import models, schemas
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.crud._base_organization import CRUDBaseOrganization
 
 
@@ -17,7 +17,7 @@ class CRUDSyncCursor(
     """CRUD operations for sync cursor."""
 
     async def get_by_sync_id(
-        self, db: AsyncSession, *, sync_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, *, sync_id: UUID, ctx: BaseContext
     ) -> Optional[models.SyncCursor]:
         """Get sync cursor by sync ID.
 
@@ -42,7 +42,7 @@ class CRUDSyncCursor(
         *,
         obj_in: schemas.SyncCursorCreate,
         sync_id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> models.SyncCursor:
         """Create or update sync cursor for a sync.
 
@@ -76,7 +76,7 @@ class CRUDSyncCursor(
         *,
         sync_id: UUID,
         cursor_data: dict,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Optional[models.SyncCursor]:
         """Update cursor data for a sync.
 
@@ -97,7 +97,7 @@ class CRUDSyncCursor(
 
         return None
 
-    async def delete_by_sync_id(self, db: AsyncSession, *, sync_id: UUID, ctx: ApiContext) -> bool:
+    async def delete_by_sync_id(self, db: AsyncSession, *, sync_id: UUID, ctx: BaseContext) -> bool:
         """Delete sync cursor by sync ID.
 
         Args:

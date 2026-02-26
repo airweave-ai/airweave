@@ -8,6 +8,7 @@ from airweave.platform.sync.exceptions import SyncFailureError
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 class CleanupService:
@@ -77,7 +78,11 @@ class CleanupService:
                 f"This can cause pod eviction. Files: {failed_deletions[:5]}"
             )
 
-    async def cleanup_temp_files(self, sync_context: "SyncContext") -> None:
+    async def cleanup_temp_files(
+        self,
+        sync_context: "SyncContext",
+        runtime: "SyncRuntime",
+    ) -> None:
         """Remove entire sync_job_id directory (final cleanup safety net).
 
         Called in orchestrator's finally block to ensure cleanup happens even if
@@ -85,19 +90,20 @@ class CleanupService:
 
         Args:
             sync_context: Sync context with source and logger
+            runtime: Sync runtime with live services
 
         Note:
             Some sources don't download files (e.g., Airtable, Jira without attachments).
             For these sources, file_downloader won't be set, which is expected.
         """
         try:
-            if not hasattr(sync_context.source_instance, "file_downloader"):
+            if not hasattr(runtime.source, "file_downloader"):
                 sync_context.logger.debug(
                     "Source has no file downloader (API-only source), skipping temp cleanup"
                 )
                 return
 
-            downloader = sync_context.source_instance.file_downloader
+            downloader = runtime.source.file_downloader
             if downloader is None:
                 sync_context.logger.debug("File downloader not initialized, skipping temp cleanup")
                 return

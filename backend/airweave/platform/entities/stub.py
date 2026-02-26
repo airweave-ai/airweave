@@ -273,7 +273,7 @@ class LargeStubEntity(BaseEntity):
 class SmallStubFileEntity(FileEntity):
     """Small stub file entity (~1-5 KB).
 
-    Represents: Small text files, CSVs, config files.
+    Represents: Small text files, config files.
     """
 
     stub_id: str = AirweaveField(

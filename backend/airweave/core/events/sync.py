@@ -4,29 +4,14 @@ These events are published during sync lifecycle transitions
 and consumed by webhooks, analytics, realtime, etc.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
 from typing import Optional
 from uuid import UUID
 
-
-class SyncEventType(str, Enum):
-    """Strongly-typed sync event types.
-
-    Extends str so it satisfies the DomainEvent.event_type protocol (str)
-    and works transparently with fnmatch pattern matching in the event bus.
-    """
-
-    PENDING = "sync.pending"
-    RUNNING = "sync.running"
-    COMPLETED = "sync.completed"
-    FAILED = "sync.failed"
-    CANCELLED = "sync.cancelled"
+from airweave.core.events.base import DomainEvent
+from airweave.core.events.enums import SyncEventType
 
 
-@dataclass(frozen=True)
-class SyncLifecycleEvent:
+class SyncLifecycleEvent(DomainEvent):
     """Event published during sync lifecycle transitions.
 
     Published when a sync job transitions to:
@@ -42,16 +27,13 @@ class SyncLifecycleEvent:
     - RealtimeSubscriber: Pushes to Redis PubSub for UI updates
     """
 
-    # Event metadata
     event_type: SyncEventType
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Identifiers
-    organization_id: UUID = field(default=None)  # type: ignore[assignment]
-    sync_id: UUID = field(default=None)  # type: ignore[assignment]
-    sync_job_id: UUID = field(default=None)  # type: ignore[assignment]
-    collection_id: UUID = field(default=None)  # type: ignore[assignment]
-    source_connection_id: UUID = field(default=None)  # type: ignore[assignment]
+    sync_id: UUID
+    sync_job_id: UUID
+    collection_id: UUID
+    source_connection_id: UUID
 
     # Context
     source_type: str = ""  # e.g., "slack", "notion"

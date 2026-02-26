@@ -6,9 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.api.context import ApiContext
-from airweave.core.logging import logger
-from airweave.core.shared_models import AuthMethod
+from airweave.core.context import BaseContext
 
 
 async def set_source_rate_limit(
@@ -17,7 +15,7 @@ async def set_source_rate_limit(
     source_short_name: str,
     limit: int,
     window_seconds: int = 60,
-    ctx: Optional[ApiContext] = None,
+    ctx: Optional[BaseContext] = None,
 ) -> schemas.SourceRateLimit:
     """Set or update rate limit for a source in an organization.
 
@@ -32,7 +30,7 @@ async def set_source_rate_limit(
         source_short_name: Source identifier (e.g., "google_drive", "notion")
         limit: Maximum requests per window
         window_seconds: Time window in seconds (default: 60 = 1 minute)
-        ctx: Optional API context (will create minimal one if not provided)
+        ctx: Optional context (will create minimal one if not provided)
 
     Returns:
         Created or updated SourceRateLimit
@@ -50,31 +48,10 @@ async def set_source_rate_limit(
             db, org_id, "notion", limit=2, window_seconds=1
         )
     """
-    # Get or create context with all required fields
     if not ctx:
-        from uuid import uuid4
-
-        from airweave.core.logging import create_contextual_logger
-
         org = await crud.organization.get(db, id=org_id, skip_access_validation=True)
         org_schema = schemas.Organization.model_validate(org)
-
-        # Create a proper contextual logger for system operations
-        request_id = str(uuid4())
-        contextual_logger = create_contextual_logger(
-            request_id=request_id,
-            organization_id=org_id,
-            auth_method=AuthMethod.SYSTEM,
-        )
-
-        ctx = ApiContext(
-            request_id=request_id,
-            organization=org_schema,
-            user=None,
-            auth_method=AuthMethod.SYSTEM,
-            auth_metadata={},
-            logger=contextual_logger,
-        )
+        ctx = BaseContext(organization=org_schema)
 
     # Check if limit already exists
     existing = await crud.source_rate_limit.get_limit(
@@ -92,7 +69,7 @@ async def set_source_rate_limit(
         await db.commit()
         # Refresh to avoid MissingGreenlet errors when serializing
         await db.refresh(updated)
-        logger.info(
+        ctx.logger.info(
             f"Updated rate limit for {source_short_name} in org {org_id}: "
             f"{limit} requests per {window_seconds}s"
         )
@@ -111,7 +88,7 @@ async def set_source_rate_limit(
         await db.commit()
         # Refresh to avoid MissingGreenlet errors when serializing
         await db.refresh(created)
-        logger.info(
+        ctx.logger.info(
             f"Created rate limit for {source_short_name} in org {org_id}: "
             f"{limit} requests per {window_seconds}s"
         )

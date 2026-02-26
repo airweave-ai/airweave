@@ -1,144 +1,59 @@
-"""Sync context - full context for sync operations."""
+"""Sync context - frozen data for sync operations."""
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from dataclasses import dataclass, field
+from typing import Dict, Optional
+from uuid import UUID
 
-from airweave.platform.contexts.batch import BatchContext
-from airweave.platform.contexts.destinations import DestinationsContext
-from airweave.platform.contexts.infra import InfraContext
-from airweave.platform.contexts.scope import ScopeContext
-from airweave.platform.contexts.source import SourceContext
-from airweave.platform.contexts.tracking import TrackingContext
-
-if TYPE_CHECKING:
-    from airweave import schemas
-    from airweave.platform.sync.config import SyncConfig
+from airweave import schemas
+from airweave.core.context import BaseContext
+from airweave.platform.entities._base import BaseEntity
+from airweave.platform.sync.config.base import SyncConfig
 
 
 @dataclass
-class SyncContext:
-    """Full context for sync operations.
+class SyncContext(BaseContext):
+    """Frozen data describing a sync run.
 
-    Composes all sub-contexts at depth 1. Each sub-context represents
-    a disjoint concern that can be built independently.
+    Sibling to ApiContext — inherits organization and logger from BaseContext.
+    Contains only IDs, schema objects, config, and lookups. No live services.
 
-    Sub-contexts:
-    - scope: Scopes the operation (sync_id, collection_id, organization_id)
-    - infra: Core infrastructure (ctx, logger)
-    - source: Source pipeline (source instance, cursor)
-    - destinations: Destination pipeline (destinations, entity_map)
-    - tracking: Progress tracking (entity_tracker, state_publisher, guard_rail)
-    - batch: Batch processing settings
+    Live services (source, cursor, destinations, trackers) live in SyncRuntime.
 
-    Schema objects are kept at top level for convenience.
+    Can be passed as ctx to CRUD operations since it IS a BaseContext.
     """
 
-    # Composed contexts (depth 1)
-    scope: ScopeContext
-    infra: InfraContext
-    source: SourceContext
-    destinations: DestinationsContext
-    tracking: TrackingContext
-    batch: BatchContext
+    # --- Scope IDs ---
+    sync_id: UUID
+    sync_job_id: UUID
+    collection_id: UUID
+    source_connection_id: UUID
 
-    # Schema objects (frequently accessed)
-    sync: "schemas.Sync"
-    sync_job: "schemas.SyncJob"
-    collection: "schemas.Collection"
-    connection: "schemas.Connection"
+    # --- Schema objects ---
+    sync: schemas.Sync
+    sync_job: schemas.SyncJob
+    collection: schemas.Collection
+    connection: schemas.Connection
 
-    # Execution config
-    execution_config: Optional["SyncConfig"] = None
+    # --- Config ---
+    execution_config: Optional[SyncConfig] = None
+    force_full_sync: bool = False
+    batch_size: int = 64
+    max_batch_latency_ms: int = 200
 
-    # -------------------------------------------------------------------------
-    # HandlerContext Protocol Implementation
-    # -------------------------------------------------------------------------
+    # --- Lookups ---
+    entity_map: Dict[type[BaseEntity], UUID] = field(default_factory=dict)
 
-    @property
-    def sync_id(self):
-        """Sync ID for scoping operations."""
-        return self.scope.sync_id
+    # --- Derived data (extracted from source at build time) ---
+    source_short_name: str = ""
 
-    @property
-    def collection_id(self):
-        """Collection ID for scoping operations."""
-        return self.scope.collection_id
+    # --- Convenience ---
 
     @property
-    def organization_id(self):
-        """Organization ID for access control."""
-        return self.scope.organization_id
+    def organization_id(self) -> UUID:
+        """Organization ID from inherited BaseContext."""
+        return self.organization.id
 
     @property
-    def source_connection_id(self):
-        """User-facing source connection ID."""
-        return self.scope.source_connection_id
-
-    @property
-    def logger(self):
-        """Logger for operations."""
-        return self.infra.logger
-
-    @property
-    def ctx(self):
-        """API context for CRUD operations."""
-        return self.infra.ctx
-
-    # -------------------------------------------------------------------------
-    # Convenience Accessors (common access patterns)
-    # -------------------------------------------------------------------------
-
-    @property
-    def entity_map(self):
-        """Shortcut to destinations.entity_map."""
-        return self.destinations.entity_map
-
-    @property
-    def cursor(self):
-        """Shortcut to source.cursor."""
-        return self.source.cursor
-
-    @property
-    def source_instance(self):
-        """Shortcut to source.source (the actual BaseSource instance)."""
-        return self.source.source
-
-    @property
-    def destination_list(self):
-        """Shortcut to destinations.destinations (the list of BaseDestination)."""
-        return self.destinations.destinations
-
-    @property
-    def entity_tracker(self):
-        """Shortcut to tracking.entity_tracker."""
-        return self.tracking.entity_tracker
-
-    @property
-    def state_publisher(self):
-        """Shortcut to tracking.state_publisher."""
-        return self.tracking.state_publisher
-
-    @property
-    def guard_rail(self):
-        """Shortcut to tracking.guard_rail."""
-        return self.tracking.guard_rail
-
-    @property
-    def force_full_sync(self):
-        """Shortcut to batch.force_full_sync."""
-        return self.batch.force_full_sync
-
-    @property
-    def should_batch(self):
-        """Shortcut to batch.should_batch."""
-        return self.batch.should_batch
-
-    @property
-    def batch_size(self):
-        """Shortcut to batch.batch_size."""
-        return self.batch.batch_size
-
-    @property
-    def max_batch_latency_ms(self):
-        """Shortcut to batch.max_batch_latency_ms."""
-        return self.batch.max_batch_latency_ms
+    def should_batch(self) -> bool:
+        """Whether batching is enabled (always True for now)."""
+        return True

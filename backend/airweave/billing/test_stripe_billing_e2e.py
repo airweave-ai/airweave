@@ -700,7 +700,7 @@ def reactivate(api: ApiClient, *, org_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-class TestRunner:
+class E2ERunner:
     """Test runner."""
 
     def __init__(self, config: Config) -> None:
@@ -1239,7 +1239,7 @@ class TestRunner:
 def main() -> None:
     """Main function."""
     config = Config()
-    runner = TestRunner(config)
+    runner = E2ERunner(config)
     try:
         runner.run()
     finally:

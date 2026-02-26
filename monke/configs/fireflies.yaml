@@ -1,0 +1,59 @@
+# Fireflies connector test configuration.
+#
+# Flow: Monke uploads a file URL to Fireflies (their API creates a transcript by transcribing it).
+# Airweave then syncs only the transcript text from Fireflies—no media is indexed.
+# We need the audio URL only so Fireflies can create a transcript for the test.
+#
+# Requires: Fireflies paid plan. Set audio_url in config or MONKE_FIREFLIES_AUDIO_URL (public URL).
+# Processing after upload may take 2–5 min.
+name: "Fireflies Connector Test"
+description: "E2E test for Fireflies transcripts via Monke (upload, sync, verify, update, delete)"
+
+connector:
+  name: "fireflies_test"
+  type: "fireflies"
+  auth_mode: direct
+  auth_fields:
+    api_key: MONKE_FIREFLIES_API_KEY
+  config_fields:
+    # Public audio (or video) URL for Fireflies to transcribe. Override via MONKE_FIREFLIES_AUDIO_URL.
+    audio_url: ""
+    transcript_ready_timeout_seconds: 300
+    post_create_sleep_seconds: 15
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+    - collection_cleanup
+
+entity_count: 1  # Transcripts are slow to process; increase later if needed
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+collection:
+  name_template: "monke-{connector_type}-test-{timestamp}"
+  description: "Test collection for {connector_type} connector"
+
+verification:
+  score_threshold: 0.0
+  retries: 5
+  retry_backoff_seconds: 10
+  initial_wait_seconds: 30

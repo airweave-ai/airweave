@@ -7,7 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, models, schemas
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.exceptions import NotFoundException
 from airweave.core.shared_models import IntegrationType, SyncStatus
@@ -26,7 +26,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         self,
         db: AsyncSession,
         id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
         with_connections: bool = True,
     ) -> models.Sync | schemas.Sync:
         """Get the sync by ID.
@@ -40,7 +40,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         Args:
             db (AsyncSession): The database session
             id (UUID): The ID of the sync
-            ctx (ApiContext): The API context
+            ctx (BaseContext): The API context
             with_connections (bool): Whether to include connections in the sync
         Returns:
             models.Sync: The sync without any connections
@@ -62,7 +62,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
     async def get_multi(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         *,
         skip: int = 0,
         limit: int = 100,
@@ -73,7 +73,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         Args:
         ----
             db (AsyncSession): The database session
-            ctx (ApiContext): The API context
+            ctx (BaseContext): The API context
             skip (int): The number of syncs to skip
             limit (int): The number of syncs to return
             with_connections (bool): Whether to include connections in the syncs
@@ -218,14 +218,14 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         return [schemas.SyncWithoutConnections.model_validate(sync) for sync in syncs]
 
     async def get_all_for_source_connection(
-        self, db: AsyncSession, source_connection_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, source_connection_id: UUID, ctx: BaseContext
     ) -> list[schemas.Sync]:
         """Get all syncs for a source connection.
 
         Args:
             db (AsyncSession): The database session
             source_connection_id (UUID): The ID of the source connection
-            ctx (ApiContext): The API context
+            ctx (BaseContext): The API context
         Returns:
             list[schemas.Sync]: The enriched syncs
         """
@@ -249,14 +249,14 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         return await self.enricher_for_all(db, syncs)
 
     async def get_all_for_destination_connection(
-        self, db: AsyncSession, destination_connection_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, destination_connection_id: UUID, ctx: BaseContext
     ) -> list[schemas.Sync]:
         """Get all syncs for a destination connection.
 
         Args:
             db (AsyncSession): The database session
             destination_connection_id (UUID): The ID of the destination connection
-            ctx (ApiContext): The API context
+            ctx (BaseContext): The API context
 
         Returns:
             list[schemas.Sync]: The enriched syncs
@@ -281,13 +281,13 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         return await self.enricher_for_all(db, syncs)
 
     async def get_all_syncs_join_with_source_connection(
-        self, db: AsyncSession, ctx: ApiContext
+        self, db: AsyncSession, ctx: BaseContext
     ) -> list[schemas.SyncWithSourceConnection]:
         """Get all syncs join with source connection.
 
         Args:
             db (AsyncSession): The database session
-            ctx (ApiContext): The API context
+            ctx (BaseContext): The API context
 
         Returns:
             list[schemas.SyncWithSourceConnection]: The syncs with their source connections
@@ -331,7 +331,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         db: AsyncSession,
         *,
         obj_in: SyncCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> schemas.Sync:
         """Create a sync.
@@ -345,7 +345,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         Args:
             db (AsyncSession): The database session
             obj_in (SyncCreate): The sync to create
-            ctx (ApiContext): The API context
+            ctx (BaseContext): The API context
             uow (UnitOfWork, optional): The unit of work
         Returns:
             schemas.Sync: The model validated schema of the created sync
@@ -401,14 +401,14 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         return schemas.Sync.model_validate(sync_dict)
 
     async def remove_all_for_connection(
-        self, db: AsyncSession, connection_id: UUID, ctx: ApiContext, uow: UnitOfWork
+        self, db: AsyncSession, connection_id: UUID, ctx: BaseContext, uow: UnitOfWork
     ) -> list[Sync]:
         """Remove all syncs for a connection.
 
         Args:
             db (AsyncSession): The database session
             connection_id (UUID): The ID of the connection
-            ctx (ApiContext): The API context
+            ctx (BaseContext): The API context
             uow (UnitOfWork): The unit of work
         Returns:
             list[Sync]: The removed syncs
@@ -435,7 +435,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         db: AsyncSession,
         source_connection_id: UUID,
         destination_connection_ids: list[UUID],
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> None:
         """Validate the connections.
 
@@ -443,7 +443,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
             db (AsyncSession): The database session
             source_connection_id (UUID): The ID of the source connection
             destination_connection_ids (list[UUID]): The IDs of the destination connections
-            ctx (ApiContext): The API context
+            ctx (BaseContext): The API context
         """
         # Validate the source connection and that it is a source
         source_connection = await crud.connection.get(db, id=source_connection_id, ctx=ctx)
@@ -472,7 +472,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         db: AsyncSession,
         *,
         id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> schemas.Sync:
         """Remove a sync.
@@ -482,7 +482,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         Args:
             db (AsyncSession): The database session
             id (UUID): The ID of the sync
-            ctx (ApiContext): The API context
+            ctx (BaseContext): The API context
             uow (UnitOfWork, optional): The unit of work
 
         Returns:
@@ -520,7 +520,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         *,
         db_obj: models.Sync,
         obj_in: Union[SyncUpdate, dict[str, Any]],
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> models.Sync:
         """Update a sync.

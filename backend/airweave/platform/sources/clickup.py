@@ -9,6 +9,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import ClickUpAuthConfig
+from airweave.platform.configs.config import ClickUpConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.clickup import (
@@ -39,8 +40,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.ACCESS_ONLY,
-    auth_config_class="ClickUpAuthConfig",
-    config_class="ClickUpConfig",
+    auth_config_class=ClickUpAuthConfig,
+    config_class=ClickUpConfig,
     labels=["Project Management"],
     supports_continuous=False,
     supports_temporal_relevance=False,

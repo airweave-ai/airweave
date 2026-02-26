@@ -17,7 +17,6 @@ from typing import Any, Dict, Union
 
 from fastapi import Depends, HTTPException, Path, Query, Response
 from fastapi.responses import StreamingResponse
-from qdrant_client.http.models import Filter as QdrantFilter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api import deps
@@ -208,15 +207,15 @@ async def search(
         requested_response_type = search_request.response_type
         search_request = convert_legacy_request_to_new(search_request)
 
-    # Warn if temporal_relevance was requested but is disabled
+    # Warn if temporal_relevance was requested but is removed
     if (
         hasattr(search_request, "temporal_relevance")
         and search_request.temporal_relevance is not None
         and search_request.temporal_relevance > 0
     ):
-        http_response.headers["X-Feature-Disabled"] = "temporal_relevance"
-        http_response.headers["X-Feature-Disabled-Message"] = (
-            "temporal_relevance is under construction and was ignored"
+        http_response.headers["X-Feature-Removed"] = "temporal_relevance"
+        http_response.headers["X-Feature-Removed-Message"] = (
+            "temporal_relevance has been removed and was ignored"
         )
 
     # Execute search with new service (always use Vespa for public endpoints)
@@ -413,16 +412,63 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
 
 @router.get("/internal/filter-schema")
 async def get_filter_schema() -> Dict[str, Any]:
-    """Get the JSON schema for Qdrant filter validation.
+    """Get the JSON schema for filter validation.
 
     This endpoint returns the JSON schema that can be used to validate
-    filter objects in the frontend.
+    filter objects in the frontend. Uses the destination-agnostic Airweave
+    filter format (must/should/must_not with field conditions).
     """
-    schema = QdrantFilter.model_json_schema()
-
-    if "$defs" in schema:
-        for _def_name, def_schema in schema.get("$defs", {}).items():
-            if "discriminator" in def_schema:
-                del def_schema["discriminator"]
-
-    return schema
+    return {
+        "type": "object",
+        "properties": {
+            "must": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/FieldCondition"},
+                "description": "All conditions must match (AND)",
+            },
+            "must_not": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/FieldCondition"},
+                "description": "None of these conditions must match (NOT)",
+            },
+            "should": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/FieldCondition"},
+                "description": "At least one condition should match (OR)",
+            },
+            "minimum_should_match": {
+                "type": "integer",
+                "description": "Minimum number of should conditions that must match",
+            },
+        },
+        "additionalProperties": False,
+        "$defs": {
+            "FieldCondition": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Field name to filter on",
+                    },
+                    "match": {
+                        "type": "object",
+                        "properties": {
+                            "value": {
+                                "description": "Exact value to match",
+                            },
+                        },
+                    },
+                    "range": {
+                        "type": "object",
+                        "properties": {
+                            "gt": {"description": "Greater than"},
+                            "gte": {"description": "Greater than or equal"},
+                            "lt": {"description": "Less than"},
+                            "lte": {"description": "Less than or equal"},
+                        },
+                    },
+                },
+                "required": ["key"],
+            },
+        },
+    }

@@ -22,6 +22,7 @@ def create_activities() -> list:
     from airweave.platform.temporal.activities import (
         CheckAndNotifyExpiringKeysActivity,
         CleanupStuckSyncJobsActivity,
+        CleanupSyncDataActivity,
         CreateSyncJobActivity,
         MarkSyncJobCancelledActivity,
         RunSyncActivity,
@@ -43,6 +44,7 @@ def create_activities() -> list:
         CleanupStuckSyncJobsActivity().run,
         # Cleanup
         SelfDestructOrphanedSyncActivity().run,
+        CleanupSyncDataActivity().run,
         # Notifications
         CheckAndNotifyExpiringKeysActivity().run,
     ]
@@ -57,11 +59,13 @@ def get_workflows() -> list:
     from airweave.platform.temporal.workflows import (
         APIKeyExpirationCheckWorkflow,
         CleanupStuckSyncJobsWorkflow,
+        CleanupSyncDataWorkflow,
         RunSourceConnectionWorkflow,
     )
 
     return [
         RunSourceConnectionWorkflow,
         CleanupStuckSyncJobsWorkflow,
+        CleanupSyncDataWorkflow,
         APIKeyExpirationCheckWorkflow,
     ]

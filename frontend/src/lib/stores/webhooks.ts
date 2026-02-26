@@ -145,7 +145,9 @@ export const useWebhooksStore = create<WebhooksState>((set, get) => ({
   createSubscription: async (request: CreateSubscriptionRequest) => {
     const response = await apiClient.post('/webhooks/subscriptions', request);
     if (!response.ok) {
-      throw new Error(`Failed to create subscription: ${response.status}`);
+      const body = await response.json().catch(() => null);
+      const detail = body?.detail || `HTTP ${response.status}`;
+      throw new Error(detail);
     }
     const subscription = await response.json();
     // Refresh subscriptions list

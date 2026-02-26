@@ -1,0 +1,5 @@
+- [ ] verify direct integration
+- [ ] verify `composio` a12n integration (if available)
+- [ ] verify `pipedream` a12n integration (if available)
+- [ ] use logo from the official media/press kit
+- [ ] add a monke E2E test

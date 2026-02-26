@@ -2,28 +2,55 @@
 
 import uuid
 from typing import Dict, List
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.api.context import ApiContext
 
 # Import billing dependencies only if Stripe is enabled
 from airweave.core.config import settings
+from airweave.core.context import BaseContext
 from airweave.core.context_cache_service import context_cache
 from airweave.core.logging import logger
-from airweave.core.shared_models import AuthMethod
+from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.billing.operations import BillingOperations
+from airweave.domains.billing.repository import (
+    BillingPeriodRepository,
+    OrganizationBillingRepository,
+)
+from airweave.domains.usage.repository import UsageRepository
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models import Organization, User, UserOrganization
 from airweave.schemas.api_key import APIKeyCreate
-from airweave.webhooks.service import service as webhooks_service
 
+_billing_repo = OrganizationBillingRepository()
+_period_repo = BillingPeriodRepository()
+_usage_repo = UsageRepository()
+
+# TODO: Remove this once we have refctored the org service to use DI
 if settings.STRIPE_ENABLED:
-    from airweave.billing.service import billing_service
-    from airweave.integrations.stripe_client import stripe_client
+    from airweave.adapters.payment.stripe import StripePaymentGateway
+
+    _payment_gateway: PaymentGatewayProtocol = StripePaymentGateway()
+    _billing_ops = BillingOperations(
+        payment_gateway=_payment_gateway,
+        billing_repo=_billing_repo,
+        period_repo=_period_repo,
+        usage_repo=_usage_repo,
+    )
+else:
+    from airweave.adapters.payment.null import NullPaymentGateway
+
+    _payment_gateway: PaymentGatewayProtocol = NullPaymentGateway()
+    _billing_ops = BillingOperations(
+        payment_gateway=_payment_gateway,
+        billing_repo=_billing_repo,
+        period_repo=_period_repo,
+        usage_repo=_usage_repo,
+    )
 
 
 class OrganizationService:
@@ -45,7 +72,7 @@ class OrganizationService:
 
         This method ensures atomicity across all external services:
         1. Creates Auth0 organization
-        2. Creates Stripe customer (if STRIPE_ENABLED)
+        2. Creates Stripe customer
         3. Creates local organization with optional billing
 
         On any failure, all changes are rolled back.
@@ -92,25 +119,24 @@ class OrganizationService:
                     "AUTH disabled or Auth0 client not configured; skipping Auth0 org creation"
                 )
 
-            # Step 2: Create Stripe customer if enabled
-            if settings.STRIPE_ENABLED:
-                logger.info(f"Creating Stripe customer for: {org_data.name}")
-                # Test clock support only via environment variable in non-production
-                # SECURITY: Never accept test_clock from user input to prevent billing manipulation
-                test_clock_id = None
-                if settings.ENVIRONMENT != "prd":
-                    test_clock_id = settings.STRIPE_TEST_CLOCK  # From env only, not user input
+            # Step 2: Create payment provider customer (no-op when billing disabled)
+            # Test clock support only via environment variable in non-production
+            # SECURITY: Never accept test_clock from user input to prevent billing manipulation
+            test_clock_id = None
+            if settings.ENVIRONMENT != "prd":
+                test_clock_id = settings.STRIPE_TEST_CLOCK  # From env only, not user input
 
-                stripe_customer = await stripe_client.create_customer(
-                    email=owner_user.email,
-                    name=org_data.name,
-                    metadata={
-                        "auth0_org_id": auth0_org_id or "",
-                        "owner_user_id": str(owner_user.id),
-                        "organization_name": org_data.name,
-                    },
-                    test_clock=test_clock_id,
-                )
+            stripe_customer = await _payment_gateway.create_customer(
+                email=owner_user.email,
+                name=org_data.name,
+                metadata={
+                    "auth0_org_id": auth0_org_id or "",
+                    "owner_user_id": str(owner_user.id),
+                    "organization_name": org_data.name,
+                },
+                test_clock=test_clock_id,
+            )
+            if stripe_customer:
                 logger.info(f"Created Stripe customer: {stripe_customer.id}")
 
             # Step 3: Create local organization
@@ -135,26 +161,14 @@ class OrganizationService:
                     f"Created organization with auth0_org_id: {org_dict.get('auth0_org_id')}"
                 )
 
-                # Create billing record if Stripe is enabled
-                if settings.STRIPE_ENABLED and stripe_customer:
+                # Create billing record if payment provider returned a customer
+                if stripe_customer:
                     local_org_schema = schemas.Organization.model_validate(local_org)
 
-                    # Create system auth context for billing record creation
-                    ctx = ApiContext(
-                        request_id=str(uuid4()),
-                        organization=local_org_schema,
-                        user=None,
-                        auth_method=AuthMethod.SYSTEM,
-                        auth_metadata={"source": "organization_creation"},
-                        logger=logger.with_context(
-                            organization_id=str(local_org_schema.id),
-                            auth_method=AuthMethod.SYSTEM.value,
-                            source="organization_creation",
-                        ),
-                    )
+                    ctx = BaseContext(organization=local_org_schema)
 
                     # Create billing record
-                    _ = await billing_service.create_billing_record(
+                    _ = await _billing_ops.create_billing_record(
                         db=db,
                         organization=local_org_schema,
                         stripe_customer_id=stripe_customer.id,
@@ -201,27 +215,8 @@ class OrganizationService:
                 # Create API key for the organization
                 logger.info(f"Creating API key for organization {org_id}")
 
-                # Create system auth context for API key creation
-                # Generate a request ID for the API key creation context
-                request_id = str(uuid4())
-
-                # Create logger with organization context
-                contextual_logger = logger.with_context(
-                    request_id=request_id,
-                    organization_id=str(org_id),
-                    auth_method=AuthMethod.SYSTEM.value,
-                    context_base="organization_service",
-                    user_id=str(owner_user.id),
-                    user_email=owner_user.email,
-                )
-
-                api_key_auth = ApiContext(
-                    request_id=request_id,
-                    organization=organization,  # Use the full organization object
-                    user=owner_user,  # Set the owner as the creator
-                    auth_method=AuthMethod.SYSTEM,
-                    auth_metadata={"source": "organization_creation"},
-                    logger=contextual_logger,
+                api_key_auth = BaseContext(
+                    organization=organization,
                 )
 
                 # Create API key with default expiration (180 days)
@@ -245,8 +240,8 @@ class OrganizationService:
                 await context_cache.invalidate_user(owner_user.email)
                 logger.debug(f"Invalidated user cache for {owner_user.email}")
 
-                # Create organization for webhooks
-                await webhooks_service.create_organization(organization)
+                # Svix organization is created lazily on first webhook use
+                # (via _auto_create_org in SvixAdapter), no explicit call needed.
 
                 return organization
 
@@ -262,10 +257,10 @@ class OrganizationService:
                 except Exception as cleanup_error:
                     logger.error(f"Failed to cleanup Auth0 organization: {cleanup_error}")
 
-            # Cleanup Stripe (only if enabled and customer was created)
-            if settings.STRIPE_ENABLED and stripe_customer:
+            # Cleanup payment provider customer if one was created
+            if stripe_customer:
                 try:
-                    await stripe_client.delete_customer(stripe_customer.id)
+                    await _payment_gateway.delete_customer(stripe_customer.id)
                     logger.info(f"Rolled back Stripe customer: {stripe_customer.id}")
                 except Exception as cleanup_error:
                     logger.error(f"Failed to cleanup Stripe customer: {cleanup_error}")
@@ -555,9 +550,6 @@ class OrganizationService:
         Note:
             Continues execution even if billing deletion fails.
         """
-        if not settings.STRIPE_ENABLED:
-            return
-
         try:
             org_billing = await crud.organization_billing.get_by_organization(
                 db, organization_id=organization_id
@@ -565,9 +557,9 @@ class OrganizationService:
             if not org_billing:
                 logger.warning(f"No billing record found for organization {org_name}")
             else:
-                await stripe_client.cancel_subscription(
+                await _payment_gateway.cancel_subscription(
                     subscription_id=org_billing.stripe_subscription_id,
-                    cancel_at_period_end=False,
+                    at_period_end=False,
                 )
             logger.info(f"Successfully deleted billing record for organization: {org_name}")
         except Exception as e:
@@ -607,72 +599,6 @@ class OrganizationService:
 
         # Return emails for cache invalidation after commit
         return user_emails
-
-    async def _delete_qdrant_collections(
-        self, db: AsyncSession, organization_id: UUID, org_name: str
-    ) -> tuple[int, int]:
-        """Delete all Qdrant collections for organization.
-
-        Args:
-            db: Database session
-            organization_id: ID of the organization
-            org_name: Name of the organization (for logging)
-
-        Returns:
-            Tuple of (deleted_count, failed_count)
-        """
-        from sqlalchemy import select
-
-        from airweave.models.collection import Collection
-        from airweave.platform.destinations.qdrant import QdrantDestination
-
-        collections_stmt = select(Collection).where(Collection.organization_id == organization_id)
-        collections_result = await db.execute(collections_stmt)
-        collections = collections_result.scalars().all()
-
-        logger.info(f"Deleting {len(collections)} Qdrant collections for organization {org_name}")
-        from qdrant_client.http import models as rest
-
-        deleted_count = 0
-        failed_count = 0
-
-        for collection in collections:
-            try:
-                # Note: In multi-tenant mode, we don't delete the shared collection,
-                # just the points for this collection
-                destination = await QdrantDestination.create(
-                    credentials=None,  # Native Qdrant uses settings
-                    config=None,
-                    collection_id=collection.id,
-                    organization_id=collection.organization_id,
-                    # vector_size auto-detected based on embedding model configuration
-                )
-                if destination.client:
-                    # Delete only this collection's data from shared collection
-                    await destination.client.delete(
-                        collection_name=destination.collection_name,
-                        points_selector=rest.FilterSelector(
-                            filter=rest.Filter(
-                                must=[
-                                    rest.FieldCondition(
-                                        key="airweave_collection_id",
-                                        match=rest.MatchValue(value=str(collection.id)),
-                                    )
-                                ]
-                            )
-                        ),
-                        wait=True,
-                    )
-                    deleted_count += 1
-                    logger.info(f"Deleted data for collection {collection.id} ({collection.name})")
-            except Exception as e:
-                failed_count += 1
-                logger.error(
-                    f"Error deleting Qdrant collection {collection.id} ({collection.name}): {e}"
-                )
-
-        logger.info(f"Qdrant cleanup complete: {deleted_count} deleted, {failed_count} failed")
-        return deleted_count, failed_count
 
     async def _delete_organization_from_db(
         self, db: AsyncSession, organization_id: UUID, org_name: str
@@ -734,9 +660,6 @@ class OrganizationService:
                 db, organization_id, org.name
             )
 
-            # Delete all Qdrant collections for this organization before SQL cascade
-            await self._delete_qdrant_collections(db, organization_id, org.name)
-
             # Delete the organization from database (CASCADE will delete collections from SQL)
             # This commits the transaction
             await self._delete_organization_from_db(db, organization_id, org.name)
@@ -749,8 +672,12 @@ class OrganizationService:
             if affected_user_emails:
                 logger.debug(f"Invalidated user cache for {len(affected_user_emails)} users")
 
-            # Delete organization from webhooks service
-            await webhooks_service.delete_organization(org)
+            # Delete organization from webhooks (Svix application cleanup)
+            # TODO: delete this after DI is implemented for OrganizationService
+            from airweave.core.container import container
+
+            if container is not None:
+                await container.webhook_admin.delete_organization(org.id)
 
             logger.info(f"Successfully deleted organization: {org.name}")
             return True

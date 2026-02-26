@@ -49,7 +49,6 @@ interface SyncInfo {
     source_is_authenticated?: boolean;
     total_entity_count?: number;
     total_arf_entity_count?: number;
-    total_qdrant_entity_count?: number;
     total_vespa_entity_count?: number;
     last_job_status?: string;
     last_job_at?: string;
@@ -310,7 +309,7 @@ export function SyncsTab() {
 
     const handleBulkDelete = async () => {
         const selected = getSelectedSyncsDetails();
-        const confirmMessage = `⚠️ DELETE ${selected.length} SYNC(S)?\n\nThis will permanently delete ALL data including:\n• Qdrant and Vespa data\n• ARF storage\n• All jobs and schedules\n\n⚠️ THIS CANNOT BE UNDONE!\n\nType DELETE to confirm:`;
+        const confirmMessage = `⚠️ DELETE ${selected.length} SYNC(S)?\n\nThis will permanently delete ALL data including:\n• Vespa data\n• ARF storage\n• All jobs and schedules\n\n⚠️ THIS CANNOT BE UNDONE!\n\nType DELETE to confirm:`;
 
         const userInput = prompt(confirmMessage);
         if (userInput !== 'DELETE') {
@@ -385,7 +384,7 @@ export function SyncsTab() {
     };
 
     const handleDeleteSync = async (syncId: string, syncName: string) => {
-        const confirmMessage = `⚠️ DELETE SYNC: "${syncName}"?\n\nThis will permanently delete:\n• The sync and all its data\n• All jobs and schedules\n• Data from Qdrant and Vespa\n• ARF storage\n• Postgres records\n\n⚠️ THIS CANNOT BE UNDONE!\n\nType DELETE to confirm:`;
+        const confirmMessage = `⚠️ DELETE SYNC: "${syncName}"?\n\nThis will permanently delete:\n• The sync and all its data\n• All jobs and schedules\n• Data from Vespa\n• ARF storage\n• Postgres records\n\n⚠️ THIS CANNOT BE UNDONE!\n\nType DELETE to confirm:`;
 
         const userInput = prompt(confirmMessage);
 
@@ -656,7 +655,7 @@ export function SyncsTab() {
                                 htmlFor="destination-counts-filter"
                                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                             >
-                                Include Destination Counts (Qdrant/Vespa - slower)
+                                Include Destination Counts (Vespa - slower)
                             </Label>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -909,10 +908,6 @@ export function SyncsTab() {
                                                             <span>{sync.total_arf_entity_count !== null && sync.total_arf_entity_count !== undefined ? formatNumber(sync.total_arf_entity_count) : '-'}</span>
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <span className="text-muted-foreground">Qdrant:</span>
-                                                            <span>{sync.total_qdrant_entity_count !== null && sync.total_qdrant_entity_count !== undefined ? formatNumber(sync.total_qdrant_entity_count) : '-'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
                                                             <span className="text-muted-foreground">Vespa:</span>
                                                             <span>{sync.total_vespa_entity_count !== null && sync.total_vespa_entity_count !== undefined ? formatNumber(sync.total_vespa_entity_count) : '-'}</span>
                                                         </div>
@@ -1086,22 +1081,6 @@ export function SyncsTab() {
                         <div className="space-y-3">
                             <h3 className="text-sm font-semibold">Destination Toggles</h3>
                             <div className="space-y-2">
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id="skip-qdrant"
-                                        checked={resyncConfig.destinations?.skip_qdrant || false}
-                                        onCheckedChange={(checked) => {
-                                            setSelectedPreset('custom');
-                                            setResyncConfig({
-                                                ...resyncConfig,
-                                                destinations: { ...resyncConfig.destinations, skip_qdrant: checked as boolean },
-                                            });
-                                        }}
-                                    />
-                                    <Label htmlFor="skip-qdrant" className="text-sm cursor-pointer">
-                                        Skip Qdrant
-                                    </Label>
-                                </div>
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="skip-vespa"
@@ -1369,22 +1348,6 @@ export function SyncsTab() {
                         <div className="space-y-3">
                             <h3 className="text-sm font-semibold">Destination Toggles</h3>
                             <div className="space-y-2">
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id="bulk-skip-qdrant"
-                                        checked={resyncConfig.destinations?.skip_qdrant || false}
-                                        onCheckedChange={(checked) => {
-                                            setSelectedPreset('custom');
-                                            setResyncConfig({
-                                                ...resyncConfig,
-                                                destinations: { ...resyncConfig.destinations, skip_qdrant: checked as boolean },
-                                            });
-                                        }}
-                                    />
-                                    <Label htmlFor="bulk-skip-qdrant" className="text-sm cursor-pointer">
-                                        Skip Qdrant
-                                    </Label>
-                                </div>
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="bulk-skip-vespa"

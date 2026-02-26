@@ -9,7 +9,6 @@ INCLUDED_ENDPOINTS = {
     "/collections/": {"get": True, "post": True},
     "/collections/{readable_id}/": {"get": True, "patch": True, "delete": True},
     "/collections/{readable_id}/search/": {"get": True, "post": True},
-    "/collections/{readable_id}/refresh_all/": {"post": True},
     # Source Connections
     "/source-connections/": {"get": True, "post": True},
     "/source-connections/{source_connection_id}/": {
@@ -24,7 +23,11 @@ INCLUDED_ENDPOINTS = {
     "/webhooks/messages/": {"get": True},
     "/webhooks/messages/{message_id}/": {"get": True},
     "/webhooks/subscriptions/": {"get": True, "post": True},
-    "/webhooks/subscriptions/{subscription_id}/": {"get": True, "patch": True, "delete": True},
+    "/webhooks/subscriptions/{subscription_id}/": {
+        "get": True,
+        "patch": True,
+        "delete": True,
+    },
     "/webhooks/subscriptions/{subscription_id}/recover/": {"post": True},
 }
 

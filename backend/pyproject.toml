@@ -39,7 +39,6 @@ aioodbc = "^0.5.0"
 oracledb = "^2.5.1"
 aiofiles = "^24.1.0"
 croniter = "^6.0.0"
-qdrant-client = "^1.13.3"
 openai = "^1.109.1"
 mistralai = "^1.7.0"
 tiktoken = "^0.12.0"
@@ -165,7 +164,7 @@ docstring-code-format = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["tests", "airweave"]
 python_files = ["test_*.py", "*_test.py"]
 addopts = "-v --cov=airweave --cov-report=term-missing --cov-report=xml:coverage.xml"
 markers = [
@@ -180,13 +179,14 @@ extend-exclude = ["backend (old, neena, only for inspiration)"]
 [tool.importlinter]
 root_package = "airweave"
 
-[[tool.importlinter.contracts]]
-name = "Container access restricted to entry points"
-type = "protected"
-protected_modules = ["airweave.core.container"]
-allowed_importers = [
-    "airweave.api.deps",
-    "airweave.main",
-    "airweave.platform.temporal.worker",
-    "airweave.platform.temporal.worker.wiring",
-]
+# TODO: Re-enable once services are fully migrated to receive deps via parameters
+# [[tool.importlinter.contracts]]
+# name = "Container access restricted to entry points"
+# type = "protected"
+# protected_modules = ["airweave.core.container"]
+# allowed_importers = [
+#     "airweave.api.deps",
+#     "airweave.main",
+#     "airweave.platform.temporal.worker",
+#     "airweave.platform.temporal.worker.wiring",
+# ]

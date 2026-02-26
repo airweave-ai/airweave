@@ -46,10 +46,10 @@ class GoogleDriveCursor(BaseCursor):
 
 **Multiple fields** (per-resource):
 ```python
-class PostgreSQLCursor(BaseCursor):
+class AirtableCursor(BaseCursor):
     table_cursors: Dict[str, str] = Field(
         default_factory=dict,
-        description="Per-table cursor values (schema.table -> timestamp)"
+        description="Per-table cursor values (table_id -> last_modified_time)"
     )
 ```
 

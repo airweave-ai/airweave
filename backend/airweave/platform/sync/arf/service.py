@@ -36,12 +36,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
+import aiofiles
+
 from airweave.platform.storage.exceptions import StorageNotFoundError
 from airweave.platform.storage.protocol import StorageBackend
 from airweave.platform.sync.arf.schema import SyncManifest
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
     from airweave.platform.entities._base import BaseEntity
 
 
@@ -124,12 +127,11 @@ class ArfService:
     # Entity serialization
     # =========================================================================
 
-    def _get_source_short_name(self, sync_context: "SyncContext") -> str:
-        """Extract short name from source class."""
-        source = sync_context.source
-        if hasattr(source.__class__, "_short_name"):
-            return source.__class__._short_name
-        return source.__class__.__name__.lower().replace("source", "")
+    def _get_source_short_name(self, sync_context: "SyncContext", runtime: "SyncRuntime") -> str:
+        """Extract short name from source instance (or class fallback)."""
+        source = runtime.source
+        name = getattr(source, "short_name", "") or ""
+        return name or source.__class__.__name__.lower().replace("source", "")
 
     def _is_file_entity(self, entity: "BaseEntity") -> bool:
         """Check if entity is a FileEntity or subclass."""
@@ -191,8 +193,9 @@ class ArfService:
                 file_path = self._file_path(sync_id, entity_id, filename)
 
                 try:
-                    with open(local_path, "rb") as f:
-                        await self.storage.write_file(file_path, f.read())
+                    async with aiofiles.open(local_path, "rb") as f:
+                        content = await f.read()
+                    await self.storage.write_file(file_path, content)
                     entity_dict["__stored_file__"] = file_path
                     stored_files.append(entity_id)
                 except Exception as e:
@@ -385,14 +388,17 @@ class ArfService:
     # Full sync support
     # =========================================================================
 
-    async def cleanup_stale_entities(self, sync_context: "SyncContext") -> int:
+    async def cleanup_stale_entities(
+        self, sync_context: "SyncContext", runtime: "SyncRuntime"
+    ) -> int:
         """Delete entities not seen during the current sync.
 
         Call at the end of a full sync to remove entities that no longer exist
         in the source.
 
         Args:
-            sync_context: Sync context with EntityTracker
+            sync_context: Sync context
+            runtime: Sync runtime with EntityTracker
 
         Returns:
             Number of stale entities deleted
@@ -400,7 +406,7 @@ class ArfService:
         sync_id = str(sync_context.sync.id)
 
         # Get set of all encountered entity IDs
-        seen_ids = sync_context.entity_tracker.get_all_encountered_ids_flat()
+        seen_ids = runtime.entity_tracker.get_all_encountered_ids_flat()
 
         current_ids = await self.list_entity_ids(sync_id)
         stale_ids = [eid for eid in current_ids if eid not in seen_ids]
@@ -425,11 +431,12 @@ class ArfService:
         except StorageNotFoundError:
             return None
 
-    async def upsert_manifest(self, sync_context: "SyncContext") -> None:
+    async def upsert_manifest(self, sync_context: "SyncContext", runtime: "SyncRuntime") -> None:
         """Create or update manifest for a sync job.
 
         Args:
             sync_context: Sync context with job info
+            runtime: Sync runtime with source
         """
         sync_id = str(sync_context.sync.id)
         manifest_path = self._manifest_path(sync_id)
@@ -449,7 +456,7 @@ class ArfService:
             # Create new manifest
             manifest = SyncManifest(
                 sync_id=sync_id,
-                source_short_name=self._get_source_short_name(sync_context),
+                source_short_name=self._get_source_short_name(sync_context, runtime),
                 collection_id=str(sync_context.collection.id),
                 collection_readable_id=sync_context.collection.readable_id,
                 organization_id=str(sync_context.collection.organization_id),
@@ -507,8 +514,8 @@ class ArfService:
                 filename = Path(stored_file).name
                 restored_path = restore_files_to / filename
                 restored_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(restored_path, "wb") as f:
-                    f.write(content)
+                async with aiofiles.open(restored_path, "wb") as f:
+                    await f.write(content)
                 entity_dict["local_path"] = str(restored_path)
             except Exception:
                 pass

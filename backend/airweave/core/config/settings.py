@@ -41,18 +41,15 @@ class Settings(BaseSettings):
         REDIS_PORT (int): The Redis server port.
         REDIS_PASSWORD (Optional[str]): The Redis password (if authentication is enabled).
         REDIS_DB (int): The Redis database number.
-        QDRANT_HOST (str): The Qdrant host.
-        QDRANT_PORT (int): The Qdrant port.
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
-        EMBEDDING_DIMENSIONS (int): Embedding dimensions for the stack (provider, Vespa, Qdrant).
+        EMBEDDING_DIMENSIONS (int): Embedding dimensions for the stack (provider, Vespa).
         FIRECRAWL_API_KEY (Optional[str]): The FireCrawl API key.
         TEMPORAL_HOST (str): The host of the Temporal server.
         TEMPORAL_PORT (int): The Temporal server port.
         TEMPORAL_NAMESPACE (str): The namespace of the Temporal server.
         TEMPORAL_TASK_QUEUE (str): The task queue for the Temporal server.
-        TEMPORAL_ENABLED (bool): Whether Temporal is enabled.
         SYNC_MAX_WORKERS (int): The maximum number of workers for sync tasks.
         SYNC_THREAD_POOL_SIZE (int): The size of the thread pool for sync tasks.
         WEB_FETCHER_MAX_CONCURRENT (int): Max concurrent web scraping requests
@@ -65,7 +62,6 @@ class Settings(BaseSettings):
 
         # Custom deployment URLs
         API_FULL_URL (Optional[str]): The full URL for the API.
-        QDRANT_FULL_URL (Optional[str]): The full URL for the Qdrant.
         ADDITIONAL_CORS_ORIGINS (Optional[list[str]]): Additional CORS origins separated by commas.
     """
 
@@ -122,19 +118,17 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: Optional[str] = None
     REDIS_DB: int = 0
 
-    QDRANT_HOST: Optional[str] = None
-    QDRANT_PORT: Optional[int] = None
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
     # Embedding configuration (source of truth for entire stack)
-    # Must match: provider model, Vespa schema, Qdrant collection
+    # Must match: provider model dimensions and Vespa schema
     # Common values: 384 (local), 1024 (Mistral), 1536 (OpenAI small), 3072 (OpenAI large)
     EMBEDDING_DIMENSIONS: int = 1536
 
     # Vespa configuration
     VESPA_URL: str = "http://localhost"
     VESPA_PORT: int = 8081
-    VESPA_TIMEOUT: float = 120.0
+    VESPA_TIMEOUT: float = 60.0
     VESPA_CLUSTER: str = "airweave"  # Vespa content cluster name for bulk operations
 
     # -------------------------------------------------------------------------
@@ -172,6 +166,9 @@ class Settings(BaseSettings):
     CEREBRAS_API_KEY: Optional[str] = None
     AZURE_KEYVAULT_NAME: Optional[str] = None
 
+    # Docling OCR fallback service (None = disabled)
+    DOCLING_BASE_URL: Optional[str] = None
+
     # AWS S3 Destination credentials (for local testing)
     AWS_S3_DESTINATION_ACCESS_KEY_ID: Optional[str] = None
     AWS_S3_DESTINATION_SECRET_ACCESS_KEY: Optional[str] = None
@@ -181,12 +178,18 @@ class Settings(BaseSettings):
     TEMPORAL_PORT: int = 7233
     TEMPORAL_NAMESPACE: str = "default"
     TEMPORAL_TASK_QUEUE: str = "airweave-sync-queue"
-    TEMPORAL_ENABLED: bool = False
     TEMPORAL_DISABLE_SANDBOX: bool = False
+    TEMPORAL_SDK_METRICS_PORT: int = 9090
+
+    # Health probe configuration
+    HEALTH_CHECK_TIMEOUT: float = 5.0
+    HEALTH_CRITICAL_PROBES: str = "postgres"
 
     # Temporal worker graceful shutdown configuration
     TEMPORAL_GRACEFUL_SHUTDOWN_TIMEOUT: int = 7200  # 2 hours in seconds
     WORKER_METRICS_PORT: int = 8888  # Port for /drain and /health endpoints
+    METRICS_PORT: int = 9090  # Port for Prometheus metrics endpoint
+    METRICS_HOST: str = "0.0.0.0"  # Bind address for metrics server
 
     # Stripe billing settings
     STRIPE_ENABLED: bool = False
@@ -231,12 +234,20 @@ class Settings(BaseSettings):
     # for custom domains in custom deployments
     API_FULL_URL: Optional[str] = None
     APP_FULL_URL: Optional[str] = None
-    QDRANT_FULL_URL: Optional[str] = None
     ADDITIONAL_CORS_ORIGINS: Optional[str] = None  # Separated by commas or semicolons
 
     # Svix (webhooks) configuration
     SVIX_URL: str = "http://localhost:8071"
-    SVIX_JWT_SECRET: str = "default_signing_secret"
+    SVIX_JWT_SECRET: str = "default_signing_secret_change_me!"
+    WEBHOOK_VERIFY_ENDPOINTS: bool = True
+
+    @field_validator("HEALTH_CHECK_TIMEOUT", mode="before")
+    def validate_health_check_timeout(cls, v: float) -> float:
+        """Validate that the health-check timeout is positive."""
+        v = float(v)
+        if v <= 0:
+            raise ValueError("HEALTH_CHECK_TIMEOUT must be positive")
+        return v
 
     @field_validator("AZURE_KEYVAULT_NAME", mode="before")
     def validate_azure_keyvault_name(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
@@ -415,21 +426,6 @@ class Settings(BaseSettings):
         )
 
     @property
-    def qdrant_url(self) -> str:
-        """The Qdrant URL.
-
-        Returns:
-            str: The Qdrant URL.
-        """
-        if self.QDRANT_FULL_URL:
-            return self.QDRANT_FULL_URL
-
-        if not self.QDRANT_HOST or not self.QDRANT_PORT:
-            raise ValueError("QDRANT_HOST with QDRANT_PORT or QDRANT_FULL_URL must be set")
-
-        return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
-
-    @property
     def vespa_url(self) -> str:
         """The Vespa URL.
 
@@ -493,6 +489,16 @@ class Settings(BaseSettings):
         return f"https://docs.{env_str}-airweave.com"
 
     @property
+    def db_pool_size(self) -> int:
+        """Base SQLAlchemy pool size derived from worker count."""
+        return min(100, max(20, self.SYNC_MAX_WORKERS))
+
+    @property
+    def db_pool_max_overflow(self) -> int:
+        """SQLAlchemy pool max overflow derived from worker count."""
+        return max(20, int(self.SYNC_MAX_WORKERS * 2))
+
+    @property
     def temporal_address(self) -> str:
         """The Temporal server address.
 
@@ -500,3 +506,10 @@ class Settings(BaseSettings):
             str: The Temporal server address in host:port format.
         """
         return f"{self.TEMPORAL_HOST}:{self.TEMPORAL_PORT}"
+
+    @property
+    def health_critical_probes(self) -> frozenset[str]:
+        """Probe names that gate HTTP 503 on the readiness endpoint."""
+        return frozenset(
+            name.strip() for name in self.HEALTH_CRITICAL_PROBES.split(",") if name.strip()
+        )

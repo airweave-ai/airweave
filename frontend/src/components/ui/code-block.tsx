@@ -19,6 +19,8 @@ interface CodeBlockProps {
   className?: string;
   style?: React.CSSProperties;
   height?: string | number;
+  /** Compact mode for embedding in panels — smaller padding and font */
+  compact?: boolean;
 }
 
 export function CodeBlock({
@@ -31,7 +33,8 @@ export function CodeBlock({
   disabled = false,
   className,
   style,
-  height
+  height,
+  compact = false,
 }: CodeBlockProps) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
@@ -97,7 +100,8 @@ export function CodeBlock({
       style={containerStyle}
     >
       <div className={cn(
-        "flex items-center px-4 py-2 justify-between border-b",
+        "flex items-center justify-between border-b",
+        compact ? "px-3 py-1.5" : "px-4 py-2",
         isDark ? "border-gray-800" : "border-gray-200"
       )}>
         <div className="flex items-center gap-2">
@@ -106,7 +110,7 @@ export function CodeBlock({
               {badgeText}
             </Badge>
           )}
-          {title && <span className={cn("text-xs font-medium", isDark ? "text-gray-200" : "text-gray-700")}>{title}</span>}
+          {title && <span className={cn(compact ? "text-[10px] uppercase tracking-wide text-muted-foreground" : "text-xs font-medium", !compact && (isDark ? "text-gray-200" : "text-gray-700"))}>{title}</span>}
         </div>
         <Button
           size="sm"
@@ -118,12 +122,12 @@ export function CodeBlock({
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         </Button>
       </div>
-      <div className={cn("px-4 py-3 flex-1 overflow-auto", isDark ? "bg-black" : "bg-white")}>
+      <div className={cn("flex-1 overflow-auto", compact ? "px-3 py-2" : "px-4 py-3", isDark ? "bg-black" : "bg-white")}>
         <SyntaxHighlighter
           language={language}
           style={customStyle}
           customStyle={{
-            fontSize: '0.75rem',
+            fontSize: compact ? '0.7rem' : '0.75rem',
             background: 'transparent',
             margin: 0,
             padding: 0,
@@ -133,7 +137,7 @@ export function CodeBlock({
           showLineNumbers={false}
           codeTagProps={{
             style: {
-              fontSize: '0.75rem',
+              fontSize: compact ? '0.7rem' : '0.75rem',
               fontFamily: 'monospace',
             }
           }}

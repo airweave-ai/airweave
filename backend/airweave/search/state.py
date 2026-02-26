@@ -6,9 +6,7 @@ used to pass state between search operations.
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
-
-from airweave.schemas.search import AirweaveTemporalConfig
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SearchState(BaseModel):
@@ -24,7 +22,6 @@ class SearchState(BaseModel):
     - EmbedQuery -> dense_embeddings, sparse_embeddings
     - AccessControlFilter -> acl_filter, access_principals, filter (merged)
     - UserFilter -> filter (merged from user + interpreted + acl)
-    - TemporalRelevance -> temporal_config, filter (updated)
     - Retrieval -> results
     - FederatedSearch -> results (extended)
     - Reranking -> results (reordered)
@@ -70,13 +67,6 @@ class SearchState(BaseModel):
     )
 
     # =========================================================================
-    # Temporal relevance
-    # =========================================================================
-    temporal_config: Optional[AirweaveTemporalConfig] = Field(
-        default=None, description="Temporal relevance configuration"
-    )
-
-    # =========================================================================
     # Search results (serialized AirweaveSearchResult dicts)
     # =========================================================================
     results: List[Dict[str, Any]] = Field(
@@ -101,7 +91,4 @@ class SearchState(BaseModel):
         default_factory=list, description="Source connection IDs that failed federated auth"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)

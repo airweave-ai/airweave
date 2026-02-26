@@ -419,7 +419,7 @@ def _search_limit_from_config(config: TestConfig, default: int = 50) -> int:
 
 
 class VerifyStep(TestStep):
-    """Verify data in Qdrant step."""
+    """Verify data in vector database step."""
 
     async def execute(self) -> None:
         self.logger.info("=" * 80)
@@ -451,8 +451,8 @@ class VerifyStep(TestStep):
             )
             return entity, ok
 
-        # Add a wait after sync completion to allow Qdrant indexing
-        self.logger.info("⏳ Waiting 10s for Qdrant indexing to complete...")
+        # Add a wait after sync completion to allow vector database indexing
+        self.logger.info("⏳ Waiting 10s for vector database indexing to complete...")
         await asyncio.sleep(10)
 
         # Retry support + optional one-time rescue resync
@@ -500,7 +500,7 @@ class VerifyStep(TestStep):
         for entity, ok in results:
             if not ok:
                 errors.append(
-                    f"Entity {self._display_name(entity)} not found in Qdrant"
+                    f"Entity {self._display_name(entity)} not found in vector database"
                 )
             else:
                 verified_count += 1
@@ -604,7 +604,7 @@ class PartialDeleteStep(TestStep):
 
 
 class VerifyPartialDeletionStep(TestStep):
-    """Verify that partially deleted entities are removed from Qdrant."""
+    """Verify that partially deleted entities are removed from vector database."""
 
     async def execute(self) -> None:
         self.logger.info("🔍 Verifying partial deletion")
@@ -647,11 +647,11 @@ class VerifyPartialDeletionStep(TestStep):
         for entity, is_removed in results:
             if not is_removed:
                 errors.append(
-                    f"Entity {self._display_name(entity)} still exists in Qdrant after deletion"
+                    f"Entity {self._display_name(entity)} still exists in vector database after deletion"
                 )
             else:
                 self.logger.info(
-                    f"✅ Entity {self._display_name(entity)} confirmed removed from Qdrant"
+                    f"✅ Entity {self._display_name(entity)} confirmed removed from vector database"
                 )
 
         if errors:
@@ -661,7 +661,7 @@ class VerifyPartialDeletionStep(TestStep):
 
 
 class VerifyRemainingEntitiesStep(TestStep):
-    """Verify that remaining entities are still present in Qdrant."""
+    """Verify that remaining entities are still present in vector database."""
 
     async def execute(self) -> None:
         self.logger.info("🔍 Verifying remaining entities are still present")
@@ -696,11 +696,11 @@ class VerifyRemainingEntitiesStep(TestStep):
         for entity, is_present in results:
             if not is_present:
                 errors.append(
-                    f"Entity {self._display_name(entity)} was incorrectly removed from Qdrant"
+                    f"Entity {self._display_name(entity)} was incorrectly removed from vector database"
                 )
             else:
                 self.logger.info(
-                    f"✅ Entity {self._display_name(entity)} confirmed still present in Qdrant"
+                    f"✅ Entity {self._display_name(entity)} confirmed still present in vector database"
                 )
 
         if errors:
@@ -732,7 +732,7 @@ class CompleteDeleteStep(TestStep):
 
 
 class VerifyCompleteDeletionStep(TestStep):
-    """Verify that all test entities are completely removed from Qdrant."""
+    """Verify that all test entities are completely removed from vector database."""
 
     async def execute(self) -> None:
         self.logger.info("🔍 Verifying complete deletion")
@@ -770,7 +770,7 @@ class VerifyCompleteDeletionStep(TestStep):
                 self.logger.warning(
                     f"⚠️ Entity {self._display_name(entity)} still found with token: {expected_token}"
                 )
-                # Do a more detailed search to see what's in Qdrant
+                # Do a more detailed search to see what's in vector database
                 try:
                     results = await _search_collection_async(
                         client, self.context.collection_readable_id, expected_token, 5
@@ -778,7 +778,7 @@ class VerifyCompleteDeletionStep(TestStep):
                     for r in results[:2]:  # Show first 2 results
                         # New structure: id and name are at top level
                         self.logger.info(
-                            f"   Found in Qdrant: id={r.get('id')}, name={r.get('name')}"
+                            f"   Found in vector DB: id={r.get('id')}, name={r.get('name')}"
                         )
                 except Exception as e:
                     self.logger.debug(f"Could not get detailed results: {e}")
@@ -791,11 +791,11 @@ class VerifyCompleteDeletionStep(TestStep):
         for entity, is_removed in results:
             if not is_removed:
                 errors.append(
-                    f"Entity {self._display_name(entity)} still exists in Qdrant after complete deletion"
+                    f"Entity {self._display_name(entity)} still exists in vector database after complete deletion"
                 )
             else:
                 self.logger.info(
-                    f"✅ Entity {self._display_name(entity)} confirmed removed from Qdrant"
+                    f"✅ Entity {self._display_name(entity)} confirmed removed from vector database"
                 )
 
         if errors:
@@ -807,10 +807,10 @@ class VerifyCompleteDeletionStep(TestStep):
         )
         if not collection_empty:
             self.logger.warning(
-                "⚠️ Qdrant collection still contains some data (may be metadata entities)"
+                "⚠️ Collection still contains some data (may be metadata entities)"
             )
         else:
-            self.logger.info("✅ Qdrant collection confirmed empty of test data")
+            self.logger.info("✅ Collection confirmed empty of test data")
 
         self.logger.info("✅ Complete deletion verification completed")
 

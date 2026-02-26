@@ -20,6 +20,7 @@ from airweave.api.middleware import (
     airweave_exception_handler,
     analytics_middleware,
     exception_logging_middleware,
+    http_metrics_middleware,
     invalid_state_exception_handler,
     log_requests,
     not_found_exception_handler,
@@ -58,11 +59,17 @@ async def lifespan(app: FastAPI):
     Initializes the DI container, runs alembic migrations, and syncs platform components.
     """
     # Initialize the dependency injection container (fail fast if wiring is broken)
+    from airweave.core import container as container_mod
     from airweave.core.container import initialize_container
 
     logger.info("Initializing dependency injection container...")
     initialize_container(settings)
     logger.info("Container initialized successfully")
+
+    # Initialize converters with OCR from the container
+    from airweave.platform.converters import initialize_converters
+
+    initialize_converters(ocr_provider=container_mod.container.ocr_provider)
 
     async with AsyncSessionLocal() as db:
         if settings.RUN_ALEMBIC_MIGRATIONS:
@@ -83,31 +90,42 @@ async def lifespan(app: FastAPI):
     # Validate embedding stack configuration (raises if misconfigured)
     validate_and_raise()
 
-    # Initialize cleanup schedule for stuck sync jobs (if Temporal is enabled)
-    if settings.TEMPORAL_ENABLED:
-        try:
-            from airweave.platform.temporal.schedule_service import temporal_schedule_service
+    # Initialize cleanup schedule for stuck sync jobs
+    try:
+        from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
-            logger.info("Initializing cleanup schedule for stuck sync jobs...")
-            await temporal_schedule_service.create_cleanup_schedule()
-            logger.info("Cleanup schedule initialized successfully")
-        except Exception as e:
-            logger.warning(
-                f"Failed to initialize cleanup schedule (Temporal may not be available): {e}"
-            )
+        logger.info("Initializing cleanup schedule for stuck sync jobs...")
+        await temporal_schedule_service.create_cleanup_schedule()
+        logger.info("Cleanup schedule initialized successfully")
+    except Exception as e:
+        logger.warning(
+            f"Failed to initialize cleanup schedule (Temporal may not be available): {e}"
+        )
 
-        # Initialize API key expiration notification schedule
-        try:
-            logger.info("Initializing API key expiration notification schedule...")
-            await temporal_schedule_service.create_api_key_notification_schedule()
-            logger.info("API key notification schedule initialized successfully")
-        except Exception as e:
-            logger.warning(
-                f"Failed to initialize API key notification schedule "
-                f"(Temporal may not be available): {e}"
-            )
+    # Initialize API key expiration notification schedule
+    try:
+        logger.info("Initializing API key expiration notification schedule...")
+        await temporal_schedule_service.create_api_key_notification_schedule()
+        logger.info("API key notification schedule initialized successfully")
+    except Exception as e:
+        logger.warning(
+            f"Failed to initialize API key notification schedule "
+            f"(Temporal may not be available): {e}"
+        )
 
-    yield
+    # Start metrics sidecar + DB pool sampler; wire app.state.http_metrics
+    from airweave.core.metrics_service import metrics_lifespan
+    from airweave.db.session import async_engine
+
+    async with metrics_lifespan(app, container_mod.container.metrics, async_engine.pool):
+        yield
+
+    container_mod.container.health.shutting_down = True
+
+    # Clean up health check engine connections
+    from airweave.db.session import health_check_engine
+
+    await health_check_engine.dispose()
 
 
 # Create FastAPI app with our custom router and disable FastAPI's built-in redirects
@@ -121,9 +139,13 @@ app = FastAPI(
 
 app.include_router(api_router)
 
-# Register middleware directly in the correct order
-# Order matters: first registered = outermost middleware (processes request first)
+# Register middleware directly in the correct order.
+# Order matters: first registered = outermost (processes request first).
+# http_metrics_middleware is intentionally early so it captures
+# end-to-end latency and counts 413/408/429 responses generated
+# by inner middlewares (body-size, timeout, rate-limit).
 app.middleware("http")(add_request_id)
+app.middleware("http")(http_metrics_middleware)
 app.middleware("http")(request_body_size_middleware)
 app.middleware("http")(request_timeout_middleware)
 app.middleware("http")(rate_limit_headers_middleware)

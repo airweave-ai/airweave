@@ -228,6 +228,166 @@ class CRUDAccessControlMembership(
 
         return result.rowcount
 
+    # -------------------------------------------------------------------------
+    # Incremental ACL sync methods
+    # -------------------------------------------------------------------------
+
+    async def upsert(
+        self,
+        db: AsyncSession,
+        *,
+        member_id: str,
+        member_type: str,
+        group_id: str,
+        group_name: str,
+        organization_id: UUID,
+        source_connection_id: UUID,
+        source_name: str,
+    ) -> None:
+        """Upsert a single membership for incremental ACL adds.
+
+        Uses PostgreSQL INSERT ON CONFLICT to insert or update a single
+        membership record. Used during incremental DirSync to apply
+        individual ADD changes.
+
+        Args:
+            db: Database session
+            member_id: Member identifier
+            member_type: "user" or "group"
+            group_id: Group identifier
+            group_name: Human-readable group name
+            organization_id: Organization ID
+            source_connection_id: Source connection ID
+            source_name: Source short name
+        """
+        from sqlalchemy.dialects.postgresql import insert
+
+        stmt = insert(AccessControlMembership).values(
+            organization_id=organization_id,
+            source_connection_id=source_connection_id,
+            source_name=source_name,
+            member_id=member_id,
+            member_type=member_type,
+            group_id=group_id,
+            group_name=group_name,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                "organization_id",
+                "member_id",
+                "member_type",
+                "group_id",
+                "source_connection_id",
+            ],
+            set_={"group_name": stmt.excluded.group_name},
+        )
+        await db.execute(stmt)
+        await db.commit()
+
+    async def delete_by_key(
+        self,
+        db: AsyncSession,
+        *,
+        member_id: str,
+        member_type: str,
+        group_id: str,
+        source_connection_id: UUID,
+        organization_id: UUID,
+    ) -> int:
+        """Delete a specific membership by its composite natural key.
+
+        Used during incremental DirSync to apply individual REMOVE changes.
+
+        Args:
+            db: Database session
+            member_id: Member identifier
+            member_type: "user" or "group"
+            group_id: Group identifier
+            source_connection_id: Source connection ID
+            organization_id: Organization ID
+
+        Returns:
+            Number of rows deleted (0 or 1)
+        """
+        from sqlalchemy import delete
+
+        stmt = delete(AccessControlMembership).where(
+            AccessControlMembership.organization_id == organization_id,
+            AccessControlMembership.source_connection_id == source_connection_id,
+            AccessControlMembership.member_id == member_id,
+            AccessControlMembership.member_type == member_type,
+            AccessControlMembership.group_id == group_id,
+        )
+        result = await db.execute(stmt)
+        await db.commit()
+        return result.rowcount
+
+    async def delete_by_group(
+        self,
+        db: AsyncSession,
+        *,
+        group_id: str,
+        source_connection_id: UUID,
+        organization_id: UUID,
+    ) -> int:
+        """Delete all memberships for a group that was deleted from AD.
+
+        When DirSync reports a group deletion, all its membership records
+        must be removed.
+
+        Args:
+            db: Database session
+            group_id: Group identifier (e.g. "ad:engineering")
+            source_connection_id: Source connection ID
+            organization_id: Organization ID
+
+        Returns:
+            Number of rows deleted
+        """
+        from sqlalchemy import delete
+
+        stmt = delete(AccessControlMembership).where(
+            AccessControlMembership.organization_id == organization_id,
+            AccessControlMembership.source_connection_id == source_connection_id,
+            AccessControlMembership.group_id == group_id,
+        )
+        result = await db.execute(stmt)
+        await db.commit()
+        return result.rowcount
+
+    async def get_memberships_by_groups(
+        self,
+        db: AsyncSession,
+        *,
+        group_ids: List[str],
+        source_connection_id: UUID,
+        organization_id: UUID,
+    ) -> List[AccessControlMembership]:
+        """Get memberships for a set of groups.
+
+        Used during incremental ACL sync to verify the current state of
+        groups that DirSync reports as modified.
+
+        Args:
+            db: Database session
+            group_ids: List of group identifiers to query
+            source_connection_id: Source connection ID
+            organization_id: Organization ID
+
+        Returns:
+            List of membership records for the specified groups
+        """
+        if not group_ids:
+            return []
+
+        stmt = select(AccessControlMembership).where(
+            AccessControlMembership.organization_id == organization_id,
+            AccessControlMembership.source_connection_id == source_connection_id,
+            AccessControlMembership.group_id.in_(group_ids),
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
 
 # Singleton instance
 access_control_membership = CRUDAccessControlMembership(AccessControlMembership)

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from airweave import schemas
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException, PermissionException
 from airweave.core.logging import logger
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
@@ -170,7 +170,7 @@ class CRUDOrganization:
         )
 
     async def set_primary_organization(
-        self, db: AsyncSession, user_id: UUID, organization_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, user_id: UUID, organization_id: UUID, ctx: BaseContext
     ) -> bool:
         """Set an organization as primary for a user with access validation.
 
@@ -258,7 +258,7 @@ class CRUDOrganization:
         self,
         db: AsyncSession,
         id: UUID,
-        ctx: Optional[ApiContext] = None,
+        ctx: Optional[BaseContext] = None,
         skip_access_validation: bool = False,
         enrich: bool = True,
     ) -> Optional[Union[Organization, schemas.Organization]]:
@@ -304,7 +304,7 @@ class CRUDOrganization:
     async def get_multi(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         *,
         skip: int = 0,
         limit: int = 100,
@@ -345,7 +345,7 @@ class CRUDOrganization:
         *,
         db_obj: Organization,
         obj_in: Union[OrganizationUpdate, dict[str, Any]],
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Organization:
         """Update organization with access validation.
@@ -386,12 +386,12 @@ class CRUDOrganization:
         """Create organization resource with auth context."""
         raise NotImplementedError("This method is not implemented for organizations.")
 
-    async def _validate_organization_access(self, ctx: ApiContext, organization_id: UUID) -> None:
+    async def _validate_organization_access(self, ctx: BaseContext, organization_id: UUID) -> None:
         """Validate auth context has access to organization.
 
         Args:
         ----
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
             organization_id (UUID): The organization ID to validate access to.
 
         Raises:
@@ -449,7 +449,7 @@ class CRUDOrganization:
         ]
 
     async def _validate_admin_access(
-        self, ctx: ApiContext, organization_id: UUID
+        self, ctx: BaseContext, organization_id: UUID
     ) -> UserOrganization:
         """Validate user has admin/owner access to organization.
 
@@ -488,7 +488,7 @@ class CRUDOrganization:
         return user_org
 
     async def get_user_membership(
-        self, db: AsyncSession, organization_id: UUID, user_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, organization_id: UUID, user_id: UUID, ctx: BaseContext
     ) -> Optional[UserOrganization]:
         """Get user membership in organization with access validation.
 
@@ -521,7 +521,7 @@ class CRUDOrganization:
         self,
         db: AsyncSession,
         organization_id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
         exclude_user_id: Optional[UUID] = None,
     ) -> List[UserOrganization]:
         """Get all owners of an organization with access validation.
@@ -550,7 +550,7 @@ class CRUDOrganization:
         return list(result.scalars().all())
 
     async def get_organization_members(
-        self, db: AsyncSession, organization_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, organization_id: UUID, ctx: BaseContext
     ) -> List[UserOrganization]:
         """Get all members of an organization with access validation.
 
@@ -575,7 +575,7 @@ class CRUDOrganization:
         return list(result.scalars().all())
 
     async def remove_member(
-        self, db: AsyncSession, organization_id: UUID, user_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, organization_id: UUID, user_id: UUID, ctx: BaseContext
     ) -> bool:
         """Remove a user from an organization with proper permission checks.
 
@@ -628,7 +628,7 @@ class CRUDOrganization:
         organization_id: UUID,
         user_id: UUID,
         role: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
         is_primary: bool = False,
     ) -> UserOrganization:
         """Add a user to an organization with proper permission checks.
@@ -684,7 +684,7 @@ class CRUDOrganization:
         organization_id: UUID,
         user_id: UUID,
         new_role: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Optional[UserOrganization]:
         """Update a user's role in an organization with proper permission checks.
 

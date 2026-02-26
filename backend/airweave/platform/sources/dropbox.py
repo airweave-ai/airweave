@@ -7,6 +7,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import DropboxAuthConfig
+from airweave.platform.configs.config import DropboxConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.dropbox import (
@@ -34,7 +35,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     oauth_type=OAuthType.WITH_REFRESH,
     requires_byoc=True,
     auth_config_class=None,
-    config_class="DropboxConfig",
+    config_class=DropboxConfig,
     labels=["File Storage"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

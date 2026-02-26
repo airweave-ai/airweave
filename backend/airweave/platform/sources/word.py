@@ -23,6 +23,7 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import WordConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.word import WordDocumentEntity
@@ -45,7 +46,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     ],
     oauth_type=OAuthType.WITH_ROTATING_REFRESH,
     auth_config_class=None,
-    config_class="WordConfig",
+    config_class=WordConfig,
     labels=["Productivity", "Document", "Word Processing"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

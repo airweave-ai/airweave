@@ -203,6 +203,7 @@ async def build_list_entity(
 async def build_item_entity(
     item_data: Dict[str, Any],
     site_url: str,
+    list_id: str,
     breadcrumbs: List[Breadcrumb],
     ldap_client: Optional[Any] = None,
 ) -> SharePoint2019V2ItemEntity:
@@ -211,6 +212,7 @@ async def build_item_entity(
     Args:
         item_data: Item metadata from /_api/web/lists/items endpoint
         site_url: Base URL of the site (for building web_url)
+        list_id: GUID of the parent list (used for composite entity ID)
         breadcrumbs: Parent breadcrumb trail
         ldap_client: Optional LDAPClient for SID resolution
 
@@ -246,9 +248,12 @@ async def build_item_entity(
         raise EntityProcessingError(f"Missing FileRef for item {item_id}")
 
     web_url = build_web_url(site_url, file_ref)
+    sp_entity_id = f"sp2019v2:item:{list_id}:{item_id}"
 
     return SharePoint2019V2ItemEntity(
+        list_id=list_id,
         item_id=item_id,
+        sp_entity_id=sp_entity_id,
         guid=guid,
         title=title,
         web_url=web_url,
@@ -269,6 +274,7 @@ async def build_item_entity(
 async def build_file_entity(
     item_data: Dict[str, Any],
     site_url: str,
+    list_id: str,
     breadcrumbs: List[Breadcrumb],
     ldap_client: Optional[Any] = None,
 ) -> SharePoint2019V2FileEntity:
@@ -277,6 +283,7 @@ async def build_file_entity(
     Args:
         item_data: Item metadata with expanded File object
         site_url: Base URL of the site
+        list_id: GUID of the parent document library (used for composite entity ID)
         breadcrumbs: Parent breadcrumb trail
         ldap_client: Optional LDAPClient for SID resolution
 
@@ -333,11 +340,15 @@ async def build_file_entity(
     # Fields (optional for files, but include if present)
     fields_raw: Dict[str, Any] = item_data.get("FieldValuesAsText") or {}
 
+    sp_entity_id = f"sp2019v2:file:{list_id}:{item_id}"
+
     return SharePoint2019V2FileEntity(
         url=download_url,
         size=file_size,
         file_type=file_ext,
+        list_id=list_id,
         item_id=item_id,
+        sp_entity_id=sp_entity_id,
         guid=guid,
         title=title,
         web_url=web_url,

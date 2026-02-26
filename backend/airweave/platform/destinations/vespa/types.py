@@ -5,7 +5,7 @@ Simple Pydantic models for type safety and clear interfaces between components.
 
 from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class VespaDocument(BaseModel):
@@ -14,7 +14,11 @@ class VespaDocument(BaseModel):
     This is the output of EntityTransformer and input to VespaClient.feed_documents().
     """
 
-    schema: str = Field(..., description="Vespa schema name (e.g., 'base_entity')")
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_name: str = Field(
+        ..., alias="schema", description="Vespa schema name (e.g., 'base_entity')"
+    )
     id: str = Field(..., description="Document ID (e.g., 'EntityType_entity_id')")
     fields: Dict[str, Any] = Field(..., description="Document fields for Vespa")
 
@@ -32,8 +36,12 @@ class FeedResult(BaseModel):
 class DeleteResult(BaseModel):
     """Result of a Vespa delete operation."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     deleted_count: int = Field(default=0, description="Number of deleted documents")
-    schema: str = Field(..., description="Schema the deletion was performed on")
+    schema_name: str = Field(
+        ..., alias="schema", description="Schema the deletion was performed on"
+    )
 
 
 class VespaQueryResponse(BaseModel):
@@ -44,7 +52,4 @@ class VespaQueryResponse(BaseModel):
     coverage_percent: float = Field(default=100.0, description="Search coverage percentage")
     query_time_ms: float = Field(default=0.0, description="Query execution time in milliseconds")
 
-    class Config:
-        """Allow extra fields from Vespa response."""
-
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")

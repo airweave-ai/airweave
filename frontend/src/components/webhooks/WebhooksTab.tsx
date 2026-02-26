@@ -10,9 +10,68 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AlertTriangle, Loader2, Plus, Trash2, Webhook } from "lucide-react";
-import { useDeleteSubscriptions, type Subscription } from "@/hooks/use-webhooks";
+import { Loader2, Plus, Trash2, Webhook } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useDeleteSubscriptions, type Subscription, type HealthStatus } from "@/hooks/use-webhooks";
 import { getEventTypeLabel } from "./shared";
+
+// ============ Health Status Badge ============
+
+const HEALTH_CONFIG: Record<
+  HealthStatus,
+  { label: string; dotClass: string; textClass: string; description: string }
+> = {
+  healthy: {
+    label: "Delivering",
+    dotClass: "bg-emerald-500",
+    textClass: "text-emerald-600 dark:text-emerald-400",
+    description: "All recent deliveries succeeded.",
+  },
+  degraded: {
+    label: "Degraded",
+    dotClass: "bg-amber-500",
+    textClass: "text-amber-600 dark:text-amber-400",
+    description: "Some recent deliveries failed. Check the logs for details.",
+  },
+  failing: {
+    label: "Failing",
+    dotClass: "bg-red-500",
+    textClass: "text-red-600 dark:text-red-400",
+    description: "Multiple consecutive deliveries have failed. Your endpoint may be down.",
+  },
+  unknown: {
+    label: "No data",
+    dotClass: "bg-muted-foreground/40",
+    textClass: "text-muted-foreground/60",
+    description: "No deliveries yet. Events will appear once a sync runs.",
+  },
+};
+
+function HealthBadge({ status }: { status: HealthStatus }) {
+  const config = HEALTH_CONFIG[status] || HEALTH_CONFIG.unknown;
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center gap-1.5 text-xs font-normal cursor-default ${config.textClass}`}
+          >
+            <span className={`size-1.5 rounded-full ${config.dotClass}`} />
+            {config.label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-[220px]">
+          <p className="text-[11px] leading-relaxed">{config.description}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 // ============ Empty State ============
 
@@ -22,13 +81,13 @@ function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
       <div className="rounded-full bg-muted p-4 mb-4">
         <Webhook className="size-6 text-muted-foreground" />
       </div>
-      <h3 className="font-medium mb-1">No webhooks yet</h3>
+      <h3 className="font-medium mb-1">No subscriptions yet</h3>
       <p className="text-sm text-muted-foreground text-center mb-4 max-w-xs">
-        Create a webhook endpoint to receive event notifications.
+        Create a subscription to receive webhook notifications.
       </p>
       <Button onClick={onCreateClick} size="sm">
         <Plus className="mr-1.5 size-3.5" />
-        Create Webhook
+        Add subscription
       </Button>
     </div>
   );
@@ -116,6 +175,7 @@ export function WebhooksTab({
               </TableHead>
               <TableHead className="text-xs font-medium">URL</TableHead>
               <TableHead className="text-xs font-medium">Status</TableHead>
+              <TableHead className="text-xs font-medium">Health</TableHead>
               <TableHead className="text-xs font-medium">Events</TableHead>
             </TableRow>
           </TableHeader>
@@ -137,15 +197,17 @@ export function WebhooksTab({
                 </TableCell>
                 <TableCell>
                   {subscription.disabled ? (
-                    <Badge variant="destructive" className="text-xs font-normal gap-1">
-                      <AlertTriangle className="size-3" />
+                    <span className="text-xs font-medium text-red-600 dark:text-red-400">
                       Disabled
-                    </Badge>
+                    </span>
                   ) : (
-                    <Badge variant="secondary" className="text-xs font-normal text-emerald-600 dark:text-emerald-400">
-                      Active
-                    </Badge>
+                    <span className="text-xs font-medium text-foreground/70">
+                      Enabled
+                    </span>
                   )}
+                </TableCell>
+                <TableCell>
+                  <HealthBadge status={subscription.health_status || "unknown"} />
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">

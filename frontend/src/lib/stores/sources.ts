@@ -3,7 +3,6 @@ import { apiClient } from '@/lib/api';
 
 // Interface for Source
 export interface Source {
-  id: string;
   name: string;
   description?: string | null;
   short_name: string;
@@ -12,7 +11,6 @@ export interface Source {
 
 // Interface for Source Details (extended source info)
 export interface SourceDetail {
-  id: string;
   name: string;
   short_name: string;
   auth_type?: string;

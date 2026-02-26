@@ -89,24 +89,44 @@ class AnalyticsService:
     def track_event(
         self,
         event_name: str,
-        distinct_id: str,
         properties: Optional[Dict[str, Any]] = None,
+        *,
+        ctx: Optional[Any] = None,
+        distinct_id: Optional[str] = None,
         groups: Optional[Dict[str, str]] = None,
     ) -> None:
         """Track an event with optional properties and groups.
 
+        When ``ctx`` (an ApiContext) is provided and carries a pre-configured
+        contextual analytics service, the call is delegated to it so that
+        headers, session info, distinct_id and groups are injected automatically.
+
+        For non-API call sites, pass ``distinct_id`` and ``groups`` explicitly.
+
         Args:
-        ----
-            event_name: Name of the event to track
-            distinct_id: Unique identifier for the user/entity
-            properties: Event properties
-            groups: Group associations (e.g., organization)
+            event_name: Name of the event to track.
+            properties: Event properties.
+            ctx: Optional ApiContext — if provided, its contextual analytics
+                service handles distinct_id / groups / base-property enrichment.
+            distinct_id: Unique identifier for the user/entity (required when
+                no ctx is given).
+            groups: Group associations (e.g., organization).
         """
         if not self.enabled:
             return
 
+        # Delegate to the pre-configured ContextualAnalyticsService when available
+        if ctx is not None and getattr(ctx, "analytics", None) is not None:
+            ctx.analytics.track_event(event_name, properties)
+            return
+
+        if distinct_id is None:
+            self.logger.warning(
+                f"track_event({event_name!r}) called without distinct_id or ctx; event dropped"
+            )
+            return
+
         try:
-            # Create a copy to avoid mutating the caller's properties dict
             event_properties = dict(properties) if properties else {}
             event_properties.update(
                 {

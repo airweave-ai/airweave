@@ -17,6 +17,8 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import SalesforceAuthConfig
+from airweave.platform.configs.config import SalesforceConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.salesforce import (
@@ -42,8 +44,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     ],
     oauth_type=OAuthType.WITH_REFRESH,
     requires_byoc=True,  # Users must bring their own Salesforce OAuth credentials
-    auth_config_class="SalesforceAuthConfig",  # This tells factory to pass full dict
-    config_class="SalesforceConfig",
+    auth_config_class=SalesforceAuthConfig,
+    config_class=SalesforceConfig,
     labels=["CRM", "Sales"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

@@ -117,11 +117,6 @@ class GuardRailService:
         if self._has_billing is not None:
             return self._has_billing
 
-        # If Stripe is disabled, no organizations have billing
-        if not settings.STRIPE_ENABLED:
-            self._has_billing = False
-            return self._has_billing
-
         async with get_db_context() as db:
             # Check if organization has billing record
             billing_record = await crud.organization_billing.get_by_organization(

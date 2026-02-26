@@ -9,6 +9,12 @@ This page documents the structure of webhook payloads, delivery headers, and the
 
 ## Event Types
 
+Events are organized by domain. Each domain has its own payload structure.
+
+---
+
+## Sync Events
+
 ### sync.pending
 
 Fired when a sync job is created and queued for processing.
@@ -16,12 +22,13 @@ Fired when a sync job is created and queued for processing.
 ```json
 {
   "event_type": "sync.pending",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sync_id": "440e8400-e29b-41d4-a716-446655440099",
+  "sync_job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_id": "770e8400-e29b-41d4-a716-446655440002",
   "collection_readable_id": "finance-data-ab123",
   "collection_name": "Finance Data",
   "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
   "source_type": "notion",
-  "status": "pending",
   "timestamp": "2025-01-15T14:00:00Z"
 }
 ```
@@ -33,29 +40,36 @@ Fired when the sync job starts processing.
 ```json
 {
   "event_type": "sync.running",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sync_id": "440e8400-e29b-41d4-a716-446655440099",
+  "sync_job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_id": "770e8400-e29b-41d4-a716-446655440002",
   "collection_readable_id": "finance-data-ab123",
   "collection_name": "Finance Data",
   "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
   "source_type": "notion",
-  "status": "running",
   "timestamp": "2025-01-15T14:00:05Z"
 }
 ```
 
 ### sync.completed
 
-Fired when the sync job finishes successfully.
+Fired when the sync job finishes successfully. Includes entity and chunk metrics.
 
 ```json
 {
   "event_type": "sync.completed",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sync_id": "440e8400-e29b-41d4-a716-446655440099",
+  "sync_job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_id": "770e8400-e29b-41d4-a716-446655440002",
   "collection_readable_id": "finance-data-ab123",
   "collection_name": "Finance Data",
   "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
   "source_type": "notion",
-  "status": "completed",
+  "entities_inserted": 42,
+  "entities_updated": 10,
+  "entities_deleted": 3,
+  "entities_skipped": 120,
+  "chunks_written": 215,
   "timestamp": "2025-01-15T14:05:00Z"
 }
 ```
@@ -67,14 +81,15 @@ Fired when the sync job encounters an error. Includes an `error` field with deta
 ```json
 {
   "event_type": "sync.failed",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sync_id": "440e8400-e29b-41d4-a716-446655440099",
+  "sync_job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_id": "770e8400-e29b-41d4-a716-446655440002",
   "collection_readable_id": "finance-data-ab123",
   "collection_name": "Finance Data",
   "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
   "source_type": "notion",
-  "status": "failed",
-  "timestamp": "2025-01-15T14:02:30Z",
-  "error": "Authentication token expired"
+  "error": "Authentication token expired",
+  "timestamp": "2025-01-15T14:02:30Z"
 }
 ```
 
@@ -85,31 +100,152 @@ Fired when the sync job is manually cancelled.
 ```json
 {
   "event_type": "sync.cancelled",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sync_id": "440e8400-e29b-41d4-a716-446655440099",
+  "sync_job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_id": "770e8400-e29b-41d4-a716-446655440002",
   "collection_readable_id": "finance-data-ab123",
   "collection_name": "Finance Data",
   "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
   "source_type": "notion",
-  "status": "cancelled",
   "timestamp": "2025-01-15T14:01:15Z"
 }
 ```
 
-## Payload Schema
-
-Every event payload follows this structure:
+### Sync Payload Schema
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `event_type` | string | The event type (e.g., `sync.completed`) |
-| `job_id` | UUID | Unique identifier for the sync job |
+| `sync_id` | UUID | Unique identifier for the sync definition |
+| `sync_job_id` | UUID | Unique identifier for this sync job run |
+| `collection_id` | UUID | Unique identifier for the collection |
 | `collection_readable_id` | string | Human-readable collection ID (e.g., `sales-data-ab123`) |
 | `collection_name` | string | Display name of the collection |
 | `source_connection_id` | UUID | Unique identifier for the source connection |
 | `source_type` | string | Short name of the source (e.g., `slack`, `notion`, `github`) |
-| `status` | string | Current job status: `pending`, `running`, `completed`, `failed`, `cancelled` |
+| `entities_inserted` | integer | Number of new entities inserted (only for `sync.completed`) |
+| `entities_updated` | integer | Number of entities updated (only for `sync.completed`) |
+| `entities_deleted` | integer | Number of entities deleted (only for `sync.completed`) |
+| `entities_skipped` | integer | Number of unchanged entities skipped (only for `sync.completed`) |
+| `chunks_written` | integer | Number of chunks written to destination (only for `sync.completed`) |
+| `error` | string | Error message (only for `sync.failed`) |
 | `timestamp` | ISO 8601 | When the event occurred |
-| `error` | string | Error message (only present for `sync.failed` events) |
+
+---
+
+## Source Connection Events
+
+### source_connection.created
+
+Fired when a new source connection record is created. The connection may or may not be authenticated yet (e.g., OAuth flow not completed).
+
+```json
+{
+  "event_type": "source_connection.created",
+  "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
+  "collection_readable_id": "finance-data-ab123",
+  "source_type": "notion",
+  "is_authenticated": false,
+  "timestamp": "2025-01-15T13:55:00Z"
+}
+```
+
+### source_connection.auth_completed
+
+Fired when the OAuth flow completes and the connection is now authenticated and ready to use.
+
+```json
+{
+  "event_type": "source_connection.auth_completed",
+  "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
+  "collection_readable_id": "finance-data-ab123",
+  "source_type": "notion",
+  "is_authenticated": true,
+  "timestamp": "2025-01-15T13:56:00Z"
+}
+```
+
+### source_connection.deleted
+
+Fired when a source connection and its associated data are removed.
+
+```json
+{
+  "event_type": "source_connection.deleted",
+  "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
+  "collection_readable_id": "finance-data-ab123",
+  "source_type": "notion",
+  "is_authenticated": false,
+  "timestamp": "2025-01-15T16:00:00Z"
+}
+```
+
+### Source Connection Payload Schema
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event_type` | string | The event type (e.g., `source_connection.created`) |
+| `source_connection_id` | UUID | Unique identifier for the source connection |
+| `collection_readable_id` | string | Human-readable ID of the collection this connection belongs to |
+| `source_type` | string | Short name of the source (e.g., `slack`, `notion`, `github`) |
+| `is_authenticated` | boolean | Whether the connection is currently authenticated |
+| `timestamp` | ISO 8601 | When the event occurred |
+
+---
+
+## Collection Events
+
+### collection.created
+
+Fired when a new collection is created.
+
+```json
+{
+  "event_type": "collection.created",
+  "collection_id": "770e8400-e29b-41d4-a716-446655440002",
+  "collection_name": "Finance Data",
+  "collection_readable_id": "finance-data-ab123",
+  "timestamp": "2025-01-15T13:50:00Z"
+}
+```
+
+### collection.updated
+
+Fired when collection properties are changed (name, configuration, etc.).
+
+```json
+{
+  "event_type": "collection.updated",
+  "collection_id": "770e8400-e29b-41d4-a716-446655440002",
+  "collection_name": "Finance Data (Updated)",
+  "collection_readable_id": "finance-data-ab123",
+  "timestamp": "2025-01-15T15:00:00Z"
+}
+```
+
+### collection.deleted
+
+Fired when a collection and all associated data are removed.
+
+```json
+{
+  "event_type": "collection.deleted",
+  "collection_id": "770e8400-e29b-41d4-a716-446655440002",
+  "collection_name": "Finance Data",
+  "collection_readable_id": "finance-data-ab123",
+  "timestamp": "2025-01-15T17:00:00Z"
+}
+```
+
+### Collection Payload Schema
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event_type` | string | The event type (e.g., `collection.created`) |
+| `collection_id` | UUID | Unique identifier for the collection |
+| `collection_name` | string | Display name of the collection |
+| `collection_readable_id` | string | Human-readable collection ID (e.g., `sales-data-ab123`) |
+| `timestamp` | ISO 8601 | When the event occurred |
 
 ## Delivery Format
 
@@ -134,10 +270,10 @@ Your endpoint should return a `2xx` status code to acknowledge receipt:
 
 | Response | Meaning |
 |----------|---------|
-| `200-299` | Success — message delivered |
-| `4xx` | Client error — will retry |
-| `5xx` | Server error — will retry |
-| Timeout (30s) | Delivery failed — will retry |
+| `200-299` | Success. Message delivered |
+| `4xx` | Client error, will retry |
+| `5xx` | Server error, will retry |
+| Timeout (30s) | Delivery failed, will retry |
 
 ## Webhook Subscription
 

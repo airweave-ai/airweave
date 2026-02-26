@@ -30,7 +30,6 @@ interface SourceSelectViewProps {
 const getSourceDescription = (shortName: string, fallbackDescription?: string): string => {
   const descriptions: Record<string, string> = {
     'notion': 'Connect to Notion to sync pages, databases, and workspace content. Includes notes, documents, project databases, property entities, and collaborative workspace data with full content aggregation.',
-    'postgresql': 'Connect to PostgreSQL to sync tables, views, schemas, and database records. Dynamically creates entities for each table based on schema structure with all relational data and metadata.',
     'jira': 'Connect to Jira to sync issues, projects, and team workflows. Includes tickets, project details, issue summaries, descriptions, status tracking, and project management information.',
     'hubspot': 'Connect to HubSpot to sync contacts, companies, deals, tickets, and CRM data. Includes sales pipeline information, marketing campaigns, customer relationship data, and business intelligence.',
     'google_calendar': 'Connect to Google Calendar to sync events, calendars, meetings, and scheduling data. Includes recurring events, attendees, calendar metadata, and scheduling information.',
@@ -40,7 +39,9 @@ const getSourceDescription = (shortName: string, fallbackDescription?: string): 
     'todoist': 'Connect to Todoist to sync projects, tasks, sections, comments, and productivity data. Includes task hierarchies, due dates, project management, and personal organization features.',
     'github': 'Connect to GitHub to sync repositories, repository contents, directories, and code files. Includes repository metadata, file contents, directory structures, and development information.',
     'stripe': 'Connect to Stripe to sync balance, transactions, charges, customers, events, invoices, payment intents, payment methods, payouts, refunds, and subscriptions.',
+    'freshdesk': 'Connect to Freshdesk to sync tickets, conversations, contacts, companies, and solution articles. Includes support ticket threads, customer and company data, and knowledge base content.',
     'dropbox': 'Connect to Dropbox to sync files, folders, sharing information, and cloud storage data. Includes file versions, collaboration features, storage metadata, and account information.',
+    'fireflies': 'Connect to Fireflies to sync meeting transcripts, summaries, and conversation content. Includes speaker attribution, action items, keywords, and searchable transcript text.',
     'asana': 'Connect to Asana to sync workspaces, projects, tasks, sections, comments, and file attachments. Includes project hierarchies, team assignments, progress tracking, and workflow management.',
     'outlook_calendar': 'Connect to Outlook Calendar to sync events, meetings, calendars, and scheduling data. Includes recurring appointments, attendees, calendar organization, and meeting details.',
     'outlook_mail': 'Connect to Outlook Mail to sync emails, folders, message data, and inbox organization. Includes email threads, attachments, mailbox structure, and message metadata.',

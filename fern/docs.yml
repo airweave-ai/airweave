@@ -29,6 +29,8 @@ navigation:
     path: docs/pages/search.mdx
   - page: MCP Server
     path: docs/pages/mcp-server.mdx
+  - page: Agent Skills
+    path: docs/pages/skills.mdx
   - section: Webhooks
     contents:
     - page: Overview
@@ -51,6 +53,8 @@ navigation:
       path: docs/pages/framework-integrations/google-antigravity.mdx
     - page: Pipedream
       path: docs/pages/framework-integrations/pipedream.mdx
+    - page: Sim
+      path: docs/pages/framework-integrations/sim.mdx
   - section: Authentication
     contents:
     - section: Auth Providers
@@ -87,8 +91,6 @@ navigation:
       path: docs/pages/connectors/ctti/main.mdx
     - page: Dropbox
       path: docs/pages/connectors/dropbox/main.mdx
-    - page: Excel
-      path: docs/pages/connectors/excel/main.mdx
     - page: Github
       path: docs/pages/connectors/github/main.mdx
     - page: Gitlab
@@ -123,8 +125,6 @@ navigation:
       path: docs/pages/connectors/outlook_mail/main.mdx
     - page: Pipedrive
       path: docs/pages/connectors/pipedrive/main.mdx
-    - page: Postgresql
-      path: docs/pages/connectors/postgresql/main.mdx
     - page: Salesforce
       path: docs/pages/connectors/salesforce/main.mdx
     - page: Sharepoint
@@ -159,7 +159,6 @@ navigation:
     - POST /collections/{readable_id}/search
     - POST /collections
     - PATCH /collections/{readable_id}
-    - POST /collections/{readable_id}/refresh_all
     - DELETE /collections/{readable_id}
   - section: Source Connections
     contents:

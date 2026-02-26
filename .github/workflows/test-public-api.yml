@@ -1,19 +1,49 @@
 name: Public API Test
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [main]
   push:
     branches: [main]
 
 jobs:
+  # ───────────────────────────────────────────────────────────────────
+  # Build: compile the backend Docker image once, share via artifact
+  # ───────────────────────────────────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Build test backend image
+        run: |
+          echo "Building backend image for testing..."
+          docker build -t test-backend:latest ./backend
+
+      - name: Export backend image
+        run: docker save test-backend:latest | gzip > /tmp/test-backend-image.tar.gz
+
+      - name: Upload backend image
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-backend-image
+          path: /tmp/test-backend-image.tar.gz
+          retention-days: 1
+
+  # ───────────────────────────────────────────────────────────────────
+  # Test: 5 parallel runners, each with its own Docker Compose stack
+  # ───────────────────────────────────────────────────────────────────
   test-public-api:
+    needs: build
     runs-on: ubuntu-latest
     environment: dev
     strategy:
       fail-fast: false
       matrix:
-        group: [0, 1]
+        group: [0, 1, 2, 3, 4]
 
     steps:
       - name: Verify prerequisites
@@ -39,13 +69,17 @@ jobs:
           cd backend
           pip install -r tests/e2e/requirements.txt
 
-      - name: Setup Docker layer caching
-        uses: actions/cache@v3
+      - name: Download backend image
+        uses: actions/download-artifact@v4
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-docker-${{ hashFiles('docker/docker-compose.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-docker-
+          name: test-backend-image
+          path: /tmp
+
+      - name: Load backend image
+        run: |
+          echo "Loading pre-built backend image..."
+          docker load < /tmp/test-backend-image.tar.gz
+          docker images test-backend
 
       - name: Pre-pull heavy Docker images
         run: |
@@ -53,7 +87,6 @@ jobs:
           echo "Note: text2vec-transformers disabled via docker-compose profile (backend uses OpenAI)"
           docker pull postgres:16 &
           docker pull redis:7-alpine &
-          docker pull qdrant/qdrant:latest &
           docker pull temporalio/auto-setup:1.24.2 &
           docker pull temporalio/ui:2.26.2 &
           docker pull vespaengine/vespa:8 &
@@ -61,11 +94,6 @@ jobs:
           docker pull alpine:3.19 &
           wait
           echo "All images pre-pulled successfully"
-
-      - name: Build test backend image locally
-        run: |
-          echo "Building backend image for testing..."
-          docker build -t test-backend:latest ./backend
 
       - name: Setup environment and start services
         env:
@@ -104,8 +132,13 @@ jobs:
           # Enable internal sources (stub, snapshot) for testing
           echo "ENABLE_INTERNAL_SOURCES=true" >> .env
 
-          # Set embedding dimensions (OpenAI text-embedding-3-small supports 1536)
+          # Disable webhook endpoint verification (tests use fake URLs)
+          echo "WEBHOOK_VERIFY_ENDPOINTS=false" >> .env
+
+          # Set embedding config (OpenAI text-embedding-3-small, 1536 dims)
+          echo "DENSE_EMBEDDER=openai_text_embedding_3_small" >> .env
           echo "EMBEDDING_DIMENSIONS=1536" >> .env
+          echo "SPARSE_EMBEDDER=fastembed_bm25" >> .env
 
           echo "Starting services using start.sh..."
           ./start.sh --noninteractive
@@ -208,11 +241,12 @@ jobs:
           cd backend
 
           # ── Dynamically discover and split test files ──
-          # Both matrix jobs see the same file list. We shuffle deterministically
+          # All matrix jobs see the same file list. We shuffle deterministically
           # using the commit SHA so each run gets a different (but reproducible)
-          # distribution, and each job picks its own half.
+          # distribution, and each job picks its own slice via round-robin.
           COMMIT_SHA="${GITHUB_SHA:-$(date +%Y%m%d)}"
           GROUP=${{ matrix.group }}
+          TOTAL_GROUPS=5
 
           # Collect all smoke test files (excluding rate-limit-only files)
           ALL_FILES=$(find tests/e2e/smoke -maxdepth 1 -name 'test_*.py' \
@@ -228,17 +262,13 @@ jobs:
           done | sort | awk '{print $2}')
 
           TOTAL=$(echo "$SHUFFLED" | wc -l)
-          HALF=$(( (TOTAL + 1) / 2 ))
 
-          if [ "$GROUP" = "0" ]; then
-            TEST_FILES=$(echo "$SHUFFLED" | head -n "$HALF" | tr '\n' ' ')
-          else
-            TEST_FILES=$(echo "$SHUFFLED" | tail -n +"$((HALF + 1))" | tr '\n' ' ')
-          fi
+          # Round-robin: file at position i goes to group (i % TOTAL_GROUPS)
+          TEST_FILES=$(echo "$SHUFFLED" | awk -v g="$GROUP" -v tg="$TOTAL_GROUPS" '(NR - 1) % tg == g {print}' | tr '\n' ' ')
 
           FILE_COUNT=$(echo "$TEST_FILES" | wc -w)
           echo "=========================================="
-          echo "Group $GROUP: running $FILE_COUNT / $TOTAL test files"
+          echo "Group $GROUP of $TOTAL_GROUPS: running $FILE_COUNT / $TOTAL test files"
           echo "=========================================="
           echo "$TEST_FILES" | tr ' ' '\n' | grep -v '^$'
           echo "=========================================="
@@ -344,21 +374,39 @@ jobs:
 
           echo ""
           echo "=========================================="
-          echo "FASTAPI SERVER LOGS (last 200 lines)"
+          echo "CONTAINER STATUS"
           echo "=========================================="
-          docker logs airweave-backend --tail 200 2>&1 || echo "Could not fetch backend logs"
+          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
           echo ""
           echo "=========================================="
-          echo "TEMPORAL WORKER LOGS (last 800 lines)"
+          echo "SVIX SERVER LOGS (last 400 lines)"
           echo "=========================================="
-          docker logs airweave-temporal-worker --tail 800 2>&1 || echo "Could not fetch worker logs"
+          docker logs airweave-svix --tail 400 2>&1 || echo "Could not fetch Svix logs"
 
           echo ""
           echo "=========================================="
-          echo "All running containers:"
+          echo "FASTAPI SERVER LOGS (last 1000 lines)"
           echo "=========================================="
-          docker ps
+          docker logs airweave-backend --tail 1000 2>&1 || echo "Could not fetch backend logs"
+
+          echo ""
+          echo "=========================================="
+          echo "TEMPORAL WORKER LOGS (last 2000 lines)"
+          echo "=========================================="
+          docker logs airweave-temporal-worker --tail 2000 2>&1 || echo "Could not fetch worker logs"
+
+          echo ""
+          echo "=========================================="
+          echo "ERROR / WARNING LINES (worker, last 200 lines)"
+          echo "=========================================="
+          docker logs airweave-temporal-worker 2>&1 | grep -iE "ERROR|WARNING|WARN|exception|traceback" | tail -200 || echo "No error/warning lines found"
+
+          echo ""
+          echo "=========================================="
+          echo "ERROR / WARNING LINES (backend, last 200 lines)"
+          echo "=========================================="
+          docker logs airweave-backend 2>&1 | grep -iE "ERROR|WARNING|WARN|exception|traceback" | tail -200 || echo "No error/warning lines found"
 
       - name: Cleanup Docker containers
         if: always()

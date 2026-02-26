@@ -45,19 +45,6 @@ services:
       timeout: 10s
       retries: 3
 
-  qdrant:
-    image: qdrant/qdrant:latest
-    command: bash -c "apt-get update && apt-get install -y curl && ./entrypoint.sh" # we need to install curl to check health
-    ports:
-      - "9333:6333"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:6333/healthz" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   svix:
     image: svix/svix-server
     ports:
@@ -67,7 +54,7 @@ services:
       WAIT_FOR: "true"
       SVIX_REDIS_DSN: "redis://redis:6379"
       SVIX_DB_DSN: "postgresql://airweave:airweave1234!@postgres:5432/svix"
-      SVIX_JWT_SECRET: "test_signing_secret"
+      SVIX_JWT_SECRET: "test_signing_secret_change_me!!!"
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,8 +76,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      qdrant:
-        condition: service_healthy
       svix:
         condition: service_healthy
 
@@ -98,8 +83,6 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://airweave:airweave1234!@postgres:5432/airweave
       - REDIS_HOST=redis
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
       - TESTING=true
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -113,11 +96,12 @@ services:
       - AUTH_ENABLED=false
       # Svix configuration
       - SVIX_URL=http://svix:8071
-      - SVIX_JWT_SECRET=test_signing_secret
+      - SVIX_JWT_SECRET=test_signing_secret_change_me!!!
       - SVIX_AUTH_TOKEN=
 
     ports:
       - "9001:8001"
+      - "9090:9090"
     volumes:
       - ../backend:/app
       - ../local_storage:/app/local_storage
@@ -130,4 +114,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  qdrant_data:

@@ -1,6 +1,6 @@
 ---
 title: Webhooks Overview
-description: Real-time notifications for sync lifecycle events via webhooks
+description: Real-time notifications for sync, source connection, and collection lifecycle events via webhooks
 edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/webhooks/overview.mdx
 slug: webhooks/overview
 ---
@@ -13,9 +13,21 @@ The Webhooks API is currently in beta. The API is stable but may receive enhance
 
 ## What are Webhooks?
 
-Webhooks are real-time notifications that Airweave sends when things happen in your organization. Instead of constantly polling the API to check if a sync completed, you register a webhook endpoint and Airweave pushes updates to you the moment they occur.
+Webhooks are real-time notifications that Airweave sends when things happen in your organization: syncs completing, source connections being created, collections being updated. Instead of constantly polling the API, you register a webhook endpoint and Airweave pushes updates to you the moment they occur.
 
-This is the foundation for building reactive integrations—trigger downstream workflows, update dashboards, send alerts, or sync state with external systems automatically.
+This is the foundation for building reactive integrations. Trigger downstream workflows, update dashboards, send alerts, or sync state with external systems automatically.
+
+<video
+  src="./create-webhook-splitscreen-demo.mp4"
+  controls
+  loop
+  autoplay
+  muted
+  playsinline
+  style={{ aspectRatio: '16 / 9', width: '100%' }}
+>
+  Your browser does not support the video tag.
+</video>
 
 ## Why Use Webhooks?
 
@@ -30,7 +42,9 @@ Webhooks are the preferred approach for production integrations where you need t
 
 ## Available Event Types
 
-All events are related to sync job lifecycle:
+Airweave publishes events across three lifecycle domains:
+
+### Sync Events
 
 | Event | Description | When it fires |
 |-------|-------------|---------------|
@@ -40,8 +54,24 @@ All events are related to sync job lifecycle:
 | `sync.failed` | Sync job failed | Job encountered an error |
 | `sync.cancelled` | Sync job cancelled | Job was manually cancelled |
 
+### Source Connection Events
+
+| Event | Description | When it fires |
+|-------|-------------|---------------|
+| `source_connection.created` | Connection record created | New source connection added (may or may not be authenticated) |
+| `source_connection.auth_completed` | OAuth flow completed | Connection is now authenticated and ready to use |
+| `source_connection.deleted` | Connection removed | Source connection and associated data deleted |
+
+### Collection Events
+
+| Event | Description | When it fires |
+|-------|-------------|---------------|
+| `collection.created` | New collection created | A new collection is set up |
+| `collection.updated` | Collection properties changed | Collection name or configuration modified |
+| `collection.deleted` | Collection removed | Collection and all associated data deleted |
+
 <Tip>
-Most integrations only need `sync.completed` and `sync.failed`. Subscribe to additional events if you need granular progress tracking.
+Most integrations only need `sync.completed` and `sync.failed`. Subscribe to source connection and collection events if you need to track infrastructure changes, for example, to audit when connections are added or removed, or to react when collections are created.
 </Tip>
 
 ## How It Works
@@ -53,12 +83,12 @@ Most integrations only need `sync.completed` and `sync.failed`. Subscribe to add
 └─────────────┘      └─────────────┘      └─────────────┘
 ```
 
-1. **Something happens** — A sync job completes, fails, or changes state
-2. **Airweave creates an event** — The event is recorded with full payload data
-3. **Svix delivers it** — Our webhook infrastructure (powered by [Svix](https://www.svix.com/)) sends an HTTP POST to your registered endpoints
-4. **You process it** — Your server receives the payload and takes action
+1. **Something happens.** A sync job completes, a source connection is created, or a collection is updated.
+2. **Airweave creates an event.** The event is recorded with full payload data.
+3. **Svix delivers it.** Our webhook infrastructure (powered by [Svix](https://www.svix.com/)) sends an HTTP POST to your registered endpoints.
+4. **You process it.** Your server receives the payload and takes action.
 
-Svix handles retries, signature verification, and delivery guarantees so you don't have to build that infrastructure yourself.
+Svix handles retries, delivery guarantees, and signs every outbound delivery. You verify signatures on your end using the signing secret (see the [Setup Guide](/webhooks/setup) for examples).
 
 ## Use Cases
 
@@ -68,15 +98,15 @@ Svix handles retries, signature verification, and delivery guarantees so you don
   </Card>
 
   <Card title="Send Alerts" icon="bell">
-    Notify your team via Slack, email, or PagerDuty when a sync fails.
+    Notify your team via Slack, email, or PagerDuty when a sync fails or a connection is removed.
   </Card>
 
-  <Card title="Update Dashboards" icon="chart-line">
-    Push real-time sync status to monitoring dashboards or admin panels.
+  <Card title="Track Infrastructure Changes" icon="sitemap">
+    Know the moment a source connection is added, authenticated, or deleted, or when collections change.
   </Card>
 
   <Card title="Audit & Logging" icon="scroll">
-    Record every sync event to your own logging system for compliance or debugging.
+    Record every lifecycle event to your own logging system for compliance or debugging.
   </Card>
 </CardGroup>
 
@@ -96,12 +126,18 @@ svix-signature: v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=
 
 {
   "event_type": "sync.completed",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sync_id": "440e8400-e29b-41d4-a716-446655440099",
+  "sync_job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_id": "770e8400-e29b-41d4-a716-446655440002",
   "collection_readable_id": "sales-data-ab123",
   "collection_name": "Sales Data",
   "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
   "source_type": "salesforce",
-  "status": "completed",
+  "entities_inserted": 42,
+  "entities_updated": 10,
+  "entities_deleted": 3,
+  "entities_skipped": 120,
+  "chunks_written": 215,
   "timestamp": "2025-01-15T14:30:00Z"
 }
 ```

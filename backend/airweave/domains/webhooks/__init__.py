@@ -1,17 +1,17 @@
-"""Webhooks domain - event publishing to external subscribers."""
+"""Webhooks domain - event publishing and subscription management."""
 
-from airweave.domains.webhooks.subscribers import SyncEventSubscriber
+from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.domains.webhooks.types import (
     EventType,
-    SyncEventPayload,
+    HealthStatus,
     WebhooksError,
-    event_type_from_status,
+    compute_health_status,
 )
 
 __all__ = [
     "EventType",
-    "SyncEventPayload",
-    "SyncEventSubscriber",
+    "HealthStatus",
+    "WebhookEventSubscriber",
     "WebhooksError",
-    "event_type_from_status",
+    "compute_health_status",
 ]

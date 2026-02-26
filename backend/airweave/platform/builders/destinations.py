@@ -1,7 +1,7 @@
 """Destinations context builder for sync operations.
 
 Handles destination creation with:
-- Native destinations (Qdrant, Vespa) using settings
+- Native destinations (Vespa) using settings
 - Custom destinations with credentials
 - Entity definition map loading
 """
@@ -15,15 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.core import credentials
-from airweave.core.constants.reserved_ids import (
-    NATIVE_QDRANT_UUID,
-    NATIVE_VESPA_UUID,
-    RESERVED_TABLE_ENTITY_ID,
-)
+from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
+from airweave.core.context import BaseContext
 from airweave.core.logging import ContextualLogger
-from airweave.db.init_db_native import init_db_with_entity_definitions
-from airweave.platform.contexts.destinations import DestinationsContext
-from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.locator import resource_locator
@@ -39,24 +33,23 @@ class DestinationsContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         collection: schemas.Collection,
-        infra: InfraContext,
+        ctx: BaseContext,
+        logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
-    ) -> DestinationsContext:
-        """Build complete destinations context.
+    ) -> tuple:
+        """Build destinations and entity map.
 
         Args:
             db: Database session
             sync: Sync configuration
             collection: Target collection
-            infra: Infrastructure context (provides ctx and logger)
+            ctx: Base context (provides org identity for CRUD)
+            logger: Contextual logger
             execution_config: Optional execution config for filtering
 
         Returns:
-            DestinationsContext with configured destinations and entity map.
+            Tuple of (destinations, entity_map).
         """
-        ctx = infra.ctx
-        logger = infra.logger
-
         # Build in parallel: destinations and entity map
         destinations, entity_map = await asyncio.gather(
             cls._create_destinations(
@@ -70,10 +63,7 @@ class DestinationsContextBuilder:
             cls._get_entity_definition_map(db=db),
         )
 
-        return DestinationsContext(
-            destinations=destinations,
-            entity_map=entity_map,
-        )
+        return destinations, entity_map
 
     @classmethod
     async def build_for_collection(
@@ -81,9 +71,10 @@ class DestinationsContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         collection: schemas.Collection,
-        infra: InfraContext,
-    ) -> DestinationsContext:
-        """Build destinations context for collection-level operations.
+        ctx: BaseContext,
+        logger: ContextualLogger,
+    ) -> tuple:
+        """Build destinations for collection-level operations.
 
         Simplified version without execution_config filtering.
 
@@ -91,16 +82,18 @@ class DestinationsContextBuilder:
             db: Database session
             sync: Sync configuration
             collection: Target collection
-            infra: Infrastructure context
+            ctx: Base context
+            logger: Contextual logger
 
         Returns:
-            DestinationsContext with all configured destinations.
+            Tuple of (destinations, entity_map).
         """
         return await cls.build(
             db=db,
             sync=sync,
             collection=collection,
-            infra=infra,
+            ctx=ctx,
+            logger=logger,
             execution_config=None,
         )
 
@@ -125,9 +118,7 @@ class DestinationsContextBuilder:
             List of destination instances ready for deletion operations.
         """
         # Map native UUIDs to their creator methods
-        # TODO: Add other flexible destination building here for future Vespa deployments
         native_creators = {
-            NATIVE_QDRANT_UUID: cls._create_native_qdrant,
             NATIVE_VESPA_UUID: cls._create_native_vespa,
         }
 
@@ -206,10 +197,6 @@ class DestinationsContextBuilder:
         logger: ContextualLogger,
     ) -> Optional[BaseDestination]:
         """Create a single destination instance."""
-        # Special case: Native Qdrant
-        if destination_connection_id == NATIVE_QDRANT_UUID:
-            return await cls._create_native_qdrant(db, collection, logger)
-
         # Special case: Native Vespa
         if destination_connection_id == NATIVE_VESPA_UUID:
             return await cls._create_native_vespa(db, collection, logger)
@@ -223,39 +210,6 @@ class DestinationsContextBuilder:
             ctx=ctx,
             logger=logger,
         )
-
-    @classmethod
-    async def _create_native_qdrant(
-        cls,
-        db: AsyncSession,
-        collection: schemas.Collection,
-        logger: ContextualLogger,
-    ) -> Optional[BaseDestination]:
-        """Create native Qdrant destination."""
-        logger.info("Using native Qdrant destination (settings-based)")
-        destination_model = await crud.destination.get_by_short_name(db, "qdrant")
-        if not destination_model:
-            logger.warning("Qdrant destination model not found")
-            return None
-
-        destination_schema = schemas.Destination.model_validate(destination_model)
-        destination_class = resource_locator.get_destination(destination_schema)
-
-        # Fail-fast: vector_size must be set
-        if collection.vector_size is None:
-            raise ValueError(f"Collection {collection.id} has no vector_size set.")
-
-        destination = await destination_class.create(
-            credentials=None,
-            config=None,
-            collection_id=collection.id,
-            organization_id=collection.organization_id,
-            vector_size=collection.vector_size,
-            logger=logger,
-        )
-
-        logger.info("Created native Qdrant destination")
-        return destination
 
     @classmethod
     async def _create_native_vespa(
@@ -351,15 +305,10 @@ class DestinationsContextBuilder:
     @classmethod
     async def _get_entity_definition_map(cls, db: AsyncSession) -> Dict[type[BaseEntity], UUID]:
         """Get entity definition map (entity class -> entity_definition_id)."""
-        # Ensure the reserved polymorphic entity definition exists (idempotent)
-        await init_db_with_entity_definitions(db)
-
         entity_definitions = await crud.entity_definition.get_all(db)
 
         entity_definition_map = {}
         for entity_definition in entity_definitions:
-            if entity_definition.id == RESERVED_TABLE_ENTITY_ID:
-                continue
             full_module_name = f"airweave.platform.entities.{entity_definition.module_name}"
             module = importlib.import_module(full_module_name)
             entity_class = getattr(module, entity_definition.class_name)
@@ -381,16 +330,15 @@ class DestinationsContextBuilder:
 
         Priority order:
         1. target_destinations (explicit whitelist) - highest priority
-        2. exclude_destinations + skip_qdrant/skip_vespa (combined exclusions)
+        2. exclude_destinations + skip_vespa (combined exclusions)
         """
         if not execution_config:
             return destination_ids
 
         # Priority 1: target_destinations (explicit whitelist overrides everything)
         if execution_config.destinations.target_destinations:
-            logger.info(
-                f"Using target_destinations from config: {execution_config.destinations.target_destinations}"
-            )
+            targets = execution_config.destinations.target_destinations
+            logger.info(f"Using target_destinations from config: {targets}")
             return execution_config.destinations.target_destinations
 
         # Priority 2: Build combined exclusion set from all exclusion flags
@@ -401,10 +349,6 @@ class DestinationsContextBuilder:
             exclusions.update(execution_config.destinations.exclude_destinations)
 
         # Add native vector DB exclusions from boolean flags
-        if execution_config.destinations.skip_qdrant:
-            exclusions.add(NATIVE_QDRANT_UUID)
-            logger.info("Excluding native Qdrant (skip_qdrant=True)")
-
         if execution_config.destinations.skip_vespa:
             exclusions.add(NATIVE_VESPA_UUID)
             logger.info("Excluding native Vespa (skip_vespa=True)")

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from airweave.models.sync_job import SyncJobStatus
 from airweave.platform.sync.config.base import SyncConfig
@@ -35,10 +35,7 @@ class SyncJobBase(BaseModel):
     sync_config: Optional[SyncConfig] = None
     sync_metadata: Optional[dict] = None
 
-    class Config:
-        """Pydantic config for SyncJobBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SyncJobCreate(SyncJobBase):
@@ -78,10 +75,7 @@ class SyncJobInDBBase(SyncJobBase):
         None, description="Name of the sync, populated from join query"
     )
 
-    class Config:
-        """Pydantic config for SyncJobInDBBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SyncJob(SyncJobInDBBase):

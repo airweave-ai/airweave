@@ -7,6 +7,7 @@ from airweave.platform.sync.processors.protocol import ContentProcessor
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
+    from airweave.platform.contexts.runtime import SyncRuntime
 
 
 class RawProcessor(ContentProcessor):
@@ -19,6 +20,7 @@ class RawProcessor(ContentProcessor):
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> List[BaseEntity]:
         """Pass entities through unchanged."""
         sync_context.logger.debug(f"Passing through {len(entities)} entities")

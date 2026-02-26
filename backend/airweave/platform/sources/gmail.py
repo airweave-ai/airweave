@@ -18,6 +18,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GmailCursor
+from airweave.platform.configs.config import GmailConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gmail import (
@@ -63,7 +64,7 @@ def _should_retry_gmail_request(exception: Exception) -> bool:
     oauth_type=OAuthType.WITH_REFRESH,
     requires_byoc=True,
     auth_config_class=None,
-    config_class="GmailConfig",
+    config_class=GmailConfig,
     labels=["Communication", "Email"],
     supports_continuous=True,
     rate_limit_level=RateLimitLevel.ORG,
