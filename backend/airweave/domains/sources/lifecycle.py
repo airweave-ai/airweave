@@ -422,8 +422,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     ) -> BaseAuthProvider:
         """Create an auth provider instance from readable_id.
 
-        Uses auth_provider_registry to resolve the provider class (replaces
-        crud.auth_provider.get_by_short_name + resource_locator.get_auth_provider).
+        Uses auth_provider_registry to resolve the provider class.
         """
         auth_provider_connection = await self._conn_repo.get_by_readable_id(
             db, readable_id=readable_auth_provider_id, ctx=ctx

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.core.logging import logger
+from airweave.platform.auth_providers import ALL_AUTH_PROVIDERS
 from airweave.platform.configs._base import ConfigValues
 from airweave.platform.locator import resource_locator
 
@@ -76,6 +77,16 @@ class AuthProviderService:
             supported.append(short_name)
 
         return supported
+
+    @staticmethod
+    def _get_auth_provider_class(auth_provider_short_name: str):
+        """Resolve auth provider class by short name from registered providers."""
+        for auth_provider_class in ALL_AUTH_PROVIDERS:
+            if auth_provider_class.short_name == auth_provider_short_name:
+                return auth_provider_class
+        raise HTTPException(
+            status_code=404, detail=f"Auth provider '{auth_provider_short_name}' not found"
+        )
 
     async def get_runtime_auth_fields_for_source(
         self, db: AsyncSession, source_short_name: str
@@ -148,14 +159,8 @@ class AuthProviderService:
         Raises:
             HTTPException: If config fields are invalid or required but not provided
         """
-        # Get the auth provider info
-        auth_provider = await crud.auth_provider.get_by_short_name(
-            db, short_name=auth_provider_short_name
-        )
-        if not auth_provider:
-            raise HTTPException(
-                status_code=404, detail=f"Auth provider '{auth_provider_short_name}' not found"
-            )
+        auth_provider_class = self._get_auth_provider_class(auth_provider_short_name)
+        auth_provider_name = getattr(auth_provider_class, "provider_name", auth_provider_short_name)
 
         BASE_ERROR_MESSAGE = (
             "For more information about auth provider configuration, "
@@ -163,33 +168,31 @@ class AuthProviderService:
         )
 
         # Check if auth provider has a config class defined - it MUST be defined
-        if not hasattr(auth_provider, "config_class") or auth_provider.config_class is None:
+        config_class_ref = getattr(auth_provider_class, "config_class", None)
+        if config_class_ref is None:
             raise HTTPException(
                 status_code=422,
-                detail=f"Auth provider {auth_provider.name} does not have a "
+                detail=f"Auth provider {auth_provider_name} does not have a "
                 "configuration class defined. " + BASE_ERROR_MESSAGE,
             )
 
         # Config class exists but no config fields provided - check if that's allowed
         if auth_provider_config is None:
             try:
-                # Get config class to check if it has required fields
-                config_class = resource_locator.get_config(auth_provider.config_class)
                 # Create an empty instance to see if it accepts no fields
-                config = config_class()
+                config = config_class_ref()
                 return config.model_dump()
             except Exception:
                 # If it fails with no fields, config is required
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Auth provider {auth_provider.name} requires config fields "
+                    detail=f"Auth provider {auth_provider_name} requires config fields "
                     "but none were provided. " + BASE_ERROR_MESSAGE,
                 ) from None
 
         # Both config class and config fields exist, validate them
         try:
-            config_class = resource_locator.get_config(auth_provider.config_class)
-            config = config_class(**auth_provider_config)
+            config = config_class_ref(**auth_provider_config)
             return config.model_dump()
         except Exception as e:
             auth_provider_logger.error(f"Failed to validate auth provider config fields: {e}")
@@ -205,7 +208,7 @@ class AuthProviderService:
                     error_messages.append(f"Field '{field}': {msg}")
 
                 error_detail = (
-                    f"Invalid configuration for {auth_provider.config_class}:\n"
+                    f"Invalid configuration for {config_class_ref.__name__}:\n"
                     + "\n".join(error_messages)
                 )
                 raise HTTPException(

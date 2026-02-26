@@ -15,6 +15,7 @@ from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
+from airweave.platform.auth_providers import ALL_AUTH_PROVIDERS
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
 from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
@@ -68,17 +69,21 @@ async def create_auth_provider_instance(
     # 3. Decrypt the credentials
     decrypted_credentials = credentials.decrypt(credential.encrypted_credentials)
 
-    # 4. Get the auth provider model
-    auth_provider_model = await crud.auth_provider.get_by_short_name(
-        db, short_name=auth_provider_connection.short_name
+    # 4. Resolve auth provider class from in-memory registration
+    auth_provider_class = next(
+        (
+            provider_cls
+            for provider_cls in ALL_AUTH_PROVIDERS
+            if provider_cls.short_name == auth_provider_connection.short_name
+        ),
+        None,
     )
-    if not auth_provider_model:
+    if auth_provider_class is None:
         raise NotFoundException(
-            f"Auth provider model not found for '{auth_provider_connection.short_name}'"
+            f"Auth provider class not found for '{auth_provider_connection.short_name}'"
         )
 
     # 5. Create the auth provider instance
-    auth_provider_class = resource_locator.get_auth_provider(auth_provider_model)
     auth_provider_instance = await auth_provider_class.create(
         credentials=decrypted_credentials,
         config=auth_provider_config,

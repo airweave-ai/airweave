@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
+from airweave.core.container import container as app_container
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
@@ -26,10 +27,6 @@ from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.cursor import SyncCursor
 from airweave.platform.sync.token_manager import TokenManager
-from airweave.platform.utils.source_factory_utils import (
-    get_auth_configuration,
-    process_credentials_for_source,
-)
 
 
 # [code blue] replace with SourceLifecycleService.create()
@@ -307,73 +304,18 @@ class SourceContextBuilder:
         sync_job: Optional[Any] = None,
     ) -> BaseSource:
         """Create and configure the source instance."""
-        # Get auth configuration (credentials + proxy setup if needed)
-        auth_config = await get_auth_configuration(
+        if app_container is None:
+            raise RuntimeError("Container not initialized")
+
+        source = await app_container.source_lifecycle_service.create(
             db=db,
-            source_connection_data=source_connection_data,
+            source_connection_id=source_connection_data["source_connection_id"],
             ctx=ctx,
-            logger=logger,
             access_token=access_token,
-        )
-
-        # Process credentials for source consumption
-        source_credentials = await process_credentials_for_source(
-            raw_credentials=auth_config["credentials"],
-            source_connection_data=source_connection_data,
-            logger=logger,
-        )
-
-        # Create the source instance with processed credentials
-        source = await source_connection_data["source_class"].create(
-            source_credentials, config=source_connection_data["config_fields"]
-        )
-
-        # Configure source with logger
-        if hasattr(source, "set_logger"):
-            source.set_logger(logger)
-
-        # Set HTTP client factory if proxy is needed
-        if auth_config.get("http_client_factory"):
-            source.set_http_client_factory(auth_config["http_client_factory"])
-
-        # Pass sync identifiers to the source for scoped helpers
-        try:
-            organization_id = ctx.organization.id
-            source_connection_id = source_connection_data.get("source_connection_id")
-            if hasattr(source, "set_sync_identifiers") and source_connection_id:
-                source.set_sync_identifiers(
-                    organization_id=str(organization_id),
-                    source_connection_id=str(source_connection_id),
-                )
-        except Exception:
-            # Non-fatal: older sources may ignore this
-            pass
-
-        # Setup token manager for OAuth sources (if applicable)
-        await cls._setup_token_manager(
-            db=db,
-            source=source,
-            source_connection_data=source_connection_data,
-            source_credentials=auth_config["credentials"],
-            ctx=ctx,
-            logger=logger,
-            access_token=access_token,
-            auth_config=auth_config,
         )
 
         # Setup file downloader for file-based sources
         cls._setup_file_downloader(source, sync_job, logger)
-
-        # Wrap HTTP client with AirweaveHttpClient for rate limiting
-        from airweave.platform.utils.source_factory_utils import wrap_source_with_airweave_client
-
-        wrap_source_with_airweave_client(
-            source=source,
-            source_short_name=source_connection_data["short_name"],
-            source_connection_id=source_connection_data["source_connection_id"],
-            ctx=ctx,
-            logger=logger,
-        )
 
         return source
 

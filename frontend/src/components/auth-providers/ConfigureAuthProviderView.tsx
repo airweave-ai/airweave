@@ -64,10 +64,8 @@ const generateReadableIdBase = (name: string): string => {
 
 export interface ConfigureAuthProviderViewProps extends DialogViewProps {
     viewData?: {
-        authProviderId?: string;
         authProviderName?: string;
         authProviderShortName?: string;
-        authProviderAuthType?: string;
         dialogId?: string;
         [key: string]: any;
     };
@@ -119,7 +117,7 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
     viewData = {},
     onError,
 }) => {
-    const { authProviderId, authProviderName, authProviderShortName, authProviderAuthType } = viewData;
+    const { authProviderName, authProviderShortName } = viewData;
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
     const navigate = useNavigate();
