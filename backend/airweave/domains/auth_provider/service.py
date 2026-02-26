@@ -17,6 +17,7 @@ from airweave.domains.auth_provider.protocols import (
     AuthProviderServiceProtocol,
 )
 from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
+from airweave.domains.auth_provider.types import AuthProviderMetadata
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.models.connection import Connection
@@ -49,6 +50,15 @@ class AuthProviderService(AuthProviderServiceProtocol):
         for connection in connections[skip : skip + limit]:
             result.append(await self._to_schema(db, connection, ctx))
         return result
+
+    async def list_metadata(self, *, ctx: ApiContext) -> list[AuthProviderMetadata]:
+        """List auth provider metadata from registry."""
+        return [self._entry_to_metadata(entry) for entry in self._registry.list_all()]
+
+    async def get_metadata(self, *, short_name: str, ctx: ApiContext) -> AuthProviderMetadata:
+        """Get auth provider metadata by short name from registry."""
+        entry = self._get_registry_entry(short_name)
+        return self._entry_to_metadata(entry)
 
     async def get_connection(
         self, db: AsyncSession, *, readable_id: str, ctx: ApiContext
@@ -344,4 +354,18 @@ class AuthProviderService(AuthProviderServiceProtocol):
             created_at=connection.created_at,
             modified_at=connection.modified_at,
             masked_client_id=masked_client_id,
+        )
+
+    @staticmethod
+    def _entry_to_metadata(entry: AuthProviderRegistryEntry) -> AuthProviderMetadata:
+        """Map a registry entry to public metadata."""
+        return AuthProviderMetadata(
+            short_name=entry.short_name,
+            name=entry.name,
+            description=entry.description,
+            class_name=entry.class_name,
+            auth_config_class=entry.auth_config_ref.__name__,
+            config_class=entry.config_ref.__name__,
+            auth_fields=entry.auth_config_fields,
+            config_fields=entry.config_fields,
         )

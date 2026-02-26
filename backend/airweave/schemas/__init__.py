@@ -6,7 +6,6 @@ from airweave.platform.auth.schemas import OAuth2AuthUrl, OAuth2TokenResponse
 from .admin import OrganizationMetrics
 from .api_key import APIKey, APIKeyCreate, APIKeyInDBBase, APIKeyUpdate
 from .auth_provider import (
-    AuthProvider,
     AuthProviderConnection,
     AuthProviderConnectionCreate,
     AuthProviderConnectionUpdate,

@@ -3,7 +3,7 @@
 from fastapi import HTTPException
 
 from airweave import schemas
-from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
+from airweave.domains.auth_provider.types import AuthProviderMetadata, AuthProviderRegistryEntry
 
 
 class FakeAuthProviderRegistry:
@@ -48,7 +48,22 @@ class FakeAuthProviderService:
 
     def __init__(self) -> None:
         self._connections: dict[str, schemas.AuthProviderConnection] = {}
+        self._metadata: dict[str, AuthProviderMetadata] = {}
         self._calls: list[tuple[object, ...]] = []
+
+    def seed_metadata(self, metadata: AuthProviderMetadata) -> None:
+        """Seed auth provider metadata by short_name."""
+        self._metadata[metadata.short_name] = metadata
+
+    async def list_metadata(self, *, ctx):
+        self._calls.append(("list_metadata", ctx))
+        return list(self._metadata.values())
+
+    async def get_metadata(self, *, short_name: str, ctx):
+        self._calls.append(("get_metadata", short_name, ctx))
+        if short_name not in self._metadata:
+            raise HTTPException(status_code=404, detail=f"Auth provider not found: {short_name}")
+        return self._metadata[short_name]
 
     def seed_connection(self, connection: schemas.AuthProviderConnection) -> None:
         """Seed a connection response object by readable_id."""

@@ -1,15 +1,13 @@
 """API tests for auth provider connection endpoints."""
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
 from airweave import schemas
-from airweave.api.v1.endpoints import auth_providers as auth_providers_endpoint
-from airweave.platform.configs._base import BaseConfig
+from airweave.domains.auth_provider.types import AuthProviderMetadata
+from airweave.platform.configs._base import Fields
 
 
 def _make_connection(readable_id: str = "composio-main") -> schemas.AuthProviderConnection:
@@ -86,39 +84,23 @@ class TestAuthProviderConnections:
         assert response.json()["readable_id"] == "composio-main"
 
 
-class _AuthConfig(BaseConfig):
-    api_key: str
-
-
-class _ProviderConfig(BaseConfig):
-    account_id: str = ""
-
-
 class TestAuthProviderMetadata:
     """Tests for /auth-providers/list and /auth-providers/detail/{short_name}."""
 
     @pytest.mark.asyncio
-    async def test_list_auth_providers(self, client, monkeypatch):
-        now = datetime.now(timezone.utc)
-        provider = SimpleNamespace(
-            id=uuid4(),
-            name="Composio",
-            short_name="composio",
-            class_name="ComposioAuthProvider",
-            auth_config_class="ComposioAuthConfig",
-            config_class="ComposioConfig",
-            description="Composio provider",
-            organization_id=None,
-            created_at=now,
-            modified_at=now,
+    async def test_list_auth_providers(self, client, fake_auth_provider_service):
+        fake_auth_provider_service.seed_metadata(
+            AuthProviderMetadata(
+                short_name="composio",
+                name="Composio",
+                description="Composio provider",
+                class_name="ComposioAuthProvider",
+                auth_config_class="ComposioAuthConfig",
+                config_class="ComposioConfig",
+                auth_fields=Fields(fields=[]),
+                config_fields=Fields(fields=[]),
+            )
         )
-        monkeypatch.setattr(
-            auth_providers_endpoint.crud.auth_provider,
-            "get_multi",
-            AsyncMock(return_value=[provider]),
-        )
-        monkeypatch.setattr(auth_providers_endpoint.resource_locator, "get_auth_config", lambda _: _AuthConfig)
-        monkeypatch.setattr(auth_providers_endpoint.resource_locator, "get_config", lambda _: _ProviderConfig)
 
         response = await client.get("/auth-providers/list")
         assert response.status_code == 200
@@ -129,113 +111,25 @@ class TestAuthProviderMetadata:
         assert data[0]["config_fields"] is not None
 
     @pytest.mark.asyncio
-    async def test_list_auth_providers_no_auth_config_class(self, client, monkeypatch):
-        now = datetime.now(timezone.utc)
-        provider = SimpleNamespace(
-            id=uuid4(),
-            name="NoConfig",
-            short_name="no_config",
-            class_name="NoConfigProvider",
-            auth_config_class="",
-            config_class="",
-            description="No config provider",
-            organization_id=None,
-            created_at=now,
-            modified_at=now,
-        )
-        monkeypatch.setattr(
-            auth_providers_endpoint.crud.auth_provider,
-            "get_multi",
-            AsyncMock(return_value=[provider]),
-        )
-
+    async def test_list_auth_providers_can_return_empty(self, client, fake_auth_provider_service):
         response = await client.get("/auth-providers/list")
         assert response.status_code == 200
-        assert response.json()[0]["short_name"] == "no_config"
+        assert response.json() == []
 
     @pytest.mark.asyncio
-    async def test_list_auth_providers_config_error_sets_none(self, client, monkeypatch):
-        now = datetime.now(timezone.utc)
-        provider = SimpleNamespace(
-            id=uuid4(),
-            name="Composio",
-            short_name="composio",
-            class_name="ComposioAuthProvider",
-            auth_config_class="ComposioAuthConfig",
-            config_class="ComposioConfig",
-            description="Composio provider",
-            organization_id=None,
-            created_at=now,
-            modified_at=now,
+    async def test_get_auth_provider_detail(self, client, fake_auth_provider_service):
+        fake_auth_provider_service.seed_metadata(
+            AuthProviderMetadata(
+                short_name="composio",
+                name="Composio",
+                description="Composio provider",
+                class_name="ComposioAuthProvider",
+                auth_config_class="ComposioAuthConfig",
+                config_class="ComposioConfig",
+                auth_fields=Fields(fields=[]),
+                config_fields=Fields(fields=[]),
+            )
         )
-        monkeypatch.setattr(
-            auth_providers_endpoint.crud.auth_provider,
-            "get_multi",
-            AsyncMock(return_value=[provider]),
-        )
-        monkeypatch.setattr(auth_providers_endpoint.resource_locator, "get_auth_config", lambda _: _AuthConfig)
-        monkeypatch.setattr(
-            auth_providers_endpoint.resource_locator,
-            "get_config",
-            lambda _: (_ for _ in ()).throw(RuntimeError("config failed")),
-        )
-
-        response = await client.get("/auth-providers/list")
-        assert response.status_code == 200
-        assert response.json()[0]["config_fields"] is None
-
-    @pytest.mark.asyncio
-    async def test_list_auth_providers_provider_processing_fallback(self, client, monkeypatch):
-        now = datetime.now(timezone.utc)
-        bad_provider = SimpleNamespace(
-            id=uuid4(),
-            name="Broken",
-            short_name="broken",
-            class_name="BrokenProvider",
-            auth_config_class="BrokenAuthConfig",
-            config_class="BrokenConfig",
-            description="broken",
-            organization_id=None,
-            created_at=now,
-            modified_at=now,
-        )
-        monkeypatch.setattr(
-            auth_providers_endpoint.crud.auth_provider,
-            "get_multi",
-            AsyncMock(return_value=[bad_provider]),
-        )
-        monkeypatch.setattr(
-            auth_providers_endpoint.resource_locator,
-            "get_auth_config",
-            lambda _: (_ for _ in ()).throw(RuntimeError("broken auth config")),
-        )
-
-        response = await client.get("/auth-providers/list")
-        assert response.status_code == 200
-        assert response.json()[0]["short_name"] == "broken"
-
-    @pytest.mark.asyncio
-    async def test_get_auth_provider_detail(self, client, monkeypatch):
-        now = datetime.now(timezone.utc)
-        provider = SimpleNamespace(
-            id=uuid4(),
-            name="Composio",
-            short_name="composio",
-            class_name="ComposioAuthProvider",
-            auth_config_class="ComposioAuthConfig",
-            config_class="ComposioConfig",
-            description="Composio provider",
-            organization_id=None,
-            created_at=now,
-            modified_at=now,
-        )
-        monkeypatch.setattr(
-            auth_providers_endpoint.crud.auth_provider,
-            "get_by_short_name",
-            AsyncMock(return_value=provider),
-        )
-        monkeypatch.setattr(auth_providers_endpoint.resource_locator, "get_auth_config", lambda _: _AuthConfig)
-        monkeypatch.setattr(auth_providers_endpoint.resource_locator, "get_config", lambda _: _ProviderConfig)
 
         response = await client.get("/auth-providers/detail/composio")
         assert response.status_code == 200
@@ -244,75 +138,7 @@ class TestAuthProviderMetadata:
         assert body["auth_fields"] is not None
 
     @pytest.mark.asyncio
-    async def test_get_auth_provider_detail_not_found(self, client, monkeypatch):
-        monkeypatch.setattr(
-            auth_providers_endpoint.crud.auth_provider,
-            "get_by_short_name",
-            AsyncMock(return_value=None),
-        )
-
+    async def test_get_auth_provider_detail_not_found(self, client):
         response = await client.get("/auth-providers/detail/missing")
         assert response.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_get_auth_provider_detail_config_error_sets_none(self, client, monkeypatch):
-        now = datetime.now(timezone.utc)
-        provider = SimpleNamespace(
-            id=uuid4(),
-            name="Composio",
-            short_name="composio",
-            class_name="ComposioAuthProvider",
-            auth_config_class="ComposioAuthConfig",
-            config_class="ComposioConfig",
-            description="Composio provider",
-            organization_id=None,
-            created_at=now,
-            modified_at=now,
-        )
-        monkeypatch.setattr(
-            auth_providers_endpoint.crud.auth_provider,
-            "get_by_short_name",
-            AsyncMock(return_value=provider),
-        )
-        monkeypatch.setattr(auth_providers_endpoint.resource_locator, "get_auth_config", lambda _: _AuthConfig)
-        monkeypatch.setattr(
-            auth_providers_endpoint.resource_locator,
-            "get_config",
-            lambda _: (_ for _ in ()).throw(RuntimeError("config failed")),
-        )
-
-        response = await client.get("/auth-providers/detail/composio")
-        assert response.status_code == 200
-        assert response.json()["config_fields"] is None
-
-    @pytest.mark.asyncio
-    async def test_get_auth_provider_detail_outer_exception_returns_raw_provider(
-        self, client, monkeypatch
-    ):
-        now = datetime.now(timezone.utc)
-        provider = SimpleNamespace(
-            id=uuid4(),
-            name="Composio",
-            short_name="composio",
-            class_name="ComposioAuthProvider",
-            auth_config_class="ComposioAuthConfig",
-            config_class="ComposioConfig",
-            description="Composio provider",
-            organization_id=None,
-            created_at=now,
-            modified_at=now,
-        )
-        monkeypatch.setattr(
-            auth_providers_endpoint.crud.auth_provider,
-            "get_by_short_name",
-            AsyncMock(return_value=provider),
-        )
-        monkeypatch.setattr(
-            auth_providers_endpoint.resource_locator,
-            "get_auth_config",
-            lambda _: (_ for _ in ()).throw(RuntimeError("auth config failed")),
-        )
-
-        response = await client.get("/auth-providers/detail/composio")
-        assert response.status_code == 200
-        assert response.json()["short_name"] == "composio"
+        assert response.json()["detail"] == "Auth provider not found: missing"

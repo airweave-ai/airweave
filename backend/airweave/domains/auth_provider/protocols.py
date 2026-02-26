@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.protocols.registry import RegistryProtocol
-from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
+from airweave.domains.auth_provider.types import AuthProviderMetadata, AuthProviderRegistryEntry
 
 
 class AuthProviderRegistryProtocol(RegistryProtocol[AuthProviderRegistryEntry], Protocol):
@@ -16,6 +16,14 @@ class AuthProviderRegistryProtocol(RegistryProtocol[AuthProviderRegistryEntry], 
 
 class AuthProviderServiceProtocol(Protocol):
     """Service for auth provider connection operations."""
+
+    async def list_metadata(self, *, ctx: ApiContext) -> list[AuthProviderMetadata]:
+        """List auth provider metadata from registry."""
+        ...
+
+    async def get_metadata(self, *, short_name: str, ctx: ApiContext) -> AuthProviderMetadata:
+        """Get auth provider metadata from registry."""
+        ...
 
     async def list_connections(
         self, db: AsyncSession, *, ctx: ApiContext, skip: int = 0, limit: int = 100

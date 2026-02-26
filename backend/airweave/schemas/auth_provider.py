@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from airweave.platform.configs._base import ConfigValues, Fields
+from airweave.platform.configs._base import ConfigValues
 
 
 class AuthProviderBase(BaseModel):
@@ -64,39 +64,6 @@ class AuthProviderUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=1000)
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class AuthProviderInDBBase(AuthProviderBase):
-    """Base schema for auth provider in DB."""
-
-    id: UUID
-    created_at: datetime
-    modified_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class AuthProvider(AuthProviderInDBBase):
-    """Schema for auth provider response."""
-
-    auth_fields: Optional[Fields] = Field(
-        None,
-        description=(
-            "Dynamically populated field definitions for authentication configuration. "
-            "These describe what credentials are required to connect to this auth provider."
-        ),
-    )
-
-    config_fields: Optional[Fields] = Field(
-        None,
-        description=(
-            "Dynamically populated field definitions for auth provider-specific configuration. "
-            "These describe what additional configuration is required when using this auth "
-            "provider to connect to a source (e.g., auth_config_id and account_id for Composio)."
-        ),
-    )
-
-    pass
 
 
 # Auth Provider Connection Schemas

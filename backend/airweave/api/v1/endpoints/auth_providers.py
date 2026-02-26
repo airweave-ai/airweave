@@ -5,64 +5,25 @@ from typing import List
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.domains.auth_provider.protocols import AuthProviderServiceProtocol
-from airweave.platform.configs._base import Fields
-from airweave.platform.locator import resource_locator
+from airweave.domains.auth_provider.types import AuthProviderMetadata
 
 router = TrailingSlashRouter()
 
 
-# TODO(code-blue): migrate /list and /detail/{short_name} to registry-only metadata schema.
-# Current response model includes DB fields (id/created_at/modified_at/organization_id).
-@router.get("/list", response_model=List[schemas.AuthProvider])
+@router.get("/list", response_model=List[AuthProviderMetadata])
 async def list_auth_providers(
     *,
-    db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    skip: int = 0,
-    limit: int = 100,
-) -> List[schemas.AuthProvider]:
+    auth_provider_service: AuthProviderServiceProtocol = Inject(AuthProviderServiceProtocol),
+) -> List[AuthProviderMetadata]:
     """Get all available auth providers."""
-    auth_providers = await crud.auth_provider.get_multi(db, skip=skip, limit=limit)
-    result_providers: list[schemas.AuthProvider] = []
-
-    for provider in auth_providers:
-        try:
-            provider_dict = {
-                key: getattr(provider, key) for key in provider.__dict__ if not key.startswith("_")
-            }
-
-            if not provider.auth_config_class:
-                ctx.logger.warning(f"Auth provider {provider.short_name} has no auth_config_class")
-                result_providers.append(provider)
-                continue
-
-            auth_config_class = resource_locator.get_auth_config(provider.auth_config_class)
-            provider_dict["auth_fields"] = Fields.from_config_class(auth_config_class)
-
-            if provider.config_class:
-                try:
-                    config_class = resource_locator.get_config(provider.config_class)
-                    provider_dict["config_fields"] = Fields.from_config_class(config_class)
-                except Exception as exc:
-                    ctx.logger.error(
-                        f"Error getting config fields for {provider.short_name}: {str(exc)}"
-                    )
-                    provider_dict["config_fields"] = None
-            else:
-                provider_dict["config_fields"] = None
-
-            result_providers.append(schemas.AuthProvider.model_validate(provider_dict))
-        except Exception as exc:
-            ctx.logger.error(f"Error processing auth provider {provider.short_name}: {str(exc)}")
-            result_providers.append(provider)
-
-    return result_providers
+    return await auth_provider_service.list_metadata(ctx=ctx)
 
 
 @router.get("/connections/", response_model=List[schemas.AuthProviderConnection])
@@ -90,49 +51,22 @@ async def get_auth_provider_connection(
     return await auth_provider_service.get_connection(db, readable_id=readable_id, ctx=ctx)
 
 
-@router.get("/detail/{short_name}", response_model=schemas.AuthProvider)
+@router.get("/detail/{short_name}", response_model=AuthProviderMetadata)
 async def get_auth_provider(
     *,
-    db: AsyncSession = Depends(deps.get_db),
     short_name: str,
     ctx: ApiContext = Depends(deps.get_context),
-) -> schemas.AuthProvider:
+    auth_provider_service: AuthProviderServiceProtocol = Inject(AuthProviderServiceProtocol),
+) -> AuthProviderMetadata:
     """Get details of a specific auth provider."""
-    auth_provider = await crud.auth_provider.get_by_short_name(db, short_name=short_name)
-    if not auth_provider:
+    try:
+        return await auth_provider_service.get_metadata(short_name=short_name, ctx=ctx)
+    except HTTPException:
+        raise
+    except KeyError as exc:
         raise HTTPException(
-            status_code=404,
-            detail=f"Auth provider not found: {short_name}",
-        )
-
-    if auth_provider.auth_config_class:
-        try:
-            auth_config_class = resource_locator.get_auth_config(auth_provider.auth_config_class)
-            auth_fields = Fields.from_config_class(auth_config_class)
-            provider_dict = {
-                **{
-                    key: getattr(auth_provider, key)
-                    for key in auth_provider.__dict__
-                    if not key.startswith("_")
-                },
-                "auth_fields": auth_fields,
-            }
-
-            if auth_provider.config_class:
-                try:
-                    config_class = resource_locator.get_config(auth_provider.config_class)
-                    provider_dict["config_fields"] = Fields.from_config_class(config_class)
-                except Exception as exc:
-                    ctx.logger.error(f"Error getting config fields for {short_name}: {str(exc)}")
-                    provider_dict["config_fields"] = None
-            else:
-                provider_dict["config_fields"] = None
-
-            return schemas.AuthProvider.model_validate(provider_dict)
-        except Exception as exc:
-            ctx.logger.error(f"Failed to get auth config for {short_name}: {str(exc)}")
-
-    return auth_provider
+            status_code=404, detail=f"Auth provider not found: {short_name}"
+        ) from exc
 
 
 @router.post("/", response_model=schemas.AuthProviderConnection)
