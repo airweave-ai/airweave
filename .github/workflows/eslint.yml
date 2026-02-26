@@ -5,13 +5,15 @@ on:
     branches: ["main"]
     paths:
       - "frontend/**"
+      - "connect/**"
   pull_request:
     branches: ["main"]
     paths:
       - "frontend/**"
+      - "connect/**"
 
 jobs:
-  eslint:
+  eslint-frontend:
     runs-on: ubuntu-latest
     defaults:
       run:

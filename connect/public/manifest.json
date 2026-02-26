@@ -1,0 +1,8 @@
+{
+  "short_name": "Airweave Connect",
+  "name": "Airweave Connect",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#0e7490",
+  "background_color": "#0f172a"
+}

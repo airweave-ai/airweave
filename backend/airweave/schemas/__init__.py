@@ -26,6 +26,12 @@ from .collection import (
     CollectionCreate,
     CollectionUpdate,
 )
+from .connect_session import (
+    ConnectSessionContext,
+    ConnectSessionCreate,
+    ConnectSessionMode,
+    ConnectSessionResponse,
+)
 from .connection import Connection, ConnectionCreate, ConnectionInDBBase, ConnectionUpdate
 from .destination import (
     Destination,

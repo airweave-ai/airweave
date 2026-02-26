@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Example</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+          sans-serif;
+        background-color: #f5f5f3;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 780px;
+      }
+
+      .logo {
+        width: 100px;
+        height: 100px;
+        margin-bottom: 80px;
+        border-radius: 12px;
+      }
+
+      .chat-input-container {
+        width: 100%;
+        background: white;
+        border-radius: 28px;
+        padding: 20px 24px;
+        box-shadow: 0 40px 40px rgba(0, 0, 0, 0.03);
+      }
+
+      .input-row {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        margin-bottom: 24px;
+      }
+
+      .chat-input {
+        flex: 1;
+        border: none;
+        outline: none;
+        font-size: 18px;
+        color: #333;
+        background: transparent;
+      }
+
+      .chat-input::placeholder {
+        color: #9ca3af;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .icon-btn {
+        width: 44px;
+        height: 44px;
+        border: 1px solid #e8e8e6;
+        border-radius: 12px;
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        overflow: hidden;
+      }
+
+      .icon-btn img {
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
+      }
+
+      .icon-btn.plus {
+        font-size: 22px;
+        color: #9ca3af;
+        font-weight: 300;
+      }
+
+      .apps-btn {
+        display: flex;
+        align-items: center;
+        padding: 0 12px 0 0;
+        border: 1px solid #e8e8e6;
+        border-radius: 12px;
+        background: white;
+        cursor: pointer;
+        font-size: 15px;
+        color: #1f2937;
+        font-weight: 400;
+        height: 44px;
+      }
+
+      .apps-btn .plus-icon {
+        width: 44px;
+        height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        color: #9ca3af;
+        font-weight: 300;
+      }
+
+      .action-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 15px;
+        color: #1f2937;
+        font-weight: 400;
+      }
+
+      .action-btn svg {
+        width: 18px;
+        height: 18px;
+        color: #4b5563;
+      }
+
+      .spacer {
+        flex: 1;
+      }
+
+      .mic-btn {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: #1a1a1a;
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .mic-btn svg {
+        width: 20px;
+        height: 20px;
+        color: white;
+      }
+
+      /* Modal styles */
+      .modal-overlay {
+        display: flex;
+        visibility: hidden;
+        opacity: 0;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(220, 220, 220, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        transition:
+          opacity 0.15s ease-out,
+          visibility 0.15s ease-out;
+      }
+
+      .modal-overlay.open {
+        visibility: visible;
+        opacity: 1;
+      }
+
+      .modal-content {
+        position: relative;
+        width: 90%;
+        max-width: 400px;
+        height: 80%;
+        max-height: 540px;
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        transform: scale(0.95) translateY(10px);
+        opacity: 0;
+        transition:
+          transform 0.15s ease-out,
+          opacity 0.15s ease-out;
+      }
+
+      .modal-overlay.open .modal-content {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+      }
+
+      .modal-close {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 20px;
+        color: #666;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        transition: background 0.2s;
+      }
+
+      .modal-close:hover {
+        background: rgba(0, 0, 0, 0.2);
+      }
+
+      #connectFrame {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+
+      .logo {
+        box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
+      }
+
+      /* Log toolbar styles */
+      .log-toolbar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+        z-index: 1001;
+      }
+
+      .log-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 16px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #f9fafb;
+      }
+
+      .log-header h3 {
+        font-size: 13px;
+        font-weight: 600;
+        color: #374151;
+        margin: 0;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .log-toggle {
+        font-size: 14px;
+        color: #6b7280;
+        width: 20px;
+        text-align: center;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .log-buttons {
+        display: flex;
+        gap: 6px;
+        flex: 1;
+      }
+
+      .state-btn {
+        padding: 4px 10px;
+        border: none;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      }
+
+      .state-btn:hover {
+        opacity: 0.85;
+      }
+
+      .state-btn.success {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .state-btn.loading {
+        background: #e5e7eb;
+        color: #374151;
+      }
+
+      .state-btn.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .state-btn.warning {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .state-btn.active {
+        outline: 2px solid #3b82f6;
+        outline-offset: 1px;
+      }
+
+      .theme-btn {
+        padding: 4px 10px;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: white;
+        color: #374151;
+      }
+
+      .theme-btn:hover {
+        background: #f3f4f6;
+      }
+
+      .theme-btn.active {
+        outline: 2px solid #3b82f6;
+        outline-offset: 1px;
+      }
+
+      .log-section {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .log-section-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #6b7280;
+        margin-right: 4px;
+      }
+
+      .log-divider {
+        width: 1px;
+        height: 20px;
+        background: #e5e7eb;
+        margin: 0 8px;
+      }
+
+      .log-content {
+        max-height: 80px;
+        overflow-y: auto;
+        padding: 6px 8px;
+        font-family: monospace;
+        font-size: 11px;
+      }
+
+      .log-content.collapsed {
+        display: none;
+      }
+
+      .log-entry {
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-bottom: 3px;
+      }
+
+      .log-entry:last-child {
+        margin-bottom: 0;
+      }
+
+      .log-entry.sent {
+        background: #e0f2fe;
+        color: #0369a1;
+      }
+
+      .log-entry.received {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .log-entry.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .log-entry.info {
+        background: #fef9c3;
+        color: #854d0e;
+      }
+
+      body {
+        padding-bottom: 140px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <img
+        src="https://avatars.githubusercontent.com/u/132372032?s=200&v=4"
+        alt="Logo"
+        class="logo"
+      />
+
+      <div class="chat-input-container">
+        <div class="input-row">
+          <input type="text" class="chat-input" placeholder="Ask anything..." />
+        </div>
+
+        <div class="toolbar">
+          <button class="apps-btn">
+            <span class="plus-icon">+</span>
+            Apps
+          </button>
+
+          <div class="spacer"></div>
+
+          <button class="mic-btn">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+              <path d="M19 10v2a7 7 0 01-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-content">
+        <button class="modal-close" id="modalClose">&times;</button>
+        <iframe id="connectFrame"></iframe>
+      </div>
+    </div>
+
+    <!-- Log Toolbar -->
+    <div class="log-toolbar">
+      <div class="log-header">
+        <h3 onclick="toggleLog()">Logs</h3>
+        <div class="log-buttons">
+          <div class="log-section">
+            <span class="log-section-label">State:</span>
+            <button
+              class="state-btn success active"
+              onclick="setResponseMode('auto')"
+              id="btn-auto"
+            >
+              Auto
+            </button>
+            <button
+              class="state-btn loading"
+              onclick="setResponseMode('loading')"
+              id="btn-loading"
+            >
+              Loading
+            </button>
+            <button
+              class="state-btn error"
+              onclick="setResponseMode('error-invalid')"
+              id="btn-error-invalid"
+            >
+              Invalid Token
+            </button>
+            <button
+              class="state-btn error"
+              onclick="setResponseMode('error-expired')"
+              id="btn-error-expired"
+            >
+              Expired Token
+            </button>
+            <button
+              class="state-btn warning"
+              onclick="setResponseMode('error-network')"
+              id="btn-error-network"
+            >
+              Network Error
+            </button>
+            <button
+              class="state-btn success"
+              onclick="toggleFolderSelection()"
+              id="btn-folder-selection"
+            >
+              Folder Select
+            </button>
+          </div>
+
+          <div class="log-divider"></div>
+
+          <div class="log-section">
+            <span class="log-section-label">Theme:</span>
+            <button
+              class="theme-btn active"
+              onclick="setThemePreset('mistral')"
+              id="theme-mistral"
+            >
+              Mistral
+            </button>
+            <button
+              class="theme-btn"
+              onclick="setThemePreset('firstquadrant')"
+              id="theme-firstquadrant"
+            >
+              FirstQuadrant
+            </button>
+            <button
+              class="theme-btn"
+              onclick="setThemePreset('samsung')"
+              id="theme-samsung"
+            >
+              Samsung
+            </button>
+            <button
+              class="theme-btn"
+              onclick="setThemePreset('coolblue')"
+              id="theme-coolblue"
+            >
+              Coolblue
+            </button>
+          </div>
+        </div>
+        <span class="log-toggle" id="logToggle" onclick="toggleLog()">−</span>
+      </div>
+      <div class="log-content" id="logContent">
+        <div class="log-entry info">Ready. Click "Apps" to start.</div>
+      </div>
+    </div>
+
+    <script>
+      // Configuration
+      const CONFIG = {
+        API_URL: "http://localhost:8001",
+        API_KEY: "test",
+        COLLECTION_ID: "test-16c0r8",
+        END_USER_ID: "anand",
+        SESSION_MODE: "all",
+        CONNECT_URL: "http://localhost:5173?theme=light",
+        PRIMARY_COLOR: "#FA500E",
+        LOGO_URL: "https://avatars.githubusercontent.com/u/132372032?s=200&v=4",
+      };
+
+      let sessionToken = null;
+      let responseMode = "auto";
+      let folderSelectionEnabled = false;
+      let currentThemePreset = "mistral";
+
+      // Theme presets with fonts, colors, and logos
+      const THEME_PRESETS = {
+        mistral: {
+          name: "Mistral",
+          logoUrl:
+            "https://avatars.githubusercontent.com/u/132372032?s=200&v=4",
+          colors: {
+            light: {
+              primary: "#FF7000",
+              background: "#FFFFFF",
+              surface: "#F8F8F8",
+            },
+          },
+          fonts: {
+            body: "Inter",
+            heading: "Inter",
+          },
+        },
+        firstquadrant: {
+          name: "FirstQuadrant",
+          mode: "dark",
+          logoUrl:
+            "https://avatars.githubusercontent.com/u/122780401?s=200&v=4",
+          colors: {
+            dark: {
+              primary: "#FFFFFF",
+              primaryForeground: "#000000",
+              background: "#09090B",
+              surface: "#18181B",
+            },
+          },
+          fonts: {
+            body: "Roboto Mono",
+            heading: "Roboto Mono",
+          },
+        },
+        samsung: {
+          name: "Samsung",
+          logoUrl: "https://avatars.githubusercontent.com/u/6210390?s=200&v=4",
+          colors: {
+            light: {
+              primary: "#1428A0",
+              background: "#FFFFFF",
+              surface: "#F5F5F5",
+            },
+          },
+          fonts: {
+            body: "Noto Sans KR",
+            heading: "Noto Sans KR",
+          },
+          labels: {
+            emptyStateHeading: "앱 연결하기",
+            emptyStateDescription: "데이터를 동기화하려면 앱을 연결하세요",
+            welcomeInfoVerify: "연결 전에 권한을 확인합니다",
+            welcomeInfoAccess: "언제든지 접근 권한을 취소할 수 있습니다",
+            buttonConnect: "연결",
+            sourcesListHeading: "앱 선택",
+            buttonBack: "뒤로",
+            poweredBy: "제공",
+          },
+        },
+        coolblue: {
+          name: "Coolblue",
+          logoUrl: "https://avatars.githubusercontent.com/u/29755319?s=200&v=4",
+          colors: {
+            light: {
+              primary: "#0090E3",
+              background: "#FFFFFF",
+              surface: "#F5F5F5",
+            },
+          },
+          fonts: {
+            body: "Open Sans",
+            heading: "Open Sans",
+          },
+          labels: {
+            emptyStateHeading: "Koppel je favoriete apps",
+            emptyStateDescription:
+              "Verbind je apps en wij zorgen dat alles soepel samenwerkt. Makkelijk toch?",
+            welcomeInfoVerify:
+              "We checken eerst even of alles goed staat ingesteld",
+            welcomeInfoAccess:
+              "Geen zorgen, je kunt de toegang altijd weer intrekken",
+            buttonConnect: "Koppelen",
+            sourcesListHeading: "Welke app wil je koppelen?",
+            buttonBack: "Terug",
+            poweredBy: "Mogelijk gemaakt door",
+          },
+        },
+      };
+
+      // Set theme preset
+      function setThemePreset(preset) {
+        currentThemePreset = preset;
+        document
+          .querySelectorAll(".theme-btn")
+          .forEach((btn) => btn.classList.remove("active"));
+        document.getElementById(`theme-${preset}`).classList.add("active");
+
+        const theme = THEME_PRESETS[preset];
+        const mode = theme.mode || "light";
+        log(`Theme preset set to: ${theme.name} (${mode})`, "info");
+
+        // Update mic button color (use darker shade in dark mode for better UX)
+        const micBtn = document.querySelector(".mic-btn");
+        if (micBtn) {
+          micBtn.style.backgroundColor =
+            mode === "dark" ? "#27272A" : theme.colors[mode].primary;
+        }
+
+        // Update main logo
+        const mainLogo = document.querySelector(".logo");
+        if (mainLogo) {
+          mainLogo.src = theme.logoUrl;
+        }
+
+        // Update page body background for dark/light mode
+        document.body.style.backgroundColor =
+          mode === "dark" ? "#09090B" : "#f5f5f3";
+
+        // Update chat input container for dark/light mode
+        const chatContainer = document.querySelector(".chat-input-container");
+        if (chatContainer) {
+          chatContainer.style.backgroundColor =
+            mode === "dark" ? "#18181B" : "white";
+          chatContainer.style.boxShadow =
+            mode === "dark"
+              ? "0 40px 40px rgba(0, 0, 0, 0.3)"
+              : "0 40px 40px rgba(0, 0, 0, 0.03)";
+        }
+
+        // Update chat input text color
+        const chatInput = document.querySelector(".chat-input");
+        if (chatInput) {
+          chatInput.style.color = mode === "dark" ? "#ffffff" : "#333";
+        }
+
+        // Update apps button for dark/light mode
+        const appsBtn = document.querySelector(".apps-btn");
+        if (appsBtn) {
+          appsBtn.style.backgroundColor = mode === "dark" ? "#27272A" : "white";
+          appsBtn.style.borderColor = mode === "dark" ? "#3f3f46" : "#e8e8e6";
+          appsBtn.style.color = mode === "dark" ? "#ffffff" : "#1f2937";
+        }
+
+        // Update plus icon color in apps button
+        const plusIcon = document.querySelector(".apps-btn .plus-icon");
+        if (plusIcon) {
+          plusIcon.style.color = mode === "dark" ? "#a1a1aa" : "#9ca3af";
+        }
+
+        // Update modal overlay background for dark/light mode
+        const modalOverlay = document.getElementById("modalOverlay");
+        if (modalOverlay) {
+          modalOverlay.style.background =
+            mode === "dark" ? "rgba(0, 0, 0, 0.5)" : "rgba(220, 220, 220, 0.5)";
+        }
+
+        // If modal is open, send SET_THEME to update live
+        const iframe = document.getElementById("connectFrame");
+        if (iframe && iframe.src) {
+          const themePayload = buildThemePayload();
+          iframe.contentWindow.postMessage(
+            { type: "SET_THEME", theme: themePayload },
+            "*",
+          );
+          log(`Sent: SET_THEME (${theme.name})`, "sent");
+        }
+      }
+
+      // Build theme payload from current preset
+      function buildThemePayload() {
+        const preset = THEME_PRESETS[currentThemePreset];
+        const mode = preset.mode || "light";
+        const payload = {
+          mode,
+          colors: preset.colors,
+          fonts: preset.fonts,
+          options: {
+            enableFolderSelection: folderSelectionEnabled,
+            logoUrl: preset.logoUrl,
+          },
+        };
+        // Include labels if preset has custom labels (e.g., for i18n)
+        if (preset.labels) {
+          payload.labels = preset.labels;
+        }
+        return payload;
+      }
+
+      // Response mode handling
+      function setResponseMode(mode) {
+        responseMode = mode;
+        // Update active button (except folder selection which is a toggle)
+        document
+          .querySelectorAll(".state-btn:not(#btn-folder-selection)")
+          .forEach((btn) => btn.classList.remove("active"));
+        document.getElementById(`btn-${mode}`).classList.add("active");
+        log(`Response mode set to: ${mode}`, "info");
+      }
+
+      // Toggle folder selection mode
+      function toggleFolderSelection() {
+        folderSelectionEnabled = !folderSelectionEnabled;
+        const btn = document.getElementById("btn-folder-selection");
+        if (folderSelectionEnabled) {
+          btn.classList.add("active");
+          log(
+            "Folder selection enabled - next connection will show folder picker",
+            "info",
+          );
+        } else {
+          btn.classList.remove("active");
+          log("Folder selection disabled", "info");
+        }
+      }
+
+      // Log functions
+      function log(message, type = "info") {
+        const logContent = document.getElementById("logContent");
+        const entry = document.createElement("div");
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logContent.appendChild(entry);
+        logContent.scrollTop = logContent.scrollHeight;
+      }
+
+      function toggleLog() {
+        const logContent = document.getElementById("logContent");
+        const logToggle = document.getElementById("logToggle");
+        logContent.classList.toggle("collapsed");
+        logToggle.textContent = logContent.classList.contains("collapsed")
+          ? "+"
+          : "−";
+      }
+
+      // Handle token request based on response mode
+      function handleTokenRequest(requestId) {
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow) return;
+
+        const theme = buildThemePayload();
+
+        switch (responseMode) {
+          case "auto":
+            if (sessionToken) {
+              iframe.contentWindow.postMessage(
+                {
+                  type: "TOKEN_RESPONSE",
+                  requestId,
+                  token: sessionToken,
+                  theme,
+                },
+                "*",
+              );
+              log(
+                `Sent: TOKEN_RESPONSE (token: ${sessionToken.substring(0, 20)}...)`,
+                "sent",
+              );
+            } else {
+              iframe.contentWindow.postMessage(
+                { type: "TOKEN_ERROR", requestId, error: "No token available" },
+                "*",
+              );
+              log("Sent: TOKEN_ERROR - No token available", "error");
+            }
+            break;
+
+          case "loading":
+            log("Not responding (testing loading state)...", "info");
+            // Don't respond - let it timeout
+            break;
+
+          case "error-invalid":
+            iframe.contentWindow.postMessage(
+              {
+                type: "TOKEN_RESPONSE",
+                requestId,
+                token: "invalid-token-format",
+                theme,
+              },
+              "*",
+            );
+            log("Sent: Invalid token format", "sent");
+            break;
+
+          case "error-expired":
+            const expiredPayload = btoa(
+              JSON.stringify({
+                sid: "expired-session-id",
+                exp: Date.now() - 10000,
+              }),
+            );
+            iframe.contentWindow.postMessage(
+              {
+                type: "TOKEN_RESPONSE",
+                requestId,
+                token: `${expiredPayload}.fakesignature`,
+                theme,
+              },
+              "*",
+            );
+            log("Sent: Expired token", "sent");
+            break;
+
+          case "error-network":
+            const networkPayload = btoa(
+              JSON.stringify({ sid: "network-error-test" }),
+            );
+            iframe.contentWindow.postMessage(
+              {
+                type: "TOKEN_RESPONSE",
+                requestId,
+                token: `${networkPayload}.fakesignature`,
+                theme,
+              },
+              "*",
+            );
+            log("Sent: Token that will cause network error", "sent");
+            break;
+        }
+      }
+
+      // Fetch session token from API
+      async function fetchSessionToken() {
+        log("Fetching session token...", "info");
+        const response = await fetch(`${CONFIG.API_URL}/connect/sessions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": CONFIG.API_KEY,
+          },
+          body: JSON.stringify({
+            readable_collection_id: CONFIG.COLLECTION_ID,
+            mode: CONFIG.SESSION_MODE,
+            end_user_id: CONFIG.END_USER_ID,
+          }),
+        });
+        const data = await response.json();
+        log(
+          `Session token received (session_id: ${data.session_id})`,
+          "received",
+        );
+        return data.session_token;
+      }
+
+      // Open modal and load iframe
+      async function openModal() {
+        try {
+          log("Opening Connect modal...", "info");
+          sessionToken = await fetchSessionToken();
+          const modal = document.getElementById("modalOverlay");
+          const iframe = document.getElementById("connectFrame");
+
+          modal.classList.add("open");
+          iframe.src = CONFIG.CONNECT_URL;
+          log("Connect iframe loaded", "sent");
+        } catch (error) {
+          console.error("Failed to fetch session token:", error);
+          log(`Failed to fetch session token: ${error.message}`, "error");
+          alert("Failed to connect. Please try again.");
+        }
+      }
+
+      // Close modal
+      function closeModal() {
+        const modal = document.getElementById("modalOverlay");
+        const iframe = document.getElementById("connectFrame");
+
+        modal.classList.remove("open");
+        iframe.src = "";
+        sessionToken = null;
+        folderSelectionEnabled = false;
+        document
+          .getElementById("btn-folder-selection")
+          .classList.remove("active");
+        log("Connect modal closed", "info");
+      }
+
+      // Handle messages from Connect iframe
+      window.addEventListener("message", (event) => {
+        const { data } = event;
+
+        if (!data || typeof data !== "object" || !data.type) {
+          return;
+        }
+
+        switch (data.type) {
+          case "CONNECT_READY":
+            log("Received: CONNECT_READY - iframe is ready", "received");
+            break;
+
+          case "REQUEST_TOKEN":
+            log(
+              `Received: REQUEST_TOKEN (requestId: ${data.requestId})`,
+              "received",
+            );
+            handleTokenRequest(data.requestId);
+            break;
+
+          case "STATUS_CHANGE":
+            log(
+              `Received: STATUS_CHANGE - ${JSON.stringify(data.status)}`,
+              "received",
+            );
+            break;
+
+          case "CONNECTION_CREATED":
+            log(
+              `Received: CONNECTION_CREATED (connectionId: ${data.connectionId})`,
+              "received",
+            );
+            break;
+
+          case "CLOSE":
+            log(`Received: CLOSE (reason: ${data.reason})`, "received");
+            closeModal();
+            break;
+        }
+      });
+
+      // Event listeners
+      document.querySelector(".apps-btn").addEventListener("click", openModal);
+      document
+        .getElementById("modalClose")
+        .addEventListener("click", closeModal);
+      document.getElementById("modalOverlay").addEventListener("click", (e) => {
+        if (e.target === e.currentTarget) {
+          closeModal();
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          closeModal();
+        }
+      });
+
+      // Initialize with default theme
+      const defaultTheme = THEME_PRESETS[currentThemePreset];
+      const defaultMode = defaultTheme.mode || "light";
+      document.querySelector(".mic-btn").style.backgroundColor =
+        defaultTheme.colors[defaultMode].primary;
+      document.querySelector(".logo").src = defaultTheme.logoUrl;
+    </script>
+  </body>
+</html>

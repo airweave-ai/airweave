@@ -1,0 +1,969 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Test Parent - Airweave Connect</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #1e293b;
+        color: white;
+        margin: 0;
+        padding: 20px;
+      }
+      h1 {
+        margin-bottom: 20px;
+      }
+      .controls {
+        background: #334155;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #475569;
+        border-radius: 4px;
+        background: #1e293b;
+        color: white;
+        font-family: monospace;
+        margin-bottom: 15px;
+      }
+      select {
+        cursor: pointer;
+      }
+      textarea {
+        height: 80px;
+        resize: vertical;
+      }
+      .color-input-group {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .color-input-group label {
+        width: 100px;
+        margin-bottom: 0;
+        font-size: 12px;
+      }
+      .color-input-group input[type="color"] {
+        width: 50px;
+        height: 30px;
+        padding: 2px;
+        cursor: pointer;
+        margin-bottom: 0;
+      }
+      .color-input-group input[type="text"] {
+        flex: 1;
+        margin-bottom: 0;
+      }
+      .theme-section {
+        background: #1e293b;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+      }
+      .theme-section h3 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #94a3b8;
+      }
+      .collapsible-header {
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .collapsible-content {
+        display: none;
+        margin-top: 10px;
+      }
+      .collapsible-content.open {
+        display: block;
+      }
+      button {
+        background: #06b6d4;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        margin-right: 10px;
+        margin-bottom: 10px;
+      }
+      button:hover {
+        background: #0891b2;
+      }
+      button:disabled {
+        background: #475569;
+        cursor: not-allowed;
+      }
+      button.secondary {
+        background: #475569;
+      }
+      button.secondary:hover {
+        background: #64748b;
+      }
+      button.danger {
+        background: #dc2626;
+      }
+      button.danger:hover {
+        background: #b91c1c;
+      }
+      button.warning {
+        background: #d97706;
+      }
+      button.warning:hover {
+        background: #b45309;
+      }
+      button.success {
+        background: #16a34a;
+      }
+      button.success:hover {
+        background: #15803d;
+      }
+      .button-group {
+        margin-top: 10px;
+        padding-top: 15px;
+        border-top: 1px solid #475569;
+      }
+      .button-group-label {
+        font-size: 12px;
+        color: #94a3b8;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .layout {
+        display: flex;
+        gap: 20px;
+      }
+      .left-panel {
+        flex: 1;
+      }
+      .right-panel {
+        width: 500px;
+      }
+      .iframe-container {
+        width: 100%;
+        height: 600px;
+        border: 2px solid #475569;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+      .log {
+        background: #0f172a;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .log-entry {
+        margin-bottom: 5px;
+        padding: 5px;
+        border-radius: 4px;
+      }
+      .log-entry.sent {
+        background: #1e3a5f;
+      }
+      .log-entry.received {
+        background: #1e3a1e;
+      }
+      .log-entry.error {
+        background: #5f1e1e;
+      }
+      .log-entry.info {
+        background: #3f3f1e;
+      }
+      .mode-indicator {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-left: 10px;
+      }
+      .mode-indicator.auto {
+        background: #059669;
+      }
+      .mode-indicator.manual {
+        background: #d97706;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Airweave Connect - Test Parent</h1>
+
+    <div class="layout">
+      <div class="left-panel">
+        <div class="controls">
+          <div class="theme-section">
+            <div class="collapsible-header" onclick="toggleSessionConfig()">
+              <h3 style="margin: 0">Fetch Session Token from API</h3>
+              <span id="sessionConfigArrow">+</span>
+            </div>
+            <div id="sessionConfig" class="collapsible-content">
+              <label for="apiUrl">API URL:</label>
+              <input
+                type="text"
+                id="apiUrl"
+                placeholder="http://localhost:8001"
+              />
+
+              <label for="apiKey">API Key (X-API-Key):</label>
+              <input
+                type="text"
+                id="apiKey"
+                placeholder="Enter your API key..."
+              />
+
+              <label for="collectionId">Collection ID:</label>
+              <input
+                type="text"
+                id="collectionId"
+                placeholder="e.g., test-16c0r8"
+              />
+
+              <label for="sessionMode">Session Mode:</label>
+              <select id="sessionMode">
+                <option value="all">all - Full access</option>
+                <option value="connect">connect - Add connections only</option>
+                <option value="manage">manage - View/delete only</option>
+                <option value="reauth">reauth - Re-authenticate only</option>
+              </select>
+
+              <label for="endUserId">End User ID (optional):</label>
+              <input type="text" id="endUserId" placeholder="e.g., user-123" />
+
+              <button onclick="fetchSessionToken()" id="fetchTokenBtn">
+                Fetch Session Token
+              </button>
+              <span
+                id="fetchStatus"
+                style="margin-left: 10px; font-size: 12px"
+              ></span>
+            </div>
+          </div>
+
+          <label for="token">Session Token:</label>
+          <textarea
+            id="token"
+            placeholder="Paste your session token here, or use 'Fetch Session Token from API' above..."
+          ></textarea>
+
+          <div class="theme-section">
+            <h3>Theme Settings</h3>
+            <label for="themeMode">Theme Mode:</label>
+            <select id="themeMode">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="system">System</option>
+            </select>
+
+            <div class="collapsible-header" onclick="toggleCustomColors()">
+              <span>Custom Colors (optional)</span>
+              <span id="customColorsArrow">+</span>
+            </div>
+            <div id="customColors" class="collapsible-content">
+              <div class="color-input-group">
+                <label>Background</label>
+                <input type="color" id="colorBg" value="#0f172a" />
+                <input type="text" id="colorBgText" placeholder="#0f172a" />
+              </div>
+              <div class="color-input-group">
+                <label>Surface</label>
+                <input type="color" id="colorSurface" value="#1e293b" />
+                <input
+                  type="text"
+                  id="colorSurfaceText"
+                  placeholder="#1e293b"
+                />
+              </div>
+              <div class="color-input-group">
+                <label>Primary</label>
+                <input type="color" id="colorPrimary" value="#06b6d4" />
+                <input
+                  type="text"
+                  id="colorPrimaryText"
+                  placeholder="#06b6d4"
+                />
+              </div>
+              <div class="color-input-group">
+                <label>Text</label>
+                <input type="color" id="colorText" value="#ffffff" />
+                <input type="text" id="colorTextVal" placeholder="#ffffff" />
+              </div>
+              <div class="color-input-group">
+                <label>Text Muted</label>
+                <input type="color" id="colorTextMuted" value="#9ca3af" />
+                <input
+                  type="text"
+                  id="colorTextMutedVal"
+                  placeholder="#9ca3af"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <button id="openConnect" onclick="openConnect()">
+              Open Connect
+            </button>
+            <button
+              id="closeConnect"
+              onclick="closeConnect()"
+              disabled
+              class="secondary"
+            >
+              Close
+            </button>
+            <span
+              id="modeIndicator"
+              class="mode-indicator auto"
+              style="display: none"
+              >AUTO</span
+            >
+          </div>
+
+          <div class="button-group">
+            <div class="button-group-label">Test Different States</div>
+
+            <button onclick="openCreateConnection()">Create connection</button>
+            <button onclick="openWithState('success')" class="success">
+              Show Success State
+            </button>
+            <button onclick="openWithState('loading')" class="secondary">
+              Show Loading (no response)
+            </button>
+            <button onclick="openWithState('error-invalid')" class="danger">
+              Show Invalid Token Error
+            </button>
+            <button onclick="openWithState('error-expired')" class="danger">
+              Show Expired Token Error
+            </button>
+            <button onclick="openWithState('error-network')" class="warning">
+              Show Network Error
+            </button>
+            <button onclick="openWithFolderSelection()" class="success">
+              Test Folder Selection
+            </button>
+            <button onclick="openWithWelcomeScreen()" class="success">
+              Test Welcome Screen
+            </button>
+          </div>
+
+          <div class="button-group">
+            <div class="button-group-label">
+              Manual Token Control (when iframe is open)
+            </div>
+
+            <button
+              onclick="sendTokenManually()"
+              class="secondary"
+              id="sendTokenBtn"
+              disabled
+            >
+              Send Token Now
+            </button>
+            <button
+              onclick="sendErrorManually()"
+              class="danger"
+              id="sendErrorBtn"
+              disabled
+            >
+              Send Error Response
+            </button>
+          </div>
+        </div>
+
+        <div class="log" id="log">
+          <div class="log-entry info">
+            Ready. Open Connect to start testing.
+          </div>
+        </div>
+      </div>
+
+      <div class="right-panel">
+        <div class="iframe-container" id="iframeContainer">
+          <iframe id="connectFrame"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /**
+       * Test Harness Configuration
+       * Update these values to match your .env file:
+       *   VITE_API_URL, TEST_API_KEY, TEST_COLLECTION_ID, TEST_END_USER_ID, TEST_SESSION_MODE
+       */
+      const CONFIG = {
+        API_URL: "http://localhost:8001", // VITE_API_URL
+        API_KEY: "test", // TEST_API_KEY
+        COLLECTION_ID: "test-16c0r8", // TEST_COLLECTION_ID
+        END_USER_ID: "anand", // TEST_END_USER_ID
+        SESSION_MODE: "all", // TEST_SESSION_MODE
+      };
+
+      let sessionToken = "";
+      let responseMode = "auto"; // 'auto', 'loading', 'error-invalid', 'error-expired', 'error-network', 'manual'
+      let pendingRequestId = null;
+      let hasProvidedToken = false; // Track if we've already sent a token (for retry detection)
+      let folderSelectionEnabled = false; // Track if folder selection mode is enabled
+      let logoUrl = ""; // Logo URL for empty state
+
+      // Initialize form fields from CONFIG on page load
+      async function initializeConfig() {
+        document.getElementById("apiUrl").value = CONFIG.API_URL;
+        document.getElementById("apiKey").value = CONFIG.API_KEY;
+        document.getElementById("collectionId").value = CONFIG.COLLECTION_ID;
+        document.getElementById("endUserId").value = CONFIG.END_USER_ID;
+        document.getElementById("sessionMode").value = CONFIG.SESSION_MODE;
+
+        // Auto-fetch token and open Connect if required config is present
+        if (CONFIG.API_URL && CONFIG.API_KEY && CONFIG.COLLECTION_ID) {
+          log("Config detected, auto-fetching session token...", "info");
+          await fetchSessionToken();
+
+          // If token was fetched successfully, auto-open Connect
+          const token = document.getElementById("token").value.trim();
+          if (token) {
+            log("Token fetched, auto-opening Connect...", "info");
+            openConnect();
+          }
+        }
+      }
+      document.addEventListener("DOMContentLoaded", initializeConfig);
+
+      // Toggle session config section
+      function toggleSessionConfig() {
+        const content = document.getElementById("sessionConfig");
+        const arrow = document.getElementById("sessionConfigArrow");
+        content.classList.toggle("open");
+        arrow.textContent = content.classList.contains("open") ? "-" : "+";
+      }
+
+      // Fetch session token from backend API
+      async function fetchSessionToken() {
+        const apiUrl = document.getElementById("apiUrl").value.trim();
+        const apiKey = document.getElementById("apiKey").value.trim();
+        const collectionId = document
+          .getElementById("collectionId")
+          .value.trim();
+        const mode = document.getElementById("sessionMode").value;
+        const endUserId = document.getElementById("endUserId").value.trim();
+        const statusEl = document.getElementById("fetchStatus");
+        const fetchBtn = document.getElementById("fetchTokenBtn");
+
+        // Validation
+        if (!apiUrl) {
+          statusEl.textContent = "API URL is required";
+          statusEl.style.color = "#ef4444";
+          return;
+        }
+        if (!apiKey) {
+          statusEl.textContent = "API Key is required";
+          statusEl.style.color = "#ef4444";
+          return;
+        }
+        if (!collectionId) {
+          statusEl.textContent = "Collection ID is required";
+          statusEl.style.color = "#ef4444";
+          return;
+        }
+
+        // Build request body
+        const requestBody = {
+          readable_collection_id: collectionId,
+          mode: mode,
+        };
+        if (endUserId) {
+          requestBody.end_user_id = endUserId;
+        }
+
+        // Update UI
+        fetchBtn.disabled = true;
+        statusEl.textContent = "Fetching...";
+        statusEl.style.color = "#94a3b8";
+        log(
+          `Fetching session token from ${apiUrl}/connect/sessions...`,
+          "info",
+        );
+
+        try {
+          const response = await fetch(`${apiUrl}/connect/sessions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": apiKey,
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData.detail ||
+                `HTTP ${response.status}: ${response.statusText}`,
+            );
+          }
+
+          const data = await response.json();
+
+          // Populate the token textarea
+          document.getElementById("token").value = data.session_token;
+
+          // Show success
+          const expiresAt = new Date(data.expires_at);
+          statusEl.textContent = `Token fetched! Expires at ${expiresAt.toLocaleTimeString()}`;
+          statusEl.style.color = "#22c55e";
+          log(
+            `Session token fetched successfully (session_id: ${data.session_id}, expires: ${expiresAt.toLocaleTimeString()})`,
+            "received",
+          );
+        } catch (error) {
+          statusEl.textContent = `Error: ${error.message}`;
+          statusEl.style.color = "#ef4444";
+          log(`Failed to fetch session token: ${error.message}`, "error");
+        } finally {
+          fetchBtn.disabled = false;
+        }
+      }
+
+      // Toggle custom colors section
+      function toggleCustomColors() {
+        const content = document.getElementById("customColors");
+        const arrow = document.getElementById("customColorsArrow");
+        content.classList.toggle("open");
+        arrow.textContent = content.classList.contains("open") ? "-" : "+";
+      }
+
+      // Sync color picker with text input
+      document.querySelectorAll(".color-input-group").forEach((group) => {
+        const colorInput = group.querySelector('input[type="color"]');
+        const textInput = group.querySelector('input[type="text"]');
+        if (colorInput && textInput) {
+          colorInput.addEventListener("input", () => {
+            textInput.value = colorInput.value;
+          });
+          textInput.addEventListener("input", () => {
+            if (/^#[0-9A-Fa-f]{6}$/.test(textInput.value)) {
+              colorInput.value = textInput.value;
+            }
+          });
+        }
+      });
+
+      // Build theme object from UI
+      function buildTheme() {
+        const mode = document.getElementById("themeMode").value;
+        const options = {
+          enableFolderSelection: folderSelectionEnabled,
+          logoUrl: logoUrl,
+        };
+        const theme = {
+          mode,
+          options,
+        };
+
+        // Check if custom colors are set
+        const customColorsOpen = document
+          .getElementById("customColors")
+          .classList.contains("open");
+        if (customColorsOpen) {
+          const bgText = document.getElementById("colorBgText").value;
+          const surfaceText = document.getElementById("colorSurfaceText").value;
+          const primaryText = document.getElementById("colorPrimaryText").value;
+          const textVal = document.getElementById("colorTextVal").value;
+          const textMutedVal =
+            document.getElementById("colorTextMutedVal").value;
+
+          const colors = {};
+          if (bgText) colors.background = bgText;
+          if (surfaceText) colors.surface = surfaceText;
+          if (primaryText) colors.primary = primaryText;
+          if (textVal) colors.text = textVal;
+          if (textMutedVal) colors.textMuted = textMutedVal;
+
+          if (Object.keys(colors).length > 0) {
+            // Apply custom colors to the current mode
+            theme.colors = {
+              [mode === "system" ? "dark" : mode]: colors,
+            };
+          }
+        }
+
+        return theme;
+      }
+
+      // Send theme update to iframe in real-time
+      function sendThemeUpdate() {
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow || !iframe.src) return;
+
+        const theme = buildTheme();
+        iframe.contentWindow.postMessage({ type: "SET_THEME", theme }, "*");
+        log(`Sent theme update: ${theme.mode}`, "sent");
+      }
+
+      // Listen for theme changes and send updates in real-time
+      document
+        .getElementById("themeMode")
+        .addEventListener("change", sendThemeUpdate);
+
+      // Also send theme updates when custom colors change
+      document.querySelectorAll(".color-input-group input").forEach((input) => {
+        input.addEventListener("input", () => {
+          // Debounce color updates
+          clearTimeout(input._debounceTimer);
+          input._debounceTimer = setTimeout(sendThemeUpdate, 100);
+        });
+      });
+
+      function log(message, type = "info") {
+        const logEl = document.getElementById("log");
+        const entry = document.createElement("div");
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logEl.appendChild(entry);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function updateModeIndicator() {
+        const indicator = document.getElementById("modeIndicator");
+        if (responseMode === "auto") {
+          indicator.textContent = "AUTO";
+          indicator.className = "mode-indicator auto";
+        } else {
+          indicator.textContent = responseMode.toUpperCase();
+          indicator.className = "mode-indicator manual";
+        }
+      }
+
+      // Handle messages from Connect iframe
+      window.addEventListener("message", (event) => {
+        const { data } = event;
+
+        if (!data || typeof data !== "object" || !data.type) {
+          return;
+        }
+
+        log(`Received: ${data.type}`, "received");
+
+        switch (data.type) {
+          case "CONNECT_READY":
+            log("Connect iframe is ready!", "received");
+            // Send theme immediately so loading screen has correct colors
+            sendThemeUpdate();
+            break;
+
+          case "REQUEST_TOKEN":
+            log(`Token requested (requestId: ${data.requestId})`, "received");
+            pendingRequestId = data.requestId;
+
+            handleTokenRequest(data.requestId);
+            break;
+
+          case "STATUS_CHANGE":
+            log(`Status: ${JSON.stringify(data.status)}`, "received");
+            break;
+
+          case "CONNECTION_CREATED":
+            log(`Connection created: ${data.connectionId}`, "received");
+            break;
+
+          case "CLOSE":
+            log(`Close requested: ${data.reason}`, "received");
+            closeConnect();
+            break;
+        }
+      });
+
+      async function handleTokenRequest(requestId) {
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow) return;
+
+        const theme = buildTheme();
+
+        switch (responseMode) {
+          case "auto":
+          case "success":
+            // If we've already provided a token and iframe is asking again, it likely expired
+            // Fetch a fresh token from the API
+            if (hasProvidedToken) {
+              log(
+                "Token retry detected - fetching fresh token from API...",
+                "info",
+              );
+              await fetchSessionToken();
+              sessionToken = document.getElementById("token").value.trim();
+            }
+
+            // Send token immediately if we have one
+            if (sessionToken) {
+              const response = {
+                type: "TOKEN_RESPONSE",
+                requestId: requestId,
+                token: sessionToken,
+                theme: theme,
+              };
+              iframe.contentWindow.postMessage(response, "*");
+              hasProvidedToken = true;
+              log(
+                `Sent token: ${sessionToken.substring(0, 30)}... (theme: ${theme.mode})`,
+                "sent",
+              );
+            } else {
+              // No token provided, send error
+              const response = {
+                type: "TOKEN_ERROR",
+                requestId: requestId,
+                error: "No token provided",
+              };
+              iframe.contentWindow.postMessage(response, "*");
+              log("Sent error: No token provided", "sent");
+            }
+            break;
+
+          case "loading":
+            log("Not responding (testing loading state)...", "info");
+            // Don't respond - let it timeout
+            break;
+
+          case "error-invalid":
+            // Send a malformed token that will fail validation
+            const invalidResponse = {
+              type: "TOKEN_RESPONSE",
+              requestId: requestId,
+              token: "invalid-token-format",
+              theme: theme,
+            };
+            iframe.contentWindow.postMessage(invalidResponse, "*");
+            log("Sent invalid token format", "sent");
+            break;
+
+          case "error-expired":
+            // Send a token that looks valid but will fail API validation
+            // This is a fake expired token (base64 encoded JSON with expired timestamp)
+            const expiredPayload = btoa(
+              JSON.stringify({
+                sid: "expired-session-id",
+                exp: Date.now() - 10000,
+              }),
+            );
+            const expiredResponse = {
+              type: "TOKEN_RESPONSE",
+              requestId: requestId,
+              token: `${expiredPayload}.fakesignature`,
+              theme: theme,
+            };
+            iframe.contentWindow.postMessage(expiredResponse, "*");
+            log("Sent expired token", "sent");
+            break;
+
+          case "error-network":
+            // Send a valid-looking token but the API will fail
+            const networkPayload = btoa(
+              JSON.stringify({ sid: "network-error-test" }),
+            );
+            const networkResponse = {
+              type: "TOKEN_RESPONSE",
+              requestId: requestId,
+              token: `${networkPayload}.fakesignature`,
+              theme: theme,
+            };
+            iframe.contentWindow.postMessage(networkResponse, "*");
+            log("Sent token (will cause network error)", "sent");
+            break;
+
+          case "manual":
+            log("Waiting for manual token send...", "info");
+            document.getElementById("sendTokenBtn").disabled = false;
+            document.getElementById("sendErrorBtn").disabled = false;
+            break;
+        }
+      }
+
+      function sendTokenManually() {
+        if (!pendingRequestId) {
+          log("No pending request!", "error");
+          return;
+        }
+
+        const token = document.getElementById("token").value.trim();
+        if (!token) {
+          log("Please enter a token first!", "error");
+          return;
+        }
+
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow) return;
+
+        const theme = buildTheme();
+        const response = {
+          type: "TOKEN_RESPONSE",
+          requestId: pendingRequestId,
+          token: token,
+          theme: theme,
+        };
+        iframe.contentWindow.postMessage(response, "*");
+        log(
+          `Manually sent token: ${token.substring(0, 30)}... (theme: ${theme.mode})`,
+          "sent",
+        );
+
+        pendingRequestId = null;
+        document.getElementById("sendTokenBtn").disabled = true;
+        document.getElementById("sendErrorBtn").disabled = true;
+      }
+
+      function sendErrorManually() {
+        if (!pendingRequestId) {
+          log("No pending request!", "error");
+          return;
+        }
+
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow) return;
+
+        const response = {
+          type: "TOKEN_ERROR",
+          requestId: pendingRequestId,
+          error: "Manual error response",
+        };
+        iframe.contentWindow.postMessage(response, "*");
+        log("Manually sent error response", "sent");
+
+        pendingRequestId = null;
+        document.getElementById("sendTokenBtn").disabled = true;
+        document.getElementById("sendErrorBtn").disabled = true;
+      }
+
+      function openConnect() {
+        sessionToken = document.getElementById("token").value.trim();
+        responseMode = "auto";
+        startConnect();
+      }
+
+      function openCreateConnection() {
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow || !iframe.src) {
+          log("Please open Connect first!", "error");
+          return;
+        }
+        iframe.contentWindow.postMessage(
+          { type: "NAVIGATE", view: "sources" },
+          "*",
+        );
+        log("Sent navigation to sources view", "sent");
+      }
+
+      function openWithState(mode) {
+        sessionToken = document.getElementById("token").value.trim();
+        responseMode = mode;
+
+        if (mode === "success") {
+          if (!sessionToken) {
+            log("Please enter a valid token to test success state!", "error");
+            return;
+          }
+          log("Testing success state with provided token", "info");
+        }
+
+        if (mode === "manual") {
+          log(
+            'Manual mode: token will be sent when you click "Send Token Now"',
+            "info",
+          );
+        }
+
+        startConnect();
+      }
+
+      function openWithFolderSelection() {
+        sessionToken = document.getElementById("token").value.trim();
+        if (!sessionToken) {
+          log("Please enter a valid token first!", "error");
+          return;
+        }
+
+        folderSelectionEnabled = true;
+        responseMode = "auto";
+        log("Opening Connect with folder selection enabled...", "info");
+        startConnect();
+      }
+
+      function openWithWelcomeScreen() {
+        sessionToken = document.getElementById("token").value.trim();
+        if (!sessionToken) {
+          log("Please enter a valid token first!", "error");
+          return;
+        }
+
+        // Set a sample logo URL for testing the welcome screen
+        logoUrl = "https://avatars.githubusercontent.com/u/9919?s=200&v=4";
+        responseMode = "auto";
+        log("Opening Connect with custom logo...", "info");
+        startConnect();
+      }
+
+      function startConnect() {
+        log(`Opening Connect (mode: ${responseMode})...`, "sent");
+
+        const iframe = document.getElementById("connectFrame");
+
+        // Reset iframe
+        iframe.src = "";
+        setTimeout(() => {
+          iframe.src = "http://localhost:5173";
+        }, 100);
+
+        document.getElementById("openConnect").disabled = true;
+        document.getElementById("closeConnect").disabled = false;
+        document.getElementById("modeIndicator").style.display = "inline-block";
+        updateModeIndicator();
+      }
+
+      function closeConnect() {
+        document.getElementById("connectFrame").src = "";
+        document.getElementById("openConnect").disabled = false;
+        document.getElementById("closeConnect").disabled = true;
+        document.getElementById("modeIndicator").style.display = "none";
+        document.getElementById("sendTokenBtn").disabled = true;
+        document.getElementById("sendErrorBtn").disabled = true;
+        sessionToken = "";
+        pendingRequestId = null;
+        responseMode = "auto";
+        hasProvidedToken = false;
+        folderSelectionEnabled = false;
+        logoUrl = "";
+
+        log("Connect closed", "sent");
+      }
+    </script>
+  </body>
+</html>

@@ -22,8 +22,9 @@ api/
 ```
 
 ### Endpoint Categories
-- **Public API (SDK)**: `/sources/`, `/collections/`, `/source-connections/`,
+- **Public API (SDK)**: `/sources/`, `/collections/`, `/source-connections/`
 - **Internal Frontend**: `/users/`, `/organizations/`, `/api-keys/`, `/sync/`, `/dag/`, `/entities/`, `/destinations/`
+- **Connect Frontend API**: `/connect/` - Short-lived session tokens for embedded frontend integration flows (Plaid-style Connect modal)
 
 ### Key Endpoints
 
@@ -94,6 +95,12 @@ CRUD operations accept `BaseContext` (the parent type), so `ApiContext` works ev
 - Local development with `AUTH_ENABLED=false`
 - Uses `FIRST_SUPERUSER` as default user
 - Full access to all organizations
+
+#### Connect Session Authentication
+- Header: `Authorization: Bearer <session_token>` (10-minute TTL)
+- Created via `POST /connect/sessions` with API key auth
+- Scope: Single collection + optional integration restrictions
+- Modes: `all`, `connect`, `manage`, `reauth` - control permitted operations
 
 ### 4. Middleware Stack (middleware.py)
 
