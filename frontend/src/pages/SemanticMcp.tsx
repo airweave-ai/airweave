@@ -13,6 +13,7 @@ import { getAppIconUrl } from '@/lib/utils/icons';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { statusConfig } from '@/components/ui/StatusBadge';
+import { safeLogAuthValues, safeLogDialogState, safeLogSensitiveValue } from '@/lib/auth-utils';
 import SimplifiedSourceConnectionDetailView from '@/components/collection/SimplifiedSourceConnectionDetailView';
 import { QueryToolAndLiveDoc } from '@/components/collection/SimplifiedQueryToolAndLiveDoc';
 
@@ -416,7 +417,7 @@ const SemanticMcp = () => {
     };
 
     const handleDialogClose = () => {
-        console.log('❌ [SemanticMcp] Dialog closing. Final authValues:', authValues);
+        safeLogAuthValues(authValues, '❌ [SemanticMcp] Dialog closing.');
         console.log('❌ [SemanticMcp] Dialog closing. Final configValues:', configValues);
         setIsDialogOpen(false);
         // Delay clearing to avoid showing fallback text during close animation
@@ -501,7 +502,7 @@ const SemanticMcp = () => {
     ): Promise<boolean> => {
         try {
             console.log(`🔄 Starting OAuth2 authentication for ${detailedSource.name}`);
-            console.log(`📦 Auth values:`, authValues);
+            safeLogAuthValues(authValues, '📦 [SemanticMcp OAuth2]');
             console.log(`⚙️ Config values:`, configValues);
 
             // Prepare the dialog state to save
@@ -517,7 +518,7 @@ const SemanticMcp = () => {
                 source: 'semantic-mcp'  // This identifies that we came from SemanticMcp
             };
 
-            console.log(`📊 FULL DIALOG STATE FOR OAUTH:`, JSON.stringify(dialogState, null, 2));
+            safeLogDialogState(dialogState, '📊 [SemanticMcp OAuth2]');
 
             // Save state to sessionStorage (persists only for this tab, cleared on tab close)
             sessionStorage.setItem('oauth_dialog_state', JSON.stringify(dialogState));
@@ -527,7 +528,7 @@ const SemanticMcp = () => {
 
             // If client_id is present in auth values, add it as a query parameter
             if (authValues && authValues.client_id) {
-                console.log(`🔑 Using provided client_id: ${authValues.client_id}`);
+                safeLogSensitiveValue(authValues.client_id, 'client_id', '🔑 [SemanticMcp OAuth2]');
                 url += `?client_id=${encodeURIComponent(authValues.client_id)}`;
             }
 
@@ -592,7 +593,7 @@ const SemanticMcp = () => {
 
     const handleConnect = async () => {
         console.log('🔗 [SemanticMcp] Connect button clicked');
-        console.log('🔗 [SemanticMcp] Final authValues:', authValues);
+        safeLogAuthValues(authValues, '🔗 [SemanticMcp]');
         console.log('🔗 [SemanticMcp] Final configValues:', configValues);
 
         if (!selectedSource || !detailedSource) {

@@ -21,6 +21,7 @@ import { useSearchParams } from "react-router-dom";
 import { apiClient } from "@/lib/api";
 import { CONNECTION_ERROR_STORAGE_KEY } from "@/lib/error-utils";
 import { useAuth } from "@/lib/auth-context";
+import { safeLogDialogState } from "@/lib/auth-utils";
 
 /** ------------------------------------------------------------------
  * Helpers to decode/parse `state` from the OAuth redirect
@@ -179,7 +180,7 @@ async function handleSemanticMcpOAuthCallback(
       isAuthenticated: true,
     };
 
-    console.log("📊 UPDATED STATE WITH CREDENTIALS:", JSON.stringify(updatedState, null, 2));
+    safeLogDialogState(updatedState, '📊 [AuthCallback SemanticMcp]');
     sessionStorage.setItem("oauth_dialog_state", JSON.stringify(updatedState));
 
     // Redirect back to SemanticMcp with restore flag
@@ -269,8 +270,8 @@ async function handleOriginalOAuthCallback(
       throw new Error("Missing short_name in state and no saved fallback");
     }
 
-    console.log("📋 Retrieved saved state:", savedState);
-    console.log("📊 FULL SAVED STATE IN AUTH CALLBACK:", JSON.stringify(savedState, null, 2));
+    console.log("📋 Retrieved saved state");
+    safeLogDialogState(savedState, '📊 [AuthCallback Original]');
 
     // Exchange code for credentials using the shared function
     const credential = await exchangeCodeForCredentials(code, shortName, savedState);
@@ -281,7 +282,7 @@ async function handleOriginalOAuthCallback(
       credentialId: credential.id,
       isAuthenticated: true,
     };
-    console.log("📊 UPDATED STATE WITH CREDENTIALS:", JSON.stringify(updatedState, null, 2));
+    safeLogDialogState(updatedState, '📊 [AuthCallback Original] Updated');
     sessionStorage.setItem("oauth_dialog_state", JSON.stringify(updatedState));
 
     // Redirect back to original page with flag to restore dialog
