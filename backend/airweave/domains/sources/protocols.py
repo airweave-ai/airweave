@@ -26,6 +26,14 @@ class SourceServiceProtocol(Protocol):
         ...
 
 
+class SourceMetadataServiceProtocol(Protocol):
+    """Protocol for source metadata services."""
+
+    def get_source_metadata(self, short_name: str) -> SourceRegistryEntry:
+        """Get source metadata by short name."""
+        ...
+
+
 class SourceRegistryProtocol(RegistryProtocol[SourceRegistryEntry], Protocol):
     """Source registry protocol."""
 
