@@ -1,0 +1,53 @@
+# PowerPoint connector test configuration
+name: "PowerPoint Connector Test"
+description: "End-to-end test of PowerPoint connector sync functionality with incremental deletion testing"
+
+connector:
+  name: "powerpoint_test"
+  type: "powerpoint"
+  auth_mode: composio
+  composio_config:
+    # Use same Microsoft Graph / OneDrive scopes as Word:
+    # - Files.ReadWrite.All (for monke: create/update/delete test presentations)
+    # - User.Read, offline_access
+    # Production syncs only need Files.Read.All
+    account_id: ca_gVWCWpNlF9in
+    auth_config_id: ac_qwZe7KS8pdYT
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+    post_create_sleep_seconds: 15
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+
+entity_count: 3
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+collection:
+  name_template: "monke-{connector_type}-test-{timestamp}"
+  description: "Test collection for {connector_type} connector"
+
+verification:
+  score_threshold: 0.1
+  max_retries: 3
+  retry_delay_seconds: 5

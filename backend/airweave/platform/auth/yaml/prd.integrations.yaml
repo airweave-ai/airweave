@@ -401,6 +401,20 @@ integrations:
       response_type: "code"
       response_mode: "query"
 
+  powerpoint:
+    oauth_type: "with_rotating_refresh"
+    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    grant_type: "authorization_code"
+    client_id: "cfd357e8-7ee7-4786-bfff-34caa7272c41"
+    client_secret: "APMST~62ee4b8a504eee45b16ed7a4fb85f46a~t1bdMkV5I4laOH"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All"
+    additional_frontend_params:
+      response_type: "code"
+      response_mode: "query"
+
   zoho_crm:
     oauth_type: "with_refresh"
     url: "https://accounts.zoho.com/oauth/v2/auth"
