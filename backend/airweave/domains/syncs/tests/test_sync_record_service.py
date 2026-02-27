@@ -186,6 +186,88 @@ RESOLVE_DEST_CASES = [
 
 
 @pytest.mark.asyncio
+async def test_create_sync_flushes_sync_and_sync_job_and_refreshes_sync_job_before_validation():
+    sync_repo = AsyncMock()
+    sync_job_repo = AsyncMock()
+    connection_repo = AsyncMock()
+    svc = SyncRecordService(
+        sync_repo=sync_repo,
+        sync_job_repo=sync_job_repo,
+        connection_repo=connection_repo,
+    )
+
+    sync_schema = MagicMock(id=SYNC_ID)
+    sync_repo.create = AsyncMock(return_value=sync_schema)
+    created_job = MagicMock()
+    sync_job_repo.create = AsyncMock(return_value=created_job)
+
+    uow = MagicMock()
+    uow.session = AsyncMock()
+    uow.session.flush = AsyncMock()
+    uow.session.refresh = AsyncMock()
+    ctx = _mock_ctx()
+
+    with patch("airweave.domains.syncs.sync_record_service.schemas") as mock_schemas:
+        validated_job_schema = MagicMock()
+        mock_schemas.SyncJob.model_validate.return_value = validated_job_schema
+        mock_schemas.SyncJobCreate = MagicMock()
+
+        sync, sync_job = await svc.create_sync(
+            AsyncMock(),
+            name="Test Sync",
+            source_connection_id=uuid4(),
+            destination_connection_ids=[NATIVE_VESPA_UUID],
+            cron_schedule=None,
+            run_immediately=True,
+            ctx=ctx,
+            uow=uow,
+        )
+
+        assert sync is sync_schema
+        assert sync_job is validated_job_schema
+        assert uow.session.flush.await_count == 2
+        uow.session.refresh.assert_awaited_once_with(created_job)
+
+
+@pytest.mark.asyncio
+async def test_create_sync_flushes_sync_even_without_immediate_job():
+    sync_repo = AsyncMock()
+    sync_job_repo = AsyncMock()
+    connection_repo = AsyncMock()
+    svc = SyncRecordService(
+        sync_repo=sync_repo,
+        sync_job_repo=sync_job_repo,
+        connection_repo=connection_repo,
+    )
+
+    sync_schema = MagicMock(id=SYNC_ID)
+    sync_repo.create = AsyncMock(return_value=sync_schema)
+
+    uow = MagicMock()
+    uow.session = AsyncMock()
+    uow.session.flush = AsyncMock()
+    uow.session.refresh = AsyncMock()
+    ctx = _mock_ctx()
+
+    sync, sync_job = await svc.create_sync(
+        AsyncMock(),
+        name="Test Sync",
+        source_connection_id=uuid4(),
+        destination_connection_ids=[NATIVE_VESPA_UUID],
+        cron_schedule="0 * * * *",
+        run_immediately=False,
+        ctx=ctx,
+        uow=uow,
+    )
+
+    assert sync is sync_schema
+    assert sync_job is None
+    uow.session.flush.assert_awaited_once()
+    uow.session.refresh.assert_not_awaited()
+    sync_job_repo.create.assert_not_called()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("case", RESOLVE_DEST_CASES, ids=lambda c: c.name)
 async def test_resolve_destination_ids(case: ResolveDestCase):
     sync_repo = AsyncMock()

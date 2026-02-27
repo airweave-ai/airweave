@@ -1,14 +1,17 @@
 """Fake integration credential repository for testing."""
 
 from typing import Optional, Union
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationCredential
-from airweave.schemas.integration_credential import IntegrationCredentialUpdate
+from airweave.schemas.integration_credential import (
+    IntegrationCredentialCreateEncrypted,
+    IntegrationCredentialUpdate,
+)
 
 
 class FakeIntegrationCredentialRepository:
@@ -45,3 +48,27 @@ class FakeIntegrationCredentialRepository:
             setattr(db_obj, field, value)
         self._store[db_obj.id] = db_obj
         return db_obj
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: IntegrationCredentialCreateEncrypted,
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> IntegrationCredential:
+        self._calls.append(("create", db, obj_in, ctx, uow))
+        credential = IntegrationCredential(
+            id=uuid4(),
+            organization_id=ctx.organization.id,
+            name=obj_in.name,
+            integration_short_name=obj_in.integration_short_name,
+            description=obj_in.description,
+            integration_type=obj_in.integration_type,
+            authentication_method=obj_in.authentication_method,
+            oauth_type=obj_in.oauth_type,
+            auth_config_class=obj_in.auth_config_class,
+            encrypted_credentials=obj_in.encrypted_credentials,
+        )
+        self._store[credential.id] = credential
+        return credential

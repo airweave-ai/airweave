@@ -45,6 +45,12 @@ class SourceConnectionRepositoryProtocol(Protocol):
         """Get schedule info for a source connection."""
         ...
 
+    async def get_by_init_session(
+        self, db: AsyncSession, *, init_session_id: UUID, ctx: ApiContext
+    ) -> Optional[SourceConnection]:
+        """Get source connection by init session ID within org scope."""
+        ...
+
     async def get_init_session_with_redirect(
         self, db: AsyncSession, session_id: UUID, ctx: ApiContext
     ) -> Optional[ConnectionInitSession]:
@@ -83,6 +89,17 @@ class SourceConnectionRepositoryProtocol(Protocol):
         uow: Optional[UnitOfWork] = None,
     ) -> SourceConnection:
         """Update a source connection."""
+        ...
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: dict[str, Any],
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> SourceConnection:
+        """Create a source connection."""
         ...
 
     async def remove(
@@ -137,6 +154,16 @@ class SourceConnectionUpdateServiceProtocol(Protocol):
         self, db: AsyncSession, *, id: UUID, obj_in: SourceConnectionUpdate, ctx: ApiContext
     ) -> SourceConnectionSchema:
         """Update a source connection."""
+        ...
+
+
+class SourceConnectionCreateServiceProtocol(Protocol):
+    """Creates source connections across supported auth flows."""
+
+    async def create(
+        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnectionSchema:
+        """Create a source connection."""
         ...
 
 

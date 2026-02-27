@@ -49,14 +49,19 @@ from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.oauth.callback_service import OAuthCallbackService
+from airweave.domains.oauth.flow_service import OAuthFlowService
 from airweave.domains.oauth.oauth1_service import OAuth1Service
 from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.oauth.repository import (
     OAuthConnectionRepository,
     OAuthCredentialRepository,
+    OAuthInitSessionRepository,
     OAuthRedirectSessionRepository,
     OAuthSourceRepository,
 )
+from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
+from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.delete import SourceConnectionDeletionService
 from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.domains.source_connections.response import ResponseBuilder
@@ -76,6 +81,7 @@ from airweave.domains.temporal.schedule_service import TemporalScheduleService
 from airweave.domains.temporal.service import TemporalWorkflowService
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
+from airweave.platform.auth.settings import integration_settings
 from airweave.platform.temporal.client import TemporalClient
 
 
@@ -181,6 +187,18 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
     )
     encryptor = FernetCredentialEncryptor(settings.ENCRYPTION_KEY)
+    init_session_repo = OAuthInitSessionRepository()
+
+    # OAuth flow service
+    # -----------------------------------------------------------------
+    oauth_flow_svc = OAuthFlowService(
+        oauth2_service=source_deps["oauth2_service"],
+        oauth1_service=source_deps["oauth1_service"],
+        integration_settings=integration_settings,
+        init_session_repo=init_session_repo,
+        redirect_session_repo=source_deps["redirect_session_repo"],
+        settings=settings,
+    )
 
     update_service = SourceConnectionUpdateService(
         sc_repo=source_deps["sc_repo"],
@@ -195,6 +213,22 @@ def create_container(settings: Settings) -> Container:
         response_builder=sync_deps["response_builder"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
     )
+    create_service = SourceConnectionCreationService(
+        sc_repo=source_deps["sc_repo"],
+        collection_repo=source_deps["collection_repo"],
+        connection_repo=source_deps["conn_repo"],
+        credential_repo=source_deps["cred_repo"],
+        source_registry=source_deps["source_registry"],
+        source_validation=source_validation,
+        source_lifecycle=source_deps["source_lifecycle_service"],
+        sync_lifecycle=sync_deps["sync_lifecycle"],
+        sync_record_service=sync_deps["sync_record_service"],
+        response_builder=sync_deps["response_builder"],
+        oauth_flow_service=oauth_flow_svc,
+        credential_encryptor=encryptor,
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
+        event_bus=event_bus,
+    )
     source_connection_service = SourceConnectionService(
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
@@ -204,6 +238,7 @@ def create_container(settings: Settings) -> Container:
         auth_provider_registry=source_deps["auth_provider_registry"],
         response_builder=sync_deps["response_builder"],
         sync_lifecycle=sync_deps["sync_lifecycle"],
+        create_service=create_service,
         update_service=update_service,
         deletion_service=deletion_service,
     )
@@ -217,6 +252,29 @@ def create_container(settings: Settings) -> Container:
         sync_lifecycle=sync_deps["sync_lifecycle"],
         event_bus=event_bus,
         settings=settings,
+    )
+
+    # OAuth callback service
+    # -----------------------------------------------------------------
+
+    oauth_callback_svc = OAuthCallbackService(
+        oauth_flow_service=oauth_flow_svc,
+        init_session_repo=init_session_repo,
+        response_builder=sync_deps["response_builder"],
+        source_registry=source_deps["source_registry"],
+        sync_lifecycle=sync_deps["sync_lifecycle"],
+        sync_record_service=sync_deps["sync_record_service"],
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
+        event_bus=event_bus,
+        organization_repo=OrgRepo(),
+        source_repo=source_deps["source_repo"],
+        sc_repo=source_deps["sc_repo"],
+        credential_repo=source_deps["cred_repo"],
+        connection_repo=source_deps["conn_repo"],
+        collection_repo=source_deps["collection_repo"],
+        sync_repo=source_deps["sync_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+        credential_encryptor=encryptor,
     )
 
     # -----------------------------------------------------------------
@@ -251,6 +309,9 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         redirect_session_repo=source_deps["redirect_session_repo"],
         source_connection_service=source_connection_service,
+        oauth_flow_service=oauth_flow_svc,
+        oauth_callback_service=oauth_callback_svc,
+        init_session_repo=init_session_repo,
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
@@ -423,13 +484,14 @@ def _create_source_services(settings: Settings) -> dict:
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
     redirect_session_repo = OAuthRedirectSessionRepository()
+    source_repo = OAuthSourceRepository()
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
         settings=settings,
         conn_repo=OAuthConnectionRepository(),
         cred_repo=OAuthCredentialRepository(),
         encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
-        source_repo=OAuthSourceRepository(),
+        source_repo=source_repo,
     )
 
     source_service = SourceService(
@@ -455,6 +517,7 @@ def _create_source_services(settings: Settings) -> dict:
         "cred_repo": cred_repo,
         "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
+        "source_repo": source_repo,
         "redirect_session_repo": redirect_session_repo,
         "source_lifecycle_service": source_lifecycle_service,
         "sync_repo": sync_repo,

@@ -2,7 +2,7 @@
 
 import asyncio
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 from uuid import uuid4
 
@@ -11,6 +11,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.config import LinearConfig
+from airweave.platform.cursors.linear import LinearCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb
 from airweave.platform.entities.linear import (
@@ -42,7 +43,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     auth_config_class=None,
     config_class=LinearConfig,
     labels=["Project Management"],
-    supports_continuous=False,
+    supports_continuous=True,
+    cursor_class=LinearCursor,
     rate_limit_level=RateLimitLevel.ORG,
 )
 class LinearSource(BaseSource):
@@ -93,6 +95,11 @@ class LinearSource(BaseSource):
             instance.exclude_path = ""
 
         return instance
+
+    def _get_last_synced_at(self) -> Optional[str]:
+        """Get the last sync timestamp from the cursor, if available."""
+        cursor_data = self.cursor.data if self.cursor else {}
+        return cursor_data.get("last_synced_at") or None
 
     async def _wait_for_rate_limit(self):
         """Implement adaptive rate limiting for Linear API requests.
@@ -362,7 +369,7 @@ class LinearSource(BaseSource):
             yield comment_entity
 
     async def _generate_issue_entities(  # noqa: C901
-        self, client: httpx.AsyncClient
+        self, client: httpx.AsyncClient, since: Optional[str] = None
     ) -> AsyncGenerator[
         Union[LinearIssueEntity, LinearCommentEntity, LinearAttachmentEntity], None
     ]:
@@ -370,15 +377,18 @@ class LinearSource(BaseSource):
 
         Args:
             client: HTTP client to use for requests
+            since: If provided, only fetch issues updated at or after this ISO 8601 timestamp
 
         Yields:
             Issue entities, comment entities, and attachment entities
         """
-        # Define query template with pagination placeholder
-        # Filter to exclude archived issues using GraphQL filter
-        query_template = """
+        updated_filter = f', updatedAt: {{{{ gte: "{since}" }}}}' if since else ""
+        query_template = (
+            """
         {{
-          issues(filter: {{ archivedAt: {{ null: true }} }}, {pagination}) {{
+          issues(filter: {{ archivedAt: {{ null: true }}"""
+            + updated_filter
+            + """ }}, {pagination}) {{
             nodes {{
               id
               identifier
@@ -424,6 +434,7 @@ class LinearSource(BaseSource):
           }}
         }}
         """
+        )
 
         # Define processor function for issue nodes
         async def process_issue(issue):
@@ -533,20 +544,24 @@ class LinearSource(BaseSource):
             yield entity
 
     async def _generate_project_entities(
-        self, client: httpx.AsyncClient
+        self, client: httpx.AsyncClient, since: Optional[str] = None
     ) -> AsyncGenerator[LinearProjectEntity, None]:
         """Generate entities for all projects in the workspace.
 
         Args:
             client: HTTP client to use for requests
+            since: If provided, only fetch projects updated at or after this ISO 8601 timestamp
 
         Yields:
             Project entities
         """
-        # Define query template with pagination placeholder
-        query_template = """
+        filter_clause = f'filter: {{{{ updatedAt: {{{{ gte: "{since}" }}}} }}}}, ' if since else ""
+        query_template = (
+            """
         {{
-          projects({pagination}) {{
+          projects("""
+            + filter_clause
+            + """{pagination}) {{
             nodes {{
               id
               name
@@ -578,6 +593,7 @@ class LinearSource(BaseSource):
           }}
         }}
         """
+        )
 
         # Define processor function for project nodes
         async def process_project(project):
@@ -651,20 +667,24 @@ class LinearSource(BaseSource):
             self.logger.error(f"Error in project entity generation: {str(e)}")
 
     async def _generate_team_entities(
-        self, client: httpx.AsyncClient
+        self, client: httpx.AsyncClient, since: Optional[str] = None
     ) -> AsyncGenerator[LinearTeamEntity, None]:
         """Generate entities for all teams in the workspace.
 
         Args:
             client: HTTP client to use for requests
+            since: If provided, only fetch teams updated at or after this ISO 8601 timestamp
 
         Yields:
             Team entities
         """
-        # Define the GraphQL query template with {pagination} placeholder
-        query_template = """
+        filter_clause = f'filter: {{{{ updatedAt: {{{{ gte: "{since}" }}}} }}}}, ' if since else ""
+        query_template = (
+            """
         {{
-          teams({pagination}) {{
+          teams("""
+            + filter_clause
+            + """{pagination}) {{
             nodes {{
               id
               name
@@ -689,6 +709,7 @@ class LinearSource(BaseSource):
           }}
         }}
         """
+        )
 
         # Define a processor function for team nodes
         async def process_team(team):
@@ -750,20 +771,24 @@ class LinearSource(BaseSource):
             self.logger.error(f"Error in team entity generation: {str(e)}")
 
     async def _generate_user_entities(
-        self, client: httpx.AsyncClient
+        self, client: httpx.AsyncClient, since: Optional[str] = None
     ) -> AsyncGenerator[LinearUserEntity, None]:
         """Generate entities for all users in the workspace.
 
         Args:
             client: HTTP client to use for requests
+            since: If provided, only fetch users updated at or after this ISO 8601 timestamp
 
         Yields:
             User entities
         """
-        # Define query template with pagination placeholder
-        query_template = """
+        filter_clause = f'filter: {{{{ updatedAt: {{{{ gte: "{since}" }}}} }}}}, ' if since else ""
+        query_template = (
+            """
         {{
-          users({pagination}) {{
+          users("""
+            + filter_clause
+            + """{pagination}) {{
             nodes {{
               id
               name
@@ -797,6 +822,7 @@ class LinearSource(BaseSource):
           }}
         }}
         """
+        )
 
         # Define processor function for user nodes
         async def process_user(user):
@@ -988,6 +1014,23 @@ class LinearSource(BaseSource):
                 self.logger.error(f"Error processing {entity_type} batch: {str(e)}")
                 break
 
+    async def _generate_entities_safe(
+        self,
+        generator: AsyncGenerator,
+        entity_type: str,
+    ) -> AsyncGenerator:
+        """Yield entities from a generator with error isolation.
+
+        Catches exceptions from individual entity type generators so that
+        a failure in one type doesn't prevent other types from being synced.
+        """
+        try:
+            self.logger.debug(f"Starting {entity_type} entity generation")
+            async for entity in generator:
+                yield entity
+        except Exception as e:
+            self.logger.error(f"Failed to generate {entity_type} entities: {str(e)}")
+
     async def generate_entities(
         self,
     ) -> AsyncGenerator[
@@ -1006,42 +1049,48 @@ class LinearSource(BaseSource):
         This method coordinates the extraction of all entity types from Linear,
         handling each entity type separately with proper error isolation.
 
+        On first sync (no cursor), all entities are fetched. On subsequent syncs,
+        only entities updated since the last sync are fetched.
+
+        Deletion of trashed issues is handled by the platform's daily cleanup
+        schedule, which forces a full sync and runs orphan cleanup to remove
+        entities that no longer exist in the source.
+
         Yields:
             All Linear entities (teams, projects, users, issues, comments, attachments)
         """
+        last_synced_at = self._get_last_synced_at()
+        sync_start = datetime.now(tz=timezone.utc).isoformat()
+
+        if last_synced_at:
+            self.logger.info(f"Incremental sync from {last_synced_at}")
+        else:
+            self.logger.info("Full sync (first run)")
+
         async with self.http_client() as client:
-            # Generate team entities
-            try:
-                self.logger.debug("Starting team entity generation")
-                async for team_entity in self._generate_team_entities(client):
-                    yield team_entity
-            except Exception as e:
-                self.logger.error(f"Failed to generate team entities: {str(e)}")
-                self.logger.debug("Continuing with other entity types")
+            async for entity in self._generate_entities_safe(
+                self._generate_team_entities(client, since=last_synced_at), "team"
+            ):
+                yield entity
 
-            # Generate project entities
-            try:
-                self.logger.debug("Starting project entity generation")
-                async for project_entity in self._generate_project_entities(client):
-                    yield project_entity
-            except Exception as e:
-                self.logger.error(f"Failed to generate project entities: {str(e)}")
+            async for entity in self._generate_entities_safe(
+                self._generate_project_entities(client, since=last_synced_at), "project"
+            ):
+                yield entity
 
-            # Generate user entities
-            try:
-                self.logger.debug("Starting user entity generation")
-                async for user_entity in self._generate_user_entities(client):
-                    yield user_entity
-            except Exception as e:
-                self.logger.error(f"Failed to generate user entities: {str(e)}")
+            async for entity in self._generate_entities_safe(
+                self._generate_user_entities(client, since=last_synced_at), "user"
+            ):
+                yield entity
 
-            # Generate issue, comment, and attachment entities
-            try:
-                self.logger.debug("Starting issue, comment, and attachment entity generation")
-                async for entity in self._generate_issue_entities(client):
-                    yield entity
-            except Exception as e:
-                self.logger.error(f"Failed to generate issue/attachment entities: {str(e)}")
+            async for entity in self._generate_entities_safe(
+                self._generate_issue_entities(client, since=last_synced_at),
+                "issue, comment, and attachment",
+            ):
+                yield entity
+
+        if self.cursor:
+            self.cursor.update(last_synced_at=sync_start)
 
     async def validate(self) -> bool:
         """Verify Linear OAuth2 token by POSTing a minimal GraphQL query to /graphql."""

@@ -9,7 +9,7 @@ from airweave.models.connection import Connection
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
-from airweave.platform.configs._base import Fields
+from airweave.platform.configs._base import BaseConfig, Fields
 
 
 class SourceRegistryEntry(BaseRegistryEntry):
@@ -17,8 +17,8 @@ class SourceRegistryEntry(BaseRegistryEntry):
 
     # Resolved classes (read directly from decorator — no locator needed)
     source_class_ref: type
-    config_ref: type | None
-    auth_config_ref: type | None
+    config_ref: type[BaseConfig] | None
+    auth_config_ref: type[BaseConfig] | None
 
     # Precomputed fields
     auth_fields: Fields

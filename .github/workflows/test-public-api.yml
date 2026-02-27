@@ -135,8 +135,10 @@ jobs:
           # Disable webhook endpoint verification (tests use fake URLs)
           echo "WEBHOOK_VERIFY_ENDPOINTS=false" >> .env
 
-          # Set embedding dimensions (OpenAI text-embedding-3-small supports 1536)
+          # Set embedding config (OpenAI text-embedding-3-small, 1536 dims)
+          echo "DENSE_EMBEDDER=openai_text_embedding_3_small" >> .env
           echo "EMBEDDING_DIMENSIONS=1536" >> .env
+          echo "SPARSE_EMBEDDER=fastembed_bm25" >> .env
 
           echo "Starting services using start.sh..."
           ./start.sh --noninteractive

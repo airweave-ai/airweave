@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.api.context import ApiContext
+from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.models.connection import Connection, IntegrationType
+from airweave.schemas.connection import ConnectionCreate
 
 
 class ConnectionRepository(ConnectionRepositoryProtocol):
@@ -30,3 +32,13 @@ class ConnectionRepository(ConnectionRepositoryProtocol):
             if connection.integration_type == IntegrationType.DESTINATION:
                 return connection
         return None
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: ConnectionCreate,
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> Connection:
+        return await crud.connection.create(db, obj_in=obj_in, ctx=ctx, uow=uow)

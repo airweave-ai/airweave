@@ -31,6 +31,7 @@ class SyncCursor:
         """
         self.sync_id = sync_id
         self.cursor_schema = cursor_schema
+        self._loaded_from_db = cursor_data is not None
 
         # Instantiate typed cursor if schema provided
         if cursor_schema:
@@ -82,6 +83,16 @@ class SyncCursor:
             Cursor data dictionary (serialized for JSON)
         """
         return self.get()
+
+    @property
+    def loaded_from_db(self) -> bool:
+        """Whether this cursor was initialized with data from the database.
+
+        Returns True if a previous sync saved cursor data that was loaded
+        for this sync run. Returns False on first sync or when cursor loading
+        was skipped (force_full_sync, skip_load).
+        """
+        return self._loaded_from_db
 
     # Legacy compatibility properties (deprecated)
     @property

@@ -1,12 +1,14 @@
 """Fake connection repository for testing."""
 
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.connection import Connection
+from airweave.schemas.connection import ConnectionCreate
 
 
 class FakeConnectionRepository:
@@ -45,3 +47,28 @@ class FakeConnectionRepository:
             ):
                 return connection
         return None
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: ConnectionCreate,
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> Connection:
+        self._calls.append(("create", db, obj_in, ctx, uow))
+        connection = Connection(
+            id=uuid4(),
+            organization_id=ctx.organization.id,
+            name=obj_in.name,
+            readable_id=obj_in.readable_id,
+            description=obj_in.description,
+            integration_type=obj_in.integration_type,
+            integration_credential_id=obj_in.integration_credential_id,
+            status=obj_in.status,
+            short_name=obj_in.short_name,
+        )
+        self._store[connection.id] = connection
+        if connection.readable_id:
+            self._readable_store[connection.readable_id] = connection
+        return connection

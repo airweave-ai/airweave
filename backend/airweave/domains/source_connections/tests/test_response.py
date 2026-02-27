@@ -326,6 +326,25 @@ async def test_build_response_init_session_not_found():
 
 
 @pytest.mark.asyncio
+async def test_build_response_init_session_not_found_uses_auth_url_fallback():
+    """If init session lookup misses, fallback auth_url attributes are still honored."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    expiry = datetime(2026, 8, 1, 0, 0, 0, tzinfo=timezone.utc)
+    sc = _make_source_conn(
+        is_authenticated=False,
+        connection_init_session_id=uuid4(),
+    )
+    sc.authentication_url = "https://api.example.com/source-connections/authorize/abcd1234"
+    sc.authentication_url_expiry = expiry
+
+    result = await f.builder.build_response(None, sc, _make_ctx())
+
+    assert result.auth.auth_url == sc.authentication_url
+    assert result.auth.auth_url_expires == expiry
+
+
+@pytest.mark.asyncio
 async def test_build_response_config_fields_passthrough():
     """Config fields on ORM → passed through; None → None."""
     f = _fixture()

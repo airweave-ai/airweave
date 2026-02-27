@@ -388,6 +388,30 @@ def fake_collection_service():
 
 
 @pytest.fixture
+def fake_oauth_flow_service():
+    """Fake OAuthFlowService."""
+    from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
+
+    return FakeOAuthFlowService()
+
+
+@pytest.fixture
+def fake_oauth_callback_service():
+    """Fake OAuthCallbackService."""
+    from airweave.domains.oauth.fakes.callback_service import FakeOAuthCallbackService
+
+    return FakeOAuthCallbackService()
+
+
+@pytest.fixture
+def fake_init_session_repo():
+    """Fake OAuthInitSessionRepository."""
+    from airweave.domains.oauth.fakes.repository import FakeOAuthInitSessionRepository
+
+    return FakeOAuthInitSessionRepository()
+
+
+@pytest.fixture
 def test_container(
     fake_health_service,
     fake_event_bus,
@@ -408,6 +432,9 @@ def test_container(
     fake_oauth1_service,
     fake_oauth2_service,
     fake_redirect_session_repo,
+    fake_oauth_flow_service,
+    fake_oauth_callback_service,
+    fake_init_session_repo,
     fake_source_connection_service,
     fake_source_lifecycle_service,
     fake_response_builder,
@@ -455,6 +482,9 @@ def test_container(
         oauth1_service=fake_oauth1_service,
         oauth2_service=fake_oauth2_service,
         redirect_session_repo=fake_redirect_session_repo,
+        oauth_flow_service=fake_oauth_flow_service,
+        oauth_callback_service=fake_oauth_callback_service,
+        init_session_repo=fake_init_session_repo,
         source_connection_service=fake_source_connection_service,
         source_lifecycle_service=fake_source_lifecycle_service,
         response_builder=fake_response_builder,

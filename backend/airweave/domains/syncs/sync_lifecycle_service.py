@@ -149,6 +149,8 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
                 db=uow.session,
                 ctx=ctx,
                 uow=uow,
+                collection_readable_id=collection_readable_id,
+                connection_id=source_connection_id,
             )
 
         return SyncProvisionResult(

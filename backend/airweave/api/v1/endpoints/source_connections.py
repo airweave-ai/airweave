@@ -13,6 +13,7 @@ Key operations:
 
 import logging
 from typing import List, Optional
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Path, Query, Response
@@ -23,10 +24,12 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.config import settings
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.protocols import EventBus
-from airweave.core.source_connection_service import source_connection_service
+from airweave.core.shared_models import ActionType
 from airweave.db.session import get_db
+from airweave.domains.oauth.protocols import OAuthCallbackServiceProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.domains.usage.protocols import UsageEnforcementProtocol
 from airweave.domains.usage.types import ActionType
@@ -47,7 +50,7 @@ router = TrailingSlashRouter()
 async def oauth_callback(
     *,
     db: AsyncSession = Depends(get_db),
-    event_bus: EventBus = Inject(EventBus),
+    oauth_callback_svc: OAuthCallbackServiceProtocol = Inject(OAuthCallbackServiceProtocol),
     # OAuth2 parameters
     state: Optional[str] = Query(None, description="OAuth2 state parameter"),
     code: Optional[str] = Query(None, description="OAuth2 authorization code"),
@@ -65,62 +68,25 @@ async def oauth_callback(
     This endpoint does not require authentication as it's accessed by users
     who are connecting their source.
     """
-    # Determine OAuth1 vs OAuth2 based on parameters
-    if oauth_token and oauth_verifier:
-        # OAuth1 callback
-        source_conn = await source_connection_service.complete_oauth1_callback(
-            db,
-            oauth_token=oauth_token,
-            oauth_verifier=oauth_verifier,
-        )
-    elif state and code:
-        # OAuth2 callback
-        source_conn = await source_connection_service.complete_oauth2_callback(
-            db,
-            state=state,
-            code=code,
-        )
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Invalid OAuth callback: missing required parameters. "
-                "Expected either (state + code) for OAuth2 or "
-                "(oauth_token + oauth_verifier) for OAuth1"
-            ),
-        )
+    source_conn = await oauth_callback_svc.complete_oauth_callback(
+        db,
+        state=state,
+        code=code,
+        oauth_token=oauth_token,
+        oauth_verifier=oauth_verifier,
+    )
 
-    # Redirect to the app with success
     redirect_url = source_conn.auth.redirect_url
 
     if not redirect_url:
-        # Fallback to app URL if redirect_url is not set
-        from airweave.core.config import settings
-
         redirect_url = settings.app_url
-    try:
-        await event_bus.publish(
-            SourceConnectionLifecycleEvent.auth_completed(
-                organization_id=source_conn.organization_id,
-                source_connection_id=source_conn.id,
-                source_type=source_conn.short_name,
-                collection_readable_id=source_conn.readable_collection_id,
-            )
-        )
-    except Exception as e:
-        logger.error(f"Failed to publish source_connection.auth_completed event: {e}")
-
-    # Parse the redirect URL to preserve existing query parameters
-    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
     parsed = urlparse(redirect_url)
     query_params = parse_qs(parsed.query, keep_blank_values=True)
 
-    # Add success parameters (using frontend-expected param names)
     query_params["status"] = ["success"]
     query_params["source_connection_id"] = [str(source_conn.id)]
 
-    # Reconstruct the URL with all query parameters
     new_query = urlencode(query_params, doseq=True)
     final_url = urlunparse(
         (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
@@ -157,6 +123,7 @@ async def create(
     db: AsyncSession = Depends(get_db),
     source_connection_in: schemas.SourceConnectionCreate,
     ctx: ApiContext = Depends(deps.get_context),
+    sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
     usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
     event_bus: EventBus = Inject(EventBus),
 ) -> schemas.SourceConnection:
@@ -169,25 +136,11 @@ async def create(
     if source_connection_in.sync_immediately:
         await usage_service.is_allowed(db, ActionType.ENTITIES)
 
-    result = await source_connection_service.create(
+    result = await sc_service.create(
         db,
         obj_in=source_connection_in,
         ctx=ctx,
     )
-
-    # Publish source_connection.created event
-    try:
-        await event_bus.publish(
-            SourceConnectionLifecycleEvent.created(
-                organization_id=ctx.organization.id,
-                source_connection_id=result.id,
-                source_type=result.short_name,
-                collection_readable_id=result.readable_collection_id,
-                is_authenticated=result.is_authenticated,
-            )
-        )
-    except Exception as e:
-        ctx.logger.warning(f"Failed to publish source_connection.created event: {e}")
 
     return result
 

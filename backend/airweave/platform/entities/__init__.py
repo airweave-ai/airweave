@@ -253,6 +253,11 @@ from .shopify import (
     ShopifyProductVariantEntity,
     ShopifyThemeEntity,
 )
+from .slab import (
+    SlabCommentEntity,
+    SlabPostEntity,
+    SlabTopicEntity,
+)
 from .slack import SlackMessageEntity
 from .slite import SliteNoteEntity
 from .stripe import (
@@ -565,6 +570,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ShopifyProductEntity,
         ShopifyProductVariantEntity,
         ShopifyThemeEntity,
+    ],
+    "slab": [
+        SlabCommentEntity,
+        SlabPostEntity,
+        SlabTopicEntity,
     ],
     "slack": [
         SlackMessageEntity,

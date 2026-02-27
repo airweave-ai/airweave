@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.domains.source_connections.protocols import (
+    SourceConnectionCreateServiceProtocol,
     SourceConnectionDeletionServiceProtocol,
     SourceConnectionUpdateServiceProtocol,
 )
@@ -30,6 +31,7 @@ class FakeSourceConnectionService:
     def __init__(
         self,
         sync_lifecycle: SyncLifecycleServiceProtocol,
+        create_service: Optional[SourceConnectionCreateServiceProtocol] = None,
         update_service: Optional[SourceConnectionUpdateServiceProtocol] = None,
         deletion_service: Optional[SourceConnectionDeletionServiceProtocol] = None,
     ) -> None:
@@ -38,6 +40,7 @@ class FakeSourceConnectionService:
         self._redirect_urls: dict[str, str] = {}
         self._calls: list[tuple[Any, ...]] = []
         self._sync_lifecycle = sync_lifecycle
+        self._create_service = create_service
         self._update_service = update_service
         self._deletion_service = deletion_service
 
@@ -76,7 +79,9 @@ class FakeSourceConnectionService:
         self, db: AsyncSession, obj_in: SourceConnectionCreate, ctx: ApiContext
     ) -> SourceConnection:
         self._calls.append(("create", db, obj_in, ctx))
-        raise NotImplementedError("FakeSourceConnectionService.create not implemented")
+        if self._create_service:
+            return await self._create_service.create(db, obj_in=obj_in, ctx=ctx)
+        raise NotImplementedError("FakeSourceConnectionService.create not wired")
 
     async def update(
         self, db: AsyncSession, id: UUID, obj_in: SourceConnectionUpdate, ctx: ApiContext

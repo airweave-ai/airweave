@@ -269,25 +269,32 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         sync_id: UUID,
         db: AsyncSession,
         ctx: ApiContext,
+        collection_readable_id: Optional[str] = None,
+        connection_id: Optional[UUID] = None,
     ) -> tuple[dict, dict, dict]:
         """Load sync/collection/connection and return serialised dicts."""
         sync_with_conns = await self._sync_repo.get(db, sync_id, ctx)
 
         source_connection = await self._sc_repo.get_by_sync_id(db, sync_id, ctx)
-        if not source_connection:
+        resolved_collection_readable_id = collection_readable_id
+        resolved_connection_id = connection_id
+        if source_connection:
+            resolved_collection_readable_id = source_connection.readable_collection_id
+            resolved_connection_id = source_connection.connection_id
+        elif resolved_collection_readable_id is None or resolved_connection_id is None:
             raise ValueError(f"No source connection found for sync {sync_id}")
 
         collection = await self._collection_repo.get_by_readable_id(
-            db, source_connection.readable_collection_id, ctx
+            db, resolved_collection_readable_id, ctx
         )
         if not collection:
-            raise ValueError(f"No collection found for source connection {source_connection.id}")
+            raise ValueError(f"No collection found for sync {sync_id}")
 
-        if not source_connection.connection_id:
-            raise ValueError(f"Source connection {source_connection.id} has no connection_id")
-        connection_model = await self._connection_repo.get(db, source_connection.connection_id, ctx)
+        if not resolved_connection_id:
+            raise ValueError(f"Source connection for sync {sync_id} has no connection_id")
+        connection_model = await self._connection_repo.get(db, resolved_connection_id, ctx)
         if not connection_model:
-            raise ValueError(f"Connection {source_connection.connection_id} not found")
+            raise ValueError(f"Connection {resolved_connection_id} not found")
 
         sync_dict = schemas.Sync.model_validate(sync_with_conns, from_attributes=True).model_dump(
             mode="json"
@@ -323,6 +330,8 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         db: AsyncSession,
         ctx: ApiContext,
         uow: UnitOfWork,
+        collection_readable_id: Optional[str] = None,
+        connection_id: Optional[UUID] = None,
     ) -> str:
         """Create or update a Temporal schedule for a sync.
 
@@ -357,7 +366,11 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
             )
 
         sync_dict, collection_dict, connection_dict = await self._gather_schedule_data(
-            sync_id, db, ctx
+            sync_id,
+            db,
+            ctx,
+            collection_readable_id=collection_readable_id,
+            connection_id=connection_id,
         )
 
         schedule_id = await self._create_schedule(

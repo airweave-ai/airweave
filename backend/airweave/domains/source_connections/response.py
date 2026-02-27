@@ -250,6 +250,14 @@ class ResponseBuilder(ResponseBuilderProtocol):
                     f"{init_session.redirect_session.code}"
                 )
                 auth_url_expires = init_session.redirect_session.expires_at
+        elif (
+            hasattr(source_conn, "authentication_url")
+            and source_conn.authentication_url
+            and not source_conn.is_authenticated
+        ):
+            # Backward-compatible fallback for temporary auth URL attributes.
+            auth_url = source_conn.authentication_url
+            auth_url_expires = source_conn.authentication_url_expiry
 
         return auth_url, auth_url_expires, redirect_url
 

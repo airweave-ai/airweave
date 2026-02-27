@@ -437,11 +437,7 @@ class SyncOrchestrator:
 
     async def _cleanup_orphaned_entities_if_needed(self) -> None:
         """Cleanup orphaned entities based on sync type."""
-        has_cursor_data = bool(
-            hasattr(self.sync_context, "cursor")
-            and self.runtime.cursor
-            and self.runtime.cursor.cursor_data
-        )
+        has_cursor_data = bool(self.runtime.cursor and self.runtime.cursor.loaded_from_db)
 
         # Check if source supports continuous/incremental sync (class attribute)
         source_class = type(self.runtime.source)
@@ -659,7 +655,7 @@ class SyncOrchestrator:
             self.sync_context.logger.info("⏭️ Skipping cursor update (disabled by execution_config)")
             return
 
-        if not hasattr(self.sync_context, "cursor") or not self.runtime.cursor.cursor_data:
+        if not self.runtime.cursor or not self.runtime.cursor.cursor_data:
             if self.sync_context.force_full_sync:
                 self.sync_context.logger.info(
                     "📝 No cursor data to save from forced "

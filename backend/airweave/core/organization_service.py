@@ -217,7 +217,6 @@ class OrganizationService:
 
                 api_key_auth = BaseContext(
                     organization=organization,
-                    user=owner_user,
                 )
 
                 # Create API key with default expiration (180 days)

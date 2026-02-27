@@ -582,6 +582,21 @@ class ShopifyConfig(SourceConfig):
     )
 
 
+class SlabConfig(SourceConfig):
+    """Slab configuration schema."""
+
+    host: str = Field(
+        default="app.slab.com",
+        title="Slab host",
+        description=(
+            "Your Slab workspace host (e.g. 'myteam.slab.com'). "
+            "Find it in your Slab URL when logged in. Required by the Slab API. "
+            "Default: app.slab.com"
+        ),
+        min_length=1,
+    )
+
+
 class SlackConfig(SourceConfig):
     """Slack configuration schema."""
 

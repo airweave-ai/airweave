@@ -34,6 +34,8 @@ class FakeTemporalScheduleService(TemporalScheduleServiceProtocol):
         db: AsyncSession,
         ctx: ApiContext,
         uow: UnitOfWork,
+        collection_readable_id: Optional[str] = None,
+        connection_id: Optional[UUID] = None,
     ) -> str:
         """Record call and return canned schedule ID."""
         self._calls.append(
@@ -44,6 +46,8 @@ class FakeTemporalScheduleService(TemporalScheduleServiceProtocol):
                 db,
                 ctx,
                 uow,
+                collection_readable_id,
+                connection_id,
             )
         )
         if self._should_raise:

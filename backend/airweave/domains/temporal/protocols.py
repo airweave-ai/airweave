@@ -66,6 +66,8 @@ class TemporalScheduleServiceProtocol(Protocol):
         db: AsyncSession,
         ctx: ApiContext,
         uow: UnitOfWork,
+        collection_readable_id: Optional[str] = None,
+        connection_id: Optional[UUID] = None,
     ) -> str:
         """Create or update a Temporal schedule for a sync.
 

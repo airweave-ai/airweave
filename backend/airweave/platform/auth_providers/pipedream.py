@@ -102,6 +102,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
     # Use when a source's auth config uses one name but Pipedream returns another.
     SOURCE_FIELD_MAPPING = {
         "coda": {"api_key": "api_token"},  # Pipedream Coda app uses api_token
+        "slab": {"api_key": "api_token"},  # Pipedream Slab app uses api_token
     }
 
     @classmethod

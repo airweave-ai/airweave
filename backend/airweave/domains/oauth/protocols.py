@@ -1,6 +1,7 @@
 """Protocols for OAuth domain dependencies."""
 
-from typing import Any, Optional, Protocol, Tuple
+from datetime import datetime
+from typing import Any, Dict, Optional, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,17 +9,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.api.context import ApiContext
 from airweave.core.logging import ContextualLogger
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.oauth.types import OAuth1TokenResponse
+from airweave.domains.oauth.types import OAuth1TokenResponse, OAuthBrowserInitiationResult
 from airweave.models.connection import Connection
+from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.integration_credential import IntegrationCredential
-from airweave.models.redirect_session import RedirectSession
 from airweave.models.source import Source
-from airweave.platform.auth.schemas import OAuth2Settings, OAuth2TokenResponse
+from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings, OAuth2TokenResponse
 from airweave.schemas.connection import ConnectionCreate
 from airweave.schemas.integration_credential import (
     IntegrationCredentialCreateEncrypted,
     IntegrationCredentialUpdate,
 )
+from airweave.schemas.source_connection import SourceConnection as SourceConnectionSchema
 
 
 class OAuth1ServiceProtocol(Protocol):
@@ -71,7 +73,7 @@ class OAuth2ServiceProtocol(Protocol):
         oauth2_settings: OAuth2Settings,
         client_id: Optional[str] = None,
         state: Optional[str] = None,
-        template_configs: Optional[dict[str, str]] = None,
+        template_configs: Optional[dict] = None,
     ) -> str:
         """Generate the OAuth2 authorization URL for an integration."""
         ...
@@ -83,7 +85,7 @@ class OAuth2ServiceProtocol(Protocol):
         code: str,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
-        template_configs: Optional[dict[str, str]] = None,
+        template_configs: Optional[dict] = None,
     ) -> OAuth2TokenResponse:
         """Exchange an authorization code for an OAuth2 token."""
         ...
@@ -95,7 +97,7 @@ class OAuth2ServiceProtocol(Protocol):
         redirect_uri: str,
         client_id: Optional[str] = None,
         state: Optional[str] = None,
-        template_configs: Optional[dict[str, str]] = None,
+        template_configs: Optional[dict] = None,
     ) -> Tuple[str, Optional[str]]:
         """Generate an OAuth2 authorization URL with PKCE support if required.
 
@@ -112,7 +114,7 @@ class OAuth2ServiceProtocol(Protocol):
         redirect_uri: str,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
-        template_configs: Optional[dict[str, str]] = None,
+        template_configs: Optional[dict] = None,
         code_verifier: Optional[str] = None,
     ) -> OAuth2TokenResponse:
         """Exchange an OAuth2 code using an explicit redirect_uri."""
@@ -124,8 +126,8 @@ class OAuth2ServiceProtocol(Protocol):
         integration_short_name: str,
         ctx: ApiContext,
         connection_id: UUID,
-        decrypted_credential: dict[str, Any],
-        config_fields: Optional[dict[str, str]] = None,
+        decrypted_credential: dict,
+        config_fields: Optional[dict] = None,
     ) -> OAuth2TokenResponse:
         """Refresh an OAuth2 access token."""
         ...
@@ -188,9 +190,207 @@ class OAuthSourceRepositoryProtocol(Protocol):
         ...
 
 
-class OAuthRedirectSessionRepositoryProtocol(Protocol):
-    """Redirect session data access for OAuth authorization flows."""
+# ---------------------------------------------------------------------------
+# Init session + redirect session repositories
+# ---------------------------------------------------------------------------
 
-    async def get_by_code(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+
+class OAuthInitSessionRepositoryProtocol(Protocol):
+    """Data access for ConnectionInitSession records."""
+
+    async def get_by_state_no_auth(
+        self, db: AsyncSession, *, state: str
+    ) -> Optional[ConnectionInitSession]:
+        """Look up a pending init session by OAuth2 state token (no auth check)."""
+        ...
+
+    async def get_by_oauth_token_no_auth(
+        self, db: AsyncSession, *, oauth_token: str
+    ) -> Optional[ConnectionInitSession]:
+        """Look up a pending init session by OAuth1 request token (no auth check)."""
+        ...
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: Dict[str, Any],
+        ctx: ApiContext,
+        uow: UnitOfWork,
+    ) -> ConnectionInitSession:
+        """Persist a new init session."""
+        ...
+
+    async def mark_completed(
+        self,
+        db: AsyncSession,
+        *,
+        session_id: UUID,
+        final_connection_id: Optional[UUID],
+        ctx: ApiContext,
+    ) -> None:
+        """Transition session to COMPLETED and record final connection."""
+        ...
+
+
+class OAuthRedirectSessionRepositoryProtocol(Protocol):
+    """Data access for short-lived redirect (proxy URL) sessions."""
+
+    async def generate_unique_code(self, db: AsyncSession, *, length: int) -> str:
+        """Generate a unique short code for a redirect session."""
+        ...
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        code: str,
+        final_url: str,
+        expires_at: datetime,
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> Any:
+        """Persist a new redirect session and return it."""
+        ...
+
+    async def get_by_code(self, db: AsyncSession, code: str) -> Optional[Any]:
         """Get a redirect session by its unique code."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Higher-level OAuth service protocols
+# ---------------------------------------------------------------------------
+
+
+class OAuthFlowServiceProtocol(Protocol):
+    """Manages the OAuth handshake lifecycle (URL generation, token exchange, session state)."""
+
+    async def initiate_oauth2(
+        self,
+        short_name: str,
+        state: str,
+        *,
+        client_id: Optional[str] = None,
+        template_configs: Optional[dict] = None,
+        ctx: ApiContext,
+    ) -> Tuple[str, Optional[str]]:
+        """Generate OAuth2 authorization URL. Returns (provider_auth_url, code_verifier)."""
+        ...
+
+    async def initiate_oauth1(
+        self,
+        short_name: str,
+        *,
+        consumer_key: str,
+        consumer_secret: str,
+        ctx: ApiContext,
+    ) -> Tuple[str, Dict[str, str]]:
+        """Start OAuth1 flow. Returns (provider_auth_url, oauth1_overrides)."""
+        ...
+
+    async def initiate_browser_flow(
+        self,
+        *,
+        short_name: str,
+        oauth_type: Optional[str],
+        state: str,
+        nested_client_id: Optional[str],
+        nested_client_secret: Optional[str],
+        nested_consumer_key: Optional[str],
+        nested_consumer_secret: Optional[str],
+        template_configs: Optional[dict],
+        ctx: ApiContext,
+    ) -> OAuthBrowserInitiationResult:
+        """Start browser OAuth flow and return normalized init-session data."""
+        ...
+
+    async def complete_oauth2_callback(
+        self,
+        short_name: str,
+        code: str,
+        overrides: Dict[str, Any],
+        ctx: ApiContext,
+    ) -> OAuth2TokenResponse:
+        """Exchange OAuth2 authorization code for tokens."""
+        ...
+
+    async def complete_oauth1_callback(
+        self,
+        short_name: str,
+        verifier: str,
+        overrides: Dict[str, Any],
+        oauth_settings: OAuth1Settings,
+        ctx: ApiContext,
+    ) -> OAuth1TokenResponse:
+        """Exchange OAuth1 verifier for access token."""
+        ...
+
+    async def create_init_session(
+        self,
+        db: AsyncSession,
+        *,
+        short_name: str,
+        state: str,
+        payload: Dict[str, Any],
+        ctx: ApiContext,
+        uow: UnitOfWork,
+        redirect_session_id: Optional[UUID] = None,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        oauth_client_mode: Optional[str] = None,
+        redirect_url: Optional[str] = None,
+        template_configs: Optional[dict] = None,
+        additional_overrides: Optional[Dict[str, Any]] = None,
+    ) -> ConnectionInitSession:
+        """Persist an init session for a new OAuth flow."""
+        ...
+
+    async def create_proxy_url(
+        self,
+        db: AsyncSession,
+        provider_auth_url: str,
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> Tuple[str, datetime, UUID]:
+        """Create proxy redirect URL. Returns (proxy_url, proxy_expires, redirect_session_id)."""
+        ...
+
+
+class OAuthCallbackServiceProtocol(Protocol):
+    """Completes browser-based OAuth callback flows end-to-end."""
+
+    async def complete_oauth_callback(
+        self,
+        db: AsyncSession,
+        *,
+        state: Optional[str] = None,
+        code: Optional[str] = None,
+        oauth_token: Optional[str] = None,
+        oauth_verifier: Optional[str] = None,
+    ) -> SourceConnectionSchema:
+        """Complete OAuth callback by auto-detecting OAuth1 vs OAuth2 parameter set."""
+        ...
+
+    async def complete_oauth2_callback(
+        self,
+        db: AsyncSession,
+        *,
+        state: str,
+        code: str,
+    ) -> SourceConnectionSchema:
+        """Complete OAuth2 callback: exchange code, wire credential + connection, trigger sync."""
+        ...
+
+    async def complete_oauth1_callback(
+        self,
+        db: AsyncSession,
+        *,
+        oauth_token: str,
+        oauth_verifier: str,
+    ) -> SourceConnectionSchema:
+        """Complete OAuth1 callback.
+
+        Exchange verifier, wire credential + connection, trigger sync.
+        """
         ...

@@ -52,7 +52,7 @@ class TestSources:
     @pytest.mark.asyncio
     async def test_get_multiple_sources(self, api_client: httpx.AsyncClient):
         """Test getting details for multiple known sources."""
-        known_sources = ["stripe", "notion", "linear", "asana", "hubspot_crm"]
+        known_sources = ["stripe", "notion", "linear", "asana", "hubspot_crm", "slab"]
 
         for source_name in known_sources:
             response = await api_client.get(f"/sources/{source_name}")

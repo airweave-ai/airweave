@@ -10,7 +10,6 @@ import CollectionDetailView from "@/pages/CollectionDetailView";
 import CollectionsView from "@/pages/CollectionsView";
 
 import AuthProviders from '@/pages/AuthProviders';
-import SemanticMcp from '@/pages/SemanticMcp';
 import { useCollectionsStore } from '@/lib/stores';
 import { NotFound } from '@/pages/NotFound';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -40,7 +39,6 @@ function App() {
         {/* Public routes */}
         <Route path={publicPaths.login} element={<Login />} />
         <Route path={publicPaths.callback} element={<Callback />} />
-        <Route path={publicPaths.semanticMcp} element={<SemanticMcp />} />
         <Route path={publicPaths.onboarding} element={<Onboarding />} />
         <Route path={publicPaths.billingSuccess} element={<BillingSuccess />} />
         <Route path={publicPaths.billingCancel} element={<BillingCancel />} />

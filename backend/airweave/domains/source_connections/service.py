@@ -12,6 +12,7 @@ from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.oauth.protocols import OAuthRedirectSessionRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
+    SourceConnectionCreateServiceProtocol,
     ResponseBuilderProtocol,
     SourceConnectionDeletionServiceProtocol,
     SourceConnectionRepositoryProtocol,
@@ -25,6 +26,7 @@ from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
 from airweave.schemas.source_connection import (
+    SourceConnectionCreate,
     SourceConnectionJob,
     SourceConnectionListItem,
     SourceConnectionUpdate,
@@ -48,6 +50,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         response_builder: ResponseBuilderProtocol,
         sync_lifecycle: SyncLifecycleServiceProtocol,
         # Sub-services
+        create_service: SourceConnectionCreateServiceProtocol,
         update_service: SourceConnectionUpdateServiceProtocol,
         deletion_service: SourceConnectionDeletionServiceProtocol,
     ) -> None:
@@ -59,6 +62,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         self.auth_provider_registry = auth_provider_registry
         self.response_builder = response_builder
         self._sync_lifecycle = sync_lifecycle
+        self._create_service = create_service
         self._update_service = update_service
         self._deletion_service = deletion_service
 
@@ -107,6 +111,12 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
             )
 
         return result
+
+    async def create(
+        self, db: AsyncSession, obj_in: SourceConnectionCreate, ctx: ApiContext
+    ) -> SourceConnectionSchema:
+        """Create a source connection."""
+        return await self._create_service.create(db, obj_in=obj_in, ctx=ctx)
 
     async def update(
         self, db: AsyncSession, id: UUID, obj_in: SourceConnectionUpdate, ctx: ApiContext

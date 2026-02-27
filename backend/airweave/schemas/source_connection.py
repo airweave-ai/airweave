@@ -6,7 +6,7 @@ This module provides a clean schema hierarchy for source connections:
 - Builder classes with type-safe construction and validation
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 from uuid import UUID
@@ -76,7 +76,7 @@ class OAuthTokenAuthentication(BaseModel):
     @model_validator(mode="after")
     def validate_token(self):
         """Validate token is not expired."""
-        if self.expires_at and self.expires_at < datetime.utcnow():
+        if self.expires_at and self.expires_at < datetime.now(timezone.utc):
             raise ValueError("Token has already expired")
         return self
 

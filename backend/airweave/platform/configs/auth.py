@@ -760,6 +760,35 @@ class ServiceNowAuthConfig(AuthConfig):
         raise ValueError("Either 'url' or 'subdomain' must be provided")
 
 
+class SlabAuthConfig(APIKeyAuthConfig):
+    """Slab authentication credentials schema."""
+
+    api_key: str = Field(
+        title="API Token",
+        description="Your Slab API token. Generate one in Settings > Developer Tools > API Tokens.",
+        min_length=10,
+    )
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate Slab API token."""
+        if not v or not v.strip():
+            raise ValueError("API token is required")
+        v = v.strip()
+        # Reject only exact placeholder values (after normalization), not tokens that contain them
+        placeholder_values = [
+            "your-api-token",
+            "xxx",
+            "api-token-here",
+            "paste-here",
+            "placeholder",
+        ]
+        if v.lower() in {p.lower() for p in placeholder_values}:
+            raise ValueError("Please enter your actual API token, not a placeholder value")
+        return v
+
+
 class SlackAuthConfig(OAuth2AuthConfig):
     """Slack authentication credentials schema."""
 

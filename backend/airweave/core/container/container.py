@@ -36,6 +36,9 @@ from airweave.domains.credentials.protocols import IntegrationCredentialReposito
 from airweave.domains.oauth.protocols import (
     OAuth1ServiceProtocol,
     OAuth2ServiceProtocol,
+    OAuthCallbackServiceProtocol,
+    OAuthFlowServiceProtocol,
+    OAuthInitSessionRepositoryProtocol,
     OAuthRedirectSessionRepositoryProtocol,
 )
 from airweave.domains.source_connections.protocols import (
@@ -120,6 +123,9 @@ class Container:
     oauth1_service: OAuth1ServiceProtocol
     oauth2_service: OAuth2ServiceProtocol
     redirect_session_repo: OAuthRedirectSessionRepositoryProtocol
+    oauth_flow_service: OAuthFlowServiceProtocol
+    oauth_callback_service: OAuthCallbackServiceProtocol
+    init_session_repo: OAuthInitSessionRepositoryProtocol
 
     # Source connection service — domain service for source connections
     source_connection_service: SourceConnectionServiceProtocol

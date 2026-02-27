@@ -84,6 +84,7 @@ class SyncRecordService(SyncRecordServiceProtocol):
             ctx=ctx,
             uow=uow,
         )
+        await uow.session.flush()
 
         sync_job_schema: Optional[schemas.SyncJob] = None
         if run_immediately:
@@ -93,6 +94,8 @@ class SyncRecordService(SyncRecordServiceProtocol):
                 ctx,
                 uow=uow,
             )
+            await uow.session.flush()
+            await uow.session.refresh(sync_job)
             sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
 
         return sync_schema, sync_job_schema

@@ -1,7 +1,7 @@
 """Fake source connection repository for testing."""
 
 from typing import Any, List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,6 +70,16 @@ class FakeSourceConnectionRepository:
         self._calls.append(("get_schedule_info", db, source_connection))
         return self._schedule_info.get(source_connection.id)
 
+    async def get_by_init_session(
+        self, db: AsyncSession, *, init_session_id: UUID, ctx: ApiContext
+    ) -> Optional[SourceConnection]:
+        """Get source connection by init session ID within org scope."""
+        self._calls.append(("get_by_init_session", db, init_session_id, ctx))
+        for sc in self._store.values():
+            if getattr(sc, "connection_init_session_id", None) == init_session_id:
+                return sc
+        return None
+
     async def get_init_session_with_redirect(
         self, db: AsyncSession, session_id: UUID, ctx: ApiContext
     ) -> Optional[ConnectionInitSession]:
@@ -122,6 +132,36 @@ class FakeSourceConnectionRepository:
             setattr(db_obj, field, value)
         self._store[db_obj.id] = db_obj
         return db_obj
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: dict[str, Any],
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> SourceConnection:
+        """Create a source connection in the in-memory store."""
+        self._calls.append(("create", db, obj_in, ctx, uow))
+        source_connection = SourceConnection(
+            id=UUID(str(obj_in.get("id"))) if obj_in.get("id") else uuid4(),
+            organization_id=ctx.organization.id,
+            name=obj_in["name"],
+            description=obj_in.get("description"),
+            short_name=obj_in["short_name"],
+            config_fields=obj_in.get("config_fields"),
+            readable_auth_provider_id=obj_in.get("readable_auth_provider_id"),
+            auth_provider_config=obj_in.get("auth_provider_config"),
+            sync_id=obj_in.get("sync_id"),
+            readable_collection_id=obj_in.get("readable_collection_id"),
+            connection_id=obj_in.get("connection_id"),
+            connection_init_session_id=obj_in.get("connection_init_session_id"),
+            is_authenticated=obj_in.get("is_authenticated", False),
+        )
+        self._store[source_connection.id] = source_connection
+        if source_connection.sync_id:
+            self._by_sync_id[source_connection.sync_id] = source_connection
+        return source_connection
 
     async def remove(
         self,
