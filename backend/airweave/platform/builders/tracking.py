@@ -1,12 +1,7 @@
 """Tracking builder for sync operations.
 
-Builds progress tracking components:
-- EntityTracker: Centralized entity state tracking
-- SyncStatePublisher: Redis pubsub publishing
-- UsageEnforcementService: Usage tracking and limit enforcement
+Builds the EntityTracker (centralized entity state tracking).
 """
-
-from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,14 +9,9 @@ from airweave import crud, schemas
 from airweave.core.context import BaseContext
 from airweave.core.logging import ContextualLogger
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
-from airweave.platform.sync.state_publisher import SyncStatePublisher
-
-if TYPE_CHECKING:
-    from airweave.domains.usage.protocols import UsageEnforcementProtocol
-
 
 class TrackingContextBuilder:
-    """Builds progress tracking components for sync operations."""
+    """Builds entity tracking components for sync operations."""
 
     @classmethod
     async def build(
@@ -31,8 +21,7 @@ class TrackingContextBuilder:
         sync_job: schemas.SyncJob,
         ctx: BaseContext,
         logger: ContextualLogger,
-        usage_service: Optional["UsageEnforcementProtocol"] = None,
-    ) -> tuple:
+    ) -> EntityTracker:
         """Build tracking components.
 
         Args:
@@ -41,21 +30,17 @@ class TrackingContextBuilder:
             sync_job: The sync job being tracked
             ctx: Base context (provides org identity)
             logger: Contextual logger
-            usage_service: Optional usage enforcement service for limit tracking
 
         Returns:
-            Tuple of (entity_tracker, state_publisher, usage_service).
+            EntityTracker.
         """
-        # Load initial entity counts from database
         initial_counts = await crud.entity_count.get_counts_per_sync_and_type(db, sync.id)
 
-        logger.info(f"🔢 Loaded initial entity counts: {len(initial_counts)} entity types")
+        logger.info(f"Loaded initial entity counts: {len(initial_counts)} entity types")
 
-        # Log the initial counts for debugging
         for count in initial_counts:
             logger.debug(f"  - {count.entity_definition_name}: {count.count} entities")
 
-        # Create EntityTracker (pure state tracking)
         entity_tracker = EntityTracker(
             job_id=sync_job.id,
             sync_id=sync.id,
@@ -63,14 +48,6 @@ class TrackingContextBuilder:
             initial_counts=initial_counts,
         )
 
-        # Create SyncStatePublisher (handles pubsub publishing)
-        state_publisher = SyncStatePublisher(
-            job_id=sync_job.id,
-            sync_id=sync.id,
-            entity_tracker=entity_tracker,
-            logger=logger,
-        )
+        logger.info(f"Created EntityTracker for job {sync_job.id}")
 
-        logger.info(f"✅ Created EntityTracker and SyncStatePublisher for job {sync_job.id}")
-
-        return entity_tracker, state_publisher, usage_service
+        return entity_tracker

@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.db.session import get_db_context
-from airweave.domains.usage.types import ActionType
 from airweave.platform.sync.actions.entity.types import (
     EntityActionBatch,
     EntityDeleteAction,
@@ -39,14 +38,6 @@ class EntityPostgresHandler(EntityActionHandler):
     Runs AFTER destination handlers succeed (dispatcher handles ordering).
     """
 
-    def __init__(self, guard_rail=None):
-        """Initialize with optional guard rail service.
-
-        Args:
-            guard_rail: GuardRailService for usage tracking (injected by factory)
-        """
-        self._guard_rail = guard_rail
-
     @property
     def name(self) -> str:
         """Handler name."""
@@ -67,19 +58,6 @@ class EntityPostgresHandler(EntityActionHandler):
             return
 
         await self._do_batch_with_retry(batch, sync_context)
-
-        # Update guard rail (unless explicitly skipped)
-        skip_guardrails = (
-            sync_context.execution_config
-            and sync_context.execution_config.behavior
-            and sync_context.execution_config.behavior.skip_guardrails
-        )
-        if not skip_guardrails:
-            total_synced = len(batch.inserts) + len(batch.updates)
-            if total_synced > 0:
-                async with get_db_context() as db:
-                    await self._guard_rail.increment(db, ActionType.ENTITIES, amount=total_synced)
-                sync_context.logger.debug(f"[EntityPostgres] guard_rail += {total_synced}")
 
     async def handle_inserts(
         self,

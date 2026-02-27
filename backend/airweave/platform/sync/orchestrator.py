@@ -15,6 +15,7 @@ from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
 )
+from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
 from airweave.domains.usage.types import ActionType
 from airweave.platform.contexts import SyncContext
 from airweave.platform.contexts.runtime import SyncRuntime
@@ -151,28 +152,21 @@ class SyncOrchestrator:
                     },
                 )
 
-            # Always finalize progress and trackers with error message if available
-            await self._finalize_progress_and_trackers(final_status, error_message)
-
             # Always flush usage service usage to prevent data loss
             try:
                 self.sync_context.logger.info("Flushing usage service usage data...")
                 async with get_db_context() as db:
-                    await self.runtime.guard_rail.flush_all(db)
+                    await self.runtime.usage_guardrail.flush_all(db)
             except Exception as flush_error:
                 self.sync_context.logger.error(
                     f"Failed to flush usage service usage: {flush_error}", exc_info=True
                 )
 
             # Always cleanup temp files to prevent pod eviction
-            # Note: This runs in finally block, so it executes even if sync failed
-            # We don't raise cleanup errors to avoid masking the original sync error
             try:
                 self.sync_context.logger.info("Running final temp file cleanup...")
                 await self.entity_pipeline.cleanup_temp_files(self.sync_context, self.runtime)
             except Exception as cleanup_error:
-                # Never raise from cleanup - we want the original sync error to propagate
-                # If sync succeeded but cleanup failed, that's logged but not re-raised
                 self.sync_context.logger.error(
                     f"Temp file cleanup failed (non-fatal in finally block): {cleanup_error}",
                     exc_info=True,
@@ -218,7 +212,7 @@ class SyncOrchestrator:
                 if not self.sync_context.execution_config.behavior.skip_guardrails:
                     try:
                         async with get_db_context() as db:
-                            await self.runtime.guard_rail.is_allowed(db, ActionType.ENTITIES)
+                            await self.runtime.usage_guardrail.is_allowed(db, ActionType.ENTITIES)
                     except (
                         UsageLimitExceededError,
                         PaymentRequiredError,
@@ -506,10 +500,10 @@ class SyncOrchestrator:
 
         self.sync_context.logger.info(f"Starting access control sync for {source_name}")
 
-        # Publish a progress heartbeat so the stuck-job detector knows we're alive.
+        # Publish a heartbeat so the stuck-job detector knows we're alive.
         # ACL expansion (especially with 50K+ users) can take a long time without
-        # producing entity progress updates, which would otherwise trigger cancellation.
-        await self.runtime.state_publisher.publish_progress()
+        # producing entity batch events, which would otherwise trigger cancellation.
+        await self._publish_acl_heartbeat()
 
         try:
             await self.access_control_pipeline.process(
@@ -523,21 +517,21 @@ class SyncOrchestrator:
                 exc_info=True,
             )
 
-        # Publish another heartbeat after ACL sync completes
-        await self.runtime.state_publisher.publish_progress()
+        await self._publish_acl_heartbeat()
         # Don't fail the entire sync for ACL errors
 
-    async def _finalize_progress_and_trackers(
-        self, status: SyncJobStatus, error: Optional[str] = None
-    ) -> None:
-        """Finalize progress tracking and entity state tracker.
-
-        Args:
-            status: The final status of the sync job
-            error: Optional error message if the sync failed
-        """
-        # Publish completion via SyncStatePublisher
-        await self.runtime.state_publisher.publish_completion(status, error)
+    async def _publish_acl_heartbeat(self) -> None:
+        """Publish an ACL heartbeat event to keep the stall detector alive."""
+        ctx = self.sync_context
+        await self.runtime.event_bus.publish(
+            AccessControlMembershipBatchProcessedEvent(
+                organization_id=ctx.organization_id,
+                sync_id=ctx.sync.id,
+                sync_job_id=ctx.sync_job.id,
+                source_connection_id=ctx.source_connection_id,
+                source_type=ctx.source_short_name,
+            )
+        )
 
     async def _complete_sync(self) -> None:
         """Mark sync job as completed with final statistics."""

@@ -20,7 +20,7 @@ from airweave.domains.organizations.fakes.repository import FakeUserOrganization
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.usage.fakes.repository import FakeUsageRepository
 from airweave.domains.usage.factory import NullUsageServiceFactory, UsageServiceFactory
-from airweave.domains.usage.service import UsageEnforcementService
+from airweave.domains.usage.service import UsageGuardrailService
 from airweave.models.billing_period import BillingPeriod
 from airweave.models.organization_billing import OrganizationBilling
 from airweave.models.usage import Usage as UsageModel
@@ -150,20 +150,20 @@ def _make_service(
     user_org_repo: Optional[FakeUserOrganizationRepository] = None,
     org_id: UUID = DEFAULT_ORG_ID,
 ) -> tuple[
-    UsageEnforcementService,
+    UsageGuardrailService,
     FakeUsageRepository,
     FakeOrganizationBillingRepository,
     FakeBillingPeriodRepository,
     FakeSourceConnectionRepository,
     FakeUserOrganizationRepository,
 ]:
-    """Build a UsageEnforcementService wired to fakes. Returns (service, *fakes)."""
+    """Build a UsageGuardrailService wired to fakes. Returns (service, *fakes)."""
     ur = usage_repo or FakeUsageRepository()
     br = billing_repo or FakeOrganizationBillingRepository()
     pr = period_repo or FakeBillingPeriodRepository()
     sc = sc_repo or FakeSourceConnectionRepository()
     uo = user_org_repo or FakeUserOrganizationRepository()
-    svc = UsageEnforcementService(
+    svc = UsageGuardrailService(
         organization_id=org_id,
         usage_repo=ur,
         billing_repo=br,

@@ -21,7 +21,6 @@ class EntityDispatcherBuilder:
         destinations: List[BaseDestination],
         execution_config: Optional[SyncConfig] = None,
         logger: Optional[ContextualLogger] = None,
-        guard_rail=None,
     ) -> EntityActionDispatcher:
         """Build dispatcher with handlers based on config.
 
@@ -29,12 +28,11 @@ class EntityDispatcherBuilder:
             destinations: Destination instances
             execution_config: Optional config to enable/disable handlers
             logger: Optional logger for logging handler creation
-            guard_rail: Optional GuardRailService for EntityPostgresHandler
 
         Returns:
             EntityActionDispatcher with configured handlers.
         """
-        handlers = cls._build_handlers(destinations, execution_config, logger, guard_rail)
+        handlers = cls._build_handlers(destinations, execution_config, logger)
         return EntityActionDispatcher(handlers=handlers)
 
     @classmethod
@@ -60,7 +58,6 @@ class EntityDispatcherBuilder:
         destinations: List[BaseDestination],
         execution_config: Optional[SyncConfig],
         logger: Optional[ContextualLogger],
-        guard_rail=None,
     ) -> List[EntityActionHandler]:
         """Build handler list based on config."""
         enable_vector = (
@@ -75,7 +72,7 @@ class EntityDispatcherBuilder:
 
         cls._add_destination_handler(handlers, destinations, enable_vector, logger)
         cls._add_arf_handler(handlers, enable_arf, logger)
-        cls._add_postgres_handler(handlers, enable_postgres, logger, guard_rail)
+        cls._add_postgres_handler(handlers, enable_postgres, logger)
 
         if not handlers and logger:
             logger.warning("No handlers created - sync will fetch entities but not persist them")
@@ -128,11 +125,10 @@ class EntityDispatcherBuilder:
         handlers: List[EntityActionHandler],
         enabled: bool,
         logger: Optional[ContextualLogger],
-        guard_rail=None,
     ) -> None:
         """Add Postgres metadata handler if enabled (always last)."""
         if enabled:
-            handlers.append(EntityPostgresHandler(guard_rail=guard_rail))
+            handlers.append(EntityPostgresHandler())
             if logger:
                 logger.debug("Added EntityPostgresHandler")
         elif logger:

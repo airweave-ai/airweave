@@ -8,25 +8,25 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
-    from airweave.core.guard_rail_service import GuardRailService
+    from airweave.core.protocols.event_bus import EventBus
+    from airweave.domains.usage.protocols import UsageGuardrailProtocol
     from airweave.platform.destinations._base import BaseDestination
     from airweave.platform.sources._base import BaseSource
     from airweave.platform.sync.cursor import SyncCursor
     from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
-    from airweave.platform.sync.state_publisher import SyncStatePublisher
 
 
 @dataclass
 class SyncRuntime:
     """Live services and mutable state for a sync run.
 
-    Built by SyncContextBuilder alongside SyncContext.
+    Built by SyncFactory alongside SyncContext.
     Held by SyncOrchestrator and injected into pipeline/handler constructors.
     """
 
     source: "BaseSource"
     cursor: "SyncCursor"
+    entity_tracker: "EntityTracker"
+    event_bus: "EventBus"
+    usage_guardrail: "UsageGuardrailProtocol"
     destinations: List["BaseDestination"] = field(default_factory=list)
-    entity_tracker: "EntityTracker" = None
-    state_publisher: "SyncStatePublisher" = None
-    guard_rail: "GuardRailService" = None

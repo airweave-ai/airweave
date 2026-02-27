@@ -20,7 +20,7 @@ from airweave.platform.sync.factory import SyncFactory
 from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
 if TYPE_CHECKING:
-    from airweave.domains.usage.protocols import UsageEnforcementProtocol
+    from airweave.domains.usage.protocols import UsageGuardrailProtocol
 
 
 class SyncService:
@@ -105,7 +105,7 @@ class SyncService:
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
-        usage_service: Optional["UsageEnforcementProtocol"] = None,
+        usage_guardrail: Optional["UsageGuardrailProtocol"] = None,
     ) -> schemas.Sync:
         """Run a sync.
 
@@ -121,7 +121,7 @@ class SyncService:
             force_full_sync (bool): If True, forces a full sync with orphaned entity deletion.
             execution_config (Optional[SyncConfig]): Optional execution config
                 for controlling sync behavior (destination filtering, handler toggles, etc.)
-            usage_service: Optional usage enforcement service for tracking and limits.
+            usage_guardrail: Optional usage enforcement service for tracking and limits.
 
         Returns:
         -------
@@ -140,7 +140,7 @@ class SyncService:
                     access_token=access_token,
                     force_full_sync=force_full_sync,
                     execution_config=execution_config,
-                    usage_service=usage_service,
+                    usage_guardrail=usage_guardrail,
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")

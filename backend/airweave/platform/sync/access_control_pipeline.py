@@ -177,7 +177,21 @@ class AccessControlPipeline:
                         f"{stats.encountered} unique, "
                         f"{upserted_count} written to DB"
                     )
-                    await runtime.state_publisher.publish_progress()
+                    from airweave.core.events.sync import (
+                        AccessControlMembershipBatchProcessedEvent,
+                    )
+
+                    await runtime.event_bus.publish(
+                        AccessControlMembershipBatchProcessedEvent(
+                            organization_id=sync_context.organization_id,
+                            sync_id=sync_context.sync.id,
+                            sync_job_id=sync_context.sync_job.id,
+                            source_connection_id=sync_context.source_connection_id,
+                            source_type=sync_context.source_short_name,
+                            collected=total_collected,
+                            upserted=upserted_count,
+                        )
+                    )
 
             collection_complete = True
 

@@ -887,8 +887,8 @@ class StubSource(BaseSource):
             "code_file": 0,
         }
 
-        # Generate entities according to distribution
-        for i in range(self.entity_count):
+        # Generate entities according to distribution (container counts as 1)
+        for i in range(self.entity_count - 1):
             entity_type = self._select_entity_type(i)
             type_counts[entity_type] += 1
 

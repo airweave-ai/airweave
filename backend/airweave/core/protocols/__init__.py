@@ -8,7 +8,7 @@ infrastructure protocols only.
 from airweave.core.health.protocols import HealthProbe, HealthServiceProtocol
 from airweave.core.protocols.circuit_breaker import CircuitBreaker
 from airweave.core.protocols.encryption import CredentialEncryptor
-from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandler
+from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandler, EventSubscriber
 from airweave.core.protocols.metrics import (
     AgenticSearchMetrics,
     DbPool,
@@ -19,6 +19,7 @@ from airweave.core.protocols.metrics import (
     WorkerMetrics,
 )
 from airweave.core.protocols.ocr import OcrProvider
+from airweave.core.protocols.pubsub import PubSub
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import (
     EndpointVerifier,
@@ -45,6 +46,7 @@ __all__ = [
     "MetricsService",
     "OcrProvider",
     "PaymentGatewayProtocol",
+    "PubSub",
     "WebhookAdmin",
     "WebhookPublisher",
     "WebhookServiceProtocol",

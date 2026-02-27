@@ -10,7 +10,7 @@ from airweave.domains.usage.types import ActionType
 
 
 @runtime_checkable
-class UsageEnforcementProtocol(Protocol):
+class UsageGuardrailProtocol(Protocol):
     """Per-organization usage tracking and limit enforcement."""
 
     async def is_allowed(self, db: AsyncSession, action_type: ActionType, amount: int = 1) -> bool:
@@ -36,7 +36,7 @@ class UsageEnforcementProtocol(Protocol):
 
 @runtime_checkable
 class UsageServiceFactoryProtocol(Protocol):
-    """Factory that creates per-organization UsageEnforcementProtocol instances.
+    """Factory that creates per-organization UsageGuardrailProtocol instances.
 
     Lives on the Container as a singleton. The factory holds shared repository
     dependencies; ``create()`` builds a stateful, per-org service instance.
@@ -46,6 +46,6 @@ class UsageServiceFactoryProtocol(Protocol):
         self,
         organization_id: UUID,
         logger: ContextualLogger,
-    ) -> UsageEnforcementProtocol:
+    ) -> UsageGuardrailProtocol:
         """Create a new enforcement service for *organization_id*."""
         ...

@@ -14,7 +14,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import logger
 from airweave.core.organization_service import organization_service
-from airweave.domains.usage.protocols import UsageEnforcementProtocol
+from airweave.domains.usage.protocols import UsageGuardrailProtocol
 from airweave.domains.usage.types import ActionType
 from airweave.models.user import User
 
@@ -394,7 +394,7 @@ async def invite_user_to_organization(
     invitation_data: schemas.InvitationCreate,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
+    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
 ) -> schemas.InvitationResponse:
     """Send organization invitation via Auth0."""
     # Validate user has admin access using auth context
@@ -411,7 +411,7 @@ async def invite_user_to_organization(
 
     try:
         # Enforce team member plan limits before sending invite
-        await usage_service.is_allowed(db, ActionType.TEAM_MEMBERS, amount=1)
+        await usage_guardrail.is_allowed(db, ActionType.TEAM_MEMBERS, amount=1)
         invitation = await organization_service.invite_user_to_organization(
             db=db,
             organization_id=organization_id,

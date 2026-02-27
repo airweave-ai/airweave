@@ -7,13 +7,14 @@ from airweave.adapters.analytics.protocols import AnalyticsTrackerProtocol
 from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
+from airweave.core.protocols.event_bus import EventSubscriber
 
 logger = logging.getLogger(__name__)
 
 _Event = Union[CollectionLifecycleEvent, SourceConnectionLifecycleEvent, SyncLifecycleEvent]
 
 
-class AnalyticsEventSubscriber:
+class AnalyticsEventSubscriber(EventSubscriber):
     """Maps domain events to PostHog analytics calls.
 
     Registered on the event bus at startup. Each ``_handle_*`` method

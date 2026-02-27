@@ -7,13 +7,16 @@ Lifecycle:
 4. Hash computed
 5. Action resolved (INSERT/UPDATE/DELETE/KEEP)
 6. Actions dispatched to handlers (handlers process content as needed)
-7. Orphan cleanup dispatched through handlers at sync end
+7. EntityBatchProcessedEvent emitted to per-sync event emitter
+8. Orphan cleanup dispatched through handlers at sync end
 """
 
+import time
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 from uuid import UUID
 
+from airweave.core.events.sync import EntityBatchProcessedEvent, TypeActionCounts
 from airweave.core.shared_models import AirweaveFieldFlag
 from airweave.platform.contexts import SyncContext
 from airweave.platform.contexts.runtime import SyncRuntime
@@ -27,7 +30,9 @@ from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.sync.pipeline.cleanup_service import cleanup_service
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
 from airweave.platform.sync.pipeline.hash_computer import hash_computer
-from airweave.platform.sync.state_publisher import SyncStatePublisher
+
+if TYPE_CHECKING:
+    from airweave.core.protocols.event_bus import EventBus
 
 
 class EntityPipeline:
@@ -39,7 +44,7 @@ class EntityPipeline:
     def __init__(
         self,
         entity_tracker: EntityTracker,
-        state_publisher: SyncStatePublisher,
+        event_bus: "EventBus",
         action_resolver: EntityActionResolver,
         action_dispatcher: EntityActionDispatcher,
     ):
@@ -47,14 +52,15 @@ class EntityPipeline:
 
         Args:
             entity_tracker: Centralized entity state tracker
-            state_publisher: Publishes progress to Redis pubsub
+            event_bus: Per-sync event bus for EntityBatchProcessedEvent fan-out
             action_resolver: Resolves entities to actions
             action_dispatcher: Dispatches actions to handlers
         """
         self._tracker = entity_tracker
-        self._state_publisher = state_publisher
+        self._event_bus = event_bus
         self._resolver = action_resolver
         self._dispatcher = action_dispatcher
+        self._batch_seq = 0
 
     # -------------------------------------------------------------------------
     # Public API - Called from Orchestrator
@@ -73,6 +79,8 @@ class EntityPipeline:
             sync_context: Sync context (frozen data)
             runtime: Sync runtime (live services)
         """
+        batch_start = time.monotonic()
+
         unique_entities = await self._track_and_dedupe(entities, sync_context)
         if not unique_entities:
             return
@@ -82,12 +90,14 @@ class EntityPipeline:
         batch = await self._resolver.resolve(unique_entities, sync_context)
 
         if not batch.has_mutations:
-            await self._handle_keep_only_batch(batch, sync_context)
+            await self._handle_keep_only_batch(batch, sync_context, batch_start)
             return
 
         await self._dispatcher.dispatch(batch, sync_context, runtime)
 
         await self._update_tracker(batch, sync_context)
+
+        await self._emit_batch_event(batch, sync_context, batch_start)
 
         await self._cleanup_temp_files_for_batch(batch, sync_context)
 
@@ -184,11 +194,13 @@ class EntityPipeline:
         self,
         batch: EntityActionBatch,
         sync_context: SyncContext,
+        batch_start: float = 0,
     ) -> None:
         """Handle batch where all entities are KEEP (unchanged)."""
         if batch.keeps:
             await self._tracker.record_kept(len(batch.keeps))
-            await self._state_publisher.check_and_publish()
+
+            await self._emit_batch_event(batch, sync_context, batch_start)
 
             sync_context.logger.debug(
                 f"All {len(batch.keeps)} entities unchanged - skipping pipeline"
@@ -231,7 +243,66 @@ class EntityPipeline:
             entity_names=entity_names,
         )
 
-        await self._state_publisher.check_and_publish()
+    # -------------------------------------------------------------------------
+    # Event Emission
+    # -------------------------------------------------------------------------
+
+    async def _emit_batch_event(
+        self,
+        batch: EntityActionBatch,
+        sync_context: SyncContext,
+        batch_start: float,
+    ) -> None:
+        """Emit EntityBatchProcessedEvent to the per-sync event emitter."""
+        self._batch_seq += 1
+        duration_ms = (time.monotonic() - batch_start) * 1000 if batch_start else 0
+
+        type_breakdown = self._build_type_breakdown(batch)
+
+        # TODO: wrap this into a class or similar
+        skip_guardrails = (
+            sync_context.execution_config
+            and sync_context.execution_config.behavior
+            and sync_context.execution_config.behavior.skip_guardrails
+        )
+
+        event = EntityBatchProcessedEvent(
+            organization_id=sync_context.organization_id,
+            sync_id=sync_context.sync.id,
+            sync_job_id=sync_context.sync_job.id,
+            collection_id=sync_context.collection.id,
+            source_connection_id=sync_context.source_connection_id,
+            source_type=sync_context.source_short_name,
+            inserted=len(batch.inserts),
+            updated=len(batch.updates),
+            deleted=len(batch.deletes),
+            kept=len(batch.keeps),
+            type_breakdown=type_breakdown,
+            batch_seq=self._batch_seq,
+            batch_duration_ms=round(duration_ms, 2),
+            billable=not skip_guardrails,
+        )
+
+        await self._event_bus.publish(event)
+
+    @staticmethod
+    def _build_type_breakdown(batch: EntityActionBatch) -> Dict[str, TypeActionCounts]:
+        """Build per-entity-type action counts from a resolved batch."""
+        counts: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
+        for action in batch.inserts:
+            counts[action.entity_type]["inserted"] += 1
+        for action in batch.updates:
+            counts[action.entity_type]["updated"] += 1
+        for action in batch.deletes:
+            counts[action.entity_type]["deleted"] += 1
+        for action in batch.keeps:
+            counts[action.entity_type]["kept"] += 1
+
+        return {
+            entity_type: TypeActionCounts(**action_counts)
+            for entity_type, action_counts in counts.items()
+        }
 
     # -------------------------------------------------------------------------
     # Orphan Identification

@@ -1,9 +1,9 @@
-"""Unit tests for UsageEnforcementService."""
+"""Unit tests for UsageGuardrailService."""
 
 import pytest
 
 from airweave.domains.usage.exceptions import PaymentRequiredError, UsageLimitExceededError
-from airweave.domains.usage.service import NullUsageEnforcementService
+from airweave.domains.usage.service import NullUsageGuardrailService
 from airweave.domains.usage.tests.conftest import (
     DEFAULT_ORG_ID,
     _make_billing_model,
@@ -302,13 +302,13 @@ class TestFlushAll:
 
 
 # ---------------------------------------------------------------------------
-# NullUsageEnforcementService
+# NullUsageGuardrailService
 # ---------------------------------------------------------------------------
 
 class TestNullService:
     @pytest.mark.asyncio
     async def test_always_allows(self, db):
-        svc = NullUsageEnforcementService()
+        svc = NullUsageGuardrailService()
         assert await svc.is_allowed(db, ActionType.ENTITIES) is True
         assert await svc.is_allowed(db, ActionType.QUERIES) is True
         assert await svc.is_allowed(db, ActionType.SOURCE_CONNECTIONS) is True
@@ -316,12 +316,12 @@ class TestNullService:
 
     @pytest.mark.asyncio
     async def test_increment_is_noop(self, db):
-        svc = NullUsageEnforcementService()
+        svc = NullUsageGuardrailService()
         await svc.increment(db, ActionType.ENTITIES, 1000)
 
     @pytest.mark.asyncio
     async def test_flush_all_is_noop(self, db):
-        svc = NullUsageEnforcementService()
+        svc = NullUsageGuardrailService()
         await svc.flush_all(db)
 
 

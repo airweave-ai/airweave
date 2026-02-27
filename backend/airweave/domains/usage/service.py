@@ -19,7 +19,7 @@ from airweave.domains.billing.repository import (
 from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.usage.exceptions import PaymentRequiredError, UsageLimitExceededError
-from airweave.domains.usage.protocols import UsageEnforcementProtocol
+from airweave.domains.usage.protocols import UsageGuardrailProtocol
 from airweave.domains.usage.repository import UsageRepositoryProtocol
 from airweave.domains.usage.types import (
     BILLING_STATUS_RESTRICTIONS,
@@ -41,7 +41,8 @@ _FLUSH_THRESHOLDS: dict[ActionType, int] = {
 _USAGE_CACHE_TTL = timedelta(seconds=30)
 
 
-class UsageEnforcementService(UsageEnforcementProtocol):
+
+class UsageGuardrailService(UsageGuardrailProtocol):
     """Per-organization usage tracking and limit enforcement.
 
     Stateful: caches usage data, buffers increments, and uses an asyncio.Lock
@@ -346,21 +347,9 @@ class UsageEnforcementService(UsageEnforcementProtocol):
             self.pending_increments[at] = 0
 
 
-class NullUsageEnforcementService(UsageEnforcementProtocol):
-    """No-op implementation — all actions allowed, nothing tracked.
-
-    Used in local development via NullUsageServiceFactory.
-    """
+class AlwaysAllowUsageGuardrailService(UsageGuardrailService):
+    """Always allow usage guardrail service."""
 
     async def is_allowed(self, db: AsyncSession, action_type: ActionType, amount: int = 1) -> bool:
-        """Always allow — no enforcement in local dev."""
+        """Always allow."""
         return True
-
-    async def increment(self, db: AsyncSession, action_type: ActionType, amount: int = 1) -> None:
-        """No-op increment."""
-
-    async def decrement(self, db: AsyncSession, action_type: ActionType, amount: int = 1) -> None:
-        """No-op decrement."""
-
-    async def flush_all(self, db: AsyncSession) -> None:
-        """No-op flush."""

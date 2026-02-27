@@ -24,7 +24,7 @@ from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.pubsub import core_pubsub
 from airweave.db.session import AsyncSessionLocal
-from airweave.domains.usage.protocols import UsageEnforcementProtocol
+from airweave.domains.usage.protocols import UsageGuardrailProtocol
 from airweave.domains.usage.types import ActionType
 from airweave.schemas.errors import (
     NotFoundErrorResponse,
@@ -103,11 +103,11 @@ async def search_get_legacy(
         json_schema_extra={"example": 0.3},
     ),
     db: AsyncSession = Depends(deps.get_db),
-    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
+    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     ctx: ApiContext = Depends(deps.get_context),
 ) -> LegacySearchResponse:
     """Legacy GET search endpoint for backwards compatibility."""
-    await usage_service.is_allowed(db, ActionType.QUERIES)
+    await usage_guardrail.is_allowed(db, ActionType.QUERIES)
 
     # Add deprecation warning headers
     response.headers["X-API-Deprecation"] = "true"
@@ -143,7 +143,7 @@ async def search_get_legacy(
     # Convert back to legacy format
     legacy_response = convert_new_response_to_legacy(new_response, response_type)
 
-    await usage_service.increment(db, ActionType.QUERIES)
+    await usage_guardrail.increment(db, ActionType.QUERIES)
 
     return legacy_response
 
@@ -186,10 +186,10 @@ async def search(
     search_request: Union[SearchRequest, LegacySearchRequest] = ...,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
+    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
 ) -> Union[SearchResponse, LegacySearchResponse]:
     """Search your collection with AI-powered semantic search."""
-    await usage_service.is_allowed(db, ActionType.QUERIES)
+    await usage_guardrail.is_allowed(db, ActionType.QUERIES)
 
     ctx.logger.info(f"Starting search for collection '{readable_id}'")
 
@@ -230,7 +230,7 @@ async def search(
     )
 
     ctx.logger.info(f"Search completed for collection '{readable_id}'")
-    await usage_service.increment(db, ActionType.QUERIES)
+    await usage_guardrail.increment(db, ActionType.QUERIES)
 
     # Convert response back to legacy format if needed
     if is_legacy:
@@ -247,7 +247,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
     search_request: Union[SearchRequest, LegacySearchRequest] = ...,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
+    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming endpoint for advanced search.
 
@@ -259,7 +259,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
         f"[SearchStream] Starting stream for collection '{readable_id}' id={request_id}"
     )
 
-    await usage_service.is_allowed(db, ActionType.QUERIES)
+    await usage_guardrail.is_allowed(db, ActionType.QUERIES)
 
     # Convert legacy request if needed
     if isinstance(search_request, LegacySearchRequest):
@@ -349,7 +349,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                                 "Closing stream"
                             )
                             try:
-                                await usage_service.increment(db, ActionType.QUERIES)
+                                await usage_guardrail.increment(db, ActionType.QUERIES)
                             except Exception:
                                 pass
                             break

@@ -20,6 +20,7 @@ from airweave.core.protocols import (
     HealthServiceProtocol,
     MetricsService,
     OcrProvider,
+    PubSub,
     WebhookAdmin,
     WebhookPublisher,
     WebhookServiceProtocol,
@@ -91,6 +92,9 @@ class Container:
     # Event bus for domain event fan-out
     event_bus: EventBus
 
+    # PubSub for realtime message transport (SSE, sync progress)
+    pubsub: PubSub
+
     # Webhook protocols
     webhook_publisher: WebhookPublisher
     webhook_admin: WebhookAdmin
@@ -153,9 +157,13 @@ class Container:
     billing_webhook: BillingWebhookProtocol
 
     # Usage domain (factory creates per-org stateful services)
-    usage_service_factory: UsageServiceFactoryProtocol
+    usage_guardrail_factory: UsageServiceFactoryProtocol
 
     payment_gateway: PaymentGatewayProtocol
+
+    # Sync progress relay (global singleton, auto-initializes from sync.running events)
+    # Typed as Any to avoid circular import — concrete type is SyncProgressRelay
+    progress_relay: Any = None
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured

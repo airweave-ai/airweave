@@ -22,6 +22,17 @@ class SyncEventType(str, Enum):
     CANCELLED = "sync.cancelled"
 
 
+class EntityEventType(str, Enum):
+    """Entity-level operational event types (high-frequency, per-batch)."""
+
+    BATCH_PROCESSED = "entity.batch_processed"
+
+class AccessControlEventType(str, Enum):
+    """Access control event types."""
+
+    BATCH_PROCESSED = "access_control.batch_processed"
+
+
 class CollectionEventType(str, Enum):
     """Collection lifecycle event types."""
 
@@ -40,12 +51,20 @@ class SourceConnectionEventType(str, Enum):
 
 # Union of all known event types.
 # DomainEvent.event_type is typed to this, ensuring only known values are used.
-EventType = SyncEventType | CollectionEventType | SourceConnectionEventType
+EventType = (
+    SyncEventType
+    | EntityEventType
+    | AccessControlEventType
+    | CollectionEventType
+    | SourceConnectionEventType
+)
 
 # Ordered tuple of every event-type enum class.
 # Used by domains/webhooks/types.py to derive its EventType enum automatically.
 ALL_EVENT_TYPE_ENUMS: tuple[type[Enum], ...] = (
     SyncEventType,
+    EntityEventType,
+    AccessControlEventType,
     CollectionEventType,
     SourceConnectionEventType,
 )

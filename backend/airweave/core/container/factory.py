@@ -126,10 +126,19 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # PubSub (realtime message transport — Redis adapter)
+    # -----------------------------------------------------------------
+    from airweave.core.pubsub import core_pubsub
+
+    pubsub = core_pubsub
+
+    # -----------------------------------------------------------------
     # Event Bus
     # Fans out domain events to subscribers (webhooks, analytics, etc.)
     # -----------------------------------------------------------------
-    event_bus = _create_event_bus(webhook_publisher=svix_adapter, settings=settings)
+    event_bus, progress_relay = _create_event_bus(
+        webhook_publisher=svix_adapter, settings=settings, pubsub=pubsub
+    )
 
     # -----------------------------------------------------------------
     # Circuit Breaker + OCR
@@ -285,7 +294,16 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     # Usage domain (factory creates per-org enforcement services)
     # -----------------------------------------------------------------
-    usage_service_factory = _create_usage_service_factory(settings, billing_services, source_deps)
+    usage_guardrail_factory = _create_usage_guardrail_factory(settings, billing_services, source_deps)
+
+    # -----------------------------------------------------------------
+    # Billing event subscriber (needs usage_service_factory, so created last)
+    # -----------------------------------------------------------------
+    from airweave.platform.sync.subscribers.billing_handler import SyncBillingHandler
+
+    billing_handler = SyncBillingHandler(usage_service_factory=usage_guardrail_factory)
+    for pattern in billing_handler.EVENT_PATTERNS:
+        event_bus.subscribe(pattern, billing_handler.handle)
 
     return Container(
         billing_service=billing_services["billing_service"],
@@ -293,6 +311,7 @@ def create_container(settings: Settings) -> Container:
         collection_service=collection_service,
         health=health,
         event_bus=event_bus,
+        pubsub=pubsub,
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
         circuit_breaker=circuit_breaker,
@@ -325,7 +344,8 @@ def create_container(settings: Settings) -> Container:
         sync_lifecycle=sync_deps["sync_lifecycle"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
-        usage_service_factory=usage_service_factory,
+        usage_guardrail_factory=usage_guardrail_factory,
+        progress_relay=progress_relay,
     )
 
 
@@ -382,13 +402,22 @@ def _create_metrics_service(settings: Settings) -> PrometheusMetricsService:
     )
 
 
-def _create_event_bus(webhook_publisher: WebhookPublisher, settings: Settings) -> EventBus:
+def _create_event_bus(
+    webhook_publisher: WebhookPublisher, settings: Settings, pubsub=None
+) -> tuple:
     """Create event bus with subscribers wired up.
 
     The event bus fans out domain events to:
     - WebhookEventSubscriber: External webhooks via Svix (all events)
     - AnalyticsEventSubscriber: PostHog analytics tracking
+    - SyncProgressRelay: Relays entity batch events to Redis PubSub (entity.*)
+    - SyncBillingHandler: Increments usage counters from batch events (entity.*)
+
+    Returns:
+        Tuple of (event_bus, progress_relay).
     """
+    from airweave.platform.sync.subscribers.progress_relay import SyncProgressRelay
+
     bus = InMemoryEventBus()
 
     # WebhookEventSubscriber subscribes to * — all domain events
@@ -403,7 +432,12 @@ def _create_event_bus(webhook_publisher: WebhookPublisher, settings: Settings) -
     for pattern in analytics_subscriber.EVENT_PATTERNS:
         bus.subscribe(pattern, analytics_subscriber.handle)
 
-    return bus
+    # Sync progress relay (self-initializing from sync.running events)
+    progress_relay = SyncProgressRelay(pubsub=pubsub)
+    for pattern in progress_relay.EVENT_PATTERNS:
+        bus.subscribe(pattern, progress_relay.handle)
+
+    return bus, progress_relay
 
 
 def _create_circuit_breaker() -> CircuitBreaker:
@@ -658,16 +692,22 @@ def _create_sync_services(
     }
 
 
-def _create_usage_service_factory(settings: "Settings", billing_deps: dict, source_deps: dict):
+def _create_usage_guardrail_factory(settings: "Settings", billing_deps: dict, source_deps: dict):
     """Create usage service factory: real if billing is enabled, null for local dev."""
-    if settings.LOCAL_DEVELOPMENT:
-        from airweave.domains.usage.factory import NullUsageServiceFactory
-
-        return NullUsageServiceFactory()
-
     from airweave.domains.organizations.repository import UserOrganizationRepository
     from airweave.domains.usage.factory import UsageServiceFactory
     from airweave.domains.usage.repository import UsageRepository
+
+    if settings.LOCAL_DEVELOPMENT:
+        from airweave.domains.usage.factory import AlwaysAllowUsageServiceFactory
+        return AlwaysAllowUsageServiceFactory(
+            usage_repo=UsageRepository(),
+            billing_repo=billing_deps["billing_repo"],
+            period_repo=billing_deps["period_repo"],
+            sc_repo=source_deps["sc_repo"],
+            user_org_repo=UserOrganizationRepository(),
+        )
+
 
     return UsageServiceFactory(
         usage_repo=UsageRepository(),

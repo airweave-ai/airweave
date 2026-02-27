@@ -56,6 +56,10 @@ class CorePubSub:
         message = data if isinstance(data, str) else json.dumps(data)
         return await redis_client.publish(channel, message)
 
+    async def store_snapshot(self, key: str, data: str, ttl_seconds: int) -> None:
+        """Store a snapshot in Redis with a TTL (for stall detection)."""
+        await redis_client.client.setex(key, ttl_seconds, data)
+
     async def subscribe(self, namespace: str, id_value: Any) -> redis.client.PubSub:
         """Create a dedicated pubsub connection and subscribe to a channel.
 

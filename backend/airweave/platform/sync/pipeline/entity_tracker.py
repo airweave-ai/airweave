@@ -5,8 +5,8 @@ EntityTracker is the single source of truth for entity state during sync:
 - Tracks entity counts by definition (for state queries)
 - Tracks global operation counts (inserted, updated, deleted, kept, skipped)
 
-This is a PURE STATE TRACKER - it does NOT handle pubsub publishing.
-Publishing is handled by SyncStatePublisher (state_publisher.py).
+This is a PURE STATE TRACKER - it does NOT handle event publishing.
+Event publishing is handled by the per-sync EventBus via SyncProgressRelay.
 """
 
 import asyncio
@@ -44,8 +44,8 @@ class EntityTracker:
     - Provide atomic operations for concurrent access
 
     NOT responsible for:
-    - Pubsub publishing (handled by SyncStatePublisher)
-    - Sync finalization (handled by orchestrator via SyncStatePublisher)
+    - Event publishing (handled by EventBus via SyncProgressRelay)
+    - Sync finalization (handled by orchestrator via SyncProgressRelay)
 
     Thread-safety: All mutation methods use async locks for concurrent batch processing.
     """

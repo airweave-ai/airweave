@@ -31,6 +31,7 @@ def create_activities() -> list:
 
     # Get dependencies from container (attribute access, not method call)
     event_bus = container.event_bus
+    usage_guardrail_factory = container.usage_guardrail_factory
 
     logger.debug("Wiring activities with container dependencies")
 
@@ -38,7 +39,7 @@ def create_activities() -> list:
     # The .run method is what Temporal calls
     return [
         # Sync activities
-        RunSyncActivity(event_bus=event_bus).run,
+        RunSyncActivity(event_bus=event_bus, usage_guardrail_factory=usage_guardrail_factory).run,
         CreateSyncJobActivity(event_bus=event_bus).run,
         MarkSyncJobCancelledActivity().run,
         CleanupStuckSyncJobsActivity().run,

@@ -16,7 +16,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
 from airweave.core.pubsub import core_pubsub
 from airweave.core.sync_service import sync_service
-from airweave.domains.usage.protocols import UsageEnforcementProtocol
+from airweave.domains.usage.protocols import UsageGuardrailProtocol
 
 router = TrailingSlashRouter()
 
@@ -75,7 +75,7 @@ async def create_sync(
     db: AsyncSession = Depends(deps.get_db),
     sync_in: schemas.SyncCreate = Body(...),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_service: UsageEnforcementProtocol = Depends(deps.get_usage_service),
+    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     background_tasks: BackgroundTasks,
 ) -> schemas.Sync:
     """Create a new sync configuration.
@@ -85,7 +85,7 @@ async def create_sync(
         db: The database session
         sync_in: The sync to create
         ctx: The current authentication context
-        usage_service: The usage enforcement service
+        usage_guardrail: The usage enforcement service
         background_tasks: The background tasks
 
     Returns:
@@ -115,7 +115,7 @@ async def create_sync(
             collection,
             source_connection,
             ctx,
-            usage_service=usage_service,
+            usage_guardrail=usage_guardrail,
         )
 
     return sync
