@@ -3,7 +3,7 @@
 from typing import Any, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -124,3 +124,11 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
     ) -> Optional[SourceConnection]:
         """Delete a source connection by ID."""
         return await crud.source_connection.remove(db, id=id, ctx=ctx)
+
+    async def count_by_organization(self, db: AsyncSession, organization_id: UUID) -> int:
+        """Count source connections belonging to an organization."""
+        query = select(func.count(SourceConnection.id)).where(
+            SourceConnection.organization_id == organization_id
+        )
+        result = await db.execute(query)
+        return int(result.scalar_one() or 0)

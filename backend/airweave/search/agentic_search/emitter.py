@@ -4,7 +4,12 @@ Allows the agent to emit progress events during search execution.
 Uses a Protocol so the agent is decoupled from the transport mechanism.
 """
 
-from typing import Protocol, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Protocol, Union
+
+if TYPE_CHECKING:
+    from airweave.core.protocols.pubsub import PubSub
 
 from airweave.api.context import ApiContext
 from airweave.search.agentic_search.schemas.events import (
@@ -68,17 +73,16 @@ class AgenticSearchLoggingEmitter:
 
 
 class AgenticSearchPubSubEmitter:
-    """Emits events via Redis PubSub for SSE streaming."""
+    """Emits events via PubSub for SSE streaming."""
 
-    def __init__(self, request_id: str) -> None:
-        """Initialize with request ID for the PubSub channel."""
+    def __init__(self, request_id: str, *, pubsub: "PubSub") -> None:
+        """Initialize with request ID and PubSub adapter."""
         self._request_id = request_id
+        self._pubsub = pubsub
 
     async def emit(self, event: _EventTypes) -> None:
-        """Publish event to Redis PubSub channel."""
-        from airweave.core.pubsub import core_pubsub
-
-        await core_pubsub.publish(
+        """Publish event to the PubSub channel."""
+        await self._pubsub.publish(
             "agentic_search",
             self._request_id,
             event.model_dump(mode="json"),

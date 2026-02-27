@@ -1,24 +1,28 @@
 """Event emitter for streaming search events."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from __future__ import annotations
 
-from airweave.core.pubsub import core_pubsub
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from airweave.core.protocols.pubsub import PubSub
 
 
 class EventEmitter:
     """Event emitter for search operations.
 
-    Handles publishing events to Redis pubsub when streaming is enabled.
+    Handles publishing events to PubSub when streaming is enabled.
     All operations use this to emit lifecycle and data events.
     """
 
-    def __init__(self, request_id: str, stream: bool) -> None:
+    def __init__(self, request_id: str, stream: bool, pubsub: PubSub) -> None:
         """Initialize event emitter.
 
         Args:
             request_id: Unique request ID for this search (always required)
             stream: Whether to actually emit events to pubsub
+            pubsub: PubSub adapter for message transport
 
         Raises:
             ValueError: If request_id is not provided
@@ -28,6 +32,7 @@ class EventEmitter:
 
         self.request_id = request_id
         self.stream = stream
+        self._pubsub = pubsub
         self._global_sequence = 0
         self._op_sequences: Dict[str, int] = {}
 
@@ -67,7 +72,7 @@ class EventEmitter:
 
         # Publish to Redis channel
         try:
-            await core_pubsub.publish("search", self.request_id, payload)
+            await self._pubsub.publish("search", self.request_id, payload)
         except Exception:
             # Never fail pipeline due to streaming issues
             pass

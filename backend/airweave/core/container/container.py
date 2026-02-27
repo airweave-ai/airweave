@@ -42,6 +42,7 @@ from airweave.domains.oauth.protocols import (
     OAuthInitSessionRepositoryProtocol,
     OAuthRedirectSessionRepositoryProtocol,
 )
+from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
@@ -122,6 +123,7 @@ class Container:
     collection_repo: CollectionRepositoryProtocol
     conn_repo: ConnectionRepositoryProtocol
     cred_repo: IntegrationCredentialRepositoryProtocol
+    user_org_repo: UserOrganizationRepositoryProtocol
 
     # OAuth services
     oauth1_service: OAuth1ServiceProtocol

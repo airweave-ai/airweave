@@ -25,6 +25,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import InvalidStateError, NotFoundException
 from airweave.core.organization_service import organization_service
+from airweave.core.protocols import PubSub
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 from airweave.core.temporal_service import temporal_service
@@ -1265,6 +1266,7 @@ async def admin_search_collection(
         AdminSearchDestination.QDRANT,
         description="Search destination: 'qdrant' (default) or 'vespa'",
     ),
+    pubsub: PubSub = Inject(PubSub),
 ) -> schemas.SearchResponse:
     """Admin-only: Search any collection regardless of organization.
 
@@ -1279,6 +1281,7 @@ async def admin_search_collection(
         db: Database session
         ctx: API context
         destination: Search destination ('qdrant' or 'vespa')
+        pubsub: PubSub adapter for event streaming
 
     Returns:
         SearchResponse with results
@@ -1296,6 +1299,7 @@ async def admin_search_collection(
         search_request=search_request,
         db=db,
         ctx=ctx,
+        pubsub=pubsub,
         destination=destination.value,
     )
 
@@ -1315,6 +1319,7 @@ async def admin_search_collection_as_user(
         AdminSearchDestination.VESPA,
         description="Search destination: 'qdrant' or 'vespa' (default)",
     ),
+    pubsub: PubSub = Inject(PubSub),
 ) -> schemas.SearchResponse:
     """Admin-only: Search collection with access control for a specific user.
 
@@ -1328,6 +1333,7 @@ async def admin_search_collection_as_user(
         db: Database session
         ctx: API context
         destination: Search destination ('qdrant' or 'vespa')
+        pubsub: PubSub adapter for event streaming
 
     Returns:
         SearchResponse with results filtered by user's access permissions.
@@ -1345,6 +1351,7 @@ async def admin_search_collection_as_user(
         search_request=search_request,
         db=db,
         ctx=ctx,
+        pubsub=pubsub,
         user_principal=user_principal,
         destination=destination.value,
     )
@@ -1450,6 +1457,7 @@ async def _build_admin_search_context(
     search_request: schemas.SearchRequest,
     destination,
     ctx: ApiContext,
+    pubsub: PubSub,
 ):
     """Build search context with custom destination for admin search.
 
@@ -1497,10 +1505,9 @@ async def _build_admin_search_context(
         requires_client_embedding=requires_embedding,
     )
 
-    # Create event emitter
     from airweave.search.emitter import EventEmitter
 
-    emitter = EventEmitter(request_id=ctx.request_id, stream=False)
+    emitter = EventEmitter(request_id=ctx.request_id, stream=False, pubsub=pubsub)
 
     # Get temporal supporting sources if needed
     temporal_supporting_sources = None

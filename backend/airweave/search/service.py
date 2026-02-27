@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
+from airweave.core.protocols.pubsub import PubSub
 from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.search.factory import factory
 from airweave.search.helpers import search_helpers
@@ -35,6 +36,7 @@ class SearchService:
         stream: bool,
         db: AsyncSession,
         ctx: ApiContext,
+        pubsub: PubSub,
         destination_override: SearchDestination | None = None,
     ) -> SearchResponse:
         """Search a collection.
@@ -46,6 +48,7 @@ class SearchService:
             stream: Whether to enable SSE streaming
             db: Database session
             ctx: API context
+            pubsub: PubSub adapter for event streaming
             destination_override: If provided, override the default destination
                 ('qdrant' or 'vespa'). If None, uses SyncConfig default.
 
@@ -69,6 +72,7 @@ class SearchService:
             stream,
             ctx,
             db,
+            pubsub=pubsub,
             destination_override=destination_override,
         )
 
@@ -132,6 +136,7 @@ class SearchService:
         search_request: SearchRequest,
         db: AsyncSession,
         ctx: ApiContext,
+        pubsub: PubSub,
         destination: SearchDestination = "qdrant",
     ) -> SearchResponse:
         """Admin search with destination selection (no ACL filtering by logged-in user).
@@ -146,6 +151,7 @@ class SearchService:
             search_request: Search parameters
             db: Database session
             ctx: API context
+            pubsub: PubSub adapter for event streaming
             destination: Search destination ('qdrant' or 'vespa')
 
         Returns:
@@ -178,6 +184,7 @@ class SearchService:
             stream=False,
             ctx=ctx,
             db=db,
+            pubsub=pubsub,
             destination_override=destination,
             skip_organization_check=True,
         )
@@ -200,6 +207,7 @@ class SearchService:
         search_request: SearchRequest,
         db: AsyncSession,
         ctx: ApiContext,
+        pubsub: PubSub,
         user_principal: str,
         destination: SearchDestination = "vespa",
     ) -> SearchResponse:
@@ -216,6 +224,7 @@ class SearchService:
             search_request: Search parameters
             db: Database session
             ctx: API context
+            pubsub: PubSub adapter for event streaming
             user_principal: Username to search as (e.g., "john" or "john@example.com")
             destination: Search destination ('qdrant' or 'vespa')
 
@@ -272,6 +281,7 @@ class SearchService:
             stream=False,
             ctx=ctx,
             db=db,
+            pubsub=pubsub,
             destination_override=destination,
             user_principal_override=user_principal_for_factory,
             skip_organization_check=True,

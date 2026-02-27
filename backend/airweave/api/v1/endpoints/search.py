@@ -21,8 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.pubsub import core_pubsub
+from airweave.core.protocols import PubSub
 from airweave.db.session import AsyncSessionLocal
 from airweave.domains.usage.protocols import UsageGuardrailProtocol
 from airweave.domains.usage.types import ActionType
@@ -105,6 +106,7 @@ async def search_get_legacy(
     db: AsyncSession = Depends(deps.get_db),
     usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     ctx: ApiContext = Depends(deps.get_context),
+    pubsub: PubSub = Inject(PubSub),
 ) -> LegacySearchResponse:
     """Legacy GET search endpoint for backwards compatibility."""
     await usage_guardrail.is_allowed(db, ActionType.QUERIES)
@@ -130,7 +132,6 @@ async def search_get_legacy(
     # Convert to new format
     new_request = convert_legacy_request_to_new(legacy_request)
 
-    # Call new search service
     new_response = await service.search(
         request_id=ctx.request_id,
         readable_collection_id=readable_id,
@@ -138,6 +139,7 @@ async def search_get_legacy(
         stream=False,
         db=db,
         ctx=ctx,
+        pubsub=pubsub,
     )
 
     # Convert back to legacy format
@@ -187,6 +189,7 @@ async def search(
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
+    pubsub: PubSub = Inject(PubSub),
 ) -> Union[SearchResponse, LegacySearchResponse]:
     """Search your collection with AI-powered semantic search."""
     await usage_guardrail.is_allowed(db, ActionType.QUERIES)
@@ -218,7 +221,6 @@ async def search(
             "temporal_relevance has been removed and was ignored"
         )
 
-    # Execute search with new service (always use Vespa for public endpoints)
     search_response = await service.search(
         request_id=ctx.request_id,
         readable_collection_id=readable_id,
@@ -226,6 +228,7 @@ async def search(
         stream=False,
         db=db,
         ctx=ctx,
+        pubsub=pubsub,
         destination_override="vespa",
     )
 
@@ -248,6 +251,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
+    pubsub: PubSub = Inject(PubSub),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming endpoint for advanced search.
 
@@ -261,12 +265,11 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
 
     await usage_guardrail.is_allowed(db, ActionType.QUERIES)
 
-    # Convert legacy request if needed
     if isinstance(search_request, LegacySearchRequest):
         ctx.logger.debug("Processing legacy streaming search request")
         search_request = convert_legacy_request_to_new(search_request)
 
-    pubsub = await core_pubsub.subscribe("search", request_id)
+    ps = await pubsub.subscribe("search", request_id)
 
     async def _publish_stream_error(
         *, message: str, transient: bool, detail: str | None = None
@@ -278,7 +281,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
         }
         if detail:
             payload["detail"] = detail
-        await core_pubsub.publish("search", request_id, payload)
+        await pubsub.publish("search", request_id, payload)
 
     async def _run_search() -> None:
         try:
@@ -291,6 +294,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                     stream=True,
                     db=search_db,
                     ctx=ctx,
+                    pubsub=pubsub,
                     destination_override="vespa",
                 )
         except ValueError as e:
@@ -327,7 +331,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
             last_heartbeat = asyncio.get_event_loop().time()
             heartbeat_interval = 30
 
-            async for message in pubsub.listen():
+            async for message in ps.listen():
                 now = asyncio.get_event_loop().time()
                 if now - last_heartbeat > heartbeat_interval:
                     heartbeat_event = {
@@ -390,7 +394,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                 except Exception:
                     pass
             try:
-                await pubsub.close()
+                await ps.close()
                 ctx.logger.info(
                     f"[SearchStream] Closed pubsub subscription for search:{request_id}"
                 )

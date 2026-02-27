@@ -61,6 +61,7 @@ from airweave.domains.oauth.repository import (
     OAuthSourceRepository,
 )
 from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
+from airweave.domains.organizations.repository import UserOrganizationRepository
 from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.delete import SourceConnectionDeletionService
 from airweave.domains.source_connections.repository import SourceConnectionRepository
@@ -128,9 +129,9 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     # PubSub (realtime message transport — Redis adapter)
     # -----------------------------------------------------------------
-    from airweave.core.pubsub import core_pubsub
+    from airweave.adapters.pubsub.redis import RedisPubSub
 
-    pubsub = core_pubsub
+    pubsub = RedisPubSub()
 
     # -----------------------------------------------------------------
     # Event Bus
@@ -292,9 +293,16 @@ def create_container(settings: Settings) -> Container:
     billing_services = _create_billing_services(settings)
 
     # -----------------------------------------------------------------
+    # Organization repositories
+    # -----------------------------------------------------------------
+    user_org_repo = UserOrganizationRepository()
+
+    # -----------------------------------------------------------------
     # Usage domain (factory creates per-org enforcement services)
     # -----------------------------------------------------------------
-    usage_guardrail_factory = _create_usage_guardrail_factory(settings, billing_services, source_deps)
+    usage_guardrail_factory = _create_usage_guardrail_factory(
+        settings, billing_services, source_deps, user_org_repo
+    )
 
     # -----------------------------------------------------------------
     # Billing event subscriber (needs usage_service_factory, so created last)
@@ -324,6 +332,7 @@ def create_container(settings: Settings) -> Container:
         collection_repo=source_deps["collection_repo"],
         conn_repo=source_deps["conn_repo"],
         cred_repo=source_deps["cred_repo"],
+        user_org_repo=user_org_repo,
         oauth1_service=source_deps["oauth1_service"],
         oauth2_service=source_deps["oauth2_service"],
         redirect_session_repo=source_deps["redirect_session_repo"],
@@ -692,27 +701,31 @@ def _create_sync_services(
     }
 
 
-def _create_usage_guardrail_factory(settings: "Settings", billing_deps: dict, source_deps: dict):
+def _create_usage_guardrail_factory(
+    settings: "Settings",
+    billing_deps: dict,
+    source_deps: dict,
+    user_org_repo: "UserOrganizationRepository",
+):
     """Create usage service factory: real if billing is enabled, null for local dev."""
-    from airweave.domains.organizations.repository import UserOrganizationRepository
     from airweave.domains.usage.factory import UsageServiceFactory
     from airweave.domains.usage.repository import UsageRepository
 
     if settings.LOCAL_DEVELOPMENT:
         from airweave.domains.usage.factory import AlwaysAllowUsageServiceFactory
+
         return AlwaysAllowUsageServiceFactory(
             usage_repo=UsageRepository(),
             billing_repo=billing_deps["billing_repo"],
             period_repo=billing_deps["period_repo"],
             sc_repo=source_deps["sc_repo"],
-            user_org_repo=UserOrganizationRepository(),
+            user_org_repo=user_org_repo,
         )
-
 
     return UsageServiceFactory(
         usage_repo=UsageRepository(),
         billing_repo=billing_deps["billing_repo"],
         period_repo=billing_deps["period_repo"],
         sc_repo=source_deps["sc_repo"],
-        user_org_repo=UserOrganizationRepository(),
+        user_org_repo=user_org_repo,
     )

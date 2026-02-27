@@ -1,7 +1,7 @@
 """PubSub protocol for realtime message fan-out to SSE consumers.
 
 Decouples producers (sync progress relay, search emitter) from the
-transport layer. The default adapter is Redis PubSub (core/pubsub.py).
+transport layer. The default adapter is RedisPubSub (adapters/pubsub/redis.py).
 """
 
 from typing import Any, AsyncIterator, Protocol, runtime_checkable
@@ -17,7 +17,8 @@ class PubSub(Protocol):
     - Search emitters: publish search results
 
     Implementations:
-    - CorePubSub (Redis PubSub) — core/pubsub.py
+    - RedisPubSub — adapters/pubsub/redis.py
+    - FakePubSub — adapters/pubsub/fake.py (tests)
     """
 
     async def publish(self, namespace: str, id_value: Any, data: Any) -> int:

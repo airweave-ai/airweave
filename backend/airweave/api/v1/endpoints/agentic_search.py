@@ -16,8 +16,7 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.protocols import MetricsService
-from airweave.core.pubsub import core_pubsub
+from airweave.core.protocols import MetricsService, PubSub
 from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
 from airweave.domains.usage.protocols import UsageGuardrailProtocol
@@ -75,6 +74,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     ctx: ApiContext = Depends(deps.get_context),
     usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     metrics_service: MetricsService = Inject(MetricsService),
+    pubsub: PubSub = Inject(PubSub),
 ) -> StreamingResponse:
     """Streaming agentic search endpoint using Server-Sent Events.
 
@@ -98,9 +98,8 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
 
     await usage_guardrail.is_allowed(db, ActionType.QUERIES)
 
-    # Subscribe to events before starting the search
-    pubsub = await core_pubsub.subscribe("agentic_search", request_id)
-    emitter = AgenticSearchPubSubEmitter(request_id)
+    ps = await pubsub.subscribe("agentic_search", request_id)
+    emitter = AgenticSearchPubSubEmitter(request_id, pubsub=pubsub)
 
     async def _run_search() -> None:
         """Run the agentic search in background.
@@ -141,7 +140,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     async def event_stream():  # noqa: C901 - streaming loop is acceptable
         """Generate SSE events from PubSub messages."""
         try:
-            async for message in pubsub.listen():
+            async for message in ps.listen():
                 if message["type"] == "message":
                     data = message["data"]
 
@@ -193,7 +192,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
                 except Exception:
                     pass
             try:
-                await pubsub.close()
+                await ps.close()
                 ctx.logger.info(
                     f"[AgenticSearchStream] Closed pubsub for agentic_search:{request_id}"
                 )

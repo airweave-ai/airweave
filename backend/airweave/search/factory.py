@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.core.protocols.pubsub import PubSub
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.embedders.config import get_provider_for_model
 from airweave.platform.locator import resource_locator
@@ -71,6 +72,7 @@ class SearchFactory:
         stream: bool,
         ctx: ApiContext,
         db: AsyncSession,
+        pubsub: PubSub,
         # --- Optional parameters for admin/ACL search ---
         destination_override: Optional[DestinationOverride] = None,
         user_principal_override: Optional[str] = None,
@@ -86,6 +88,7 @@ class SearchFactory:
             stream: Whether to enable SSE streaming
             ctx: API context with auth info
             db: Database session
+            pubsub: PubSub adapter for event streaming
             destination_override: Override destination ("qdrant" or "vespa").
                 If None, uses collection's default destination (Qdrant).
             user_principal_override: Username to use for ACL filtering.
@@ -157,7 +160,7 @@ class SearchFactory:
         )
 
         # Create event emitter and emit skip notices if needed
-        emitter = EventEmitter(request_id=request_id, stream=stream)
+        emitter = EventEmitter(request_id=request_id, stream=stream, pubsub=pubsub)
         await self._emit_skip_notices_if_needed(emitter, has_vector_sources, params, search_request)
 
         # Build operations with destination (destination-agnostic)

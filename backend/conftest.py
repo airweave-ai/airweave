@@ -45,6 +45,14 @@ os.environ.setdefault("AUTH_ENABLED", "false")
 
 
 @pytest.fixture
+def fake_pubsub():
+    """Fake PubSub that records published messages in memory."""
+    from airweave.adapters.pubsub.fake import FakePubSub
+
+    return FakePubSub()
+
+
+@pytest.fixture
 def fake_event_bus():
     """Fake EventBus that records published events."""
     from airweave.adapters.event_bus.fake import FakeEventBus
@@ -234,6 +242,14 @@ def fake_cred_repo():
 
 
 @pytest.fixture
+def fake_user_org_repo():
+    """Fake UserOrganizationRepository."""
+    from airweave.domains.organizations.fakes.repository import FakeUserOrganizationRepository
+
+    return FakeUserOrganizationRepository()
+
+
+@pytest.fixture
 def fake_oauth2_service():
     """Fake OAuth2Service."""
     from airweave.domains.oauth.fakes.oauth2_service import FakeOAuth2Service
@@ -415,6 +431,7 @@ def fake_init_session_repo():
 def test_container(
     fake_health_service,
     fake_event_bus,
+    fake_pubsub,
     fake_webhook_publisher,
     fake_webhook_admin,
     fake_circuit_breaker,
@@ -450,6 +467,7 @@ def test_container(
     fake_billing_webhook,
     fake_payment_gateway,
     fake_collection_service,
+    fake_user_org_repo,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -464,6 +482,7 @@ def test_container(
     return Container(
         health=fake_health_service,
         event_bus=fake_event_bus,
+        pubsub=fake_pubsub,
         webhook_publisher=fake_webhook_publisher,
         webhook_admin=fake_webhook_admin,
         endpoint_verifier=fake_endpoint_verifier,
@@ -479,6 +498,7 @@ def test_container(
         collection_repo=fake_collection_repo,
         conn_repo=fake_conn_repo,
         cred_repo=fake_cred_repo,
+        user_org_repo=fake_user_org_repo,
         oauth1_service=fake_oauth1_service,
         oauth2_service=fake_oauth2_service,
         redirect_session_repo=fake_redirect_session_repo,

@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.domains.billing.types import get_plan_limits
-from airweave.domains.organizations.repository import UserOrganizationRepository
-from airweave.domains.source_connections.repository import SourceConnectionRepository
+from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
+from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.usage.exceptions import PaymentRequiredError, UsageLimitExceededError
 from airweave.domains.usage.protocols import UsageGuardrailProtocol
 from airweave.domains.usage.types import ActionType
@@ -28,10 +29,6 @@ from airweave.schemas.usage_dashboard import (
 )
 
 router = TrailingSlashRouter()
-
-# Stateless repos for counting team members and source connections
-_user_org_repo = UserOrganizationRepository()
-_sc_repo = SourceConnectionRepository()
 
 
 class ActionCheckRequest(BaseModel):
@@ -301,7 +298,8 @@ def _calculate_trends(
 async def _build_previous_periods(
     db: AsyncSession,
     organization_id: UUID,
-    ctx: ApiContext,
+    user_org_repo: UserOrganizationRepositoryProtocol,
+    sc_repo: SourceConnectionRepositoryProtocol,
     limit: int = 6,
 ) -> List[BillingPeriodUsage]:
     """Build list of previous billing period usage data."""
@@ -309,8 +307,8 @@ async def _build_previous_periods(
         db, organization_id=organization_id, limit=limit
     )
 
-    team_members_count = await _user_org_repo.count_members(db, organization_id)
-    source_connections_count = await _sc_repo.count_by_organization(db, organization_id)
+    team_members_count = await user_org_repo.count_members(db, organization_id)
+    source_connections_count = await sc_repo.count_by_organization(db, organization_id)
 
     previous_periods = []
     for period in previous_periods_data:
@@ -358,6 +356,8 @@ async def get_usage_dashboard(
     period_id: Optional[UUID] = Query(None, description="Specific period to view"),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    sc_repo: SourceConnectionRepositoryProtocol = Inject(SourceConnectionRepositoryProtocol),
+    user_org_repo: UserOrganizationRepositoryProtocol = Inject(UserOrganizationRepositoryProtocol),
 ) -> UsageDashboard:
     """Get comprehensive usage dashboard data.
 
@@ -389,8 +389,8 @@ async def get_usage_dashboard(
         plan_limits = get_plan_limits(plan_enum)
 
         # Get team member and source connection counts
-        team_members_count = await _user_org_repo.count_members(db, ctx.organization.id)
-        source_connections_count = await _sc_repo.count_by_organization(db, ctx.organization.id)
+        team_members_count = await user_org_repo.count_members(db, ctx.organization.id)
+        source_connections_count = await sc_repo.count_by_organization(db, ctx.organization.id)
 
         # Create usage snapshot
         usage_snapshot = _create_usage_snapshot(
@@ -423,7 +423,9 @@ async def get_usage_dashboard(
         )
 
         # Get previous periods
-        previous_periods = await _build_previous_periods(db, ctx.organization.id, ctx)
+        previous_periods = await _build_previous_periods(
+            db, ctx.organization.id, user_org_repo, sc_repo
+        )
 
         # Calculate aggregate stats
         all_usage_records = await crud.usage.get_all_by_organization(

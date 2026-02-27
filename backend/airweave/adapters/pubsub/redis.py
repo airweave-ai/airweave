@@ -1,15 +1,15 @@
-"""Unified Redis-backed pubsub utilities.
+"""Redis-backed PubSub adapter.
 
-Provides a namespaced publish/subscribe interface that can be used by
-multiple modules (e.g., sync and search) without duplicating logic.
+Provides a namespaced publish/subscribe interface over Redis for
+real-time message fan-out (SSE sync progress, search streaming, etc.).
 
 Usage patterns:
 - Namespaced channel helpers: ``make_channel("search", request_id)`` → ``search:<id>``
-- High-level helpers: ``core_pubsub.publish("search", id, data)`` and
-  ``await core_pubsub.subscribe("search", id)``
+- High-level helpers: ``pubsub.publish("search", id, data)`` and
+  ``await pubsub.subscribe("search", id)``
 
 Notes:
-- Publishes accept either strings (already JSON) or dictionaries which will be JSON-encoded
+- Publishes accept either strings (already JSON) or dicts which will be JSON-encoded
 - Subscriptions create a dedicated Redis connection suited for long-lived SSE streams
 """
 
@@ -25,20 +25,12 @@ from airweave.core.config import settings
 from airweave.core.redis_client import redis_client
 
 
-class CorePubSub:
-    """Unified pubsub helper for publishing and subscribing to channels."""
+class RedisPubSub:
+    """Redis-backed implementation of the PubSub protocol."""
 
     @staticmethod
     def make_channel(namespace: str, id_str: str) -> str:
-        """Build a Redis channel name as ``<namespace>:<id>``.
-
-        Args:
-            namespace: Logical namespace (e.g., "search", "sync_job")
-            id_str: Identifier as a string (UUID, ULID, etc.)
-
-        Returns:
-            Channel name suitable for Redis pubsub
-        """
+        """Build a Redis channel name as ``<namespace>:<id>``."""
         return f"{namespace}:{id_str}"
 
     async def publish(self, namespace: str, id_value: Any, data: Any) -> int:
@@ -75,9 +67,7 @@ class CorePubSub:
         """
         channel = self.make_channel(namespace, str(id_value))
 
-        # Build Redis URL with authentication
         if settings.REDIS_PASSWORD:
-            # URL-encode password to handle special characters safely
             from urllib.parse import quote
 
             encoded_pwd = quote(settings.REDIS_PASSWORD, safe="")
@@ -88,7 +78,6 @@ class CorePubSub:
         else:
             redis_url = f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
 
-        # Get socket keepalive options based on OS
         if platform.system() == "Darwin":
             socket_keepalive_options = {}
         else:
@@ -103,20 +92,14 @@ class CorePubSub:
             else:
                 socket_keepalive_options = {}
 
-        # Create a new Redis client specifically for pubsub
         pubsub_redis = await redis.from_url(
             redis_url,
             decode_responses=True,
             socket_keepalive=True,
             socket_connect_timeout=5,
-            # Do not set socket_timeout for pubsub connections – they stay open
             socket_keepalive_options=socket_keepalive_options,
         )
 
         pubsub = pubsub_redis.pubsub()
         await pubsub.subscribe(channel)
         return pubsub
-
-
-# Global instance for convenience
-core_pubsub = CorePubSub()
