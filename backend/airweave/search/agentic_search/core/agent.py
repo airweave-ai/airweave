@@ -18,6 +18,7 @@ from airweave.analytics.agentic_search_analytics import (
     track_agentic_search_error,
 )
 from airweave.api.context import ApiContext
+from airweave.core.protocols.metrics import AgenticSearchMetrics
 from airweave.search.agentic_search.builders import (
     AgenticSearchCollectionMetadataBuilder,
     AgenticSearchCompletePlanBuilder,
@@ -25,7 +26,6 @@ from airweave.search.agentic_search.builders import (
     AgenticSearchStateBuilder,
 )
 from airweave.search.agentic_search.core.composer import AgenticSearchComposer
-from airweave.search.agentic_search.core.embedder import AgenticSearchEmbedder
 from airweave.search.agentic_search.core.evaluator import AgenticSearchEvaluator
 from airweave.search.agentic_search.core.planner import AgenticSearchPlanner
 from airweave.search.agentic_search.emitter import AgenticSearchEmitter
@@ -38,10 +38,12 @@ from airweave.search.agentic_search.schemas import (
     AgenticSearchHistory,
     AgenticSearchHistoryIteration,
     AgenticSearchPlan,
+    AgenticSearchQuery,
     AgenticSearchQueryEmbeddings,
     AgenticSearchRequest,
     AgenticSearchResponse,
     AgenticSearchResult,
+    AgenticSearchRetrievalStrategy,
     AgenticSearchState,
 )
 from airweave.search.agentic_search.schemas.events import (
@@ -54,8 +56,6 @@ from airweave.search.agentic_search.schemas.events import (
 from airweave.search.agentic_search.schemas.request import AgenticSearchMode
 from airweave.search.agentic_search.schemas.search_result import AgenticSearchResults
 from airweave.search.agentic_search.services import AgenticSearchServices
-
-from airweave.core.protocols.metrics import AgenticSearchMetrics
 
 # Maps timing-label suffixes to canonical step names used in metrics.
 _STEP_LABEL_MAP: dict[str, str] = {
@@ -210,15 +210,10 @@ class AgenticSearchAgent:
                 complete_plan = AgenticSearchCompletePlanBuilder.build(plan, state.user_filter)
 
                 # Embed queries based on retrieval strategy
-                embedder = AgenticSearchEmbedder(
-                    dense_embedder=self.services.dense_embedder,
-                    sparse_embedder=self.services.sparse_embedder,
+                state.current_iteration.query_embeddings = await self._embed_query(
+                    state.current_iteration.plan.query,
+                    state.current_iteration.plan.retrieval_strategy,
                 )
-                embeddings: AgenticSearchQueryEmbeddings = await embedder.embed(
-                    query=state.current_iteration.plan.query,
-                    strategy=state.current_iteration.plan.retrieval_strategy,
-                )
-                state.current_iteration.query_embeddings = embeddings
                 t = self._lap(timings, f"{prefix}/embed", t)
 
                 # Compile and execute query (gracefully handle search errors)
@@ -395,6 +390,33 @@ class AgenticSearchAgent:
                 iteration_count=iteration_number,
                 result_count=result_count,
             )
+
+    async def _embed_query(
+        self,
+        query: AgenticSearchQuery,
+        strategy: AgenticSearchRetrievalStrategy,
+    ) -> AgenticSearchQueryEmbeddings:
+        """Embed a query based on retrieval strategy."""
+        dense_embeddings = None
+        sparse_embedding = None
+
+        if strategy in (
+            AgenticSearchRetrievalStrategy.SEMANTIC,
+            AgenticSearchRetrievalStrategy.HYBRID,
+        ):
+            texts = [query.primary] + list(query.variations)
+            dense_embeddings = await self.services.dense_embedder.embed_many(texts)
+
+        if strategy in (
+            AgenticSearchRetrievalStrategy.KEYWORD,
+            AgenticSearchRetrievalStrategy.HYBRID,
+        ):
+            sparse_embedding = await self.services.sparse_embedder.embed(query.primary)
+
+        return AgenticSearchQueryEmbeddings(
+            dense_embeddings=dense_embeddings,
+            sparse_embedding=sparse_embedding,
+        )
 
     def _lap(self, timings: list[tuple[str, int]], label: str, start: float) -> float:
         """Record a timing and return the new start time."""

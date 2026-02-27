@@ -37,6 +37,9 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test_password")
 os.environ.setdefault("POSTGRES_DB", "test_db")
 os.environ.setdefault("TESTING", "true")
 os.environ.setdefault("AUTH_ENABLED", "false")
+os.environ.setdefault("DENSE_EMBEDDER", "openai_text_embedding_3_small")
+os.environ.setdefault("EMBEDDING_DIMENSIONS", "1536")
+os.environ.setdefault("SPARSE_EMBEDDER", "fastembed_bm25")
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +391,38 @@ def fake_collection_service():
 
 
 @pytest.fixture
+def fake_dense_embedder_registry():
+    """Fake DenseEmbedderRegistry for testing registry consumers."""
+    from airweave.domains.embedders.fakes.registry import FakeDenseEmbedderRegistry
+
+    return FakeDenseEmbedderRegistry()
+
+
+@pytest.fixture
+def fake_sparse_embedder_registry():
+    """Fake SparseEmbedderRegistry for testing registry consumers."""
+    from airweave.domains.embedders.fakes.registry import FakeSparseEmbedderRegistry
+
+    return FakeSparseEmbedderRegistry()
+
+
+@pytest.fixture
+def fake_dense_embedder():
+    """Fake DenseEmbedder that returns zero-vectors."""
+    from airweave.domains.embedders.fakes.embedder import FakeDenseEmbedder
+
+    return FakeDenseEmbedder()
+
+
+@pytest.fixture
+def fake_sparse_embedder():
+    """Fake SparseEmbedder that returns empty sparse vectors."""
+    from airweave.domains.embedders.fakes.embedder import FakeSparseEmbedder
+
+    return FakeSparseEmbedder()
+
+
+@pytest.fixture
 def fake_oauth_flow_service():
     """Fake OAuthFlowService."""
     from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
@@ -450,6 +485,10 @@ def test_container(
     fake_billing_webhook,
     fake_payment_gateway,
     fake_collection_service,
+    fake_dense_embedder_registry,
+    fake_sparse_embedder_registry,
+    fake_dense_embedder,
+    fake_sparse_embedder,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -499,4 +538,8 @@ def test_container(
         billing_service=fake_billing_service,
         billing_webhook=fake_billing_webhook,
         payment_gateway=fake_payment_gateway,
+        dense_embedder_registry=fake_dense_embedder_registry,
+        sparse_embedder_registry=fake_sparse_embedder_registry,
+        dense_embedder=fake_dense_embedder,
+        sparse_embedder=fake_sparse_embedder,
     )

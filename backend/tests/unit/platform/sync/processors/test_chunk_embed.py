@@ -1,8 +1,8 @@
 """Unit tests for ChunkEmbedProcessor (simplified with mocks)."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID
+
+import pytest
 
 from airweave.platform.sync.processors.chunk_embed import ChunkEmbedProcessor
 
@@ -19,8 +19,6 @@ def mock_sync_context():
     context = MagicMock()
     context.logger = MagicMock()
     context.collection = MagicMock()
-    context.collection.vector_size = 3072
-    context.collection.embedding_model_name = "text-embedding-3-large"
     return context
 
 
@@ -29,6 +27,11 @@ def mock_runtime():
     """Create mock SyncRuntime."""
     runtime = MagicMock()
     runtime.entity_tracker = AsyncMock()
+    runtime.dense_embedder = MagicMock()
+    runtime.dense_embedder.dimensions = 3072
+    runtime.dense_embedder.embed_many = AsyncMock()
+    runtime.sparse_embedder = MagicMock()
+    runtime.sparse_embedder.embed_many = AsyncMock()
     return runtime
 
 
@@ -167,7 +170,7 @@ class TestChunkEmbedProcessor:
 
     @pytest.mark.asyncio
     async def test_embed_entities_calls_both_embedders(
-        self, processor, mock_sync_context
+        self, processor, mock_runtime
     ):
         """Test both dense and sparse embedders are called."""
         mock_entity = MagicMock()
@@ -177,26 +180,21 @@ class TestChunkEmbedProcessor:
 
         chunk_entities = [mock_entity]
 
-        with patch('airweave.platform.embedders.get_dense_embedder') as mock_get_dense, \
-             patch('airweave.platform.embedders.SparseEmbedder') as MockSparse:
+        # Setup runtime embedder mocks
+        dense_result = MagicMock()
+        dense_result.vector = [0.1] * 3072
+        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
-            # Setup mocks
-            mock_dense = MagicMock()
-            mock_dense.embed_many = AsyncMock(return_value=[[0.1] * 3072])
-            mock_get_dense.return_value = mock_dense
+        await processor._embed_entities(chunk_entities, mock_runtime)
 
-            mock_sparse = MockSparse.return_value
-            mock_sparse.embed_many = AsyncMock(return_value=[MagicMock()])
-
-            await processor._embed_entities(chunk_entities, mock_sync_context)
-
-            # Verify both embedders called
-            mock_dense.embed_many.assert_called_once()
-            mock_sparse.embed_many.assert_called_once()
+        # Verify both embedders called
+        mock_runtime.dense_embedder.embed_many.assert_called_once()
+        mock_runtime.sparse_embedder.embed_many.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_embed_entities_assigns_embeddings(
-        self, processor, mock_sync_context
+        self, processor, mock_runtime
     ):
         """Test embeddings assigned to entity system metadata."""
         mock_entity = MagicMock()
@@ -208,28 +206,23 @@ class TestChunkEmbedProcessor:
 
         chunk_entities = [mock_entity]
 
-        with patch('airweave.platform.embedders.get_dense_embedder') as mock_get_dense, \
-             patch('airweave.platform.embedders.SparseEmbedder') as MockSparse:
+        dense_vector = [0.1] * 3072
+        dense_result = MagicMock()
+        dense_result.vector = dense_vector
+        sparse_embedding = MagicMock()
 
-            dense_embedding = [0.1] * 3072
-            sparse_embedding = MagicMock()
+        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[sparse_embedding])
 
-            mock_dense = MagicMock()
-            mock_dense.embed_many = AsyncMock(return_value=[dense_embedding])
-            mock_get_dense.return_value = mock_dense
+        await processor._embed_entities(chunk_entities, mock_runtime)
 
-            mock_sparse = MockSparse.return_value
-            mock_sparse.embed_many = AsyncMock(return_value=[sparse_embedding])
-
-            await processor._embed_entities(chunk_entities, mock_sync_context)
-
-            # Check embeddings assigned
-            assert mock_entity.airweave_system_metadata.dense_embedding == dense_embedding
-            assert mock_entity.airweave_system_metadata.sparse_embedding == sparse_embedding
+        # Check embeddings assigned
+        assert mock_entity.airweave_system_metadata.dense_embedding == dense_vector
+        assert mock_entity.airweave_system_metadata.sparse_embedding == sparse_embedding
 
     @pytest.mark.asyncio
     async def test_embed_entities_uses_full_json_for_sparse(
-        self, processor, mock_sync_context
+        self, processor, mock_runtime
     ):
         """Test sparse embedder receives full entity JSON."""
         mock_entity = MagicMock()
@@ -242,31 +235,26 @@ class TestChunkEmbedProcessor:
 
         chunk_entities = [mock_entity]
 
-        with patch('airweave.platform.embedders.get_dense_embedder') as mock_get_dense, \
-             patch('airweave.platform.embedders.SparseEmbedder') as MockSparse:
+        dense_result = MagicMock()
+        dense_result.vector = [0.1] * 3072
+        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
-            mock_dense = MagicMock()
-            mock_dense.embed_many = AsyncMock(return_value=[[0.1] * 3072])
-            mock_get_dense.return_value = mock_dense
+        await processor._embed_entities(chunk_entities, mock_runtime)
 
-            mock_sparse = MockSparse.return_value
-            mock_sparse.embed_many = AsyncMock(return_value=[MagicMock()])
+        # Verify sparse embedder got JSON strings
+        call_args = mock_runtime.sparse_embedder.embed_many.call_args[0][0]
+        assert isinstance(call_args, list)
+        assert isinstance(call_args[0], str)
 
-            await processor._embed_entities(chunk_entities, mock_sync_context)
-
-            # Verify sparse embedder got JSON strings
-            call_args = mock_sparse.embed_many.call_args[0][0]
-            assert isinstance(call_args, list)
-            assert isinstance(call_args[0], str)
-
-            # Verify it's JSON
-            import json
-            parsed = json.loads(call_args[0])
-            assert "entity_id" in parsed
+        # Verify it's JSON
+        import json
+        parsed = json.loads(call_args[0])
+        assert "entity_id" in parsed
 
     @pytest.mark.asyncio
     async def test_embed_entities_validates_embeddings_exist(
-        self, processor, mock_sync_context
+        self, processor, mock_runtime
     ):
         """Test validation that all entities have embeddings."""
         mock_entity = MagicMock()
@@ -277,22 +265,17 @@ class TestChunkEmbedProcessor:
 
         chunk_entities = [mock_entity]
 
-        with patch('airweave.platform.embedders.get_dense_embedder') as mock_get_dense, \
-             patch('airweave.platform.embedders.SparseEmbedder') as MockSparse:
+        # Return None for dense embedding vector
+        dense_result = MagicMock()
+        dense_result.vector = None
+        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
-            # Return None for dense embedding
-            mock_dense = MagicMock()
-            mock_dense.embed_many = AsyncMock(return_value=[None])
-            mock_get_dense.return_value = mock_dense
+        # Should raise error
+        with pytest.raises(Exception) as exc_info:
+            await processor._embed_entities(chunk_entities, mock_runtime)
 
-            mock_sparse = MockSparse.return_value
-            mock_sparse.embed_many = AsyncMock(return_value=[MagicMock()])
-
-            # Should raise error
-            with pytest.raises(Exception) as exc_info:
-                await processor._embed_entities(chunk_entities, mock_sync_context)
-
-            assert "no dense embedding" in str(exc_info.value).lower()
+        assert "no dense embedding" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_full_pipeline_with_mocks(
@@ -316,10 +299,19 @@ class TestChunkEmbedProcessor:
 
         mock_entity.model_copy = MagicMock(side_effect=create_chunk)
 
+        dense_result = MagicMock()
+        dense_result.vector = [0.1] * 3072
+        dense_result_2 = MagicMock()
+        dense_result_2.vector = [0.2] * 3072
+        mock_runtime.dense_embedder.embed_many = AsyncMock(
+            return_value=[dense_result, dense_result_2]
+        )
+        mock_runtime.sparse_embedder.embed_many = AsyncMock(
+            return_value=[MagicMock(), MagicMock()]
+        )
+
         with patch('airweave.platform.sync.processors.chunk_embed.text_builder') as mock_builder, \
-             patch('airweave.platform.chunkers.semantic.SemanticChunker') as MockChunker, \
-             patch('airweave.platform.embedders.get_dense_embedder') as mock_get_dense, \
-             patch('airweave.platform.embedders.SparseEmbedder') as MockSparse:
+             patch('airweave.platform.chunkers.semantic.SemanticChunker') as MockChunker:
 
             # Setup mocks
             mock_builder.build_for_batch = AsyncMock(return_value=[mock_entity])
@@ -329,19 +321,6 @@ class TestChunkEmbedProcessor:
                 [{"text": "Chunk 1"}, {"text": "Chunk 2"}]
             ])
 
-            mock_dense = MagicMock()
-            mock_dense.embed_many = AsyncMock(return_value=[
-                [0.1] * 3072,
-                [0.2] * 3072
-            ])
-            mock_get_dense.return_value = mock_dense
-
-            mock_sparse = MockSparse.return_value
-            mock_sparse.embed_many = AsyncMock(return_value=[
-                MagicMock(),
-                MagicMock()
-            ])
-
             result = await processor.process([mock_entity], mock_sync_context, mock_runtime)
 
             # Should have 2 chunks
@@ -349,8 +328,8 @@ class TestChunkEmbedProcessor:
             # Verify pipeline steps were called
             mock_builder.build_for_batch.assert_called_once()
             mock_chunker.chunk_batch.assert_called_once()
-            mock_dense.embed_many.assert_called_once()
-            mock_sparse.embed_many.assert_called_once()
+            mock_runtime.dense_embedder.embed_many.assert_called_once()
+            mock_runtime.sparse_embedder.embed_many.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_memory_optimization_clears_parent_text(
@@ -370,22 +349,18 @@ class TestChunkEmbedProcessor:
 
         mock_entity.model_copy = MagicMock(side_effect=create_chunk)
 
+        dense_result = MagicMock()
+        dense_result.vector = [0.1] * 3072
+        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
+
         with patch('airweave.platform.sync.processors.chunk_embed.text_builder') as mock_builder, \
-             patch('airweave.platform.chunkers.semantic.SemanticChunker') as MockChunker, \
-             patch('airweave.platform.embedders.get_dense_embedder') as mock_get_dense, \
-             patch('airweave.platform.embedders.SparseEmbedder') as MockSparse:
+             patch('airweave.platform.chunkers.semantic.SemanticChunker') as MockChunker:
 
             mock_builder.build_for_batch = AsyncMock(return_value=[mock_entity])
 
             mock_chunker = MockChunker.return_value
             mock_chunker.chunk_batch = AsyncMock(return_value=[[{"text": "Chunk"}]])
-
-            mock_dense = MagicMock()
-            mock_dense.embed_many = AsyncMock(return_value=[[0.1] * 3072])
-            mock_get_dense.return_value = mock_dense
-
-            mock_sparse = MockSparse.return_value
-            mock_sparse.embed_many = AsyncMock(return_value=[MagicMock()])
 
             await processor.process([mock_entity], mock_sync_context, mock_runtime)
 

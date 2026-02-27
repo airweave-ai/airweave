@@ -74,7 +74,7 @@ class ChunkEmbedProcessor(ContentProcessor):
             entity.textual_representation = None
 
         # Step 5: Embed chunks
-        await self._embed_entities(chunk_entities, sync_context)
+        await self._embed_entities(chunk_entities, runtime)
 
         sync_context.logger.debug(
             f"[ChunkEmbedProcessor] {len(entities)} entities -> {len(chunk_entities)} chunks"
@@ -217,7 +217,7 @@ class ChunkEmbedProcessor(ContentProcessor):
     async def _embed_entities(
         self,
         chunk_entities: List[BaseEntity],
-        sync_context: "SyncContext",
+        runtime: "SyncRuntime",
     ) -> None:
         """Compute dense and sparse embeddings for all destinations.
 
@@ -231,24 +231,21 @@ class ChunkEmbedProcessor(ContentProcessor):
         if not chunk_entities:
             return
 
-        from airweave.platform.embedders import SparseEmbedder, get_dense_embedder
+        expected_dims = runtime.dense_embedder.dimensions
 
         # Dense embeddings (provider-specific dimensions for neural search)
         dense_texts = [e.textual_representation for e in chunk_entities]
-        dense_embedder = get_dense_embedder(
-            vector_size=sync_context.collection.vector_size,
-            model_name=sync_context.collection.embedding_model_name,
-        )
-        dense_embeddings = await dense_embedder.embed_many(dense_texts, sync_context)
+        dense_results = await runtime.dense_embedder.embed_many(dense_texts)
+        dense_embeddings = [r.vector for r in dense_results]
         if (
             dense_embeddings
             and dense_embeddings[0] is not None
-            and len(dense_embeddings[0]) != sync_context.collection.vector_size
+            and len(dense_embeddings[0]) != expected_dims
         ):
             raise SyncFailureError(
                 "[ChunkEmbedProcessor] Dense embedding dimensions mismatch: "
                 f"got {len(dense_embeddings[0])}, "
-                f"expected {sync_context.collection.vector_size}."
+                f"expected {expected_dims}."
             )
 
         # Sparse embeddings (FastEmbed Qdrant/bm25 for keyword search scoring)
@@ -260,8 +257,7 @@ class ChunkEmbedProcessor(ContentProcessor):
             )
             for e in chunk_entities
         ]
-        sparse_embedder = SparseEmbedder()
-        sparse_embeddings = await sparse_embedder.embed_many(sparse_texts, sync_context)
+        sparse_embeddings = await runtime.sparse_embedder.embed_many(sparse_texts)
 
         # Assign embeddings to entities
         for i, entity in enumerate(chunk_entities):

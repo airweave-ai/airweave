@@ -52,20 +52,3 @@ class AgenticSearchDatabaseInterface(Protocol):
     ) -> AgenticSearchEntityCount:
         """Get entity count for a source connection and entity definition."""
         ...
-
-    async def get_collection_vector_size(self, readable_id: str) -> int:
-        """Get vector size for a collection.
-
-        This is called early during service initialization to determine
-        which embedding model to use.
-
-        Args:
-            readable_id: The collection's readable identifier.
-
-        Returns:
-            The vector size (embedding dimension) for the collection.
-
-        Raises:
-            ValueError: If collection not found or has no vector_size.
-        """
-        ...

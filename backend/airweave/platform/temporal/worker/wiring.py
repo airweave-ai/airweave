@@ -32,6 +32,8 @@ def create_activities() -> list:
     # Get dependencies from container (attribute access, not method call)
     event_bus = container.event_bus
     usage_guardrail_factory = container.usage_guardrail_factory
+    dense_embedder = container.dense_embedder
+    sparse_embedder = container.sparse_embedder
 
     logger.debug("Wiring activities with container dependencies")
 
@@ -39,7 +41,12 @@ def create_activities() -> list:
     # The .run method is what Temporal calls
     return [
         # Sync activities
-        RunSyncActivity(event_bus=event_bus, usage_guardrail_factory=usage_guardrail_factory).run,
+        RunSyncActivity(
+            event_bus=event_bus, 
+            usage_guardrail_factory=usage_guardrail_factory
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
+        ).run,
         CreateSyncJobActivity(event_bus=event_bus).run,
         MarkSyncJobCancelledActivity().run,
         CleanupStuckSyncJobsActivity().run,

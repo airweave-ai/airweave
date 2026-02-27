@@ -31,7 +31,7 @@ class SyncContext(BaseContext):
     # --- Schema objects ---
     sync: schemas.Sync
     sync_job: schemas.SyncJob
-    collection: schemas.Collection
+    collection: schemas.CollectionRecord
     connection: schemas.Connection
 
     # --- Config ---

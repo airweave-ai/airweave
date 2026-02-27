@@ -1024,8 +1024,7 @@ class TestFinalizeCallback:
             name="Col",
             readable_id="col-abc",
             organization_id=ORG_ID,
-            vector_size=768,
-            embedding_model_name="text-embedding-3-small",
+            vector_db_deployment_metadata_id=uuid4(),
         )
         collection.created_at = NOW
         collection.modified_at = NOW
@@ -1219,8 +1218,7 @@ class TestFinalizeCallback:
             name="c",
             readable_id="col-abc",
             organization_id=ORG_ID,
-            vector_size=768,
-            embedding_model_name="text-embedding-3-small",
+            vector_db_deployment_metadata_id=uuid4(),
         )
         col.created_at = NOW
         col.modified_at = NOW
@@ -1306,8 +1304,7 @@ class TestFinalizeCallback:
             name="Col",
             readable_id="col-abc",
             organization_id=ORG_ID,
-            vector_size=768,
-            embedding_model_name="text-embedding-3-small",
+            vector_db_deployment_metadata_id=uuid4(),
         )
         col.created_at = NOW
         col.modified_at = NOW

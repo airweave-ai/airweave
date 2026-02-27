@@ -21,11 +21,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.pubsub import core_pubsub
 from airweave.db.session import AsyncSessionLocal
 from airweave.domains.usage.protocols import UsageGuardrailProtocol
 from airweave.domains.usage.types import ActionType
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.schemas.errors import (
     NotFoundErrorResponse,
     RateLimitErrorResponse,
@@ -105,6 +107,8 @@ async def search_get_legacy(
     db: AsyncSession = Depends(deps.get_db),
     usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     ctx: ApiContext = Depends(deps.get_context),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> LegacySearchResponse:
     """Legacy GET search endpoint for backwards compatibility."""
     await usage_guardrail.is_allowed(db, ActionType.QUERIES)
@@ -138,6 +142,8 @@ async def search_get_legacy(
         stream=False,
         db=db,
         ctx=ctx,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
     )
 
     # Convert back to legacy format
@@ -187,6 +193,9 @@ async def search(
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> Union[SearchResponse, LegacySearchResponse]:
     """Search your collection with AI-powered semantic search."""
     await usage_guardrail.is_allowed(db, ActionType.QUERIES)
@@ -226,6 +235,8 @@ async def search(
         stream=False,
         db=db,
         ctx=ctx,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
         destination_override="vespa",
     )
 
@@ -248,6 +259,9 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming endpoint for advanced search.
 
@@ -291,6 +305,8 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                     stream=True,
                     db=search_db,
                     ctx=ctx,
+                    dense_embedder=dense_embedder,
+                    sparse_embedder=sparse_embedder,
                     destination_override="vespa",
                 )
         except ValueError as e:

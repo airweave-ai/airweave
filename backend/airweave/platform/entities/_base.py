@@ -1,9 +1,10 @@
 from datetime import datetime
-from typing import Any, ClassVar, List, Optional, Type
+from typing import ClassVar, List, Optional, Type
 from uuid import UUID
 
-from fastembed import SparseEmbedding
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from airweave.domains.embedders.types import SparseEmbedding
 
 
 class Breadcrumb(BaseModel):
@@ -86,8 +87,6 @@ class AirweaveSystemMetadata(BaseModel):
     db_updated_at: Optional[datetime] = Field(
         None, description="Timestamp of when the entity was last updated in Airweave."
     )
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class BaseEntity(BaseModel):

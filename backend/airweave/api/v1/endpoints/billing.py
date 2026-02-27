@@ -14,6 +14,7 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.logging import logger
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
 
 router = TrailingSlashRouter()
@@ -270,7 +271,9 @@ async def stripe_webhook(
     try:
         await webhook.process_webhook(db, payload, stripe_signature)
         return Response(status_code=200)
-    except ValueError:
+    except ValueError as e:
+        logger.error(f"Webhook signature/payload error: {e}")
         return Response(status_code=400)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Webhook processing error: {e}", exc_info=True)
         return Response(status_code=500)

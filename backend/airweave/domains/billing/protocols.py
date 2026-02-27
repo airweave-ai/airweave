@@ -5,11 +5,12 @@ BillingWebhookProtocol — single method for webhook event processing.
 """
 
 from datetime import datetime
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, Union, runtime_checkable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext, SystemContext
 from airweave.schemas.organization_billing import SubscriptionInfo
 
 
@@ -26,7 +27,7 @@ class BillingServiceProtocol(Protocol):
         plan: str,
         success_url: str,
         cancel_url: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Start a subscription checkout flow. Returns checkout URL."""
         ...
@@ -38,7 +39,7 @@ class BillingServiceProtocol(Protocol):
         plan: str,
         success_url: str,
         cancel_url: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Start a yearly prepay checkout flow. Returns checkout URL."""
         ...
@@ -46,7 +47,7 @@ class BillingServiceProtocol(Protocol):
     async def update_subscription_plan(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: Union[ApiContext, SystemContext],
         new_plan: str,
         period: str = "monthly",
     ) -> str:
@@ -56,7 +57,7 @@ class BillingServiceProtocol(Protocol):
     async def cancel_subscription(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Cancel subscription at period end. Returns status message."""
         ...
@@ -64,7 +65,7 @@ class BillingServiceProtocol(Protocol):
     async def reactivate_subscription(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Reactivate a canceled subscription. Returns status message."""
         ...
@@ -72,7 +73,7 @@ class BillingServiceProtocol(Protocol):
     async def cancel_pending_plan_change(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> str:
         """Cancel a pending plan change. Returns status message."""
         ...
@@ -80,7 +81,7 @@ class BillingServiceProtocol(Protocol):
     async def create_customer_portal_session(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         return_url: str,
     ) -> str:
         """Create Stripe customer portal session. Returns portal URL."""
@@ -89,7 +90,7 @@ class BillingServiceProtocol(Protocol):
     async def get_subscription_info(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         at: Optional[datetime] = None,
     ) -> SubscriptionInfo:
         """Get comprehensive subscription information."""

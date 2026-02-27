@@ -30,6 +30,7 @@ from .transformer import Transformer
 from .usage import Usage
 from .user import User
 from .user_organization import UserOrganization
+from .vector_db_deployment_metadata import VectorDbDeploymentMetadata
 
 __all__ = [
     "AccessControlMembership",
@@ -62,4 +63,5 @@ __all__ = [
     "Usage",
     "User",
     "UserOrganization",
+    "VectorDbDeploymentMetadata",
 ]

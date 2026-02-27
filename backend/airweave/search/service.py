@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.search.factory import factory
 from airweave.search.helpers import search_helpers
@@ -35,6 +36,9 @@ class SearchService:
         stream: bool,
         db: AsyncSession,
         ctx: ApiContext,
+        *,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
         destination_override: SearchDestination | None = None,
     ) -> SearchResponse:
         """Search a collection.
@@ -46,6 +50,8 @@ class SearchService:
             stream: Whether to enable SSE streaming
             db: Database session
             ctx: API context
+            dense_embedder: Domain dense embedder for generating neural embeddings
+            sparse_embedder: Domain sparse embedder for generating BM25 embeddings
             destination_override: If provided, override the default destination
                 ('qdrant' or 'vespa'). If None, uses SyncConfig default.
 
@@ -69,6 +75,8 @@ class SearchService:
             stream,
             ctx,
             db,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
             destination_override=destination_override,
         )
 
@@ -132,6 +140,9 @@ class SearchService:
         search_request: SearchRequest,
         db: AsyncSession,
         ctx: ApiContext,
+        *,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
         destination: SearchDestination = "qdrant",
     ) -> SearchResponse:
         """Admin search with destination selection (no ACL filtering by logged-in user).
@@ -146,6 +157,8 @@ class SearchService:
             search_request: Search parameters
             db: Database session
             ctx: API context
+            dense_embedder: Domain dense embedder for generating neural embeddings
+            sparse_embedder: Domain sparse embedder for generating BM25 embeddings
             destination: Search destination ('qdrant' or 'vespa')
 
         Returns:
@@ -178,6 +191,8 @@ class SearchService:
             stream=False,
             ctx=ctx,
             db=db,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
             destination_override=destination,
             skip_organization_check=True,
         )
@@ -201,6 +216,9 @@ class SearchService:
         db: AsyncSession,
         ctx: ApiContext,
         user_principal: str,
+        *,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
         destination: SearchDestination = "vespa",
     ) -> SearchResponse:
         """Search as a specific user with ACL filtering.
@@ -217,6 +235,8 @@ class SearchService:
             db: Database session
             ctx: API context
             user_principal: Username to search as (e.g., "john" or "john@example.com")
+            dense_embedder: Domain dense embedder for generating neural embeddings
+            sparse_embedder: Domain sparse embedder for generating BM25 embeddings
             destination: Search destination ('qdrant' or 'vespa')
 
         Returns:
@@ -272,6 +292,8 @@ class SearchService:
             stream=False,
             ctx=ctx,
             db=db,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
             destination_override=destination,
             user_principal_override=user_principal_for_factory,
             skip_organization_check=True,

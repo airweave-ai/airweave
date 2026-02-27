@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.embedders.config import get_provider_for_model
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.token_manager import TokenManager
@@ -71,6 +71,9 @@ class SearchFactory:
         stream: bool,
         ctx: ApiContext,
         db: AsyncSession,
+        *,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
         # --- Optional parameters for admin/ACL search ---
         destination_override: Optional[DestinationOverride] = None,
         user_principal_override: Optional[str] = None,
@@ -86,6 +89,8 @@ class SearchFactory:
             stream: Whether to enable SSE streaming
             ctx: API context with auth info
             db: Database session
+            dense_embedder: Domain dense embedder for generating neural embeddings
+            sparse_embedder: Domain sparse embedder for generating BM25 embeddings
             destination_override: Override destination ("qdrant" or "vespa").
                 If None, uses collection's default destination (Qdrant).
             user_principal_override: Username to use for ACL filtering.
@@ -134,26 +139,16 @@ class SearchFactory:
         if not has_federated_sources and not has_vector_sources:
             raise ValueError("Collection has no sources")
 
-        # Use collection's stored vector_size for provider initialization
-        vector_size = collection.vector_size
+        vector_size = dense_embedder.dimensions
 
-        # Fail-fast: vector_size must be set
-        if vector_size is None:
-            raise ValueError(f"Collection {collection.readable_id} has no vector_size set.")
-
-        # Select providers for operations
-        # Note: Skip embedding provider if destination embeds server-side (e.g., Vespa)
+        # Select LLM providers for operations (embedding is handled by domain embedders)
         api_keys = self._get_available_api_keys()
-        embedding_provider = get_provider_for_model(collection.embedding_model_name)
-        providers = self._create_provider_for_each_operation(
+        providers = self._create_llm_providers_for_operations(
             api_keys,
             params,
             has_federated_sources,
             has_vector_sources,
             ctx,
-            vector_size,
-            embedding_provider=embedding_provider,
-            requires_client_embedding=requires_embedding,
         )
 
         # Create event emitter and emit skip notices if needed
@@ -167,9 +162,10 @@ class SearchFactory:
             federated_sources,
             has_vector_sources,
             search_request,
-            vector_size,
             destination=destination,
             requires_client_embedding=requires_embedding,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
             db=db,
             ctx=ctx,
             user_principal_override=user_principal_override,
@@ -264,10 +260,6 @@ class SearchFactory:
             pass
         ctx.logger.info(f"[SearchFactory] Vector-backed sources present: {has_vector_sources}")
 
-    def _get_vector_size(self) -> int:
-        """Get the default vector size for embeddings."""
-        return settings.EMBEDDING_DIMENSIONS
-
     async def _emit_skip_notices_if_needed(
         self,
         emitter: EventEmitter,
@@ -306,9 +298,10 @@ class SearchFactory:
         federated_sources: List[BaseSource],
         has_vector_sources: bool,
         search_request: SearchRequest,
-        vector_size: Optional[int] = None,
         destination: Optional[BaseDestination] = None,
         requires_client_embedding: bool = True,
+        dense_embedder: Optional[DenseEmbedderProtocol] = None,
+        sparse_embedder: Optional[SparseEmbedderProtocol] = None,
         db: Optional[AsyncSession] = None,
         ctx: Optional[ApiContext] = None,
         user_principal_override: Optional[str] = None,
@@ -318,15 +311,14 @@ class SearchFactory:
 
         Args:
             params: Validated search parameters from request with defaults applied
-            providers: Dict with:
-                - "embed": Single BaseProvider (embeddings must be consistent - no fallback)
-                - Other keys: List[BaseProvider] (with fallback support)
+            providers: Dict of List[BaseProvider] for LLM operations (with fallback support)
             federated_sources: List of instantiated federated source objects
             has_vector_sources: Whether collection has any vector-backed sources
             search_request: Original search request from user
-            vector_size: Vector dimensions for this collection (used by EmbedQuery)
             destination: The destination instance for search (Qdrant, Vespa, etc.)
             requires_client_embedding: Whether destination needs client-side embeddings
+            dense_embedder: Domain dense embedder for generating neural embeddings
+            sparse_embedder: Domain sparse embedder for generating BM25 embeddings
             db: Database session for access control queries
             ctx: API context with user and organization info
             user_principal_override: If provided, use this user for ACL filtering
@@ -384,8 +376,8 @@ class SearchFactory:
             "embed_query": (
                 EmbedQuery(
                     strategy=params["retrieval_strategy"],
-                    provider=providers["embed"],  # Single provider - embeddings must be consistent
-                    vector_size=vector_size,
+                    dense_embedder=dense_embedder,
+                    sparse_embedder=sparse_embedder,
                 )
                 if needs_embedding_ops
                 else None
@@ -457,73 +449,13 @@ class SearchFactory:
             "mistral": getattr(settings, "MISTRAL_API_KEY", None),
         }
 
-    def _create_provider_for_each_operation(
+    def _create_llm_providers_for_operations(
         self,
         api_keys: Dict[str, Optional[str]],
         params: Dict[str, Any],
         has_federated_sources: bool,
         has_vector_sources: bool,
         ctx: ApiContext,
-        vector_size: int,
-        embedding_provider: Optional[str] = None,
-        requires_client_embedding: bool = True,
-    ) -> Dict[str, BaseProvider]:
-        """Select and validate all required providers."""
-        providers = {}
-
-        # Create embedding provider if needed (skip if destination embeds server-side)
-        if has_vector_sources and requires_client_embedding:
-            providers["embed"] = self._create_embedding_provider(
-                api_keys, ctx, vector_size, preferred_provider=embedding_provider
-            )
-
-        # Create LLM providers for enabled operations
-        providers.update(
-            self._create_llm_providers(
-                api_keys,
-                params,
-                has_federated_sources,
-                has_vector_sources,
-                ctx,
-                requires_client_embedding=requires_client_embedding,
-            )
-        )
-
-        ctx.logger.debug(f"[SearchFactory] Providers: {providers}")
-        return providers
-
-    def _create_embedding_provider(
-        self,
-        api_keys: Dict[str, Optional[str]],
-        ctx: ApiContext,
-        vector_size: int,
-        preferred_provider: Optional[str] = None,
-    ) -> BaseProvider:
-        """Create embedding provider for vector-backed search.
-
-        Note: Returns single provider, not a list. Embeddings must use consistent
-        models within a collection and cannot fallback to different providers.
-        """
-        providers = self._init_all_providers_for_operation(
-            "embed_query",
-            api_keys,
-            ctx,
-            vector_size,
-            preferred_provider=preferred_provider,
-        )
-        if not providers:
-            raise ValueError("Embedding provider required for vector-backed search.")
-        # Return first (and only) available embedding provider
-        return providers[0]
-
-    def _create_llm_providers(
-        self,
-        api_keys: Dict[str, Optional[str]],
-        params: Dict[str, Any],
-        has_federated_sources: bool,
-        has_vector_sources: bool,
-        ctx: ApiContext,
-        requires_client_embedding: bool = True,
     ) -> Dict[str, List[BaseProvider]]:
         """Create LLM provider lists for enabled operations.
 
@@ -665,20 +597,6 @@ class SearchFactory:
             return await VespaDestination.create(
                 collection_id=collection.id,
                 organization_id=collection.organization_id,
-                vector_size=collection.vector_size,
-                logger=ctx.logger,
-            )
-        elif destination_override == "qdrant":
-            from airweave.platform.destinations.qdrant import QdrantDestination
-
-            ctx.logger.info(
-                f"[SearchFactory] Using Qdrant destination (override) for "
-                f"collection {collection.readable_id}"
-            )
-            return await QdrantDestination.create(
-                collection_id=collection.id,
-                organization_id=collection.organization_id,
-                vector_size=collection.vector_size,
                 logger=ctx.logger,
             )
         else:

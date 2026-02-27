@@ -120,10 +120,11 @@ class Settings(BaseSettings):
 
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
-    # Embedding configuration (source of truth for entire stack)
-    # Must match: provider model dimensions and Vespa schema
-    # Common values: 384 (local), 1024 (Mistral), 1536 (OpenAI small), 3072 (OpenAI large)
-    EMBEDDING_DIMENSIONS: int = 1536
+    # Embedding configuration — all three are REQUIRED (read from .env, no defaults).
+    # config.py raises EmbeddingConfigError at import time if any is missing.
+    DENSE_EMBEDDER: str | None = None
+    EMBEDDING_DIMENSIONS: int | None = None
+    SPARSE_EMBEDDER: str | None = None
 
     # Vespa configuration
     VESPA_URL: str = "http://localhost"

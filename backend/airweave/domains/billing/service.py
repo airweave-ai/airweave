@@ -5,15 +5,17 @@ between the business logic, repository, and payment gateway.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.core.context import BaseContext
+from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext, SystemContext
 from airweave.core.protocols.payment import PaymentGatewayProtocol
+from airweave.core.shared_models import AuthMethod
 from airweave.domains.billing.exceptions import (
     BillingNotFoundError,
     BillingStateError,
@@ -402,7 +404,7 @@ class BillingService(BillingServiceProtocol):
     async def update_subscription_plan(  # noqa: C901
         self,
         db: AsyncSession,
-        ctx: BaseContext,
+        ctx: Union[ApiContext, SystemContext],
         new_plan: str,
         period: str = "monthly",
     ) -> str:
@@ -425,8 +427,6 @@ class BillingService(BillingServiceProtocol):
         target_plan = BillingPlan(new_plan)
 
         # Block public Enterprise upgrades/changes (allow only internal/system)
-        from airweave.core.shared_models import AuthMethod
-
         if target_plan == BillingPlan.ENTERPRISE and ctx.auth_method != AuthMethod.INTERNAL_SYSTEM:
             raise BillingStateError(
                 "Enterprise plan is only available via sales. Please contact support."

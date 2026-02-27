@@ -299,7 +299,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         sync_dict = schemas.Sync.model_validate(sync_with_conns, from_attributes=True).model_dump(
             mode="json"
         )
-        collection_dict = schemas.Collection.model_validate(
+        collection_dict = schemas.CollectionRecord.model_validate(
             collection, from_attributes=True
         ).model_dump(mode="json")
         connection_dict = schemas.Connection.model_validate(

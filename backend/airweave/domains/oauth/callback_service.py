@@ -593,7 +593,7 @@ class OAuthCallbackService:
                             db, readable_id=source_conn.readable_collection_id, ctx=ctx
                         )
                         if collection:
-                            collection_schema = schemas.Collection.model_validate(
+                            collection_schema = schemas.CollectionRecord.model_validate(
                                 collection, from_attributes=True
                             )
                             sync_job_schema = schemas.SyncJob.model_validate(

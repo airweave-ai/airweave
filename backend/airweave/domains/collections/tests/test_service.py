@@ -19,7 +19,12 @@ from airweave.domains.collections.exceptions import (
     CollectionNotFoundError,
 )
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
+from airweave.domains.collections.fakes.vector_db_deployment_metadata_repository import (
+    FakeVectorDbDeploymentMetadataRepository,
+)
 from airweave.domains.collections.service import CollectionService
+from airweave.domains.embedders.fakes.registry import FakeDenseEmbedderRegistry
+from airweave.domains.embedders.types import DenseEmbedderEntry
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
@@ -30,6 +35,7 @@ from airweave.schemas.organization import Organization
 NOW = datetime.now(timezone.utc)
 ORG_ID = uuid4()
 COLLECTION_ID = uuid4()
+DEPLOYMENT_METADATA_ID = uuid4()
 
 
 # ---------------------------------------------------------------------------
@@ -57,9 +63,12 @@ def _collection(
     col.name = name
     col.readable_id = readable_id
     col.organization_id = ORG_ID
-    # Fields required by schemas.Collection.model_validate (used in delete snapshot)
-    col.vector_size = 1536
-    col.embedding_model_name = "text-embedding-3-small"
+    col.vector_db_deployment_metadata_id = DEPLOYMENT_METADATA_ID
+    # Relationship used by _to_response to derive vector_size / embedding_model_name
+    vd = MagicMock()
+    vd.embedding_dimensions = 3072
+    vd.dense_embedder = "openai_text_embedding_3_large"
+    col.vector_db_deployment_metadata = vd
     col.sync_config = None
     col.created_at = NOW
     col.modified_at = NOW
@@ -82,8 +91,42 @@ class _FakeEventBus:
 def _fake_settings(**overrides) -> MagicMock:
     """Build a fake Settings with sensible defaults."""
     s = MagicMock(spec=Settings)
-    s.EMBEDDING_DIMENSIONS = overrides.get("EMBEDDING_DIMENSIONS", 1536)
+    for k, v in overrides.items():
+        setattr(s, k, v)
     return s
+
+
+def _fake_dense_registry() -> FakeDenseEmbedderRegistry:
+    registry = FakeDenseEmbedderRegistry()
+    registry.seed(
+        DenseEmbedderEntry(
+            short_name="openai_text_embedding_3_large",
+            name="OpenAI text-embedding-3-large",
+            description="OpenAI large embedding model",
+            class_name="OpenAIDenseEmbedder",
+            provider="openai",
+            api_model_name="text-embedding-3-large",
+            max_dimensions=3072,
+            max_tokens=8191,
+            supports_matryoshka=True,
+            embedder_class_ref=object,
+        )
+    )
+    registry.seed(
+        DenseEmbedderEntry(
+            short_name="openai_text_embedding_3_small",
+            name="OpenAI text-embedding-3-small",
+            description="OpenAI small embedding model",
+            class_name="OpenAIDenseEmbedder",
+            provider="openai",
+            api_model_name="text-embedding-3-small",
+            max_dimensions=1536,
+            max_tokens=8191,
+            supports_matryoshka=True,
+            embedder_class_ref=object,
+        )
+    )
+    return registry
 
 
 def _build_service(
@@ -92,6 +135,8 @@ def _build_service(
     sync_lifecycle=None,
     event_bus=None,
     settings=None,
+    deployment_metadata_repo=None,
+    dense_registry=None,
 ) -> CollectionService:
     return CollectionService(
         collection_repo=collection_repo or FakeCollectionRepository(),
@@ -99,6 +144,11 @@ def _build_service(
         sync_lifecycle=sync_lifecycle or FakeSyncLifecycleService(),
         event_bus=event_bus or _FakeEventBus(),
         settings=settings or _fake_settings(),
+        deployment_metadata_repo=deployment_metadata_repo
+        or FakeVectorDbDeploymentMetadataRepository(
+            deployment_metadata_id=DEPLOYMENT_METADATA_ID
+        ),
+        dense_registry=dense_registry or _fake_dense_registry(),
     )
 
 
@@ -206,7 +256,7 @@ async def test_create_happy_path():
     svc = _build_service(
         collection_repo=repo,
         event_bus=event_bus,
-        settings=_fake_settings(EMBEDDING_DIMENSIONS=3072),
+        settings=_fake_settings(),
     )
 
     collection_in = schemas.CollectionCreate(name="New Collection", readable_id="new-collection")
@@ -214,6 +264,12 @@ async def test_create_happy_path():
     result = await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
 
     assert result is not None
+    assert isinstance(result, schemas.Collection)
+    # API response must include derived fields and exclude internal FK
+    response_dict = result.model_dump(mode="json")
+    assert "vector_size" in response_dict
+    assert "embedding_model_name" in response_dict
+    assert "vector_db_deployment_metadata_id" not in response_dict
     # Verify event was published
     assert len(event_bus.events) == 1
     assert event_bus.events[0].event_type.value == "collection.created"
@@ -236,24 +292,22 @@ async def test_create_duplicate_raises():
 
 
 @pytest.mark.asyncio
-async def test_create_sets_embedding_config():
-    """create() sets vector_size and embedding_model_name from config."""
+async def test_create_sets_deployment_metadata_id():
+    """create() sets vector_db_deployment_metadata_id from deployment metadata row."""
     repo = FakeCollectionRepository()
-    svc = _build_service(
-        collection_repo=repo,
-        settings=_fake_settings(EMBEDDING_DIMENSIONS=1536),
-    )
+    svc = _build_service(collection_repo=repo)
 
     collection_in = schemas.CollectionCreate(name="Embedding Test", readable_id="embed-test")
 
     await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
 
-    # Verify repo.create was called with embedding fields
+    # Verify repo.create was called with vector_db_deployment_metadata_id
     create_calls = [c for c in repo._calls if c[0] == "create"]
     assert len(create_calls) == 1
     obj_in = create_calls[0][2]  # obj_in dict
-    assert obj_in["vector_size"] == 1536
-    assert "embedding_model_name" in obj_in
+    assert obj_in["vector_db_deployment_metadata_id"] == DEPLOYMENT_METADATA_ID
+    assert "vector_size" not in obj_in
+    assert "embedding_model_name" not in obj_in
 
 
 # ---------------------------------------------------------------------------
@@ -263,14 +317,17 @@ async def test_create_sets_embedding_config():
 
 @pytest.mark.asyncio
 async def test_get_found():
-    """get() returns collection when found."""
+    """get() returns CollectionResponse when found."""
     repo = FakeCollectionRepository()
     col = _collection()
     repo.seed_readable("test-collection", col)
 
     svc = _build_service(collection_repo=repo)
     result = await svc.get(MagicMock(), readable_id="test-collection", ctx=_ctx())
-    assert result == col
+    assert isinstance(result, schemas.Collection)
+    assert result.readable_id == "test-collection"
+    assert result.vector_size == 3072
+    assert result.embedding_model_name == "text-embedding-3-large"
 
 
 @pytest.mark.asyncio

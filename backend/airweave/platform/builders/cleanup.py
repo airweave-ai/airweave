@@ -19,7 +19,7 @@ class CleanupContextBuilder:
         cls,
         db: AsyncSession,
         sync: schemas.Sync,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx: BaseContext,
     ) -> CleanupContext:
         """Build cleanup context for a single sync's entities.
@@ -70,7 +70,7 @@ class CleanupContextBuilder:
     async def build_for_collection(
         cls,
         db: AsyncSession,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx: BaseContext,
     ) -> List[CleanupContext]:
         """Build cleanup contexts for all syncs in a collection.

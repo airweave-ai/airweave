@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.usage.types import ActionType
 from airweave.models.usage import Usage
@@ -21,7 +21,7 @@ class UsageRepositoryProtocol(Protocol):
         db: AsyncSession,
         *,
         obj_in: UsageCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Usage:
         """Create a usage record."""
@@ -70,7 +70,7 @@ class UsageRepository(UsageRepositoryProtocol):
         db: AsyncSession,
         *,
         obj_in: UsageCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Usage:
         """Create a usage record."""

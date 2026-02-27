@@ -268,8 +268,8 @@ async def _create_filter_collection(client: httpx.AsyncClient) -> Dict:
     # Verify stub data is actually searchable (not just sync status = active).
     # Under parallel test load, indexing can lag behind sync completion.
     stub_verified = False
-    for attempt in range(12):  # up to ~55s (first 5 at 3s, rest at 5s)
-        wait_secs = 3 if attempt < 5 else 5
+    for attempt in range(18):  # up to ~100s (3s x5, 5s x5, 8s x8)
+        wait_secs = 3 if attempt < 5 else 5 if attempt < 10 else 8
         await asyncio.sleep(wait_secs)
         verify_resp = await client.post(
             f"/collections/{readable_id}/search",

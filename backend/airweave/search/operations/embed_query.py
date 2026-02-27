@@ -8,10 +8,9 @@ the retrieval strategy (hybrid, neural, or keyword).
 from typing import TYPE_CHECKING, List, Optional
 
 from airweave.api.context import ApiContext
-from airweave.platform.embedders import SparseEmbedder
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.schemas.search import RetrievalStrategy
 from airweave.search.context import SearchContext
-from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
 
@@ -23,12 +22,15 @@ class EmbedQuery(SearchOperation):
     """Generate vector embeddings for queries."""
 
     def __init__(
-        self, strategy: RetrievalStrategy, provider: BaseProvider, vector_size: int
+        self,
+        strategy: RetrievalStrategy,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
     ) -> None:
-        """Initialize with retrieval strategy, provider, and vector dimensions."""
+        """Initialize with retrieval strategy and domain embedders."""
         self.strategy = strategy
-        self.provider = provider
-        self.vector_size = vector_size
+        self.dense_embedder = dense_embedder
+        self.sparse_embedder = sparse_embedder
 
     def depends_on(self) -> List[str]:
         """Depends on query expansion to get all queries to embed."""
@@ -54,7 +56,6 @@ class EmbedQuery(SearchOperation):
         queries = self._get_queries_to_embed(context, state)
 
         # Generate dense embeddings if needed
-        # Note: Token validation is handled by the provider in its embed() method
         if self.strategy in (RetrievalStrategy.HYBRID, RetrievalStrategy.NEURAL):
             dense_embeddings = await self._generate_dense_embeddings(queries, ctx)
         else:
@@ -104,32 +105,21 @@ class EmbedQuery(SearchOperation):
     async def _generate_dense_embeddings(
         self, queries: List[str], ctx: ApiContext
     ) -> List[List[float]]:
-        """Generate dense neural embeddings using provider.
-
-        Uses Matryoshka truncation to get embeddings at the configured vector_size.
-        This ensures embeddings match the destination's requirements:
-        - Qdrant: 3072-dim (text-embedding-3-large native)
-        - Vespa: 768-dim (Matryoshka truncated for binary packing)
-        """
-        # Pass vector_size for Matryoshka truncation
-        # OpenAI's text-embedding-3 models support arbitrary truncation
+        """Generate dense neural embeddings using the domain embedder."""
         ctx.logger.debug(
-            f"[EmbedQuery] Generating {self.vector_size}-dim embeddings for {len(queries)} queries"
+            f"[EmbedQuery] Generating {self.dense_embedder.dimensions}-dim embeddings "
+            f"for {len(queries)} queries"
         )
-        dense_embeddings = await self.provider.embed(queries, dimensions=self.vector_size)
+        results = await self.dense_embedder.embed_many(queries)
 
         # Validate we got embeddings for all queries
-        if len(dense_embeddings) != len(queries):
+        if len(results) != len(queries):
             raise RuntimeError(
-                f"Embedding count mismatch: got {len(dense_embeddings)} for {len(queries)} queries"
+                f"Embedding count mismatch: got {len(results)} for {len(queries)} queries"
             )
 
-        # Validate dimensions
-        if dense_embeddings and len(dense_embeddings[0]) != self.vector_size:
-            ctx.logger.warning(
-                f"[EmbedQuery] Dimension mismatch: got {len(dense_embeddings[0])}, "
-                f"expected {self.vector_size}"
-            )
+        # Extract raw vectors to match SearchState type (List[List[float]])
+        dense_embeddings = [emb.vector for emb in results]
 
         ctx.logger.debug(
             f"[EmbedQuery] Dense embeddings generated: {len(dense_embeddings)} x "
@@ -140,15 +130,11 @@ class EmbedQuery(SearchOperation):
 
     async def _generate_sparse_embeddings(self, queries: List[str], ctx: ApiContext) -> List:
         """Generate sparse BM25 embeddings for keyword search."""
-        # Use SparseEmbedder from platform/embedders/
-        bm25_embedder = SparseEmbedder()
-
-        # Generate sparse embeddings
         if len(queries) == 1:
-            sparse_embedding = await bm25_embedder.embed(queries[0])
+            sparse_embedding = await self.sparse_embedder.embed(queries[0])
             sparse_embeddings = [sparse_embedding]
         else:
-            sparse_embeddings = await bm25_embedder.embed_many(queries)
+            sparse_embeddings = await self.sparse_embedder.embed_many(queries)
 
         # Validate we got embeddings for all queries
         if len(sparse_embeddings) != len(queries):
@@ -192,18 +178,13 @@ class EmbedQuery(SearchOperation):
             except Exception:
                 pass
 
-        # Determine model used
-        model = None
-        if dense_embeddings and self.provider.model_spec.embedding_model:
-            model = self.provider.model_spec.embedding_model.name
-
         await emitter.emit(
             "embedding_done",
             {
                 "neural_count": neural_count,
                 "sparse_count": sparse_count,
                 "dim": dim,
-                "model": model,
+                "model": self.dense_embedder.model_name if dense_embeddings else None,
                 "avg_nonzeros": avg_nonzeros,
             },
             op_name=self.__class__.__name__,

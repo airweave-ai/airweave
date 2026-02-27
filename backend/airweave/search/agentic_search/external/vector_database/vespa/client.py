@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
+from airweave.domains.embedders.types import SparseEmbedding
 from airweave.search.agentic_search.external.vector_database.vespa.config import (
     ALL_VESPA_SCHEMAS,
     DEFAULT_GLOBAL_PHASE_RERANK_COUNT,
@@ -27,7 +28,6 @@ from airweave.search.agentic_search.schemas.compiled_query import AgenticSearchC
 from airweave.search.agentic_search.schemas.plan import AgenticSearchPlan
 from airweave.search.agentic_search.schemas.query_embeddings import (
     AgenticSearchQueryEmbeddings,
-    AgenticSearchSparseEmbedding,
 )
 from airweave.search.agentic_search.schemas.retrieval_strategy import AgenticSearchRetrievalStrategy
 from airweave.search.agentic_search.schemas.search_result import (
@@ -355,9 +355,9 @@ class VespaVectorDB:
         return params
 
     def _convert_sparse_to_tensor(
-        self, sparse_emb: AgenticSearchSparseEmbedding
-    ) -> Optional[Dict[str, Any]]:
-        """Convert AgenticSearchSparseEmbedding to Vespa tensor format.
+        self, sparse_emb: SparseEmbedding
+    ) -> Optional[Dict[str, Dict[str, float]]]:
+        """Convert SparseEmbedding to Vespa tensor format.
 
         Args:
             sparse_emb: Sparse embedding with indices and values.

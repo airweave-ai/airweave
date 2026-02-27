@@ -22,6 +22,8 @@ from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
 from airweave.domains.usage.protocols import UsageGuardrailProtocol
 from airweave.domains.usage.types import ActionType
+from airweave.core.shared_models import ActionType, FeatureFlag
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.search.agentic_search.core.agent import AgenticSearchAgent
 from airweave.search.agentic_search.emitter import (
     AgenticSearchLoggingEmitter,
@@ -42,6 +44,8 @@ async def agentic_search(
     ctx: ApiContext = Depends(deps.get_context),
     usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     metrics_service: MetricsService = Inject(MetricsService),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> AgenticSearchResponse:
     """Perform agentic search."""
     if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
@@ -52,7 +56,9 @@ async def agentic_search(
 
     await usage_guardrail.is_allowed(db, ActionType.QUERIES)
 
-    services = await AgenticSearchServices.create(ctx, readable_id)
+    services = await AgenticSearchServices.create(
+        ctx, readable_id, dense_embedder=dense_embedder, sparse_embedder=sparse_embedder
+    )
 
     try:
         emitter = AgenticSearchLoggingEmitter(ctx)
@@ -75,6 +81,8 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     ctx: ApiContext = Depends(deps.get_context),
     usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     metrics_service: MetricsService = Inject(MetricsService),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> StreamingResponse:
     """Streaming agentic search endpoint using Server-Sent Events.
 
@@ -116,7 +124,9 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
         services = None
         agent_reached = False
         try:
-            services = await AgenticSearchServices.create(ctx, readable_id)
+            services = await AgenticSearchServices.create(
+                ctx, readable_id, dense_embedder=dense_embedder, sparse_embedder=sparse_embedder
+            )
             agent = AgenticSearchAgent(
                 services, ctx, emitter, metrics=metrics_service.agentic_search
             )

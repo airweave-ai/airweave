@@ -25,7 +25,7 @@ class TemporalWorkflowServiceProtocol(Protocol):
         self,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         connection: schemas.Connection,
         ctx: ApiContext,
         access_token: Optional[str] = None,

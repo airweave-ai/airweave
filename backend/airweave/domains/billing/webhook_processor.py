@@ -12,7 +12,7 @@ import stripe
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext, SystemContext
 from airweave.core.logging import ContextualLogger, logger
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.domains.billing.exceptions import wrap_gateway_errors
@@ -170,7 +170,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
 
     async def _resolve_event_context(  # noqa: C901
         self, db: AsyncSession, event: stripe.Event
-    ) -> tuple[ApiContext | None, ContextualLogger]:
+    ) -> tuple[SystemContext | None, ContextualLogger]:
         """Resolve organization context and create logger for a webhook event.
 
         Returns (ctx, log). ctx is None when the organization cannot be resolved.
@@ -222,16 +222,16 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
 
         log = logger.with_context(**log_kwargs)
 
-        # Build full ApiContext when we can resolve the org
-        ctx: ApiContext | None = None
+        # Build full SystemContext when we can resolve the org
+        ctx: SystemContext | None = None
         if organization_id:
             org = await self._org_repo.get_by_id(
                 db, organization_id=organization_id, skip_access_validation=True
             )
             if org:
                 org_schema = schemas.Organization.model_validate(org, from_attributes=True)
-                ctx = ApiContext.for_system(org_schema, "stripe_webhook")
-                log = ctx.logger  # use the richer logger from the context
+                ctx = SystemContext(org_schema, auth_method=AuthMethod.STRIPE_WEBHOOK)
+                log = ctx.logger
 
         return ctx, log
 
@@ -265,7 +265,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
-        ctx: ApiContext | None,
+        ctx: BaseContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle new subscription creation."""
@@ -333,7 +333,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
-        ctx: ApiContext | None,
+        ctx: BaseContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle subscription updates."""
@@ -521,7 +521,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
-        ctx: ApiContext | None,
+        ctx: BaseContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle subscription deletion/cancellation."""
@@ -580,7 +580,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
-        ctx: ApiContext | None,
+        ctx: BaseContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle successful payment."""
@@ -649,7 +649,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
-        ctx: ApiContext | None,
+        ctx: BaseContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle failed payment."""
@@ -723,7 +723,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
-        ctx: ApiContext | None,
+        ctx: BaseContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle upcoming invoice notification."""
@@ -745,7 +745,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
-        ctx: ApiContext | None,
+        ctx: BaseContext | None,
         log: ContextualLogger,
     ) -> None:
         """Handle checkout session completion."""
@@ -768,7 +768,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         event: stripe.Event,
-        ctx: ApiContext | None,
+        ctx: BaseContext | None,
         log: ContextualLogger,
     ) -> None:
         """Optional handler for payment_intent.succeeded (not strictly needed)."""
@@ -779,7 +779,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self,
         db: AsyncSession,
         session: Any,
-        ctx: ApiContext | None,
+        ctx: BaseContext | None,
         log: ContextualLogger,
     ) -> None:
         """Finalize yearly prepay: credit balance, create subscription with coupon."""

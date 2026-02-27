@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models import OrganizationBilling
 from airweave.models.billing_period import BillingPeriod
@@ -44,7 +44,7 @@ class OrganizationBillingRepositoryProtocol(Protocol):
         db: AsyncSession,
         *,
         obj_in: OrganizationBillingCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> OrganizationBilling:
         """Create a billing record."""
@@ -56,7 +56,7 @@ class OrganizationBillingRepositoryProtocol(Protocol):
         *,
         db_obj: OrganizationBilling,
         obj_in: OrganizationBillingUpdate,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> OrganizationBilling:
         """Update a billing record."""
         ...
@@ -94,7 +94,7 @@ class OrganizationBillingRepository(OrganizationBillingRepositoryProtocol):
         db: AsyncSession,
         *,
         obj_in: OrganizationBillingCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> OrganizationBilling:
         """Create a billing record."""
@@ -106,7 +106,7 @@ class OrganizationBillingRepository(OrganizationBillingRepositoryProtocol):
         *,
         db_obj: OrganizationBilling,
         obj_in: OrganizationBillingUpdate,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> OrganizationBilling:
         """Update a billing record."""
         return await crud.organization_billing.update(db, db_obj=db_obj, obj_in=obj_in, ctx=ctx)
@@ -115,7 +115,7 @@ class OrganizationBillingRepository(OrganizationBillingRepositoryProtocol):
 class BillingPeriodRepositoryProtocol(Protocol):
     """Access to billing period records."""
 
-    async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[BillingPeriod]:
+    async def get(self, db: AsyncSession, *, id: UUID, ctx: BaseContext) -> Optional[BillingPeriod]:
         """Get a billing period by ID."""
         ...
 
@@ -124,7 +124,7 @@ class BillingPeriodRepositoryProtocol(Protocol):
         db: AsyncSession,
         *,
         obj_in: BillingPeriodCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> BillingPeriod:
         """Create a billing period."""
@@ -154,7 +154,7 @@ class BillingPeriodRepositoryProtocol(Protocol):
         *,
         db_obj: BillingPeriod,
         obj_in: dict,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> BillingPeriod:
         """Update a billing period."""
         ...
@@ -163,7 +163,7 @@ class BillingPeriodRepositoryProtocol(Protocol):
 class BillingPeriodRepository(BillingPeriodRepositoryProtocol):
     """Delegates to the crud.billing_period singleton."""
 
-    async def get(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[BillingPeriod]:
+    async def get(self, db: AsyncSession, *, id: UUID, ctx: BaseContext) -> Optional[BillingPeriod]:
         """Get a billing period by ID."""
         return await crud.billing_period.get(db, id=id, ctx=ctx)
 
@@ -172,7 +172,7 @@ class BillingPeriodRepository(BillingPeriodRepositoryProtocol):
         db: AsyncSession,
         *,
         obj_in: BillingPeriodCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> BillingPeriod:
         """Create a billing period."""
@@ -206,7 +206,7 @@ class BillingPeriodRepository(BillingPeriodRepositoryProtocol):
         *,
         db_obj: BillingPeriod,
         obj_in: dict,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> BillingPeriod:
         """Update a billing period."""
         return await crud.billing_period.update(db, db_obj=db_obj, obj_in=obj_in, ctx=ctx)

@@ -374,13 +374,17 @@ async def test_gather_schedule_data(case: GatherCase):
         with pytest.raises(ValueError):
             with patch("airweave.domains.temporal.schedule_service.schemas") as mock_schemas:
                 mock_schemas.Sync.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={}))
-                mock_schemas.Collection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={}))
+                mock_schemas.CollectionRecord.model_validate.return_value = MagicMock(
+                    model_dump=MagicMock(return_value={})
+                )
                 mock_schemas.Connection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={}))
                 await svc._gather_schedule_data(SYNC_ID, db, ctx)
     else:
         with patch("airweave.domains.temporal.schedule_service.schemas") as mock_schemas:
             mock_schemas.Sync.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "s"}))
-            mock_schemas.Collection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "c"}))
+            mock_schemas.CollectionRecord.model_validate.return_value = MagicMock(
+                model_dump=MagicMock(return_value={"id": "c"})
+            )
             mock_schemas.Connection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "cn"}))
             s, c, cn = await svc._gather_schedule_data(SYNC_ID, db, ctx)
             assert s == {"id": "s"}
@@ -412,7 +416,7 @@ async def test_gather_schedule_data_uses_provisioning_context_when_source_connec
 
     with patch("airweave.domains.temporal.schedule_service.schemas") as mock_schemas:
         mock_schemas.Sync.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "s"}))
-        mock_schemas.Collection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "c"}))
+        mock_schemas.CollectionRecord.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "c"}))
         mock_schemas.Connection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "cn"}))
         s, c, cn = await svc._gather_schedule_data(
             SYNC_ID,

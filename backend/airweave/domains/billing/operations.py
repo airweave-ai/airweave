@@ -12,7 +12,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.exceptions import BillingStateError
@@ -51,7 +51,7 @@ class BillingOperationsProtocol(Protocol):
         period_end: datetime,
         plan: BillingPlan,
         transition: BillingTransition,
-        ctx: ApiContext,
+        ctx: BaseContext,
         stripe_subscription_id: str,
         previous_period_id: Optional[UUID] = None,
         status: BillingPeriodStatus = BillingPeriodStatus.ACTIVE,
@@ -65,7 +65,7 @@ class BillingOperationsProtocol(Protocol):
         organization: Organization,
         stripe_customer_id: str,
         billing_email: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: UnitOfWork,
     ) -> schemas.OrganizationBilling:
         """Create initial billing record for an organization."""
@@ -99,7 +99,7 @@ class BillingOperations(BillingOperationsProtocol):
         organization: Organization,
         stripe_customer_id: str,
         billing_email: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: UnitOfWork,
     ) -> schemas.OrganizationBilling:
         """Create initial billing record for an organization.
@@ -190,7 +190,7 @@ class BillingOperations(BillingOperationsProtocol):
         period_end: datetime,
         plan: BillingPlan,
         transition: BillingTransition,
-        ctx: ApiContext,
+        ctx: BaseContext,
         stripe_subscription_id: str,
         previous_period_id: Optional[UUID] = None,
         status: BillingPeriodStatus = BillingPeriodStatus.ACTIVE,

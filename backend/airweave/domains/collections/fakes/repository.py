@@ -91,6 +91,11 @@ class FakeCollectionRepository:
         from datetime import datetime, timezone
         from unittest.mock import MagicMock
 
+        from airweave.domains.embedders.config import (
+            DENSE_EMBEDDER,
+            EMBEDDING_DIMENSIONS,
+        )
+
         col = MagicMock(spec=Collection)
         for k, v in obj_in.items():
             setattr(col, k, v)
@@ -103,6 +108,14 @@ class FakeCollectionRepository:
         from airweave.core.shared_models import CollectionStatus
 
         col.status = CollectionStatus.NEEDS_SOURCE
+
+        # Provide a mock deployment metadata so schema model_validator can derive
+        # vector_size and embedding_model_name from the relationship.
+        dep_meta = MagicMock()
+        dep_meta.embedding_dimensions = EMBEDDING_DIMENSIONS
+        dep_meta.dense_embedder = DENSE_EMBEDDER
+        col.vector_db_deployment_metadata = dep_meta
+
         self._readable_store[obj_in.get("readable_id", "")] = col
         return col
 
