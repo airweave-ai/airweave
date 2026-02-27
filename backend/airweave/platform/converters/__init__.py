@@ -13,6 +13,7 @@ from .docx_converter import DocxConverter
 from .html_converter import HtmlConverter
 from .pdf_converter import PdfConverter
 from .pptx_converter import PptxConverter
+from .tavily_web_converter import TavilyWebConverter
 from .txt_converter import TxtConverter
 from .web_converter import WebConverter
 from .xlsx_converter import XlsxConverter
@@ -51,6 +52,7 @@ for _mod in (
     "html_converter",
     "pdf_converter",
     "pptx_converter",
+    "tavily_web_converter",
     "txt_converter",
     "web_converter",
     "xlsx_converter",
@@ -80,6 +82,15 @@ def initialize_converters(ocr_provider: "OcrProvider | None" = None) -> None:
     if _singletons is not None:
         return
 
+    # Select web converter backend based on WEB_EXTRACTOR_BACKEND setting
+    from airweave.core.config import settings
+
+    web_backend = getattr(settings, "WEB_EXTRACTOR_BACKEND", "firecrawl")
+    if web_backend == "tavily":
+        web_conv = TavilyWebConverter()
+    else:
+        web_conv = WebConverter()
+
     _singletons = {
         "mistral_converter": ocr_provider,
         "pdf_converter": PdfConverter(ocr_provider=ocr_provider),
@@ -90,7 +101,7 @@ def initialize_converters(ocr_provider: "OcrProvider | None" = None) -> None:
         "txt_converter": TxtConverter(),
         "xlsx_converter": XlsxConverter(),
         "code_converter": CodeConverter(),
-        "web_converter": WebConverter(),
+        "web_converter": web_conv,
     }
 
     # Also set as module attributes so subsequent lookups are O(1)

@@ -23,6 +23,11 @@ _client_lock = asyncio.Lock()
 _httpx_client = None
 _temp_dir_created = False
 
+# Tavily client state
+_shared_tavily_client = None
+_tavily_semaphore = None
+_tavily_client_lock = asyncio.Lock()
+
 # Add a separate semaphore for CTTI to limit their concurrent requests
 _ctti_semaphore = None
 _ctti_semaphore_lock = asyncio.Lock()
@@ -155,6 +160,32 @@ async def get_ctti_semaphore(logger: ContextualLogger):
             )
 
     return _ctti_semaphore
+
+
+async def get_tavily_client(logger: ContextualLogger):
+    """Get or create the shared Tavily client instance."""
+    global _shared_tavily_client, _tavily_semaphore
+
+    async with _tavily_client_lock:
+        if _shared_tavily_client is None:
+            tavily_api_key = getattr(settings, "TAVILY_API_KEY", None)
+            if not tavily_api_key:
+                raise ValueError("TAVILY_API_KEY must be configured to use Tavily web fetcher")
+
+            from tavily import AsyncTavilyClient
+
+            _shared_tavily_client = AsyncTavilyClient(api_key=tavily_api_key)
+
+            max_concurrent_requests = getattr(settings, "WEB_FETCHER_MAX_CONCURRENT", 10)
+            _tavily_semaphore = asyncio.Semaphore(max_concurrent_requests)
+            _tavily_semaphore._initial_value = max_concurrent_requests
+
+            logger.debug(
+                f"🔗 WEB_CLIENT_INIT Initialized Tavily client "
+                f"(max_concurrent={max_concurrent_requests})"
+            )
+
+    return _shared_tavily_client, _tavily_semaphore
 
 
 async def _retry_with_backoff(
@@ -373,6 +404,29 @@ def _create_mock_scrape_result(markdown_content: str, web_entity: WebEntity):
     return MockScrapeResult(markdown_content)
 
 
+def _create_tavily_scrape_result(markdown_content: str, web_entity: WebEntity):
+    """Create a scrape result object from Tavily extract response."""
+
+    class TavilyScrapeResult:
+        def __init__(self, markdown_content: str):
+            self.markdown = markdown_content
+
+            # Try to extract title from markdown content
+            title = None
+            lines = markdown_content.split("\n")
+            for line in lines[:10]:  # Check first 10 lines
+                if line.strip().startswith("# "):
+                    title = line.strip()[2:].strip()
+                    break
+
+            self.metadata = {
+                "source": "tavily",
+                "title": title or "Web Page",
+            }
+
+    return TavilyScrapeResult(markdown_content)
+
+
 async def _scrape_with_firecrawl_internal(
     web_entity: WebEntity, entity_context: str, logger: ContextualLogger
 ):
@@ -497,8 +551,68 @@ async def _try_scrape_with_timeouts(
             )
 
 
+async def _scrape_with_tavily_internal(
+    web_entity: WebEntity, entity_context: str, logger: ContextualLogger
+):
+    """Internal function to handle scraping with Tavily Extract."""
+    _, semaphore = await get_tavily_client(logger)
+
+    if semaphore._value == 0:
+        logger.debug(
+            f"⏳ WEB_QUEUE [{entity_context}] Waiting for Tavily connection slot "
+            f"(all {getattr(semaphore, '_initial_value', 10)} slots in use)"
+        )
+
+    async with semaphore:
+        return await _perform_tavily_scrape(web_entity, entity_context, logger)
+
+
+async def _perform_tavily_scrape(
+    web_entity: WebEntity, entity_context: str, logger: ContextualLogger
+):
+    """Perform the actual Tavily extract with timeout handling."""
+    client, _ = await get_tavily_client(logger)
+
+    logger.debug(f"📥 WEB_SCRAPE [{entity_context}] Extracting URL via Tavily: {web_entity.url}")
+    scrape_start = asyncio.get_event_loop().time()
+
+    response = await asyncio.wait_for(
+        client.extract(
+            urls=[web_entity.url],
+            extract_depth="advanced",
+        ),
+        timeout=120.0,
+    )
+
+    scrape_elapsed = asyncio.get_event_loop().time() - scrape_start
+
+    # Extract content from response
+    results = response.get("results", [])
+    failed = response.get("failed_results", [])
+
+    if not results:
+        if failed:
+            error = failed[0].get("error", "unknown error")
+            logger.warning(f"📭 WEB_EMPTY [{entity_context}] Tavily extraction failed: {error}")
+        else:
+            logger.warning(f"📭 WEB_EMPTY [{entity_context}] No content returned from Tavily")
+        raise ValueError(f"No content extracted from URL: {web_entity.url}")
+
+    raw_content = results[0].get("raw_content", "")
+    if not raw_content:
+        logger.warning(f"📭 WEB_EMPTY [{entity_context}] Tavily returned empty content")
+        raise ValueError(f"No content extracted from URL: {web_entity.url}")
+
+    logger.debug(
+        f"📄 WEB_CONTENT [{entity_context}] Received {len(raw_content)} characters "
+        f"via Tavily in {scrape_elapsed:.2f}s"
+    )
+
+    return _create_tavily_scrape_result(raw_content, web_entity)
+
+
 async def _scrape_web_content(web_entity: WebEntity, entity_context: str, logger: ContextualLogger):
-    """Scrape web content using Firecrawl or retrieve from storage for CTTI entities."""
+    """Scrape web content using Firecrawl/Tavily or retrieve from storage for CTTI entities."""
     # Import storage manager here to avoid circular imports
     from airweave.platform.storage import sync_file_manager
 
@@ -509,6 +623,17 @@ async def _scrape_web_content(web_entity: WebEntity, entity_context: str, logger
         cached_result = await _get_ctti_cached_content(web_entity, entity_context, logger)
         if cached_result:
             return cached_result
+
+    # Select scraping backend based on WEB_EXTRACTOR_BACKEND setting
+    web_backend = getattr(settings, "WEB_EXTRACTOR_BACKEND", "firecrawl")
+    if web_backend == "tavily":
+        return await _retry_with_backoff(
+            _scrape_with_tavily_internal,
+            web_entity,
+            entity_context,
+            entity_context=entity_context,
+            logger=logger,
+        )
 
     return await _retry_with_backoff(
         _scrape_with_firecrawl_internal,
