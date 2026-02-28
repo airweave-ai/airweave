@@ -439,6 +439,22 @@ def fake_sparse_embedder():
 
 
 @pytest.fixture
+def fake_usage_checker():
+    """Fake UsageLimitChecker that allows all actions by default."""
+    from airweave.domains.usage.fakes.limit_checker import FakeUsageLimitChecker
+
+    return FakeUsageLimitChecker()
+
+
+@pytest.fixture
+def fake_usage_ledger():
+    """Fake UsageLedger that records calls in memory."""
+    from airweave.domains.usage.fakes.ledger import FakeUsageLedger
+
+    return FakeUsageLedger()
+
+
+@pytest.fixture
 def fake_oauth_flow_service():
     """Fake OAuthFlowService."""
     from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
@@ -507,6 +523,8 @@ def test_container(
     fake_sparse_embedder_registry,
     fake_dense_embedder,
     fake_sparse_embedder,
+    fake_usage_checker,
+    fake_usage_ledger,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -562,4 +580,6 @@ def test_container(
         sparse_embedder_registry=fake_sparse_embedder_registry,
         dense_embedder=fake_dense_embedder,
         sparse_embedder=fake_sparse_embedder,
+        usage_checker=fake_usage_checker,
+        usage_ledger=fake_usage_ledger,
     )

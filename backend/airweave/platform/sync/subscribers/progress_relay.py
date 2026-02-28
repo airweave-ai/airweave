@@ -141,11 +141,13 @@ class SyncProgressRelay(EventSubscriber):
     ]
 
     def __init__(self, pubsub: PubSub) -> None:
+        """Initialize with a PubSub transport for publishing progress."""
         self._pubsub = pubsub
         self._sessions: dict[UUID, _RelaySession] = {}
 
     @property
     def active_session_count(self) -> int:
+        """Return the number of relay sessions that have not finished."""
         return sum(1 for s in self._sessions.values() if not s.is_finished)
 
     # ------------------------------------------------------------------
@@ -153,6 +155,7 @@ class SyncProgressRelay(EventSubscriber):
     # ------------------------------------------------------------------
 
     async def handle(self, event: DomainEvent) -> None:
+        """Dispatch a domain event to the appropriate handler."""
         if isinstance(event, EntityBatchProcessedEvent):
             await self._handle_batch(event)
         elif isinstance(event, AccessControlMembershipBatchProcessedEvent):
@@ -190,9 +193,7 @@ class SyncProgressRelay(EventSubscriber):
             self._log_status_update(session)
             session.last_status_update_ops = session.total_ops
 
-    async def _handle_acl_batch(
-        self, event: AccessControlMembershipBatchProcessedEvent
-    ) -> None:
+    async def _handle_acl_batch(self, event: AccessControlMembershipBatchProcessedEvent) -> None:
         session = self._sessions.get(event.sync_job_id)
         if session is None or session.is_finished:
             return
@@ -241,9 +242,7 @@ class SyncProgressRelay(EventSubscriber):
         )
 
         try:
-            await self._pubsub.publish(
-                "sync_job_state", session.job_id, state.model_dump_json()
-            )
+            await self._pubsub.publish("sync_job_state", session.job_id, state.model_dump_json())
         except Exception as e:
             logger.error(f"Failed to publish entity state for {session.job_id}: {e}")
 

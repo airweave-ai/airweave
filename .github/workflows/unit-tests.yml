@@ -53,6 +53,20 @@ jobs:
       - name: Install project
         run: poetry install --no-interaction
 
+      - name: Write coverage config
+        run: |
+          cat > .coveragerc << 'EOF'
+          [run]
+          omit =
+              airweave/platform/sources/*
+              airweave/platform/entities/*
+              airweave/domains/sources/*
+              airweave/domains/entities/*
+              **/fake.py
+              **/fakes/*
+              **/tests/*
+          EOF
+
       - name: Run unit tests with coverage
         run: >
           poetry run pytest
@@ -60,6 +74,7 @@ jobs:
           airweave/
           -m "not slow"
           --cov=airweave
+          --cov-config=.coveragerc
           --cov-report=xml:coverage.xml
           --cov-report=term-missing
 

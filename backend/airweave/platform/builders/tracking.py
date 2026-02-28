@@ -10,6 +10,7 @@ from airweave.core.context import BaseContext
 from airweave.core.logging import ContextualLogger
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
 
+
 class TrackingContextBuilder:
     """Builds entity tracking components for sync operations."""
 
