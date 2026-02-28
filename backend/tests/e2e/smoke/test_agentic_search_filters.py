@@ -224,8 +224,8 @@ async def _create_agentic_search_collection(client: httpx.AsyncClient) -> Dict:
 
     # Verify stub data is searchable (use regular /search — cheaper, no LLM dependency)
     stub_verified = False
-    for attempt in range(12):
-        wait_secs = 3 if attempt < 5 else 5
+    for attempt in range(18):  # up to ~100s (3s x5, 5s x5, 8s x8)
+        wait_secs = 3 if attempt < 5 else 5 if attempt < 10 else 8
         await asyncio.sleep(wait_secs)
         verify_resp = await client.post(
             f"/collections/{readable_id}/search",

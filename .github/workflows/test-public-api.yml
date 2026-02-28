@@ -277,8 +277,11 @@ jobs:
           MAX_RETRIES=2
 
           # Run tests for this group
+          # --dist loadscope keeps all tests from the same module/class on one
+          # worker, so module-scoped fixtures (e.g. synced_file_stub) are only
+          # created once instead of once per worker.
           set +e
-          pytest $TEST_FILES -m "not rate_limit and not api_rate_limit" -n $WORKERS -v --tb=short 2>&1 | tee pytest_output.txt
+          pytest $TEST_FILES -m "not rate_limit and not api_rate_limit" -n $WORKERS --dist loadscope -v --tb=short 2>&1 | tee pytest_output.txt
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
@@ -307,7 +310,7 @@ jobs:
             sleep 10
 
             set +e
-            pytest $TEST_FILES -m "not rate_limit and not api_rate_limit" --lf -n $WORKERS -v --tb=short 2>&1 | tee pytest_retry_output.txt
+            pytest $TEST_FILES -m "not rate_limit and not api_rate_limit" --lf -n $WORKERS --dist loadscope -v --tb=short 2>&1 | tee pytest_retry_output.txt
             EXIT_CODE=${PIPESTATUS[0]}
             set -e
 

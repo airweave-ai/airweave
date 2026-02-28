@@ -463,8 +463,8 @@ class ArfService:
                 created_at=now,
                 updated_at=now,
                 sync_jobs=[job_id],
-                vector_size=sync_context.collection.vector_size,
-                embedding_model_name=sync_context.collection.embedding_model_name,
+                vector_size=runtime.dense_embedder.dimensions,
+                embedding_model_name=runtime.dense_embedder.model_name,
             )
             await self.storage.write_json(manifest_path, manifest.model_dump())
 

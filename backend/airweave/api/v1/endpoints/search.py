@@ -26,6 +26,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.events.sync import QueryProcessedEvent
 from airweave.core.protocols import EventBus, PubSub
 from airweave.db.session import AsyncSessionLocal
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 from airweave.domains.usage.types import ActionType
 from airweave.schemas.errors import (
@@ -109,6 +110,8 @@ async def search_get_legacy(
     event_bus: EventBus = Inject(EventBus),
     ctx: ApiContext = Depends(deps.get_context),
     pubsub: PubSub = Inject(PubSub),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> LegacySearchResponse:
     """Legacy GET search endpoint for backwards compatibility."""
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
@@ -142,6 +145,8 @@ async def search_get_legacy(
         db=db,
         ctx=ctx,
         pubsub=pubsub,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
     )
 
     # Convert back to legacy format
@@ -193,6 +198,8 @@ async def search(
     event_bus: EventBus = Inject(EventBus),
     ctx: ApiContext = Depends(deps.get_context),
     pubsub: PubSub = Inject(PubSub),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> Union[SearchResponse, LegacySearchResponse]:
     """Search your collection with AI-powered semantic search."""
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
@@ -232,6 +239,8 @@ async def search(
         db=db,
         ctx=ctx,
         pubsub=pubsub,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
         destination_override="vespa",
     )
 
@@ -256,6 +265,8 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
     event_bus: EventBus = Inject(EventBus),
     ctx: ApiContext = Depends(deps.get_context),
     pubsub: PubSub = Inject(PubSub),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming endpoint for advanced search.
 
@@ -299,6 +310,8 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                     db=search_db,
                     ctx=ctx,
                     pubsub=pubsub,
+                    dense_embedder=dense_embedder,
+                    sparse_embedder=sparse_embedder,
                     destination_override="vespa",
                 )
         except ValueError as e:

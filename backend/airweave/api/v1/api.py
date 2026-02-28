@@ -8,7 +8,6 @@ from airweave.api.v1.endpoints import (
     auth_providers,
     billing,
     collections,
-    cursor_dev,
     destinations,
     embedding_models,
     entities,
@@ -27,7 +26,6 @@ from airweave.api.v1.endpoints import (
     users,
     webhooks,
 )
-from airweave.core.config import settings
 
 # Use our custom router that handles trailing slashes
 api_router = TrailingSlashRouter()
@@ -60,7 +58,3 @@ api_router.include_router(file_retrieval.router, prefix="/files", tags=["files"]
 api_router.include_router(s3.router, prefix="/s3", tags=["s3"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
-
-# Only include cursor development endpoints if LOCAL_CURSOR_DEVELOPMENT is enabled
-if settings.LOCAL_CURSOR_DEVELOPMENT:
-    api_router.include_router(cursor_dev.router, prefix="/cursor-dev", tags=["Cursor Development"])

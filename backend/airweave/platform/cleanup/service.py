@@ -29,7 +29,7 @@ class CleanupService:
         self,
         db: AsyncSession,
         sync_id: UUID,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx: "ApiContext",
     ) -> None:
         """Clean up all data for a sync.
@@ -61,7 +61,7 @@ class CleanupService:
     async def cleanup_collection(
         self,
         db: AsyncSession,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         sync_ids: List[UUID],
         ctx: "ApiContext",
     ) -> None:
@@ -106,7 +106,7 @@ class CleanupService:
         self,
         db: AsyncSession,
         sync_id: UUID,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx: "ApiContext",
     ) -> None:
         """Delete destination data by sync_id."""

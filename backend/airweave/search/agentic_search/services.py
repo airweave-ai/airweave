@@ -8,23 +8,15 @@ from __future__ import annotations
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.search.agentic_search.config import (
     DatabaseImpl,
-    DenseEmbedderProvider,
     LLMProvider,
-    SparseEmbedderProvider,
     TokenizerType,
     VectorDBProvider,
     config,
 )
 from airweave.search.agentic_search.external.database import AgenticSearchDatabaseInterface
-from airweave.search.agentic_search.external.dense_embedder import (
-    AgenticSearchDenseEmbedderInterface,
-)
-from airweave.search.agentic_search.external.dense_embedder.registry import (
-    get_model_spec as get_dense_model_spec,
-)
-from airweave.search.agentic_search.external.dense_embedder.registry import validate_vector_size
 from airweave.search.agentic_search.external.llm import AgenticSearchLLMInterface
 from airweave.search.agentic_search.external.llm.registry import (
     PROVIDER_API_KEY_SETTINGS,
@@ -32,12 +24,6 @@ from airweave.search.agentic_search.external.llm.registry import (
 )
 from airweave.search.agentic_search.external.llm.registry import (
     get_model_spec as get_llm_model_spec,
-)
-from airweave.search.agentic_search.external.sparse_embedder import (
-    AgenticSearchSparseEmbedderInterface,
-)
-from airweave.search.agentic_search.external.sparse_embedder.registry import (
-    get_model_spec as get_sparse_model_spec,
 )
 from airweave.search.agentic_search.external.tokenizer import AgenticSearchTokenizerInterface
 from airweave.search.agentic_search.external.tokenizer.registry import (
@@ -67,7 +53,7 @@ class AgenticSearchServices:
     - services.tokenizer.count_tokens() for token counting
     - services.llm.model_spec for context limits
     - services.llm.structured_output() for LLM calls
-    - services.dense_embedder.embed_batch() for semantic embeddings
+    - services.dense_embedder.embed_many() for semantic embeddings
     - services.sparse_embedder.embed() for keyword embeddings
     - services.vector_db.compile_query() and execute_query() for search
     """
@@ -77,8 +63,8 @@ class AgenticSearchServices:
         db: AgenticSearchDatabaseInterface,
         tokenizer: AgenticSearchTokenizerInterface,
         llm: AgenticSearchLLMInterface,
-        dense_embedder: AgenticSearchDenseEmbedderInterface,
-        sparse_embedder: AgenticSearchSparseEmbedderInterface,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
         vector_db: AgenticSearchVectorDBInterface,
     ):
         """Initialize with external dependencies.
@@ -103,6 +89,9 @@ class AgenticSearchServices:
         cls,
         ctx: ApiContext,
         readable_id: str,
+        *,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
     ) -> AgenticSearchServices:
         """Create services from config.
 
@@ -111,7 +100,9 @@ class AgenticSearchServices:
 
         Args:
             ctx: API context for organization scoping and logging.
-            readable_id: Collection readable ID (used to get vector_size for embedders).
+            readable_id: Collection readable ID.
+            dense_embedder: Dense embedder for semantic search.
+            sparse_embedder: Sparse embedder for keyword search.
 
         Returns:
             AgenticSearchServices instance with all dependencies wired.
@@ -121,17 +112,11 @@ class AgenticSearchServices:
         tokenizer = cls._create_tokenizer()
         llm = cls._create_llm(tokenizer)
 
-        vector_size = await db.get_collection_vector_size(readable_id)
-        dense_embedder = cls._create_dense_embedder(vector_size)
-        sparse_embedder = cls._create_sparse_embedder()
-
         vector_db = await cls._create_vector_db(ctx)
 
         # Log initialized services summary
         llm_spec = llm.model_spec
         tokenizer_spec = tokenizer.model_spec
-        dense_spec = dense_embedder.model_spec
-        sparse_spec = sparse_embedder.model_spec
 
         chain_desc = " → ".join(f"{p.value}/{m.value}" for p, m in config.LLM_FALLBACK_CHAIN)
         ctx.logger.debug(
@@ -141,10 +126,9 @@ class AgenticSearchServices:
             f"  - Primary LLM: {llm_spec.api_model_name}\n"
             f"  - Tokenizer: {config.TOKENIZER_TYPE.value} / "
             f"{tokenizer_spec.encoding_name}\n"
-            f"  - Dense embedder: {config.DENSE_EMBEDDER_PROVIDER.value} / "
-            f"{dense_spec.api_model_name} (vector_size={vector_size})\n"
-            f"  - Sparse embedder: {config.SPARSE_EMBEDDER_PROVIDER.value} / "
-            f"{sparse_spec.model_name}\n"
+            f"  - Dense embedder: {dense_embedder.model_name} "
+            f"(vector_size={dense_embedder.dimensions})\n"
+            f"  - Sparse embedder: {sparse_embedder.model_name}\n"
             f"  - Vector DB: {config.VECTOR_DB_PROVIDER.value}"
         )
 
@@ -345,64 +329,6 @@ class AgenticSearchServices:
         return result
 
     @staticmethod
-    def _create_dense_embedder(vector_size: int) -> AgenticSearchDenseEmbedderInterface:
-        """Create dense embedder based on config.
-
-        Gets the model spec from the registry and validates that it supports
-        the collection's vector_size.
-
-        Args:
-            vector_size: Embedding dimension for the collection.
-
-        Returns:
-            Dense embedder interface implementation.
-
-        Raises:
-            ValueError: If dense embedder provider or model is unknown.
-            ValueError: If vector_size exceeds model's maximum.
-        """
-        model_spec = get_dense_model_spec(
-            config.DENSE_EMBEDDER_PROVIDER,
-            config.DENSE_EMBEDDER_MODEL,
-        )
-        validate_vector_size(model_spec, vector_size)
-
-        if config.DENSE_EMBEDDER_PROVIDER == DenseEmbedderProvider.OPENAI:
-            from airweave.search.agentic_search.external.dense_embedder.openai import (
-                OpenAIDenseEmbedder,
-            )
-
-            return OpenAIDenseEmbedder(model_spec=model_spec, vector_size=vector_size)
-
-        raise ValueError(f"Unknown dense embedder provider: {config.DENSE_EMBEDDER_PROVIDER}")
-
-    @staticmethod
-    def _create_sparse_embedder() -> AgenticSearchSparseEmbedderInterface:
-        """Create sparse embedder based on config.
-
-        Gets the model spec from the registry.
-
-        Returns:
-            Sparse embedder interface implementation.
-
-        Raises:
-            ValueError: If sparse embedder provider or model is unknown.
-        """
-        model_spec = get_sparse_model_spec(
-            config.SPARSE_EMBEDDER_PROVIDER,
-            config.SPARSE_EMBEDDER_MODEL,
-        )
-
-        if config.SPARSE_EMBEDDER_PROVIDER == SparseEmbedderProvider.FASTEMBED:
-            from airweave.search.agentic_search.external.sparse_embedder.fastembed import (
-                FastEmbedSparseEmbedder,
-            )
-
-            return FastEmbedSparseEmbedder(model_spec=model_spec)
-
-        raise ValueError(f"Unknown sparse embedder provider: {config.SPARSE_EMBEDDER_PROVIDER}")
-
-    @staticmethod
     async def _create_vector_db(ctx: ApiContext) -> AgenticSearchVectorDBInterface:
         """Create vector database based on config.
 
@@ -429,8 +355,7 @@ class AgenticSearchServices:
 
         Note: LLM is a shared singleton and is NOT closed here.
         It persists across requests for circuit breaker continuity.
+        Embedders are container-managed singletons and are NOT closed here.
         """
         await self.db.close()
-        await self.dense_embedder.close()
-        await self.sparse_embedder.close()
         await self.vector_db.close()

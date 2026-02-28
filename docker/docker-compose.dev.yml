@@ -101,6 +101,8 @@ services:
   vespa-init:
     container_name: airweave-vespa-init
     image: alpine:3.19
+    env_file:
+      - ../.env
     volumes:
       - ../vespa/app:/app:ro
       - ../vespa/init-vespa.sh:/init-vespa.sh:ro

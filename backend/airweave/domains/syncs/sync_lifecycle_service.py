@@ -191,7 +191,9 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
         collection = await self._collection_repo.get_by_readable_id(
             db, source_conn.readable_collection_id, ctx
         )
-        collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
+        collection_schema = schemas.CollectionRecord.model_validate(
+            collection, from_attributes=True
+        )
 
         connection_schema = await self._resolve_connection(db, source_conn, ctx)
 

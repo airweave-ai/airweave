@@ -34,7 +34,6 @@ from airweave.api.middleware import (
 from airweave.api.router import TrailingSlashRouter
 from airweave.api.v1.api import api_router
 from airweave.core.config import settings
-from airweave.core.embedding_validation import validate_and_raise
 from airweave.core.exceptions import (
     AirweaveException,
     InvalidStateError,
@@ -45,6 +44,7 @@ from airweave.core.exceptions import (
 from airweave.core.logging import logger
 from airweave.db.init_db import init_db
 from airweave.db.session import AsyncSessionLocal
+from airweave.domains.embedders.config import validate_embedding_config
 from airweave.platform.db_sync import sync_platform_components
 
 
@@ -83,8 +83,8 @@ async def lifespan(app: FastAPI):
             await sync_platform_components(db)
         await init_db(db)
 
-    # Validate embedding stack configuration (raises if misconfigured)
-    validate_and_raise()
+        # Reconcile embedding config against DB deployment metadata
+        await validate_embedding_config(db)
 
     # Initialize cleanup schedule for stuck sync jobs
     try:

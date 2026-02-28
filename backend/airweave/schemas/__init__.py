@@ -24,6 +24,7 @@ from .billing_period import (
 from .collection import (
     Collection,
     CollectionCreate,
+    CollectionRecord,
     CollectionUpdate,
 )
 from .connection import Connection, ConnectionCreate, ConnectionInDBBase, ConnectionUpdate

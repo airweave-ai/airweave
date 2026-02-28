@@ -30,11 +30,17 @@ def create_activities() -> list:
     )
 
     event_bus = container.event_bus
+    dense_embedder = container.dense_embedder
+    sparse_embedder = container.sparse_embedder
 
     logger.debug("Wiring activities with container dependencies")
 
     return [
-        RunSyncActivity(event_bus=event_bus).run,
+        RunSyncActivity(
+            event_bus=event_bus,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
+        ).run,
         CreateSyncJobActivity(event_bus=event_bus).run,
         MarkSyncJobCancelledActivity().run,
         CleanupStuckSyncJobsActivity().run,

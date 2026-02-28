@@ -23,7 +23,7 @@ class TemporalService:
         self,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         connection: schemas.Connection,  # Connection, NOT SourceConnection
         ctx: ApiContext,
         access_token: Optional[str] = None,

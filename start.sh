@@ -489,24 +489,41 @@ if [[ -z $SKIP_CONTAINER_CREATION ]]; then
         USE_LOCAL_EMBEDDINGS=false
     fi
 
-    # Set EMBEDDING_DIMENSIONS based on available providers (if not already set)
+    # Set embedding config based on available providers (if not already set)
     # Priority: OpenAI (1536) > Mistral (1024) > Local (384)
+    # All three variables are required: DENSE_EMBEDDER, EMBEDDING_DIMENSIONS, SPARSE_EMBEDDER
+    current_dense=$(get_env_value "DENSE_EMBEDDER")
     current_dim=$(get_env_value "EMBEDDING_DIMENSIONS")
-    if [[ -z $current_dim ]]; then
+    current_sparse=$(get_env_value "SPARSE_EMBEDDER")
+
+    if [[ -z $current_dense || -z $current_dim ]]; then
         if [[ -n $openai_key && $openai_key != "your-api-key-here" ]]; then
-            set_env_value "EMBEDDING_DIMENSIONS" "1536"
-            log_success "EMBEDDING_DIMENSIONS=1536 (OpenAI)"
+            ensure_env_value "DENSE_EMBEDDER" "openai_text_embedding_3_small" && \
+                log_success "DENSE_EMBEDDER=openai_text_embedding_3_small"
+            ensure_env_value "EMBEDDING_DIMENSIONS" "1536" && \
+                log_success "EMBEDDING_DIMENSIONS=1536 (OpenAI)"
         elif [[ -n $mistral_key && $mistral_key != "your-api-key-here" ]]; then
-            set_env_value "EMBEDDING_DIMENSIONS" "1024"
-            log_success "EMBEDDING_DIMENSIONS=1024 (Mistral)"
+            ensure_env_value "DENSE_EMBEDDER" "mistral_embed" && \
+                log_success "DENSE_EMBEDDER=mistral_embed"
+            ensure_env_value "EMBEDDING_DIMENSIONS" "1024" && \
+                log_success "EMBEDDING_DIMENSIONS=1024 (Mistral)"
         elif [[ $USE_LOCAL_EMBEDDINGS == true ]]; then
-            set_env_value "EMBEDDING_DIMENSIONS" "384"
-            log_success "EMBEDDING_DIMENSIONS=384 (local)"
+            ensure_env_value "DENSE_EMBEDDER" "local_minilm" && \
+                log_success "DENSE_EMBEDDER=local_minilm"
+            ensure_env_value "EMBEDDING_DIMENSIONS" "384" && \
+                log_success "EMBEDDING_DIMENSIONS=384 (local)"
         else
-            log_warning "No embedding provider configured"
+            log_warning "No embedding provider configured — set DENSE_EMBEDDER and EMBEDDING_DIMENSIONS in .env"
         fi
     else
-        log_success "EMBEDDING_DIMENSIONS=$current_dim (from .env)"
+        log_success "DENSE_EMBEDDER=$current_dense, EMBEDDING_DIMENSIONS=$current_dim (from .env)"
+    fi
+
+    # Sparse embedder — only one option for now
+    ensure_env_value "SPARSE_EMBEDDER" "fastembed_bm25" && \
+        log_success "SPARSE_EMBEDDER=fastembed_bm25"
+    if [[ -n $current_sparse ]]; then
+        log_success "SPARSE_EMBEDDER=$current_sparse (from .env)"
     fi
 
     if [[ -n $SKIP_FRONTEND ]]; then

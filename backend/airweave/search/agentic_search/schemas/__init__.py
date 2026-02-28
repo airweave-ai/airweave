@@ -33,11 +33,7 @@ from .filter import (
 )
 from .history import AgenticSearchHistory, AgenticSearchHistoryIteration
 from .plan import AgenticSearchPlan, AgenticSearchQuery
-from .query_embeddings import (
-    AgenticSearchDenseEmbedding,
-    AgenticSearchQueryEmbeddings,
-    AgenticSearchSparseEmbedding,
-)
+from .query_embeddings import AgenticSearchQueryEmbeddings
 from .request import AgenticSearchRequest
 from .response import AgenticSearchResponse
 from .retrieval_strategy import AgenticSearchRetrievalStrategy
@@ -86,9 +82,7 @@ __all__ = [
     "AgenticSearchPlan",
     "AgenticSearchQuery",
     # Query embeddings
-    "AgenticSearchDenseEmbedding",
     "AgenticSearchQueryEmbeddings",
-    "AgenticSearchSparseEmbedding",
     # Request/Response
     "AgenticSearchRequest",
     "AgenticSearchResponse",

@@ -194,21 +194,9 @@ class CollectionInDBBase(CollectionBase):
             "once the collection is created."
         ),
     )
-    vector_size: int = Field(
+    vector_db_deployment_metadata_id: UUID = Field(
         ...,
-        description=(
-            "Vector dimensions used by this collection. Determines which embedding model "
-            "is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), "
-            "1024 (mistral-embed), or 384 (MiniLM-L6-v2)."
-        ),
-    )
-    embedding_model_name: str = Field(
-        ...,
-        description=(
-            "Name of the embedding model used for this collection "
-            "(e.g., 'text-embedding-3-large', 'text-embedding-3-small', 'mistral-embed'). "
-            "This ensures queries use the same model as the indexed data."
-        ),
+        description="Reference to the deployment-wide embedding configuration.",
     )
     sync_config: Optional[SyncConfig] = Field(
         None,
@@ -244,11 +232,12 @@ class CollectionInDBBase(CollectionBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class Collection(CollectionInDBBase):
-    """Complete collection representation returned by the API.
+class CollectionRecord(CollectionInDBBase):
+    """Internal collection schema with status.
 
-    This schema includes all collection metadata plus computed status information
-    based on the health and state of associated source connections.
+    Used throughout the codebase for internal operations. Does NOT include
+    embedding-derived fields (vector_size, embedding_model_name) — use
+    Collection for API responses that need those fields.
     """
 
     status: CollectionStatus = Field(
@@ -260,6 +249,32 @@ class Collection(CollectionInDBBase):
             "• **ACTIVE**: At least one connection has completed a sync "
             "or is currently syncing<br/>"
             "• **ERROR**: All connections have failed their last sync"
+        ),
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Collection(CollectionRecord):
+    """API-facing collection schema with embedding metadata.
+
+    Extends CollectionRecord with vector_size and embedding_model_name, which
+    are resolved by the CollectionService from the deployment metadata and the
+    dense embedder registry.
+
+    Excludes vector_db_deployment_metadata_id (internal FK).
+    """
+
+    vector_db_deployment_metadata_id: UUID = Field(exclude=True)
+    vector_size: int = Field(
+        ...,
+        description="Vector dimensions used by this collection (derived from deployment metadata).",
+    )
+    embedding_model_name: str = Field(
+        ...,
+        description=(
+            "Name of the embedding model used for this collection "
+            "(derived from deployment metadata)."
         ),
     )
 

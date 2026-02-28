@@ -9,6 +9,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.collection import Collection
+from airweave.models.vector_db_deployment_metadata import VectorDbDeploymentMetadata
 
 
 class CollectionRepositoryProtocol(Protocol):
@@ -69,6 +70,14 @@ class CollectionRepositoryProtocol(Protocol):
         ...
 
 
+class VectorDbDeploymentMetadataRepositoryProtocol(Protocol):
+    """Data access for the singleton VectorDbDeploymentMetadata row."""
+
+    async def get(self, db: AsyncSession) -> VectorDbDeploymentMetadata:
+        """Return the single VectorDbDeploymentMetadata row (created at startup)."""
+        ...
+
+
 class CollectionServiceProtocol(Protocol):
     """Service for collection lifecycle operations."""
 
@@ -80,7 +89,7 @@ class CollectionServiceProtocol(Protocol):
         skip: int = 0,
         limit: int = 100,
         search_query: Optional[str] = None,
-    ) -> List[Collection]:
+    ) -> List[schemas.Collection]:
         """List collections with pagination and optional search."""
         ...
 
@@ -100,7 +109,9 @@ class CollectionServiceProtocol(Protocol):
         """Create a new collection."""
         ...
 
-    async def get(self, db: AsyncSession, *, readable_id: str, ctx: ApiContext) -> Collection:
+    async def get(
+        self, db: AsyncSession, *, readable_id: str, ctx: ApiContext
+    ) -> schemas.Collection:
         """Get a collection by readable ID."""
         ...
 
@@ -111,7 +122,7 @@ class CollectionServiceProtocol(Protocol):
         readable_id: str,
         collection_in: schemas.CollectionUpdate,
         ctx: ApiContext,
-    ) -> Collection:
+    ) -> schemas.Collection:
         """Update a collection."""
         ...
 

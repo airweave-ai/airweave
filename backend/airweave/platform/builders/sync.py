@@ -28,7 +28,7 @@ class SyncContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         connection: schemas.Connection,
         ctx: BaseContext,
         source_connection_id: UUID,
@@ -85,7 +85,7 @@ class SyncContextBuilder:
         cls,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         source_connection_id: UUID,
         ctx: BaseContext,
     ) -> ContextualLogger:

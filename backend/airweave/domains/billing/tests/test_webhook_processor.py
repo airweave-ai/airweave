@@ -13,6 +13,8 @@ import pytest
 
 from airweave.adapters.payment.fake import _obj
 from airweave.adapters.payment.null import NullPaymentGateway
+from airweave.core.context import SystemContext
+from airweave.core.shared_models import AuthMethod
 from airweave.domains.billing.tests.conftest import (
     DEFAULT_ORG_ID,
     _make_billing_model,
@@ -763,3 +765,45 @@ class TestNullGatewayWebhookBehavior:
 
         # Plan should be unchanged (NullPaymentGateway returns empty mapping)
         assert billing.billing_plan == BillingPlan.PRO.value
+
+
+# ===========================================================================
+# _resolve_event_context
+# ===========================================================================
+
+
+class TestResolveEventContext:
+    @pytest.mark.asyncio
+    async def test_returns_system_context_when_org_found(self, db):
+        """When the org can be resolved, returns a SystemContext with STRIPE_WEBHOOK auth."""
+        proc, gw, br, pr, bo, org_repo = _make_webhook_processor()
+
+        # Seed org into the fake org repo
+        org_model = _make_org_model()
+        org_repo.seed(DEFAULT_ORG_ID, org_model)
+
+        sub = _make_subscription_obj(
+            metadata={"organization_id": str(DEFAULT_ORG_ID), "plan": "pro"}
+        )
+        event = _make_stripe_event("customer.subscription.created", sub)
+
+        ctx, log = await proc._resolve_event_context(db, event)
+
+        assert ctx is not None
+        assert isinstance(ctx, SystemContext)
+        assert ctx.auth_method == AuthMethod.STRIPE_WEBHOOK
+        assert str(ctx.organization.id) == str(DEFAULT_ORG_ID)
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_org_not_found(self, db):
+        """When the org cannot be resolved, returns None context."""
+        proc, gw, br, pr, bo, org_repo = _make_webhook_processor()
+
+        sub = _make_subscription_obj(
+            metadata={"organization_id": str(DEFAULT_ORG_ID), "plan": "pro"}
+        )
+        event = _make_stripe_event("customer.subscription.created", sub)
+
+        ctx, log = await proc._resolve_event_context(db, event)
+
+        assert ctx is None

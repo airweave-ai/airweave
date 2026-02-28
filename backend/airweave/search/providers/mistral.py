@@ -17,7 +17,6 @@ except ImportError:
 from pydantic import BaseModel
 
 from airweave.api.context import ApiContext
-from airweave.platform.embedders.config import is_mock_model
 from airweave.platform.tokenizers import BaseTokenizer
 
 from ._base import BaseProvider, ProviderError
@@ -37,8 +36,10 @@ class MistralProvider(BaseProvider):
         """Initialize Mistral provider with model specs from defaults.yml."""
         super().__init__(api_key, model_spec, ctx)
 
-        self._mock_embeddings = model_spec.embedding_model and is_mock_model(
-            model_spec.embedding_model.name
+        self._mock_embeddings = bool(
+            model_spec.embedding_model
+            and model_spec.embedding_model.name
+            and "mock" in model_spec.embedding_model.name.lower()
         )
 
         if not self._mock_embeddings and Mistral is None:

@@ -2,7 +2,8 @@
 
 Provides the universal context type that all specialized contexts inherit from.
 CRUD layer and services type-hint against BaseContext. Specialized contexts
-(ApiContext, SyncContext, CleanupContext) extend it with domain-specific fields.
+(ApiContext, SyncContext, CleanupContext, SystemContext) extend it with
+domain-specific fields.
 """
 
 import uuid
@@ -13,6 +14,7 @@ from uuid import UUID
 from airweave import schemas
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
+from airweave.core.shared_models import AuthMethod
 
 if TYPE_CHECKING:
     from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
@@ -89,3 +91,14 @@ class BaseContext:
             "auth_metadata": {},
             "local_development": settings.LOCAL_DEVELOPMENT,
         }
+
+
+@dataclass
+class SystemContext(BaseContext):
+    """Context for internal system operations (webhooks, admin tasks, migrations).
+
+    Carries an explicit auth_method to identify the type of system operation.
+    Use this instead of bare BaseContext when the caller needs to be identified.
+    """
+
+    auth_method: AuthMethod = field(default=AuthMethod.SYSTEM, kw_only=True)

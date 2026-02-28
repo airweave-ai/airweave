@@ -17,6 +17,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
 from airweave.core.protocols import PubSub
 from airweave.core.sync_service import sync_service
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 
 router = TrailingSlashRouter()
 
@@ -76,6 +77,8 @@ async def create_sync(
     sync_in: schemas.SyncCreate = Body(...),
     ctx: ApiContext = Depends(deps.get_context),
     background_tasks: BackgroundTasks,
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> schemas.Sync:
     """Create a new sync configuration.
 
@@ -85,6 +88,8 @@ async def create_sync(
         sync_in: The sync to create
         ctx: The current authentication context
         background_tasks: The background tasks
+        dense_embedder: The dense embedder protocol instance
+        sparse_embedder: The sparse embedder protocol instance
 
     Returns:
     --------
@@ -97,7 +102,7 @@ async def create_sync(
     collection = await crud.collection.get_by_readable_id(
         db=db, readable_id=source_connection.readable_collection_id, ctx=ctx
     )
-    collection = schemas.Collection.model_validate(collection, from_attributes=True)
+    collection = schemas.CollectionRecord.model_validate(collection, from_attributes=True)
 
     source_connection = schemas.SourceConnection.model_validate(
         source_connection, from_attributes=True
@@ -111,6 +116,8 @@ async def create_sync(
             collection,
             source_connection,
             ctx,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
         )
 
     return sync

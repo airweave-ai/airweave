@@ -48,37 +48,6 @@ class TokenizerEncoding(str, Enum):
     O200K_HARMONY = "o200k_harmony"
 
 
-# --- Dense Embedder ---
-
-
-class DenseEmbedderProvider(str, Enum):
-    """Supported dense embedder providers."""
-
-    OPENAI = "openai"
-
-
-class DenseEmbedderModel(str, Enum):
-    """Supported dense embedding models."""
-
-    TEXT_EMBEDDING_3_SMALL = "text-embedding-3-small"
-    TEXT_EMBEDDING_3_LARGE = "text-embedding-3-large"
-
-
-# --- Sparse Embedder ---
-
-
-class SparseEmbedderProvider(str, Enum):
-    """Supported sparse embedder providers."""
-
-    FASTEMBED = "fastembed"
-
-
-class SparseEmbedderModel(str, Enum):
-    """Supported sparse embedding models."""
-
-    BM25 = "Qdrant/bm25"
-
-
 # --- Vector Database ---
 
 
@@ -115,19 +84,6 @@ class AgenticSearchConfig:
     # Note: Must be compatible with the chosen LLM model (validated at startup)
     TOKENIZER_TYPE = TokenizerType.TIKTOKEN
     TOKENIZER_ENCODING = TokenizerEncoding.O200K_HARMONY
-
-    # Dense embedder
-    # Must match the model used by the sync pipeline's embedder.
-    # The sync pipeline uses text-embedding-3-small for dims <= 1536
-    # and text-embedding-3-large for dims > 1536. Using the wrong model
-    # here produces query embeddings in a different vector space than
-    # the stored document embeddings, making semantic search useless.
-    DENSE_EMBEDDER_PROVIDER = DenseEmbedderProvider.OPENAI
-    DENSE_EMBEDDER_MODEL = DenseEmbedderModel.TEXT_EMBEDDING_3_LARGE
-
-    # Sparse embedder
-    SPARSE_EMBEDDER_PROVIDER = SparseEmbedderProvider.FASTEMBED
-    SPARSE_EMBEDDER_MODEL = SparseEmbedderModel.BM25
 
     # Vector database
     VECTOR_DB_PROVIDER = VectorDBProvider.VESPA

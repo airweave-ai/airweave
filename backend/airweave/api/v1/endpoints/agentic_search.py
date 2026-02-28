@@ -18,10 +18,10 @@ from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.events.sync import QueryProcessedEvent
 from airweave.core.protocols import EventBus, MetricsService, PubSub
-from airweave.core.shared_models import FeatureFlag
+from airweave.core.shared_models import ActionType, FeatureFlag
 from airweave.db.session import get_db
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
-from airweave.domains.usage.types import ActionType
 from airweave.search.agentic_search.core.agent import AgenticSearchAgent
 from airweave.search.agentic_search.emitter import (
     AgenticSearchLoggingEmitter,
@@ -43,6 +43,8 @@ async def agentic_search(
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
     event_bus: EventBus = Inject(EventBus),
     metrics_service: MetricsService = Inject(MetricsService),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> AgenticSearchResponse:
     """Perform agentic search."""
     if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
@@ -53,7 +55,9 @@ async def agentic_search(
 
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
-    services = await AgenticSearchServices.create(ctx, readable_id)
+    services = await AgenticSearchServices.create(
+        ctx, readable_id, dense_embedder=dense_embedder, sparse_embedder=sparse_embedder
+    )
 
     try:
         emitter = AgenticSearchLoggingEmitter(ctx)
@@ -78,6 +82,8 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     event_bus: EventBus = Inject(EventBus),
     metrics_service: MetricsService = Inject(MetricsService),
     pubsub: PubSub = Inject(PubSub),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> StreamingResponse:
     """Streaming agentic search endpoint using Server-Sent Events.
 
@@ -118,7 +124,9 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
         services = None
         agent_reached = False
         try:
-            services = await AgenticSearchServices.create(ctx, readable_id)
+            services = await AgenticSearchServices.create(
+                ctx, readable_id, dense_embedder=dense_embedder, sparse_embedder=sparse_embedder
+            )
             agent = AgenticSearchAgent(
                 services, ctx, emitter, metrics=metrics_service.agentic_search
             )

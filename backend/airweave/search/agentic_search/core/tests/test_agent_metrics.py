@@ -24,9 +24,7 @@ from airweave.search.agentic_search.schemas.plan import (
     AgenticSearchPlan,
     AgenticSearchQuery,
 )
-from airweave.search.agentic_search.schemas.query_embeddings import (
-    AgenticSearchQueryEmbeddings,
-)
+from airweave.domains.embedders.types import DenseEmbedding, SparseEmbedding
 from airweave.search.agentic_search.schemas.request import (
     AgenticSearchMode,
     AgenticSearchRequest,
@@ -78,7 +76,13 @@ def mock_services():
     svc.llm = AsyncMock()
     svc.tokenizer = MagicMock()
     svc.dense_embedder = AsyncMock()
+    svc.dense_embedder.embed_many = AsyncMock(
+        return_value=[DenseEmbedding(vector=[0.1] * 3072)]
+    )
     svc.sparse_embedder = AsyncMock()
+    svc.sparse_embedder.embed = AsyncMock(
+        return_value=SparseEmbedding(indices=[1, 2], values=[0.5, 0.3])
+    )
     svc.vector_db = AsyncMock()
     return svc
 
@@ -101,12 +105,6 @@ _CANNED_PLAN = AgenticSearchPlan(
     offset=0,
     retrieval_strategy=AgenticSearchRetrievalStrategy.HYBRID,
 )
-
-_CANNED_EMBEDDINGS = AgenticSearchQueryEmbeddings(
-    dense_embeddings=None,
-    sparse_embedding=None,
-)
-
 
 def _make_result(entity_id: str = "ent-1") -> AgenticSearchResult:
     return AgenticSearchResult(
@@ -342,10 +340,6 @@ class TestRunPipelineFastMode:
         planner_instance.history_shown = 0
         planner_instance.history_total = 0
 
-        # Embedder mock
-        embedder_instance = AsyncMock()
-        embedder_instance.embed = AsyncMock(return_value=_CANNED_EMBEDDINGS)
-
         # Composer mock
         composer_instance = AsyncMock()
         composer_instance.compose = AsyncMock(return_value=_CANNED_ANSWER)
@@ -374,10 +368,6 @@ class TestRunPipelineFastMode:
             "planner": patch(
                 f"{_AGENT_MODULE}.AgenticSearchPlanner",
                 return_value=planner_instance,
-            ),
-            "embedder": patch(
-                f"{_AGENT_MODULE}.AgenticSearchEmbedder",
-                return_value=embedder_instance,
             ),
             "complete_plan": patch(
                 f"{_AGENT_MODULE}.AgenticSearchCompletePlanBuilder.build",
@@ -422,7 +412,6 @@ class TestRunPipelineFastMode:
             patches["metadata_builder"],
             patches["state_builder"],
             patches["planner"],
-            patches["embedder"],
             patches["complete_plan"],
             patches["composer"],
             patches["track_completion"],
@@ -483,7 +472,6 @@ class TestRunPipelineFastMode:
             patches["metadata_builder"],
             patches["state_builder"],
             patches["planner"],
-            patches["embedder"],
             patches["complete_plan"],
             patches["composer"],
             patches["track_completion"],

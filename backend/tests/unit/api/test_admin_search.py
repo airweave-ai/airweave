@@ -104,15 +104,15 @@ class TestAdminSearchCollection:
             assert len(result.results) == 1
             assert result.results[0]["entity_id"] == "1"
 
-            # Verify service was called
-            mock_service.search_admin.assert_called_once_with(
-                request_id=mock_ctx.request_id,
-                readable_collection_id="test-collection",
-                search_request=search_request,
-                db=mock_db,
-                ctx=mock_ctx,
-                destination="qdrant",
-            )
+            # Verify service was called with all required parameters
+            mock_service.search_admin.assert_called_once()
+            call_kwargs = mock_service.search_admin.call_args.kwargs
+            assert call_kwargs["request_id"] == mock_ctx.request_id
+            assert call_kwargs["readable_collection_id"] == "test-collection"
+            assert call_kwargs["search_request"] == search_request
+            assert call_kwargs["db"] == mock_db
+            assert call_kwargs["ctx"] == mock_ctx
+            assert call_kwargs["destination"] == "qdrant"
 
 
 @pytest.mark.asyncio
@@ -295,4 +295,3 @@ class TestAdminSearchDestinationParameter:
             # Verify qdrant destination was used
             call_kwargs = mock_service.search_as_user.call_args.kwargs
             assert call_kwargs["destination"] == "qdrant"
-

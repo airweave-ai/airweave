@@ -21,6 +21,7 @@ from airweave.core.config import settings
 from airweave.core.container import container
 from airweave.core.context import BaseContext
 from airweave.core.logging import LoggerConfigurator, logger
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.builders import SyncContextBuilder
 from airweave.platform.builders.tracking import TrackingContextBuilder
 from airweave.platform.contexts.runtime import SyncRuntime
@@ -54,9 +55,11 @@ class SyncFactory:
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         connection: schemas.Connection,
         ctx: BaseContext,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
         access_token: Optional[str] = None,
         max_workers: int = None,
         force_full_sync: bool = False,
@@ -132,6 +135,8 @@ class SyncFactory:
         runtime = SyncRuntime(
             source=source,
             cursor=cursor,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
             destinations=destinations,
             entity_tracker=entity_tracker_result,
             event_bus=container.event_bus,

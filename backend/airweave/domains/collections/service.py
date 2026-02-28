@@ -17,11 +17,12 @@ from airweave.domains.collections.exceptions import (
 from airweave.domains.collections.protocols import (
     CollectionRepositoryProtocol,
     CollectionServiceProtocol,
+    VectorDbDeploymentMetadataRepositoryProtocol,
 )
+from airweave.domains.embedders.protocols import DenseEmbedderRegistryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.collection import Collection
-from airweave.platform.embedders.config import get_default_provider, get_embedding_model
 
 
 class CollectionService(CollectionServiceProtocol):
@@ -34,6 +35,8 @@ class CollectionService(CollectionServiceProtocol):
         sync_lifecycle: SyncLifecycleServiceProtocol,
         event_bus: EventBus,
         settings: Settings,
+        deployment_metadata_repo: VectorDbDeploymentMetadataRepositoryProtocol,
+        dense_registry: DenseEmbedderRegistryProtocol,
     ) -> None:
         """Initialize with injected dependencies."""
         self._collection_repo = collection_repo
@@ -41,6 +44,18 @@ class CollectionService(CollectionServiceProtocol):
         self._sync_lifecycle = sync_lifecycle
         self._event_bus = event_bus
         self._settings = settings
+        self._deployment_metadata_repo = deployment_metadata_repo
+        self._dense_registry = dense_registry
+
+    def _to_response(self, db_obj: Collection) -> schemas.Collection:
+        """Convert an ORM Collection to a CollectionResponse with embedding metadata."""
+        vd = db_obj.vector_db_deployment_metadata
+        base = schemas.CollectionRecord.model_validate(db_obj, from_attributes=True)
+        return schemas.Collection(
+            **base.model_dump(),
+            vector_size=vd.embedding_dimensions,
+            embedding_model_name=self._dense_registry.get(vd.dense_embedder).api_model_name,
+        )
 
     async def list(
         self,
@@ -50,11 +65,12 @@ class CollectionService(CollectionServiceProtocol):
         skip: int = 0,
         limit: int = 100,
         search_query: Optional[str] = None,
-    ) -> List[Collection]:
+    ) -> List[schemas.Collection]:
         """List collections with pagination and optional search."""
-        return await self._collection_repo.get_multi(
+        collections = await self._collection_repo.get_multi(
             db, ctx=ctx, skip=skip, limit=limit, search_query=search_query
         )
+        return [self._to_response(c) for c in collections]
 
     async def count(
         self, db: AsyncSession, *, ctx: ApiContext, search_query: Optional[str] = None
@@ -77,21 +93,18 @@ class CollectionService(CollectionServiceProtocol):
         if existing:
             raise CollectionAlreadyExistsError(collection_in.readable_id)
 
-        # Resolve embedding config
-        vector_size = self._settings.EMBEDDING_DIMENSIONS
-        embedding_provider = get_default_provider()
-        embedding_model_name = get_embedding_model(embedding_provider)
+        # Look up the single deployment metadata row (created at startup)
+        deployment_metadata = await self._deployment_metadata_repo.get(db)
 
         collection_data = collection_in.model_dump()
-        collection_data["vector_size"] = vector_size
-        collection_data["embedding_model_name"] = embedding_model_name
+        collection_data["vector_db_deployment_metadata_id"] = deployment_metadata.id
 
         async with UnitOfWork(db) as uow:
             collection = await self._collection_repo.create(
                 db, obj_in=collection_data, ctx=ctx, uow=uow
             )
             await uow.session.flush()
-            result = schemas.Collection.model_validate(collection, from_attributes=True)
+            result = self._to_response(collection)
 
         # Publish event
         try:
@@ -108,12 +121,14 @@ class CollectionService(CollectionServiceProtocol):
 
         return result
 
-    async def get(self, db: AsyncSession, *, readable_id: str, ctx: ApiContext) -> Collection:
+    async def get(
+        self, db: AsyncSession, *, readable_id: str, ctx: ApiContext
+    ) -> schemas.Collection:
         """Get a collection by readable ID."""
         db_obj = await self._collection_repo.get_by_readable_id(db, readable_id, ctx)
         if db_obj is None:
             raise CollectionNotFoundError(readable_id)
-        return db_obj
+        return self._to_response(db_obj)
 
     async def update(
         self,
@@ -122,15 +137,16 @@ class CollectionService(CollectionServiceProtocol):
         readable_id: str,
         collection_in: schemas.CollectionUpdate,
         ctx: ApiContext,
-    ) -> Collection:
+    ) -> schemas.Collection:
         """Update a collection by readable ID."""
         db_obj = await self._collection_repo.get_by_readable_id(db, readable_id, ctx)
         if db_obj is None:
             raise CollectionNotFoundError(readable_id)
 
-        result = await self._collection_repo.update(
+        updated = await self._collection_repo.update(
             db, db_obj=db_obj, obj_in=collection_in, ctx=ctx
         )
+        result = self._to_response(updated)
 
         try:
             await self._event_bus.publish(
@@ -158,7 +174,7 @@ class CollectionService(CollectionServiceProtocol):
         organization_id = ctx.organization.id
 
         # Snapshot while session is fresh (teardown expires all objects via db.expire_all)
-        result = schemas.Collection.model_validate(db_obj, from_attributes=True)
+        result = self._to_response(db_obj)
 
         # Collect sync IDs before CASCADE removes them
         sync_ids = await self._sc_repo.get_sync_ids_for_collection(

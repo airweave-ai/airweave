@@ -46,8 +46,22 @@ from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.collections.service import CollectionService
+from airweave.domains.collections.vector_db_deployment_metadata_repository import (
+    VectorDbDeploymentMetadataRepository,
+)
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
+from airweave.domains.embedders.config import (
+    DENSE_EMBEDDER,
+    EMBEDDING_DIMENSIONS,
+    SPARSE_EMBEDDER,
+    validate_embedding_config_sync,
+)
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.embedders.registry import DenseEmbedderRegistry, SparseEmbedderRegistry
+from airweave.domains.embedders.sparse.fastembed import (
+    FastEmbedSparseEmbedder as DomainFastEmbedSparseEmbedder,
+)
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.oauth.callback_service import OAuthCallbackService
@@ -276,7 +290,26 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
-    # Collection service (needs collection_repo, sc_repo, sync_lifecycle)
+    # Embedder registries + instances (deployment-wide singletons)
+    # -----------------------------------------------------------------
+    dense_embedder_registry = DenseEmbedderRegistry()
+    dense_embedder_registry.build()
+    sparse_embedder_registry = SparseEmbedderRegistry()
+    sparse_embedder_registry.build()
+
+    # Validate env vars, registry lookups, dimensions, and credentials
+    # before attempting to construct embedder instances.
+    # DB reconciliation happens later in main.py lifespan.
+    validate_embedding_config_sync(
+        dense_registry=dense_embedder_registry,
+        sparse_registry=sparse_embedder_registry,
+    )
+
+    dense_embedder = _create_dense_embedder(settings, dense_embedder_registry)
+    sparse_embedder = _create_sparse_embedder(sparse_embedder_registry)
+
+    # -----------------------------------------------------------------
+    # Collection service (needs collection_repo, sc_repo, sync_lifecycle, dense_registry)
     # -----------------------------------------------------------------
     collection_service = CollectionService(
         collection_repo=source_deps["collection_repo"],
@@ -284,6 +317,8 @@ def create_container(settings: Settings) -> Container:
         sync_lifecycle=sync_deps["sync_lifecycle"],
         event_bus=event_bus,
         settings=settings,
+        deployment_metadata_repo=VectorDbDeploymentMetadataRepository(),
+        dense_registry=dense_embedder_registry,
     )
 
     # OAuth callback service
@@ -323,6 +358,10 @@ def create_container(settings: Settings) -> Container:
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
         circuit_breaker=circuit_breaker,
+        dense_embedder_registry=dense_embedder_registry,
+        sparse_embedder_registry=sparse_embedder_registry,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
         ocr_provider=ocr_provider,
         metrics=metrics,
         source_service=source_deps["source_service"],
@@ -504,6 +543,54 @@ def _create_ocr_provider(
     logger.info(f"Creating FallbackOcrProvider with {len(providers)} providers: {providers}")
 
     return FallbackOcrProvider(providers=providers, circuit_breaker=circuit_breaker)
+
+
+def _create_dense_embedder(
+    settings: Settings, registry: DenseEmbedderRegistry
+) -> DenseEmbedderProtocol:
+    """Create the deployment-wide dense embedder singleton.
+
+    Uses the domain config constants (DENSE_EMBEDDER, EMBEDDING_DIMENSIONS)
+    and the registry to look up the spec and construct the correct embedder.
+    """
+    from airweave.domains.embedders.dense.local import LocalDenseEmbedder
+    from airweave.domains.embedders.dense.mistral import MistralDenseEmbedder
+    from airweave.domains.embedders.dense.openai import OpenAIDenseEmbedder
+
+    spec = registry.get(DENSE_EMBEDDER)
+
+    if spec.embedder_class_ref is OpenAIDenseEmbedder:
+        return OpenAIDenseEmbedder(
+            api_key=settings.OPENAI_API_KEY,
+            model=spec.api_model_name,
+            dimensions=EMBEDDING_DIMENSIONS,
+        )
+
+    if spec.embedder_class_ref is MistralDenseEmbedder:
+        return MistralDenseEmbedder(
+            api_key=settings.MISTRAL_API_KEY,
+            model=spec.api_model_name,
+            dimensions=EMBEDDING_DIMENSIONS,
+        )
+
+    if spec.embedder_class_ref is LocalDenseEmbedder:
+        return LocalDenseEmbedder(
+            inference_url=settings.TEXT2VEC_INFERENCE_URL,
+            dimensions=EMBEDDING_DIMENSIONS,
+        )
+
+    raise ValueError(f"Unknown dense embedder class: {spec.embedder_class_ref}")
+
+
+def _create_sparse_embedder(registry: SparseEmbedderRegistry) -> SparseEmbedderProtocol:
+    """Create the deployment-wide sparse embedder singleton.
+
+    Uses the domain config constant (SPARSE_EMBEDDER) and the registry
+    to look up the spec and construct the correct embedder.
+    """
+    spec = registry.get(SPARSE_EMBEDDER)
+
+    return DomainFastEmbedSparseEmbedder(model=spec.api_model_name)
 
 
 def _create_source_services(settings: Settings) -> dict:

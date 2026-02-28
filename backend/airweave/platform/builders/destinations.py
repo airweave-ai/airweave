@@ -32,7 +32,7 @@ class DestinationsContextBuilder:
         cls,
         db: AsyncSession,
         sync: schemas.Sync,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx: BaseContext,
         logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
@@ -70,7 +70,7 @@ class DestinationsContextBuilder:
         cls,
         db: AsyncSession,
         sync: schemas.Sync,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx: BaseContext,
         logger: ContextualLogger,
     ) -> tuple:
@@ -101,7 +101,7 @@ class DestinationsContextBuilder:
     async def build_for_cleanup(
         cls,
         db: AsyncSession,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         logger: ContextualLogger,
     ) -> List[BaseDestination]:
         """Build destinations for cleanup operations (no sync required).
@@ -142,7 +142,7 @@ class DestinationsContextBuilder:
         cls,
         db: AsyncSession,
         sync: schemas.Sync,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx,
         logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
@@ -192,7 +192,7 @@ class DestinationsContextBuilder:
         db: AsyncSession,
         destination_connection_id: UUID,
         sync: schemas.Sync,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx,
         logger: ContextualLogger,
     ) -> Optional[BaseDestination]:
@@ -215,7 +215,7 @@ class DestinationsContextBuilder:
     async def _create_native_vespa(
         cls,
         db: AsyncSession,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         logger: ContextualLogger,
     ) -> Optional[BaseDestination]:
         """Create native Vespa destination."""
@@ -246,7 +246,7 @@ class DestinationsContextBuilder:
         db: AsyncSession,
         destination_connection_id: UUID,
         sync: schemas.Sync,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx,
         logger: ContextualLogger,
     ) -> Optional[BaseDestination]:

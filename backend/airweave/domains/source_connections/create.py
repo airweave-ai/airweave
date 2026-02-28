@@ -276,11 +276,13 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             obj_in.short_name, obj_in.config, ctx
         )
         connection_schema: Optional[schemas.Connection] = None
-        collection_schema: Optional[schemas.Collection] = None
+        collection_schema: Optional[schemas.CollectionRecord] = None
 
         async with UnitOfWork(db) as uow:
             collection = await self._get_collection(uow.session, obj_in.readable_collection_id, ctx)
-            collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
+            collection_schema = schemas.CollectionRecord.model_validate(
+                collection, from_attributes=True
+            )
             connection = await self._create_connection_record(
                 uow.session,
                 name=obj_in.name,
@@ -460,10 +462,12 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         ctx: ApiContext,
     ) -> SourceConnectionSchema:
         connection_schema: Optional[schemas.Connection] = None
-        collection_schema: Optional[schemas.Collection] = None
+        collection_schema: Optional[schemas.CollectionRecord] = None
         async with UnitOfWork(db) as uow:
             collection = await self._get_collection(uow.session, obj_in.readable_collection_id, ctx)
-            collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
+            collection_schema = schemas.CollectionRecord.model_validate(
+                collection, from_attributes=True
+            )
             credential = await self._create_credential_record(
                 uow.session,
                 short_name=obj_in.short_name,
@@ -657,7 +661,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         *,
         connection: schemas.Connection,
         sync_result,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         source_connection_id: UUID,
         ctx: ApiContext,
     ) -> None:
