@@ -28,10 +28,14 @@ _FLUSH_THRESHOLDS: dict[ActionType, int] = {
 
 
 class UsageLedger(UsageLedgerProtocol):
-    """In-memory accumulator with threshold-based flushing.
+    """In-memory accumulator with threshold-based and time-based flushing.
 
     Thread-safe via per-org locks.  Owns its own DB sessions through
     ``get_db_context`` so callers never pass a session.
+
+    A background task flushes all pending accumulators every
+    ``flush_interval_seconds``.  The task is started lazily on the
+    first ``record()`` call so no external wiring is needed.
     """
 
     def __init__(
@@ -39,16 +43,19 @@ class UsageLedger(UsageLedgerProtocol):
         usage_repo: UsageRepositoryProtocol,
         billing_repo: OrganizationBillingRepositoryProtocol,
         period_repo: BillingPeriodRepositoryProtocol,
+        flush_interval_seconds: float = 30.0,
     ) -> None:
         """Initialize the ledger with repository dependencies."""
         self._usage_repo = usage_repo
         self._billing_repo = billing_repo
         self._period_repo = period_repo
+        self._flush_interval = flush_interval_seconds
 
         # org_id → { ActionType → pending_count }
         self._accumulators: dict[UUID, dict[ActionType, int]] = {}
         self._locks: dict[UUID, asyncio.Lock] = {}
         self._billing_cache: dict[UUID, bool] = {}
+        self._flush_task: Optional[asyncio.Task] = None
 
     def _get_lock(self, organization_id: UUID) -> asyncio.Lock:
         if organization_id not in self._locks:
@@ -64,6 +71,8 @@ class UsageLedger(UsageLedgerProtocol):
         """Record usage increment for an organization and action type."""
         if action_type in (ActionType.TEAM_MEMBERS, ActionType.SOURCE_CONNECTIONS):
             return
+
+        self._ensure_flush_task()
 
         lock = self._get_lock(organization_id)
         async with lock:
@@ -93,6 +102,34 @@ class UsageLedger(UsageLedgerProtocol):
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _ensure_flush_task(self) -> None:
+        """Lazily start the periodic flush background task."""
+        if self._flush_task is not None and not self._flush_task.done():
+            return
+        self._flush_task = asyncio.create_task(self._periodic_flush_loop())
+        logger.info("UsageLedger periodic flush started (interval=%ss)", self._flush_interval)
+
+    async def _periodic_flush_loop(self) -> None:
+        """Background loop that flushes all pending accumulators periodically.
+
+        On cancellation (e.g. event-loop shutdown) does a final flush
+        so no pending counts are lost.
+        """
+        try:
+            while True:
+                await asyncio.sleep(self._flush_interval)
+                try:
+                    await self.flush()
+                except Exception:
+                    logger.error("Periodic usage flush failed", exc_info=True)
+        except asyncio.CancelledError:
+            try:
+                await self.flush()
+                logger.info("UsageLedger final flush complete on shutdown")
+            except Exception:
+                logger.error("UsageLedger final flush failed on shutdown", exc_info=True)
+            raise
 
     async def _has_billing(self, organization_id: UUID) -> bool:
         if organization_id in self._billing_cache:
