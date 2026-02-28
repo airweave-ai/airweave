@@ -155,7 +155,8 @@ app.post('/mcp', async (req: express.Request & { auth?: AuthInfo }, res) => {
         const method = req.body?.method || 'unknown';
 
         let organizationId: string | undefined;
-        if (req.auth?.token) {
+        const isOAuthRequest = oauthEnabled && !req.headers['x-api-key'];
+        if (isOAuthRequest) {
             try {
                 organizationId = await resolveOrganizationForCollection(apiKey, baseUrl, collection);
             } catch (err) {
