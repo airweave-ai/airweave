@@ -23,7 +23,7 @@ repos:
     hooks:
       - id: mypy
         name: mypy
-        entry: bash -c 'cd backend && poetry run mypy --config-file pyproject.toml "$@"' --
+        entry: bash -c 'cd backend && poetry run mypy --config-file pyproject.toml "${@#backend/}"' --
         language: system
         files: ^backend/airweave/.*\.py$
         types: [python]
