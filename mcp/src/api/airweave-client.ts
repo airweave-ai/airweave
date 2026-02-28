@@ -8,14 +8,18 @@ export class AirweaveClient {
     private client: AirweaveSDKClient;
 
     constructor(private config: AirweaveConfig) {
+        const headers: Record<string, string> = {
+            'Authorization': `Bearer ${config.apiKey}`,
+            'X-Client-Name': 'airweave-mcp-search',
+            'X-Client-Version': VERSION,
+        };
+        if (config.organizationId) {
+            headers['X-Organization-ID'] = config.organizationId;
+        }
         this.client = new AirweaveSDKClient({
             apiKey: config.apiKey,
             baseUrl: config.baseUrl,
-            headers: {
-                'Authorization': `Bearer ${config.apiKey}`,
-                'X-Client-Name': 'airweave-mcp-search',
-                'X-Client-Version': VERSION,
-            }
+            headers,
         });
     }
 

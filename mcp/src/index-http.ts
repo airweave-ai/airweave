@@ -22,6 +22,7 @@ import { createMcpServer, VERSION } from './server.js';
 import { AirweaveConfig } from './api/types.js';
 import { DEFAULT_BASE_URL } from './config/constants.js';
 import { initPostHog, shutdownPostHog, trackMcpRequest, trackMcpError } from './analytics/posthog.js';
+import { resolveOrganizationForCollection } from './api/org-resolver.js';
 import { Auth0OAuthProvider } from './auth/auth0-provider.js';
 import { createAuth0CallbackHandler } from './auth/auth0-callback.js';
 import { ensureRedisReady } from './auth/redis.js';
@@ -153,7 +154,25 @@ app.post('/mcp', async (req: express.Request & { auth?: AuthInfo }, res) => {
         const baseUrl = process.env.AIRWEAVE_BASE_URL || DEFAULT_BASE_URL;
         const method = req.body?.method || 'unknown';
 
-        const config: AirweaveConfig = { apiKey, collection, baseUrl };
+        let organizationId: string | undefined;
+        if (req.auth?.token) {
+            try {
+                organizationId = await resolveOrganizationForCollection(apiKey, baseUrl, collection);
+            } catch (err) {
+                console.error(`[${new Date().toISOString()}] Org resolution failed:`, err);
+                res.status(400).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32002,
+                        message: err instanceof Error ? err.message : 'Organization resolution failed',
+                    },
+                    id: req.body?.id || null
+                });
+                return;
+            }
+        }
+
+        const config: AirweaveConfig = { apiKey, collection, baseUrl, organizationId };
         const server = createMcpServer(config);
 
         const transport = new StreamableHTTPServerTransport({
