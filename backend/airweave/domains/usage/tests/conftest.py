@@ -19,7 +19,7 @@ from airweave.domains.billing.fakes.repository import (
 from airweave.domains.organizations.fakes.repository import FakeUserOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.usage.fakes.repository import FakeUsageRepository
-from airweave.domains.usage.limit_checker import UsageLimitCheckService
+from airweave.domains.usage.limit_checker import UsageLimitChecker
 from airweave.models.billing_period import BillingPeriod
 from airweave.models.organization_billing import OrganizationBilling
 from airweave.models.usage import Usage as UsageModel
@@ -148,20 +148,20 @@ def _make_checker(
     sc_repo: Optional[FakeSourceConnectionRepository] = None,
     user_org_repo: Optional[FakeUserOrganizationRepository] = None,
 ) -> tuple[
-    UsageLimitCheckService,
+    UsageLimitChecker,
     FakeUsageRepository,
     FakeOrganizationBillingRepository,
     FakeBillingPeriodRepository,
     FakeSourceConnectionRepository,
     FakeUserOrganizationRepository,
 ]:
-    """Build a UsageLimitCheckService wired to fakes. Returns (checker, *fakes)."""
+    """Build a UsageLimitChecker wired to fakes. Returns (checker, *fakes)."""
     ur = usage_repo or FakeUsageRepository()
     br = billing_repo or FakeOrganizationBillingRepository()
     pr = period_repo or FakeBillingPeriodRepository()
     sc = sc_repo or FakeSourceConnectionRepository()
     uo = user_org_repo or FakeUserOrganizationRepository()
-    checker = UsageLimitCheckService(
+    checker = UsageLimitChecker(
         usage_repo=ur,
         billing_repo=br,
         period_repo=pr,

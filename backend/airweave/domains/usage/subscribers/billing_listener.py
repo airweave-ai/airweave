@@ -3,8 +3,9 @@
 import logging
 from typing import List
 
-from airweave.core.events import SourceConnectionEventType
 from airweave.core.events.base import DomainEvent
+from airweave.core.events.enums import SourceConnectionEventType
+from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import (
     EntityBatchProcessedEvent,
     QueryProcessedEvent,
@@ -42,7 +43,7 @@ class UsageBillingListener(EventSubscriber):
                 await self._handle_query(event)
             elif isinstance(event, SyncLifecycleEvent):
                 await self._handle_sync_lifecycle(event)
-            elif isinstance(event, SourceConnectionEventType):
+            elif isinstance(event, SourceConnectionLifecycleEvent):
                 await self._handle_source_connection_lifecycle(event)
         except Exception as e:
             logger.error(
@@ -72,7 +73,9 @@ class UsageBillingListener(EventSubscriber):
         if event.event_type.value in self._TERMINAL_SYNC_TYPES:
             await self._ledger.flush(event.organization_id)
 
-    async def _handle_source_connection_lifecycle(self, event: SourceConnectionEventType) -> None:
+    async def _handle_source_connection_lifecycle(
+        self, event: SourceConnectionLifecycleEvent
+    ) -> None:
         if event.event_type == SourceConnectionEventType.CREATED:
             await self._ledger.record(
                 event.organization_id,

@@ -23,6 +23,7 @@ class FakeSourceConnectionRepository:
         self._init_sessions: dict[UUID, ConnectionInitSession] = {}
         self._stats: List[SourceConnectionStats] = []
         self._sync_ids_by_collection: dict[str, List[UUID]] = {}
+        self._org_counts: dict[UUID, int] = {}
         self._calls: list[tuple[Any, ...]] = []
 
     def seed(self, id: UUID, obj: SourceConnection) -> None:
@@ -44,6 +45,15 @@ class FakeSourceConnectionRepository:
     def seed_stats(self, stats: List[SourceConnectionStats]) -> None:
         """Seed the stats list returned by get_multi_with_stats."""
         self._stats = list(stats)
+
+    def set_org_count(self, organization_id: UUID, count: int) -> None:
+        """Seed the count returned by count_by_organization."""
+        self._org_counts[organization_id] = count
+
+    async def count_by_organization(self, db: AsyncSession, organization_id: UUID) -> int:
+        """Return seeded org source connection count."""
+        self._calls.append(("count_by_organization", db, organization_id))
+        return self._org_counts.get(organization_id, 0)
 
     def seed_sync_ids_for_collection(
         self, readable_collection_id: str, sync_ids: List[UUID]
