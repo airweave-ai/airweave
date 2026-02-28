@@ -11,6 +11,7 @@ import pytest
 class TestOrganizationSetupSmoke:
     @pytest.mark.asyncio
     @pytest.mark.critical
+    @pytest.mark.local_only
     async def test_complete_setup_creates_organization_and_is_listed(
         self,
         api_client: httpx.AsyncClient,
