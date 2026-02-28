@@ -526,6 +526,14 @@ if [[ -z $SKIP_CONTAINER_CREATION ]]; then
         log_success "SPARSE_EMBEDDER=$current_sparse (from .env)"
     fi
 
+    # Override: if user explicitly chose local_minilm, ensure the container starts
+    # (even if an OpenAI key is present for other purposes)
+    current_dense=$(get_env_value "DENSE_EMBEDDER")
+    if [[ "$current_dense" == "local_minilm" ]]; then
+        USE_LOCAL_EMBEDDINGS=true
+        log_note "DENSE_EMBEDDER=local_minilm — enabling local embeddings container"
+    fi
+
     if [[ -n $SKIP_FRONTEND ]]; then
         log_note "Skipping frontend (flag set)"
         USE_FRONTEND=false
@@ -534,6 +542,11 @@ else
     # When reusing existing containers, just set flags based on skip settings
     if [[ -n $openai_key && $openai_key != "your-api-key-here" ]] || [[ -n $SKIP_LOCAL_EMBEDDINGS ]]; then
         USE_LOCAL_EMBEDDINGS=false
+    fi
+    # Override: explicit local_minilm in .env always wins
+    current_dense=$(get_env_value "DENSE_EMBEDDER")
+    if [[ "$current_dense" == "local_minilm" ]]; then
+        USE_LOCAL_EMBEDDINGS=true
     fi
     if [[ -n $SKIP_FRONTEND ]]; then
         USE_FRONTEND=false

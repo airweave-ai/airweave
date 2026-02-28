@@ -7,6 +7,7 @@ Startup validation ensures they exist in the registry, dimensions are valid,
 credentials are present, and the DB deployment metadata row is consistent.
 """
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,6 +91,7 @@ def validate_embedding_config_sync(
 
     _validate_dimensions(dense_spec)
     _validate_credentials(dense_spec, sparse_spec)
+    _validate_local_reachability(dense_spec)
 
 
 async def validate_embedding_config(db: AsyncSession) -> None:
@@ -141,6 +143,36 @@ def _validate_credentials(
                 f"Sparse embedder '{SPARSE_EMBEDDER}' requires setting "
                 f"'{sparse_spec.required_setting}' but it is not set."
             )
+
+
+def _validate_local_reachability(dense_spec: DenseEmbedderEntry) -> None:
+    """Probe the text2vec inference service when using the local dense embedder.
+
+    Only runs for local_minilm. Performs a synchronous HTTP GET to the health
+    endpoint with a short timeout. Raises EmbeddingConfigError with actionable
+    instructions if the service is unreachable.
+    """
+    from airweave.domains.embedders.dense.local import LocalDenseEmbedder
+
+    if dense_spec.embedder_class_ref is not LocalDenseEmbedder:
+        return
+
+    inference_url = settings.TEXT2VEC_INFERENCE_URL
+    health_url = f"{inference_url}/health"
+
+    try:
+        with httpx.Client(timeout=httpx.Timeout(5.0)) as client:
+            response = client.get(health_url)
+            response.raise_for_status()
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+        raise EmbeddingConfigError(
+            f"Text2vec inference service is not reachable at {inference_url}\n"
+            f"  Health check failed: {exc}\n\n"
+            f"  DENSE_EMBEDDER=local_minilm requires the text2vec-transformers container.\n\n"
+            f"  If using Docker Compose, start with the local-embeddings profile:\n"
+            f"    docker compose -f docker/docker-compose.yml --profile local-embeddings up -d\n\n"
+            f"  Or run: ./start.sh  (auto-detects DENSE_EMBEDDER=local_minilm)\n"
+        ) from exc
 
 
 async def _reconcile_db(db: AsyncSession) -> None:
