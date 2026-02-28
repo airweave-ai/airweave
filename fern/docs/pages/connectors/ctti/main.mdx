@@ -31,60 +31,12 @@ Creates web entities that link to ClinicalTrials.gov pages.
 
 ### Authentication
 
-This connector uses a custom authentication configuration.
-
-<Card
-  title="Authentication Configuration"
-  className="auth-config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
->
-
-CTTI Clinical Trials authentication credentials schema.
-
-<ParamField
-  path="username"
-  type="str"
-  required={true}
->
-  Username for the AACT Clinical Trials database
-</ParamField>
-<ParamField
-  path="password"
-  type="str"
-  required={true}
->
-  Password for the AACT Clinical Trials database
-</ParamField>
-</Card>
+**Supported authentication methods:**
+- Direct Credentials
 
 ### Configuration Options
 
-The following configuration options are available for this connector:
-
-<Card
-  title="Configuration Parameters"
-  className="config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
->
-
-CTTI AACT configuration schema.
-<ParamField
-  path="limit"
-  type="int"
-  required={false}
-  default={10000}
->
-  Maximum number of clinical trial studies to fetch from AACT database
-</ParamField>
-<ParamField
-  path="skip"
-  type="int"
-  required={false}
-  default={0}
->
-  Number of clinical trial studies to skip (for pagination). Use with limit to fetch different batches.
-</ParamField>
-</Card>
+This connector does not have any additional configuration options.
 
 ## Data Models
 

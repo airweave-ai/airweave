@@ -1811,7 +1811,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WebhookSubscription"
+                  "$ref": "#/components/schemas/WebhookSubscriptionDetail"
                 }
               }
             }
@@ -2514,6 +2514,430 @@
         ],
         "title": "AdminSyncInfo",
         "description": "Extended sync info for admin listing with entity counts and status."
+      },
+      "AgenticSearchAccessControl": {
+        "properties": {
+          "viewers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewers",
+            "description": "Principal IDs who can view this entity. None if unknown."
+          },
+          "is_public": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Public",
+            "description": "Whether this entity is publicly accessible. None if unknown."
+          }
+        },
+        "type": "object",
+        "title": "AgenticSearchAccessControl",
+        "description": "Access control in agentic search result."
+      },
+      "AgenticSearchAnswer": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The answer text. Should be clear and well-structured."
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchCitation"
+            },
+            "type": "array",
+            "title": "Citations",
+            "description": "List of entity_ids from search results used to compose the answer."
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "citations"
+        ],
+        "title": "AgenticSearchAnswer",
+        "description": "Answer generated from search results."
+      },
+      "AgenticSearchBreadcrumb": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id",
+            "description": "ID of the entity in the source."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Display name of the entity."
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type",
+            "description": "Entity class name (e.g., 'AsanaProjectEntity')."
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "name",
+          "entity_type"
+        ],
+        "title": "AgenticSearchBreadcrumb",
+        "description": "Breadcrumb in agentic search result."
+      },
+      "AgenticSearchCitation": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id",
+            "description": "The entity ID of a search result used in the answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id"
+        ],
+        "title": "AgenticSearchCitation",
+        "description": "Citation for a source used in the answer."
+      },
+      "AgenticSearchFilterCondition": {
+        "properties": {
+          "field": {
+            "$ref": "#/components/schemas/AgenticSearchFilterableField",
+            "description": "Field to filter on (use dot notation for nested fields)."
+          },
+          "operator": {
+            "$ref": "#/components/schemas/AgenticSearchFilterOperator",
+            "description": "The comparison operator to use."
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value",
+            "description": "Value to compare against. Use a list for 'in' and 'not_in' operators."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "operator",
+          "value"
+        ],
+        "title": "AgenticSearchFilterCondition",
+        "description": "A single filter condition.\n\nPydantic validates that:\n- ``field`` is a valid AgenticSearchFilterableField enum value\n- ``operator`` is a valid AgenticSearchFilterOperator enum value\n- ``value`` matches the expected types\n- The combination of field + operator + value is semantically valid\n\nInvalid filters raise ``pydantic.ValidationError`` automatically.\n\nExamples:\n    {\"field\": \"airweave_system_metadata.source_name\", \"operator\": \"equals\",\n     \"value\": \"notion\"}\n    {\"field\": \"created_at\", \"operator\": \"greater_than\",\n     \"value\": \"2024-01-01T00:00:00Z\"}\n    {\"field\": \"breadcrumbs.name\", \"operator\": \"contains\", \"value\": \"Engineering\"}"
+      },
+      "AgenticSearchFilterGroup": {
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchFilterCondition"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Conditions",
+            "description": "Filter conditions within this group, combined with AND"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conditions"
+        ],
+        "title": "AgenticSearchFilterGroup",
+        "description": "A group of filter conditions combined with AND.\n\nMultiple filter groups are combined with OR, allowing expressions like:\n(A AND B) OR (C AND D)\n\nExamples:\n    Single group (AND):\n        {\"conditions\": [\n            {\"field\": \"airweave_system_metadata.source_name\",\n             \"operator\": \"equals\", \"value\": \"slack\"},\n            {\"field\": \"airweave_system_metadata.entity_type\",\n             \"operator\": \"equals\", \"value\": \"SlackMessageEntity\"}\n        ]}\n\n    Multiple groups (OR between groups, AND within):\n        [\n            {\"conditions\": [{\"field\": \"name\", \"operator\": \"equals\",\n                             \"value\": \"doc1\"}]},\n            {\"conditions\": [{\"field\": \"name\", \"operator\": \"equals\",\n                             \"value\": \"doc2\"}]}\n        ]\n\n    Breadcrumb filtering:\n        {\"conditions\": [\n            {\"field\": \"breadcrumbs.name\", \"operator\": \"contains\",\n             \"value\": \"Engineering\"}\n        ]}"
+      },
+      "AgenticSearchFilterOperator": {
+        "type": "string",
+        "enum": [
+          "equals",
+          "not_equals",
+          "contains",
+          "greater_than",
+          "less_than",
+          "greater_than_or_equal",
+          "less_than_or_equal",
+          "in",
+          "not_in"
+        ],
+        "title": "AgenticSearchFilterOperator",
+        "description": "Supported filter operators."
+      },
+      "AgenticSearchFilterableField": {
+        "type": "string",
+        "enum": [
+          "entity_id",
+          "name",
+          "created_at",
+          "updated_at",
+          "breadcrumbs.entity_id",
+          "breadcrumbs.name",
+          "breadcrumbs.entity_type",
+          "airweave_system_metadata.entity_type",
+          "airweave_system_metadata.source_name",
+          "airweave_system_metadata.original_entity_id",
+          "airweave_system_metadata.chunk_index",
+          "airweave_system_metadata.sync_id",
+          "airweave_system_metadata.sync_job_id"
+        ],
+        "title": "AgenticSearchFilterableField",
+        "description": "Filterable fields in agentic search.\n\nUses dot notation for nested fields (e.g., breadcrumbs.name,\nairweave_system_metadata.source_name)."
+      },
+      "AgenticSearchMode": {
+        "type": "string",
+        "enum": [
+          "fast",
+          "thinking"
+        ],
+        "title": "AgenticSearchMode",
+        "description": "Search execution mode.\n\n- FAST: Performs a single search pass.\n- THINKING: Performs an intelligent multi-step search to find the best results."
+      },
+      "AgenticSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "The natural language search query."
+          },
+          "filter": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchFilterGroup"
+            },
+            "type": "array",
+            "title": "Filter",
+            "description": "Filter groups that are always applied to search results. Conditions within a group are combined with AND. Multiple groups are combined with OR. Leave empty for no filtering."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/AgenticSearchMode",
+            "description": "The search mode. 'fast' performs a single search pass. 'thinking' performs an intelligent multi-step search to find the best results (may take longer). Defaults to 'thinking'.",
+            "default": "thinking"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit",
+            "description": "Maximum number of results to return. The response will contain at most this many results, but the agent can decide to return fewer. When not set, all results are returned."
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "AgenticSearchRequest",
+        "description": "Request schema for agentic search."
+      },
+      "AgenticSearchResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "answer": {
+            "$ref": "#/components/schemas/AgenticSearchAnswer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "answer"
+        ],
+        "title": "AgenticSearchResponse",
+        "description": "Response schema for agentic search."
+      },
+      "AgenticSearchResult": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id",
+            "description": "Original entity ID."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Entity display name."
+          },
+          "relevance_score": {
+            "type": "number",
+            "title": "Relevance Score",
+            "description": "Relevance score from the search engine."
+          },
+          "breadcrumbs": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchBreadcrumb"
+            },
+            "type": "array",
+            "title": "Breadcrumbs",
+            "description": "Breadcrumbs showing entity hierarchy."
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "When the entity was created."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "When the entity was last updated."
+          },
+          "textual_representation": {
+            "type": "string",
+            "title": "Textual Representation",
+            "description": "Semantically searchable text content"
+          },
+          "airweave_system_metadata": {
+            "$ref": "#/components/schemas/AgenticSearchSystemMetadata",
+            "description": "System metadata"
+          },
+          "access": {
+            "$ref": "#/components/schemas/AgenticSearchAccessControl",
+            "description": "Access control"
+          },
+          "web_url": {
+            "type": "string",
+            "title": "Web Url",
+            "description": "URL to view the entity in its source application (e.g., Notion, Asana)."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Download URL for file entities. Only present for FileEntity types."
+          },
+          "raw_source_fields": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Raw Source Fields",
+            "description": "All source-specific fields."
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "name",
+          "relevance_score",
+          "breadcrumbs",
+          "textual_representation",
+          "airweave_system_metadata",
+          "access",
+          "web_url",
+          "raw_source_fields"
+        ],
+        "title": "AgenticSearchResult",
+        "description": "Agentic search result."
+      },
+      "AgenticSearchSystemMetadata": {
+        "properties": {
+          "source_name": {
+            "type": "string",
+            "title": "Source Name",
+            "description": "Name of the source this entity belongs to."
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type",
+            "description": "Type of the entity this entity represents in the source."
+          },
+          "sync_id": {
+            "type": "string",
+            "title": "Sync Id",
+            "description": "ID of the sync this entity belongs to."
+          },
+          "sync_job_id": {
+            "type": "string",
+            "title": "Sync Job Id",
+            "description": "ID of the sync job this entity belongs to."
+          },
+          "chunk_index": {
+            "type": "integer",
+            "title": "Chunk Index",
+            "description": "Index of the chunk in the file."
+          },
+          "original_entity_id": {
+            "type": "string",
+            "title": "Original Entity Id",
+            "description": "Original entity ID"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_name",
+          "entity_type",
+          "sync_id",
+          "sync_job_id",
+          "chunk_index",
+          "original_entity_id"
+        ],
+        "title": "AgenticSearchSystemMetadata",
+        "description": "System metadata in agentic search result."
       },
       "AuthProvider": {
         "properties": {
@@ -3261,30 +3685,6 @@
         "title": "BillingTransition",
         "description": "How this billing period was created."
       },
-      "Body_connect_slack_with_token_connections_direct_token_slack_post": {
-        "properties": {
-          "token": {
-            "type": "string",
-            "title": "Token"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          }
-        },
-        "type": "object",
-        "required": [
-          "token"
-        ],
-        "title": "Body_connect_slack_with_token_connections_direct_token_slack_post"
-      },
       "Body_resync_with_execution_config_admin_resync__sync_id__post": {
         "properties": {
           "execution_config": {
@@ -3296,7 +3696,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional nested SyncConfig for sync behavior (destinations, handlers, cursor, behavior)",
+            "description": "Optional nested SyncConfig for sync behavior",
             "examples": [
               {
                 "summary": "ARF Capture Only",
@@ -3356,7 +3756,7 @@
               }
             ],
             "title": "Tags",
-            "description": "Optional tags for filtering and organizing sync jobs (e.g., ['vespa-backfill-01-22-2026', 'manual'])",
+            "description": "Optional tags for filtering and organizing sync jobs",
             "examples": [
               [
                 "vespa-backfill-01-22-2026",
@@ -3370,6 +3770,16 @@
         },
         "type": "object",
         "title": "Body_resync_with_execution_config_admin_resync__sync_id__post"
+      },
+      "CheckStatus": {
+        "type": "string",
+        "enum": [
+          "up",
+          "down",
+          "skipped"
+        ],
+        "title": "CheckStatus",
+        "description": "Status of an individual dependency check."
       },
       "CheckoutSessionRequest": {
         "properties": {
@@ -3431,16 +3841,6 @@
             "title": "Id",
             "description": "Unique system identifier for the collection. This UUID is generated automatically and used for internal references."
           },
-          "vector_size": {
-            "type": "integer",
-            "title": "Vector Size",
-            "description": "Vector dimensions used by this collection. Determines which embedding model is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), 1024 (mistral-embed), or 384 (MiniLM-L6-v2)."
-          },
-          "embedding_model_name": {
-            "type": "string",
-            "title": "Embedding Model Name",
-            "description": "Name of the embedding model used for this collection (e.g., 'text-embedding-3-large', 'text-embedding-3-small', 'mistral-embed'). This ensures queries use the same model as the indexed data."
-          },
           "sync_config": {
             "anyOf": [
               {
@@ -3500,6 +3900,16 @@
             "$ref": "#/components/schemas/CollectionStatus",
             "description": "Current operational status of the collection:<br/>\u2022 **NEEDS_SOURCE**: Collection has no authenticated connections, or connections exist but haven't synced yet<br/>\u2022 **ACTIVE**: At least one connection has completed a sync or is currently syncing<br/>\u2022 **ERROR**: All connections have failed their last sync",
             "default": "NEEDS SOURCE"
+          },
+          "vector_size": {
+            "type": "integer",
+            "title": "Vector Size",
+            "description": "Vector dimensions used by this collection (derived from deployment metadata)."
+          },
+          "embedding_model_name": {
+            "type": "string",
+            "title": "Embedding Model Name",
+            "description": "Name of the embedding model used for this collection (derived from deployment metadata)."
           }
         },
         "type": "object",
@@ -3507,14 +3917,14 @@
           "name",
           "readable_id",
           "id",
-          "vector_size",
-          "embedding_model_name",
           "created_at",
           "modified_at",
-          "organization_id"
+          "organization_id",
+          "vector_size",
+          "embedding_model_name"
         ],
         "title": "Collection",
-        "description": "Complete collection representation returned by the API.\n\nThis schema includes all collection metadata plus computed status information\nbased on the health and state of associated source connections.",
+        "description": "API-facing collection schema with embedding metadata.\n\nExtends CollectionRecord with vector_size and embedding_model_name, which\nare resolved by the CollectionService from the deployment metadata and the\ndense embedder registry.\n\nExcludes vector_db_deployment_metadata_id (internal FK).",
         "example": {
           "created_at": "2024-01-15T09:30:00Z",
           "created_by_email": "admin@company.com",
@@ -3749,132 +4159,6 @@
           "detail": "A resource with this identifier already exists"
         }
       },
-      "Connection": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Name",
-            "description": "Human-readable display name for the connection."
-          },
-          "readable_id": {
-            "type": "string",
-            "title": "Readable Id",
-            "description": "URL-safe unique identifier used in API endpoints. This becomes non-optional once the connection is created."
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "integration_type": {
-            "$ref": "#/components/schemas/IntegrationType"
-          },
-          "integration_credential_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Integration Credential Id"
-          },
-          "status": {
-            "$ref": "#/components/schemas/ConnectionStatus"
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id",
-            "description": "Unique system identifier for the connection."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Timestamp when the connection was created (ISO 8601 format)."
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At",
-            "description": "Timestamp when the connection was last modified (ISO 8601 format)."
-          },
-          "organization_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Organization Id"
-          },
-          "created_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By Email"
-          },
-          "modified_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified By Email"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "readable_id",
-          "integration_type",
-          "status",
-          "short_name",
-          "id",
-          "created_at",
-          "modified_at"
-        ],
-        "title": "Connection",
-        "description": "Schema for connection with config fields."
-      },
-      "ConnectionStatus": {
-        "type": "string",
-        "enum": [
-          "active",
-          "inactive",
-          "error"
-        ],
-        "title": "ConnectionStatus",
-        "description": "Connection status enum."
-      },
       "CreateSubscriptionRequest": {
         "properties": {
           "url": {
@@ -4079,6 +4363,45 @@
             }
           }
         ]
+      },
+      "DependencyCheck": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "DependencyCheck",
+        "description": "Result of a single dependency health check.",
+        "example": {
+          "latency_ms": 1.23,
+          "status": "up"
+        }
       },
       "Destination": {
         "properties": {
@@ -4567,20 +4890,6 @@
         "title": "EmbeddingModelWithAuthenticationFields",
         "description": "Schema for EmbeddingModel with auth config."
       },
-      "EntityCount": {
-        "properties": {
-          "count": {
-            "type": "integer",
-            "title": "Count"
-          }
-        },
-        "type": "object",
-        "required": [
-          "count"
-        ],
-        "title": "EntityCount",
-        "description": "Schema for entity count."
-      },
       "EntityCountWithDefinition": {
         "properties": {
           "count": {
@@ -4713,73 +5022,6 @@
         "title": "EntityDefinition",
         "description": "Schema for an entity definition."
       },
-      "EntityDefinitionCreate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "type": {
-            "$ref": "#/components/schemas/EntityType"
-          },
-          "entity_schema": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "additionalProperties": true,
-                "type": "object"
-              }
-            ],
-            "title": "Entity Schema"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
-          },
-          "module_name": {
-            "type": "string",
-            "title": "Module Name"
-          },
-          "class_name": {
-            "type": "string",
-            "title": "Class Name"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "type",
-          "entity_schema",
-          "module_name",
-          "class_name"
-        ],
-        "title": "EntityDefinitionCreate",
-        "description": "Schema for creating an entity definition."
-      },
       "EntitySummary": {
         "properties": {
           "total_entities": {
@@ -4842,15 +5084,17 @@
           "sync.completed",
           "sync.failed",
           "sync.cancelled",
-          "source_connection.created",
-          "source_connection.auth_completed",
-          "source_connection.deleted",
+          "entity.batch_processed",
+          "query.processed",
+          "access_control.batch_processed",
           "collection.created",
           "collection.updated",
-          "collection.deleted"
+          "collection.deleted",
+          "source_connection.created",
+          "source_connection.auth_completed",
+          "source_connection.deleted"
         ],
-        "title": "EventType",
-        "description": "Webhook event types.\n\nAll available event types that webhook subscribers can filter on.\nConvention: {domain}.{action} \u2014 matches the event_type string\non the corresponding domain event class."
+        "title": "EventType"
       },
       "FeatureFlag": {
         "type": "string",
@@ -4860,6 +5104,7 @@
           "source_rate_limiting",
           "zephyr_scale",
           "sharepoint_2019_v2",
+          "agentic_search",
           "api_key_admin_sync"
         ],
         "title": "FeatureFlag",
@@ -4920,156 +5165,16 @@
         "title": "HandlerConfig",
         "description": "Controls which handlers run during sync."
       },
-      "IntegrationCredentialInDB": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "integration_short_name": {
-            "type": "string",
-            "title": "Integration Short Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "integration_type": {
-            "$ref": "#/components/schemas/IntegrationType"
-          },
-          "authentication_method": {
-            "$ref": "#/components/schemas/AuthenticationMethod"
-          },
-          "oauth_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OAuthType"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "auth_config_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Config Class"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "organization_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Organization Id"
-          },
-          "encrypted_credentials": {
-            "type": "string",
-            "title": "Encrypted Credentials"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "integration_short_name",
-          "integration_type",
-          "authentication_method",
-          "id",
-          "organization_id",
-          "encrypted_credentials"
-        ],
-        "title": "IntegrationCredentialInDB",
-        "description": "Integration credential in DB without decrypted data."
-      },
-      "IntegrationCredentialRawCreate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "integration_short_name": {
-            "type": "string",
-            "title": "Integration Short Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "integration_type": {
-            "$ref": "#/components/schemas/IntegrationType"
-          },
-          "authentication_method": {
-            "$ref": "#/components/schemas/AuthenticationMethod"
-          },
-          "oauth_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OAuthType"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "auth_config_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Config Class"
-          },
-          "auth_fields": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Auth Fields"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "integration_short_name",
-          "integration_type",
-          "authentication_method",
-          "auth_fields"
-        ],
-        "title": "IntegrationCredentialRawCreate",
-        "description": "Create class for integration credentials with raw auth fields.\n\nThis schema is used when auth fields need to be validated and encrypted\nbefore creating the credential."
-      },
-      "IntegrationType": {
+      "HealthStatus": {
         "type": "string",
         "enum": [
-          "source",
-          "destination",
-          "auth_provider"
+          "healthy",
+          "degraded",
+          "failing",
+          "unknown"
         ],
-        "title": "IntegrationType",
-        "description": "Integration type enum."
+        "title": "HealthStatus",
+        "description": "Health status of a webhook subscription based on recent delivery attempts."
       },
       "InvitationCreate": {
         "properties": {
@@ -5314,6 +5419,19 @@
         "title": "LegacySearchResponse",
         "description": "Legacy search response schema for backwards compatibility."
       },
+      "LivenessResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "alive",
+            "title": "Status",
+            "default": "alive"
+          }
+        },
+        "type": "object",
+        "title": "LivenessResponse",
+        "description": "Response from the liveness probe."
+      },
       "MemberResponse": {
         "properties": {
           "id": {
@@ -5517,17 +5635,6 @@
         ],
         "title": "OAuthTokenAuthentication",
         "description": "OAuth authentication with pre-obtained token."
-      },
-      "OAuthType": {
-        "type": "string",
-        "enum": [
-          "oauth1",
-          "access_only",
-          "with_refresh",
-          "with_rotating_refresh"
-        ],
-        "title": "OAuthType",
-        "description": "OAuth token types for sources."
       },
       "Organization": {
         "properties": {
@@ -6334,6 +6441,48 @@
         "description": "Response returned when rate limit is exceeded (HTTP 429).\n\nThe API enforces rate limits to ensure fair usage. When exceeded,\nwait for the duration specified in the Retry-After header before retrying.",
         "example": {
           "detail": "Rate limit exceeded. Please retry after 60 seconds."
+        }
+      },
+      "ReadinessResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status"
+          },
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DependencyCheck"
+            },
+            "type": "object",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessResponse",
+        "description": "Response from the readiness probe.",
+        "example": {
+          "checks": {
+            "postgres": {
+              "latency_ms": 1.23,
+              "status": "up"
+            },
+            "redis": {
+              "latency_ms": 0.45,
+              "status": "up"
+            },
+            "temporal": {
+              "status": "skipped"
+            }
+          },
+          "status": "ready"
         }
       },
       "RecoverMessagesRequest": {
@@ -10033,6 +10182,109 @@
             "description": "When this subscription was last updated (ISO 8601 format, UTC)",
             "example": "2024-03-15T14:30:00Z"
           },
+          "health_status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Health status of this subscription based on recent delivery attempts. Values: 'healthy' (all recent deliveries succeeded), 'degraded' (mix of successes and failures), 'failing' (consecutive failures beyond threshold), 'unknown' (no delivery data yet).",
+            "default": "unknown",
+            "example": "healthy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WebhookSubscription",
+        "description": "A webhook subscription (endpoint) configuration.\n\nThis is the lightweight representation returned by list, create, update,\nand delete endpoints.  For the full detail view (delivery attempts,\nsigning secret) see ``WebhookSubscriptionDetail``.",
+        "example": {
+          "created_at": "2024-03-01T08:00:00Z",
+          "description": "Production notifications for data team",
+          "disabled": false,
+          "filter_types": [
+            "sync.completed",
+            "sync.failed"
+          ],
+          "health_status": "healthy",
+          "id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
+          "updated_at": "2024-03-15T14:30:00Z",
+          "url": "https://api.mycompany.com/webhooks/airweave"
+        }
+      },
+      "WebhookSubscriptionDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for this subscription (UUID format)",
+            "example": "c3d4e5f6-a7b8-9012-cdef-345678901234"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The URL where webhook events are delivered",
+            "example": "https://api.mycompany.com/webhooks/airweave"
+          },
+          "filter_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter Types",
+            "description": "Event types this subscription is filtered to receive. See EventType enum for all available types.",
+            "example": [
+              "sync.completed",
+              "sync.failed"
+            ]
+          },
+          "disabled": {
+            "type": "boolean",
+            "title": "Disabled",
+            "description": "Whether this subscription is currently disabled. Disabled subscriptions do not receive event deliveries.",
+            "default": false,
+            "example": false
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Optional human-readable description of this subscription",
+            "example": "Production notifications for data team"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When this subscription was created (ISO 8601 format, UTC)",
+            "example": "2024-03-01T08:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "When this subscription was last updated (ISO 8601 format, UTC)",
+            "example": "2024-03-15T14:30:00Z"
+          },
+          "health_status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Health status of this subscription based on recent delivery attempts. Values: 'healthy' (all recent deliveries succeeded), 'degraded' (mix of successes and failures), 'failing' (consecutive failures beyond threshold), 'unknown' (no delivery data yet).",
+            "default": "unknown",
+            "example": "healthy"
+          },
           "delivery_attempts": {
             "anyOf": [
               {
@@ -10046,7 +10298,7 @@
               }
             ],
             "title": "Delivery Attempts",
-            "description": "Recent delivery attempts for this subscription. Only included when fetching a single subscription via GET /subscriptions/{id}."
+            "description": "Recent delivery attempts for this subscription."
           },
           "secret": {
             "anyOf": [
@@ -10069,8 +10321,8 @@
           "created_at",
           "updated_at"
         ],
-        "title": "WebhookSubscription",
-        "description": "A webhook subscription (endpoint) configuration.",
+        "title": "WebhookSubscriptionDetail",
+        "description": "Full subscription detail, including delivery attempts and signing secret.\n\nReturned by ``GET /subscriptions/{id}`` only.",
         "example": {
           "created_at": "2024-03-01T08:00:00Z",
           "description": "Production notifications for data team",
@@ -10079,6 +10331,7 @@
             "sync.completed",
             "sync.failed"
           ],
+          "health_status": "healthy",
           "id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
           "updated_at": "2024-03-15T14:30:00Z",
           "url": "https://api.mycompany.com/webhooks/airweave"

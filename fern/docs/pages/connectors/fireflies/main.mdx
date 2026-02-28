@@ -1,0 +1,72 @@
+---
+title: "Fireflies"
+description: "Fireflies integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Fireflies logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Fireflies</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Fireflies through Airweave's unified search layer.
+
+## Configuration
+
+Fireflies source connector.
+
+Syncs meeting transcripts from Fireflies.ai. Uses the GraphQL API with
+Bearer token (API key) authentication.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/fireflies.py"
+>
+  Explore the Fireflies connector implementation
+</Card>
+
+### Authentication
+
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="FirefliesTranscriptEntity">
+
+Schema for a Fireflies meeting transcript.
+
+Maps to the Transcript type in the Fireflies GraphQL API.
+See https://docs.fireflies.ai/schema/transcript
+
+| Field | Type | Description |
+|-------|------|-------------|
+| transcript_id | str | Unique identifier of the transcript. |
+| title | str | Title of the meeting/transcript. |
+| organizer_email | Optional[str] | Email address of the meeting organizer. |
+| transcript_url | Optional[str] | URL to view the transcript in the Fireflies dashboard. |
+| participants | List[str] | Email addresses of meeting participants. |
+| duration | Optional[float] | Duration of the audio in minutes. |
+| date | Optional[float] | Date the transcript was created (milliseconds since epoch, UTC). |
+| date_string | Optional[str] | ISO 8601 date-time string when the transcript was created. |
+| created_time | Optional[datetime] | Parsed creation timestamp for the transcript. |
+| speakers | List[Dict[str, Any]] | Speakers in the transcript (id, name). |
+| summary_overview | Optional[str] | AI-generated summary overview of the meeting. |
+| summary_keywords | List[str] | Keywords extracted from the meeting. |
+| summary_action_items | Optional[List[str]] | Action items from the meeting summary. |
+| content | Optional[str] | Full transcript text (concatenated sentences) for search. |
+| fireflies_users | List[str] | Emails of Fireflies users who participated. |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

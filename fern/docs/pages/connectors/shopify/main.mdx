@@ -5,6 +5,8 @@ description: "Shopify integration with Airweave"
 
 {/* AUTO-GENERATED CONTENT START */}
 
+
+
 <div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
   <img src="icon.svg" alt="Shopify logo" width="48" height="48" className="connector-icon" />
   <h1 style={{ margin: 0 }}>Shopify</h1>
@@ -39,54 +41,12 @@ for an access token, then syncs comprehensive data from your Shopify store:
 
 ### Authentication
 
-This connector uses a custom authentication configuration.
-
-<Card
-  title="Authentication Configuration"
-  className="auth-config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
->
-
-Shopify authentication credentials schema using client credentials grant.
-
-Uses client_id and client_secret to obtain an access token via OAuth 2.0
-client credentials flow. The token is exchanged for Admin API access.
-
-<ParamField
-  path="client_id"
-  type="str"
-  required={true}
->
-  Client ID from your Shopify app in the Dev Dashboard
-</ParamField>
-<ParamField
-  path="client_secret"
-  type="str"
-  required={true}
->
-  Client Secret from your Shopify app in the Dev Dashboard
-</ParamField>
-</Card>
+**Supported authentication methods:**
+- Direct Credentials
 
 ### Configuration Options
 
-The following configuration options are available for this connector:
-
-<Card
-  title="Configuration Parameters"
-  className="config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
->
-
-Shopify configuration schema.
-<ParamField
-  path="shop_domain"
-  type="str"
-  required={true}
->
-  Your Shopify store domain (e.g., 'my-store.myshopify.com')
-</ParamField>
-</Card>
+This connector does not have any additional configuration options.
 
 ## Data Models
 
@@ -460,6 +420,8 @@ https://shopify.dev/docs/api/admin-rest/2024-01/resources/theme
 | processing | bool | Whether the theme is currently being processed |
 
 </Accordion>
+
+
 
 
 {/* AUTO-GENERATED CONTENT END */}

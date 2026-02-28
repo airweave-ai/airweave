@@ -1,0 +1,70 @@
+---
+title: "Slite"
+description: "Slite integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Slite logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Slite</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Slite through Airweave's unified search layer.
+
+## Configuration
+
+Slite source connector.
+
+Syncs notes (documents) from your Slite workspace. Uses a personal API key
+(Settings > API). List notes with optional parent filter, then fetches full
+content per note (markdown) for embedding.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/slite.py"
+>
+  Explore the Slite connector implementation
+</Card>
+
+### Authentication
+
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="SliteNoteEntity">
+
+Schema for a Slite note (document).
+
+Maps to Slite's Note/NoteWithContent from the public API.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| note_id | str | Slite note ID (id from API). |
+| name | str | Title of the note |
+| content | Optional[str] | Note body in Markdown or HTML |
+| parent_note_id | Optional[str] | Parent note id (null if root). |
+| created_at | Optional[datetime] | When the note was created (derived if not from API). |
+| modified_at | Optional[datetime] | When the note was last edited (lastEditedAt). |
+| updated_at | Optional[datetime] | When the note was last updated (updatedAt). |
+| archived_at | Optional[datetime] | When the note was archived (null if not archived). |
+| review_state | Optional[str] | Review state: Verified, Outdated, VerificationRequested. |
+| owner | Optional[Dict[str, Any]] | Owner (userId or groupId) for review. |
+| columns | List[str] | Column names if note is in a collection. |
+| attributes | List[str] | Attribute values if note is in a collection (ordered by column). |
+| web_url_value | Optional[str] | URL to open the note in Slite. |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

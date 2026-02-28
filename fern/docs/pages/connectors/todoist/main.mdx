@@ -53,7 +53,7 @@ The following data models are available for this connector:
 Schema for Todoist project entities.
 
 Reference:
-    https://developer.todoist.com/rest/v2/#projects
+    https://developer.todoist.com/api/v1/#tag/Projects
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -63,7 +63,6 @@ Reference:
 | updated_time | datetime | When the project snapshot was updated. |
 | web_url_value | Optional[str] | URL to open the project in Todoist. |
 | color | Optional[str] | Color of the project (e.g., 'grey', 'blue') |
-| comment_count | int | Number of comments in the project |
 | order | int | Project order in the project list |
 | is_shared | bool | Whether the project is shared with others |
 | is_favorite | bool | Whether the project is marked as a favorite |
@@ -79,7 +78,7 @@ Reference:
 Schema for Todoist section entities.
 
 Reference:
-    https://developer.todoist.com/rest/v2/#sections
+    https://developer.todoist.com/api/v1/#tag/Sections
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -94,7 +93,7 @@ Reference:
 Schema for Todoist task entities.
 
 Reference:
-    https://developer.todoist.com/rest/v2/#tasks
+    https://developer.todoist.com/api/v1/#tag/Tasks
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -104,8 +103,8 @@ Reference:
 | updated_time | datetime | Last update timestamp for the task. |
 | web_url_value | Optional[str] | URL to open the task in Todoist. |
 | description | Optional[str] | Optional detailed description of the task |
-| comment_count | int | Number of comments on the task |
 | is_completed | bool | Whether the task is completed |
+| completed_at | Optional[str] | Timestamp when the task was completed (ISO 8601) |
 | labels | List[str] | List of label names attached to the task |
 | order | int | Task order in the project or section |
 | priority | int | Task priority (1-4, 4 is highest) |
@@ -131,7 +130,7 @@ Reference:
 Schema for Todoist comment entities.
 
 Reference:
-    https://developer.todoist.com/rest/v2/#comments
+    https://developer.todoist.com/api/v1/#tag/Comments
 
 | Field | Type | Description |
 |-------|------|-------------|

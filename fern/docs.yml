@@ -75,6 +75,8 @@ navigation:
       path: docs/pages/connectors/overview.mdx
     - page: Airtable
       path: docs/pages/connectors/airtable/main.mdx
+    - page: Apollo
+      path: docs/pages/connectors/apollo/main.mdx
     - page: Asana
       path: docs/pages/connectors/asana/main.mdx
     - page: Attio
@@ -85,12 +87,20 @@ navigation:
       path: docs/pages/connectors/box/main.mdx
     - page: Clickup
       path: docs/pages/connectors/clickup/main.mdx
+    - page: Coda
+      path: docs/pages/connectors/coda/main.mdx
     - page: Confluence
       path: docs/pages/connectors/confluence/main.mdx
     - page: Ctti
       path: docs/pages/connectors/ctti/main.mdx
+    - page: Document360
+      path: docs/pages/connectors/document360/main.mdx
     - page: Dropbox
       path: docs/pages/connectors/dropbox/main.mdx
+    - page: Fireflies
+      path: docs/pages/connectors/fireflies/main.mdx
+    - page: Freshdesk
+      path: docs/pages/connectors/freshdesk/main.mdx
     - page: Github
       path: docs/pages/connectors/github/main.mdx
     - page: Gitlab
@@ -127,12 +137,18 @@ navigation:
       path: docs/pages/connectors/pipedrive/main.mdx
     - page: Salesforce
       path: docs/pages/connectors/salesforce/main.mdx
+    - page: Servicenow
+      path: docs/pages/connectors/servicenow/main.mdx
     - page: Sharepoint
       path: docs/pages/connectors/sharepoint/main.mdx
     - page: Shopify
       path: docs/pages/connectors/shopify/main.mdx
+    - page: Slab
+      path: docs/pages/connectors/slab/main.mdx
     - page: Slack
       path: docs/pages/connectors/slack/main.mdx
+    - page: Slite
+      path: docs/pages/connectors/slite/main.mdx
     - page: Stripe
       path: docs/pages/connectors/stripe/main.mdx
     - page: Teams

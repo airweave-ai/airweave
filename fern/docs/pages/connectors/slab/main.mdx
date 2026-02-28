@@ -1,0 +1,106 @@
+---
+title: "Slab"
+description: "Slab integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Slab logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Slab</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Slab through Airweave's unified search layer.
+
+## Configuration
+
+Slab source connector integrates with the Slab GraphQL API to extract knowledge base content.
+
+Connects to your Slab workspace and synchronizes topics and posts.
+Comments are included via search() results (CommentSearchResult) and synced.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/slab.py"
+>
+  Explore the Slab connector implementation
+</Card>
+
+### Authentication
+
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="SlabTopicEntity">
+
+Schema for a Slab topic (top-level category/folder).
+
+Topics are containers for posts in Slab, similar to spaces in Confluence
+or databases in Notion.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| topic_id | str | Unique Slab ID of the topic. |
+| name | str | Display name of the topic |
+| created_at | Optional[datetime] | When the topic was created. |
+| updated_at | Optional[datetime] | When the topic was last updated. |
+| description | Optional[str] | Description of the topic |
+| slug | Optional[str] | URL slug for the topic |
+| web_url_value | Optional[str] | URL to view the topic in Slab. |
+
+</Accordion>
+<Accordion title="SlabPostEntity">
+
+Schema for a Slab post (document/article).
+
+Posts are the main content entities in Slab, containing documentation
+and wiki articles.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| post_id | str | Unique Slab ID of the post. |
+| title | str | Title of the post |
+| created_at | Optional[datetime] | When the post was created. |
+| updated_at | Optional[datetime] | When the post was last updated. |
+| content | Optional[str] | Full content/body of the post |
+| topic_id | str | ID of the topic this post belongs to |
+| topic_name | str | Name of the topic this post belongs to |
+| author | Optional[Dict[str, Any]] | Author information (name, email, etc.) |
+| tags | List[str] | Tags associated with the post |
+| slug | Optional[str] | URL slug for the post |
+| web_url_value | Optional[str] | URL to view the post in Slab. |
+
+</Accordion>
+<Accordion title="SlabCommentEntity">
+
+Schema for a Slab comment on a post.
+
+Comments provide discussion and feedback on posts.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| comment_id | str | Unique Slab ID of the comment. |
+| content | str | Content/body of the comment |
+| created_at | Optional[datetime] | When the comment was created. |
+| updated_at | Optional[datetime] | When the comment was last updated. |
+| post_id | str | ID of the post this comment belongs to |
+| post_title | str | Title of the post this comment belongs to |
+| topic_id | Optional[str] | ID of the topic this comment belongs to |
+| topic_name | Optional[str] | Name of the topic this comment belongs to |
+| author | Optional[Dict[str, Any]] | Author information (name, email, etc.) |
+| web_url_value | Optional[str] | URL to view the comment in Slab. |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}
