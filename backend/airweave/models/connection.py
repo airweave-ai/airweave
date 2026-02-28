@@ -1,9 +1,9 @@
 """Connection model."""
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, Text, event
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, event
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
@@ -115,8 +115,6 @@ class Connection(Base):
     )
 
     __table_args__ = (
-        # Enforce that organization_id, created_by_email, and modified_by_email are not null
-        # except for the specific native connections
         CheckConstraint(
             """
             (short_name IN ('qdrant_native', 'neo4j_native', 'local_text2vec'))
@@ -127,12 +125,14 @@ class Connection(Base):
             """,
             name="ck_connection_native_or_complete",
         ),
+        Index("idx_connection_organization_id", "organization_id"),
+        Index("idx_connection_integration_credential_id", "integration_credential_id"),
     )
 
 
 # Event to delete integration credential when Connection is deleted
 @event.listens_for(Connection, "before_delete")
-def delete_integration_credential(mapper, connection, target):
+def delete_integration_credential(mapper: Any, connection: Any, target: Any) -> None:
     """When a Connection is deleted, also delete its IntegrationCredential if present."""
     if target.integration_credential_id:
         # Get the session

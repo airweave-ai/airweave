@@ -1,9 +1,9 @@
 """Collection model."""
 
 import uuid
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,10 +32,6 @@ class Collection(OrganizationBase, UserMixin):
         "VectorDbDeploymentMetadata", lazy="joined"
     )
 
-    if TYPE_CHECKING:
-        search_queries: List["SearchQuery"]
-        source_connections: List["SourceConnection"]
-
     source_connections: Mapped[list["SourceConnection"]] = relationship(
         "SourceConnection",
         back_populates="collection",
@@ -51,3 +47,5 @@ class Collection(OrganizationBase, UserMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    __table_args__ = (Index("idx_collection_vdb_metadata_id", "vector_db_deployment_metadata_id"),)

@@ -21,7 +21,8 @@ class SyncCursor(OrganizationBase):
 
     __tablename__ = "sync_cursor"
 
-    # Optional one-to-one relationship with Sync
+    # TODO: sync_id is typed as str but sync.id is UUID.
+    # Needs a data migration to fix — do not change the type without one.
     sync_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("sync.id", ondelete="CASCADE"), nullable=True, unique=True
     )

@@ -17,7 +17,8 @@ class OrganizationBilling(Base):
 
     __tablename__ = "organization_billing"
 
-    # Foreign key to organization
+    # TODO: organization_id is typed as str but organization.id is UUID.
+    # Needs a data migration to fix — do not change the type without one.
     organization_id: Mapped[str] = mapped_column(
         ForeignKey("organization.id", ondelete="CASCADE"), unique=True
     )

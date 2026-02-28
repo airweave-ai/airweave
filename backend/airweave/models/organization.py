@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import JSON, String, Text
+from sqlalchemy import JSON, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
@@ -77,3 +77,5 @@ class Organization(Base):
         cascade="all, delete-orphan",
         lazy="noload",
     )
+
+    __table_args__ = (Index("idx_organization_auth0_org_id", "auth0_org_id"),)
