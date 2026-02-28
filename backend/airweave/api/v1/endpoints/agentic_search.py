@@ -18,10 +18,11 @@ from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.events.sync import QueryProcessedEvent
 from airweave.core.protocols import EventBus, MetricsService, PubSub
-from airweave.core.shared_models import ActionType, FeatureFlag
+from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
+from airweave.domains.usage.types import ActionType
 from airweave.search.agentic_search.core.agent import AgenticSearchAgent
 from airweave.search.agentic_search.emitter import (
     AgenticSearchLoggingEmitter,

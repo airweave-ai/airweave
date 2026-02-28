@@ -170,10 +170,6 @@ class Container:
 
     payment_gateway: PaymentGatewayProtocol
 
-    # Sync progress relay (global singleton, auto-initializes from sync.running events)
-    # Typed as Any to avoid circular import — concrete type is SyncProgressRelay
-    progress_relay: Any = None
-
     # Embedder registries (static reference data, built once at startup)
     dense_embedder_registry: DenseEmbedderRegistryProtocol
     sparse_embedder_registry: SparseEmbedderRegistryProtocol
