@@ -19,6 +19,7 @@ from airweave.api.middleware import (
     add_request_id,
     airweave_exception_handler,
     analytics_middleware,
+    cache_control_middleware,
     exception_logging_middleware,
     http_metrics_middleware,
     invalid_state_exception_handler,
@@ -145,6 +146,7 @@ app.middleware("http")(http_metrics_middleware)
 app.middleware("http")(request_body_size_middleware)
 app.middleware("http")(request_timeout_middleware)
 app.middleware("http")(rate_limit_headers_middleware)
+app.middleware("http")(cache_control_middleware)
 app.middleware("http")(log_requests)
 app.middleware("http")(analytics_middleware)
 app.middleware("http")(exception_logging_middleware)

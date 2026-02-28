@@ -221,6 +221,32 @@ async def rate_limit_headers_middleware(request: Request, call_next: callable) -
     return response
 
 
+async def cache_control_middleware(request: Request, call_next: callable) -> Response:
+    """Add Cache-Control headers to prevent caching of sensitive data.
+
+    Applies to all API endpoints to meet CASA-49 compliance requirements.
+    Does not override existing Cache-Control headers (e.g., SSE endpoints).
+
+    Args:
+    ----
+        request (Request): The incoming request.
+        call_next (callable): The next middleware in the chain.
+
+    Returns:
+    -------
+        Response: The response with Cache-Control headers added if not present.
+
+    """
+    response = await call_next(request)
+
+    # Don't override existing Cache-Control headers (e.g., SSE endpoints)
+    if "Cache-Control" not in response.headers:
+        # For API endpoints, prevent all caching
+        response.headers["Cache-Control"] = "no-store, private"
+
+    return response
+
+
 class DynamicCORSMiddleware(BaseHTTPMiddleware):
     """Middleware to dynamically update CORS origins based on configuration.
 
