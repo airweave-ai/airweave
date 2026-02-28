@@ -64,11 +64,11 @@ def upgrade():
             # Drop old indexes
             try:
                 op.drop_index('ix_search_queries_status', table_name='search_queries')
-            except:
+            except Exception:
                 pass
             try:
                 op.drop_index('ix_search_queries_search_type', table_name='search_queries')
-            except:
+            except Exception:
                 pass
 
             # Add new columns with defaults for existing rows
@@ -257,20 +257,20 @@ def downgrade():
     # Remove is_admin column
     try:
         op.drop_column('user', 'is_admin')
-    except:
+    except Exception:
         pass
 
     # Restore connection constraints
     try:
         op.drop_constraint(op.f('connection_organization_id_fkey'), 'connection', type_='foreignkey')
         op.create_foreign_key(op.f('connection_organization_id_fkey'), 'connection', 'organization', ['organization_id'], ['id'])
-    except:
+    except Exception:
         pass
 
     # Restore connection_init_session index
     try:
         op.create_index(op.f('idx_connection_init_session_redirect_session_id'), 'connection_init_session', ['redirect_session_id'], unique=False)
-    except:
+    except Exception:
         pass
 
     # Note: We don't downgrade the search_queries changes as they represent a major refactoring

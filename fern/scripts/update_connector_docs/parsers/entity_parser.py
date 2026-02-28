@@ -133,7 +133,7 @@ def parse_entity_file(connector_name):
                                                 description = desc_match.group(
                                                     1
                                                 ) or desc_match.group(2)
-                                        except:
+                                        except Exception:
                                             pass
 
                         # Clean up the description - remove excessive whitespace and newlines

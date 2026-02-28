@@ -60,7 +60,7 @@ async def collection(api_client: httpx.AsyncClient) -> AsyncGenerator[Dict, None
     # Cleanup
     try:
         await api_client.delete(f"/collections/{collection['readable_id']}")
-    except:
+    except Exception:
         pass  # Best effort cleanup
 
 
@@ -94,7 +94,7 @@ async def module_collection(module_api_client: httpx.AsyncClient) -> AsyncGenera
     # Cleanup
     try:
         await module_api_client.delete(f"/collections/{collection['readable_id']}")
-    except:
+    except Exception:
         pass  # Best effort cleanup
 
 
@@ -199,7 +199,7 @@ async def source_connection_fast(
     # Cleanup
     try:
         await api_client.delete(f"/source-connections/{connection['id']}")
-    except:
+    except Exception:
         pass  # Best effort cleanup
 
 
@@ -241,7 +241,7 @@ async def source_connection_medium(
     # Cleanup
     try:
         await api_client.delete(f"/source-connections/{connection['id']}")
-    except:
+    except Exception:
         pass  # Best effort cleanup
 
 
@@ -416,7 +416,7 @@ async def module_source_connection_stripe(
     # Cleanup
     try:
         await module_api_client.delete(f"/source-connections/{connection['id']}")
-    except:
+    except Exception:
         pass  # Best effort cleanup
 
 
@@ -461,7 +461,7 @@ async def source_connection_continuous_slow(
     # Cleanup
     try:
         await api_client.delete(f"/source-connections/{connection['id']}")
-    except:
+    except Exception:
         pass  # Best effort cleanup
 
 
@@ -507,7 +507,7 @@ async def pipedream_rate_limit_auth_provider(api_client: httpx.AsyncClient) -> D
     # Cleanup
     try:
         await api_client.delete(f"/auth-providers/{provider['readable_id']}")
-    except:
+    except Exception:
         pass  # Best effort cleanup
 
 
@@ -547,7 +547,7 @@ async def pipedream_auth_provider(api_client: httpx.AsyncClient, config) -> Dict
     # Cleanup
     try:
         await api_client.delete(f"/auth-providers/{provider['readable_id']}")
-    except:
+    except Exception:
         pass  # Best effort cleanup
 
 

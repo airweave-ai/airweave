@@ -200,11 +200,11 @@ class TestRateLimiting:
                         asyncio.create_task(
                             api_client.delete(f"/collections/{collection['readable_id']}")
                         )
-                    except:
+                    except Exception:
                         pass
 
                 return response.status_code
-            except:
+            except Exception:
                 return 0
 
         # Make many concurrent POST requests
@@ -250,7 +250,7 @@ class TestRateLimiting:
             try:
                 response = await api_client.get(endpoint)
                 return response.status_code
-            except:
+            except Exception:
                 return 0
 
         # Make many requests across different endpoints
