@@ -3,6 +3,7 @@
 Uses the Cerebras Cloud SDK for structured output generation with reasoning models.
 """
 
+import json
 import time
 from typing import Any, TypeVar
 
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from airweave.core.config import settings
 from airweave.search.agentic_search.external.llm.base import BaseLLM
 from airweave.search.agentic_search.external.llm.registry import LLMModelSpec
+from airweave.search.agentic_search.external.llm.tool_response import LLMToolCall, LLMToolResponse
 from airweave.search.agentic_search.external.tokenizer import AgenticSearchTokenizerInterface
 
 T = TypeVar("T", bound=BaseModel)
@@ -95,6 +97,78 @@ class CerebrasLLM(BaseLLM):
             )
 
         return self._parse_json_response(content, schema, "Cerebras")
+
+    async def _call_api_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        system_prompt: str,
+    ) -> LLMToolResponse:
+        """Cerebras tool calling (OpenAI-compatible format)."""
+        api_messages = [{"role": "system", "content": system_prompt}, *messages]
+
+        # Include reasoning params so reasoning models return a reasoning field
+        reasoning_params = {
+            self._model_spec.reasoning.param_name: self._model_spec.reasoning.param_value
+        }
+
+        api_start = time.monotonic()
+        response = await self._client.chat.completions.create(
+            model=self._model_spec.api_model_name,
+            messages=api_messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.3,
+            max_completion_tokens=self._model_spec.max_output_tokens,
+            **reasoning_params,
+        )
+        api_time = time.monotonic() - api_start
+
+        choice = response.choices[0]
+        message = choice.message
+
+        # Extract text content
+        text = message.content if message.content else None
+        thinking = getattr(message, "reasoning", None) or None
+
+        # Extract tool calls
+        tool_calls: list[LLMToolCall] = []
+        if message.tool_calls:
+            for tc in message.tool_calls:
+                arguments = tc.function.arguments
+                if isinstance(arguments, str):
+                    arguments = json.loads(arguments)
+                tool_calls.append(
+                    LLMToolCall(
+                        id=tc.id,
+                        name=tc.function.name,
+                        arguments=arguments,
+                    )
+                )
+
+        # Determine stop reason
+        stop_reason = choice.finish_reason or "stop"
+
+        usage = {}
+        if response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+            self._logger.debug(
+                f"[CerebrasLLM] Tool call completed in {api_time:.2f}s, "
+                f"tokens: prompt={response.usage.prompt_tokens}, "
+                f"completion={response.usage.completion_tokens}"
+            )
+
+        return LLMToolResponse(
+            text=text,
+            thinking=thinking,
+            tool_calls=tool_calls,
+            stop_reason=stop_reason,
+            usage=usage,
+        )
 
     async def close(self) -> None:
         """Close the Cerebras async client and release resources."""

@@ -14,6 +14,7 @@ import asyncio
 import copy
 import json
 import logging
+from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
@@ -21,6 +22,7 @@ from pydantic import BaseModel
 from airweave.core.logging import logger as _default_logger
 from airweave.search.agentic_search.external.llm.interface import AgenticSearchLLMInterface
 from airweave.search.agentic_search.external.llm.registry import LLMModelSpec
+from airweave.search.agentic_search.external.llm.tool_response import LLMToolResponse
 from airweave.search.agentic_search.external.tokenizer import AgenticSearchTokenizerInterface
 
 T = TypeVar("T", bound=BaseModel)
@@ -128,7 +130,32 @@ class BaseLLM(AgenticSearchLLMInterface):
 
         schema_json = self._prepare_schema(schema_json)
 
-        return await self._execute_with_retry(prompt, schema, schema_json, system_prompt)
+        return await self._with_retry(
+            "API call", self._call_api, prompt, schema, schema_json, system_prompt
+        )
+
+    async def create_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        system_prompt: str,
+    ) -> LLMToolResponse:
+        """Send a conversation with tools and get a response.
+
+        Template method: wraps the provider-specific _call_api_with_tools
+        with the same retry logic used by structured_output.
+
+        Args:
+            messages: Conversation messages in provider-generic format.
+            tools: Tool definitions (OpenAI-compatible function format).
+            system_prompt: System prompt (static instructions).
+
+        Returns:
+            LLMToolResponse with text, tool_calls, stop_reason, and usage.
+        """
+        return await self._with_retry(
+            "tool API call", self._call_api_with_tools, messages, tools, system_prompt
+        )
 
     # ── Hooks for subclasses ─────────────────────────────────────────────
 
@@ -159,42 +186,71 @@ class BaseLLM(AgenticSearchLLMInterface):
         """
         raise NotImplementedError
 
+    async def _call_api_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        system_prompt: str,
+    ) -> LLMToolResponse:
+        """Make a single API call with tools. Must be implemented by subclass.
+
+        Args:
+            messages: Conversation messages in provider-generic format.
+            tools: Tool definitions (OpenAI-compatible function format).
+            system_prompt: System prompt text.
+
+        Returns:
+            LLMToolResponse with the model's response.
+        """
+        raise NotImplementedError
+
     async def close(self) -> None:
         """Clean up SDK client. Must be implemented by subclass."""
         raise NotImplementedError
 
     # ── Retry logic ──────────────────────────────────────────────────────
 
-    async def _execute_with_retry(
+    async def _with_retry(
         self,
-        prompt: str,
-        schema: type[T],
-        schema_json: dict[str, Any],
-        system_prompt: str,
-    ) -> T:
-        """Execute _call_api with exponential backoff retry."""
+        label: str,
+        fn: Callable[..., Coroutine[Any, Any, Any]],
+        *args: Any,
+    ) -> Any:
+        """Execute an async callable with exponential backoff retry.
+
+        Args:
+            label: Human-readable label for log messages (e.g., "API call").
+            fn: The async method to call.
+            *args: Arguments forwarded to fn.
+
+        Returns:
+            The return value of fn.
+
+        Raises:
+            RuntimeError: If all retries are exhausted.
+        """
         last_error: Exception | None = None
         retry_delay = self.INITIAL_RETRY_DELAY
 
         for attempt in range(self._max_retries + 1):
             try:
-                return await self._call_api(prompt, schema, schema_json, system_prompt)
+                return await fn(*args)
 
             except (TimeoutError, asyncio.TimeoutError) as e:
                 last_error = e
                 self._logger.warning(
-                    f"[{self._name}] Timeout on attempt {attempt + 1}/{self._max_retries + 1}: {e}"
+                    f"[{self._name}] {label} timeout on attempt "
+                    f"{attempt + 1}/{self._max_retries + 1}: {e}"
                 )
             except RuntimeError:
-                # Don't retry on parse errors or empty responses
                 raise
             except Exception as e:
                 last_error = e
                 if not self._is_retryable_error(e):
-                    raise RuntimeError(f"{self._name} API call failed: {e}") from e
+                    raise RuntimeError(f"{self._name} {label} failed: {e}") from e
 
                 self._logger.warning(
-                    f"[{self._name}] Retryable error on attempt "
+                    f"[{self._name}] Retryable {label} error on attempt "
                     f"{attempt + 1}/{self._max_retries + 1}: {e}"
                 )
 
@@ -204,7 +260,7 @@ class BaseLLM(AgenticSearchLLMInterface):
                 retry_delay = min(retry_delay * self.RETRY_MULTIPLIER, self.MAX_RETRY_DELAY)
 
         raise RuntimeError(
-            f"{self._name} API call failed after {self._max_retries + 1} attempts: {last_error}"
+            f"{self._name} {label} failed after {self._max_retries + 1} attempts: {last_error}"
         ) from last_error
 
     def _is_retryable_error(self, error: Exception) -> bool:

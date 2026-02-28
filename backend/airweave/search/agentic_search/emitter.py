@@ -15,16 +15,14 @@ from airweave.api.context import ApiContext
 from airweave.search.agentic_search.schemas.events import (
     AgenticSearchDoneEvent,
     AgenticSearchErrorEvent,
-    AgenticSearchEvaluatingEvent,
     AgenticSearchingEvent,
-    AgenticSearchPlanningEvent,
+    AgenticSearchThinkingEvent,
 )
 
 # Concrete union for type hints (matches AgenticSearchEvent but avoids Annotated issues in Protocol)
 _EventTypes = Union[
-    AgenticSearchPlanningEvent,
+    AgenticSearchThinkingEvent,
     AgenticSearchingEvent,
-    AgenticSearchEvaluatingEvent,
     AgenticSearchDoneEvent,
     AgenticSearchErrorEvent,
 ]
@@ -53,18 +51,15 @@ class AgenticSearchLoggingEmitter:
         """Log the event."""
         prefix = "[AgenticSearch:Event]"
 
-        if isinstance(event, AgenticSearchPlanningEvent):
-            self._ctx.logger.debug(
-                f"{prefix} Planning (iter {event.iteration}): {event.plan.reasoning}"
-            )
+        if isinstance(event, AgenticSearchThinkingEvent):
+            # Truncate long reasoning for log readability
+            text = event.text[:500] + "..." if len(event.text) > 500 else event.text
+            self._ctx.logger.debug(f"{prefix} Thinking (iter {event.iteration}): {text}")
         elif isinstance(event, AgenticSearchingEvent):
             self._ctx.logger.debug(
                 f"{prefix} Search (iter {event.iteration}): "
                 f"{event.result_count} results in {event.duration_ms}ms"
             )
-        elif isinstance(event, AgenticSearchEvaluatingEvent):
-            ev = event.evaluation
-            self._ctx.logger.debug(f"{prefix} Evaluation (iter {event.iteration}): {ev.reasoning}")
         elif isinstance(event, AgenticSearchDoneEvent):
             result_count = len(event.response.results)
             self._ctx.logger.debug(f"{prefix} Done: {result_count} results")

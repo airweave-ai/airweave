@@ -23,17 +23,21 @@ class ReasoningConfig:
     Different models have different parameters for controlling reasoning:
     - GPT-OSS: reasoning_effort="low"|"medium"|"high"
     - GLM/Qwen: disable_reasoning=True|False
+    - Anthropic 4.6: adaptive thinking with effort="high"
+    - Anthropic 4.5: no thinking (param_name="_noop")
 
     This dataclass encapsulates the parameter name and value so the provider
     can pass it through without knowing about model families.
 
     Attributes:
-        param_name: The API parameter name (e.g., "reasoning_effort", "disable_reasoning").
+        param_name: The API parameter name (e.g., "reasoning_effort", "adaptive_thinking").
         param_value: The value to pass (e.g., "medium", False).
+        effort: Optional effort level for Anthropic adaptive thinking ("high", "medium", "low").
     """
 
     param_name: str
-    param_value: Union[str, bool]
+    param_value: Union[str, bool, int]
+    effort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +123,23 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
         ),
     },
     LLMProvider.ANTHROPIC: {
+        LLMModel.CLAUDE_SONNET_4_6: LLMModelSpec(
+            api_model_name="claude-sonnet-4-6",
+            context_window=200_000,
+            # Sonnet 4.6 supports up to 64K output tokens.
+            max_output_tokens=64_000,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=50,
+            rate_limit_tpm=200_000,
+            # Adaptive thinking (4.6+): Claude decides when/how much to think.
+            # effort="high" = maximum reasoning depth for Sonnet.
+            reasoning=ReasoningConfig(
+                param_name="adaptive_thinking",
+                param_value=True,
+                effort="high",
+            ),
+        ),
         LLMModel.CLAUDE_SONNET_4_5: LLMModelSpec(
             api_model_name="claude-sonnet-4-5-20250929",
             context_window=200_000,

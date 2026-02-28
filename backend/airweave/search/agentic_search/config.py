@@ -2,6 +2,9 @@
 
 from enum import Enum
 
+# Shared constant: approximate characters per token for budget estimation.
+CHARS_PER_TOKEN = 4
+
 
 class DatabaseImpl(str, Enum):
     """Supported database implementations."""
@@ -31,6 +34,7 @@ class LLMModel(str, Enum):
     GPT_OSS_120B = "gpt-oss-120b"
     ZAI_GLM_4_7 = "zai-glm-4.7"
     CLAUDE_SONNET_4_5 = "claude-sonnet-4.5"
+    CLAUDE_SONNET_4_6 = "claude-sonnet-4.6"
 
 
 # --- Tokenizer ---
@@ -75,9 +79,7 @@ class AgenticSearchConfig:
     # provider. For example, to use GPT_OSS_120B on Cerebras instead of GLM:
     #   (LLMProvider.CEREBRAS, LLMModel.GPT_OSS_120B),
     LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = [
-        (LLMProvider.CEREBRAS, LLMModel.ZAI_GLM_4_7),
-        (LLMProvider.GROQ, LLMModel.GPT_OSS_120B),
-        (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_5),
+        (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_6),
     ]
 
     # Tokenizer
