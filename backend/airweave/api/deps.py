@@ -158,6 +158,13 @@ def _resolve_organization_id(
         Organization ID string
     """
     if x_organization_id:
+        try:
+            uuid.UUID(x_organization_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid organization ID format",
+            )
         return x_organization_id
 
     # Fallback logic based on auth method
