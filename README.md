@@ -87,6 +87,7 @@ cd airweave
 <img src="frontend/src/components/icons/apps/linear.svg" alt="Linear" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/notion.svg" alt="Notion" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/onedrive.svg" alt="Onedrive" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/powerpoint.svg" alt="PowerPoint" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/salesforce.svg" alt="Salesforce" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/servicenow.svg" alt="ServiceNow" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/sharepoint.svg" alt="Sharepoint" width="40" height="40" style="margin: 6px;" />

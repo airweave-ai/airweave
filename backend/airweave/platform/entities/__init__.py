@@ -208,6 +208,7 @@ from .pipedrive import (
     PipedrivePersonEntity,
     PipedriveProductEntity,
 )
+from .powerpoint import PowerPointPresentationEntity
 from .salesforce import (
     SalesforceAccountEntity,
     SalesforceContactEntity,
@@ -635,6 +636,9 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ServiceNowIncidentEntity,
         ServiceNowKnowledgeArticleEntity,
         ServiceNowProblemEntity,
+    ],
+    "powerpoint": [
+        PowerPointPresentationEntity,
     ],
     "zendesk": [
         ZendeskAttachmentEntity,
