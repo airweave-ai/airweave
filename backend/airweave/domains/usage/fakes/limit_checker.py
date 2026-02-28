@@ -9,10 +9,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 from airweave.domains.usage.types import ActionType
 
 
-class FakeUsageLimitChecker:
+class FakeUsageLimitChecker(UsageLimitCheckerProtocol):
     """Test implementation of UsageLimitCheckerProtocol.
 
     By default every check returns True (allowed).

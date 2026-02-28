@@ -9,10 +9,11 @@ from collections import defaultdict
 from typing import Optional
 from uuid import UUID
 
+from airweave.domains.usage.protocols import UsageLedgerProtocol
 from airweave.domains.usage.types import ActionType
 
 
-class FakeUsageLedger:
+class FakeUsageLedger(UsageLedgerProtocol):
     """Test implementation of UsageLedgerProtocol.
 
     Tracks recorded amounts and flush calls for assertions.

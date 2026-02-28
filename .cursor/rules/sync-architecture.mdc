@@ -53,8 +53,8 @@ Can be passed directly as `ctx` to CRUD operations (it IS a `BaseContext`).
 - `cursor`: Mutable sync cursor for incremental syncs
 - `destinations`: List of destination instances
 - `entity_tracker`: Centralized entity state tracker
-- `state_publisher`: Publishes progress to Redis pubsub
-- `guard_rail`: Rate limiting / usage guard
+- `event_bus`: Central EventBus for domain events (progress, lifecycle)
+- `usage_checker`: Usage limit enforcement (`UsageLimitCheckerProtocol`)
 
 Built by the factory, held by the orchestrator, injected into pipeline/handler constructors.
 
@@ -62,7 +62,7 @@ Built by the factory, held by the orchestrator, injected into pipeline/handler c
 - **SyncContextBuilder** (`builders/sync.py`): Builds data-only SyncContext
 - **SourceContextBuilder** (`builders/source.py`): Builds source + cursor (returns tuple)
 - **DestinationsContextBuilder** (`builders/destinations.py`): Builds destinations + entity_map
-- **TrackingContextBuilder** (`builders/tracking.py`): Builds entity_tracker, state_publisher, guard_rail
+- **TrackingContextBuilder** (`builders/tracking.py`): Builds entity_tracker
 
 The factory calls sub-builders in parallel where possible, then assembles SyncRuntime.
 
@@ -185,11 +185,16 @@ if all_edges_go_to_destinations:
 - `get_stats()`: Returns `SyncStats` for job completion
 - `get_all_encountered_ids_flat()`: Returns set of all entity IDs (for orphan cleanup)
 
-### SyncStatePublisher
-**Purpose**: Publishes entity state to Redis pubsub for real-time updates
+### SyncProgressRelay (EventSubscriber)
+**Purpose**: Event-driven subscriber that relays sync progress to Redis pubsub for real-time updates
+
+**Architecture**:
+- Extends `EventSubscriber`, subscribes to `entity.*`, `access_control.*`, and `sync.*` events on the EventBus
+- Sessions are auto-created on `sync.running` events — no factory wiring needed
+- Accumulates progress in per-sync sessions, publishes aggregated updates
 
 **Features**:
-- **Threshold Publishing**: Publishes updates every N operations (default: 3)
+- **Event-Driven**: Reacts to `EntityBatchProcessedEvent`, `SyncLifecycleEvent`, etc.
 - **Redis Integration**: Publishes to `sync_job:{job_id}` channels
 - **Snapshot Storage**: Stores progress snapshots with TTL for stuck job detection
 
@@ -235,7 +240,7 @@ SyncFactory.create_orchestrator()
 │   ├── Setup embedding model
 │   ├── Build DAG router
 │   ├── Create EntityTracker
-│   └── Create SyncStatePublisher
+│   └── Create EventBus (SyncProgressRelay auto-subscribes)
 ├── Initialize transformer cache (CRITICAL)
 ├── Create EntityPipeline
 │   ├── ActionResolver
@@ -277,12 +282,12 @@ EntityPipeline.process()
 ### 4. Progress Tracking
 ```
 EntityTracker records action
-├── Async lock ensures thread safety
-├── SyncStatePublisher checks threshold (every 3 ops)
-├── Publish to Redis pubsub if threshold met
-│   ├── Real-time updates to subscribers
-│   └── Snapshot stored in Redis (sync_progress_snapshot:{job_id})
-└── Subscribers receive real-time updates
+├── Emits domain events via EventBus (entity.batch_processed, etc.)
+├── SyncProgressRelay (EventSubscriber) receives events
+│   ├── Accumulates progress in per-sync session
+│   ├── Publishes to Redis pubsub (sync_job:{job_id})
+│   └── Stores snapshot in Redis (sync_progress_snapshot:{job_id})
+└── Frontend/API subscribers receive real-time updates
 ```
 
 ## Orphaned Workflow Self-Destruct

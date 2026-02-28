@@ -7,12 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.source_connection import SourceConnection
 
 
-class FakeSourceConnectionRepository:
+class FakeSourceConnectionRepository(SourceConnectionRepositoryProtocol):
     """In-memory fake for SourceConnectionRepositoryProtocol."""
 
     def __init__(self) -> None:
