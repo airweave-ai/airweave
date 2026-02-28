@@ -17,7 +17,6 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
 from airweave.core.protocols import PubSub
 from airweave.core.sync_service import sync_service
-from airweave.domains.usage.protocols import UsageGuardrailProtocol
 
 router = TrailingSlashRouter()
 
@@ -76,7 +75,6 @@ async def create_sync(
     db: AsyncSession = Depends(deps.get_db),
     sync_in: schemas.SyncCreate = Body(...),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     background_tasks: BackgroundTasks,
 ) -> schemas.Sync:
     """Create a new sync configuration.
@@ -86,14 +84,12 @@ async def create_sync(
         db: The database session
         sync_in: The sync to create
         ctx: The current authentication context
-        usage_guardrail: The usage enforcement service
         background_tasks: The background tasks
 
     Returns:
     --------
         sync (schemas.Sync): The created sync
     """
-    # Create the sync and sync job - kinda, not really, we'll do that in the background
     sync, sync_job = await sync_service.create_and_run_sync(db=db, sync_in=sync_in, ctx=ctx)
     source_connection = await crud.source_connection.get(
         db=db, id=sync_in.source_connection_id, ctx=ctx
@@ -107,7 +103,6 @@ async def create_sync(
         source_connection, from_attributes=True
     )
 
-    # If job was created and should run immediately, start it in background
     if sync_job and sync_in.run_immediately:
         background_tasks.add_task(
             sync_service.run,
@@ -116,7 +111,6 @@ async def create_sync(
             collection,
             source_connection,
             ctx,
-            usage_guardrail=usage_guardrail,
         )
 
     return sync

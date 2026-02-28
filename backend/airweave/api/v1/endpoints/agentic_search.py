@@ -16,10 +16,11 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.protocols import MetricsService, PubSub
+from airweave.core.events.sync import QueryProcessedEvent
+from airweave.core.protocols import EventBus, MetricsService, PubSub
 from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
-from airweave.domains.usage.protocols import UsageGuardrailProtocol
+from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 from airweave.domains.usage.types import ActionType
 from airweave.search.agentic_search.core.agent import AgenticSearchAgent
 from airweave.search.agentic_search.emitter import (
@@ -39,7 +40,8 @@ async def agentic_search(
     readable_id: str = Path(..., description="The unique readable identifier of the collection"),
     db: AsyncSession = Depends(get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
     metrics_service: MetricsService = Inject(MetricsService),
 ) -> AgenticSearchResponse:
     """Perform agentic search."""
@@ -49,7 +51,7 @@ async def agentic_search(
             detail="AGENTIC_SEARCH feature not enabled for this organization",
         )
 
-    await usage_guardrail.is_allowed(db, ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
     services = await AgenticSearchServices.create(ctx, readable_id)
 
@@ -59,7 +61,7 @@ async def agentic_search(
 
         response = await agent.run(readable_id, request, is_streaming=False)
 
-        await usage_guardrail.increment(db, ActionType.QUERIES)
+        await event_bus.publish(QueryProcessedEvent(organization_id=ctx.organization.id))
 
         return response
     finally:
@@ -72,7 +74,8 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     readable_id: str = Path(..., description="The unique readable identifier of the collection"),
     db: AsyncSession = Depends(get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
     metrics_service: MetricsService = Inject(MetricsService),
     pubsub: PubSub = Inject(PubSub),
 ) -> StreamingResponse:
@@ -96,7 +99,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
         f"mode={request.mode}, filter={request.filter}"
     )
 
-    await usage_guardrail.is_allowed(db, ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
     ps = await pubsub.subscribe("agentic_search", request_id)
     emitter = AgenticSearchPubSubEmitter(request_id, pubsub=pubsub)
@@ -158,7 +161,9 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
                         if event_type == "done":
                             ctx.logger.info(f"[AgenticSearchStream] Done event for {request_id}")
                             try:
-                                await usage_guardrail.increment(db, ActionType.QUERIES)
+                                await event_bus.publish(
+                                    QueryProcessedEvent(organization_id=ctx.organization.id)
+                                )
                             except Exception:
                                 pass
                             break

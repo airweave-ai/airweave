@@ -29,6 +29,7 @@ from airweave.adapters.metrics import (
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
+from airweave.adapters.pubsub.redis import RedisPubSub
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.config import Settings
@@ -36,7 +37,7 @@ from airweave.core.container.container import Container
 from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
 from airweave.core.metrics_service import PrometheusMetricsService
-from airweave.core.protocols import CircuitBreaker, OcrProvider
+from airweave.core.protocols import CircuitBreaker, OcrProvider, PubSub
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import WebhookPublisher
@@ -60,6 +61,7 @@ from airweave.domains.oauth.repository import (
     OAuthRedirectSessionRepository,
     OAuthSourceRepository,
 )
+from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
 from airweave.domains.organizations.repository import UserOrganizationRepository
 from airweave.domains.source_connections.create import SourceConnectionCreationService
@@ -80,9 +82,15 @@ from airweave.domains.syncs.sync_record_service import SyncRecordService
 from airweave.domains.syncs.sync_repository import SyncRepository
 from airweave.domains.temporal.schedule_service import TemporalScheduleService
 from airweave.domains.temporal.service import TemporalWorkflowService
+from airweave.domains.usage.ledger import UsageLedger
+from airweave.domains.usage.limit_checker import UsageLimitChecker, UsageLimitCheckerProtocol
+from airweave.domains.usage.protocols import UsageLedgerProtocol
+from airweave.domains.usage.repository import UsageRepository
+from airweave.domains.usage.subscribers.billing_listener import UsageBillingListener
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.platform.auth.settings import integration_settings
+from airweave.platform.sync.subscribers.progress_relay import SyncProgressRelay
 from airweave.platform.temporal.client import TemporalClient
 
 
@@ -118,6 +126,28 @@ def create_container(settings: Settings) -> Container:
     endpoint_verifier = HttpEndpointVerifier()
 
     # -----------------------------------------------------------------
+    # Billing services
+    # -----------------------------------------------------------------
+    billing_services = _create_billing_services(settings)
+
+    # -----------------------------------------------------------------
+    # Organization repositories
+    # -----------------------------------------------------------------
+    user_org_repo = UserOrganizationRepository()
+
+    # Source Service + Source Lifecycle Service
+    # Auth provider registry is built first, then passed to the source
+    # registry so it can compute supported_auth_providers per source.
+    # Both services share the same source_registry instance.
+    # -----------------------------------------------------------------
+    source_deps = _create_source_services(settings)
+
+    # -----------------------------------------------------------------
+    # Usage domain — checker (read) + ledger (write), both singletons
+    # -----------------------------------------------------------------
+    usage_checker = _create_usage_checker(settings, billing_services, source_deps, user_org_repo)
+    usage_ledger = _create_usage_ledger(settings, billing_services)
+    # -----------------------------------------------------------------
     # Webhook service (composes admin + verifier for API layer)
     # -----------------------------------------------------------------
     webhook_service = WebhookServiceImpl(
@@ -129,17 +159,8 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     # PubSub (realtime message transport — Redis adapter)
     # -----------------------------------------------------------------
-    from airweave.adapters.pubsub.redis import RedisPubSub
 
     pubsub = RedisPubSub()
-
-    # -----------------------------------------------------------------
-    # Event Bus
-    # Fans out domain events to subscribers (webhooks, analytics, etc.)
-    # -----------------------------------------------------------------
-    event_bus, progress_relay = _create_event_bus(
-        webhook_publisher=svix_adapter, settings=settings, pubsub=pubsub
-    )
 
     # -----------------------------------------------------------------
     # Circuit Breaker + OCR
@@ -160,17 +181,18 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     metrics = _create_metrics_service(settings)
 
-    # Source Service + Source Lifecycle Service
-    # Auth provider registry is built first, then passed to the source
-    # registry so it can compute supported_auth_providers per source.
-    # Both services share the same source_registry instance.
-    # -----------------------------------------------------------------
-    source_deps = _create_source_services(settings)
+    event_bus = _create_event_bus(
+        webhook_publisher=svix_adapter,
+        settings=settings,
+        pubsub=pubsub,
+        usage_ledger=usage_ledger,
+    )
 
     # -----------------------------------------------------------------
     # Sync domain services
     # Repos come from source_deps; services are built here.
     # -----------------------------------------------------------------
+
     sync_deps = _create_sync_services(
         event_bus=event_bus,
         sc_repo=source_deps["sc_repo"],
@@ -288,30 +310,8 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
-    # Billing services
+    # Usage billing listener
     # -----------------------------------------------------------------
-    billing_services = _create_billing_services(settings)
-
-    # -----------------------------------------------------------------
-    # Organization repositories
-    # -----------------------------------------------------------------
-    user_org_repo = UserOrganizationRepository()
-
-    # -----------------------------------------------------------------
-    # Usage domain (factory creates per-org enforcement services)
-    # -----------------------------------------------------------------
-    usage_guardrail_factory = _create_usage_guardrail_factory(
-        settings, billing_services, source_deps, user_org_repo
-    )
-
-    # -----------------------------------------------------------------
-    # Billing event subscriber (needs usage_service_factory, so created last)
-    # -----------------------------------------------------------------
-    from airweave.platform.sync.subscribers.billing_handler import SyncBillingHandler
-
-    billing_handler = SyncBillingHandler(usage_service_factory=usage_guardrail_factory)
-    for pattern in billing_handler.EVENT_PATTERNS:
-        event_bus.subscribe(pattern, billing_handler.handle)
 
     return Container(
         billing_service=billing_services["billing_service"],
@@ -353,8 +353,8 @@ def create_container(settings: Settings) -> Container:
         sync_lifecycle=sync_deps["sync_lifecycle"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
-        usage_guardrail_factory=usage_guardrail_factory,
-        progress_relay=progress_relay,
+        usage_checker=usage_checker,
+        usage_ledger=usage_ledger,
     )
 
 
@@ -412,21 +412,23 @@ def _create_metrics_service(settings: Settings) -> PrometheusMetricsService:
 
 
 def _create_event_bus(
-    webhook_publisher: WebhookPublisher, settings: Settings, pubsub=None
-) -> tuple:
+    webhook_publisher: WebhookPublisher,
+    settings: Settings,
+    pubsub: PubSub,
+    usage_ledger: UsageLedgerProtocol,
+) -> EventBus:
     """Create event bus with subscribers wired up.
 
     The event bus fans out domain events to:
     - WebhookEventSubscriber: External webhooks via Svix (all events)
     - AnalyticsEventSubscriber: PostHog analytics tracking
     - SyncProgressRelay: Relays entity batch events to Redis PubSub (entity.*)
-    - SyncBillingHandler: Increments usage counters from batch events (entity.*)
+    - UsageBillingListener: Accumulates usage from entity/query/sync/
+      source_connection events
 
     Returns:
-        Tuple of (event_bus, progress_relay).
+        EventBus
     """
-    from airweave.platform.sync.subscribers.progress_relay import SyncProgressRelay
-
     bus = InMemoryEventBus()
 
     # WebhookEventSubscriber subscribes to * — all domain events
@@ -446,7 +448,13 @@ def _create_event_bus(
     for pattern in progress_relay.EVENT_PATTERNS:
         bus.subscribe(pattern, progress_relay.handle)
 
-    return bus, progress_relay
+    # UsageBillingListener — accumulates usage from entity/query/sync/
+    # source_connection events
+    usage_billing_listener = UsageBillingListener(ledger=usage_ledger)
+    for pattern in usage_billing_listener.EVENT_PATTERNS:
+        bus.subscribe(pattern, usage_billing_listener.handle)
+
+    return bus
 
 
 def _create_circuit_breaker() -> CircuitBreaker:
@@ -701,31 +709,37 @@ def _create_sync_services(
     }
 
 
-def _create_usage_guardrail_factory(
-    settings: "Settings",
+def _create_usage_checker(
+    settings: Settings,
     billing_deps: dict,
     source_deps: dict,
-    user_org_repo: "UserOrganizationRepository",
-):
-    """Create usage service factory: real if billing is enabled, null for local dev."""
-    from airweave.domains.usage.factory import UsageServiceFactory
-    from airweave.domains.usage.repository import UsageRepository
+    user_org_repo: UserOrganizationRepositoryProtocol,
+) -> UsageLimitCheckerProtocol:
+    """Create the singleton UsageLimitChecker."""
+    from airweave.domains.usage.limit_checker import AlwaysAllowLimitChecker
 
     if settings.LOCAL_DEVELOPMENT:
-        from airweave.domains.usage.factory import AlwaysAllowUsageServiceFactory
+        return AlwaysAllowLimitChecker()
 
-        return AlwaysAllowUsageServiceFactory(
-            usage_repo=UsageRepository(),
-            billing_repo=billing_deps["billing_repo"],
-            period_repo=billing_deps["period_repo"],
-            sc_repo=source_deps["sc_repo"],
-            user_org_repo=user_org_repo,
-        )
-
-    return UsageServiceFactory(
+    return UsageLimitChecker(
         usage_repo=UsageRepository(),
         billing_repo=billing_deps["billing_repo"],
         period_repo=billing_deps["period_repo"],
         sc_repo=source_deps["sc_repo"],
         user_org_repo=user_org_repo,
+    )
+
+
+def _create_usage_ledger(settings: Settings, billing_deps: dict) -> UsageLedgerProtocol:
+    """Create the singleton UsageLedger."""
+    from airweave.domains.usage.ledger import NullUsageLedger
+    from airweave.domains.usage.repository import UsageRepository
+
+    if settings.LOCAL_DEVELOPMENT:
+        return NullUsageLedger()
+
+    return UsageLedger(
+        usage_repo=UsageRepository(),
+        billing_repo=billing_deps["billing_repo"],
+        period_repo=billing_deps["period_repo"],
     )

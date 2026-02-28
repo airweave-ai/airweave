@@ -7,9 +7,10 @@ and runtime holds mutable state and service references.
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List
 
+from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
+
 if TYPE_CHECKING:
     from airweave.core.protocols.event_bus import EventBus
-    from airweave.domains.usage.protocols import UsageGuardrailProtocol
     from airweave.platform.destinations._base import BaseDestination
     from airweave.platform.sources._base import BaseSource
     from airweave.platform.sync.cursor import SyncCursor
@@ -28,5 +29,5 @@ class SyncRuntime:
     cursor: "SyncCursor"
     entity_tracker: "EntityTracker"
     event_bus: "EventBus"
-    usage_guardrail: "UsageGuardrailProtocol"
+    usage_checker: "UsageLimitCheckerProtocol"
     destinations: List["BaseDestination"] = field(default_factory=list)

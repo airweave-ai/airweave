@@ -27,6 +27,13 @@ class EntityEventType(str, Enum):
 
     BATCH_PROCESSED = "entity.batch_processed"
 
+
+class QueryEventType(str, Enum):
+    """Query-level event types (emitted after each search completes)."""
+
+    PROCESSED = "query.processed"
+
+
 class AccessControlEventType(str, Enum):
     """Access control event types."""
 
@@ -54,6 +61,7 @@ class SourceConnectionEventType(str, Enum):
 EventType = (
     SyncEventType
     | EntityEventType
+    | QueryEventType
     | AccessControlEventType
     | CollectionEventType
     | SourceConnectionEventType
@@ -64,6 +72,7 @@ EventType = (
 ALL_EVENT_TYPE_ENUMS: tuple[type[Enum], ...] = (
     SyncEventType,
     EntityEventType,
+    QueryEventType,
     AccessControlEventType,
     CollectionEventType,
     SourceConnectionEventType,

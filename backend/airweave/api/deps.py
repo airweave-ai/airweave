@@ -25,7 +25,6 @@ from airweave.core.logging import ContextualLogger, logger
 from airweave.core.rate_limiter_service import RateLimiter
 from airweave.core.shared_models import AuthMethod
 from airweave.db.session import get_db
-from airweave.domains.usage.protocols import UsageGuardrailProtocol
 from airweave.schemas.rate_limit import RateLimitResult
 
 
@@ -624,18 +623,3 @@ def Inject(protocol_type: type):  # noqa: N802 — uppercase to match FastAPI co
         return getattr(c, field_name)
 
     return Depends(_resolve)
-
-
-async def get_usage_guardrail(
-    ctx: ApiContext = Depends(get_context),
-    c: Container = Depends(get_container),
-) -> UsageGuardrailProtocol:
-    """Get a per-organization usage enforcement service.
-
-    Uses the container's factory to create a stateful service instance
-    for the current organization.
-    """
-    return c.usage_guardrail_factory.create(
-        organization_id=ctx.organization.id,
-        logger=ctx.logger.with_context(component="usage"),
-    )

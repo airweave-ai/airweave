@@ -1,10 +1,10 @@
-"""Sync domain events.
-
-These events are published during sync lifecycle transitions
-and consumed by webhooks, analytics, realtime, etc.
+"""Domain events for sync, entity batches, and queries.
 
 EntityBatchProcessedEvent is emitted per resolved batch during sync
-and consumed by billing, progress relay, and (future) delta lake writers.
+and consumed by the billing accumulator, progress relay, and (future) delta lake writers.
+
+QueryProcessedEvent is emitted after a search completes and consumed
+by the billing accumulator for query usage tracking.
 """
 
 from typing import Dict, Optional
@@ -13,7 +13,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from airweave.core.events.base import DomainEvent
-from airweave.core.events.enums import AccessControlEventType, EntityEventType, SyncEventType
+from airweave.core.events.enums import (
+    AccessControlEventType,
+    EntityEventType,
+    QueryEventType,
+    SyncEventType,
+)
 
 
 class TypeActionCounts(BaseModel):
@@ -35,7 +40,7 @@ class EntityBatchProcessedEvent(DomainEvent):
 
     Consumers:
     - SyncProgressRelay: Accumulates deltas, publishes snapshots to Redis PubSub
-    - SyncBillingHandler: Increments usage (inserted + updated)
+    - UsageBillingListener: Accumulates usage (inserted + updated)
     - (future) Delta lake writer: Appends raw event as-is
     """
 
@@ -76,6 +81,19 @@ class AccessControlMembershipBatchProcessedEvent(DomainEvent):
 
     collected: int = 0
     upserted: int = 0
+
+
+class QueryProcessedEvent(DomainEvent):
+    """Emitted after a search (or agentic search) completes.
+
+    Consumed by UsageBillingListener to record query usage.
+    """
+
+    event_type: QueryEventType = QueryEventType.PROCESSED
+
+    collection_id: Optional[UUID] = None
+    queries: int = 1
+    billable: bool = True
 
 
 class SyncLifecycleEvent(DomainEvent):

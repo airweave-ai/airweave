@@ -10,12 +10,15 @@ The factory is responsible for:
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.core.config import settings
+
+# TODO: Remove this once we have pipe our DI framework to the sync factory
+from airweave.core.container import container
 from airweave.core.context import BaseContext
 from airweave.core.logging import LoggerConfigurator, logger
 from airweave.platform.builders import SyncContextBuilder
@@ -36,12 +39,6 @@ from airweave.platform.sync.pipeline.acl_membership_tracker import ACLMembership
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
 from airweave.platform.sync.stream import AsyncSourceStream
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
-
-# TODO: Remove this once we have pipe our DI framework to the sync factory
-from airweave.core.container import container
-
-if TYPE_CHECKING:
-    from airweave.domains.usage.protocols import UsageGuardrailProtocol
 
 
 class SyncFactory:
@@ -64,7 +61,6 @@ class SyncFactory:
         max_workers: int = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
-        usage_guardrail: Optional["UsageGuardrailProtocol"] = None,
     ) -> SyncOrchestrator:
         """Create a dedicated orchestrator instance for a sync run."""
         if max_workers is None:
@@ -130,7 +126,6 @@ class SyncFactory:
             entity_map=entity_map,
             force_full_sync=force_full_sync,
             execution_config=resolved_config,
-            usage_guardrail=usage_guardrail,
         )
 
         # Step 4: Assemble SyncRuntime (live services)
@@ -140,7 +135,7 @@ class SyncFactory:
             destinations=destinations,
             entity_tracker=entity_tracker_result,
             event_bus=container.event_bus,
-            usage_guardrail=usage_guardrail,
+            usage_checker=container.usage_checker,
         )
 
         logger.debug(f"Context + runtime built in {time.time() - init_start:.2f}s")
@@ -249,7 +244,13 @@ class SyncFactory:
         )
 
     @classmethod
-    async def _build_tracking(cls, db: AsyncSession, sync: schemas.Sync, sync_job: schemas.SyncJob, ctx: BaseContext) -> EntityTracker:
+    async def _build_tracking(
+        cls,
+        db: AsyncSession,
+        sync: schemas.Sync,
+        sync_job: schemas.SyncJob,
+        ctx: BaseContext,
+    ) -> EntityTracker:
         """Build tracking components. Returns EntityTracker."""
         track_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.tracking_build",

@@ -17,7 +17,7 @@ from airweave.domains.billing.types import get_plan_limits
 from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.usage.exceptions import PaymentRequiredError, UsageLimitExceededError
-from airweave.domains.usage.protocols import UsageGuardrailProtocol
+from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 from airweave.domains.usage.types import ActionType
 from airweave.models import BillingPeriod, Usage
 from airweave.schemas.organization_billing import BillingPlan
@@ -58,7 +58,7 @@ async def check_actions(
     request: ActionCheckRequest,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
 ) -> ActionCheckResponse:
     """Check multiple actions for usage limits and billing status.
 
@@ -85,7 +85,12 @@ async def check_actions(
 
         try:
             # Check if the action is allowed
-            is_allowed = await usage_guardrail.is_allowed(db, action_type, amount=amount)
+            is_allowed = await usage_checker.is_allowed(
+                db,
+                ctx.organization.id,
+                action_type,
+                amount=amount,
+            )
 
             results[action] = schemas.SingleActionCheckResponse(
                 allowed=is_allowed, action=action, reason=None, details=None
@@ -106,7 +111,11 @@ async def check_actions(
                 allowed=False,
                 action=action,
                 reason="usage_limit_exceeded",
-                details={"message": str(e), "current_usage": e.current_usage, "limit": e.limit},
+                details={
+                    "message": str(e),
+                    "current_usage": e.current_usage,
+                    "limit": e.limit,
+                },
             )
 
         except Exception as e:
@@ -128,7 +137,7 @@ async def check_action(
     amount: int = Query(1, ge=1, description="Number of units to check (default 1)"),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
 ) -> schemas.SingleActionCheckResponse:
     """Check a single action for usage limits and billing status."""
     try:
@@ -143,7 +152,12 @@ async def check_action(
         )
 
     try:
-        is_allowed = await usage_guardrail.is_allowed(db, action_type, amount=amount)
+        is_allowed = await usage_checker.is_allowed(
+            db,
+            ctx.organization.id,
+            action_type,
+            amount=amount,
+        )
         return schemas.SingleActionCheckResponse(
             allowed=is_allowed, action=action, reason=None, details=None
         )
@@ -159,7 +173,11 @@ async def check_action(
             allowed=False,
             action=action,
             reason="usage_limit_exceeded",
-            details={"message": str(e), "current_usage": e.current_usage, "limit": e.limit},
+            details={
+                "message": str(e),
+                "current_usage": e.current_usage,
+                "limit": e.limit,
+            },
         )
     except Exception as e:
         ctx.logger.error(f"Unexpected error checking action {action}: {str(e)}")

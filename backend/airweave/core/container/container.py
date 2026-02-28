@@ -65,7 +65,7 @@ from airweave.domains.temporal.protocols import (
     TemporalScheduleServiceProtocol,
     TemporalWorkflowServiceProtocol,
 )
-from airweave.domains.usage.protocols import UsageServiceFactoryProtocol
+from airweave.domains.usage.protocols import UsageLedgerProtocol, UsageLimitCheckerProtocol
 
 
 @dataclass(frozen=True)
@@ -158,15 +158,11 @@ class Container:
     billing_service: BillingServiceProtocol
     billing_webhook: BillingWebhookProtocol
 
-    # Usage domain (factory creates per-org stateful services)
-    usage_guardrail_factory: UsageServiceFactoryProtocol
+    # Usage domain — read (checker) + write (ledger), both singletons
+    usage_checker: UsageLimitCheckerProtocol
+    usage_ledger: UsageLedgerProtocol
 
     payment_gateway: PaymentGatewayProtocol
-
-    # Sync progress relay (global singleton, auto-initializes from sync.running events)
-    # Typed as Any to avoid circular import — concrete type is SyncProgressRelay
-    progress_relay: Any = None
-
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured
     ocr_provider: Optional[OcrProvider] = None

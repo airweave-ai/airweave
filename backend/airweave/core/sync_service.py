@@ -1,6 +1,6 @@
 """Refactored sync service with Temporal-only execution."""
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -18,9 +18,6 @@ from airweave.models.sync_job import SyncJob
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.factory import SyncFactory
 from airweave.platform.temporal.schedule_service import temporal_schedule_service
-
-if TYPE_CHECKING:
-    from airweave.domains.usage.protocols import UsageGuardrailProtocol
 
 
 class SyncService:
@@ -105,7 +102,6 @@ class SyncService:
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
-        usage_guardrail: Optional["UsageGuardrailProtocol"] = None,
     ) -> schemas.Sync:
         """Run a sync.
 
@@ -121,7 +117,6 @@ class SyncService:
             force_full_sync (bool): If True, forces a full sync with orphaned entity deletion.
             execution_config (Optional[SyncConfig]): Optional execution config
                 for controlling sync behavior (destination filtering, handler toggles, etc.)
-            usage_guardrail: Optional usage enforcement service for tracking and limits.
 
         Returns:
         -------
@@ -129,7 +124,6 @@ class SyncService:
         """
         try:
             async with get_db_context() as db:
-                # Create dedicated orchestrator instance
                 orchestrator = await SyncFactory.create_orchestrator(
                     db=db,
                     sync=sync,
@@ -140,7 +134,6 @@ class SyncService:
                     access_token=access_token,
                     force_full_sync=force_full_sync,
                     execution_config=execution_config,
-                    usage_guardrail=usage_guardrail,
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")

@@ -7,6 +7,7 @@ from typing import Optional
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
+from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
@@ -15,7 +16,6 @@ from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
 )
-from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
 from airweave.domains.usage.types import ActionType
 from airweave.platform.contexts import SyncContext
 from airweave.platform.contexts.runtime import SyncRuntime
@@ -62,9 +62,6 @@ class SyncOrchestrator:
 
     async def run(self) -> schemas.Sync:
         """Execute the synchronization process."""
-        final_status = SyncJobStatus.FAILED  # Default to failed, will be updated based on outcome
-        error_message: Optional[str] = None  # Track error message for finalization
-
         # Register worker pool for metrics tracking (using sync_id and sync_job_id)
         # Format: sync_{sync_id}_job_{sync_job_id} for easier parsing in metrics
         pool_id = f"sync_{self.sync_context.sync.id}_job_{self.sync_context.sync_job.id}"
@@ -119,18 +116,14 @@ class SyncOrchestrator:
             await self._complete_sync()
             self.sync_context.logger.info(f"✅ PHASE 4 complete ({time.time() - phase_start:.2f}s)")
 
-            final_status = SyncJobStatus.COMPLETED
             return self.sync_context.sync
         except asyncio.CancelledError:
             # Cooperative cancellation: ensure producer and ALL pending tasks are stopped
             self.sync_context.logger.info("Cancellation requested, handling gracefully...")
             await self._handle_cancellation()
-            final_status = SyncJobStatus.CANCELLED
             raise
         except Exception as e:
-            error_message = get_error_message(e)
             await self._handle_sync_failure(e)
-            final_status = SyncJobStatus.FAILED
             raise
         finally:
             # Note: Removed aggregate metrics recording (histograms/counters)
@@ -152,14 +145,15 @@ class SyncOrchestrator:
                     },
                 )
 
-            # Always flush usage service usage to prevent data loss
+            # Flush the usage ledger for this org to prevent data loss
             try:
-                self.sync_context.logger.info("Flushing usage service usage data...")
-                async with get_db_context() as db:
-                    await self.runtime.usage_guardrail.flush_all(db)
+                self.sync_context.logger.info("Flushing usage ledger...")
+                from airweave.core.container import container as _container
+
+                await _container.usage_ledger.flush(self.sync_context.organization.id)
             except Exception as flush_error:
                 self.sync_context.logger.error(
-                    f"Failed to flush usage service usage: {flush_error}", exc_info=True
+                    f"Failed to flush usage ledger: {flush_error}", exc_info=True
                 )
 
             # Always cleanup temp files to prevent pod eviction
@@ -212,7 +206,9 @@ class SyncOrchestrator:
                 if not self.sync_context.execution_config.behavior.skip_guardrails:
                     try:
                         async with get_db_context() as db:
-                            await self.runtime.usage_guardrail.is_allowed(db, ActionType.ENTITIES)
+                            await self.runtime.usage_checker.is_allowed(
+                                db, self.sync_context.organization.id, ActionType.ENTITIES
+                            )
                     except (
                         UsageLimitExceededError,
                         PaymentRequiredError,

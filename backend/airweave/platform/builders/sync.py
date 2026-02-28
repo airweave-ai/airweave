@@ -4,7 +4,7 @@ Builds the data-only SyncContext. Live services (source, destinations, trackers)
 are built by SyncFactory directly using the sub-builders.
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,9 +14,6 @@ from airweave.core.context import BaseContext
 from airweave.core.logging import ContextualLogger, LoggerConfigurator
 from airweave.platform.contexts.sync import SyncContext
 from airweave.platform.sync.config import SyncConfig
-
-if TYPE_CHECKING:
-    from airweave.domains.usage.protocols import UsageGuardrailProtocol
 
 
 class SyncContextBuilder:
@@ -39,7 +36,6 @@ class SyncContextBuilder:
         entity_map: dict,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
-        usage_guardrail: Optional["UsageGuardrailProtocol"] = None,
     ) -> SyncContext:
         """Build data-only SyncContext.
 
@@ -55,7 +51,6 @@ class SyncContextBuilder:
             entity_map: Entity class to definition ID mapping
             force_full_sync: If True, forces a full sync
             execution_config: Optional execution config
-            usage_guardrail: Optional usage enforcement service for limit tracking
 
         Returns:
             SyncContext with all data fields populated.

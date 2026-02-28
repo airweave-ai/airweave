@@ -19,8 +19,7 @@ from airweave.domains.billing.fakes.repository import (
 from airweave.domains.organizations.fakes.repository import FakeUserOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.usage.fakes.repository import FakeUsageRepository
-from airweave.domains.usage.factory import NullUsageServiceFactory, UsageServiceFactory
-from airweave.domains.usage.service import UsageGuardrailService
+from airweave.domains.usage.limit_checker import UsageLimitCheckService
 from airweave.models.billing_period import BillingPeriod
 from airweave.models.organization_billing import OrganizationBilling
 from airweave.models.usage import Usage as UsageModel
@@ -141,56 +140,35 @@ def _make_usage_model(
     return UsageModel(**defaults)
 
 
-def _make_service(
+def _make_checker(
     *,
     usage_repo: Optional[FakeUsageRepository] = None,
     billing_repo: Optional[FakeOrganizationBillingRepository] = None,
     period_repo: Optional[FakeBillingPeriodRepository] = None,
     sc_repo: Optional[FakeSourceConnectionRepository] = None,
     user_org_repo: Optional[FakeUserOrganizationRepository] = None,
-    org_id: UUID = DEFAULT_ORG_ID,
 ) -> tuple[
-    UsageGuardrailService,
+    UsageLimitCheckService,
     FakeUsageRepository,
     FakeOrganizationBillingRepository,
     FakeBillingPeriodRepository,
     FakeSourceConnectionRepository,
     FakeUserOrganizationRepository,
 ]:
-    """Build a UsageGuardrailService wired to fakes. Returns (service, *fakes)."""
+    """Build a UsageLimitCheckService wired to fakes. Returns (checker, *fakes)."""
     ur = usage_repo or FakeUsageRepository()
     br = billing_repo or FakeOrganizationBillingRepository()
     pr = period_repo or FakeBillingPeriodRepository()
     sc = sc_repo or FakeSourceConnectionRepository()
     uo = user_org_repo or FakeUserOrganizationRepository()
-    svc = UsageGuardrailService(
-        organization_id=org_id,
+    checker = UsageLimitCheckService(
         usage_repo=ur,
         billing_repo=br,
         period_repo=pr,
         sc_repo=sc,
         user_org_repo=uo,
-        logger=logger.with_context(component="test-usage"),
     )
-    return svc, ur, br, pr, sc, uo
-
-
-def _make_factory(
-    *,
-    usage_repo: Optional[FakeUsageRepository] = None,
-    billing_repo: Optional[FakeOrganizationBillingRepository] = None,
-    period_repo: Optional[FakeBillingPeriodRepository] = None,
-    sc_repo: Optional[FakeSourceConnectionRepository] = None,
-    user_org_repo: Optional[FakeUserOrganizationRepository] = None,
-) -> UsageServiceFactory:
-    """Build a UsageServiceFactory wired to fakes."""
-    return UsageServiceFactory(
-        usage_repo=usage_repo or FakeUsageRepository(),
-        billing_repo=billing_repo or FakeOrganizationBillingRepository(),
-        period_repo=period_repo or FakeBillingPeriodRepository(),
-        sc_repo=sc_repo or FakeSourceConnectionRepository(),
-        user_org_repo=user_org_repo or FakeUserOrganizationRepository(),
-    )
+    return checker, ur, br, pr, sc, uo
 
 
 # ---------------------------------------------------------------------------

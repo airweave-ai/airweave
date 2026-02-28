@@ -1,51 +1,52 @@
-"""Usage domain protocols."""
+"""Usage domain protocols — split into read (checker) and write (ledger) concerns.
 
-from typing import Protocol, runtime_checkable
+UsageLimitChecker: Singleton that checks limits given an org_id per call.
+UsageLedger: Singleton that accumulates and flushes usage.
+"""
+
+from typing import Optional, Protocol, runtime_checkable
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.core.logging import ContextualLogger
 from airweave.domains.usage.types import ActionType
 
 
 @runtime_checkable
-class UsageGuardrailProtocol(Protocol):
-    """Per-organization usage tracking and limit enforcement."""
+class UsageLimitCheckerProtocol(Protocol):
+    """Singleton, read-only usage limit enforcement.
 
-    async def is_allowed(self, db: AsyncSession, action_type: ActionType, amount: int = 1) -> bool:
+    Checks billing status and current usage against plan limits.
+    Maintains a short-lived internal cache keyed by org_id.
+    """
+
+    async def is_allowed(
+        self,
+        db: AsyncSession,
+        organization_id: UUID,
+        action_type: ActionType,
+        amount: int = 1,
+    ) -> bool:
         """Check whether *amount* units of *action_type* are allowed.
 
-        Returns True if allowed, raises UsageLimitExceededError or
+        Returns True if allowed; raises UsageLimitExceededError or
         PaymentRequiredError if not.
         """
         ...
 
-    async def increment(self, db: AsyncSession, action_type: ActionType, amount: int = 1) -> None:
-        """Buffer an increment; flushes to DB when threshold is reached."""
-        ...
-
-    async def decrement(self, db: AsyncSession, action_type: ActionType, amount: int = 1) -> None:
-        """Buffer a decrement; flushes to DB when threshold is reached."""
-        ...
-
-    async def flush_all(self, db: AsyncSession) -> None:
-        """Flush all pending increments to the database."""
-        ...
-
 
 @runtime_checkable
-class UsageServiceFactoryProtocol(Protocol):
-    """Factory that creates per-organization UsageGuardrailProtocol instances.
+class UsageLedgerProtocol(Protocol):
+    """Singleton that accumulates billable usage and flushes to DB.
 
-    Lives on the Container as a singleton. The factory holds shared repository
-    dependencies; ``create()`` builds a stateful, per-org service instance.
+    Owns its own DB sessions internally — callers never pass a session.
+    One instance in the container, shared across all subscribers and sync runs.
     """
 
-    def create(
-        self,
-        organization_id: UUID,
-        logger: ContextualLogger,
-    ) -> UsageGuardrailProtocol:
-        """Create a new enforcement service for *organization_id*."""
+    async def record(self, organization_id: UUID, action_type: ActionType, amount: int = 1) -> None:
+        """Accumulate a billable action. May flush internally on threshold."""
+        ...
+
+    async def flush(self, organization_id: Optional[UUID] = None) -> None:
+        """Force-flush pending records to DB. None = flush all orgs."""
         ...

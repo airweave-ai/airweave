@@ -17,17 +17,15 @@ import traceback
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
+
+from temporalio import activity
 
 from airweave import schemas
 from airweave.core.context import BaseContext
-from airweave.core.redis_client import redis_client
-from airweave.domains.usage.protocols import UsageGuardrailProtocol, UsageServiceFactoryProtocol
-
 from airweave.core.protocols import EventBus
-
-from temporalio import activity
+from airweave.core.redis_client import redis_client
 
 # =============================================================================
 # Run Sync Activity
@@ -50,7 +48,6 @@ class RunSyncActivity:
     """
 
     event_bus: EventBus
-    usage_guardrail_factory: UsageServiceFactoryProtocol
 
     @activity.defn(name="run_sync_activity")
     async def run(  # noqa: C901
@@ -88,8 +85,6 @@ class RunSyncActivity:
 
         ctx = BaseContext(organization=organization)
         ctx.logger = ctx.logger.with_context(sync_job_id=str(sync_job.id))
-
-        usage_guardrail = self.usage_guardrail_factory.create(organization.id, ctx.logger)
 
         # Fetch fresh sync and collection from DB to avoid stale data
         # (Temporal schedules bake sync_dict at creation time, which can
@@ -185,7 +180,6 @@ class RunSyncActivity:
                     collection,
                     connection,
                     ctx,
-                    usage_guardrail,
                     access_token,
                     force_full_sync,
                 )
@@ -390,7 +384,6 @@ class RunSyncActivity:
         collection: schemas.Collection,
         connection: schemas.Connection,
         ctx: BaseContext,
-        usage_guardrail: UsageGuardrailProtocol,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
     ):
@@ -424,7 +417,6 @@ class RunSyncActivity:
                 access_token=access_token,
                 force_full_sync=force_full_sync,
                 execution_config=execution_config,
-                usage_guardrail=usage_guardrail,
             )
         except NotFoundException as e:
             if "Source connection record not found" in str(e) or "Connection not found" in str(e):

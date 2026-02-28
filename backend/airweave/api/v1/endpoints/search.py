@@ -23,9 +23,10 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.protocols import PubSub
+from airweave.core.events.sync import QueryProcessedEvent
+from airweave.core.protocols import EventBus, PubSub
 from airweave.db.session import AsyncSessionLocal
-from airweave.domains.usage.protocols import UsageGuardrailProtocol
+from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 from airweave.domains.usage.types import ActionType
 from airweave.schemas.errors import (
     NotFoundErrorResponse,
@@ -104,12 +105,13 @@ async def search_get_legacy(
         json_schema_extra={"example": 0.3},
     ),
     db: AsyncSession = Depends(deps.get_db),
-    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
     ctx: ApiContext = Depends(deps.get_context),
     pubsub: PubSub = Inject(PubSub),
 ) -> LegacySearchResponse:
     """Legacy GET search endpoint for backwards compatibility."""
-    await usage_guardrail.is_allowed(db, ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
     # Add deprecation warning headers
     response.headers["X-API-Deprecation"] = "true"
@@ -145,7 +147,7 @@ async def search_get_legacy(
     # Convert back to legacy format
     legacy_response = convert_new_response_to_legacy(new_response, response_type)
 
-    await usage_guardrail.increment(db, ActionType.QUERIES)
+    await event_bus.publish(QueryProcessedEvent(organization_id=ctx.organization.id))
 
     return legacy_response
 
@@ -187,12 +189,13 @@ async def search(
     ),
     search_request: Union[SearchRequest, LegacySearchRequest] = ...,
     db: AsyncSession = Depends(deps.get_db),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     pubsub: PubSub = Inject(PubSub),
 ) -> Union[SearchResponse, LegacySearchResponse]:
     """Search your collection with AI-powered semantic search."""
-    await usage_guardrail.is_allowed(db, ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
     ctx.logger.info(f"Starting search for collection '{readable_id}'")
 
@@ -233,7 +236,7 @@ async def search(
     )
 
     ctx.logger.info(f"Search completed for collection '{readable_id}'")
-    await usage_guardrail.increment(db, ActionType.QUERIES)
+    await event_bus.publish(QueryProcessedEvent(organization_id=ctx.organization.id))
 
     # Convert response back to legacy format if needed
     if is_legacy:
@@ -249,8 +252,9 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
     ),
     search_request: Union[SearchRequest, LegacySearchRequest] = ...,
     db: AsyncSession = Depends(deps.get_db),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
     ctx: ApiContext = Depends(deps.get_context),
-    usage_guardrail: UsageGuardrailProtocol = Depends(deps.get_usage_guardrail),
     pubsub: PubSub = Inject(PubSub),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming endpoint for advanced search.
@@ -263,7 +267,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
         f"[SearchStream] Starting stream for collection '{readable_id}' id={request_id}"
     )
 
-    await usage_guardrail.is_allowed(db, ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
     if isinstance(search_request, LegacySearchRequest):
         ctx.logger.debug("Processing legacy streaming search request")
@@ -353,7 +357,9 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                                 "Closing stream"
                             )
                             try:
-                                await usage_guardrail.increment(db, ActionType.QUERIES)
+                                await event_bus.publish(
+                                    QueryProcessedEvent(organization_id=ctx.organization.id)
+                                )
                             except Exception:
                                 pass
                             break
