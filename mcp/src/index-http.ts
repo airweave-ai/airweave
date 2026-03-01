@@ -159,6 +159,7 @@ app.post('/mcp', async (req: express.Request & { auth?: AuthInfo }, res) => {
         if (isOAuthRequest) {
             try {
                 organizationId = await resolveOrganizationForCollection(apiKey, baseUrl, collection);
+                console.log(`[${new Date().toISOString()}] Resolved org=${organizationId} for collection=${collection}`);
             } catch (err) {
                 console.error(`[${new Date().toISOString()}] Org resolution failed:`, err);
                 res.status(400).json({

@@ -30,6 +30,7 @@ export class AirweaveClient {
         }
 
         try {
+            console.log(`[search] collection=${this.config.collection} baseUrl=${this.config.baseUrl} orgId=${this.config.organizationId || 'none'}`);
             const response = await this.client.collections.search(this.config.collection, searchRequest);
             return response;
         } catch (error: unknown) {

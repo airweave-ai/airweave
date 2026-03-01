@@ -39,24 +39,30 @@ async function fetchOrganizations(token: string, baseUrl: string): Promise<OrgIn
     return res.json() as Promise<OrgInfo[]>;
 }
 
+interface CollectionInfo {
+    readable_id: string;
+}
+
 async function probeCollection(
     token: string,
     baseUrl: string,
     orgId: string,
     collection: string,
 ): Promise<boolean> {
-    const url = `${baseUrl}/collections/${encodeURIComponent(collection)}`;
+    const url = `${baseUrl}/collections/?search=${encodeURIComponent(collection)}&limit=5`;
     const res = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`,
             'X-Organization-ID': orgId,
         },
     });
-    if (res.ok) return true;
-    if (res.status === 404) return false;
-    // Unexpected status -- consume body and surface the error
-    const body = await res.text();
-    throw new Error(`Unexpected response probing collection in org ${orgId} (${res.status}): ${body}`);
+    if (!res.ok) {
+        if (res.status === 404) return false;
+        const body = await res.text();
+        throw new Error(`Unexpected response probing collection in org ${orgId} (${res.status}): ${body}`);
+    }
+    const results = await res.json() as CollectionInfo[];
+    return results.some(c => c.readable_id === collection);
 }
 
 /**
@@ -77,13 +83,6 @@ export async function resolveOrganizationForCollection(
     const orgs = await fetchOrganizations(token, baseUrl);
     if (orgs.length === 0) {
         throw new Error('User does not belong to any organization');
-    }
-
-    // Fast path: single org -- skip the probe
-    if (orgs.length === 1) {
-        const orgId = orgs[0].id;
-        storeCache(key, orgId);
-        return orgId;
     }
 
     for (const org of orgs) {
