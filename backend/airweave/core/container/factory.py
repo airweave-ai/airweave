@@ -39,6 +39,7 @@ from airweave.core.logging import logger
 from airweave.core.metrics_service import PrometheusMetricsService
 from airweave.core.protocols import CircuitBreaker, OcrProvider, PubSub
 from airweave.core.protocols.event_bus import EventBus
+from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
@@ -132,6 +133,18 @@ def create_container(settings: Settings) -> Container:
     # Webhooks (Svix adapter)
     # SvixAdapter implements both WebhookPublisher and WebhookAdmin
     # -----------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # Context cache (Redis-backed, used by deps.py hot path)
+    # -----------------------------------------------------------------
+    from airweave.adapters.cache.redis import RedisContextCache
+
+    context_cache = RedisContextCache(redis_client=redis_client.client)
+
+    # -----------------------------------------------------------------
+    # Rate limiter (Redis-backed or Null for local dev / disabled)
+    # -----------------------------------------------------------------
+    rate_limiter = _create_rate_limiter(settings)
+
     svix_adapter = SvixAdapter()
 
     # -----------------------------------------------------------------
@@ -143,6 +156,11 @@ def create_container(settings: Settings) -> Container:
     # Billing services
     # -----------------------------------------------------------------
     billing_services = _create_billing_services(settings)
+
+    # -----------------------------------------------------------------
+    # Identity provider (Auth0 / Null)
+    # -----------------------------------------------------------------
+    identity_provider = _create_identity_provider(settings)
 
     # -----------------------------------------------------------------
     # Organization repositories
@@ -200,6 +218,20 @@ def create_container(settings: Settings) -> Container:
         settings=settings,
         pubsub=pubsub,
         usage_ledger=usage_ledger,
+        context_cache=context_cache,
+    )
+
+    # -----------------------------------------------------------------
+    # Organization domain service
+    # -----------------------------------------------------------------
+    org_service = _create_organization_service(
+        identity_provider=identity_provider,
+        payment_gateway=billing_services["payment_gateway"],
+        billing_ops=billing_services.get("billing_ops"),
+        billing_repo=billing_services["billing_repo"],
+        webhook_admin=svix_adapter,
+        event_bus=event_bus,
+        user_org_repo=user_org_repo,
     )
 
     # -----------------------------------------------------------------
@@ -349,6 +381,8 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
 
     return Container(
+        context_cache=context_cache,
+        rate_limiter=rate_limiter,
         billing_service=billing_services["billing_service"],
         billing_webhook=billing_services["billing_webhook"],
         collection_service=collection_service,
@@ -394,6 +428,8 @@ def create_container(settings: Settings) -> Container:
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
         usage_checker=usage_checker,
         usage_ledger=usage_ledger,
+        identity_provider=identity_provider,
+        organization_service=org_service,
     )
 
 
@@ -455,6 +491,7 @@ def _create_event_bus(
     settings: Settings,
     pubsub: PubSub,
     usage_ledger: UsageLedgerProtocol,
+    context_cache=None,
 ) -> EventBus:
     """Create event bus with subscribers wired up.
 
@@ -492,6 +529,15 @@ def _create_event_bus(
     usage_billing_listener = UsageBillingListener(ledger=usage_ledger)
     for pattern in usage_billing_listener.EVENT_PATTERNS:
         bus.subscribe(pattern, usage_billing_listener.handle)
+
+    # DonkeNotificationSubscriber — best-effort signup notification
+    from airweave.domains.organizations.subscribers.donke_notification import (
+        DonkeNotificationSubscriber,
+    )
+
+    donke_subscriber = DonkeNotificationSubscriber()
+    for pattern in donke_subscriber.EVENT_PATTERNS:
+        bus.subscribe(pattern, donke_subscriber.handle)
 
     return bus
 
@@ -718,6 +764,7 @@ def _create_billing_services(settings: Settings) -> dict:
     return {
         "billing_service": billing_service,
         "billing_webhook": billing_webhook,
+        "billing_ops": billing_ops,
         "payment_gateway": payment_gateway,
         "billing_repo": billing_repo,
         "period_repo": period_repo,
@@ -830,3 +877,74 @@ def _create_usage_ledger(settings: Settings, billing_deps: dict) -> UsageLedgerP
         billing_repo=billing_deps["billing_repo"],
         period_repo=billing_deps["period_repo"],
     )
+
+
+def _create_identity_provider(settings: Settings) -> IdentityProvider:
+    """Create identity provider: Auth0 if enabled, otherwise null implementation."""
+    if settings.AUTH_ENABLED:
+        from airweave.adapters.identity.auth0 import auth0_management_client
+
+        if auth0_management_client:
+            from airweave.adapters.identity.auth0 import Auth0IdentityProvider
+
+            return Auth0IdentityProvider(client=auth0_management_client)
+
+    from airweave.adapters.identity.null import NullIdentityProvider
+
+    return NullIdentityProvider()
+
+
+def _create_organization_service(
+    *,
+    identity_provider: IdentityProvider,
+    payment_gateway: "PaymentGatewayProtocol",
+    billing_ops,
+    billing_repo,
+    webhook_admin,
+    event_bus,
+    user_org_repo,
+):
+    """Build the organization service with lifecycle + provisioning sub-modules."""
+    from airweave.domains.organizations.operations import OrganizationLifecycleOperations
+    from airweave.domains.organizations.provisioning.operations import ProvisioningOperations
+    from airweave.domains.organizations.repository import OrganizationRepository
+    from airweave.domains.organizations.service import OrganizationService
+
+    org_repo = OrganizationRepository()
+
+    lifecycle_ops = OrganizationLifecycleOperations(
+        org_repo=org_repo,
+        user_org_repo=user_org_repo,
+        identity_provider=identity_provider,
+        payment_gateway=payment_gateway,
+        billing_ops=billing_ops,
+        billing_repo=billing_repo,
+        webhook_admin=webhook_admin,
+        event_bus=event_bus,
+    )
+    provisioning_ops = ProvisioningOperations(
+        org_repo=org_repo,
+        user_org_repo=user_org_repo,
+        identity_provider=identity_provider,
+    )
+
+    return OrganizationService(
+        lifecycle_ops=lifecycle_ops,
+        provisioning_ops=provisioning_ops,
+        org_repo=org_repo,
+        user_org_repo=user_org_repo,
+        identity_provider=identity_provider,
+        event_bus=event_bus,
+    )
+
+
+def _create_rate_limiter(settings: Settings):
+    """Create rate limiter: Redis if enabled, otherwise null (always allow)."""
+    if settings.LOCAL_DEVELOPMENT or settings.DISABLE_RATE_LIMIT:
+        from airweave.adapters.rate_limiter.null import NullRateLimiter
+
+        return NullRateLimiter()
+
+    from airweave.adapters.rate_limiter.redis import RedisRateLimiter
+
+    return RedisRateLimiter(redis_client=redis_client.client)

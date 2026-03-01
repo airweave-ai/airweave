@@ -130,6 +130,17 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 check_untyped_defs = true
 
+[[tool.mypy.overrides]]
+module = [
+    "airweave.*.tests.*",
+    "airweave.*.*.tests.*",
+    "airweave.*.*.*.tests.*",
+    "airweave.*.fakes.*",
+    "airweave.*.*.fakes.*",
+]
+disallow_untyped_defs = false
+disable_error_code = ["arg-type", "method-assign", "call-arg", "assignment"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -137,13 +148,14 @@ extend-exclude = ["alembic", "local.py", "fern/**", "tests"]
 
 [tool.ruff.lint]
 select = [
-    "E", # pycodestyle errors
-    "W", # pycodestyle warnings
-    "F", # pyflakes
-    "I", # isort
-    "C", # flake8-comprehensions
-    "B", # flake8-bugbear
-    "D", # flake8-docstrings
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "C",      # flake8-comprehensions
+    "B",      # flake8-bugbear
+    "D",      # flake8-docstrings
+    "PLC0415", # import-outside-top-level
 ]
 ignore = [
     "B008",  # ignore fastapi dependency injection warning
@@ -155,6 +167,9 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["D104"]
+"**/tests/**" = ["D100", "D101", "D102", "D103", "D107"]
+"**/fakes/**" = ["D102", "D107"]
+"**/fake.py" = ["D102", "D107"]
 
 [tool.ruff.format]
 quote-style = "double"

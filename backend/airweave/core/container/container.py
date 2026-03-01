@@ -15,16 +15,19 @@ from typing import Any, Optional
 
 from airweave.core.protocols import (
     CircuitBreaker,
+    ContextCache,
     EndpointVerifier,
     EventBus,
     HealthServiceProtocol,
     MetricsService,
     OcrProvider,
     PubSub,
+    RateLimiter,
     WebhookAdmin,
     WebhookPublisher,
     WebhookServiceProtocol,
 )
+from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
@@ -48,7 +51,10 @@ from airweave.domains.oauth.protocols import (
     OAuthInitSessionRepositoryProtocol,
     OAuthRedirectSessionRepositoryProtocol,
 )
-from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
+from airweave.domains.organizations.protocols import (
+    OrganizationServiceProtocol,
+    UserOrganizationRepositoryProtocol,
+)
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
@@ -92,6 +98,12 @@ class Container:
         async def my_endpoint(event_bus: EventBus = Inject(EventBus)):
             await event_bus.publish(...)
     """
+
+    # Context cache (Redis-backed, used by deps.py hot path)
+    context_cache: ContextCache
+
+    # Rate limiter (Redis-backed sliding window, Null for local dev)
+    rate_limiter: RateLimiter
 
     # Health service — readiness check facade
     health: HealthServiceProtocol
@@ -169,6 +181,12 @@ class Container:
     usage_ledger: UsageLedgerProtocol
 
     payment_gateway: PaymentGatewayProtocol
+
+    # Identity provider (Auth0 / Null / Fake)
+    identity_provider: IdentityProvider
+
+    # Organization domain service (lifecycle + membership + provisioning)
+    organization_service: OrganizationServiceProtocol
 
     # Embedder registries (static reference data, built once at startup)
     dense_embedder_registry: DenseEmbedderRegistryProtocol

@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from airweave.analytics.service import analytics
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.exceptions import (
@@ -720,7 +721,4 @@ async def _track_api_call_async(
     # Determine event name
     event_name = "api_call_error" if response.status_code >= 400 else "api_call"
 
-    # Track event using contextual analytics service
-    # This automatically adds: auth_method, organization_name, request_id,
-    # user_agent, client_name, sdk_name, session_id, and other headers
-    context.analytics.track_event(event_name, properties)
+    analytics.track_event(event_name, properties, ctx=context)

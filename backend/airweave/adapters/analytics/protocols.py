@@ -23,3 +23,15 @@ class AnalyticsTrackerProtocol(Protocol):
         errors are logged, never raised.
         """
         ...
+
+    def group_identify(
+        self,
+        group_type: str,
+        group_key: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Set properties on a group (e.g. organization).
+
+        Maps to PostHog's group_identify / set_group_properties.
+        """
+        ...

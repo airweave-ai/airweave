@@ -10,17 +10,25 @@ import stripe
 from stripe.error import StripeError
 
 from airweave.core.config import settings
-from airweave.core.exceptions import ExternalServiceError
-from airweave.core.protocols.payment import PaymentGatewayProtocol
+from airweave.core.protocols.payment import (
+    PaymentGatewayProtocol,
+    PaymentProviderError,
+    PaymentProviderInvalidRequestError,
+    PaymentProviderRateLimitError,
+    PaymentProviderUnavailableError,
+)
 from airweave.schemas.organization_billing import BillingPlan
 
 
 class StripePaymentGateway(PaymentGatewayProtocol):
     """Stripe implementation of PaymentGatewayProtocol."""
 
+    MAX_NETWORK_RETRIES = 3
+
     def __init__(self):
-        """Initialize Stripe client."""
+        """Initialize Stripe client with automatic retries."""
         stripe.api_key = settings.STRIPE_SECRET_KEY
+        stripe.max_network_retries = self.MAX_NETWORK_RETRIES
         self.webhook_secret = settings.STRIPE_WEBHOOK_SECRET
 
         # Price ID configuration
@@ -48,6 +56,18 @@ class StripePaymentGateway(PaymentGatewayProtocol):
             return text.encode("ascii", "replace").decode("ascii")
         except Exception:
             return "".join(char for char in text if ord(char) < 128)
+
+    @staticmethod
+    def _map_stripe_error(e: StripeError, operation: str) -> PaymentProviderError:
+        """Convert a StripeError to a protocol-level exception."""
+        msg = f"{operation}: {e}"
+        if isinstance(e, stripe.error.RateLimitError):
+            return PaymentProviderRateLimitError(msg)
+        if isinstance(e, stripe.error.APIConnectionError):
+            return PaymentProviderUnavailableError(msg)
+        if isinstance(e, stripe.error.InvalidRequestError):
+            return PaymentProviderInvalidRequestError(msg)
+        return PaymentProviderError(msg)
 
     def _clean_metadata(self, metadata: Optional[Dict[str, str]]) -> Dict[str, str]:
         """Clean metadata values for Stripe."""
@@ -80,10 +100,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
 
             return await stripe.Customer.create_async(**params)
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to create customer: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to create customer") from e
 
     async def delete_customer(self, customer_id: str) -> None:
         """Delete a Stripe customer (for rollback)."""
@@ -117,20 +134,14 @@ class StripePaymentGateway(PaymentGatewayProtocol):
 
             return await stripe.Subscription.create_async(**params)
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to create subscription: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to create subscription") from e
 
     async def get_subscription(self, subscription_id: str) -> stripe.Subscription:
         """Retrieve a subscription."""
         try:
             return await stripe.Subscription.retrieve_async(subscription_id)
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to retrieve subscription: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to retrieve subscription") from e
 
     async def update_subscription(
         self,
@@ -151,9 +162,8 @@ class StripePaymentGateway(PaymentGatewayProtocol):
                 subscription = await self.get_subscription(subscription_id)
                 items_data = subscription.get("items", {}).get("data", [])
                 if not items_data:
-                    raise ExternalServiceError(
-                        service_name="Stripe",
-                        message=f"Subscription {subscription_id} has no items",
+                    raise PaymentProviderInvalidRequestError(
+                        f"Subscription {subscription_id} has no items"
                     )
 
                 item_id = items_data[0]["id"]
@@ -169,10 +179,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
 
             return await stripe.Subscription.modify_async(subscription_id, **update_params)
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to update subscription: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to update subscription") from e
 
     async def cancel_subscription(
         self, subscription_id: str, at_period_end: bool = True
@@ -186,10 +193,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
             else:
                 return await stripe.Subscription.delete_async(subscription_id)
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to cancel subscription: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to cancel subscription") from e
 
     # Checkout operations
 
@@ -223,10 +227,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
                 },
             )
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to create checkout session: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to create checkout session") from e
 
     # Portal operations
 
@@ -240,10 +241,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
                 return_url=self._sanitize_text(return_url),
             )
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to create portal session: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to create portal session") from e
 
     # Payment method operations
 
@@ -361,10 +359,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
                 metadata=clean_metadata,
             )
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to create prepay checkout session: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to create prepay checkout session") from e
 
     async def get_customer_balance_cents(self, *, customer_id: str) -> int:
         """Return the customer's current account balance in cents."""
@@ -373,10 +368,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
             balance = getattr(customer, "balance", 0) or 0
             return int(balance)
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to retrieve customer balance: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to retrieve customer balance") from e
 
     async def get_subscription_coupon_id(self, *, subscription_id: str) -> Optional[str]:
         """Return active coupon id applied to the subscription, if any."""
@@ -404,10 +396,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
                 coupon_id = None
             return coupon_id
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to retrieve subscription coupon: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to retrieve subscription coupon") from e
 
     async def create_or_get_yearly_coupon(
         self,
@@ -445,10 +434,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
 
             return await stripe.Coupon.create_async(**params)
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to create yearly coupon: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to create yearly coupon") from e
 
     async def apply_coupon_to_subscription(
         self,
@@ -463,20 +449,14 @@ class StripePaymentGateway(PaymentGatewayProtocol):
                 coupon=coupon_id,
             )
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to apply coupon to subscription: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to apply coupon to subscription") from e
 
     async def remove_subscription_discount(self, *, subscription_id: str) -> None:
         """Remove any active discount/coupon from a subscription."""
         try:
             await stripe.Subscription.delete_discount_async(subscription_id)
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to remove subscription discount: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to remove subscription discount") from e
 
     async def credit_customer_balance(
         self,
@@ -495,7 +475,4 @@ class StripePaymentGateway(PaymentGatewayProtocol):
                 description=self._sanitize_text(description or "Yearly prepay credit"),
             )
         except StripeError as e:
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to credit customer balance: {str(e)}",
-            ) from e
+            raise self._map_stripe_error(e, "Failed to credit customer balance") from e

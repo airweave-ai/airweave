@@ -1,21 +1,9 @@
 [run]
-source = app
 omit =
-    app/alembic/*
-    app/tests/*
-    app/local.py
-    **/fake*.py
-    **/fakes/**
-
-[report]
-exclude_lines =
-    pragma: no cover
-    def __repr__
-    raise NotImplementedError
-    if __name__ == .__main__.:
-    pass
-    raise ImportError
-    # Bare Ellipsis used as protocol/abstract stub body.
-    # Matches all bare `...` lines; acceptable because this
-    # codebase only uses `...` for stub bodies.
-    ^\s*\.\.\.\s*$
+    airweave/platform/sources/*
+    airweave/platform/entities/*
+    airweave/domains/sources/*
+    airweave/domains/entities/*
+    **/fake.py
+    **/fakes/*
+    **/tests/*

@@ -15,7 +15,7 @@ class AnalyticsService:
     for tracking events throughout the Airweave application.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the analytics service with PostHog configuration."""
         # Enable analytics by default unless in local environment
         self.enabled = settings.ANALYTICS_ENABLED and settings.ENVIRONMENT != "local"
@@ -97,28 +97,51 @@ class AnalyticsService:
     ) -> None:
         """Track an event with optional properties and groups.
 
-        When ``ctx`` (an ApiContext) is provided and carries a pre-configured
-        contextual analytics service, the call is delegated to it so that
-        headers, session info, distinct_id and groups are injected automatically.
-
-        For non-API call sites, pass ``distinct_id`` and ``groups`` explicitly.
+        When ``ctx`` (an ApiContext / BaseContext) is provided, distinct_id,
+        groups, and request metadata (auth_method, org name, headers) are
+        extracted automatically.  Explicit ``distinct_id`` / ``groups`` take
+        precedence over values derived from ctx.
 
         Args:
             event_name: Name of the event to track.
             properties: Event properties.
-            ctx: Optional ApiContext — if provided, its contextual analytics
-                service handles distinct_id / groups / base-property enrichment.
-            distinct_id: Unique identifier for the user/entity (required when
-                no ctx is given).
+            ctx: Optional context — enriches event with org/auth/header info.
+            distinct_id: Unique identifier for the user/entity.
             groups: Group associations (e.g., organization).
         """
         if not self.enabled:
             return
 
-        # Delegate to the pre-configured ContextualAnalyticsService when available
-        if ctx is not None and getattr(ctx, "analytics", None) is not None:
-            ctx.analytics.track_event(event_name, properties)
-            return
+        event_properties = dict(properties) if properties else {}
+
+        if ctx is not None:
+            if distinct_id is None:
+                user = getattr(ctx, "user", None)
+                if user:
+                    distinct_id = str(user.id)
+                else:
+                    distinct_id = f"api_key_{ctx.organization.id}"
+
+            if groups is None:
+                groups = {"organization": str(ctx.organization.id)}
+
+            auth_method = getattr(ctx, "auth_method", None)
+            if auth_method is not None:
+                event_properties.setdefault(
+                    "auth_method",
+                    auth_method.value if hasattr(auth_method, "value") else str(auth_method),
+                )
+            event_properties.setdefault("organization_name", ctx.organization.name)
+
+            request_id = getattr(ctx, "request_id", None)
+            if request_id:
+                event_properties.setdefault("request_id", request_id)
+
+            headers = getattr(ctx, "headers", None)
+            if headers:
+                event_properties.update(headers.to_dict())
+                if headers.session_id:
+                    event_properties["$session_id"] = headers.session_id
 
         if distinct_id is None:
             self.logger.warning(
@@ -127,7 +150,6 @@ class AnalyticsService:
             return
 
         try:
-            event_properties = dict(properties) if properties else {}
             event_properties.update(
                 {
                     "environment": settings.ENVIRONMENT,

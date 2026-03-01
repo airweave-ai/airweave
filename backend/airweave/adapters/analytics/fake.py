@@ -65,6 +65,22 @@ class FakeAnalyticsTracker:
         """Return all tracked events matching name."""
         return [e for e in self.events if e.event_name == event_name]
 
+    def group_identify(
+        self,
+        group_type: str,
+        group_key: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Record group identify call as a synthetic event for assertions."""
+        self.events.append(
+            TrackedEvent(
+                event_name=f"$group_identify:{group_type}",
+                distinct_id=group_key,
+                properties=properties or {},
+                groups=None,
+            )
+        )
+
     def clear(self) -> None:
         """Reset tracked events."""
         self.events.clear()

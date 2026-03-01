@@ -73,7 +73,7 @@ def build_search_properties(
         "has_completion": completion is not None,
         "completion_length": len(completion) if completion else 0,
         "completion_text": completion if completion else None,
-        # Context data (automatically included by ContextualAnalyticsService)
+        # Context data (automatically included by AnalyticsService via ctx)
         "organization_name": ctx.organization.name,
         "auth_method": ctx.auth_method,
     }
