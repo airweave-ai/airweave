@@ -109,6 +109,27 @@ class ConfluenceConfig(SourceConfig):
     pass
 
 
+class CreatioConfig(SourceConfig):
+    """Creatio configuration schema."""
+
+    instance_url: str = Field(
+        title="Instance URL",
+        description=(
+            "The Creatio instance URL (e.g., 'https://xxxxxx-crm-bundle.creatio.com'). "
+            "The Identity Service URL is derived automatically if not given. For cloud deployments"
+            "this typically is https://xxxxxx-crm-bundle-is.creatio.com/0/."
+        ),
+        min_length=10,
+    )
+
+    identity_service_url: str | None = Field(
+        default=None,
+        title="Identity Service URL",
+        description="The Identity Service URL",
+        min_length=10,
+    )
+
+
 class DropboxConfig(SourceConfig):
     """Dropbox configuration schema."""
 

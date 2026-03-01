@@ -58,6 +58,8 @@ integrations:
       response_mode: "query"
       state: "YOUR_USER_BOUND_VALUE"
 
+  creatio:
+
   dropbox:
     oauth_type: "with_refresh"
     url: "https://www.dropbox.com/oauth2/authorize"
