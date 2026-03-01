@@ -28,7 +28,7 @@ function evictExpired(): void {
 }
 
 async function fetchOrganizations(token: string, baseUrl: string): Promise<OrgInfo[]> {
-    const url = `${baseUrl}/api/v1/organizations/`;
+    const url = `${baseUrl}/organizations/`;
     const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` },
     });
@@ -45,7 +45,7 @@ async function probeCollection(
     orgId: string,
     collection: string,
 ): Promise<boolean> {
-    const url = `${baseUrl}/api/v1/collections/${encodeURIComponent(collection)}`;
+    const url = `${baseUrl}/collections/${encodeURIComponent(collection)}`;
     const res = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`,
