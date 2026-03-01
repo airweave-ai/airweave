@@ -8,35 +8,32 @@ export class AirweaveClient {
     private client: AirweaveSDKClient;
 
     constructor(private config: AirweaveConfig) {
+        const headers: Record<string, string> = {
+            'Authorization': `Bearer ${config.apiKey}`,
+            'X-Client-Name': 'airweave-mcp-search',
+            'X-Client-Version': VERSION,
+        };
+        if (config.organizationId) {
+            headers['X-Organization-ID'] = config.organizationId;
+        }
         this.client = new AirweaveSDKClient({
             apiKey: config.apiKey,
             baseUrl: config.baseUrl,
-            headers: {
-                'X-Client-Name': 'airweave-mcp-search',
-                'X-Client-Version': VERSION,
-            }
+            headers,
         });
     }
 
     async search(searchRequest: SearchRequest): Promise<SearchResponse> {
-        try {
-            console.error(`[${new Date().toISOString()}] AirweaveClient.search called with:`, JSON.stringify(searchRequest, null, 2));
-        } catch (e) {
-            console.error(`[${new Date().toISOString()}] AirweaveClient.search called (params not serializable)`);
-        }
-
         // Mock mode for testing
         if (this.config.apiKey === 'test-key' && this.config.baseUrl.includes('localhost')) {
             return this.getMockResponse(searchRequest);
         }
 
         try {
-            console.error(`[${new Date().toISOString()}] Calling SDK search with all params`);
+            console.log(`[search] collection=${this.config.collection} baseUrl=${this.config.baseUrl} orgId=${this.config.organizationId || 'none'}`);
             const response = await this.client.collections.search(this.config.collection, searchRequest);
-            console.error(`[${new Date().toISOString()}] Search successful, got ${response.results?.length || 0} results`);
             return response;
         } catch (error: unknown) {
-            console.error(`[${new Date().toISOString()}] Search error:`, error);
             const err = error as { statusCode?: number; message?: string; body?: unknown };
             if (err.statusCode) {
                 const errorBody = typeof err.body === 'string' ? err.body : JSON.stringify(err.body);

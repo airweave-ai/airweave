@@ -19,7 +19,8 @@
     "test:coverage": "vitest run --coverage",
     "test:mcp": "vitest run tests/mcp-server.test.ts",
     "test:http": "vitest run tests/http-transport.test.ts",
-    "test:all": "npm run test:mcp && npm run test:http",
+    "test:oauth": "vitest run tests/auth/ tests/api/org-resolver.test.ts tests/index-http-oauth.test.ts",
+    "test:all": "npm run test:mcp && npm run test:http && npm run test:oauth",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -50,6 +51,8 @@
     "@airweave/sdk": "^0.6.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "express": "^4.18.2",
+    "ioredis": "^5.8.1",
+    "jose": "^6.1.0",
     "posthog-node": "^5.24.11",
     "zod": "^3.23.8"
   },
