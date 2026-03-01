@@ -20,26 +20,26 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
+          node-version: '20.x'
           cache: 'npm'
           cache-dependency-path: 'mcp/package-lock.json'
 
       - name: Install MCP dependencies
-        run: |
-          cd mcp
-          npm ci
+        run: npm ci
+        working-directory: mcp
 
-      - name: Run MCP Server Tests
-        run: |
-          cd mcp
-          npm run test:mcp
-
-      - name: Run HTTP Transport Tests
-        run: |
-          cd mcp
-          npm run test:http
+      - name: Run all tests with coverage
+        run: npm run test:coverage
+        working-directory: mcp
 
       - name: Test MCP server build
-        run: |
-          cd mcp
-          npm run build
+        run: npm run build
+        working-directory: mcp
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-coverage
+          path: mcp/coverage/
+          retention-days: 14
