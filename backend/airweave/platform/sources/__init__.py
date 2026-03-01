@@ -9,6 +9,7 @@ from .box import BoxSource
 from .clickup import ClickUpSource
 from .coda import CodaSource
 from .confluence import ConfluenceSource
+from .creatio import CreatioSource
 from .ctti import CTTISource
 from .document360 import Document360Source
 from .dropbox import DropboxSource
@@ -60,6 +61,7 @@ ALL_SOURCES: list[type] = [
     ClickUpSource,
     CodaSource,
     ConfluenceSource,
+    CreatioSource,
     CTTISource,
     Document360Source,
     DropboxSource,
