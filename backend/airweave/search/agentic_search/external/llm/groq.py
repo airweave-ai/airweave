@@ -101,6 +101,87 @@ class GroqLLM(BaseLLM):
 
         return self._parse_json_response(content, schema, "Groq")
 
+    def _prepare_tools_strict(self, tools: list[dict]) -> list[dict]:
+        """Add strict: true and normalize tool parameter schemas for Groq.
+
+        Groq validates tool arguments server-side against the schema. With
+        strict: true, it uses constrained decoding to guarantee the output
+        matches the schema exactly (correct field names, proper nesting).
+
+        Groq-specific: also collapses primitive anyOf unions to string, since
+        Groq only supports anyOf with object branches (discriminated by
+        key-set exclusion), not primitive type unions.
+        """
+        strict_tools = []
+        for tool in tools:
+            func = tool["function"]
+            params = self._normalize_strict_schema(func["parameters"])
+            self._collapse_primitive_anyof(params)
+            strict_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": func["name"],
+                        "description": func.get("description", ""),
+                        "strict": True,
+                        "parameters": params,
+                    },
+                }
+            )
+        return strict_tools
+
+    @staticmethod
+    def _collapse_primitive_anyof(node: Any) -> None:
+        """Recursively simplify anyOf with primitive branches for Groq strict mode.
+
+        Groq strict mode only supports anyOf with object branches (discriminated
+        by key-set exclusion) or simple type-distinct pairs like [type, null].
+
+        Strategy: collapse scalar primitives (string, integer, number, boolean)
+        into a single string branch, and collapse array branches into a single
+        array-of-string branch. The result is at most [string, array-of-string],
+        which is type-distinct and Groq can disambiguate.
+        """
+        if isinstance(node, dict):
+            if "anyOf" in node and isinstance(node["anyOf"], list):
+                GroqLLM._simplify_anyof_node(node)
+            for v in node.values():
+                GroqLLM._collapse_primitive_anyof(v)
+        elif isinstance(node, list):
+            for v in node:
+                GroqLLM._collapse_primitive_anyof(v)
+
+    @staticmethod
+    def _simplify_anyof_node(node: dict[str, Any]) -> None:
+        """Simplify a single anyOf node by collapsing primitive branches."""
+        branches = node["anyOf"]
+        has_object_branch = any(isinstance(b, dict) and "properties" in b for b in branches)
+        if has_object_branch or len(branches) <= 1:
+            return
+
+        non_null = [b for b in branches if not (isinstance(b, dict) and b.get("type") == "null")]
+        null_branches = [b for b in branches if isinstance(b, dict) and b.get("type") == "null"]
+
+        if len(non_null) <= 1:
+            return  # Simple nullable — Groq handles this
+
+        scalar_types = {"string", "integer", "number", "boolean"}
+        has_scalar = any(isinstance(b, dict) and b.get("type") in scalar_types for b in non_null)
+        has_array = any(isinstance(b, dict) and b.get("type") == "array" for b in non_null)
+
+        new_branches: list[dict[str, Any]] = []
+        if has_scalar:
+            new_branches.append({"type": "string"})
+        if has_array:
+            new_branches.append({"type": "array", "items": {"type": "string"}})
+        new_branches.extend(null_branches)
+
+        if len(new_branches) == 1:
+            del node["anyOf"]
+            node.update(new_branches[0])
+        else:
+            node["anyOf"] = new_branches
+
     async def _call_api_with_tools(
         self,
         messages: list[dict],
@@ -109,6 +190,7 @@ class GroqLLM(BaseLLM):
     ) -> LLMToolResponse:
         """Groq tool calling (OpenAI-compatible format)."""
         api_messages = [{"role": "system", "content": system_prompt}, *messages]
+        strict_tools = self._prepare_tools_strict(tools)
 
         # Include reasoning params so reasoning models return a reasoning field
         reasoning_params: dict[str, Any] = {}
@@ -121,8 +203,8 @@ class GroqLLM(BaseLLM):
         response = await self._client.chat.completions.create(
             model=self._model_spec.api_model_name,
             messages=api_messages,
-            tools=tools,
-            tool_choice="auto",
+            tools=strict_tools,
+            tool_choice="required",
             temperature=0.3,
             max_completion_tokens=self._model_spec.max_output_tokens,
             **reasoning_params,

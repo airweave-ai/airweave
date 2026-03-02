@@ -309,9 +309,9 @@ class BaseLLM(AgenticSearchLLMInterface):
             node.pop("pattern", None)
             node.pop("format", None)
 
-        # Strip informational fields
-        for key in ("title", "description", "examples", "default"):
-            node.pop(key, None)
+        # Strip Pydantic-generated title fields (noise, not used by providers).
+        # Keep description, examples, default — these provide useful context.
+        node.pop("title", None)
 
         # Strict mode: all properties must be required, no additional properties
         if node.get("type") == "object" and "properties" in node:

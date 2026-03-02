@@ -6,7 +6,7 @@ checks that reject nonsensical combinations (e.g. ``entity_id > "boat"``).
 """
 
 from enum import Enum
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -130,10 +130,35 @@ class AgenticSearchFilterCondition(BaseModel):
     operator: AgenticSearchFilterOperator = Field(
         ..., description="The comparison operator to use."
     )
-    value: Union[str, int, float, bool, List[str], List[int]] = Field(
+    value: Union[str, int, bool, List[str], List[int]] = Field(
         ...,
         description="Value to compare against. Use a list for 'in' and 'not_in' operators.",
     )
+
+    # ── Input normalization ───────────────────────────────────────────────────
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_value_from_llm(cls, data: Any) -> Any:
+        """Normalize LLM output where the schema was simplified to string.
+
+        Some providers (e.g. Groq strict mode) collapse the value's anyOf union
+        to a single string type. This means the LLM sends all values as strings,
+        even for list operators. This validator coerces them back:
+        - String value + in/not_in operator → wrap in single-element list
+        - Numeric string + numeric field → convert to int
+        """
+        if not isinstance(data, dict):
+            return data
+
+        op = data.get("operator", "")
+        v = data.get("value")
+
+        # String value for list operators → wrap in list
+        if op in ("in", "not_in") and isinstance(v, str):
+            data["value"] = [v] if v else []
+
+        return data
 
     # ── Semantic validation ────────────────────────────────────────────────────
 
@@ -190,7 +215,7 @@ class AgenticSearchFilterCondition(BaseModel):
         # 5. Numeric fields must receive a numeric value
         #    e.g. chunk_index = "boat"
         if f in _NUMERIC_FIELDS and not isinstance(v, list):
-            if isinstance(v, (int, float)):
+            if isinstance(v, int):
                 pass  # fine
             elif isinstance(v, str):
                 try:
