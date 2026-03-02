@@ -240,9 +240,12 @@ admin_router = TrailingSlashRouter()
 async def admin_stream_agentic_search(  # noqa: C901 - streaming orchestration is acceptable
     request: InternalAgenticSearchRequest,
     readable_id: str = Path(..., description="The unique readable identifier of the collection"),
+    db: AsyncSession = Depends(get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
     metrics_service: MetricsService = Inject(MetricsService),
+    pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> StreamingResponse:
@@ -269,10 +272,10 @@ async def admin_stream_agentic_search(  # noqa: C901 - streaming orchestration i
         f"mode={request.mode}, filter={request.filter}{model_desc}"
     )
 
-    await guard_rail.is_allowed(ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
-    pubsub = await core_pubsub.subscribe("agentic_search", request_id)
-    emitter = AgenticSearchPubSubEmitter(request_id)
+    ps = await pubsub.subscribe("agentic_search", request_id)
+    emitter = AgenticSearchPubSubEmitter(request_id, pubsub=pubsub)
 
     async def _run_search() -> None:
         services = None
@@ -307,7 +310,7 @@ async def admin_stream_agentic_search(  # noqa: C901 - streaming orchestration i
 
     async def event_stream():  # noqa: C901 - streaming loop is acceptable
         try:
-            async for message in pubsub.listen():
+            async for message in ps.listen():
                 if message["type"] == "message":
                     data = message["data"]
                     try:
@@ -316,7 +319,9 @@ async def admin_stream_agentic_search(  # noqa: C901 - streaming orchestration i
                         yield f"data: {data}\n\n"
                         if event_type == "done":
                             try:
-                                await guard_rail.increment(ActionType.QUERIES)
+                                await event_bus.publish(
+                                    QueryProcessedEvent(organization_id=ctx.organization.id)
+                                )
                             except Exception:
                                 pass
                             break
@@ -339,7 +344,7 @@ async def admin_stream_agentic_search(  # noqa: C901 - streaming orchestration i
                 except Exception:
                     pass
             try:
-                await pubsub.close()
+                await ps.close()
             except Exception:
                 pass
 
