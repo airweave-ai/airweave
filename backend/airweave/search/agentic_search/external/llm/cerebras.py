@@ -98,6 +98,30 @@ class CerebrasLLM(BaseLLM):
 
         return self._parse_json_response(content, schema, "Cerebras")
 
+    def _prepare_tools_strict(self, tools: list[dict]) -> list[dict]:
+        """Add strict: true and normalize tool parameter schemas for Cerebras.
+
+        Cerebras strict mode guarantees schema compliance via constrained decoding.
+        It supports anyOf, $ref/$defs, and all primitive types — we only need to
+        strip unsupported fields (pattern, format, minItems, etc.) and add
+        additionalProperties: false to all objects.
+        """
+        strict_tools = []
+        for tool in tools:
+            func = tool["function"]
+            strict_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": func["name"],
+                        "description": func.get("description", ""),
+                        "strict": True,
+                        "parameters": self._normalize_strict_schema(func["parameters"]),
+                    },
+                }
+            )
+        return strict_tools
+
     async def _call_api_with_tools(
         self,
         messages: list[dict],
@@ -106,6 +130,7 @@ class CerebrasLLM(BaseLLM):
     ) -> LLMToolResponse:
         """Cerebras tool calling (OpenAI-compatible format)."""
         api_messages = [{"role": "system", "content": system_prompt}, *messages]
+        strict_tools = self._prepare_tools_strict(tools)
 
         # Include reasoning params so reasoning models return a reasoning field
         reasoning_params = {
@@ -116,8 +141,8 @@ class CerebrasLLM(BaseLLM):
         response = await self._client.chat.completions.create(
             model=self._model_spec.api_model_name,
             messages=api_messages,
-            tools=tools,
-            tool_choice="auto",
+            tools=strict_tools,
+            tool_choice="required",
             temperature=0.3,
             max_completion_tokens=self._model_spec.max_output_tokens,
             **reasoning_params,

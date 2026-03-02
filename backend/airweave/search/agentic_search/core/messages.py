@@ -11,6 +11,7 @@ Message format:
 """
 
 import functools
+import json
 from pathlib import Path
 
 from airweave.search.agentic_search.external.llm.tool_response import LLMToolCall
@@ -107,7 +108,13 @@ def build_assistant_message(
         msg["tool_calls"] = [
             {
                 "id": tc.id,
-                "function": {"name": tc.name, "arguments": tc.arguments},
+                "type": "function",
+                "function": {
+                    "name": tc.name,
+                    "arguments": json.dumps(tc.arguments)
+                    if isinstance(tc.arguments, dict)
+                    else tc.arguments,
+                },
             }
             for tc in tool_calls
         ]

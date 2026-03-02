@@ -286,7 +286,6 @@ class BaseLLM(AgenticSearchLLMInterface):
         """Recursively normalize a schema node for strict mode."""
         if isinstance(node, dict):
             BaseLLM._strip_strict_constraints(node)
-            BaseLLM._simplify_strict_anyof(node)
             for v in node.values():
                 BaseLLM._walk_strict(v)
         elif isinstance(node, list):
@@ -318,28 +317,6 @@ class BaseLLM(AgenticSearchLLMInterface):
         if node.get("type") == "object" and "properties" in node:
             node["additionalProperties"] = False
             node["required"] = list(node["properties"].keys())
-
-    @staticmethod
-    def _simplify_strict_anyof(node: dict[str, Any]) -> None:
-        """Simplify anyOf for strict-mode providers that require discriminated branches.
-
-        Strict-mode providers (Groq/Cerebras) require anyOf branches to be
-        disambiguated via a const/enum discriminator or key-set exclusion with
-        additionalProperties:false. Primitive types can never satisfy that rule,
-        so when there are multiple non-null primitive branches we drop the anyOf
-        entirely -- the property becomes unconstrained.
-        """
-        if "anyOf" not in node or not isinstance(node["anyOf"], list):
-            return
-
-        _PRIMITIVE_TYPES = {"string", "number", "integer", "boolean", "array"}
-        branches = node["anyOf"]
-        non_null = [s for s in branches if isinstance(s, dict) and s.get("type") != "null"]
-        all_primitive = all(
-            isinstance(s, dict) and s.get("type") in _PRIMITIVE_TYPES for s in non_null
-        )
-        if all_primitive and len(non_null) > 1:
-            del node["anyOf"]
 
     @staticmethod
     def _clean_schema_basic(schema_dict: dict[str, Any]) -> dict[str, Any]:

@@ -236,6 +236,14 @@ def parse_submit_answer(
     - AgenticSearchAnswer (API-facing, no consolidation field)
     - AgenticSearchPlan | None (internal consolidation search plan)
     """
+    # Normalize citations: some models return plain strings instead of objects
+    raw_citations = arguments.get("citations", [])
+    if raw_citations and isinstance(raw_citations[0], str):
+        arguments = {
+            **arguments,
+            "citations": [{"entity_id": c} for c in raw_citations],
+        }
+
     payload = SubmitAnswerPayload.model_validate(arguments)
     answer = AgenticSearchAnswer(
         text=payload.text,
