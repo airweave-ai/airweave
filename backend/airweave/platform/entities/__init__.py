@@ -148,6 +148,11 @@ from .hubspot import (
     HubspotDealEntity,
     HubspotTicketEntity,
 )
+from .intercom import (
+    IntercomConversationEntity,
+    IntercomConversationMessageEntity,
+    IntercomTicketEntity,
+)
 from .jira import (
     JiraIssueEntity,
     JiraProjectEntity,
@@ -469,6 +474,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         HubspotContactEntity,
         HubspotDealEntity,
         HubspotTicketEntity,
+    ],
+    "intercom": [
+        IntercomConversationEntity,
+        IntercomConversationMessageEntity,
+        IntercomTicketEntity,
     ],
     "jira": [
         JiraIssueEntity,
