@@ -21,10 +21,10 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -66,7 +66,7 @@ jobs:
           echo "File size: $(wc -c < fern/definition/openapi.json) bytes"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
           node-version: "18"
 
@@ -91,7 +91,7 @@ jobs:
           find fern/docs -name "*.md" -o -name "*.mdx" | head -10
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "docs: update documentation [skip ci]"

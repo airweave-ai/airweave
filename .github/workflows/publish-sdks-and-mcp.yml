@@ -19,10 +19,10 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -52,7 +52,7 @@ jobs:
           STATE_SECRET: "dummy-state-secret-key-1234567890-abcdefghijklmn"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
           node-version: "18"
 
@@ -108,7 +108,7 @@ jobs:
           ../mcp-publisher publish
 
       - name: Trigger Docs Generation
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

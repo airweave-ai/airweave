@@ -25,7 +25,7 @@ jobs:
       connector-count: ${{ steps.set-matrix.outputs.connector-count }}
       image-tag: ${{ steps.set-tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0 # Need full history for git diff
 
@@ -51,7 +51,7 @@ jobs:
 
       # Build and push backend image (ONCE for all parallel jobs)
       - name: Build and push backend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./backend
           push: true
@@ -132,7 +132,7 @@ jobs:
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0 # Fetch all history for change detection
 
@@ -172,7 +172,7 @@ jobs:
 
       # Python deps (cached)
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: "pip"
@@ -334,7 +334,7 @@ jobs:
 
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: monke-logs-${{ matrix.connector }}
           path: monke/logs/**

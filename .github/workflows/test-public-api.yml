@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -27,7 +27,7 @@ jobs:
         run: docker save test-backend:latest | gzip > /tmp/test-backend-image.tar.gz
 
       - name: Upload backend image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-backend-image
           path: /tmp/test-backend-image.tar.gz
@@ -54,12 +54,12 @@ jobs:
           docker compose version
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -70,7 +70,7 @@ jobs:
           pip install -r tests/e2e/requirements.txt
 
       - name: Download backend image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: test-backend-image
           path: /tmp
