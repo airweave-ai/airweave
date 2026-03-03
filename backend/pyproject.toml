@@ -18,7 +18,7 @@ asyncpg = "^0.31.0"
 pydantic = { extras = ["email"], version = "^2.5.3" }
 python-jose = { extras = ["cryptography"], version = "^3.3.0" }
 passlib = { extras = ["bcrypt"], version = "^1.7.4" }
-python-multipart = "^0.0.6"
+python-multipart = "^0.0.22"
 python-dotenv = "^1.0.0"
 httpx = "^0.28.0"
 httpx-ntlm = "^1.4.0"
