@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     exiftool \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
-    && pip install --no-cache-dir poetry==1.8.4
+    && pip install --no-cache-dir "poetry==2.3.2"
 
 # Configure poetry for Docker environment
 RUN poetry config virtualenvs.create false \

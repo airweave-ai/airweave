@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     unixodbc-dev \
     exiftool \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir poetry==1.8.4
+    && pip install --no-cache-dir "poetry==2.3.2"
 
 # Add Poetry to PATH
 ENV PATH="/root/.local/bin:$PATH"
