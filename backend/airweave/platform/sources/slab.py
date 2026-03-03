@@ -113,7 +113,7 @@ class SlabSource(BaseSource):
         Slab API has rate limits, so we implement basic throttling.
         """
         async with self._lock:
-            current_time = asyncio.get_event_loop().time()
+            current_time = asyncio.get_running_loop().time()
 
             # Remove old request times (keep last minute)
             minute_ago = current_time - 60

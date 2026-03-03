@@ -9,7 +9,7 @@ authors = [
 packages = [{ include = "airweave" }]
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.14"
+python = ">=3.13,<3.14"
 fastapi = "^0.115.12"
 uvicorn = { extras = ["standard"], version = "^0.27.0" }
 sqlalchemy = { extras = ["asyncio"], version = "^2.0.25" }
@@ -108,7 +108,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 88
-target-version = ['py311']
+target-version = ['py313']
 include = '\.pyi?$'
 
 
@@ -124,7 +124,7 @@ extend_skip = ["backend (old, neena, only for inspiration)"]
 
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -132,7 +132,7 @@ check_untyped_defs = true
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 extend-exclude = ["alembic", "local.py", "fern/**", "tests"]
 
 [tool.ruff.lint]

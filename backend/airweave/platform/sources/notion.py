@@ -136,7 +136,7 @@ class NotionSource(BaseSource):
     async def _wait_for_rate_limit(self):
         """Implement rate limiting for Notion API requests."""
         async with self._lock:
-            current_time = asyncio.get_event_loop().time()
+            current_time = asyncio.get_running_loop().time()
 
             # Remove old request times
             self._request_times = [
@@ -154,7 +154,7 @@ class NotionSource(BaseSource):
                     await asyncio.sleep(sleep_time)
 
                 # Clean up old requests again after waiting
-                current_time = asyncio.get_event_loop().time()
+                current_time = asyncio.get_running_loop().time()
                 self._request_times = [
                     t for t in self._request_times if current_time - t < self.RATE_LIMIT_PERIOD
                 ]

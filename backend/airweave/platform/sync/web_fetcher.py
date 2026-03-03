@@ -166,9 +166,9 @@ async def _retry_with_backoff(
 
     for attempt in range(max_retries + 1):
         try:
-            start_time = asyncio.get_event_loop().time()
+            start_time = asyncio.get_running_loop().time()
             result = await func(*args, **kwargs)
-            elapsed = asyncio.get_event_loop().time() - start_time
+            elapsed = asyncio.get_running_loop().time() - start_time
 
             if attempt > 0:  # Only log success after retry
                 logger.debug(
@@ -179,7 +179,6 @@ async def _retry_with_backoff(
             return result
 
         except Exception as e:
-            elapsed = asyncio.get_event_loop().time() - start_time
             last_exception = e
             error_type = type(e).__name__
             error_msg = str(e)
@@ -435,7 +434,7 @@ async def _perform_firecrawl_scrape(
     )
 
     logger.debug(f"📥 WEB_SCRAPE [{entity_context}] Scraping URL: {web_entity.url}")
-    scrape_start = asyncio.get_event_loop().time()
+    scrape_start = asyncio.get_running_loop().time()
 
     # Start with shorter timeout, retry with longer if needed
     # Increased timeouts for slow CTTI pages that can take 40-80 seconds
@@ -445,7 +444,7 @@ async def _perform_firecrawl_scrape(
         app, web_entity, timeouts, entity_context, logger
     )
 
-    scrape_elapsed = asyncio.get_event_loop().time() - scrape_start
+    scrape_elapsed = asyncio.get_running_loop().time() - scrape_start
 
     if not scrape_result or not hasattr(scrape_result, "markdown") or not scrape_result.markdown:
         logger.warning(f"📭 WEB_EMPTY [{entity_context}] No markdown content returned")
