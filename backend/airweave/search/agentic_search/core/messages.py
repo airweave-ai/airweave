@@ -72,13 +72,27 @@ def build_initial_user_message(
 ) -> dict:
     """Build the first user message that starts the conversation."""
     filter_md = format_filter_groups_md(user_filter)
-    mode_label = "direct" if mode == AgenticSearchMode.FAST else "agentic"
 
-    content = f"""## Search Request
+    if mode == AgenticSearchMode.FAST:
+        content = f"""## Search Request
 
 **Query:** {user_query}
 **User filter:** {filter_md}
-**Mode:** {mode_label}
+**Mode:** direct
+
+**IMPORTANT — Direct mode rules:**
+You have exactly ONE search. After seeing the results, you MUST call `submit_answer` \
+immediately. You will not be able to search again.
+
+Design a single broad semantic search (no filters, generous limit) that maximizes your \
+chance of finding the answer in one shot. Use query variations to cover different \
+phrasings and terminology."""
+    else:
+        content = f"""## Search Request
+
+**Query:** {user_query}
+**User filter:** {filter_md}
+**Mode:** agentic
 
 Please search the collection to answer this query. Start with a broad semantic search."""
 
