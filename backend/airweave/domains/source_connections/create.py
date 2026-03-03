@@ -217,8 +217,6 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             "access_token": obj_in.authentication.access_token,
             "token_type": "Bearer",
         }
-        if obj_in.authentication.refresh_token:
-            token_payload["refresh_token"] = obj_in.authentication.refresh_token
         if obj_in.authentication.expires_at:
             token_payload["expires_at"] = obj_in.authentication.expires_at.isoformat()
 
