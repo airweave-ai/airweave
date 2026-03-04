@@ -18,14 +18,13 @@ from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
-from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.contexts.source import SourceContext
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.cursor import SyncCursor
-from airweave.platform.sync.token_manager import TokenManager
+from airweave.domains.credentials.token_refresher import build_token_refresher
 from airweave.platform.utils.source_factory_utils import (
     get_auth_configuration,
     process_credentials_for_source,
@@ -389,87 +388,60 @@ class SourceContextBuilder:
         access_token: Optional[str],
         auth_config: dict,
     ) -> None:
-        """Set up token manager for OAuth sources."""
+        """Set up token refresher for OAuth sources."""
+        from airweave.core.container import container
         from airweave.platform.auth_providers.auth_result import AuthProviderMode
 
         auth_mode = auth_config.get("auth_mode")
-        auth_provider_instance: Optional[BaseAuthProvider] = auth_config.get(
-            "auth_provider_instance"
-        )
-
-        # Check if we should skip TokenManager
-        is_direct_token_injection = access_token is not None
-        is_proxy_mode = auth_mode == AuthProviderMode.PROXY
-
-        if is_direct_token_injection:
+        if access_token is not None:
             logger.debug(
-                f"⏭️ Skipping token manager for {source_connection_data['short_name']} - "
+                f"Skipping token refresher for {source_connection_data['short_name']} — "
                 f"direct token injection"
             )
             return
 
-        if is_proxy_mode:
+        if auth_mode == AuthProviderMode.PROXY:
             logger.info(
-                f"⏭️ Skipping token manager for {source_connection_data['short_name']} - "
-                f"proxy mode (PipedreamProxyClient manages tokens internally)"
+                f"Skipping token refresher for {source_connection_data['short_name']} — "
+                f"proxy mode"
             )
             return
 
         short_name = source_connection_data["short_name"]
         oauth_type = source_connection_data.get("oauth_type")
 
-        # Determine if we should create a token manager based on oauth_type
-        should_create_token_manager = False
+        if not oauth_type:
+            return
 
-        if oauth_type:
-            from airweave.schemas.source_connection import OAuthType
+        from airweave.schemas.source_connection import OAuthType
 
-            if oauth_type in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
-                should_create_token_manager = True
-                logger.debug(
-                    f"✅ OAuth source {short_name} with oauth_type={oauth_type} "
-                    f"will use token manager for refresh"
-                )
-            else:
-                logger.debug(
-                    f"⏭️ Skipping token manager for {short_name} - "
-                    f"oauth_type={oauth_type} does not support token refresh"
-                )
+        if oauth_type not in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
+            logger.debug(
+                f"Skipping token refresher for {short_name} — "
+                f"oauth_type={oauth_type} does not support refresh"
+            )
+            return
 
-        if should_create_token_manager:
-            try:
-                # Create a minimal connection object with only the fields needed by TokenManager
-                minimal_source_connection = type(
-                    "SourceConnection",
-                    (),
-                    {
-                        "id": source_connection_data["connection_id"],
-                        "integration_credential_id": source_connection_data[
-                            "integration_credential_id"
-                        ],
-                        "config_fields": source_connection_data.get("config_fields"),
-                    },
-                )()
-
-                token_manager = TokenManager(
-                    db=db,
-                    source_short_name=short_name,
-                    source_connection=minimal_source_connection,
-                    ctx=ctx,
-                    initial_credentials=source_credentials,
-                    is_direct_injection=False,
-                    logger_instance=logger,
-                    auth_provider_instance=auth_provider_instance,
-                )
-                source.set_token_manager(token_manager)
-
-                logger.info(
-                    f"Token manager initialized for OAuth source {short_name} "
-                    f"(auth_provider: {'Yes' if auth_provider_instance else 'None'})"
-                )
-            except Exception as e:
-                logger.error(f"Failed to setup token manager for source '{short_name}': {e}")
-                # Don't fail source creation if token manager setup fails
+        try:
+            token_refresher = build_token_refresher(
+                source_short_name=short_name,
+                credentials=source_credentials,
+                connection_id=source_connection_data.get("connection_id"),
+                integration_credential_id=source_connection_data.get(
+                    "integration_credential_id"
+                ),
+                config_fields=source_connection_data.get("config_fields"),
+                ctx=ctx,
+                source_registry=container.source_registry,
+                oauth2_service=container.oauth2_service,
+                logger=logger,
+                auth_provider_instance=auth_config.get("auth_provider_instance"),
+            )
+            if token_refresher:
+                source.set_token_manager(token_refresher)
+                logger.info(f"Token refresher initialized for {short_name}")
+        except Exception as e:
+            logger.error(f"Failed to setup token refresher for '{short_name}': {e}")
 
     @classmethod
     def _setup_file_downloader(

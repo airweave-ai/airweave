@@ -19,9 +19,8 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
-from airweave.domains.credentials.protocols import (
-    IntegrationCredentialRepositoryProtocol,
-)
+from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
+from airweave.domains.credentials.token_refresher import build_token_refresher
 from airweave.domains.oauth.protocols import OAuth2ServiceProtocol
 from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
@@ -42,7 +41,6 @@ from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
 from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.sync.token_manager import TokenManager
 from airweave.schemas.source_connection import OAuthType
 
 SourceCredentials = Union[str, dict, BaseModel]
@@ -137,8 +135,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         self._configure_http_client_factory(source, auth_config)
         self._configure_sync_identifiers(source, source_connection_data, ctx)
 
-        await self._configure_token_manager(
-            db=db,
+        self._configure_token_refresher(
             source=source,
             source_connection_data=source_connection_data,
             source_credentials=auth_config.credentials,
@@ -639,9 +636,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         except Exception:
             pass  # Non-fatal for older sources
 
-    @staticmethod
-    async def _configure_token_manager(
-        db: AsyncSession,
+    def _configure_token_refresher(
+        self,
         source: BaseSource,
         source_connection_data: SourceConnectionData,
         source_credentials: SourceCredentials,
@@ -650,20 +646,18 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         access_token: Optional[str],
         auth_config: AuthConfig,
     ) -> None:
-        """Set up token manager for OAuth sources that support refresh."""
-        auth_mode = auth_config.auth_mode
-        auth_provider_instance: Optional[BaseAuthProvider] = auth_config.auth_provider_instance
-
+        """Set up token refresher for OAuth sources that support refresh."""
         if access_token is not None:
             logger.debug(
-                f"Skipping token manager for {source_connection_data.short_name} "
+                f"Skipping token refresher for {source_connection_data.short_name} "
                 f"— direct token injection"
             )
             return
 
-        if auth_mode == AuthProviderMode.PROXY:
+        if auth_config.auth_mode == AuthProviderMode.PROXY:
             logger.info(
-                f"Skipping token manager for {source_connection_data.short_name} — proxy mode"
+                f"Skipping token refresher for {source_connection_data.short_name} "
+                f"— proxy mode"
             )
             return
 
@@ -675,40 +669,29 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         if oauth_type not in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
             logger.debug(
-                f"Skipping token manager for {short_name} — "
+                f"Skipping token refresher for {short_name} — "
                 f"oauth_type={oauth_type} does not support refresh"
             )
             return
 
         try:
-            minimal_connection = type(
-                "SourceConnection",
-                (),
-                {
-                    "id": source_connection_data.connection_id,
-                    "integration_credential_id": source_connection_data.integration_credential_id,
-                    "config_fields": source_connection_data.config_fields,
-                },
-            )()
-
-            token_manager = TokenManager(
-                db=db,
+            token_refresher = build_token_refresher(
                 source_short_name=short_name,
-                source_connection=minimal_connection,
+                credentials=source_credentials,
+                connection_id=source_connection_data.connection_id,
+                integration_credential_id=source_connection_data.integration_credential_id,
+                config_fields=source_connection_data.config_fields,
                 ctx=ctx,
-                initial_credentials=source_credentials,
-                is_direct_injection=False,
-                logger_instance=logger,
-                auth_provider_instance=auth_provider_instance,
+                source_registry=self._source_registry,
+                oauth2_service=self._oauth2_service,
+                logger=logger,
+                auth_provider_instance=auth_config.auth_provider_instance,
             )
-            source.set_token_manager(token_manager)
-
-            logger.info(
-                f"Token manager initialized for OAuth source {short_name} "
-                f"(auth_provider: {'Yes' if auth_provider_instance else 'None'})"
-            )
+            if token_refresher:
+                source.set_token_manager(token_refresher)
+                logger.info(f"Token refresher initialized for {short_name}")
         except Exception as e:
-            logger.error(f"Failed to setup token manager for '{short_name}': {e}")
+            logger.error(f"Failed to setup token refresher for '{short_name}': {e}")
 
     # ------------------------------------------------------------------
     # Private: rate limiting wrapper
@@ -802,3 +785,4 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             if key not in existing_config or existing_config[key] is None:
                 existing_config[key] = value
         source_connection_data.config_fields = existing_config
+
