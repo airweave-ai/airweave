@@ -14,6 +14,7 @@ from airweave.core.config import settings
 from airweave.core.context import BaseContext
 from airweave.core.events.organization import OrganizationLifecycleEvent
 from airweave.core.logging import logger
+from airweave.core.protocols.cache import ContextCache
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.identity import IdentityProvider, IdentityProviderError
 from airweave.core.protocols.payment import PaymentGatewayProtocol, PaymentProviderError
@@ -44,6 +45,7 @@ class OrganizationLifecycleOperations:
         billing_repo: OrganizationBillingRepositoryProtocol,
         webhook_admin: WebhookAdmin,
         event_bus: EventBus,
+        context_cache: ContextCache,
     ) -> None:
         """Initialize OrganizationLifecycleOperations."""
         self._org_repo = org_repo
@@ -54,6 +56,7 @@ class OrganizationLifecycleOperations:
         self._billing_repo = billing_repo
         self._webhook_admin = webhook_admin
         self._event_bus = event_bus
+        self._cache = context_cache
 
     # ------------------------------------------------------------------
     # Create
@@ -90,6 +93,8 @@ class OrganizationLifecycleOperations:
             logger.exception("Unexpected failure during org creation — compensating")
             await self._compensate_create(auth0_org_id, stripe_customer_id)
             raise
+
+        await self._cache.invalidate_user(owner_user.email)
 
         await self._event_bus.publish(
             OrganizationLifecycleEvent.created(
@@ -281,8 +286,10 @@ class OrganizationLifecycleOperations:
             await self._org_repo.delete(db, organization_id=organization_id)
             await uow.commit()
 
-        # Point of no return — local delete committed.
-        # External cleanup is best-effort; failures are logged, never swallowed silently.
+        await self._cache.invalidate_organization(organization_id)
+        for email in affected_emails:
+            await self._cache.invalidate_user(email)
+
         await self._cleanup_external_resources(org_auth0_id, stripe_sub_id, organization_id)
 
         await self._event_bus.publish(

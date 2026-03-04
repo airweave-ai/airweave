@@ -12,12 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.organizations.protocols import (
+    ApiKeyRepositoryProtocol,
+    OrganizationRepositoryProtocol,
+    UserOrganizationRepositoryProtocol,
+)
 from airweave.models.organization import Organization
 from airweave.models.user import User
 from airweave.models.user_organization import UserOrganization
 
 
-class OrganizationRepository:
+class OrganizationRepository(OrganizationRepositoryProtocol):
     """Delegates to the crud.organization singleton for org-level queries."""
 
     async def get(
@@ -44,6 +49,31 @@ class OrganizationRepository:
         return await crud.organization.get(  # type: ignore[return-value]
             db, organization_id, skip_access_validation=skip_access_validation, enrich=False
         )
+
+    async def get_by_auth0_id(
+        self,
+        db: AsyncSession,
+        *,
+        auth0_org_id: str,
+    ) -> Optional[Organization]:
+        """Return organization ORM model by Auth0 org ID."""
+        stmt = select(Organization).where(Organization.auth0_org_id == auth0_org_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_from_identity(
+        self,
+        db: AsyncSession,
+        *,
+        name: str,
+        description: str,
+        auth0_org_id: str,
+    ) -> Organization:
+        """Create an organization imported from an identity provider."""
+        org = Organization(name=name, description=description, auth0_org_id=auth0_org_id)
+        db.add(org)
+        await db.flush()
+        return org
 
     async def create_with_owner(
         self,
@@ -75,7 +105,7 @@ class OrganizationRepository:
         return org
 
 
-class UserOrganizationRepository:
+class UserOrganizationRepository(UserOrganizationRepositoryProtocol):
     """Direct queries for user–organization memberships."""
 
     async def count_members(self, db: AsyncSession, organization_id: UUID) -> int:
@@ -201,7 +231,7 @@ class UserOrganizationRepository:
         return int(result.scalar_one() or 0)
 
 
-class ApiKeyRepository:
+class ApiKeyRepository(ApiKeyRepositoryProtocol):
     """Delegates to crud.api_key for key validation."""
 
     async def get_by_key(self, db: AsyncSession, *, key: str) -> Any:

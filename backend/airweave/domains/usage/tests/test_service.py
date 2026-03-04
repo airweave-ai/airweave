@@ -281,3 +281,50 @@ class TestTeamPlan:
         with pytest.raises(UsageLimitExceededError) as exc_info:
             await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.ENTITIES)
         assert exc_info.value.limit == 1000000
+
+
+# ---------------------------------------------------------------------------
+# is_allowed — billing record fallback when no current period
+# ---------------------------------------------------------------------------
+
+
+class TestBillingRecordFallback:
+    """When no billing period covers 'now', limits fall back to organization_billing.billing_plan."""
+
+    @pytest.mark.asyncio
+    async def test_enterprise_limits_without_current_period(self, db):
+        """Enterprise org with stale period should get enterprise limits, not developer."""
+        checker, usage_repo, billing_repo, period_repo, sc_repo, user_org_repo = _make_checker()
+        billing = _make_billing_model(billing_plan=BillingPlan.ENTERPRISE.value)
+        billing_repo.seed(DEFAULT_ORG_ID, billing)
+        sc_repo.set_org_count(DEFAULT_ORG_ID, 50)
+
+        assert await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.SOURCE_CONNECTIONS) is True
+
+    @pytest.mark.asyncio
+    async def test_pro_limits_without_current_period(self, db):
+        """Pro org with no period should get pro limits (50 source connections)."""
+        checker, usage_repo, billing_repo, period_repo, sc_repo, user_org_repo = _make_checker()
+        billing = _make_billing_model(billing_plan=BillingPlan.PRO.value)
+        billing_repo.seed(DEFAULT_ORG_ID, billing)
+        sc_repo.set_org_count(DEFAULT_ORG_ID, 49)
+
+        assert await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.SOURCE_CONNECTIONS) is True
+
+    @pytest.mark.asyncio
+    async def test_pro_limit_exceeded_without_current_period(self, db):
+        """Pro org with no period should still enforce pro limits."""
+        checker, usage_repo, billing_repo, period_repo, sc_repo, user_org_repo = _make_checker()
+        billing = _make_billing_model(billing_plan=BillingPlan.PRO.value)
+        billing_repo.seed(DEFAULT_ORG_ID, billing)
+        sc_repo.set_org_count(DEFAULT_ORG_ID, 50)
+
+        with pytest.raises(UsageLimitExceededError) as exc_info:
+            await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.SOURCE_CONNECTIONS)
+        assert exc_info.value.limit == 50
+
+    @pytest.mark.asyncio
+    async def test_developer_fallback_without_billing_record(self, db):
+        """No billing record at all should still fall back to developer limits."""
+        checker, *_ = _make_checker()
+        assert await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.ENTITIES) is True

@@ -26,6 +26,7 @@ from airweave.domains.organizations import logic
 from airweave.domains.organizations.operations import OrganizationLifecycleOperations
 from airweave.domains.organizations.protocols import (
     OrganizationRepositoryProtocol,
+    OrganizationServiceProtocol,
     UserOrganizationRepositoryProtocol,
 )
 from airweave.domains.organizations.provisioning.operations import ProvisioningOperations
@@ -33,7 +34,7 @@ from airweave.models.organization import Organization
 from airweave.models.user import User
 
 
-class OrganizationService:
+class OrganizationService(OrganizationServiceProtocol):
     """Implements ``OrganizationServiceProtocol``."""
 
     def __init__(

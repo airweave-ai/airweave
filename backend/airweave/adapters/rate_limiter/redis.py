@@ -6,6 +6,7 @@ schema. Missing billing data is a data integrity error, not a fallback case.
 
 import logging
 import time
+import uuid
 from typing import Any, Optional
 
 from airweave import schemas
@@ -68,7 +69,8 @@ class RedisRateLimiter(RateLimiter):
                 remaining=0,
             )
 
-        await self._redis.zadd(key, {str(now): now})
+        member = f"{now}:{uuid.uuid4().hex[:8]}"
+        await self._redis.zadd(key, {member: now})
         await self._redis.expire(key, WINDOW_SIZE * 2)
 
         return RateLimitResult(

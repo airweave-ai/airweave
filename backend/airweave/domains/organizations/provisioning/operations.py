@@ -4,7 +4,6 @@ Called from the ``users.py`` endpoint when a user logs in for the first
 time or when an existing user's Auth0 organizations need syncing.
 """
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -16,7 +15,7 @@ from airweave.domains.organizations.protocols import (
     OrganizationRepositoryProtocol,
     UserOrganizationRepositoryProtocol,
 )
-from airweave.models.organization import Organization
+from airweave.domains.users.protocols import UserRepositoryProtocol
 from airweave.models.user import User
 
 
@@ -28,11 +27,13 @@ class ProvisioningOperations:
         *,
         org_repo: OrganizationRepositoryProtocol,
         user_org_repo: UserOrganizationRepositoryProtocol,
+        user_repo: UserRepositoryProtocol,
         identity_provider: IdentityProvider,
     ) -> None:
         """Initialize ProvisioningOperations."""
         self._org_repo = org_repo
         self._user_org_repo = user_org_repo
+        self._user_repo = user_repo
         self._identity = identity_provider
 
     async def provision_new_user(
@@ -67,6 +68,8 @@ class ProvisioningOperations:
 
         except Exception as e:
             logger.error(f"Failed to check identity orgs for new user: {e}")
+            async with UnitOfWork(db):
+                pass  # UoW context manager handles rollback of dirty session
             if create_org:
                 return await self._create_user_with_new_org(db, user_data)
             return await self._create_user_without_org(db, user_data)
@@ -80,16 +83,15 @@ class ProvisioningOperations:
                 return user
 
             logger.info(f"Syncing {len(auth0_orgs)} orgs for user {user.email}")
-            for auth0_org in auth0_orgs:
-                await self._sync_single_organization(db, user, auth0_org)
+            async with UnitOfWork(db) as uow:
+                for auth0_org in auth0_orgs:
+                    await self._sync_single_organization(db, user, auth0_org)
+                await uow.commit()
 
-            await db.commit()
-            await db.refresh(user)
-            return user
+            return await self._user_repo.refresh(db, user=user)
 
         except Exception as e:
             logger.error(f"Failed to sync orgs for {user.email}: {e}")
-            await db.rollback()
             return user
 
     # ------------------------------------------------------------------
@@ -100,21 +102,17 @@ class ProvisioningOperations:
         self, db: AsyncSession, user: User, auth0_org: dict
     ) -> None:
         """Sync one identity provider org → local DB."""
-        query = select(Organization).where(Organization.auth0_org_id == auth0_org["id"])
-        result = await db.execute(query)
-        local_org = result.scalar_one_or_none()
+        local_org = await self._org_repo.get_by_auth0_id(db, auth0_org_id=auth0_org["id"])
 
         if not local_org:
-            local_org = Organization(
+            local_org = await self._org_repo.create_from_identity(
+                db,
                 name=auth0_org.get("display_name", auth0_org["name"]),
                 description=f"Imported from identity provider: {auth0_org['name']}",
                 auth0_org_id=auth0_org["id"],
             )
-            db.add(local_org)
-            await db.flush()
             logger.info(f"Created local org for identity org: {auth0_org['id']}")
 
-        # Check if user-org relationship already exists
         existing = await self._user_org_repo.get_membership(
             db, org_id=local_org.id, user_id=user.id
         )
@@ -149,15 +147,13 @@ class ProvisioningOperations:
         async with UnitOfWork(db) as uow:
             try:
                 user_create = schemas.UserCreate(**user_data)
-                user = User(**user_create.model_dump())
-                db.add(user)
-                await db.flush()
+                user = await self._user_repo.create(db, obj_in=user_create)
 
                 for auth0_org in auth0_orgs:
                     await self._sync_single_organization(db, user, auth0_org)
 
                 await uow.commit()
-                await db.refresh(user)
+                user = await self._user_repo.refresh(db, user=user)
                 logger.info(f"Created user {user.email} and synced {len(auth0_orgs)} orgs")
                 return user
             except Exception:
@@ -165,11 +161,10 @@ class ProvisioningOperations:
                 raise
 
     async def _create_user_without_org(self, db: AsyncSession, user_data: dict) -> User:
-        user_create = schemas.UserCreate(**user_data)
-        user = User(**user_create.model_dump())
-        db.add(user)
-        await db.flush()
-        await db.commit()
-        await db.refresh(user)
+        async with UnitOfWork(db) as uow:
+            user_create = schemas.UserCreate(**user_data)
+            user = await self._user_repo.create(db, obj_in=user_create)
+            await uow.commit()
+        user = await self._user_repo.refresh(db, user=user)
         logger.info(f"Created user {user.email} without org")
         return user

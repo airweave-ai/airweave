@@ -9,8 +9,9 @@ ENTITIES and QUERIES accept cached usage data (30s TTL).
 """
 
 import asyncio
+import logging
 from datetime import UTC, datetime, timedelta
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +33,8 @@ from airweave.domains.usage.types import (
 from airweave.schemas.billing_period import BillingPeriodStatus
 from airweave.schemas.organization_billing import BillingPlan
 from airweave.schemas.usage import Usage, UsageLimit
+
+_log = logging.getLogger(__name__)
 
 _USAGE_CACHE_TTL = timedelta(seconds=15)
 
@@ -161,17 +164,21 @@ class UsageLimitChecker(UsageLimitCheckerProtocol):
 
     async def _infer_limit(self, db: AsyncSession, org_id: UUID) -> UsageLimit:
         current_period = await self._period_repo.get_current_period(db, organization_id=org_id)
-        if not current_period or not current_period.plan:
-            return infer_usage_limit(BillingPlan.DEVELOPER)
-        try:
-            plan = (
-                current_period.plan
-                if hasattr(current_period.plan, "value")
-                else BillingPlan(str(current_period.plan))
-            )
-        except Exception:
-            plan = BillingPlan.DEVELOPER
-        return infer_usage_limit(plan)
+        if current_period and current_period.plan:
+            plan = _parse_plan(current_period.plan)
+            if plan:
+                return infer_usage_limit(plan)
+
+        # No current period (e.g. webhook outage) — fall back to the
+        # plan stored on the billing record so paid orgs aren't silently
+        # downgraded to developer limits.
+        billing = await self._billing_repo.get_by_org_id(db, organization_id=org_id)
+        if billing and billing.billing_plan:
+            plan = _parse_plan(billing.billing_plan)
+            if plan:
+                return infer_usage_limit(plan)
+
+        return infer_usage_limit(BillingPlan.DEVELOPER)
 
     async def _check_dynamic(
         self,

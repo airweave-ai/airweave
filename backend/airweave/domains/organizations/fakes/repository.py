@@ -46,6 +46,32 @@ class FakeOrganizationRepository:
         self._calls.append(("get_by_id", organization_id))
         return self._store.get(organization_id)
 
+    async def get_by_auth0_id(
+        self,
+        db: AsyncSession,
+        *,
+        auth0_org_id: str,
+    ) -> Optional[Organization]:
+        self._calls.append(("get_by_auth0_id", auth0_org_id))
+        for org in self._store.values():
+            if getattr(org, "auth0_org_id", None) == auth0_org_id:
+                return org
+        return None
+
+    async def create_from_identity(
+        self,
+        db: AsyncSession,
+        *,
+        name: str,
+        description: str,
+        auth0_org_id: str,
+    ) -> Organization:
+        org = Organization(id=uuid4(), name=name, description=description)
+        org.auth0_org_id = auth0_org_id
+        self._store[org.id] = org
+        self._calls.append(("create_from_identity", auth0_org_id))
+        return org
+
     async def create_with_owner(
         self,
         db: AsyncSession,
@@ -63,7 +89,10 @@ class FakeOrganizationRepository:
 
     async def delete(self, db: AsyncSession, *, organization_id: UUID) -> Organization:
         self._calls.append(("delete", organization_id))
-        return self._store.pop(organization_id, None)
+        org = self._store.pop(organization_id, None)
+        if org is None:
+            raise NotFoundException(f"Organization with ID {organization_id} not found")
+        return org
 
 
 class FakeUserOrganizationRepository:

@@ -40,6 +40,26 @@ class OrganizationRepositoryProtocol(Protocol):
         """Return organization ORM model by ID."""
         ...
 
+    async def get_by_auth0_id(
+        self,
+        db: AsyncSession,
+        *,
+        auth0_org_id: str,
+    ) -> Optional[Organization]:
+        """Return organization ORM model by Auth0 org ID."""
+        ...
+
+    async def create_from_identity(
+        self,
+        db: AsyncSession,
+        *,
+        name: str,
+        description: str,
+        auth0_org_id: str,
+    ) -> Organization:
+        """Create an organization imported from an identity provider."""
+        ...
+
     async def create_with_owner(
         self,
         db: AsyncSession,

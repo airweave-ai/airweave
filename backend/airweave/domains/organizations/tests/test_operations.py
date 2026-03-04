@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from airweave import schemas
+from airweave.adapters.cache.fake import FakeContextCache
 from airweave.adapters.event_bus.fake import FakeEventBus
 from airweave.adapters.identity.fake import FakeIdentityProvider
 from airweave.adapters.payment.fake import FakePaymentGateway
@@ -110,6 +111,7 @@ def _make_operations(
     billing_ops=None,
     billing_repo=None,
     webhook_admin=None,
+    context_cache=None,
 ):
     return OrganizationLifecycleOperations(
         org_repo=org_repo or FakeOrganizationRepository(),
@@ -120,6 +122,7 @@ def _make_operations(
         billing_repo=billing_repo or _FakeBillingRepo(),
         webhook_admin=webhook_admin or FakeWebhookAdmin(),
         event_bus=event_bus or FakeEventBus(),
+        context_cache=context_cache or FakeContextCache(),
     )
 
 

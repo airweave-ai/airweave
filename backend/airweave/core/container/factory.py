@@ -233,6 +233,7 @@ def create_container(settings: Settings) -> Container:
         webhook_admin=svix_adapter,
         event_bus=event_bus,
         user_org_repo=user_org_repo,
+        context_cache=context_cache,
     )
 
     # -----------------------------------------------------------------
@@ -736,9 +737,9 @@ def _create_billing_services(settings: Settings) -> dict:
     from airweave.domains.billing.repository import (
         BillingPeriodRepository,
         OrganizationBillingRepository,
+        WebhookEventRepository,
     )
     from airweave.domains.billing.service import BillingService
-    from airweave.domains.billing.repository import WebhookEventRepository
     from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
     from airweave.domains.organizations.repository import OrganizationRepository
     from airweave.domains.usage.repository import UsageRepository
@@ -914,6 +915,7 @@ def _create_organization_service(
     webhook_admin,
     event_bus,
     user_org_repo,
+    context_cache,
 ):
     """Build the organization service with lifecycle + provisioning sub-modules."""
     from airweave.domains.organizations.operations import OrganizationLifecycleOperations
@@ -932,10 +934,14 @@ def _create_organization_service(
         billing_repo=billing_repo,
         webhook_admin=webhook_admin,
         event_bus=event_bus,
+        context_cache=context_cache,
     )
+    from airweave.domains.users.repository import UserRepository
+
     provisioning_ops = ProvisioningOperations(
         org_repo=org_repo,
         user_org_repo=user_org_repo,
+        user_repo=UserRepository(),
         identity_provider=identity_provider,
     )
 

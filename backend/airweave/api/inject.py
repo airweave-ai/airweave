@@ -1,10 +1,11 @@
 """Protocol injection for FastAPI endpoints."""
 
-from typing import get_type_hints
+import typing
+from typing import Union, get_type_hints
 
 from fastapi import Depends
 
-from airweave.core import container
+from airweave.core import container as container_mod
 from airweave.core.container import Container
 
 # Cache of protocol_type → Container field name, built once at first call.
@@ -18,9 +19,14 @@ def _resolve_field_name(protocol_type: type) -> str:
     Result is cached so the lookup happens at most once per protocol type.
     """
     if not _INJECT_CACHE:
-        # Populate cache on first call
         for name, hint in get_type_hints(Container).items():
             _INJECT_CACHE[hint] = name
+            origin = typing.get_origin(hint)
+            if origin is Union:
+                args = typing.get_args(hint)
+                non_none = [a for a in args if a is not type(None)]
+                if len(non_none) == 1:
+                    _INJECT_CACHE[non_none[0]] = name
 
     field_name = _INJECT_CACHE.get(protocol_type)
     if field_name is None:
@@ -52,8 +58,11 @@ def Inject(protocol_type: type):  # noqa: N802 — uppercase to match FastAPI co
     """
     field_name = _resolve_field_name(protocol_type)
 
-    def _resolve_container():
-        return container
+    def _resolve_container() -> Container:
+        c = container_mod.container
+        if c is None:
+            raise RuntimeError("Container not initialized. Call initialize_container() first.")
+        return c
 
     def _resolve(c: Container = Depends(_resolve_container)):
         return getattr(c, field_name)

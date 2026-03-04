@@ -9,11 +9,12 @@ import httpx
 
 from airweave.core.config import settings
 from airweave.core.events.organization import OrganizationLifecycleEvent
+from airweave.core.protocols.event_bus import EventSubscriber
 
 logger = logging.getLogger(__name__)
 
 
-class DonkeNotificationSubscriber:
+class DonkeNotificationSubscriber(EventSubscriber):
     """Sends a signup notification to the Donke agent on organization.created."""
 
     EVENT_PATTERNS = ["organization.created"]

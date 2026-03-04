@@ -1,15 +1,17 @@
 """Fake user repository for testing."""
 
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.core.exceptions import NotFoundException
+from airweave.domains.users.protocols import UserRepositoryProtocol
+from airweave.models.user import User
 
 
-class FakeUserRepository:
+class FakeUserRepository(UserRepositoryProtocol):
     """In-memory fake for UserRepositoryProtocol."""
 
     def __init__(self) -> None:
@@ -24,6 +26,18 @@ class FakeUserRepository:
         user = self._users.get(email)
         if not user:
             raise NotFoundException(f"User with email {email} not found")
+        return user
+
+    async def create(self, db: AsyncSession, *, obj_in: schemas.UserCreate) -> User:
+        self._calls.append(("create", obj_in.email))
+        user = User(**obj_in.model_dump())
+        if not user.id:
+            user.id = uuid4()
+        self._users[obj_in.email] = user
+        return user
+
+    async def refresh(self, db: AsyncSession, *, user: User) -> User:
+        self._calls.append(("refresh", getattr(user, "email", None)))
         return user
 
     async def update_user_no_auth(

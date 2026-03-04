@@ -9,7 +9,7 @@ Verifies:
 
 from dataclasses import dataclass
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -21,6 +21,7 @@ from airweave.domains.organizations.fakes.repository import (
     FakeUserOrganizationRepository,
 )
 from airweave.domains.organizations.provisioning.operations import ProvisioningOperations
+from airweave.domains.users.fakes.repository import FakeUserRepository
 
 
 # ---------------------------------------------------------------------------
@@ -52,10 +53,11 @@ class _OrgModelStub:
 # ---------------------------------------------------------------------------
 
 
-def _make_ops(*, identity=None, org_repo=None, user_org_repo=None):
+def _make_ops(*, identity=None, org_repo=None, user_org_repo=None, user_repo=None):
     return ProvisioningOperations(
         org_repo=org_repo or FakeOrganizationRepository(),
         user_org_repo=user_org_repo or FakeUserOrganizationRepository(),
+        user_repo=user_repo or FakeUserRepository(),
         identity_provider=identity or FakeIdentityProvider(),
     )
 
@@ -172,7 +174,7 @@ class TestSyncUserOrganizations:
         assert result.id == user.id
 
     @pytest.mark.asyncio
-    async def test_identity_error_returns_user_and_rolls_back(self):
+    async def test_identity_error_returns_user_unchanged(self):
         identity = FakeIdentityProvider()
         identity.fail_with = IdentityProviderError("down")
         ops = _make_ops(identity=identity)
@@ -181,7 +183,6 @@ class TestSyncUserOrganizations:
         db = AsyncMock()
         result = await ops.sync_user_organizations(db, user)
         assert result.id == user.id
-        db.rollback.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_syncs_new_org_and_membership(self):
@@ -190,20 +191,23 @@ class TestSyncUserOrganizations:
         identity.seed_user_organizations(
             "auth0|u1", [{"id": "org_remote", "name": "remote-org", "display_name": "Remote"}]
         )
+        org_repo = FakeOrganizationRepository()
         user_org_repo = FakeUserOrganizationRepository()
-        ops = _make_ops(identity=identity, user_org_repo=user_org_repo)
+        user_repo = FakeUserRepository()
+        ops = _make_ops(
+            identity=identity,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            user_repo=user_repo,
+        )
         user = _UserStub()
 
         db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
-        )
-        db.flush = AsyncMock()
-        db.add = MagicMock()
-        db.commit = AsyncMock()
-        db.refresh = AsyncMock()
-
         await ops.sync_user_organizations(db, user)
+
+        # Verify org was created via repo
+        identity_calls = [c for c in org_repo._calls if c[0] == "create_from_identity"]
+        assert len(identity_calls) == 1
 
         # Verify membership was created
         create_calls = [c for c in user_org_repo._calls if c[0] == "create"]
@@ -217,24 +221,26 @@ class TestSyncUserOrganizations:
             "auth0|u1", [{"id": "org_remote", "name": "remote-org"}]
         )
 
+        org_repo = FakeOrganizationRepository()
         user_org_repo = FakeUserOrganizationRepository()
         org_id = uuid4()
         user_id = uuid4()
+
+        local_org = _OrgModelStub(org_id=org_id, auth0_org_id="org_remote")
+        org_repo.seed(org_id, local_org)
         user_org_repo.seed_membership(user_id, org_id, role="member")
 
-        ops = _make_ops(identity=identity, user_org_repo=user_org_repo)
+        user_repo = FakeUserRepository()
+        ops = _make_ops(
+            identity=identity,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            user_repo=user_repo,
+        )
 
         user = _UserStub(user_id=user_id)
 
-        # Simulate finding the local org
-        local_org = _OrgModelStub(org_id=org_id, auth0_org_id="org_remote")
         db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=local_org))
-        )
-        db.commit = AsyncMock()
-        db.refresh = AsyncMock()
-
         await ops.sync_user_organizations(db, user)
 
         create_calls = [c for c in user_org_repo._calls if c[0] == "create"]

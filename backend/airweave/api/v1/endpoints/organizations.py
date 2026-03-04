@@ -207,9 +207,8 @@ async def delete_organization(
     )
     allowed, reason = logic.can_user_delete_org(user_role, len(user_orgs))
     if not allowed:
-        raise HTTPException(
-            status_code=400 if "only organization" in reason.lower() else 403, detail=reason
-        )
+        status = 403 if user_role != "owner" else 400
+        raise HTTPException(status_code=status, detail=reason)
 
     try:
         await org_service.delete_organization(
