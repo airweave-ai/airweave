@@ -103,18 +103,18 @@ class CodaSource(BaseSource):
     async def _wait_for_rate_limit(self) -> None:
         """Enforce rate limiting (conservative vs Coda limits)."""
         async with self._lock:
-            now = asyncio.get_event_loop().time()
+            now = asyncio.get_running_loop().time()
             self._request_times = [t for t in self._request_times if now - t < RATE_LIMIT_PERIOD]
             if len(self._request_times) >= RATE_LIMIT_REQUESTS:
                 sleep_time = self._request_times[0] + RATE_LIMIT_PERIOD - now
                 if sleep_time > 0:
                     self.logger.debug(f"Rate limit: waiting {sleep_time:.2f}s before next request")
                     await asyncio.sleep(sleep_time)
-                now = asyncio.get_event_loop().time()
+                now = asyncio.get_running_loop().time()
                 self._request_times = [
                     t for t in self._request_times if now - t < RATE_LIMIT_PERIOD
                 ]
-            self._request_times.append(asyncio.get_event_loop().time())
+            self._request_times.append(asyncio.get_running_loop().time())
 
     @retry(
         retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TimeoutException)),

@@ -214,7 +214,7 @@ async def subscribe_sync_job(
     logger.info(f"SSE sync subscription authenticated for user: {ctx}, job: {job_id}")
 
     # Track active SSE connections
-    connection_id = f"{ctx}:{job_id}:{asyncio.get_event_loop().time()}"
+    connection_id = f"{ctx}:{job_id}:{asyncio.get_running_loop().time()}"
 
     ps = await pubsub.subscribe("sync_job", job_id)
 
@@ -224,12 +224,12 @@ async def subscribe_sync_job(
             yield f"data: {json.dumps({'type': 'connected', 'job_id': str(job_id)})}\n\n"
 
             # Send heartbeat every 30 seconds to keep connection alive
-            last_heartbeat = asyncio.get_event_loop().time()
+            last_heartbeat = asyncio.get_running_loop().time()
             heartbeat_interval = 30  # seconds
 
             async for message in ps.listen():
                 # Check if we need to send a heartbeat
-                current_time = asyncio.get_event_loop().time()
+                current_time = asyncio.get_running_loop().time()
                 if current_time - last_heartbeat > heartbeat_interval:
                     yield 'data: {"type": "heartbeat"}\n\n'
                     last_heartbeat = current_time
@@ -301,11 +301,11 @@ async def subscribe_entity_state(
 
             yield f"data: {json.dumps({'type': 'connected', 'job_id': str(job_id)})}\n\n"
 
-            last_heartbeat = asyncio.get_event_loop().time()
+            last_heartbeat = asyncio.get_running_loop().time()
             heartbeat_interval = 30
 
             async for message in ps.listen():
-                current_time = asyncio.get_event_loop().time()
+                current_time = asyncio.get_running_loop().time()
                 if current_time - last_heartbeat > heartbeat_interval:
                     yield 'data: {"type": "heartbeat"}\n\n'
                     last_heartbeat = current_time

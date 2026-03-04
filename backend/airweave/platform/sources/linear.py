@@ -108,7 +108,7 @@ class LinearSource(BaseSource):
         adjusting wait times based on current usage patterns.
         """
         async with self._lock:
-            current_time = asyncio.get_event_loop().time()
+            current_time = asyncio.get_running_loop().time()
 
             # Track hourly request count
             hour_ago = current_time - 3600
