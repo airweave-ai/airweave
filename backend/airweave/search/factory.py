@@ -11,11 +11,11 @@ from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.protocols.pubsub import PubSub
+from airweave.domains.credentials.token_refresher import build_token_refresher
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.sync.token_manager import TokenManager
 from airweave.platform.utils.source_factory_utils import (
     get_auth_configuration,
     process_credentials_for_source,
@@ -985,73 +985,52 @@ class SearchFactory:
         auth_config: dict,
         ctx: ApiContext,
     ) -> None:
-        """Setup token manager if source requires it, skip for proxy mode."""
+        """Setup token refresher if source requires it, skip for proxy mode."""
+        from airweave.core.container import container
         from airweave.platform.auth_providers.auth_result import AuthProviderMode
         from airweave.schemas.source_connection import OAuthType
 
         auth_mode = auth_config.get("auth_mode")
-        is_proxy_mode = auth_mode == AuthProviderMode.PROXY
-
-        if is_proxy_mode:
+        if auth_mode == AuthProviderMode.PROXY:
             ctx.logger.info(
-                f"⏭️ Skipping token manager for {source_connection.short_name} - "
-                f"proxy mode (proxy client manages tokens internally)"
+                f"Skipping token refresher for {source_connection.short_name} — proxy mode"
             )
             return
 
         if not source_model.oauth_type:
             return
 
-        # Only create token manager for sources with refresh capability
         if source_model.oauth_type not in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
             ctx.logger.debug(
-                f"⏭️ Skipping token manager for {source_connection.short_name} - "
-                f"oauth_type={source_model.oauth_type} does not support token refresh"
+                f"Skipping token refresher for {source_connection.short_name} — "
+                f"oauth_type={source_model.oauth_type} does not support refresh"
             )
             return
 
-        self._setup_token_manager(
-            source_instance,
-            db,
-            source_connection,
-            source_connection_data.get("integration_credential_id"),
-            auth_config["credentials"],
-            ctx,
-            auth_provider_instance=auth_config.get("auth_provider_instance"),
-        )
-
-    def _setup_token_manager(
-        self,
-        source_instance: BaseSource,
-        db: AsyncSession,
-        source_connection,
-        integration_credential_id: Optional[UUID],
-        decrypted_credential: dict,
-        ctx: ApiContext,
-        auth_provider_instance=None,
-    ):
-        """Setup token manager for OAuth sources with auth provider support."""
-        minimal_connection = type(
-            "MinimalConnection",
-            (),
-            {
-                "id": source_connection.connection_id,
-                "integration_credential_id": integration_credential_id,
-                "config_fields": source_connection.config_fields,
-            },
-        )()
-
-        token_manager = TokenManager(
-            db=db,
-            source_short_name=source_connection.short_name,
-            source_connection=minimal_connection,
-            ctx=ctx,
-            initial_credentials=decrypted_credential,
-            is_direct_injection=False,
-            logger_instance=ctx.logger,
-            auth_provider_instance=auth_provider_instance,
-        )
-        source_instance.set_token_manager(token_manager)
+        try:
+            token_refresher = build_token_refresher(
+                source_short_name=source_connection.short_name,
+                credentials=auth_config["credentials"],
+                connection_id=getattr(source_connection, "connection_id", None),
+                integration_credential_id=source_connection_data.get(
+                    "integration_credential_id"
+                ),
+                config_fields=source_connection.config_fields,
+                ctx=ctx,
+                source_registry=container.source_registry,
+                oauth2_service=container.oauth2_service,
+                logger=ctx.logger,
+                auth_provider_instance=auth_config.get("auth_provider_instance"),
+            )
+            if token_refresher:
+                source_instance.set_token_manager(token_refresher)
+                ctx.logger.info(
+                    f"Token refresher initialized for {source_connection.short_name}"
+                )
+        except Exception as e:
+            ctx.logger.error(
+                f"Failed to setup token refresher for '{source_connection.short_name}': {e}"
+            )
 
 
 factory = SearchFactory()

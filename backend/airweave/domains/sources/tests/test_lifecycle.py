@@ -1,8 +1,7 @@
 """Unit tests for SourceLifecycleService.
 
 All external dependencies are fakes — no patching of module-level singletons.
-Only `credentials.decrypt` (pure function) and `TokenManager` (per-request
-constructor) are patched when needed.
+Only `credentials.decrypt` (pure function) is patched when needed.
 """
 
 from dataclasses import dataclass, field
@@ -691,7 +690,7 @@ def test_process_credentials_for_source(case: ProcessCredsCase):
 
 
 # ===========================================================================
-# _configure_token_manager() — table-driven
+# _configure_token_refresher() — table-driven
 # ===========================================================================
 
 
@@ -718,7 +717,7 @@ TOKEN_MANAGER_TABLE = [
 
 @pytest.mark.parametrize("case", TOKEN_MANAGER_TABLE, ids=lambda c: c.id)
 @pytest.mark.asyncio
-async def test_configure_token_manager(case: TokenManagerCase):
+async def test_configure_token_refresher(case: TokenManagerCase):
     source = MagicMock() if case.expect_tm_set else await _StubSourceValid.create("tok")
     data = _sc_data(short_name="src", oauth_type=case.oauth_type)
     ctx = _make_ctx()
@@ -729,18 +728,22 @@ async def test_configure_token_manager(case: TokenManagerCase):
         auth_mode=case.auth_mode,
     )
 
+    svc = _make_service()
+
     if case.expect_tm_set:
-        with patch("airweave.domains.sources.lifecycle.TokenManager") as mock_tm:
-            mock_tm.return_value = MagicMock()
-            await SourceLifecycleService._configure_token_manager(
-                db=MagicMock(), source=source, source_connection_data=data,
+        with patch(
+            "airweave.domains.sources.lifecycle.build_token_refresher"
+        ) as mock_build:
+            mock_build.return_value = MagicMock()
+            svc._configure_token_refresher(
+                source=source, source_connection_data=data,
                 source_credentials="tok", ctx=ctx, logger=ctx.logger,
                 access_token=case.access_token, auth_config=auth_config,
             )
         source.set_token_manager.assert_called_once()
     else:
-        await SourceLifecycleService._configure_token_manager(
-            db=MagicMock(), source=source, source_connection_data=data,
+        svc._configure_token_refresher(
+            source=source, source_connection_data=data,
             source_credentials="tok", ctx=ctx, logger=ctx.logger,
             access_token=case.access_token, auth_config=auth_config,
         )

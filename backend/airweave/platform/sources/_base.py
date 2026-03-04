@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
+from airweave.domains.credentials.protocols import TokenRefresherProtocol
 from airweave.platform.entities._base import BaseEntity
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
@@ -62,7 +63,7 @@ class BaseSource:
     def __init__(self):
         """Initialize the base source."""
         self._logger: Optional[Any] = None  # Store contextual logger as instance variable
-        self._token_manager: Optional[Any] = None  # Store token manager for OAuth sources
+        self._token_manager: Optional[TokenRefresherProtocol] = None
         self._http_client_factory: Optional[Callable] = None  # Factory for creating HTTP clients
         self._file_downloader: Optional[Any] = None  # File download service
         # Optional sync identifiers for multi-tenant scoped helpers
@@ -91,16 +92,12 @@ class BaseSource:
         self._source_connection_id = source_connection_id
 
     @property
-    def token_manager(self):
-        """Get the token manager for this source."""
+    def token_manager(self) -> Optional[TokenRefresherProtocol]:
+        """Get the token refresher for this source."""
         return self._token_manager
 
-    def set_token_manager(self, token_manager) -> None:
-        """Set a token manager for this source.
-
-        Args:
-            token_manager: TokenManager instance for handling OAuth token refresh
-        """
+    def set_token_manager(self, token_manager: TokenRefresherProtocol) -> None:
+        """Set the token refresher for this source."""
         self._token_manager = token_manager
 
     def set_http_client_factory(self, factory: Optional[Callable]) -> None:
@@ -221,24 +218,13 @@ class BaseSource:
         return cls.requires_byoc
 
     async def get_access_token(self) -> Optional[str]:
-        """Get a valid access token using the token manager.
-
-        Returns:
-            A valid access token if token manager is set and source uses OAuth,
-            None otherwise
-        """
+        """Get a valid access token, refreshing proactively if stale."""
         if self._token_manager:
             return await self._token_manager.get_valid_token()
-
-        # Fallback to instance access_token if no token manager
         return getattr(self, "access_token", None)
 
     async def refresh_on_unauthorized(self) -> Optional[str]:
-        """Refresh token after receiving a 401 error.
-
-        Returns:
-            New access token if refresh was successful, None otherwise
-        """
+        """Force token refresh after a 401 error."""
         if self._token_manager:
             return await self._token_manager.refresh_on_unauthorized()
         return None
