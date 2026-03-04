@@ -7,6 +7,7 @@ from .billing_period import BillingPeriod
 from .collection import Collection
 from .connection import Connection
 from .connection_init_session import ConnectionInitSession
+from .data_tree_node import DataTreeNode
 from .destination import Destination
 from .embedding_model import EmbeddingModel
 from .entity import Entity
@@ -15,6 +16,7 @@ from .entity_definition import EntityDefinition
 from .entity_relation import EntityRelation
 from .feature_flag import FeatureFlag
 from .integration_credential import IntegrationCredential
+from .node_selection import NodeSelection
 from .organization import Organization
 from .organization_billing import OrganizationBilling
 from .redirect_session import RedirectSession
@@ -42,12 +44,14 @@ __all__ = [
     "EntityCount",
     "Connection",
     "ConnectionInitSession",
+    "DataTreeNode",
     "Destination",
     "EmbeddingModel",
     "EntityDefinition",
     "EntityRelation",
     "FeatureFlag",
     "IntegrationCredential",
+    "NodeSelection",
     "Organization",
     "OrganizationBilling",
     "RedirectSession",

@@ -87,11 +87,18 @@ class SyncOrchestrator:
             await self._start_sync()
             self.sync_context.logger.info(f"✅ PHASE 1 complete ({time.time() - phase_start:.2f}s)")
 
-            # Phase 2: Process entities
-            phase_start = time.time()
-            self.sync_context.logger.info("🚀 PHASE 2: Processing entities from source...")
-            await self._process_entities()
-            self.sync_context.logger.info(f"✅ PHASE 2 complete ({time.time() - phase_start:.2f}s)")
+            skip_entities = self.sync_context.execution_config.behavior.skip_entity_processing
+
+            # Phase 2: Process entities (skip for ACL-only syncs)
+            if not skip_entities:
+                phase_start = time.time()
+                self.sync_context.logger.info("🚀 PHASE 2: Processing entities from source...")
+                await self._process_entities()
+                self.sync_context.logger.info(
+                    f"✅ PHASE 2 complete ({time.time() - phase_start:.2f}s)"
+                )
+            else:
+                self.sync_context.logger.info("⏭️ Skipping entity processing (disabled by config)")
 
             # Phase 2.5: Process access control memberships (if source supports it)
             if self._source_supports_access_control():
@@ -104,11 +111,18 @@ class SyncOrchestrator:
                     f"✅ PHASE 2.5 complete ({time.time() - phase_start:.2f}s)"
                 )
 
-            # Phase 3: Cleanup orphaned entities
-            phase_start = time.time()
-            self.sync_context.logger.info("🚀 PHASE 3: Cleanup orphaned entities (if needed)...")
-            await self._cleanup_orphaned_entities_if_needed()
-            self.sync_context.logger.info(f"✅ PHASE 3 complete ({time.time() - phase_start:.2f}s)")
+            # Phase 3: Cleanup orphaned entities (skip for ACL-only syncs)
+            if not skip_entities:
+                phase_start = time.time()
+                self.sync_context.logger.info(
+                    "🚀 PHASE 3: Cleanup orphaned entities (if needed)..."
+                )
+                await self._cleanup_orphaned_entities_if_needed()
+                self.sync_context.logger.info(
+                    f"✅ PHASE 3 complete ({time.time() - phase_start:.2f}s)"
+                )
+            else:
+                self.sync_context.logger.info("⏭️ Skipping orphan cleanup (disabled by config)")
 
             # Phase 4: Complete sync
             phase_start = time.time()

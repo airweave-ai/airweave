@@ -24,6 +24,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
+from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.configs.auth import SharePoint2019V2AuthConfig
 from airweave.platform.configs.config import SharePoint2019V2Config
@@ -163,6 +164,10 @@ class SharePoint2019V2Source(BaseSource):
         # These are AD groups directly assigned to items, not via SP site groups
         instance._item_level_ad_groups: set = set()
 
+        # Browse tree support: metadata-only sync and targeted sync
+        instance._metadata_only: bool = False
+        instance._node_selections: Optional[List[NodeSelectionData]] = None
+
         return instance
 
     @property
@@ -182,6 +187,14 @@ class SharePoint2019V2Source(BaseSource):
                 self._ad_search_base,
             ]
         )
+
+    def set_metadata_only(self, flag: bool) -> None:
+        """Set metadata-only mode (skip file downloads)."""
+        self._metadata_only = flag
+
+    def set_node_selections(self, selections: List[NodeSelectionData]) -> None:
+        """Set node selections for targeted sync."""
+        self._node_selections = selections
 
     def _track_entity_ad_groups(self, entity: BaseEntity) -> None:
         """Extract and track AD groups from an entity's access control.
@@ -293,7 +306,7 @@ class SharePoint2019V2Source(BaseSource):
         await asyncio.gather(*tasks, return_exceptions=True)
         return results
 
-    async def _process_items_batch(
+    async def _process_items_batch(  # noqa: C901
         self,
         items_batch: List[Dict[str, Any]],
         site_url: str,
@@ -354,6 +367,12 @@ class SharePoint2019V2Source(BaseSource):
         for entity in non_file_entities:
             yield entity
 
+        # In metadata_only mode, yield file entities without downloading content
+        if self._metadata_only:
+            for pf in pending_files:
+                yield pf.entity
+            return
+
         # Download files in parallel, then yield
         if pending_files:
             self.logger.debug(
@@ -407,10 +426,20 @@ class SharePoint2019V2Source(BaseSource):
 
         On the first run (no cursor), performs a full crawl.
         On subsequent runs, uses the GetChanges API for incremental updates.
+        If node_selections are set, performs a targeted sync of selected nodes only.
 
         Yields:
             BaseEntity instances (Site, List, Item, File, or Deletion markers)
         """
+        # Targeted sync: only fetch selected nodes
+        if self._node_selections:
+            self.logger.info(
+                f"Sync strategy: TARGETED ({len(self._node_selections)} node selections)"
+            )
+            async for entity in self._targeted_sync():
+                yield entity
+            return
+
         is_full, reason = self._should_do_full_sync()
         self.logger.info(f"Sync strategy: {'FULL' if is_full else 'INCREMENTAL'} ({reason})")
 
@@ -718,6 +747,172 @@ class SharePoint2019V2Source(BaseSource):
         finally:
             ldap_client.close()
 
+    async def _targeted_sync(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
+        """Targeted sync: fetch only the nodes specified in node_selections.
+
+        Each selection has node_type and node_metadata with enough info
+        to do targeted API calls (site_url, list_id, item_id).
+
+        Yields:
+            BaseEntity instances for selected nodes and their children.
+        """
+        from airweave.platform.sources.sharepoint2019v2.ldap import LDAPClient
+
+        ldap_client = LDAPClient(
+            server=self._ad_server,
+            username=self._ad_username,
+            password=self._ad_password,
+            domain=self._ad_domain,
+            search_base=self._ad_search_base,
+            logger=self.logger,
+        )
+
+        entity_count = 0
+
+        try:
+            async with self.http_client(verify=False) as client:
+                sp_client = self._create_client()
+
+                for selection in self._node_selections:
+                    node_type = selection.node_type
+                    metadata = selection.node_metadata or {}
+                    site_url = metadata.get("site_url", self._site_url)
+
+                    try:
+                        if node_type == "site":
+                            # Fetch site + all lists + all items
+                            async for entity in self._targeted_sync_site(
+                                sp_client, client, ldap_client, site_url
+                            ):
+                                yield entity
+                                entity_count += 1
+
+                        elif node_type == "list":
+                            list_id = metadata.get("list_id", selection.source_node_id)
+                            if list_id:
+                                async for entity in self._targeted_sync_list(
+                                    sp_client, client, ldap_client, site_url, list_id
+                                ):
+                                    yield entity
+                                    entity_count += 1
+
+                        elif node_type in ("item", "file"):
+                            list_id = metadata.get("list_id", "")
+                            item_id = metadata.get("item_id")
+                            if list_id and item_id:
+                                item_data = await sp_client.get_item_by_id(
+                                    client, site_url, list_id, int(item_id)
+                                )
+                                if item_data:
+                                    is_doc_lib = metadata.get("is_doc_lib", node_type == "file")
+                                    async for entity in self._process_item(
+                                        item_data,
+                                        site_url,
+                                        list_id,
+                                        [],
+                                        is_doc_lib,
+                                        client,
+                                        ldap_client,
+                                    ):
+                                        yield entity
+                                        entity_count += 1
+
+                    except Exception as e:
+                        self.logger.warning(f"Error processing targeted selection {selection}: {e}")
+                        continue
+
+                self.logger.info(f"Targeted sync complete: {entity_count} entities")
+
+        finally:
+            ldap_client.close()
+
+    async def _targeted_sync_site(
+        self, sp_client, client, ldap_client, site_url: str
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Fetch a site and all its lists + items for targeted sync."""
+        # Fetch site entity
+        site_data = await sp_client.get_site(client, site_url)
+        site_entity = await build_site_entity(site_data, [], ldap_client)
+        self._track_entity_ad_groups(site_entity)
+        yield site_entity
+
+        site_breadcrumb = Breadcrumb(
+            entity_id=site_entity.site_id,
+            name=site_entity.title,
+            entity_type="SharePoint2019V2SiteEntity",
+        )
+
+        # Fetch all lists in this site
+        async for list_meta in sp_client.discover_lists(client, site_url):
+            async for entity in self._targeted_sync_list(
+                sp_client,
+                client,
+                ldap_client,
+                site_url,
+                list_meta["Id"],
+                parent_breadcrumbs=[site_breadcrumb],
+            ):
+                yield entity
+
+    async def _targeted_sync_list(
+        self,
+        sp_client,
+        client,
+        ldap_client,
+        site_url: str,
+        list_id: str,
+        parent_breadcrumbs: Optional[List[Breadcrumb]] = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Fetch a list and all its items for targeted sync."""
+        breadcrumbs = parent_breadcrumbs or []
+
+        # Fetch list metadata
+        list_data = await sp_client.get_list_by_id(client, site_url, list_id)
+        if not list_data:
+            return
+
+        list_entity = await build_list_entity(list_data, site_url, breadcrumbs, ldap_client)
+        self._track_entity_ad_groups(list_entity)
+        yield list_entity
+
+        list_breadcrumb = Breadcrumb(
+            entity_id=list_entity.list_id,
+            name=list_entity.title,
+            entity_type="SharePoint2019V2ListEntity",
+        )
+        list_breadcrumbs = breadcrumbs + [list_breadcrumb]
+
+        is_doc_lib = list_entity.base_template == 101
+
+        # Fetch all items in batches
+        batch: List[Dict[str, Any]] = []
+        async for item_meta in sp_client.discover_items(client, site_url, list_id):
+            batch.append(item_meta)
+            if len(batch) >= ITEM_BATCH_SIZE:
+                async for entity in self._process_items_batch(
+                    batch,
+                    site_url,
+                    list_id,
+                    list_breadcrumbs,
+                    is_doc_lib,
+                    client,
+                    ldap_client,
+                ):
+                    yield entity
+                batch = []
+
+        if batch:
+            async for entity in self._process_items_batch(
+                batch,
+                site_url,
+                list_id,
+                list_breadcrumbs,
+                is_doc_lib,
+                client,
+                ldap_client,
+            ):
+                yield entity
+
     async def _process_item(
         self,
         item_meta: Dict[str, Any],
@@ -761,6 +956,13 @@ class SharePoint2019V2Source(BaseSource):
                     item_meta, site_url, list_id, breadcrumbs, ldap_client
                 )
                 self.logger.debug(f"File entity: {json.dumps(file_entity, indent=2, default=str)}")
+
+                # Skip download in metadata_only mode
+                if self._metadata_only:
+                    self._track_entity_ad_groups(file_entity)
+                    yield file_entity
+                    return
+
                 file_entity = await self._download_and_save_file(file_entity, client, site_url)
                 self._track_entity_ad_groups(file_entity)
                 yield file_entity

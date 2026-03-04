@@ -30,6 +30,9 @@ class HandlerConfig(BaseModel):
     enable_vector_handlers: bool = Field(True, description="Enable VectorDBHandler")
     enable_raw_data_handler: bool = Field(True, description="Enable RawDataHandler (ARF)")
     enable_postgres_handler: bool = Field(True, description="Enable EntityPostgresHandler")
+    enable_datatreenode_handler: bool = Field(
+        False, description="Enable DataTreeNodeHandler (metadata tree writes)"
+    )
 
 
 class CursorConfig(BaseModel):
@@ -47,6 +50,12 @@ class BehaviorConfig(BaseModel):
         False, description="Replay from ARF storage instead of calling source"
     )
     skip_guardrails: bool = Field(False, description="Skip usage guardrails (entity count checks)")
+    metadata_only: bool = Field(
+        False, description="Skip file downloads, just yield metadata + ACLs"
+    )
+    skip_entity_processing: bool = Field(
+        False, description="Skip entity processing and orphan cleanup (ACL-only sync)"
+    )
 
 
 class SyncConfig(BaseSettings):
@@ -146,6 +155,47 @@ class SyncConfig(BaseSettings):
             ),
             cursor=CursorConfig(skip_load=True, skip_updates=True),
             behavior=BehaviorConfig(skip_hash_comparison=True, replay_from_arf=True),
+        )
+
+    @classmethod
+    def acl_only(cls) -> "SyncConfig":
+        """ACL-only sync: skip entity processing, only run access control pipeline.
+
+        Useful for admin setup: sync group memberships before users browse the tree.
+        """
+        return cls(
+            handlers=HandlerConfig(
+                enable_vector_handlers=False,
+                enable_raw_data_handler=False,
+                enable_postgres_handler=False,
+            ),
+            cursor=CursorConfig(skip_load=True, skip_updates=True),
+            behavior=BehaviorConfig(
+                skip_entity_processing=True,
+                skip_guardrails=True,
+            ),
+        )
+
+    @classmethod
+    def metadata_tree(cls) -> "SyncConfig":
+        """Metadata-only sync: yield entities with metadata + ACLs, write DataTreeNode rows.
+
+        Disables all expensive processing (chunking, OCR, embedding, Vespa, ARF, entity postgres).
+        Only the DataTreeNodeHandler runs, converting entities to data_tree_node rows.
+        """
+        return cls(
+            handlers=HandlerConfig(
+                enable_vector_handlers=False,
+                enable_raw_data_handler=False,
+                enable_postgres_handler=False,
+                enable_datatreenode_handler=True,
+            ),
+            cursor=CursorConfig(skip_load=True, skip_updates=True),
+            behavior=BehaviorConfig(
+                metadata_only=True,
+                skip_hash_comparison=True,
+                skip_guardrails=True,
+            ),
         )
 
 

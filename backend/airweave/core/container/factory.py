@@ -44,6 +44,8 @@ from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.browse_tree.repository import BrowseTreeRepository, NodeSelectionRepository
+from airweave.domains.browse_tree.service import BrowseTreeService
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.collections.service import CollectionService
 from airweave.domains.collections.vector_db_deployment_metadata_repository import (
@@ -345,6 +347,19 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # Browse tree service
+    # -----------------------------------------------------------------
+    browse_tree_service = BrowseTreeService(
+        tree_repo=BrowseTreeRepository(),
+        selection_repo=NodeSelectionRepository(),
+        sc_repo=source_deps["sc_repo"],
+        sync_repo=source_deps["sync_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+        collection_repo=source_deps["collection_repo"],
+        conn_repo=source_deps["conn_repo"],
+    )
+
+    # -----------------------------------------------------------------
     # Usage billing listener
     # -----------------------------------------------------------------
 
@@ -352,6 +367,7 @@ def create_container(settings: Settings) -> Container:
         billing_service=billing_services["billing_service"],
         billing_webhook=billing_services["billing_webhook"],
         collection_service=collection_service,
+        browse_tree_service=browse_tree_service,
         health=health,
         event_bus=event_bus,
         pubsub=pubsub,

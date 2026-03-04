@@ -22,6 +22,7 @@ Architecture:
 # Handlers
 from .access_control_postgres import ACPostgresHandler
 from .arf import ArfHandler
+from .datatreenode import DataTreeNodeHandler
 from .destination import DestinationHandler
 from .entity_postgres import EntityPostgresHandler
 
@@ -35,6 +36,7 @@ __all__ = [
     # Entity handlers
     "ACPostgresHandler",
     "ArfHandler",
+    "DataTreeNodeHandler",
     "DestinationHandler",
     "EntityPostgresHandler",
 ]
