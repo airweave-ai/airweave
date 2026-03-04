@@ -37,19 +37,24 @@ class CRUDBillingPeriod(
             Current active billing period or None
         """
         now = datetime.utcnow()
-        query = select(self.model).where(
-            and_(
-                self.model.organization_id == organization_id,
-                self.model.period_start <= now,
-                self.model.period_end > now,
-                self.model.status.in_(
-                    [
-                        BillingPeriodStatus.ACTIVE,
-                        BillingPeriodStatus.TRIAL,
-                        BillingPeriodStatus.GRACE,
-                    ]
-                ),
+        query = (
+            select(self.model)
+            .where(
+                and_(
+                    self.model.organization_id == organization_id,
+                    self.model.period_start <= now,
+                    self.model.period_end > now,
+                    self.model.status.in_(
+                        [
+                            BillingPeriodStatus.ACTIVE,
+                            BillingPeriodStatus.TRIAL,
+                            BillingPeriodStatus.GRACE,
+                        ]
+                    ),
+                )
             )
+            .order_by(desc(self.model.period_start))
+            .limit(1)
         )
         result = await db.execute(query)
         return result.scalar_one_or_none()
@@ -75,19 +80,24 @@ class CRUDBillingPeriod(
         Returns:
             Billing period active at the provided time or None
         """
-        query = select(self.model).where(
-            and_(
-                self.model.organization_id == organization_id,
-                self.model.period_start <= at,
-                self.model.period_end > at,
-                self.model.status.in_(
-                    [
-                        BillingPeriodStatus.ACTIVE,
-                        BillingPeriodStatus.TRIAL,
-                        BillingPeriodStatus.GRACE,
-                    ]
-                ),
+        query = (
+            select(self.model)
+            .where(
+                and_(
+                    self.model.organization_id == organization_id,
+                    self.model.period_start <= at,
+                    self.model.period_end > at,
+                    self.model.status.in_(
+                        [
+                            BillingPeriodStatus.ACTIVE,
+                            BillingPeriodStatus.TRIAL,
+                            BillingPeriodStatus.GRACE,
+                        ]
+                    ),
+                )
             )
+            .order_by(desc(self.model.period_start))
+            .limit(1)
         )
         result = await db.execute(query)
         return result.scalar_one_or_none()

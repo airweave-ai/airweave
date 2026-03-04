@@ -13,7 +13,6 @@ from airweave import crud, schemas
 from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.models.entity_definition import EntityType
-from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.sources._base import BaseSource
 
@@ -522,37 +521,6 @@ async def _sync_destinations(db: AsyncSession, destinations: list[Type[BaseDesti
     sync_logger.info(f"Synced {len(destination_definitions)} destinations to database.")
 
 
-async def _sync_auth_providers(
-    db: AsyncSession, auth_providers: list[Type[BaseAuthProvider]]
-) -> None:
-    """Sync auth providers with the database.
-
-    Args:
-        db (AsyncSession): Database session
-        auth_providers (list[Type[BaseAuthProvider]]): List of auth provider classes
-    """
-    sync_logger.info("Syncing auth providers to database.")
-
-    auth_provider_definitions = []
-    for auth_provider_class in auth_providers:
-        auth_config_cls = getattr(auth_provider_class, "auth_config_class", None)
-        config_cls = getattr(auth_provider_class, "config_class", None)
-        auth_provider_def = schemas.AuthProviderCreate(
-            name=auth_provider_class.provider_name,
-            short_name=auth_provider_class.short_name,
-            class_name=auth_provider_class.__name__,
-            description=auth_provider_class.__doc__,
-            auth_config_class=getattr(auth_config_cls, "__name__", None)
-            if auth_config_cls
-            else None,
-            config_class=getattr(config_cls, "__name__", None) if config_cls else None,
-        )
-        auth_provider_definitions.append(auth_provider_def)
-
-    await crud.auth_provider.sync(db, auth_provider_definitions)
-    sync_logger.info(f"Synced {len(auth_provider_definitions)} auth providers to database.")
-
-
 # NOTE: Transformer sync functions removed - chunking now handled by
 # CodeChunker and SemanticChunker in entity_pipeline.py, not decorator-based transformers
 
@@ -585,7 +553,6 @@ async def sync_platform_components(db: AsyncSession) -> None:
         # Sync platform components
         await _sync_sources(db, components["sources"], module_entity_map)
         await _sync_destinations(db, components["destinations"])
-        await _sync_auth_providers(db, components["auth_providers"])
 
         sync_logger.info("Platform components sync completed successfully.")
     except ImportError as e:

@@ -99,8 +99,11 @@ class FakeBillingPeriodRepository:
     ) -> BillingPeriod:
         """Create a billing period (fake)."""
         self._calls.append(("create", db, obj_in, ctx, uow))
+        now = datetime.utcnow()
         period = BillingPeriod(
             id=uuid4(),
+            created_at=now,
+            modified_at=now,
             organization_id=obj_in.organization_id,  # type: ignore[union-attr]
             period_start=obj_in.period_start,  # type: ignore[union-attr]
             period_end=obj_in.period_end,  # type: ignore[union-attr]
@@ -148,3 +151,56 @@ class FakeBillingPeriodRepository:
         for key, value in obj_in.items():
             setattr(db_obj, key, value)
         return db_obj
+
+    async def get_active_periods_in_range(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: UUID,
+        range_start: datetime,
+        range_end: datetime,
+    ) -> list[BillingPeriod]:
+        """Get all ACTIVE/GRACE periods that overlap with the given range."""
+        self._calls.append(
+            (
+                "get_active_periods_in_range",
+                db,
+                organization_id,
+                range_start,
+                range_end,
+            )
+        )
+        from airweave.schemas.billing_period import BillingPeriodStatus
+
+        results = []
+        for p in self._store:
+            if (
+                p.organization_id == organization_id
+                and p.period_start < range_end
+                and p.period_end > range_start
+                and p.status in (BillingPeriodStatus.ACTIVE, BillingPeriodStatus.GRACE)
+            ):
+                results.append(p)
+        results.sort(key=lambda p: p.period_start)
+        return results
+
+
+class FakeWebhookEventRepository:
+    """In-memory fake for WebhookEventRepositoryProtocol."""
+
+    def __init__(self) -> None:
+        """Initialize with empty store."""
+        self._processed: set[str] = set()
+        self._calls: list[tuple] = []
+
+    async def is_processed(self, db: AsyncSession, *, stripe_event_id: str) -> bool:
+        """Check if a Stripe event has already been processed."""
+        self._calls.append(("is_processed", stripe_event_id))
+        return stripe_event_id in self._processed
+
+    async def mark_processed(
+        self, db: AsyncSession, *, stripe_event_id: str, event_type: str
+    ) -> None:
+        """Record that a Stripe event has been successfully processed."""
+        self._calls.append(("mark_processed", stripe_event_id, event_type))
+        self._processed.add(stripe_event_id)

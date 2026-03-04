@@ -38,6 +38,8 @@ def _make_source_cls(
     *,
     auth_methods: list | None = None,
     is_internal: bool = False,
+    oauth_type: object | None = None,
+    auth_config_class: type | None = None,
 ) -> type:
     """Build a minimal stub class that looks like a @source-decorated class."""
 
@@ -49,9 +51,9 @@ def _make_source_cls(
     Stub.short_name = short_name
     Stub.source_name = source_name
     Stub.config_class = None
-    Stub.auth_config_class = None
+    Stub.auth_config_class = auth_config_class
     Stub.auth_methods = auth_methods or [_AuthMethod.DIRECT]
-    Stub.oauth_type = None
+    Stub.oauth_type = oauth_type
     Stub.requires_byoc = False
     Stub.supports_continuous = False
     Stub.federated_search = False
@@ -306,3 +308,73 @@ def test_compute_runtime_auth_fields(case: RuntimeAuthCase):
     all_fields, optional = SourceRegistry._compute_runtime_auth_fields(case.auth_config)
     assert all_fields == case.expect_all
     assert optional == case.expect_optional
+
+
+# ---------------------------------------------------------------------------
+# _compute_runtime_auth_fields — pure OAuth sources (no auth_config_class)
+# ---------------------------------------------------------------------------
+
+
+class _OAuthType(Enum):
+    WITH_REFRESH = "with_refresh"
+    WITH_ROTATING_REFRESH = "with_rotating_refresh"
+    WITHOUT_REFRESH = "without_refresh"
+
+
+@dataclass
+class OAuthRuntimeAuthCase:
+    desc: str
+    oauth_type: object | None
+    expect_all: list[str]
+    expect_optional: set[str]
+
+
+OAUTH_RUNTIME_AUTH_CASES = [
+    OAuthRuntimeAuthCase(
+        desc="with_refresh returns access_token + refresh_token",
+        oauth_type=_OAuthType.WITH_REFRESH,
+        expect_all=["access_token", "refresh_token"],
+        expect_optional=set(),
+    ),
+    OAuthRuntimeAuthCase(
+        desc="with_rotating_refresh returns access_token + refresh_token",
+        oauth_type=_OAuthType.WITH_ROTATING_REFRESH,
+        expect_all=["access_token", "refresh_token"],
+        expect_optional=set(),
+    ),
+    OAuthRuntimeAuthCase(
+        desc="without_refresh returns access_token only",
+        oauth_type=_OAuthType.WITHOUT_REFRESH,
+        expect_all=["access_token"],
+        expect_optional=set(),
+    ),
+    OAuthRuntimeAuthCase(
+        desc="no oauth_type returns empty",
+        oauth_type=None,
+        expect_all=[],
+        expect_optional=set(),
+    ),
+]
+
+
+@pytest.mark.parametrize("case", OAUTH_RUNTIME_AUTH_CASES, ids=lambda c: c.desc)
+def test_compute_runtime_auth_fields_oauth(case: OAuthRuntimeAuthCase):
+    all_fields, optional = SourceRegistry._compute_runtime_auth_fields(
+        None, oauth_type=case.oauth_type
+    )
+    assert all_fields == case.expect_all
+    assert optional == case.expect_optional
+
+
+def test_build_entry_oauth_source_has_runtime_auth_fields():
+    """OAuth source with no auth_config_class gets correct runtime fields via build()."""
+    cls = _make_source_cls(
+        "todoist",
+        "Todoist",
+        oauth_type=_OAuthType.WITHOUT_REFRESH,
+        auth_methods=[_AuthMethod.OAUTH_BROWSER],
+    )
+    registry = _build_registry([cls])
+    entry = registry.get("todoist")
+    assert entry.runtime_auth_all_fields == ["access_token"]
+    assert entry.runtime_auth_optional_fields == set()

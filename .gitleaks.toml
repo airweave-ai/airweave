@@ -1,0 +1,37 @@
+# Gitleaks configuration — false-positive allowlist
+# https://github.com/gitleaks/gitleaks#configuration
+
+[allowlist]
+
+  description = "Known false positives"
+
+  paths = [
+    # Documentation with placeholder API keys (YOUR_API_KEY, your-api-key)
+    '''fern/''',
+    '''mcp/README\.md''',
+
+    # AI-assistant rule templates containing example secrets
+    '''\.cursor/rules/''',
+
+    # Test files with synthetic / hard-coded test secrets
+    '''(^|/)tests?/''',
+    '''conftest\.py$''',
+    '''docker-compose\.test\.yml''',
+
+    # Dev / prd OAuth client-secret configs (checked-in dev creds)
+    '''backend/airweave/platform/auth/yaml/''',
+
+    # Schema file with example placeholder values
+    '''backend/airweave/schemas/auth_provider\.py''',
+
+    # Development helper scripts
+    '''backend/scripts/''',
+
+    # Monke integration config files (connection IDs)
+    '''monke/configs/''',
+  ]
+
+  regexes = [
+    # PostHog public project API key (designed for client-side use)
+    '''phc_Ytp26UB3WwGCdjHTpDBI9HQg2ZA38ITMDKI6fE6EPGS''',
+  ]

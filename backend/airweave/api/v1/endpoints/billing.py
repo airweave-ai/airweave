@@ -7,6 +7,8 @@ delegating all business logic to the billing service.
 from typing import Optional
 
 from fastapi import Depends, Header, Request, Response
+from pydantic import ValidationError
+from sqlalchemy.exc import MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
@@ -14,7 +16,13 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.exceptions import PermissionException
 from airweave.core.logging import logger
+from airweave.domains.billing.exceptions import (
+    BillingNotAvailableError,
+    BillingNotFoundError,
+    BillingStateError,
+)
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
 
 router = TrailingSlashRouter()
@@ -274,6 +282,23 @@ async def stripe_webhook(
     except ValueError as e:
         logger.error(f"Webhook signature/payload error: {e}")
         return Response(status_code=400)
+    except (
+        MultipleResultsFound,
+        PermissionException,
+        BillingNotFoundError,
+        BillingStateError,
+        BillingNotAvailableError,
+        ValidationError,
+    ) as e:
+        # Non-retryable errors: returning 500 would cause Stripe to retry
+        # with exponential backoff, multiplying failures.  Log the error
+        # for internal visibility but tell Stripe the event was handled.
+        logger.error(
+            f"Webhook processing error (non-retryable): {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        return Response(status_code=200)
     except Exception as e:
+        # Transient/unknown errors: return 500 so Stripe retries later.
         logger.error(f"Webhook processing error: {e}", exc_info=True)
         return Response(status_code=500)

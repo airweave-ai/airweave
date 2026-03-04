@@ -29,7 +29,10 @@ from airweave.core.protocols import (
 )
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
-from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
+from airweave.domains.auth_provider.protocols import (
+    AuthProviderRegistryProtocol,
+    AuthProviderServiceProtocol,
+)
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
 from airweave.domains.collections.protocols import (
     CollectionRepositoryProtocol,
@@ -132,6 +135,7 @@ class Container:
     # Source registries (shared across services)
     source_registry: SourceRegistryProtocol
     auth_provider_registry: AuthProviderRegistryProtocol
+    auth_provider_service: AuthProviderServiceProtocol
 
     # Collection service — domain service for collection lifecycle
     collection_service: CollectionServiceProtocol

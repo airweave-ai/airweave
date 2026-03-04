@@ -20,6 +20,7 @@ from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.exceptions import (
     AirweaveException,
+    InvalidInputError,
     InvalidStateError,
     NotFoundException,
     PermissionException,
@@ -444,6 +445,11 @@ async def invalid_state_exception_handler(request: Request, exc: InvalidStateErr
 
     """
     return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+async def invalid_input_exception_handler(request: Request, exc: InvalidInputError) -> JSONResponse:
+    """Exception handler for InvalidInputError."""
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 async def rate_limit_exception_handler(

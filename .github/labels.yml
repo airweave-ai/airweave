@@ -162,6 +162,24 @@
   description: Calendar and scheduling connectors (Cal.com, etc.)
   color: "0e8a16"
 
+# ─── Dependencies ──────────────────────────────────────────────────────────
+
+- name: "deps:python"
+  description: Python package updates (pip, Poetry)
+  color: "e36209"
+
+- name: "deps:javascript"
+  description: JavaScript package updates (npm)
+  color: "e36209"
+
+- name: "deps:docker"
+  description: Docker base image updates
+  color: "e36209"
+
+- name: "deps:actions"
+  description: GitHub Actions version updates
+  color: "e36209"
+
 # ─── Priority ────────────────────────────────────────────────────────────────
 
 - name: "priority:critical"

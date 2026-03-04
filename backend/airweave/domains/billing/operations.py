@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.core.context import BaseContext
+from airweave.core.logging import logger
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.exceptions import BillingStateError
@@ -197,30 +198,54 @@ class BillingOperations(BillingOperationsProtocol):
     ) -> schemas.BillingPeriod:
         """Create a new billing period with usage record.
 
-        Automatically completes any overlapping active periods before creating
-        the new one. Creates the period and its usage record in a single
-        UnitOfWork transaction.
+        Resolves all overlapping active periods in the range before creating
+        the new one: earlier periods are truncated/completed, later periods
+        that start inside the new range are also completed.
+
+        Creates the period and its usage record in a single UnitOfWork
+        transaction.
         """
-        check_time = period_start - timedelta(seconds=1)
-        current = await self._period_repo.get_current_period_at(
-            db, organization_id=organization_id, at=check_time
+        overlapping = await self._period_repo.get_active_periods_in_range(
+            db,
+            organization_id=organization_id,
+            range_start=period_start - timedelta(seconds=1),
+            range_end=period_end,
         )
 
-        if current and current.status in [BillingPeriodStatus.ACTIVE, BillingPeriodStatus.GRACE]:
-            db_period = await self._period_repo.get(db, id=current.id, ctx=ctx)
-            if db_period:
-                if db_period.period_start < period_start:
-                    await self._period_repo.update(
-                        db,
-                        db_obj=db_period,
-                        obj_in={
-                            "status": BillingPeriodStatus.COMPLETED,
-                            "period_end": period_start,
-                        },
-                        ctx=ctx,
-                    )
-                    if not previous_period_id:
-                        previous_period_id = db_period.id
+        for existing in overlapping:
+            db_period = await self._period_repo.get(db, id=existing.id, ctx=ctx)
+            if not db_period:
+                continue
+
+            if db_period.period_start < period_start:
+                # Period starts before ours — truncate it at our start
+                await self._period_repo.update(
+                    db,
+                    db_obj=db_period,
+                    obj_in={
+                        "status": BillingPeriodStatus.COMPLETED,
+                        "period_end": period_start,
+                    },
+                    ctx=ctx,
+                )
+                if not previous_period_id:
+                    previous_period_id = db_period.id
+                logger.info(
+                    f"Completed earlier period {db_period.id} (truncated end to {period_start})"
+                )
+            else:
+                # Period starts at or after ours — it's a forward overlap,
+                # complete it so the new period takes precedence
+                await self._period_repo.update(
+                    db,
+                    db_obj=db_period,
+                    obj_in={"status": BillingPeriodStatus.COMPLETED},
+                    ctx=ctx,
+                )
+                logger.info(
+                    f"Completed forward-overlapping period {db_period.id} "
+                    f"(started {db_period.period_start})"
+                )
 
         period_create = BillingPeriodCreate(
             organization_id=organization_id,

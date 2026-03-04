@@ -186,8 +186,12 @@ class TokenManager:
                 return new_token
 
             except Exception as e:
-                self.logger.error(f"Failed to refresh token for {self.source_short_name}: {str(e)}")
-                raise TokenRefreshError(f"Token refresh failed: {str(e)}") from e
+                self.logger.warning(
+                    f"Token refresh failed for {self.source_short_name}, "
+                    f"falling back to current token: {str(e)}"
+                )
+                self._can_refresh = False
+                return self._current_token
 
     async def refresh_on_unauthorized(self) -> str:
         """Force a token refresh after receiving an unauthorized error.

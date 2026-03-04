@@ -148,6 +148,11 @@ from .hubspot import (
     HubspotDealEntity,
     HubspotTicketEntity,
 )
+from .intercom import (
+    IntercomConversationEntity,
+    IntercomConversationMessageEntity,
+    IntercomTicketEntity,
+)
 from .jira import (
     JiraIssueEntity,
     JiraProjectEntity,
@@ -208,6 +213,7 @@ from .pipedrive import (
     PipedrivePersonEntity,
     PipedriveProductEntity,
 )
+from .powerpoint import PowerPointPresentationEntity
 from .salesforce import (
     SalesforceAccountEntity,
     SalesforceContactEntity,
@@ -470,6 +476,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         HubspotDealEntity,
         HubspotTicketEntity,
     ],
+    "intercom": [
+        IntercomConversationEntity,
+        IntercomConversationMessageEntity,
+        IntercomTicketEntity,
+    ],
     "jira": [
         JiraIssueEntity,
         JiraProjectEntity,
@@ -635,6 +646,9 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ServiceNowIncidentEntity,
         ServiceNowKnowledgeArticleEntity,
         ServiceNowProblemEntity,
+    ],
+    "powerpoint": [
+        PowerPointPresentationEntity,
     ],
     "zendesk": [
         ZendeskAttachmentEntity,

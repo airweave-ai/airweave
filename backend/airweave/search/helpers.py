@@ -43,7 +43,13 @@ class SearchHelpers:
             # Extract filter from user_filter operation if it was configured
             filter_dict = None
             if search_context.user_filter and search_context.user_filter.filter:
-                filter_dict = search_context.user_filter.filter.model_dump(exclude_none=True)
+                f = search_context.user_filter.filter
+                if isinstance(f, dict):
+                    filter_dict = f
+                elif hasattr(f, "model_dump"):
+                    filter_dict = f.model_dump(exclude_none=True)
+                else:
+                    filter_dict = dict(f)
 
             # Create search query schema using actual values from SearchContext
             # (which has defaults applied via factory)

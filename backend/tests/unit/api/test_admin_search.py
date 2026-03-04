@@ -75,7 +75,7 @@ class TestAdminSearchCollection:
                     search_request=search_request,
                     db=mock_db,
                     ctx=mock_ctx,
-                    destination=AdminSearchDestination.QDRANT,
+                    destination=AdminSearchDestination.VESPA,
                 )
 
             assert "Admin permission required" in str(exc_info.value)
@@ -97,7 +97,7 @@ class TestAdminSearchCollection:
                 search_request=search_request,
                 db=mock_db,
                 ctx=mock_ctx,
-                destination=AdminSearchDestination.QDRANT,
+                destination=AdminSearchDestination.VESPA,
             )
 
             assert isinstance(result, SearchResponse)
@@ -112,7 +112,7 @@ class TestAdminSearchCollection:
             assert call_kwargs["search_request"] == search_request
             assert call_kwargs["db"] == mock_db
             assert call_kwargs["ctx"] == mock_ctx
-            assert call_kwargs["destination"] == "qdrant"
+            assert call_kwargs["destination"] == "vespa"
 
 
 @pytest.mark.asyncio
@@ -265,14 +265,14 @@ class TestAdminSearchDestinationParameter:
             await admin_search_collection(
                 readable_id="test-collection",
                 search_request=search_request,
-                destination=AdminSearchDestination.QDRANT,
+                destination=AdminSearchDestination.VESPA,
                 db=mock_db,
                 ctx=mock_ctx,
             )
 
-            # Verify qdrant destination was used
+            # Verify vespa destination was used
             call_kwargs = mock_service.search_admin.call_args.kwargs
-            assert call_kwargs["destination"] == "qdrant"
+            assert call_kwargs["destination"] == "vespa"
 
     async def test_admin_search_as_user_respects_destination_parameter(
         self, mock_ctx, mock_db, search_request, search_response, mock_service
@@ -287,11 +287,11 @@ class TestAdminSearchDestinationParameter:
                 readable_id="test-collection",
                 search_request=search_request,
                 user_principal="john@acme.com",
-                destination=AdminSearchDestination.QDRANT,
+                destination=AdminSearchDestination.VESPA,
                 db=mock_db,
                 ctx=mock_ctx,
             )
 
-            # Verify qdrant destination was used
+            # Verify vespa destination was used
             call_kwargs = mock_service.search_as_user.call_args.kwargs
-            assert call_kwargs["destination"] == "qdrant"
+            assert call_kwargs["destination"] == "vespa"

@@ -104,7 +104,9 @@ class SourceRegistry(SourceRegistryProtocol):
         config_ref = source_cls.config_class
         auth_config_ref = source_cls.auth_config_class
 
-        runtime_all, runtime_optional = self._compute_runtime_auth_fields(auth_config_ref)
+        runtime_all, runtime_optional = self._compute_runtime_auth_fields(
+            auth_config_ref, oauth_type=source_cls.oauth_type
+        )
 
         # Resolve output entity definition short_names from the entity definition registry
         entity_entries = self._entity_definition_registry.list_for_source(source_cls.short_name)
@@ -160,16 +162,28 @@ class SourceRegistry(SourceRegistryProtocol):
     @staticmethod
     def _compute_runtime_auth_fields(
         auth_config_ref: type | None,
+        oauth_type: object | None = None,
     ) -> tuple[list[str], set[str]]:
         """Precompute the auth field names the sync pipeline needs.
 
-        OAuth sources have no auth_config_class — returns empty for those.
+        For sources with auth_config_class, fields come from the Pydantic model.
+        For pure OAuth sources (no auth_config_class but has oauth_type), returns
+        the standard OAuth field set so auth providers know which credentials to
+        fetch.
         """
-        if auth_config_ref is None:
-            return [], set()
+        if auth_config_ref is not None:
+            all_fields = list(auth_config_ref.model_fields.keys())
+            optional_fields = {
+                name
+                for name, info in auth_config_ref.model_fields.items()
+                if not info.is_required()
+            }
+            return all_fields, optional_fields
 
-        all_fields = list(auth_config_ref.model_fields.keys())
-        optional_fields = {
-            name for name, info in auth_config_ref.model_fields.items() if not info.is_required()
-        }
-        return all_fields, optional_fields
+        if oauth_type is not None:
+            oauth_str = _enum_to_str(oauth_type)
+            if oauth_str == "with_refresh" or oauth_str == "with_rotating_refresh":
+                return ["access_token", "refresh_token"], set()
+            return ["access_token"], set()
+
+        return [], set()

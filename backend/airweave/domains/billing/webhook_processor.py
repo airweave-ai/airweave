@@ -21,6 +21,7 @@ from airweave.domains.billing.protocols import BillingWebhookProtocol
 from airweave.domains.billing.repository import (
     BillingPeriodRepositoryProtocol,
     OrganizationBillingRepositoryProtocol,
+    WebhookEventRepositoryProtocol,
 )
 from airweave.domains.billing.types import (
     ChangeType,
@@ -47,6 +48,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         period_repo: BillingPeriodRepositoryProtocol,
         billing_ops: BillingOperationsProtocol,
         org_repo: OrganizationRepositoryProtocol,
+        webhook_event_repo: WebhookEventRepositoryProtocol | None = None,
     ) -> None:
         """Initialize with all required dependencies."""
         self._payment_gateway = payment_gateway
@@ -54,6 +56,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self._period_repo = period_repo
         self._billing_ops = billing_ops
         self._org_repo = org_repo
+        self._webhook_event_repo = webhook_event_repo
 
         # Event handler mapping
         self.handlers = {
@@ -245,7 +248,16 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         await self._process_event(db, event)
 
     async def _process_event(self, db: AsyncSession, event: Any) -> None:
-        """Process a verified Stripe webhook event."""
+        """Process a verified Stripe webhook event.
+
+        Idempotent: skips events that have already been successfully processed
+        (tracked via WebhookEventRepository).
+        """
+        if self._webhook_event_repo:
+            if await self._webhook_event_repo.is_processed(db, stripe_event_id=event.id):
+                logger.info(f"Skipping already-processed webhook event {event.id} ({event.type})")
+                return
+
         ctx, log = await self._resolve_event_context(db, event)
 
         handler = self.handlers.get(event.type)
@@ -253,6 +265,12 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             try:
                 log.info(f"Processing webhook event: {event.type}")
                 await handler(db, event, ctx, log)
+
+                if self._webhook_event_repo:
+                    await self._webhook_event_repo.mark_processed(
+                        db, stripe_event_id=event.id, event_type=event.type
+                    )
+                    await db.commit()
             except Exception as e:
                 log.error(f"Error handling {event.type}: {e}", exc_info=True)
                 raise
@@ -513,6 +531,11 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         except Exception as e:
             log.error(f"Error checking yearly prepay expiry: {e}")
 
+        # Refresh the billing object so that lazily-loaded attributes (e.g.
+        # organization_id) are available in the async context.  Earlier DB
+        # commits (create_billing_period) may have expired the ORM state,
+        # causing a MissingGreenlet error on subsequent attribute access.
+        await db.refresh(billing)
         await self._billing_repo.update(db, db_obj=billing, obj_in=updates, ctx=ctx)
 
         log.info(f"Subscription updated for org {org_id}")
@@ -802,6 +825,21 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
                 return
 
             organization_id = UUID(org_id_str)
+
+            # Layer 3: Idempotency — skip if this payment intent was already finalized
+            billing_check = await self._billing_repo.get_by_org_id(
+                db, organization_id=organization_id
+            )
+            if (
+                billing_check
+                and billing_check.has_yearly_prepay
+                and billing_check.yearly_prepay_payment_intent_id == str(payment_intent_id)
+            ):
+                log.info(
+                    f"Yearly prepay already finalized for org {organization_id} "
+                    f"(payment_intent {payment_intent_id}), skipping"
+                )
+                return
 
             # Credit customer's balance by the captured amount
             billing = await self._billing_repo.get_by_org_id(db, organization_id=organization_id)

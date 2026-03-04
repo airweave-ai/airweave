@@ -5,14 +5,15 @@ subtitle: Serve your Airweave collection through an MCP server so that AI assist
 slug: mcp-server
 ---
 
-The Airweave MCP server implements the [Model Context Protocol](https://modelcontextprotocol.io/) to let AI assistants search your synced data. It supports two deployment modes: **local** (stdio) for desktop AI clients and **hosted** (Streamable HTTP) for cloud platforms.
+The Airweave MCP server implements the [Model Context Protocol](https://modelcontextprotocol.io/) to let AI assistants search your synced data. It supports two deployment modes: **local** (stdio) for desktop AI clients and **hosted** (Streamable HTTP) for cloud platforms, with two authentication methods: **API key** and **OAuth 2.0**.
 
 ## Prerequisites
 
 Before you start you'll need:
 
   - **A collection with data**: at least one source connection must have completed its initial sync. See the [Quickstart](/quickstart) if you need to set this up.
-  - **An API key**: Create one in the Airweave dashboard under **API Keys**.
+  - **An API key** (for API key auth): Create one in the Airweave dashboard under **API Keys**.
+  - **No setup needed** (for OAuth auth): The hosted MCP server handles OAuth 2.0 via Auth0 automatically — users authenticate through a browser redirect.
 
 ---
 
@@ -119,7 +120,48 @@ Hosted mode runs the MCP server as a stateless HTTP service at `https://mcp.airw
 
 Each request is fully independent: authentication and collection selection happen per-request via HTTP headers. No sessions or server-side state.
 
+The hosted server supports two authentication methods: **API key** (simple, direct) and **OAuth 2.0** (browser-based login). Both can be used at the same time.
+
 <Tabs>
+    <Tab title="Cursor (OAuth)">
+      Use `mcp-remote` to handle the OAuth flow automatically. On first connection, a browser window opens for login:
+
+      ```json title="~/.cursor/mcp.json"
+      {
+        "mcpServers": {
+          "airweave-search": {
+            "command": "npx",
+            "args": [
+              "-y", "mcp-remote",
+              "https://mcp.airweave.ai/mcp",
+              "--header", "X-Collection-Readable-ID: your-collection-id"
+            ]
+          }
+        }
+      }
+      ```
+
+      `mcp-remote` discovers the OAuth metadata at `/.well-known/oauth-authorization-server`, registers a client, and manages token refresh transparently.
+    </Tab>
+
+    <Tab title="Cursor (API key)">
+      Use Cursor's native Streamable HTTP support with your API key — no extra tooling needed:
+
+      ```json title="~/.cursor/mcp.json"
+      {
+        "mcpServers": {
+          "airweave-search": {
+            "url": "https://mcp.airweave.ai/mcp",
+            "headers": {
+              "X-API-Key": "your-api-key",
+              "X-Collection-Readable-ID": "your-collection-id"
+            }
+          }
+        }
+      }
+      ```
+    </Tab>
+
     <Tab title="OpenAI Agent Builder">
       In the OpenAI Agent Builder, add a new MCP tool with:
 
@@ -157,12 +199,27 @@ Each request is fully independent: authentication and collection selection happe
 
 ### Authentication (hosted mode)
 
-The API key can be provided via either of these methods (checked in order):
+The server supports two authentication methods. When both are present, `X-API-Key` takes priority.
+
+**API key authentication:**
 
 | Method | Example |
 |--------|---------|
 | `X-API-Key` header (recommended) | `X-API-Key: your-api-key` |
-| `Authorization` header | `Authorization: Bearer your-api-key` |
+| `Authorization: Bearer` header | `Authorization: Bearer your-api-key` |
+
+**OAuth 2.0 authentication:**
+
+The hosted server supports [OAuth 2.0 with PKCE](https://oauth.net/2/pkce/) via Auth0. MCP clients that support [RFC 7591 Dynamic Client Registration](https://datatracker.ietf.org/doc/html/rfc7591) (like `mcp-remote`) handle this automatically:
+
+1. The client discovers OAuth metadata at `/.well-known/oauth-authorization-server`
+2. The client registers itself at `/register` (dynamic client registration)
+3. The user is redirected to Auth0 for login via `/authorize`
+4. After login, Auth0 redirects back to `/oauth/callback`
+5. The client exchanges the authorization code for tokens at `/token`
+6. Subsequent requests use `Authorization: Bearer <access-token>`
+
+When a Bearer token is present and OAuth is enabled, the server verifies it as a JWT. If verification fails, it falls back to treating the token as an API key.
 
 ### Collection selection (hosted mode)
 
@@ -237,16 +294,18 @@ AI Assistant (Cursor, Claude, OpenAI, VS Code)
                   └── https://mcp.airweave.ai/mcp
                            │
                      MCP Server (Node.js)
-                           │
-                     Airweave SDK
-                           │
-                     POST /collections/{id}/search
-                           │
-                     Airweave API
+                       │         │
+                  API key auth   OAuth 2.0
+                       │         │ (Auth0 + Redis)
+                       └────┬────┘
+                            │
+                      Airweave API
+                            │
+                      POST /collections/{id}/search
 ```
 
 - **Local mode**: One MCP server process per user. API key and collection are set via environment variables. Communication over stdio.
-- **Hosted mode**: Stateless HTTP server. A fresh MCP server instance is created for each request. API key and collection come from request headers.
+- **Hosted mode**: Stateless HTTP server. A fresh MCP server instance is created for each request. Supports API key auth (via headers) and OAuth 2.0 (via Auth0).
 
 In both modes, the MCP server is a thin wrapper around the [Airweave SDK](/api-reference). It validates parameters, calls the search API, and formats results for the AI assistant.
 
@@ -283,4 +342,4 @@ docker run -p 8080:8080 \
   your-registry/mcp:latest
 ```
 
-The hosted mode Docker image exposes port 8080 with a health check at `/health`.
+The hosted mode Docker image exposes port 8080 with a health check at `/health`. Self-hosted instances use API key authentication. OAuth is only available on the managed Airweave platform (`mcp.airweave.ai`).

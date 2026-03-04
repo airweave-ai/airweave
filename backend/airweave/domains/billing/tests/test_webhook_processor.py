@@ -197,10 +197,18 @@ class TransitionCase:
 
 
 TRANSITION_CASES = [
-    TransitionCase("first_period", BillingPlan.PRO, BillingPlan.PRO, True, BillingTransition.INITIAL_SIGNUP),
-    TransitionCase("upgrade", BillingPlan.DEVELOPER, BillingPlan.PRO, False, BillingTransition.UPGRADE),
-    TransitionCase("downgrade", BillingPlan.TEAM, BillingPlan.PRO, False, BillingTransition.DOWNGRADE),
-    TransitionCase("same_renewal", BillingPlan.PRO, BillingPlan.PRO, False, BillingTransition.RENEWAL),
+    TransitionCase(
+        "first_period", BillingPlan.PRO, BillingPlan.PRO, True, BillingTransition.INITIAL_SIGNUP
+    ),
+    TransitionCase(
+        "upgrade", BillingPlan.DEVELOPER, BillingPlan.PRO, False, BillingTransition.UPGRADE
+    ),
+    TransitionCase(
+        "downgrade", BillingPlan.TEAM, BillingPlan.PRO, False, BillingTransition.DOWNGRADE
+    ),
+    TransitionCase(
+        "same_renewal", BillingPlan.PRO, BillingPlan.PRO, False, BillingTransition.RENEWAL
+    ),
 ]
 
 
@@ -248,7 +256,7 @@ def test_should_create_new_period(case: NewPeriodCase):
 class TestHandleSubscriptionCreated:
     @pytest.mark.asyncio
     async def test_no_ctx_returns_early(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         billing = _make_billing_model()
         br.seed(DEFAULT_ORG_ID, billing)
         sub = _make_subscription_obj()
@@ -262,7 +270,7 @@ class TestHandleSubscriptionCreated:
 
     @pytest.mark.asyncio
     async def test_no_billing_record_returns_early(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         sub = _make_subscription_obj()
         event = _make_stripe_event("customer.subscription.created", sub)
@@ -273,12 +281,14 @@ class TestHandleSubscriptionCreated:
 
     @pytest.mark.asyncio
     async def test_happy_path_pro(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model()
         br.seed(DEFAULT_ORG_ID, billing)
 
-        sub = _make_subscription_obj(metadata={"organization_id": str(DEFAULT_ORG_ID), "plan": "pro"})
+        sub = _make_subscription_obj(
+            metadata={"organization_id": str(DEFAULT_ORG_ID), "plan": "pro"}
+        )
         event = _make_stripe_event("customer.subscription.created", sub)
 
         await proc._handle_subscription_created(db, event, ctx, ctx.logger)
@@ -294,7 +304,7 @@ class TestHandleSubscriptionCreated:
 
     @pytest.mark.asyncio
     async def test_developer_plan(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model(billing_plan=BillingPlan.DEVELOPER.value)
         br.seed(DEFAULT_ORG_ID, billing)
@@ -312,7 +322,7 @@ class TestHandleSubscriptionCreated:
 
     @pytest.mark.asyncio
     async def test_payment_method_detected(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model(payment_method_added=False, payment_method_id=None)
         br.seed(DEFAULT_ORG_ID, billing)
@@ -334,7 +344,7 @@ class TestHandleSubscriptionCreated:
 class TestHandleSubscriptionUpdated:
     @pytest.mark.asyncio
     async def test_no_billing_returns_early(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         sub = _make_subscription_obj()
         event = _make_stripe_event("customer.subscription.updated", sub)
@@ -346,7 +356,7 @@ class TestHandleSubscriptionUpdated:
 
     @pytest.mark.asyncio
     async def test_renewal_creates_period(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model()
         br.seed(DEFAULT_ORG_ID, billing)
@@ -371,7 +381,7 @@ class TestHandleSubscriptionUpdated:
 
     @pytest.mark.asyncio
     async def test_no_relevant_changes_updates_billing_only(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model()
         br.seed(DEFAULT_ORG_ID, billing)
@@ -393,7 +403,7 @@ class TestHandleSubscriptionUpdated:
 
     @pytest.mark.asyncio
     async def test_cancel_at_period_end_recorded(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model(cancel_at_period_end=False)
         br.seed(DEFAULT_ORG_ID, billing)
@@ -411,7 +421,7 @@ class TestHandleSubscriptionUpdated:
 
     @pytest.mark.asyncio
     async def test_yearly_prepay_expiry_clears_fields(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         # Billing with yearly prepay that has expired
         billing = _make_billing_model(
@@ -450,7 +460,7 @@ class TestHandleSubscriptionUpdated:
 class TestHandleSubscriptionDeleted:
     @pytest.mark.asyncio
     async def test_no_billing_returns_early(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         sub = _make_subscription_obj(status="canceled")
         event = _make_stripe_event("customer.subscription.deleted", sub)
@@ -463,7 +473,7 @@ class TestHandleSubscriptionDeleted:
 
     @pytest.mark.asyncio
     async def test_canceled_clears_subscription(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model()
         br.seed(DEFAULT_ORG_ID, billing)
@@ -480,7 +490,7 @@ class TestHandleSubscriptionDeleted:
 
     @pytest.mark.asyncio
     async def test_scheduled_cancel_sets_flag(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model(cancel_at_period_end=False)
         br.seed(DEFAULT_ORG_ID, billing)
@@ -494,7 +504,7 @@ class TestHandleSubscriptionDeleted:
 
     @pytest.mark.asyncio
     async def test_pending_downgrade_applies_on_cancel(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model(
             pending_plan_change=BillingPlan.DEVELOPER,
@@ -521,7 +531,7 @@ class TestHandleSubscriptionDeleted:
 class TestHandlePaymentSucceeded:
     @pytest.mark.asyncio
     async def test_no_subscription_returns_early(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         invoice = _make_invoice_obj(subscription=None)
         event = _make_stripe_event("invoice.payment_succeeded", invoice)
@@ -533,7 +543,7 @@ class TestHandlePaymentSucceeded:
 
     @pytest.mark.asyncio
     async def test_no_billing_returns_early(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         invoice = _make_invoice_obj()
         event = _make_stripe_event("invoice.payment_succeeded", invoice)
@@ -545,7 +555,7 @@ class TestHandlePaymentSucceeded:
 
     @pytest.mark.asyncio
     async def test_happy_path_updates_payment_status(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model()
         br.seed(DEFAULT_ORG_ID, billing)
@@ -562,7 +572,7 @@ class TestHandlePaymentSucceeded:
 
     @pytest.mark.asyncio
     async def test_past_due_updated_to_active(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model(billing_status=BillingStatus.PAST_DUE.value)
         br.seed(DEFAULT_ORG_ID, billing)
@@ -583,7 +593,7 @@ class TestHandlePaymentSucceeded:
 class TestHandlePaymentFailed:
     @pytest.mark.asyncio
     async def test_no_subscription_returns_early(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         invoice = _make_invoice_obj(subscription=None)
         event = _make_stripe_event("invoice.payment_failed", invoice)
@@ -595,7 +605,7 @@ class TestHandlePaymentFailed:
 
     @pytest.mark.asyncio
     async def test_no_billing_returns_early(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         invoice = _make_invoice_obj()
         event = _make_stripe_event("invoice.payment_failed", invoice)
@@ -607,7 +617,7 @@ class TestHandlePaymentFailed:
 
     @pytest.mark.asyncio
     async def test_renewal_failure_creates_grace_period(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model()
         br.seed(DEFAULT_ORG_ID, billing)
@@ -628,7 +638,7 @@ class TestHandlePaymentFailed:
 
     @pytest.mark.asyncio
     async def test_non_renewal_failure_sets_past_due(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model()
         br.seed(DEFAULT_ORG_ID, billing)
@@ -652,7 +662,7 @@ class TestHandlePaymentFailed:
 class TestHandleCheckoutCompleted:
     @pytest.mark.asyncio
     async def test_subscription_mode_noop(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
 
         session = _obj(
@@ -678,7 +688,7 @@ class TestHandleCheckoutCompleted:
 class TestHandleInvoiceUpcoming:
     @pytest.mark.asyncio
     async def test_logs_upcoming(self, db):
-        proc, gw, br, pr, bo, org = _make_webhook_processor()
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
         ctx = _make_ctx()
         billing = _make_billing_model()
         br.seed(DEFAULT_ORG_ID, billing)
@@ -724,7 +734,7 @@ class TestNullGatewayWebhookBehavior:
     @pytest.mark.asyncio
     async def test_subscription_created_no_payment_method_detected(self, db):
         """NullPaymentGateway.detect_payment_method returns (False, None)."""
-        proc, _, br, pr, bo, org = _make_webhook_processor(
+        proc, _, br, pr, bo, org, *__ = _make_webhook_processor(
             payment_gateway=NullPaymentGateway()
         )
         ctx = _make_ctx()
@@ -743,7 +753,7 @@ class TestNullGatewayWebhookBehavior:
     @pytest.mark.asyncio
     async def test_subscription_updated_empty_items_keeps_plan(self, db):
         """NullPaymentGateway returns empty items and mapping → plan unchanged."""
-        proc, _, br, pr, bo, org = _make_webhook_processor(
+        proc, _, br, pr, bo, org, *__ = _make_webhook_processor(
             payment_gateway=NullPaymentGateway()
         )
         ctx = _make_ctx()
@@ -776,7 +786,7 @@ class TestResolveEventContext:
     @pytest.mark.asyncio
     async def test_returns_system_context_when_org_found(self, db):
         """When the org can be resolved, returns a SystemContext with STRIPE_WEBHOOK auth."""
-        proc, gw, br, pr, bo, org_repo = _make_webhook_processor()
+        proc, gw, br, pr, bo, org_repo, *_ = _make_webhook_processor()
 
         # Seed org into the fake org repo
         org_model = _make_org_model()
@@ -797,7 +807,7 @@ class TestResolveEventContext:
     @pytest.mark.asyncio
     async def test_returns_none_when_org_not_found(self, db):
         """When the org cannot be resolved, returns None context."""
-        proc, gw, br, pr, bo, org_repo = _make_webhook_processor()
+        proc, gw, br, pr, bo, org_repo, *_ = _make_webhook_processor()
 
         sub = _make_subscription_obj(
             metadata={"organization_id": str(DEFAULT_ORG_ID), "plan": "pro"}
