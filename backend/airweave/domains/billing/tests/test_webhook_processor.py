@@ -817,3 +817,62 @@ class TestResolveEventContext:
         ctx, log = await proc._resolve_event_context(db, event)
 
         assert ctx is None
+
+
+# ===========================================================================
+# Commit boundary safety: re-fetch after UoW commit
+# ===========================================================================
+
+
+class TestCommitBoundarySafety:
+    """Verify _handle_subscription_updated re-fetches the billing record
+    after create_billing_period commits via UoW.
+
+    In production, the UoW commit expires SQLAlchemy ORM state.  Accessing
+    attributes on the stale object raises MissingGreenlet.  The re-fetch
+    guard prevents this.
+    """
+
+    @pytest.mark.asyncio
+    async def test_billing_refetched_after_renewal_creates_period(self, db):
+        """After a renewal creates a period, billing must be re-fetched."""
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
+        ctx = _make_ctx()
+        billing = _make_billing_model()
+        br.seed(DEFAULT_ORG_ID, billing)
+
+        now_ts = int(time.time())
+        sub = _make_subscription_obj(
+            current_period_start=now_ts,
+            current_period_end=now_ts + 30 * 86400,
+        )
+        event = _make_stripe_event(
+            "customer.subscription.updated",
+            sub,
+            previous_attributes={"current_period_end": now_ts - 30 * 86400},
+        )
+
+        await proc._handle_subscription_updated(db, event, ctx, ctx.logger)
+
+        sub_id_calls = [c for c in br._calls if c[0] == "get_by_stripe_subscription_id"]
+        assert len(sub_id_calls) >= 2
+
+    @pytest.mark.asyncio
+    async def test_billing_refetched_even_without_period_creation(self, db):
+        """Even without a new period, billing is re-fetched before update."""
+        proc, gw, br, pr, bo, org, *_ = _make_webhook_processor()
+        ctx = _make_ctx()
+        billing = _make_billing_model()
+        br.seed(DEFAULT_ORG_ID, billing)
+
+        sub = _make_subscription_obj()
+        event = _make_stripe_event(
+            "customer.subscription.updated",
+            sub,
+            previous_attributes={},
+        )
+
+        await proc._handle_subscription_updated(db, event, ctx, ctx.logger)
+
+        sub_id_calls = [c for c in br._calls if c[0] == "get_by_stripe_subscription_id"]
+        assert len(sub_id_calls) >= 2

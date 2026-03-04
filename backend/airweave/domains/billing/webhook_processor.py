@@ -436,20 +436,26 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
                     log.error("Stripe update failed - skipping database update to prevent mismatch")
                     return
 
+        # Extract billing attributes before the commit boundary
+        # (create_billing_period commits via UoW, expiring ORM state).
+        billing_plan = billing.billing_plan
+        has_yearly_prepay = billing.has_yearly_prepay
+        yearly_prepay_expires_at = billing.yearly_prepay_expires_at
+
         # Determine if we should create a new period
         final_plan_for_period = inferred.plan
         if is_renewal and inferred.changed and inferred.should_clear_pending:
             if not stripe_update_successful:
-                final_plan_for_period = billing.billing_plan
+                final_plan_for_period = billing_plan
 
-        change_type = compare_plans(billing.billing_plan, final_plan_for_period)
+        change_type = compare_plans(billing_plan, final_plan_for_period)
         if self._should_create_new_period(
             "renewal" if is_renewal else "immediate_change",
-            final_plan_for_period != billing.billing_plan,
+            final_plan_for_period != billing_plan,
             change_type,
         ):
             transition = self._determine_period_transition(
-                billing.billing_plan,
+                billing_plan,
                 final_plan_for_period,
                 is_first_period=False,
             )
@@ -487,7 +493,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         final_plan = inferred.plan
         if is_renewal and inferred.changed and inferred.should_clear_pending:
             if not stripe_update_successful:
-                final_plan = billing.billing_plan
+                final_plan = billing_plan
                 log.warning(f"Keeping plan as {final_plan} due to Stripe update failure")
 
         updates = OrganizationBillingUpdate(
@@ -513,8 +519,8 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
 
         # Yearly prepay expiry handling
         try:
-            if billing.has_yearly_prepay:
-                expiry = billing.yearly_prepay_expires_at
+            if has_yearly_prepay:
+                expiry = yearly_prepay_expires_at
                 current_renewal_time = datetime.utcfromtimestamp(subscription.current_period_start)
 
                 if expiry and current_renewal_time >= expiry:
@@ -531,11 +537,11 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         except Exception as e:
             log.error(f"Error checking yearly prepay expiry: {e}")
 
-        # Refresh the billing object so that lazily-loaded attributes (e.g.
-        # organization_id) are available in the async context.  Earlier DB
-        # commits (create_billing_period) may have expired the ORM state,
-        # causing a MissingGreenlet error on subsequent attribute access.
-        await db.refresh(billing)
+        # Re-fetch billing after commit boundary (create_billing_period
+        # commits via UoW, expiring the original ORM object).
+        billing = await self._billing_repo.get_by_stripe_subscription_id(
+            db, stripe_subscription_id=subscription.id
+        )
         await self._billing_repo.update(db, db_obj=billing, obj_in=updates, ctx=ctx)
 
         log.info(f"Subscription updated for org {org_id}")

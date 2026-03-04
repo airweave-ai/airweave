@@ -212,53 +212,56 @@ class BillingOperations(BillingOperationsProtocol):
             range_end=period_end,
         )
 
-        for existing in overlapping:
-            db_period = await self._period_repo.get(db, id=existing.id, ctx=ctx)
-            if not db_period:
-                continue
-
-            if db_period.period_start < period_start:
-                # Period starts before ours — truncate it at our start
-                await self._period_repo.update(
-                    db,
-                    db_obj=db_period,
-                    obj_in={
-                        "status": BillingPeriodStatus.COMPLETED,
-                        "period_end": period_start,
-                    },
-                    ctx=ctx,
-                )
-                if not previous_period_id:
-                    previous_period_id = db_period.id
-                logger.info(
-                    f"Completed earlier period {db_period.id} (truncated end to {period_start})"
-                )
-            else:
-                # Period starts at or after ours — it's a forward overlap,
-                # complete it so the new period takes precedence
-                await self._period_repo.update(
-                    db,
-                    db_obj=db_period,
-                    obj_in={"status": BillingPeriodStatus.COMPLETED},
-                    ctx=ctx,
-                )
-                logger.info(
-                    f"Completed forward-overlapping period {db_period.id} "
-                    f"(started {db_period.period_start})"
-                )
-
-        period_create = BillingPeriodCreate(
-            organization_id=organization_id,
-            period_start=period_start,
-            period_end=period_end,
-            plan=plan,
-            status=status,
-            created_from=transition,
-            stripe_subscription_id=stripe_subscription_id,
-            previous_period_id=previous_period_id,
-        )
-
         async with UnitOfWork(db) as uow:
+            for existing in overlapping:
+                db_period = await self._period_repo.get(db, id=existing.id, ctx=ctx)
+                if not db_period:
+                    continue
+
+                if db_period.period_start < period_start:
+                    # Period starts before ours — truncate it at our start
+                    await self._period_repo.update(
+                        db,
+                        db_obj=db_period,
+                        obj_in={
+                            "status": BillingPeriodStatus.COMPLETED,
+                            "period_end": period_start,
+                        },
+                        ctx=ctx,
+                        uow=uow,
+                    )
+                    if not previous_period_id:
+                        previous_period_id = db_period.id
+                    logger.info(
+                        f"Completed earlier period {db_period.id} "
+                        f"(truncated end to {period_start})"
+                    )
+                else:
+                    # Period starts at or after ours — it's a forward overlap,
+                    # complete it so the new period takes precedence
+                    await self._period_repo.update(
+                        db,
+                        db_obj=db_period,
+                        obj_in={"status": BillingPeriodStatus.COMPLETED},
+                        ctx=ctx,
+                        uow=uow,
+                    )
+                    logger.info(
+                        f"Completed forward-overlapping period {db_period.id} "
+                        f"(started {db_period.period_start})"
+                    )
+
+            period_create = BillingPeriodCreate(
+                organization_id=organization_id,
+                period_start=period_start,
+                period_end=period_end,
+                plan=plan,
+                status=status,
+                created_from=transition,
+                stripe_subscription_id=stripe_subscription_id,
+                previous_period_id=previous_period_id,
+            )
+
             period = await self._period_repo.create(db, obj_in=period_create, ctx=ctx, uow=uow)
             await db.flush()
             period_id = period.id

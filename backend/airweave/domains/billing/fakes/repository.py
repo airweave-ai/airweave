@@ -144,10 +144,11 @@ class FakeBillingPeriodRepository:
         return [p for p in self._store if p.organization_id == organization_id][:limit]
 
     async def update(
-        self, db: AsyncSession, *, db_obj: BillingPeriod, obj_in: dict, ctx: object
+        self, db: AsyncSession, *, db_obj: BillingPeriod, obj_in: dict, ctx: object,
+        uow: object = None,
     ) -> BillingPeriod:
         """Update a billing period (fake)."""
-        self._calls.append(("update", db, db_obj, obj_in, ctx))
+        self._calls.append(("update", db, db_obj, obj_in, ctx, uow))
         for key, value in obj_in.items():
             setattr(db_obj, key, value)
         return db_obj

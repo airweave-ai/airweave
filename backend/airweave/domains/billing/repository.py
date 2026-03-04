@@ -157,6 +157,7 @@ class BillingPeriodRepositoryProtocol(Protocol):
         db_obj: BillingPeriod,
         obj_in: dict,
         ctx: BaseContext,
+        uow: Optional[UnitOfWork] = None,
     ) -> BillingPeriod:
         """Update a billing period."""
         ...
@@ -220,9 +221,10 @@ class BillingPeriodRepository(BillingPeriodRepositoryProtocol):
         db_obj: BillingPeriod,
         obj_in: dict,
         ctx: BaseContext,
+        uow: Optional[UnitOfWork] = None,
     ) -> BillingPeriod:
         """Update a billing period."""
-        return await crud.billing_period.update(db, db_obj=db_obj, obj_in=obj_in, ctx=ctx)
+        return await crud.billing_period.update(db, db_obj=db_obj, obj_in=obj_in, ctx=ctx, uow=uow)
 
     async def get_active_periods_in_range(
         self,
