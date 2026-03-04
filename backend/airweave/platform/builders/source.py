@@ -8,9 +8,10 @@ Handles all source creation complexity:
 - HTTP client wrapping (rate limiting)
 """
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -18,6 +19,8 @@ from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.models.node_selection import NodeSelection
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.contexts.source import SourceContext
@@ -99,6 +102,19 @@ class SourceContextBuilder:
 
         # 4. Set cursor on source
         source.set_cursor(cursor)
+
+        # 5. Set metadata_only flag from execution config
+        if execution_config and execution_config.behavior.metadata_only:
+            if hasattr(source, "set_metadata_only"):
+                source.set_metadata_only(True)
+                logger.info("Metadata-only mode enabled on source")
+
+        # 6. Load node selections if they exist for this source connection
+        source_connection_id = source_connection_data["source_connection_id"]
+        node_selections = await cls._load_node_selections(db, source_connection_id, ctx)
+        if node_selections and hasattr(source, "set_node_selections"):
+            source.set_node_selections(node_selections)
+            logger.info(f"Loaded {len(node_selections)} node selections for targeted sync")
 
         return SourceContext(source=source, cursor=cursor)
 
@@ -539,3 +555,33 @@ class SourceContextBuilder:
             cursor_schema=cursor_schema,
             cursor_data=cursor_data,
         )
+
+    # -------------------------------------------------------------------------
+    # Private: Node Selection Loading
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    async def _load_node_selections(
+        cls,
+        db: AsyncSession,
+        source_connection_id: UUID,
+        ctx: ApiContext,
+    ) -> List[NodeSelectionData]:
+        """Load node selections for a source connection (for targeted sync)."""
+        result = await db.execute(
+            sa_select(NodeSelection).where(
+                NodeSelection.source_connection_id == source_connection_id,
+                NodeSelection.organization_id == ctx.organization.id,
+            )
+        )
+        rows = result.scalars().all()
+
+        return [
+            NodeSelectionData(
+                source_node_id=row.source_node_id,
+                node_type=row.node_type,
+                node_title=row.node_title,
+                node_metadata=row.node_metadata,
+            )
+            for row in rows
+        ]

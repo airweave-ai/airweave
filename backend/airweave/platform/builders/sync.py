@@ -63,6 +63,15 @@ class SyncContextBuilder:
             ctx=ctx,
         )
 
+        # Use larger batch size for metadata-only syncs (no file downloads,
+        # no embeddings — just entity → tree node → postgres upsert)
+        metadata_only = (
+            execution_config
+            and execution_config.behavior
+            and execution_config.behavior.metadata_only
+        )
+        batch_size = 256 if metadata_only else 64
+
         return SyncContext(
             organization=ctx.organization,
             sync_id=sync.id,
@@ -78,6 +87,7 @@ class SyncContextBuilder:
             entity_map=entity_map,
             source_short_name=source_short_name,
             logger=logger,
+            batch_size=batch_size,
         )
 
     @classmethod
