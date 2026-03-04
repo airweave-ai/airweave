@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert } from "@/components/ui/alert";
-import { AlertCircle, RefreshCw, Pencil, Trash, Plus, Clock, Play, Plug, Copy, Check, Loader2, RotateCw, AlertTriangle } from "lucide-react";
+import { AlertCircle, RefreshCw, Pencil, Trash, Plus, Clock, Play, Plug, Copy, Check, Loader2, RotateCw, AlertTriangle, FolderTree } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { useUsageStore } from "@/lib/stores/usage";
 import { Button } from "@/components/ui/button";
@@ -798,6 +798,29 @@ const Collections = () => {
 
                         {/* Header action buttons */}
                         <div className="flex gap-1.5 items-center">
+                            {/* Browse Tree Demo Button */}
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate(`/collections/${readable_id}/browse-tree`)}
+                                            className={cn(
+                                                "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
+                                                isDark
+                                                    ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
+                                                    : "bg-white border-border hover:bg-muted cursor-pointer"
+                                            )}
+                                        >
+                                            <FolderTree className="h-3 w-3 text-muted-foreground" />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Browse Tree Demo</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+
                             {/* Refresh Page Button - EXACT match to refresh source button */}
                             <TooltipProvider>
                                 <Tooltip>

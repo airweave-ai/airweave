@@ -542,8 +542,12 @@ class SharePoint2019V2Source(BaseSource):
 
                             # Collect items into batches for parallel file downloads
                             batch: List[Dict[str, Any]] = []
+                            item_page_size = 1000 if self._metadata_only else 100
                             async for item_meta in sp_client.discover_items(
-                                client, current_site_url, list_guid
+                                client,
+                                current_site_url,
+                                list_guid,
+                                page_size=item_page_size,
                             ):
                                 batch.append(item_meta)
 
@@ -886,7 +890,13 @@ class SharePoint2019V2Source(BaseSource):
 
         # Fetch all items in batches
         batch: List[Dict[str, Any]] = []
-        async for item_meta in sp_client.discover_items(client, site_url, list_id):
+        item_page_size = 1000 if self._metadata_only else 100
+        async for item_meta in sp_client.discover_items(
+            client,
+            site_url,
+            list_id,
+            page_size=item_page_size,
+        ):
             batch.append(item_meta)
             if len(batch) >= ITEM_BATCH_SIZE:
                 async for entity in self._process_items_batch(

@@ -114,12 +114,35 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
         if not sc.sync_id:
             raise NotFoundException(f"Source connection {source_connection_id} has no sync")
 
-        sync_schema = await self._sync_repo.get(db, sc.sync_id, ctx)
+        # Eagerly capture values before UnitOfWork expires the ORM object
+        sc_sync_id = sc.sync_id
+        sc_readable_collection_id = sc.readable_collection_id
+        sc_connection_id = sc.connection_id
+
+        sync_schema = await self._sync_repo.get(db, sc_sync_id, ctx)
         if not sync_schema:
-            raise NotFoundException(f"Sync {sc.sync_id} not found")
+            raise NotFoundException(f"Sync {sc_sync_id} not found")
+
+        collection_obj = await self._collection_repo.get_by_readable_id(
+            db,
+            readable_id=sc_readable_collection_id,  # type: ignore[arg-type]
+            ctx=ctx,
+        )
+        if not collection_obj:
+            raise NotFoundException(f"Collection {sc_readable_collection_id} not found")
+
+        collection_schema = schemas.CollectionRecord.model_validate(
+            collection_obj, from_attributes=True
+        )
+
+        connection_obj = await self._conn_repo.get(db, sc_connection_id, ctx)  # type: ignore[arg-type]
+        if not connection_obj:
+            raise NotFoundException("Connection not found for source connection")
+
+        connection_schema = schemas.Connection.model_validate(connection_obj, from_attributes=True)
 
         sync_job_create = SyncJobCreate(
-            sync_id=sc.sync_id,
+            sync_id=sc_sync_id,
             status=SyncJobStatus.PENDING,
             sync_config=config,
             sync_metadata={"type": sync_type},
@@ -136,24 +159,6 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
             await uow.session.refresh(sync_job_obj)
 
         sync_job_schema = schemas.SyncJob.model_validate(sync_job_obj, from_attributes=True)
-
-        collection_obj = await self._collection_repo.get_by_readable_id(
-            db,
-            readable_id=sc.readable_collection_id,  # type: ignore[arg-type]
-            ctx=ctx,
-        )
-        if not collection_obj:
-            raise NotFoundException(f"Collection {sc.readable_collection_id} not found")
-
-        collection_schema = schemas.CollectionRecord.model_validate(
-            collection_obj, from_attributes=True
-        )
-
-        connection_obj = await self._conn_repo.get(db, sc.connection_id, ctx)  # type: ignore[arg-type]
-        if not connection_obj:
-            raise NotFoundException("Connection not found for source connection")
-
-        connection_schema = schemas.Connection.model_validate(connection_obj, from_attributes=True)
 
         ctx.logger.info(
             f"Dispatching {sync_type} sync job {sync_job_schema.id} for SC {source_connection_id}"

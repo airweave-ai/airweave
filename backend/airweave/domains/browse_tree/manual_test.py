@@ -28,7 +28,7 @@ import httpx
 # Configuration
 # ---------------------------------------------------------------------------
 
-BASE_URL = "http://localhost:8001/api/v1"
+BASE_URL = "http://localhost:8001"
 
 # SharePoint site
 SP_SITE_URL = "http://sharepoint-2019.demos.airweave.ai"
