@@ -3,12 +3,15 @@
 Prerequisites:
 - Backend running at BASE_URL
 - SharePoint 2019 V2 source is registered
+- AD user hr_demo exists in Demo_HR_Team group
+- SP group Demo HR Readers has Read on HR_Tasks, HR_Announcements, HR_Calendar, HR_Discussion
+- All other lists are NOT accessible to hr_demo
 
 Flow:
-1. IT Admin creates SC1 (sync_immediately=false) — admin's source connection
+1. IT Admin (SP_Admin) creates SC1 (sync_immediately=false) — admin's source connection
 2. IT Admin triggers ACL sync on SC1
 3. IT Admin triggers metadata sync on SC1
-4. HR Admin sees filtered tree (SC1's tree filtered by access)
+4. HR Admin (hr_demo) sees filtered tree — only HR_* lists visible
 5. HR Admin creates SC2 (own credentials, same collection, sync_immediately=false)
 6. HR Admin selects nodes → stored on SC2, sync auto-triggered
 7. Search scoped to SC2
@@ -27,47 +30,71 @@ import httpx
 
 BASE_URL = "http://localhost:8001/api/v1"
 
-# SharePoint 2019 credentials
+# SharePoint site
 SP_SITE_URL = "http://sharepoint-2019.demos.airweave.ai"
-SP_USERNAME = "SP_Admin"
-SP_PASSWORD = "FOKVgLLhxvyvPwFmY#"
 SP_DOMAIN = "AIRWEAVE-SP2019"
 
-# Active Directory credentials (for SID resolution)
+# Active Directory credentials (for SID resolution — shared by both SCs)
 AD_USERNAME = "sp2019admin"
 AD_PASSWORD = "OEtJV0DenQDF21gug#"
 AD_DOMAIN = "AIRWEAVE-SP2019"
 AD_SERVER = "ldaps://108.143.169.156:636"
 AD_SEARCH_BASE = "DC=AIRWEAVE-SP2019,DC=local"
 
+# IT Admin credentials (full access — used for SC1: metadata + ACL sync)
+ADMIN_SP_USERNAME = "SP_Admin"
+ADMIN_SP_PASSWORD = "FOKVgLLhxvyvPwFmY#"
+
+# HR Admin credentials (limited access — only HR_* lists via Demo HR Readers)
+HR_SP_USERNAME = "hr_demo"
+HR_SP_PASSWORD = "xK9mPwR2qJ7nL#"
+
 # Collection name for this test
 COLLECTION_NAME = "Browse Tree Test"
 
-# User principal for access filtering (pick a user that exists in AD)
-USER_PRINCIPAL = "user:SP_Admin"
+# User principal for access filtering (the HR user browsing the tree)
+USER_PRINCIPAL = "user:hr_demo"
 
 # ---------------------------------------------------------------------------
-# Shared SP source connection payload
+# Source connection payloads (admin vs HR user)
 # ---------------------------------------------------------------------------
 
-SP_SOURCE_CONNECTION_PAYLOAD = {
+_BASE_SC_PAYLOAD = {
     "short_name": "sharepoint2019v2",
-    "authentication": {
-        "credentials": {
-            "sharepoint_username": SP_USERNAME,
-            "sharepoint_password": SP_PASSWORD,
-            "sharepoint_domain": SP_DOMAIN,
-            "ad_username": AD_USERNAME,
-            "ad_password": AD_PASSWORD,
-            "ad_domain": AD_DOMAIN,
-        },
-    },
     "config": {
         "site_url": SP_SITE_URL,
         "ad_server": AD_SERVER,
         "ad_search_base": AD_SEARCH_BASE,
     },
     "sync_immediately": False,
+}
+
+ADMIN_SC_PAYLOAD = {
+    **_BASE_SC_PAYLOAD,
+    "authentication": {
+        "credentials": {
+            "sharepoint_username": ADMIN_SP_USERNAME,
+            "sharepoint_password": ADMIN_SP_PASSWORD,
+            "sharepoint_domain": SP_DOMAIN,
+            "ad_username": AD_USERNAME,
+            "ad_password": AD_PASSWORD,
+            "ad_domain": AD_DOMAIN,
+        },
+    },
+}
+
+HR_SC_PAYLOAD = {
+    **_BASE_SC_PAYLOAD,
+    "authentication": {
+        "credentials": {
+            "sharepoint_username": HR_SP_USERNAME,
+            "sharepoint_password": HR_SP_PASSWORD,
+            "sharepoint_domain": SP_DOMAIN,
+            "ad_username": AD_USERNAME,
+            "ad_password": AD_PASSWORD,
+            "ad_domain": AD_DOMAIN,
+        },
+    },
 }
 
 
@@ -151,7 +178,7 @@ async def step1_create_admin_sc(client: httpx.AsyncClient, collection_id: str) -
     print("#" * 60)
 
     payload = {
-        **SP_SOURCE_CONNECTION_PAYLOAD,
+        **ADMIN_SC_PAYLOAD,
         "name": "SP Admin (browse tree)",
         "readable_collection_id": collection_id,
     }
@@ -260,7 +287,7 @@ async def step5_create_user_sc(client: httpx.AsyncClient, collection_id: str) ->
     print("#" * 60)
 
     payload = {
-        **SP_SOURCE_CONNECTION_PAYLOAD,
+        **HR_SC_PAYLOAD,
         "name": "SP HR Workspace",
         "readable_collection_id": collection_id,
     }
@@ -343,9 +370,11 @@ async def main() -> None:
     print("=" * 60)
     print("Browse Tree + Node Selection + Targeted Sync — Full Flow")
     print("=" * 60)
-    print(f"  SP Site:    {SP_SITE_URL}")
-    print(f"  AD Server:  {AD_SERVER}")
-    print(f"  User:       {USER_PRINCIPAL}")
+    print(f"  SP Site:      {SP_SITE_URL}")
+    print(f"  AD Server:    {AD_SERVER}")
+    print(f"  IT Admin:     {ADMIN_SP_USERNAME}")
+    print(f"  HR User:      {HR_SP_USERNAME}")
+    print(f"  User filter:  {USER_PRINCIPAL}")
     print()
 
     async with httpx.AsyncClient(timeout=120.0) as client:
