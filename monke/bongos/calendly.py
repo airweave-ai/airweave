@@ -204,11 +204,12 @@ class CalendlyBongo(BaseBongo):
                         self.logger.info(
                             f"📝 Generated event type: '{name}' (token: {token})"
                         )
-                        # Verify token is in name
+                        # Ensure token is always in name so sync/verify can find it (API may truncate or sanitize)
                         if token not in name:
-                            self.logger.warning(
-                                f"⚠️ Token {token} not found in generated name '{name}' - this may cause verification to fail!"
-                            )
+                            name = f"{name} [{token}]"
+                        # Defensive: always suffix so token is present even if API strips prefix
+                        if not name.strip().endswith(f"[{token}]"):
+                            name = f"{name.strip()} [{token}]"
 
                         # Create event type
                         # Calendly API v2 structure requires 'owner' parameter
@@ -219,7 +220,7 @@ class CalendlyBongo(BaseBongo):
                             )
 
                         request_body = {
-                            "name": name,  # Token is already embedded in name by generation function
+                            "name": name,
                             "duration": duration_minutes,
                             "description_plain": description,  # Token is embedded in description
                             "internal_note": f"Test event type created by Monke. Token: {token}",  # Backup: token in internal_note
@@ -274,8 +275,11 @@ class CalendlyBongo(BaseBongo):
                                         self.logger.error(
                                             f"Error details: {error_details}"
                                         )
-                            except Exception:
-                                pass
+                            except (ValueError, TypeError) as e:
+                                self.logger.warning(
+                                    "Failed to parse Calendly error response as JSON: "
+                                    f"{e}. Raw response text: {resp.text}"
+                                )
                             self.logger.error(
                                 f"Failed to create event type: {resp.status_code} - {error_data}"
                             )
@@ -461,6 +465,10 @@ class CalendlyBongo(BaseBongo):
                     ) = await generate_calendly_event_type(
                         self.openai_model, token, is_update=True
                     )
+                    if token not in name:
+                        name = f"{name} [{token}]"
+                    if not name.strip().endswith(f"[{token}]"):
+                        name = f"{name.strip()} [{token}]"
 
                     event_type_uri = (
                         event_info.get("uri")

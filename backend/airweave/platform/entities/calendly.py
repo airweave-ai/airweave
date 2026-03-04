@@ -245,12 +245,12 @@ class CalendlyScheduledEventEntity(BaseEntity):
     )
     location: Optional[Dict[str, Any]] = AirweaveField(
         None,
-        description="Location information for the event (e.g., Zoom, Google Meet, physical address).",
+        description="Location for the event (e.g., Zoom, Google Meet, address).",
         embeddable=True,
     )
-    invitees_counter: Optional[int] = Field(
+    invitees_counter: Optional[Dict[str, Any]] = Field(
         None,
-        description="Number of invitees for this event.",
+        description="Invitees counter object from API (active, limit, total).",
     )
     created_at: Optional[datetime] = AirweaveField(
         None,

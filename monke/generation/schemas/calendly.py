@@ -1,6 +1,6 @@
 """Calendly-specific Pydantic schemas used for LLM structured generation."""
 
-from typing import List, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 
 

@@ -6,12 +6,12 @@ connector:
   type: calendly
   auth_mode: composio
   composio_config:
-    account_id: ca_SE-YEKdldCbu  # Replace with actual Composio account ID
-    auth_config_id: ac_CLQ0xBLjC8wx  # Replace with actual Composio auth config ID
+    account_id: ca_Hmh72HRbXzw2 # Replace with actual Composio account ID
+    auth_config_id: ac_c2AkhzmgABSi # Replace with actual Composio auth config ID
   config_fields:
-    openai_model: "gpt-4.1-mini"  # Model for content generation
-    rate_limit_delay_ms: 500  # Delay between API calls for Calendly
-    max_concurrency: 1  # Calendly API rate limits are conservative
+    openai_model: "gpt-4.1-mini" # Model for content generation
+    rate_limit_delay_ms: 500 # Delay between API calls for Calendly
+    max_concurrency: 1 # Calendly API rate limits are conservative
 
 test_flow:
   steps:
@@ -38,7 +38,7 @@ deletion:
   verify_remaining_entities: true
   verify_complete_deletion: true
 
-entity_count: 3  # Number of event types to create
+entity_count: 3 # Number of event types to create
 
 collection:
   name: Calendly Test Collection
@@ -55,4 +55,3 @@ verification:
 # Note: Calendly doesn't allow creating scheduled events via API.
 # Scheduled events are created when someone books a meeting.
 # This test focuses on event types, which can be created programmatically.
-

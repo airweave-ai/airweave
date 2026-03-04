@@ -7,6 +7,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import CalendlyConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.calendly import (
@@ -33,7 +34,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     ],
     oauth_type=OAuthType.WITH_REFRESH,
     auth_config_class=None,
-    config_class="CalendlyConfig",
+    config_class=CalendlyConfig,
     labels=["Productivity", "Calendar"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,
@@ -187,7 +188,7 @@ class CalendlySource(BaseSource):
 
             page_token = next_page_token
 
-    async def _generate_event_type_entities(
+    async def _generate_event_type_entities(  # noqa: C901
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[CalendlyEventTypeEntity, None]:
         """Generate event type entities."""
@@ -233,7 +234,7 @@ class CalendlySource(BaseSource):
                 )
                 continue
 
-            event_type_uri = resource.get("uri", "")
+            event_type_uri = self._normalize_uri(resource.get("uri", ""))
             if not event_type_uri:
                 entity_skip_count += 1
                 self.logger.error(
@@ -265,7 +266,8 @@ class CalendlySource(BaseSource):
                     )
             except Exception as e:
                 self.logger.warning(
-                    f"Failed to fetch full details for event type {event_type_uri}: {e}, using list data"
+                    f"Failed to fetch full details for event type {event_type_uri}: {e}, "
+                    "using list data"
                 )
                 # Continue with partial data from list
 
@@ -302,9 +304,10 @@ class CalendlySource(BaseSource):
                     f"   • Name: '{name[:80]}...' "
                     f"(length: {len(name)}, tokens found: {name_tokens})"
                 )
+                desc_len = len(description_plain) if description_plain else 0
                 self.logger.info(
                     f"   • Description: {'PRESENT' if description_plain else 'MISSING'} "
-                    f"(length: {len(description_plain) if description_plain else 0}, tokens: {desc_tokens})"
+                    f"(length: {desc_len}, tokens: {desc_tokens})"
                 )
                 self.logger.info(
                     f"   • Internal note: {'PRESENT' if internal_note else 'MISSING'} "
@@ -315,12 +318,12 @@ class CalendlySource(BaseSource):
                 )
                 self._logged_entities += 1
 
-            # CRITICAL WARNING: If no tokens found in any embeddable field, this entity won't be verifiable
+            # If no tokens in embeddable fields, entity won't be verifiable
             if not all_tokens:
                 self.logger.error(
-                    f"CRITICAL: Event type {event_type_uuid} has NO TOKENS in any embeddable field! "
-                    f"This entity will NOT be searchable/verifiable. "
-                    f"Name='{name[:50]}...', has_desc={bool(description_plain)}, has_note={bool(internal_note)}"
+                    f"CRITICAL: Event type {event_type_uuid} has NO TOKENS in embeddable fields! "
+                    f"Name='{name[:50]}...', has_desc={bool(description_plain)}, "
+                    f"has_note={bool(internal_note)}"
                 )
             elif not name_tokens:
                 # Token not in name (most critical field) - warn but continue
@@ -412,8 +415,8 @@ class CalendlySource(BaseSource):
             params = {}
 
         async for event_data in self._get_paginated(client, url, params):
-            # Extract nested resource data
-            resource = event_data.get("resource", {})
+            # List endpoint returns items directly (no "resource" wrapper)
+            resource = event_data.get("resource") or event_data
             if not resource:
                 continue
 
@@ -429,7 +432,7 @@ class CalendlySource(BaseSource):
                 breadcrumbs = [event_type_breadcrumb]
 
             yield CalendlyScheduledEventEntity(
-                uri=resource.get("uri", ""),
+                uri=self._normalize_uri(resource.get("uri", "")),
                 name=resource.get("name", "Unnamed Event"),
                 status=resource.get("status"),
                 start_time=self._parse_datetime(resource.get("start_time")),
@@ -472,8 +475,8 @@ class CalendlySource(BaseSource):
         params = {}
 
         async for invitee_data in self._get_paginated(client, url, params):
-            # Extract nested resource data
-            resource = invitee_data.get("resource", {})
+            # List endpoint may return items directly or wrapped in "resource"
+            resource = invitee_data.get("resource") or invitee_data
             if not resource:
                 continue
 
@@ -486,7 +489,7 @@ class CalendlySource(BaseSource):
             )
 
             yield CalendlyEventInviteeEntity(
-                uri=resource.get("uri", ""),
+                uri=self._normalize_uri(resource.get("uri", "")),
                 name=name,
                 event=event_uri,
                 event_name=scheduled_event.get("name"),
@@ -537,6 +540,18 @@ class CalendlySource(BaseSource):
             self.logger.warning(f"Failed to parse datetime '{value}': {e}")
             return None
 
+    @staticmethod
+    def _normalize_uri(uri: Optional[str]) -> str:
+        """Normalize a Calendly API URI to a stable form for entity_id.
+
+        Ensures the same logical resource always yields the same entity_id across
+        syncs (e.g. no trailing slash variance), so re-syncs do not treat the
+        user as orphan and delete it.
+        """
+        if not uri or not isinstance(uri, str):
+            return uri or ""
+        return uri.rstrip("/")
+
     async def _generate_user_entity(
         self, client: httpx.AsyncClient
     ) -> Optional[CalendlyUserEntity]:
@@ -547,8 +562,12 @@ class CalendlySource(BaseSource):
             if not resource:
                 return None
 
+            user_uri = self._normalize_uri(resource.get("uri"))
+            if not user_uri:
+                return None
+
             return CalendlyUserEntity(
-                uri=resource.get("uri", ""),
+                uri=user_uri,
                 name=resource.get("name", "Unknown User"),
                 email=resource.get("email"),
                 scheduling_url=resource.get("scheduling_url"),
@@ -563,7 +582,7 @@ class CalendlySource(BaseSource):
             self.logger.warning(f"Failed to fetch user entity: {e}")
             return None
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
         """Generate all entities from Calendly."""
         # CRITICAL: Log immediately, before any async operations
         self.logger.error("CALENDLY generate_entities() CALLED - THIS SHOULD APPEAR IN LOGS")
@@ -595,9 +614,10 @@ class CalendlySource(BaseSource):
                     async for event_type_entity in self._generate_event_type_entities(client):
                         event_type_count += 1
                         total_entities_yielded += 1
+                        name_preview = event_type_entity.name[:50]
                         self.logger.info(
                             f"YIELDING event type #{event_type_count}: "
-                            f"{event_type_entity.entity_id} (name: '{event_type_entity.name[:50]}...')"
+                            f"{event_type_entity.entity_id} (name: '{name_preview}...')"
                         )
                         yield event_type_entity
                         event_type_map[event_type_entity.uri] = event_type_entity.name
@@ -656,39 +676,26 @@ class CalendlySource(BaseSource):
                     self.logger.error(f"Error generating scheduled events: {e}", exc_info=True)
 
                 # Final summary of entity generation
+                invitee_count = (
+                    total_entities_yielded - 1 - event_type_count - scheduled_event_count
+                )
                 self.logger.info(
-                    f"CALENDLY ENTITY GENERATION COMPLETE: "
-                    f"total_yielded={total_entities_yielded} "
+                    f"CALENDLY ENTITY GENERATION COMPLETE: total_yielded={total_entities_yielded} "
                     f"(user=1, event_types={event_type_count}, "
-                    f"scheduled_events={scheduled_event_count}, invitees={total_entities_yielded - 1 - event_type_count - scheduled_event_count})"
+                    f"scheduled_events={scheduled_event_count}, invitees={invitee_count})"
                 )
 
                 # CRITICAL: Warn if no entities were yielded
                 if total_entities_yielded == 0:
                     self.logger.error(
-                        "CRITICAL: No entities were yielded from Calendly source connector! "
-                        "This will result in an empty collection. Check API connectivity and authentication."
+                        "CRITICAL: No entities yielded from Calendly. "
+                        "Empty collection. Check API connectivity and authentication."
                     )
                 elif total_entities_yielded < 3:
                     self.logger.warning(
                         f"WARNING: Only {total_entities_yielded} entity/entities yielded. "
                         f"Expected at least 3 event types for Monke tests."
                     )
-        except Exception as e:
-            self.logger.error(f"❌ CRITICAL ERROR in generate_entities(): {e}", exc_info=True)
-            raise
-
-            # CRITICAL: Warn if no entities were yielded
-            if total_entities_yielded == 0:
-                self.logger.error(
-                    "❌ CRITICAL: No entities were yielded from Calendly source connector! "
-                    "This will result in an empty collection. Check API connectivity and authentication."
-                )
-            elif total_entities_yielded < 3:
-                self.logger.warning(
-                    f"⚠️ WARNING: Only {total_entities_yielded} entity/entities yielded. "
-                    f"Expected at least 3 event types for Monke tests."
-                )
         except Exception as e:
             self.logger.error(f"❌ CRITICAL ERROR in generate_entities(): {e}", exc_info=True)
             raise

@@ -11,7 +11,10 @@ from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.logging import logger
-from airweave.platform.auth.oauth2_service import oauth2_service
+from airweave.platform.auth.oauth2_service import (
+    oauth2_service,
+    persist_refresh_token_after_refresh,
+)
 
 
 class TokenManager:
@@ -352,6 +355,14 @@ class TokenManager:
                     decrypted_credential=decrypted_credential,
                     config_fields=self.config_fields,
                 )
+
+                if oauth2_response.refresh_token:
+                    await persist_refresh_token_after_refresh(
+                        refresh_db,
+                        self.connection_id,
+                        oauth2_response.refresh_token,
+                        self.ctx,
+                    )
 
                 return oauth2_response.access_token
 
