@@ -478,6 +478,12 @@ class WordConfig(SourceConfig):
     pass
 
 
+class PowerPointConfig(SourceConfig):
+    """Microsoft PowerPoint configuration schema."""
+
+    pass
+
+
 class CTTIConfig(SourceConfig):
     """CTTI AACT configuration schema."""
 

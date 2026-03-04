@@ -160,6 +160,14 @@ def fake_auth_provider_registry():
 
 
 @pytest.fixture
+def fake_auth_provider_service():
+    """Fake AuthProviderService for testing endpoint DI."""
+    from airweave.domains.auth_provider.fake import FakeAuthProviderService
+
+    return FakeAuthProviderService()
+
+
+@pytest.fixture
 def fake_entity_definition_registry():
     """Fake EntityDefinitionRegistry for testing registry consumers."""
     from airweave.domains.entities.fakes.registry import FakeEntityDefinitionRegistry
@@ -493,6 +501,7 @@ def test_container(
     fake_webhook_service,
     fake_source_registry,
     fake_auth_provider_registry,
+    fake_auth_provider_service,
     fake_sc_repo,
     fake_collection_repo,
     fake_conn_repo,
@@ -550,6 +559,7 @@ def test_container(
         source_service=fake_source_service,
         source_registry=fake_source_registry,
         auth_provider_registry=fake_auth_provider_registry,
+        auth_provider_service=fake_auth_provider_service,
         collection_service=fake_collection_service,
         sc_repo=fake_sc_repo,
         collection_repo=fake_collection_repo,

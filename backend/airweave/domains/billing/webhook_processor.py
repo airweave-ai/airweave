@@ -513,6 +513,11 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         except Exception as e:
             log.error(f"Error checking yearly prepay expiry: {e}")
 
+        # Refresh the billing object so that lazily-loaded attributes (e.g.
+        # organization_id) are available in the async context.  Earlier DB
+        # commits (create_billing_period) may have expired the ORM state,
+        # causing a MissingGreenlet error on subsequent attribute access.
+        await db.refresh(billing)
         await self._billing_repo.update(db, db_obj=billing, obj_in=updates, ctx=ctx)
 
         log.info(f"Subscription updated for org {org_id}")

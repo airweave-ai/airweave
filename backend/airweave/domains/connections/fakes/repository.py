@@ -1,14 +1,15 @@
 """Fake connection repository for testing."""
 
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.shared_models import IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.connection import Connection
-from airweave.schemas.connection import ConnectionCreate
+from airweave.schemas.connection import ConnectionCreate, ConnectionUpdate
 
 
 class FakeConnectionRepository:
@@ -71,4 +72,40 @@ class FakeConnectionRepository:
         self._store[connection.id] = connection
         if connection.readable_id:
             self._readable_store[connection.readable_id] = connection
+        return connection
+
+    async def get_by_integration_type(
+        self, db: AsyncSession, *, integration_type: IntegrationType, ctx: ApiContext
+    ) -> list[Connection]:
+        self._calls.append(("get_by_integration_type", db, integration_type, ctx))
+        return [
+            conn
+            for conn in self._store.values()
+            if conn.integration_type == integration_type
+            and conn.organization_id == ctx.organization.id
+        ]
+
+    async def update(
+        self,
+        db: AsyncSession,
+        *,
+        db_obj: Connection,
+        obj_in: Union[ConnectionUpdate, dict],
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> Connection:
+        self._calls.append(("update", db, db_obj, obj_in, ctx, uow))
+        updates = obj_in if isinstance(obj_in, dict) else obj_in.model_dump(exclude_unset=True)
+        for key, value in updates.items():
+            setattr(db_obj, key, value)
+        self._store[db_obj.id] = db_obj
+        if db_obj.readable_id:
+            self._readable_store[db_obj.readable_id] = db_obj
+        return db_obj
+
+    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+        self._calls.append(("remove", db, id, ctx))
+        connection = self._store.pop(id, None)
+        if connection and connection.readable_id in self._readable_store:
+            self._readable_store.pop(connection.readable_id, None)
         return connection

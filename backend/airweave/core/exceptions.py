@@ -44,6 +44,14 @@ class NotFoundException(AirweaveException):
         super().__init__(self.message)
 
 
+class InvalidInputError(AirweaveException):
+    """Exception raised when user-supplied input fails validation (maps to 422)."""
+
+    def __init__(self, message: Optional[str] = "Invalid input"):
+        self.message = message
+        super().__init__(self.message)
+
+
 class ImmutableFieldError(AirweaveException):
     """Exception raised for attempts to modify immutable fields in a database model."""
 

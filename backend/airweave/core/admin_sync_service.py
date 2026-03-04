@@ -541,13 +541,9 @@ class AdminSyncService:
         # Process each collection (reuse connection per collection)
         async def process_collection(collection_id: UUID, collection_syncs: List[Sync]):
             try:
-                return await self._count_vespa_for_collection(
-                    collection_id, collection_syncs, ctx
-                )
+                return await self._count_vespa_for_collection(collection_id, collection_syncs, ctx)
             except Exception as e:
-                ctx.logger.error(
-                    f"Failed to count Vespa for collection {collection_id}: {e}"
-                )
+                ctx.logger.error(f"Failed to count Vespa for collection {collection_id}: {e}")
                 return {sync.id: None for sync in collection_syncs}
 
         # Process all collections in parallel

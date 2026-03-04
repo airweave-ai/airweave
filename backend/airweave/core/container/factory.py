@@ -44,6 +44,7 @@ from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.auth_provider.service import AuthProviderService
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.collections.service import CollectionService
 from airweave.domains.collections.vector_db_deployment_metadata_repository import (
@@ -246,6 +247,11 @@ def create_container(settings: Settings) -> Container:
         settings=settings,
     )
 
+    auth_provider_service = AuthProviderService(
+        auth_provider_registry=source_deps["auth_provider_registry"],
+        connection_repo=source_deps["conn_repo"],
+        credential_repo=source_deps["cred_repo"],
+    )
     update_service = SourceConnectionUpdateService(
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
@@ -274,6 +280,7 @@ def create_container(settings: Settings) -> Container:
         credential_encryptor=encryptor,
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         event_bus=event_bus,
+        auth_provider_service=auth_provider_service,
     )
     source_connection_service = SourceConnectionService(
         sc_repo=source_deps["sc_repo"],
@@ -367,6 +374,7 @@ def create_container(settings: Settings) -> Container:
         source_service=source_deps["source_service"],
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],
+        auth_provider_service=auth_provider_service,
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
         conn_repo=source_deps["conn_repo"],

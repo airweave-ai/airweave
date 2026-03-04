@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
@@ -17,6 +16,7 @@ from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.auth_provider.protocols import AuthProviderServiceProtocol
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
@@ -74,6 +74,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         credential_encryptor: CredentialEncryptor,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
         event_bus: EventBus,
+        auth_provider_service: AuthProviderServiceProtocol,
     ) -> None:
         """Initialize with injected repositories, validators, and orchestration services."""
         self._sc_repo = sc_repo
@@ -90,6 +91,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         self._credential_encryptor = credential_encryptor
         self._temporal_workflow_service = temporal_workflow_service
         self._event_bus = event_bus
+        self._auth_provider_service = auth_provider_service
 
     async def create(
         self, db: AsyncSession, *, obj_in: SourceConnectionCreate, ctx: ApiContext
@@ -262,12 +264,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
 
         validated_auth_provider_config = None
         if obj_in.authentication.provider_config is not None:
-            validated_auth_provider_config = (
-                await auth_provider_service.validate_auth_provider_config(
-                    db,
-                    auth_provider_conn.short_name,
-                    obj_in.authentication.provider_config,
-                )
+            validated_auth_provider_config = self._auth_provider_service.validate_provider_config(
+                auth_provider_conn.short_name,
+                obj_in.authentication.provider_config,
             )
 
         validated_config = self._source_validation.validate_config(
