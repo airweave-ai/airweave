@@ -200,18 +200,23 @@ class VespaClient:
         url = self._build_bulk_delete_url(schema, selection)
         self._logger.debug(f"[VespaClient] Bulk delete from {schema} with selection: {selection}")
 
+        delete_timeout = httpx.Timeout(
+            connect=30.0,
+            read=max(settings.VESPA_TIMEOUT * 5, 300.0),
+            write=30.0,
+            pool=30.0,
+        )
+
         deleted_count = 0
         try:
-            async with httpx.AsyncClient(timeout=settings.VESPA_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=delete_timeout) as client:
                 async with client.stream("DELETE", url) as response:
                     if response.status_code == 200:
                         deleted_count = await self._parse_bulk_delete_response(response)
                     else:
                         await self._log_delete_error(response)
         except httpx.TimeoutException:
-            self._logger.error(
-                f"[VespaClient] Bulk delete timed out after {settings.VESPA_TIMEOUT}s"
-            )
+            self._logger.error(f"[VespaClient] Bulk delete timed out after {delete_timeout.read}s")
         except Exception as e:
             self._logger.error(f"[VespaClient] Bulk delete error: {e}")
 
