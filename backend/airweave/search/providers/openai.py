@@ -8,9 +8,9 @@ from typing import Any, Dict, List, Optional
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel
-from tiktoken import Encoding
 
 from airweave.api.context import ApiContext
+from airweave.platform.tokenizers import BaseTokenizer
 
 from ._base import BaseProvider, ProviderError
 from .schemas import ProviderModelSpec
@@ -47,9 +47,12 @@ class OpenAIProvider(BaseProvider):
 
         self.ctx.logger.debug(f"[OpenAIProvider] Initialized with model spec: {model_spec}")
 
-        self.llm_tokenizer: Optional[Encoding] = None
-        self.embedding_tokenizer: Optional[Encoding] = None
-        self.rerank_tokenizer: Optional[Encoding] = None
+        self.llm_tokenizer: Optional[BaseTokenizer] = None
+        self.embedding_tokenizer: Optional[BaseTokenizer] = None
+        self.rerank_tokenizer: Optional[BaseTokenizer] = None
+
+        # Embedding dimensions requested for current embed() call (for Matryoshka truncation)
+        self._requested_dimensions: Optional[int] = None
 
         if model_spec.llm_model:
             self.llm_tokenizer = self._load_tokenizer(model_spec.llm_model.tokenizer, "llm")
@@ -116,15 +119,29 @@ class OpenAIProvider(BaseProvider):
 
         return parsed
 
-    async def embed(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings with batching and validation."""
+    async def embed(self, texts: List[str], dimensions: Optional[int] = None) -> List[List[float]]:
+        """Generate embeddings with batching and validation.
+
+        Args:
+            texts: List of texts to embed
+            dimensions: Optional target dimensions for Matryoshka truncation.
+                       If None, uses the model's native dimensions.
+                       Supported by text-embedding-3-large (3072 → 768) and
+                       text-embedding-3-small (1536 → 512).
+        """
         if not self.model_spec.embedding_model:
             raise RuntimeError("Embedding model not configured for OpenAI provider")
 
         if not texts:
             raise ValueError("Cannot embed empty text list")
 
+        # Store requested dimensions for validation in _embed_batch
+        self._requested_dimensions = dimensions
+
         self._validate_embed_inputs(texts)
+
+        # Store dimensions for use in _embed_batch
+        self._requested_dimensions = dimensions
         return await self._process_embeddings(texts)
 
     def _validate_embed_inputs(self, texts: List[str]) -> None:
@@ -166,10 +183,21 @@ class OpenAIProvider(BaseProvider):
     async def _embed_batch(self, batch: List[str], batch_start: int) -> List[List[float]]:
         """Embed a single batch with validation."""
         try:
-            response = await self.client.embeddings.create(
-                input=batch,
-                model=self.model_spec.embedding_model.name,
-            )
+            # Build API params - add dimensions if Matryoshka truncation requested
+            api_params: Dict[str, Any] = {
+                "input": batch,
+                "model": self.model_spec.embedding_model.name,
+            }
+
+            # Add dimensions parameter for Matryoshka truncation if specified
+            # This is supported by text-embedding-3-large and text-embedding-3-small
+            if self._requested_dimensions is not None:
+                api_params["dimensions"] = self._requested_dimensions
+                self.ctx.logger.debug(
+                    f"[OpenAIProvider] Matryoshka truncation: {self._requested_dimensions} dims"
+                )
+
+            response = await self.client.embeddings.create(**api_params)
         except Exception as e:
             raise RuntimeError(
                 f"OpenAI embeddings API call failed at index {batch_start}: {e}"
@@ -183,7 +211,20 @@ class OpenAIProvider(BaseProvider):
                 f"OpenAI returned {len(response.data)} embeddings but expected {len(batch)}"
             )
 
-        return [item.embedding for item in response.data]
+        embeddings = [item.embedding for item in response.data]
+        expected_dims = (
+            self._requested_dimensions
+            if self._requested_dimensions is not None
+            else self.model_spec.embedding_model.dimensions
+        )
+        if embeddings and len(embeddings[0]) != expected_dims:
+            raise ProviderError(
+                "OpenAI embedding dimensions mismatch: "
+                f"got {len(embeddings[0])}, expected {expected_dims}.",
+                retryable=False,
+            )
+
+        return embeddings
 
     async def rerank(self, query: str, documents: List[str], top_n: int) -> List[Dict[str, Any]]:
         """Rerank documents using OpenAI structured output."""

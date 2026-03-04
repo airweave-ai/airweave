@@ -12,6 +12,8 @@ description: "Onedrive integration with Airweave"
   <h1 style={{ margin: 0 }}>Onedrive</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Onedrive through Airweave's unified search layer.
+
 ## Configuration
 
 OneDrive source connector integrates with the Microsoft Graph API to extract files.
@@ -55,9 +57,12 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Drive ID. |
+| name | str | Drive name or drive type. |
 | drive_type | Optional[str] | Describes the type of drive represented by this resource (e.g., personal, business, documentLibrary). |
 | owner | Optional[Dict[str, Any]] | Information about the user or application that owns this drive. |
 | quota | Optional[Dict[str, Any]] | Information about the drive's storage quota (total, used, remaining, etc.). |
+| web_url_override | Optional[str] | URL to open the drive. |
 
 </Accordion>
 <Accordion title="OneDriveDriveItemEntity">
@@ -71,10 +76,12 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Drive item ID. |
+| name | str | Item name. |
 | description | Optional[str] | Description of the item (if available). |
 | etag | Optional[str] | An eTag for the content of the item. Used for change tracking. |
 | ctag | Optional[str] | A cTag for the content of the item. Used for internal sync. |
-| web_url | Optional[str] | URL that displays the resource in the browser. |
+| web_url_override | Optional[str] | URL that displays the resource in the browser. |
 | file | Optional[Dict[str, Any]] | File metadata if the item is a file (e.g., mimeType, hashes). |
 | folder | Optional[Dict[str, Any]] | Folder metadata if the item is a folder (e.g., childCount). |
 | parent_reference | Optional[Dict[str, Any]] | Information about the parent of this item, such as driveId or parent folder path. |

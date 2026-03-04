@@ -15,6 +15,7 @@ interface S3Status {
   configured: boolean;
   connection_id?: string;
   bucket_name?: string;
+  role_arn?: string;
   status?: string;
   created_at?: string;
   message?: string;
@@ -127,12 +128,11 @@ export function S3StatusCard() {
               </Button>
 
               <div className="text-xs text-gray-500 space-y-1">
-                <p className="font-medium">Supported Storage:</p>
+                <p className="font-medium">How it works:</p>
                 <ul className="list-disc list-inside space-y-0.5 ml-2">
-                  <li>AWS S3</li>
-                  <li>MinIO (self-hosted)</li>
-                  <li>Cloudflare R2</li>
-                  <li>Any S3-compatible storage</li>
+                  <li>Uses cross-account IAM role for secure access</li>
+                  <li>No long-lived credentials stored</li>
+                  <li>Writes data in ARF format for easy parsing</li>
                 </ul>
               </div>
             </>
@@ -143,6 +143,14 @@ export function S3StatusCard() {
                   <span className="text-gray-600 dark:text-gray-400">Bucket</span>
                   <span className="font-mono font-medium">{status.bucket_name}</span>
                 </div>
+                {status.role_arn && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">IAM Role</span>
+                    <span className="font-mono text-xs truncate max-w-[200px]" title={status.role_arn}>
+                      {status.role_arn}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600 dark:text-gray-400">Status</span>
                   <Badge variant="outline">{status.status || 'ACTIVE'}</Badge>

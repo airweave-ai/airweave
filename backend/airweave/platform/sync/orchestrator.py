@@ -7,13 +7,19 @@ from typing import Optional
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
-from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceededException
-from airweave.core.guard_rail_service import ActionType
+from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
-from airweave.platform.sync.context import SyncContext
+from airweave.domains.usage.exceptions import (
+    PaymentRequiredError,
+    UsageLimitExceededError,
+)
+from airweave.domains.usage.types import ActionType
+from airweave.platform.contexts import SyncContext
+from airweave.platform.contexts.runtime import SyncRuntime
+from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
 from airweave.platform.sync.stream import AsyncSourceStream
@@ -38,31 +44,24 @@ class SyncOrchestrator:
         worker_pool: AsyncWorkerPool,
         stream: AsyncSourceStream,
         sync_context: SyncContext,
+        runtime: SyncRuntime,
+        access_control_pipeline: AccessControlPipeline,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
         self.worker_pool = worker_pool
-        self.stream = stream  # Stream is now passed in, not created here!
+        self.stream = stream
         self.sync_context = sync_context
+        self.runtime = runtime
+        self.access_control_pipeline = access_control_pipeline
 
-        # Knobs read from context - use explicit defaults instead of getattr
-        self.should_batch: bool = (
-            sync_context.should_batch if hasattr(sync_context, "should_batch") else True
-        )
-        self.batch_size: int = (
-            sync_context.batch_size if hasattr(sync_context, "batch_size") else 64
-        )
-        self.max_batch_latency_ms: int = (
-            sync_context.max_batch_latency_ms
-            if hasattr(sync_context, "max_batch_latency_ms")
-            else 200
-        )
+        # Batch config from context
+        self.should_batch = sync_context.should_batch
+        self.batch_size = sync_context.batch_size
+        self.max_batch_latency_ms = sync_context.max_batch_latency_ms
 
     async def run(self) -> schemas.Sync:
         """Execute the synchronization process."""
-        final_status = SyncJobStatus.FAILED  # Default to failed, will be updated based on outcome
-        error_message: Optional[str] = None  # Track error message for finalization
-
         # Register worker pool for metrics tracking (using sync_id and sync_job_id)
         # Format: sync_{sync_id}_job_{sync_job_id} for easier parsing in metrics
         pool_id = f"sync_{self.sync_context.sync.id}_job_{self.sync_context.sync_job.id}"
@@ -94,6 +93,17 @@ class SyncOrchestrator:
             await self._process_entities()
             self.sync_context.logger.info(f"✅ PHASE 2 complete ({time.time() - phase_start:.2f}s)")
 
+            # Phase 2.5: Process access control memberships (if source supports it)
+            if self._source_supports_access_control():
+                phase_start = time.time()
+                self.sync_context.logger.info(
+                    "🚀 PHASE 2.5: Processing access control memberships..."
+                )
+                await self._process_access_control_memberships()
+                self.sync_context.logger.info(
+                    f"✅ PHASE 2.5 complete ({time.time() - phase_start:.2f}s)"
+                )
+
             # Phase 3: Cleanup orphaned entities
             phase_start = time.time()
             self.sync_context.logger.info("🚀 PHASE 3: Cleanup orphaned entities (if needed)...")
@@ -106,22 +116,18 @@ class SyncOrchestrator:
             await self._complete_sync()
             self.sync_context.logger.info(f"✅ PHASE 4 complete ({time.time() - phase_start:.2f}s)")
 
-            final_status = SyncJobStatus.COMPLETED
             return self.sync_context.sync
         except asyncio.CancelledError:
             # Cooperative cancellation: ensure producer and ALL pending tasks are stopped
             self.sync_context.logger.info("Cancellation requested, handling gracefully...")
             await self._handle_cancellation()
-            final_status = SyncJobStatus.CANCELLED
             raise
         except Exception as e:
-            error_message = get_error_message(e)
             await self._handle_sync_failure(e)
-            final_status = SyncJobStatus.FAILED
             raise
         finally:
             # Note: Removed aggregate metrics recording (histograms/counters)
-            # Real-time visibility via Gauge metrics (airweave_worker_active_sync_info) which clear on completion
+            # Real-time visibility via Gauge metrics which clear on completion
 
             # Unregister worker pool from metrics
             try:
@@ -139,27 +145,22 @@ class SyncOrchestrator:
                     },
                 )
 
-            # Always finalize progress and trackers with error message if available
-            await self._finalize_progress_and_trackers(final_status, error_message)
-
-            # Always flush guard rail usage to prevent data loss
+            # Flush the usage ledger for this org to prevent data loss
             try:
-                self.sync_context.logger.info("Flushing guard rail usage data...")
-                await self.sync_context.guard_rail.flush_all()
+                self.sync_context.logger.info("Flushing usage ledger...")
+                from airweave.core.container import container as _container
+
+                await _container.usage_ledger.flush(self.sync_context.organization.id)
             except Exception as flush_error:
                 self.sync_context.logger.error(
-                    f"Failed to flush guard rail usage: {flush_error}", exc_info=True
+                    f"Failed to flush usage ledger: {flush_error}", exc_info=True
                 )
 
             # Always cleanup temp files to prevent pod eviction
-            # Note: This runs in finally block, so it executes even if sync failed
-            # We don't raise cleanup errors to avoid masking the original sync error
             try:
                 self.sync_context.logger.info("Running final temp file cleanup...")
-                await self.entity_pipeline.cleanup_temp_files(self.sync_context)
+                await self.entity_pipeline.cleanup_temp_files(self.sync_context, self.runtime)
             except Exception as cleanup_error:
-                # Never raise from cleanup - we want the original sync error to propagate
-                # If sync succeeded but cleanup failed, that's logged but not re-raised
                 self.sync_context.logger.error(
                     f"Temp file cleanup failed (non-fatal in finally block): {cleanup_error}",
                     exc_info=True,
@@ -176,7 +177,7 @@ class SyncOrchestrator:
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.RUNNING,
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             started_at=started_at,
         )
 
@@ -184,8 +185,9 @@ class SyncOrchestrator:
 
     async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
+        source_name = self.runtime.source.source_name
         self.sync_context.logger.info(
-            f"Starting pull-based processing from source {self.sync_context.source._name} "
+            f"Starting pull-based processing from source {source_name} "
             f"(max workers: {self.worker_pool.max_workers}, "
             f"batch_size: {self.batch_size}, max_batch_latency_ms: {self.max_batch_latency_ms})"
         )
@@ -200,21 +202,32 @@ class SyncOrchestrator:
         try:
             # Use the pre-created stream (already started in _start_sync)
             async for entity in self.stream.get_entities():
-                try:
-                    await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
-                except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
-                    self.sync_context.logger.error(
-                        f"Guard rail check failed: {type(guard_error).__name__}: {str(guard_error)}"
-                    )
-                    stream_error = guard_error
-                    # Flush any buffered work so we don't drop it
-                    if batch_buffer:
-                        pending_tasks = await self._submit_batch_and_trim(
-                            batch_buffer, pending_tasks
+                # Check guardrails unless explicitly skipped
+                if not self.sync_context.execution_config.behavior.skip_guardrails:
+                    try:
+                        async with get_db_context() as db:
+                            await self.runtime.usage_checker.is_allowed(
+                                db, self.sync_context.organization.id, ActionType.ENTITIES
+                            )
+                    except (
+                        UsageLimitExceededError,
+                        PaymentRequiredError,
+                    ) as guard_error:
+                        self.sync_context.logger.error(
+                            "Guard rail check failed: {type}: {error}".format(
+                                type=type(guard_error).__name__,
+                                error=str(guard_error),
+                            )
                         )
-                        batch_buffer = []
-                        flush_deadline = None
-                    break
+                        stream_error = guard_error
+                        # Flush any buffered work so we don't drop it
+                        if batch_buffer:
+                            pending_tasks = await self._submit_batch_and_trim(
+                                batch_buffer, pending_tasks
+                            )
+                            batch_buffer = []
+                            flush_deadline = None
+                        break
 
                 # Accumulate into batch
                 batch_buffer.append(entity)
@@ -275,6 +288,7 @@ class SyncOrchestrator:
             self.entity_pipeline.process,
             entities=list(batch),
             sync_context=self.sync_context,
+            runtime=self.runtime,
         )
         pending_tasks.add(task)
 
@@ -307,7 +321,7 @@ class SyncOrchestrator:
 
         # Track entity failures
         if entity_failures:
-            await self.sync_context.progress.increment("skipped", len(entity_failures))
+            await self.runtime.entity_tracker.record_skipped(len(entity_failures))
 
         return pending_tasks
 
@@ -362,7 +376,7 @@ class SyncOrchestrator:
 
         # Increment skipped count for entity failures
         if entity_failures:
-            await self.sync_context.progress.increment("skipped", len(entity_failures))
+            await self.runtime.entity_tracker.record_skipped(len(entity_failures))
             self.sync_context.logger.info(
                 f"Skipped {len(entity_failures)} entities due to processing errors"
             )
@@ -382,7 +396,7 @@ class SyncOrchestrator:
 
             # Increment skipped count for entity failures
             if entity_failures:
-                await self.sync_context.progress.increment("skipped", len(entity_failures))
+                await self.runtime.entity_tracker.record_skipped(len(entity_failures))
                 self.sync_context.logger.info(
                     f"Skipped {len(entity_failures)} entities due to processing errors"
                 )
@@ -413,15 +427,16 @@ class SyncOrchestrator:
 
     async def _cleanup_orphaned_entities_if_needed(self) -> None:
         """Cleanup orphaned entities based on sync type."""
-        has_cursor_data = bool(
-            hasattr(self.sync_context, "cursor")
-            and self.sync_context.cursor
-            and self.sync_context.cursor.cursor_data
-        )
+        has_cursor_data = bool(self.runtime.cursor and self.runtime.cursor.loaded_from_db)
 
-        # Check if source supports continuous/incremental sync
-        source_supports_continuous = getattr(
-            self.sync_context.source, "_supports_continuous", False
+        # Check if source supports continuous/incremental sync (class attribute)
+        source_class = type(self.runtime.source)
+        source_supports_continuous = getattr(source_class, "supports_continuous", False)
+
+        self.sync_context.logger.debug(
+            f"Orphan cleanup check: has_cursor_data={has_cursor_data}, "
+            f"supports_continuous={source_supports_continuous}, "
+            f"force_full_sync={self.sync_context.force_full_sync}"
         )
 
         # Cleanup should run if:
@@ -449,7 +464,8 @@ class SyncOrchestrator:
                 self.sync_context.logger.info(
                     "🧹 Starting orphaned entity cleanup phase (first sync - no cursor data)"
                 )
-            await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context)
+            # Dispatcher handles ALL handlers: Destination, ARF, and Postgres
+            await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context, self.runtime)
         elif (
             has_cursor_data and not self.sync_context.force_full_sync and source_supports_continuous
         ):
@@ -458,33 +474,76 @@ class SyncOrchestrator:
                 "(cursor data exists, only changed entities are processed)"
             )
 
-    async def _finalize_progress_and_trackers(
-        self, status: SyncJobStatus, error: Optional[str] = None
-    ) -> None:
-        """Finalize progress tracking and entity state tracker.
+    def _source_supports_access_control(self) -> bool:
+        """Check if the source supports access control membership syncing."""
+        return getattr(self.runtime.source, "supports_access_control", False)
 
-        Args:
-            status: The final status of the sync job
-            error: Optional error message if the sync failed
+    async def _process_access_control_memberships(self) -> None:
+        """Process access control memberships from the source.
+
+        Delegates all ACL logic to the AccessControlPipeline, which:
+        - Decides whether to do incremental or full ACL sync
+        - Collects memberships from the source (full) or gets DirSync deltas (incremental)
+        - Resolves to actions and dispatches to handlers
+        - Handles orphan cleanup (full sync only)
+        - Updates the cursor with DirSync cookie
+
+        Publishes progress heartbeats before and after to prevent the
+        stuck-job cleanup from cancelling during long-running ACL expansion.
         """
-        # Publish progress finalization
-        await self.sync_context.progress.finalize(status)
+        source = self.runtime.source
+        source_name = getattr(source, "_name", "unknown")
 
-        # Publish entity state tracker finalization with error message if available
-        if getattr(self.sync_context, "entity_state_tracker", None):
-            await self.sync_context.entity_state_tracker.finalize(status, error)
+        self.sync_context.logger.info(f"Starting access control sync for {source_name}")
+
+        # Publish a heartbeat so the stuck-job detector knows we're alive.
+        # ACL expansion (especially with 50K+ users) can take a long time without
+        # producing entity batch events, which would otherwise trigger cancellation.
+        await self._publish_acl_heartbeat()
+
+        try:
+            await self.access_control_pipeline.process(
+                source=source,
+                sync_context=self.sync_context,
+                runtime=self.runtime,
+            )
+        except Exception as e:
+            self.sync_context.logger.error(
+                f"ACL sync error: {get_error_message(e)}",
+                exc_info=True,
+            )
+
+        await self._publish_acl_heartbeat()
+        # Don't fail the entire sync for ACL errors
+
+    async def _publish_acl_heartbeat(self) -> None:
+        """Publish an ACL heartbeat event to keep the stall detector alive."""
+        ctx = self.sync_context
+        await self.runtime.event_bus.publish(
+            AccessControlMembershipBatchProcessedEvent(
+                organization_id=ctx.organization_id,
+                sync_id=ctx.sync.id,
+                sync_job_id=ctx.sync_job.id,
+                source_connection_id=ctx.source_connection_id,
+                source_type=ctx.source_short_name,
+            )
+        )
 
     async def _complete_sync(self) -> None:
         """Mark sync job as completed with final statistics."""
-        stats = getattr(self.sync_context.progress, "stats", None)
+        stats = self.runtime.entity_tracker.get_stats()
 
         # Save cursor data if it exists (for incremental syncs)
         await self._save_cursor_data()
 
+        # For snapshot sources: update short_name to the original source so that
+        # downstream consumers (search, metadata builders) see the real source.
+        await self._update_snapshot_short_name()
+
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.COMPLETED,
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             completed_at=utc_now_naive(),
             stats=stats,
         )
@@ -515,7 +574,7 @@ class SyncOrchestrator:
             )
 
         business_events.track_sync_completed(
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             sync_id=self.sync_context.sync.id,
             entities_processed=entities_processed,
             entities_synced=entities_synced,  # NEW parameter
@@ -527,9 +586,66 @@ class SyncOrchestrator:
             f"Completed sync job {self.sync_context.sync_job.id} successfully. Stats: {stats}"
         )
 
+    async def _update_snapshot_short_name(self) -> None:
+        """For snapshot sources, update source_connection.short_name to the original source.
+
+        After a successful sync, the snapshot source_connection's short_name is changed
+        from "snapshot" to the original source name (e.g., "github", "gmail"). This makes
+        the source_connection transparent to downstream consumers (search, metadata builders,
+        filters). The original source name is read from the entity's system metadata.
+
+        Re-syncing a completed snapshot is blocked by a guard in SourceBuilder.
+        """
+        if self.runtime.source.short_name != "snapshot":
+            return
+
+        try:
+            from sqlalchemy import select as sa_select
+
+            from airweave import crud
+            from airweave.models.entity import Entity as EntityModel
+
+            async with get_db_context() as db:
+                # Get the original source_name from any synced entity
+                result = await db.execute(
+                    sa_select(EntityModel.source_name)
+                    .where(EntityModel.sync_id == self.sync_context.sync.id)
+                    .limit(1)
+                )
+                original_source_name = result.scalar_one_or_none()
+
+                if not original_source_name or original_source_name == "snapshot":
+                    self.sync_context.logger.debug(
+                        "[Snapshot] Could not determine original source name, keeping 'snapshot'"
+                    )
+                    return
+
+                # Update source_connection short_name
+                source_connection = await crud.source_connection.get_by_sync_id(
+                    db, sync_id=self.sync_context.sync.id, ctx=self.sync_context
+                )
+                if source_connection:
+                    source_connection.short_name = original_source_name
+                    await db.commit()
+                    self.sync_context.logger.info(
+                        f"[Snapshot] Updated source_connection short_name: "
+                        f"snapshot → {original_source_name}"
+                    )
+        except Exception as e:
+            # Non-fatal: the metadata builder fallback handles snapshot sources anyway
+            self.sync_context.logger.warning(f"[Snapshot] Failed to update short_name: {e}")
+
     async def _save_cursor_data(self) -> None:
         """Save cursor data to database if it exists."""
-        if not hasattr(self.sync_context, "cursor") or not self.sync_context.cursor.cursor_data:
+        # Check if cursor updates are disabled
+        if (
+            self.sync_context.execution_config
+            and self.sync_context.execution_config.cursor.skip_updates
+        ):
+            self.sync_context.logger.info("⏭️ Skipping cursor update (disabled by execution_config)")
+            return
+
+        if not self.runtime.cursor or not self.runtime.cursor.cursor_data:
             if self.sync_context.force_full_sync:
                 self.sync_context.logger.info(
                     "📝 No cursor data to save from forced "
@@ -542,9 +658,9 @@ class SyncOrchestrator:
                 await sync_cursor_service.create_or_update_cursor(
                     db=db,
                     sync_id=self.sync_context.sync.id,
-                    cursor_data=self.sync_context.cursor.cursor_data,
-                    ctx=self.sync_context.ctx,
-                    cursor_field=self.sync_context.cursor.cursor_field,
+                    cursor_data=self.runtime.cursor.cursor_data,
+                    ctx=self.sync_context,
+                    cursor_field=self.runtime.cursor.cursor_field,
                 )
                 if self.sync_context.force_full_sync:
                     self.sync_context.logger.info(
@@ -568,12 +684,12 @@ class SyncOrchestrator:
             f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
         )
 
-        stats = getattr(self.sync_context.progress, "stats", None)
+        stats = self.runtime.entity_tracker.get_stats()
 
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.FAILED,
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             error=error_message,
             failed_at=utc_now_naive(),
             stats=stats,
@@ -593,7 +709,7 @@ class SyncOrchestrator:
             )
 
         business_events.track_sync_failed(
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             sync_id=self.sync_context.sync.id,
             error=error_message,
             duration_ms=duration_ms,
@@ -614,7 +730,7 @@ class SyncOrchestrator:
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.CANCELLED,
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             completed_at=utc_now_naive(),
         )
 
@@ -632,7 +748,7 @@ class SyncOrchestrator:
             )
 
         business_events.track_sync_cancelled(
-            ctx=self.sync_context.ctx,
+            ctx=self.sync_context,
             source_short_name=self.sync_context.connection.short_name,
             source_connection_id=self.sync_context.connection.id,
             duration_ms=duration_ms,

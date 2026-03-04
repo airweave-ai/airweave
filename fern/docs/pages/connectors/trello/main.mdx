@@ -12,6 +12,8 @@ description: "Trello integration with Airweave"
   <h1 style={{ margin: 0 }}>Trello</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Trello through Airweave's unified search layer.
+
 ## Configuration
 
 Trello source connector integrates with the Trello API using OAuth1.
@@ -54,6 +56,10 @@ Reference:
 | Field | Type | Description |
 |-------|------|-------------|
 | trello_id | str | Trello's unique identifier for the board |
+| board_name | str | Display name of the board. |
+| created_time | datetime | When this board snapshot was created. |
+| updated_time | datetime | When this board snapshot was last updated. |
+| web_url_value | Optional[str] | URL to open the board in Trello. |
 | desc | Optional[str] | Description of the board |
 | closed | bool | Whether the board is closed/archived |
 | url | Optional[str] | URL to the board |
@@ -73,6 +79,10 @@ Reference:
 | Field | Type | Description |
 |-------|------|-------------|
 | trello_id | str | Trello's unique identifier for the list |
+| list_name | str | Display name of the list. |
+| created_time | datetime | When this list snapshot was created. |
+| updated_time | datetime | When this list snapshot was updated. |
+| web_url_value | Optional[str] | URL to view this list (falls back to board URL). |
 | id_board | str | ID of the board this list belongs to |
 | board_name | str | Name of the board this list belongs to |
 | closed | bool | Whether the list is archived |
@@ -90,6 +100,10 @@ Reference:
 | Field | Type | Description |
 |-------|------|-------------|
 | trello_id | str | Trello's unique identifier for the card |
+| card_name | str | Display name of the card. |
+| created_time | datetime | When the card snapshot was created. |
+| updated_time | datetime | When the card snapshot was last updated. |
+| web_url_value | Optional[str] | URL to open the card in Trello. |
 | desc | Optional[str] | Description/notes on the card |
 | id_board | str | ID of the board this card belongs to |
 | board_name | str | Name of the board |
@@ -123,6 +137,10 @@ Reference:
 | Field | Type | Description |
 |-------|------|-------------|
 | trello_id | str | Trello's unique identifier for the checklist |
+| checklist_name | str | Display name of the checklist. |
+| created_time | datetime | When the checklist snapshot was created. |
+| updated_time | datetime | When the checklist snapshot was updated. |
+| web_url_value | Optional[str] | URL to open the checklist in Trello (card URL). |
 | id_board | str | ID of the board this checklist belongs to |
 | id_card | str | ID of the card this checklist belongs to |
 | card_name | str | Name of the card |
@@ -139,8 +157,12 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| username | str | The username of the member |
 | trello_id | str | Trello's unique identifier for the member |
+| display_name | str | Display name of the member. |
+| created_time | datetime | When the member snapshot was created. |
+| updated_time | datetime | When the member snapshot was updated. |
+| web_url_value | Optional[str] | URL to open the member profile. |
+| username | str | The username of the member |
 | full_name | Optional[str] | Full name of the member |
 | initials | Optional[str] | Member's initials |
 | avatar_url | Optional[str] | URL to the member's avatar |

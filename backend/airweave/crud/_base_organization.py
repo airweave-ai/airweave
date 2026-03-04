@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException, PermissionException
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models._base import Base
@@ -36,7 +36,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         self,
         db: AsyncSession,
         id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Optional[ModelType]:
         """Get organization resource.
 
@@ -44,7 +44,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         ----
             db (AsyncSession): The database session.
             id (UUID): The UUID of the object to get.
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
 
         Returns:
         -------
@@ -68,7 +68,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
     async def get_multi(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         *,
         skip: int = 0,
         limit: int = 100,
@@ -78,7 +78,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         Args:
         ----
             db (AsyncSession): The database session.
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
             skip (int): The number of objects to skip.
             limit (int): The number of objects to return.
 
@@ -108,7 +108,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         db: AsyncSession,
         *,
         obj_in: CreateSchemaType,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
         skip_validation: bool = False,
     ) -> ModelType:
@@ -118,7 +118,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         ----
             db (AsyncSession): The database session.
             obj_in (CreateSchemaType): The object to create.
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
             organization_id (Optional[UUID]): The organization ID to create in.
             uow (Optional[UnitOfWork]): The unit of work to use for the transaction.
             skip_validation (bool): Whether to skip validation.
@@ -161,7 +161,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         *,
         db_obj: ModelType,
         obj_in: Union[UpdateSchemaType, dict[str, Any]],
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> ModelType:
         """Update organization resource with auth context.
@@ -171,7 +171,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
             db (AsyncSession): The database session.
             db_obj (ModelType): The object to update.
             obj_in (Union[UpdateSchemaType, dict[str, Any]]): The new object data.
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
             uow (Optional[UnitOfWork]): The unit of work to use for the transaction.
 
         Returns:
@@ -201,7 +201,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         db: AsyncSession,
         *,
         id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
         organization_id: Optional[UUID] = None,
         uow: Optional[UnitOfWork] = None,
     ) -> Optional[ModelType]:
@@ -211,7 +211,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         ----
             db (AsyncSession): The database session.
             id (UUID): The UUID of the object to delete.
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
             organization_id (Optional[UUID]): The organization ID to delete from.
             uow (Optional[UnitOfWork]): The unit of work to use for the transaction.
 
@@ -241,7 +241,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         return db_obj
 
     async def get_by_query_and_org(
-        self, db: AsyncSession, *, ctx: ApiContext, **kwargs: Any
+        self, db: AsyncSession, *, ctx: BaseContext, **kwargs: Any
     ) -> Optional[ModelType]:
         """Get a single object by a flexible query, scoped to the organization.
 
@@ -269,7 +269,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         db: AsyncSession,
         *,
         ids: list[UUID],
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> list[ModelType]:
         """Delete organization resources with auth context.
@@ -278,7 +278,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         ----
             db (AsyncSession): The database session.
             ids (list[UUID]): The UUIDs of the objects to delete.
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
             uow (Optional[UnitOfWork]): The unit of work to use for the transaction.
 
         Returns:
@@ -304,12 +304,12 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
 
         return db_objs
 
-    async def _validate_organization_access(self, ctx: ApiContext, organization_id: UUID) -> None:
+    async def _validate_organization_access(self, ctx: BaseContext, organization_id: UUID) -> None:
         """Validate auth context has access to organization.
 
         Args:
         ----
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
             organization_id (UUID): The organization ID to validate access to.
 
         Raises:

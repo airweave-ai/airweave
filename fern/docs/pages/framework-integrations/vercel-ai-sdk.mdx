@@ -1,0 +1,139 @@
+---
+title: Vercel AI SDK
+subtitle: Add Airweave search to your Vercel AI SDK agents with a single function call.
+slug: framework-integrations/vercel-ai-sdk
+---
+
+The `@airweave/vercel-ai-sdk` package provides an `airweaveSearch` tool that integrates seamlessly with the [Vercel AI SDK](https://ai-sdk.dev).
+
+### Prerequisites
+
+Before you start you'll need:
+
+- **A collection with data**: at least one source connection must have completed its initial sync. See the [Quickstart](https://docs.airweave.ai/quickstart) if you need to set this up.
+- **An API key**: Create one in the Airweave dashboard under **API Keys**.
+
+### Installation
+
+```bash
+npm install ai @ai-sdk/openai @airweave/vercel-ai-sdk
+```
+
+### Quick Start
+
+```typescript
+import { generateText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { airweaveSearch } from '@airweave/vercel-ai-sdk';
+
+const { text } = await generateText({
+  model: openai('gpt-4o'),
+  prompt: 'What were the key decisions from last week?',
+  tools: {
+    search: airweaveSearch({
+      defaultCollection: 'my-knowledge-base',
+    }),
+  },
+  maxSteps: 3,
+});
+
+console.log(text);
+```
+
+### Configuration
+
+```typescript
+airweaveSearch({
+  // API key (defaults to AIRWEAVE_API_KEY env var)
+  apiKey: 'your-api-key',
+
+  // Default collection to search
+  defaultCollection: 'my-collection',
+
+  // Max results per search (default: 10)
+  defaultLimit: 20,
+
+  // Generate AI answer from results (default: false)
+  generateAnswer: true,
+
+  // Query expansion for better recall (default: true)
+  expandQuery: true,
+
+  // Rerank for relevance (default: true)
+  rerank: true,
+
+  // Base URL for self-hosted instances
+  baseUrl: 'https://your-instance.airweave.ai',
+});
+```
+
+### Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `apiKey` | string | `AIRWEAVE_API_KEY` env | Your Airweave API key |
+| `baseUrl` | string | - | Base URL for self-hosted instances |
+| `defaultCollection` | string | - | Default collection readable ID to search |
+| `defaultLimit` | number | 10 | Default maximum number of results |
+| `generateAnswer` | boolean | false | Generate an AI-powered answer from results |
+| `expandQuery` | boolean | true | Expand query with variations for better recall |
+| `rerank` | boolean | true | Rerank results for improved relevance |
+
+### Environment Variables
+
+Set your API key as an environment variable. You can copy your API key from the Airweave dashboard.
+
+```bash
+AIRWEAVE_API_KEY=your-api-key
+```
+
+### TypeScript Support
+
+Full TypeScript types are included:
+
+```typescript
+import {
+  airweaveSearch,
+  AirweaveSearchOptions,
+  AirweaveSearchResult,
+  AirweaveSearchResultItem
+} from '@airweave/vercel-ai-sdk';
+
+const config: AirweaveSearchOptions = {
+  defaultCollection: 'my-collection',
+  defaultLimit: 10,
+};
+
+const search = airweaveSearch(config);
+```
+
+### Result Types
+
+Each search result includes:
+
+```typescript
+interface AirweaveSearchResultItem {
+  id: string;                    // Entity ID
+  score: number;                 // Relevance score
+  payload: {
+    entity_id?: string;
+    name?: string;
+    created_at?: string;
+    textual_representation?: string;
+    breadcrumbs?: AirweaveBreadcrumb[];
+    airweave_system_metadata?: {
+      source_name?: string;      // e.g., "notion", "slack"
+      entity_type?: string;      // e.g., "NotionPageEntity"
+      sync_id?: string;
+      chunk_index?: number;
+    };
+    // Plus source-specific fields
+  };
+}
+```
+
+### Learn More
+
+- [Vercel AI SDK Documentation](https://ai-sdk.dev/docs/introduction)
+- [Airweave on Vercel Tool Registry](https://ai-sdk.dev/tools-registry/airweave)
+- [Airweave GitHub](https://github.com/airweave-ai/airweave)

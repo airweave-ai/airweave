@@ -12,6 +12,8 @@ description: "Teams integration with Airweave"
   <h1 style={{ margin: 0 }}>Teams</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Teams through Airweave's unified search layer.
+
 ## Configuration
 
 Microsoft Teams source connector integrates with the Microsoft Graph API.
@@ -55,12 +57,14 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/user
 
 | Field | Type | Description |
 |-------|------|-------------|
-| display_name | Optional[str] | The name displayed in the address book for the user. |
+| id | str | User ID from Microsoft Graph. |
+| display_name | str | The name displayed in the address book for the user. |
 | user_principal_name | Optional[str] | The user principal name (UPN) of the user (e.g., user@contoso.com). |
 | mail | Optional[str] | The SMTP address for the user. |
 | job_title | Optional[str] | The user's job title. |
 | department | Optional[str] | The department in which the user works. |
 | office_location | Optional[str] | The office location in the user's place of business. |
+| web_url_override | Optional[str] | Link to the user in Microsoft 365. |
 
 </Accordion>
 <Accordion title="TeamsTeamEntity">
@@ -72,14 +76,15 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/team
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Team ID from Microsoft Graph. |
 | display_name | str | The name of the team. |
 | description | Optional[str] | An optional description for the team. |
 | visibility | Optional[str] | The visibility of the group and team (Public, Private, HiddenMembership). |
 | is_archived | Optional[bool] | Whether this team is in read-only mode. |
-| web_url | Optional[str] | A hyperlink that goes to the team in Microsoft Teams. |
 | classification | Optional[str] | Classification for the team (e.g., low, medium, high business impact). |
 | specialization | Optional[str] | Indicates whether the team is intended for a particular use case. |
 | internal_id | Optional[str] | A unique ID for the team used in audit logs. |
+| web_url_override | Optional[str] | Link to open the team in Microsoft Teams. |
 
 </Accordion>
 <Accordion title="TeamsChannelEntity">
@@ -91,6 +96,7 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/channel
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Channel ID. |
 | team_id | str | ID of the team this channel belongs to. |
 | display_name | str | Channel name as it appears to users. |
 | description | Optional[str] | Optional textual description for the channel. |
@@ -98,7 +104,7 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/channel
 | membership_type | Optional[str] | The type of the channel (standard, private, shared). |
 | is_archived | Optional[bool] | Indicates whether the channel is archived. |
 | is_favorite_by_default | Optional[bool] | Indicates whether the channel is recommended for all team members. |
-| web_url | Optional[str] | A hyperlink that goes to the channel in Microsoft Teams. |
+| web_url_override | Optional[str] | A hyperlink that goes to the channel in Microsoft Teams. |
 
 </Accordion>
 <Accordion title="TeamsChatEntity">
@@ -110,9 +116,11 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/chat
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Chat ID. |
 | chat_type | str | Type of chat (oneOnOne, group, meeting). |
+| topic_label | str | Display label for the chat. |
 | topic | Optional[str] | Subject or topic for the chat (only for group chats). |
-| web_url | Optional[str] | The URL for the chat in Microsoft Teams. |
+| web_url_override | Optional[str] | The URL for the chat in Microsoft Teams. |
 
 </Accordion>
 <Accordion title="TeamsMessageEntity">
@@ -124,12 +132,14 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/chatmessage
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Message ID. |
 | team_id | Optional[str] | ID of the team (if this is a channel message). |
 | channel_id | Optional[str] | ID of the channel (if this is a channel message). |
 | chat_id | Optional[str] | ID of the chat (if this is a chat message). |
 | reply_to_id | Optional[str] | ID of the parent message (for replies). |
 | message_type | Optional[str] | Type of message (message, chatEvent, systemEventMessage). |
-| subject | Optional[str] | The subject of the chat message. |
+| created_datetime | Optional[datetime] | When the message was created. |
+| subject | str | The subject of the chat message. |
 | body_content | Optional[str] | The content of the message body. |
 | body_content_type | Optional[str] | The type of the content (html or text). |
 | from_user | Optional[Dict[str, Any]] | Details of the sender of the message. |
@@ -139,7 +149,7 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/chatmessage
 | mentions | List[Dict[str, Any]] | List of entities mentioned in the message. |
 | attachments | List[Dict[str, Any]] | References to attached objects like files, tabs, meetings. |
 | reactions | List[Dict[str, Any]] | Reactions for this message (e.g., Like). |
-| web_url | Optional[str] | Link to the message in Microsoft Teams. |
+| web_url_override | Optional[str] | Link to the message in Microsoft Teams. |
 
 </Accordion>
 

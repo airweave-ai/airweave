@@ -13,7 +13,7 @@ The custom internal Fern documentation generator automatically creates MDX docum
 **Entry:** `update_connector_docs/__main__.py:main()`
 - Scans `backend/airweave/platform/sources/` directory
 - Identifies all `.py` files as potential connectors
-- Example: `asana.py`, `postgresql.py`, `google_drive.py`
+- Example: `asana.py`, `slack.py`, `google_drive.py`
 
 ### 2. Parsing Phase
 

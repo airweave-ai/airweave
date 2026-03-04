@@ -12,6 +12,8 @@ description: "Linear integration with Airweave"
   <h1 style={{ margin: 0 }}>Linear</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Linear through Airweave's unified search layer.
+
 ## Configuration
 
 Linear source connector integrates with the Linear GraphQL API to extract project data.
@@ -50,16 +52,13 @@ The following data models are available for this connector:
 
 Schema for Linear issue entities.
 
-This entity represents an issue from Linear, containing all relevant
-metadata and content from the Linear API.
-
-Reference:
-    https://developers.linear.app/docs/graphql/working-with-the-graphql-api
-
 | Field | Type | Description |
 |-------|------|-------------|
-| identifier | str | The unique identifier of the issue (e.g., 'ENG-123') |
-| title | str | The title of the issue |
+| issue_id | str | Unique Linear ID of the issue. |
+| identifier | str | The unique identifier of the issue (e.g., 'ENG-123'). |
+| title | str | The title of the issue. |
+| created_time | datetime | When the issue was created. |
+| updated_time | datetime | When the issue was last updated. |
 | description | Optional[str] | The description/content of the issue |
 | priority | Optional[int] | The priority level of the issue |
 | state | Optional[str] | The current state/status name of the issue |
@@ -70,7 +69,7 @@ Reference:
 | project_id | Optional[str] | ID of the project this issue belongs to, if any |
 | project_name | Optional[str] | Name of the project this issue belongs to, if any |
 | assignee | Optional[str] | Name of the user assigned to this issue, if any |
-| url | Optional[str] | URL to view the issue in Linear |
+| web_url_value | Optional[str] | URL to view the issue in Linear. |
 
 </Accordion>
 <Accordion title="LinearAttachmentEntity">
@@ -84,11 +83,13 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| attachment_id | str | Unique identifier for the attachment. |
 | issue_id | str | ID of the issue this attachment belongs to |
 | issue_identifier | str | Identifier of the issue (e.g., 'ENG-123') |
-| title | Optional[str] | Title of the attachment |
+| title | str | Title of the attachment |
 | subtitle | Optional[str] | Subtitle of the attachment |
 | source | Optional[Dict[str, Any]] | Source information about the attachment |
+| web_url_value | Optional[str] | Viewer URL for the attachment. |
 
 </Accordion>
 <Accordion title="LinearProjectEntity">
@@ -103,6 +104,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| project_id | str | Unique Linear ID of the project. |
+| project_name | str | Display name of the project. |
+| created_time | datetime | When the project was created. |
+| updated_time | datetime | When the project was last updated. |
 | slug_id | str | The project's unique URL slug |
 | description | Optional[str] | The project's description |
 | priority | Optional[int] | The priority level of the project |
@@ -115,7 +120,7 @@ Reference:
 | team_names | Optional[List[str]] | Names of the teams this project belongs to |
 | progress | Optional[float] | The overall progress of the project |
 | lead | Optional[str] | Name of the project lead, if any |
-| url | Optional[str] | URL to view the project in Linear |
+| web_url_value | Optional[str] | URL to view the project in Linear |
 
 </Accordion>
 <Accordion title="LinearTeamEntity">
@@ -130,6 +135,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| team_id | str | Unique Linear ID for the team. |
+| team_name | str | Display name of the team. |
+| created_time | datetime | When the team was created. |
+| updated_time | datetime | When the team was last updated. |
 | key | str | The team's unique key used in URLs |
 | description | Optional[str] | The team's description |
 | color | Optional[str] | The team's color |
@@ -139,7 +148,7 @@ Reference:
 | parent_id | Optional[str] | ID of the parent team, if this is a sub-team |
 | parent_name | Optional[str] | Name of the parent team, if this is a sub-team |
 | issue_count | Optional[int] | Number of issues in the team |
-| url | Optional[str] | URL to view the team in Linear |
+| web_url_value | Optional[str] | URL to view the team in Linear |
 
 </Accordion>
 <Accordion title="LinearCommentEntity">
@@ -154,6 +163,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| comment_id | str | Unique ID of the comment. |
+| body_preview | str | Preview of the comment body for display. |
+| created_time | datetime | When the comment was created. |
+| updated_time | datetime | When the comment was last updated. |
 | issue_id | str | ID of the issue this comment belongs to |
 | issue_identifier | str | Identifier of the issue (e.g., 'ENG-123') |
 | body | str | The content/body of the comment |
@@ -163,7 +176,7 @@ Reference:
 | team_name | Optional[str] | Name of the team this comment belongs to |
 | project_id | Optional[str] | ID of the project this comment belongs to, if any |
 | project_name | Optional[str] | Name of the project this comment belongs to, if any |
-| url | Optional[str] | URL to view the comment in Linear |
+| web_url_value | Optional[str] | URL to view the comment in Linear |
 
 </Accordion>
 <Accordion title="LinearUserEntity">
@@ -178,7 +191,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| display_name | str | The user's display name, unique within the organization |
+| user_id | str | Unique Linear ID for the user. |
+| display_name | str | The user's display name, unique within the organization. |
+| created_time | datetime | When the user account was created. |
+| updated_time | datetime | When the user account was last updated. |
 | email | str | The user's email address |
 | avatar_url | Optional[str] | URL to the user's avatar image |
 | description | Optional[str] | A short description of the user |
@@ -193,7 +209,7 @@ Reference:
 | created_issue_count | Optional[int] | Number of issues created by the user |
 | team_ids | Optional[List[str]] | IDs of the teams this user belongs to |
 | team_names | Optional[List[str]] | Names of the teams this user belongs to |
-| url | Optional[str] | URL to view the user in Linear |
+| web_url_value | Optional[str] | URL to view the user in Linear |
 
 </Accordion>
 

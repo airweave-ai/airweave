@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from airweave.platform.configs._base import Fields
 
@@ -20,10 +20,7 @@ class EmbeddingModelBase(BaseModel):
     model_version: Optional[str] = None
     auth_config_class: Optional[str] = None
 
-    class Config:
-        """Pydantic config for EmbeddingModelBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EmbeddingModelCreate(EmbeddingModelBase):
@@ -45,10 +42,7 @@ class EmbeddingModelInDBBase(EmbeddingModelBase):
     created_at: datetime
     modified_at: datetime
 
-    class Config:
-        """Pydantic config for EmbeddingModelInDBBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EmbeddingModel(EmbeddingModelInDBBase):

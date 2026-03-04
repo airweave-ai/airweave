@@ -12,6 +12,8 @@ description: "Gitlab integration with Airweave"
   <h1 style={{ margin: 0 }}>Gitlab</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Gitlab through Airweave's unified search layer.
+
 ## Configuration
 
 GitLab source connector integrates with the GitLab REST API to extract data.
@@ -80,6 +82,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| project_id | int | GitLab project ID |
+| name | str | Project name |
+| created_at | datetime | Creation timestamp |
+| last_activity_at | datetime | Timestamp of last activity |
 | path | str | Project path |
 | path_with_namespace | str | Full path with namespace |
 | description | Optional[str] | Project description |
@@ -92,7 +98,7 @@ Reference:
 | open_issues_count | int | Number of open issues |
 | archived | bool | Whether the project is archived |
 | empty_repo | bool | Whether the repository is empty |
-| url | Optional[str] | Web URL to the project |
+| web_url_value | Optional[str] | Web URL to the project |
 
 </Accordion>
 <Accordion title="GitLabUserEntity">
@@ -104,10 +110,13 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| user_id | int | GitLab user ID |
+| name | str | User's display name |
+| created_at | datetime | Account creation timestamp |
 | username | str | User's username |
 | state | str | User account state |
 | avatar_url | Optional[str] | User's avatar URL |
-| web_url | str | User's profile URL |
+| profile_url | Optional[str] | User's profile URL |
 | bio | Optional[str] | User's biography |
 | location | Optional[str] | User's location |
 | public_email | Optional[str] | User's public email |
@@ -125,10 +134,13 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| full_path | str | Project-qualified directory path (project_id/path) |
+| name | str | Directory name |
 | path | str | Path of the directory within the repository |
 | project_id | str | ID of the project containing this directory |
 | project_path | str | Path of the project |
-| url | Optional[str] | Web URL to the directory |
+| branch | str | Branch used when traversing this directory |
+| web_url_value | Optional[str] | Web URL to the directory |
 
 </Accordion>
 <Accordion title="GitLabCodeFileEntity">
@@ -140,10 +152,14 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| full_path | str | Project-qualified file path (project_id/path) |
+| name | str | Filename |
+| branch | str | Branch used when fetching the file |
 | blob_id | str | Blob ID of the file content |
 | project_id | str | ID of the project |
 | project_path | str | Path of the project |
 | line_count | Optional[int] | Number of lines in the file |
+| web_url_value | Optional[str] | Web URL to view the file |
 
 </Accordion>
 <Accordion title="GitLabIssueEntity">
@@ -155,7 +171,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| issue_id | int | Global GitLab issue ID |
 | title | str | Issue title |
+| created_at | datetime | Issue creation timestamp |
+| updated_at | datetime | Issue update timestamp |
 | description | Optional[str] | Issue description |
 | state | str | Issue state (opened, closed) |
 | closed_at | Optional[Any] | Issue close timestamp |
@@ -165,7 +184,7 @@ Reference:
 | milestone | Optional[Dict[str, Any]] | Issue milestone |
 | project_id | str | ID of the project |
 | iid | int | Internal issue ID |
-| web_url | str | Web URL to the issue |
+| web_url_value | Optional[str] | Web URL to the issue |
 | user_notes_count | int | Number of user notes/comments |
 | upvotes | int | Number of upvotes |
 | downvotes | int | Number of downvotes |
@@ -180,7 +199,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| merge_request_id | int | Global GitLab merge request ID |
 | title | str | Merge request title |
+| created_at | datetime | Merge request creation timestamp |
+| updated_at | datetime | Merge request update timestamp |
 | description | Optional[str] | Merge request description |
 | state | str | Merge request state (opened, closed, merged) |
 | merged_at | Optional[Any] | Merge request merge timestamp |
@@ -194,7 +216,7 @@ Reference:
 | milestone | Optional[Dict[str, Any]] | Merge request milestone |
 | project_id | str | ID of the project |
 | iid | int | Internal merge request ID |
-| web_url | str | Web URL to the merge request |
+| web_url_value | Optional[str] | Web URL to the merge request |
 | merge_status | str | Merge status (can_be_merged, cannot_be_merged) |
 | draft | bool | Whether the merge request is a draft |
 | work_in_progress | bool | Whether the merge request is work in progress |

@@ -73,15 +73,6 @@ class CollectionStatus(str, Enum):
     ERROR = "ERROR"
 
 
-class ActionType(str, Enum):
-    """Action type enum."""
-
-    ENTITIES = "entities"
-    QUERIES = "queries"
-    SOURCE_CONNECTIONS = "source_connections"
-    TEAM_MEMBERS = "team_members"
-
-
 class RateLimitLevel(str, Enum):
     """Rate limiting level for sources.
 
@@ -102,6 +93,12 @@ class FeatureFlag(str, Enum):
     PRIORITY_SUPPORT = "priority_support"
     SOURCE_RATE_LIMITING = "source_rate_limiting"
     ZEPHYR_SCALE = "zephyr_scale"  # Enables Zephyr Scale test management sync for Jira
+    SHAREPOINT_2019_V2 = "sharepoint_2019_v2"  # Enables SharePoint 2019 On-Premise V2 source
+    AGENTIC_SEARCH = "agentic_search"  # Enables agentic search endpoints for collections
+
+    # Scoped admin API key permissions (CASA-compliant granular access)
+    # These allow specific admin operations via API key authentication
+    API_KEY_ADMIN_SYNC = "api_key_admin_sync"  # Allows resync operations via API key
 
 
 class AuthMethod(str, Enum):

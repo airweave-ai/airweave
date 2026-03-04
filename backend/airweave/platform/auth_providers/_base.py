@@ -1,7 +1,7 @@
 """Base auth provider class."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from airweave.core.logging import logger
 from airweave.platform.auth_providers.auth_result import AuthResult
@@ -42,16 +42,19 @@ class BaseAuthProvider(ABC):
         """
         pass
 
-    # TODO something like: get_creds_for_source
     @abstractmethod
     async def get_creds_for_source(
-        self, source_short_name: str, source_auth_config_fields: List[str]
+        self,
+        source_short_name: str,
+        source_auth_config_fields: List[str],
+        optional_fields: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """Get credentials for a source.
 
         Args:
             source_short_name: The short name of the source to get credentials for
             source_auth_config_fields: The fields required for the source auth config
+            optional_fields: Fields that can be skipped if the provider doesn't have them
         """
         pass
 
@@ -67,8 +70,30 @@ class BaseAuthProvider(ABC):
         """
         pass
 
+    async def get_config_for_source(
+        self,
+        source_short_name: str,
+        source_config_field_mappings: Dict[str, str],
+    ) -> Dict[str, Any]:
+        """Extract config fields from the auth provider's credential response.
+
+        Override in providers that have access to extra metadata (e.g., instance_url).
+
+        Args:
+            source_short_name: The short name of the source
+            source_config_field_mappings: Mapping of config_field_name -> provider_field_name
+
+        Returns:
+            Dict of config field values extracted from the provider response
+        """
+        return {}
+
     async def get_auth_result(
-        self, source_short_name: str, source_auth_config_fields: List[str]
+        self,
+        source_short_name: str,
+        source_auth_config_fields: List[str],
+        optional_fields: Optional[Set[str]] = None,
+        source_config_field_mappings: Optional[Dict[str, str]] = None,
     ) -> AuthResult:
         """Get auth result with explicit mode (direct vs proxy).
 
@@ -78,10 +103,22 @@ class BaseAuthProvider(ABC):
         Args:
             source_short_name: The short name of the source
             source_auth_config_fields: The fields required for the source auth config
+            optional_fields: Fields that can be skipped if the provider doesn't have them
+            source_config_field_mappings: Mapping of config fields extractable from auth response
 
         Returns:
-            AuthResult with explicit mode and credentials/config
+            AuthResult with explicit mode, credentials, and optional source config
         """
-        # Default: try to get credentials directly
-        credentials = await self.get_creds_for_source(source_short_name, source_auth_config_fields)
-        return AuthResult.direct(credentials)
+        credentials = await self.get_creds_for_source(
+            source_short_name, source_auth_config_fields, optional_fields
+        )
+
+        source_config = {}
+        if source_config_field_mappings:
+            source_config = await self.get_config_for_source(
+                source_short_name, source_config_field_mappings
+            )
+
+        result = AuthResult.direct(credentials)
+        result.source_config = source_config or None
+        return result

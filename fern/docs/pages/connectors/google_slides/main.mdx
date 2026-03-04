@@ -12,6 +12,8 @@ description: "Google Slides integration with Airweave"
   <h1 style={{ margin: 0 }}>Google Slides</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Google Slides through Airweave's unified search layer.
+
 ## Configuration
 
 Google Slides source connector integrates with Google Drive API.
@@ -100,23 +102,24 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| title | Optional[str] | Display title of the presentation (without file extension). |
+| presentation_id | str | Unique Google Drive file ID of the presentation. |
+| title | str | Display title of the presentation (without file extension). |
+| created_time | datetime | When the presentation was created. |
+| modified_time | datetime | When the presentation was last modified. |
 | description | Optional[str] | Optional description of the presentation. |
 | starred | bool | Whether the user has starred this presentation. |
 | trashed | bool | Whether the presentation is in the trash. |
 | explicitly_trashed | bool | Whether the presentation was explicitly trashed by the user. |
 | shared | bool | Whether the presentation is shared with others. |
-| shared_with_me_time | Optional[Any] | Time when this presentation was shared with the user. |
+| shared_with_me_time | Optional[datetime] | Time when this presentation was shared with the user. |
 | sharing_user | Optional[Dict[str, Any]] | User who shared this presentation. |
 | owners | List[Dict[str, Any]] | Owners of the presentation. |
 | permissions | Optional[List[Dict[str, Any]]] | Permissions for this presentation. |
 | parents | List[str] | IDs of parent folders containing this presentation. |
 | web_view_link | Optional[str] | Link to open the presentation in Google Slides editor. |
 | icon_link | Optional[str] | Link to the presentation's icon. |
-| created_time | Optional[Any] | When the presentation was created. |
-| modified_time | Optional[Any] | When the presentation was last modified. |
-| modified_by_me_time | Optional[Any] | Last time the user modified the presentation. |
-| viewed_by_me_time | Optional[Any] | Last time the user viewed the presentation. |
+| modified_by_me_time | Optional[datetime] | Last time the user modified the presentation. |
+| viewed_by_me_time | Optional[datetime] | Last time the user viewed the presentation. |
 | version | Optional[int] | Version number of the presentation. |
 | slide_count | Optional[int] | Number of slides in the presentation. |
 | locale | Optional[str] | The locale of the presentation. |
@@ -140,7 +143,7 @@ Reference:
 | slide_id | str | Unique ID of the slide within the presentation. |
 | presentation_id | str | ID of the parent presentation containing this slide. |
 | slide_number | int | The zero-based index of the slide in the presentation. |
-| title | Optional[str] | Title of the slide if available. |
+| title | str | Title of the slide (or generated fallback). |
 | notes | Optional[str] | Speaker notes for the slide. |
 | layout_type | Optional[str] | The type of slide layout. |
 | master_properties | Optional[Dict[str, Any]] | Properties of the slide master. |
@@ -148,8 +151,8 @@ Reference:
 | text_content | Optional[str] | Extracted text content from all elements on the slide. |
 | background | Optional[Dict[str, Any]] | Background properties of the slide. |
 | color_scheme | Optional[Dict[str, Any]] | Color scheme of the slide. |
-| created_time | Optional[Any] | When the slide was created. |
-| modified_time | Optional[Any] | When the slide was last modified. |
+| created_time | Optional[datetime] | When the slide was created. |
+| modified_time | Optional[datetime] | When the slide was last modified. |
 | presentation_title | Optional[str] | Title of the parent presentation. |
 | presentation_url | Optional[str] | URL to view the parent presentation. |
 

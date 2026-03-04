@@ -7,7 +7,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus
 from airweave.models.connection import Connection
 from airweave.models.source_connection import SourceConnection
@@ -37,7 +37,7 @@ class CRUDSourceConnection(
         db: AsyncSession,
         *,
         id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
         include_sync: bool = False,
         include_collection: bool = False,
         include_credential: bool = False,
@@ -69,7 +69,7 @@ class CRUDSourceConnection(
         self,
         db: AsyncSession,
         *,
-        ctx: ApiContext,
+        ctx: BaseContext,
         collection_id: Optional[str] = None,
         skip: int = 0,
         limit: int = 100,
@@ -317,7 +317,7 @@ class CRUDSourceConnection(
     async def get_by_query_and_org(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         **kwargs,
     ) -> Optional[SourceConnection]:
         """Get source connection by arbitrary query within organization scope."""
@@ -338,7 +338,7 @@ class CRUDSourceConnection(
         *,
         ids: List[UUID],
         status: SourceConnectionStatus,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> int:
         """Bulk update status for multiple source connections."""
         query = select(SourceConnection).where(
@@ -432,7 +432,7 @@ class CRUDSourceConnection(
         self,
         db: AsyncSession,
         *,
-        ctx: ApiContext,
+        ctx: BaseContext,
         collection_id: Optional[str] = None,
     ) -> Dict[SourceConnectionStatus, int]:
         """Count source connections by status."""
@@ -456,7 +456,7 @@ class CRUDSourceConnection(
         db: AsyncSession,
         *,
         readable_collection_id: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
         skip: int = 0,
         limit: int = 100,
     ) -> List[SourceConnection]:
@@ -476,7 +476,7 @@ class CRUDSourceConnection(
         db: AsyncSession,
         *,
         sync_id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Optional[SourceConnection]:
         """Get a source connection by sync ID."""
         query = select(SourceConnection).where(

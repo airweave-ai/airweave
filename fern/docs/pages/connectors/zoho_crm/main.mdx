@@ -1,0 +1,420 @@
+---
+title: "Zoho Crm"
+description: "Zoho Crm integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Zoho Crm logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Zoho Crm</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Zoho Crm through Airweave's unified search layer.
+
+## Configuration
+
+Zoho CRM source connector integrates with the Zoho CRM REST API to extract CRM data.
+
+Synchronizes comprehensive data from your Zoho CRM org including:
+- Accounts (companies, organizations)
+- Contacts (people)
+- Deals (sales opportunities, pipelines)
+- Leads (pre-qualified prospects)
+- Products (product catalog)
+- Quotes (sales proposals)
+- Sales Orders (confirmed orders)
+- Invoices (billing documents)
+
+It provides access to all major Zoho CRM modules with proper OAuth2 authentication.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/zoho_crm.py"
+>
+  Explore the Zoho Crm connector implementation
+</Card>
+
+### Authentication
+
+This connector uses **OAuth 2.0 authentication**. You can connect through the Airweave UI or API using the OAuth flow.
+
+**Supported authentication methods:**
+- OAuth Browser Flow (recommended for UI)
+- OAuth Token (for programmatic access)
+- Auth Provider (enterprise SSO)
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="ZohoCRMAccountEntity">
+
+Schema for Zoho CRM Account entities.
+
+Reference:
+    https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
+
+| Field | Type | Description |
+|-------|------|-------------|
+| account_id | str | Unique Zoho CRM ID for the account. |
+| account_name | str | Display name of the account. |
+| created_time | datetime | When the account was created. |
+| updated_time | datetime | When the account was last updated. |
+| web_url_value | Optional[str] | URL to open the account in Zoho CRM. |
+| website | Optional[str] | Account website URL |
+| phone | Optional[str] | Account phone number |
+| fax | Optional[str] | Account fax number |
+| industry | Optional[str] | Account industry |
+| annual_revenue | Optional[float] | Annual revenue |
+| employees | Optional[int] | Number of employees |
+| ownership | Optional[str] | Account ownership type |
+| ticker_symbol | Optional[str] | Stock ticker symbol |
+| description | Optional[str] | Account description |
+| rating | Optional[str] | Account rating |
+| parent_account_id | Optional[str] | ID of parent account |
+| account_type | Optional[str] | Account type |
+| billing_street | Optional[str] | Billing street address |
+| billing_city | Optional[str] | Billing city |
+| billing_state | Optional[str] | Billing state/province |
+| billing_code | Optional[str] | Billing postal code |
+| billing_country | Optional[str] | Billing country |
+| shipping_street | Optional[str] | Shipping street address |
+| shipping_city | Optional[str] | Shipping city |
+| shipping_state | Optional[str] | Shipping state/province |
+| shipping_code | Optional[str] | Shipping postal code |
+| shipping_country | Optional[str] | Shipping country |
+| account_number | Optional[str] | Account number |
+| sic_code | Optional[str] | SIC code |
+| owner_id | Optional[str] | ID of the user who owns the account |
+| owner_name | Optional[str] | Name of the account owner |
+| metadata | Dict[str, Any] | Additional metadata about the account |
+
+</Accordion>
+<Accordion title="ZohoCRMContactEntity">
+
+Schema for Zoho CRM Contact entities.
+
+Reference:
+    https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
+
+| Field | Type | Description |
+|-------|------|-------------|
+| contact_id | str | Unique Zoho CRM ID for the contact. |
+| contact_name | str | Display name of the contact. |
+| created_time | datetime | When the contact was created. |
+| updated_time | datetime | When the contact was last updated. |
+| web_url_value | Optional[str] | URL to view the contact in Zoho CRM. |
+| first_name | Optional[str] | Contact's first name |
+| last_name | Optional[str] | Contact's last name |
+| email | Optional[str] | Contact's email address |
+| secondary_email | Optional[str] | Contact's secondary email address |
+| phone | Optional[str] | Contact's phone number |
+| mobile | Optional[str] | Contact's mobile phone number |
+| fax | Optional[str] | Contact's fax number |
+| title | Optional[str] | Contact's job title |
+| department | Optional[str] | Contact's department |
+| account_id | Optional[str] | ID of the associated account |
+| account_name | Optional[str] | Name of the associated account |
+| lead_source | Optional[str] | Source of the lead |
+| date_of_birth | Optional[str] | Contact's date of birth |
+| description | Optional[str] | Contact description |
+| owner_id | Optional[str] | ID of the user who owns the contact |
+| owner_name | Optional[str] | Name of the contact owner |
+| mailing_street | Optional[str] | Mailing street address |
+| mailing_city | Optional[str] | Mailing city |
+| mailing_state | Optional[str] | Mailing state/province |
+| mailing_zip | Optional[str] | Mailing postal code |
+| mailing_country | Optional[str] | Mailing country |
+| other_street | Optional[str] | Other street address |
+| other_city | Optional[str] | Other city |
+| other_state | Optional[str] | Other state/province |
+| other_zip | Optional[str] | Other postal code |
+| other_country | Optional[str] | Other country |
+| assistant | Optional[str] | Assistant's name |
+| asst_phone | Optional[str] | Assistant's phone number |
+| reports_to_id | Optional[str] | ID of the contact this contact reports to |
+| email_opt_out | bool | Indicates whether the contact has opted out of email |
+| metadata | Dict[str, Any] | Additional metadata about the contact |
+
+</Accordion>
+<Accordion title="ZohoCRMDealEntity">
+
+Schema for Zoho CRM Deal entities (pipelines).
+
+Reference:
+    https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
+
+| Field | Type | Description |
+|-------|------|-------------|
+| deal_id | str | Unique Zoho CRM ID for the deal. |
+| deal_name | str | Display name of the deal. |
+| created_time | datetime | When the deal was created. |
+| updated_time | datetime | When the deal was last updated. |
+| web_url_value | Optional[str] | URL to view the deal in Zoho CRM. |
+| account_id | Optional[str] | ID of the associated account |
+| account_name | Optional[str] | Name of the associated account |
+| contact_id | Optional[str] | ID of the associated contact |
+| contact_name | Optional[str] | Name of the associated contact |
+| amount | Optional[float] | Deal amount |
+| closing_date | Optional[str] | Expected closing date |
+| stage | Optional[str] | Sales stage |
+| probability | Optional[float] | Probability percentage |
+| expected_revenue | Optional[float] | Expected revenue |
+| pipeline | Optional[str] | Pipeline name |
+| campaign_source | Optional[str] | Campaign source |
+| owner_id | Optional[str] | ID of the user who owns the deal |
+| owner_name | Optional[str] | Name of the deal owner |
+| lead_source | Optional[str] | Source of the lead |
+| deal_type | Optional[str] | Deal type |
+| next_step | Optional[str] | Next step in the sales process |
+| description | Optional[str] | Deal description |
+| reason_for_loss | Optional[str] | Reason for loss if deal was lost |
+| metadata | Dict[str, Any] | Additional metadata about the deal |
+
+</Accordion>
+<Accordion title="ZohoCRMLeadEntity">
+
+Schema for Zoho CRM Lead entities.
+
+Leads are pre-qualified prospects that haven't been converted to contacts yet.
+
+Reference:
+    https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
+
+| Field | Type | Description |
+|-------|------|-------------|
+| lead_id | str | Unique Zoho CRM ID for the lead. |
+| lead_name | str | Display name of the lead. |
+| created_time | datetime | When the lead was created. |
+| updated_time | datetime | When the lead was last updated. |
+| web_url_value | Optional[str] | URL to view the lead in Zoho CRM. |
+| first_name | Optional[str] | Lead's first name |
+| last_name | Optional[str] | Lead's last name |
+| company | Optional[str] | Lead's company name |
+| email | Optional[str] | Lead's email address |
+| phone | Optional[str] | Lead's phone number |
+| mobile | Optional[str] | Lead's mobile phone number |
+| fax | Optional[str] | Lead's fax number |
+| title | Optional[str] | Lead's job title |
+| website | Optional[str] | Lead's website |
+| lead_source | Optional[str] | Source of the lead |
+| lead_status | Optional[str] | Current status of the lead |
+| industry | Optional[str] | Lead's industry |
+| annual_revenue | Optional[float] | Annual revenue |
+| no_of_employees | Optional[int] | Number of employees |
+| rating | Optional[str] | Lead rating |
+| description | Optional[str] | Lead description |
+| street | Optional[str] | Street address |
+| city | Optional[str] | City |
+| state | Optional[str] | State/province |
+| zip_code | Optional[str] | Postal code |
+| country | Optional[str] | Country |
+| owner_id | Optional[str] | ID of the user who owns the lead |
+| owner_name | Optional[str] | Name of the lead owner |
+| converted | bool | Whether the lead has been converted |
+| email_opt_out | bool | Indicates whether the lead has opted out of email |
+| metadata | Dict[str, Any] | Additional metadata about the lead |
+
+</Accordion>
+<Accordion title="ZohoCRMProductEntity">
+
+Schema for Zoho CRM Product entities.
+
+Products represent items in the product catalog.
+
+Reference:
+    https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
+
+| Field | Type | Description |
+|-------|------|-------------|
+| product_id | str | Unique Zoho CRM ID for the product. |
+| product_name | str | Display name of the product. |
+| created_time | datetime | When the product was created. |
+| updated_time | datetime | When the product was last updated. |
+| web_url_value | Optional[str] | URL to view the product in Zoho CRM. |
+| product_code | Optional[str] | Product code/SKU |
+| product_category | Optional[str] | Product category |
+| manufacturer | Optional[str] | Product manufacturer |
+| vendor_name | Optional[str] | Vendor name |
+| unit_price | Optional[float] | Unit price |
+| sales_start_date | Optional[str] | Sales start date |
+| sales_end_date | Optional[str] | Sales end date |
+| support_start_date | Optional[str] | Support start date |
+| support_expiry_date | Optional[str] | Support expiry date |
+| qty_in_stock | Optional[float] | Quantity in stock |
+| qty_in_demand | Optional[float] | Quantity in demand |
+| qty_ordered | Optional[float] | Quantity ordered |
+| reorder_level | Optional[float] | Reorder level |
+| commission_rate | Optional[float] | Commission rate |
+| tax | Optional[str] | Tax information |
+| taxable | bool | Whether the product is taxable |
+| product_active | bool | Whether the product is active |
+| description | Optional[str] | Product description |
+| owner_id | Optional[str] | ID of the user who owns the product |
+| owner_name | Optional[str] | Name of the product owner |
+| metadata | Dict[str, Any] | Additional metadata about the product |
+
+</Accordion>
+<Accordion title="ZohoCRMQuoteEntity">
+
+Schema for Zoho CRM Quote entities.
+
+Quotes are sales proposals sent to potential customers.
+
+Reference:
+    https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
+
+| Field | Type | Description |
+|-------|------|-------------|
+| quote_id | str | Unique Zoho CRM ID for the quote. |
+| quote_name | str | Display name/subject of the quote. |
+| created_time | datetime | When the quote was created. |
+| updated_time | datetime | When the quote was last updated. |
+| web_url_value | Optional[str] | URL to view the quote in Zoho CRM. |
+| quote_number | Optional[str] | Quote number |
+| quote_stage | Optional[str] | Quote stage |
+| account_id | Optional[str] | ID of the associated account |
+| account_name | Optional[str] | Name of the associated account |
+| contact_id | Optional[str] | ID of the associated contact |
+| contact_name | Optional[str] | Name of the associated contact |
+| deal_id | Optional[str] | ID of the associated deal |
+| deal_name | Optional[str] | Name of the associated deal |
+| valid_till | Optional[str] | Quote validity date |
+| sub_total | Optional[float] | Subtotal amount |
+| discount | Optional[float] | Discount amount |
+| tax | Optional[float] | Tax amount |
+| adjustment | Optional[float] | Adjustment amount |
+| grand_total | Optional[float] | Grand total amount |
+| carrier | Optional[str] | Carrier/shipper |
+| shipping_charge | Optional[float] | Shipping charge |
+| terms_and_conditions | Optional[str] | Terms and conditions |
+| description | Optional[str] | Quote description |
+| billing_street | Optional[str] | Billing street |
+| billing_city | Optional[str] | Billing city |
+| billing_state | Optional[str] | Billing state |
+| billing_code | Optional[str] | Billing postal code |
+| billing_country | Optional[str] | Billing country |
+| shipping_street | Optional[str] | Shipping street |
+| shipping_city | Optional[str] | Shipping city |
+| shipping_state | Optional[str] | Shipping state |
+| shipping_code | Optional[str] | Shipping postal code |
+| shipping_country | Optional[str] | Shipping country |
+| owner_id | Optional[str] | ID of the user who owns the quote |
+| owner_name | Optional[str] | Name of the quote owner |
+| metadata | Dict[str, Any] | Additional metadata about the quote |
+
+</Accordion>
+<Accordion title="ZohoCRMSalesOrderEntity">
+
+Schema for Zoho CRM Sales Order entities.
+
+Sales Orders are confirmed orders from customers.
+
+Reference:
+    https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
+
+| Field | Type | Description |
+|-------|------|-------------|
+| sales_order_id | str | Unique Zoho CRM ID for the sales order. |
+| sales_order_name | str | Display name/subject of the sales order. |
+| created_time | datetime | When the sales order was created. |
+| updated_time | datetime | When the sales order was last updated. |
+| web_url_value | Optional[str] | URL to view the sales order in Zoho CRM. |
+| so_number | Optional[str] | Sales order number |
+| status | Optional[str] | Sales order status |
+| account_id | Optional[str] | ID of the associated account |
+| account_name | Optional[str] | Name of the associated account |
+| contact_id | Optional[str] | ID of the associated contact |
+| contact_name | Optional[str] | Name of the associated contact |
+| deal_id | Optional[str] | ID of the associated deal |
+| deal_name | Optional[str] | Name of the associated deal |
+| quote_id | Optional[str] | ID of the associated quote |
+| quote_name | Optional[str] | Name of the associated quote |
+| due_date | Optional[str] | Due date |
+| sub_total | Optional[float] | Subtotal amount |
+| discount | Optional[float] | Discount amount |
+| tax | Optional[float] | Tax amount |
+| adjustment | Optional[float] | Adjustment amount |
+| grand_total | Optional[float] | Grand total amount |
+| carrier | Optional[str] | Carrier/shipper |
+| shipping_charge | Optional[float] | Shipping charge |
+| excise_duty | Optional[float] | Excise duty |
+| terms_and_conditions | Optional[str] | Terms and conditions |
+| description | Optional[str] | Sales order description |
+| billing_street | Optional[str] | Billing street |
+| billing_city | Optional[str] | Billing city |
+| billing_state | Optional[str] | Billing state |
+| billing_code | Optional[str] | Billing postal code |
+| billing_country | Optional[str] | Billing country |
+| shipping_street | Optional[str] | Shipping street |
+| shipping_city | Optional[str] | Shipping city |
+| shipping_state | Optional[str] | Shipping state |
+| shipping_code | Optional[str] | Shipping postal code |
+| shipping_country | Optional[str] | Shipping country |
+| owner_id | Optional[str] | ID of the user who owns the sales order |
+| owner_name | Optional[str] | Name of the sales order owner |
+| metadata | Dict[str, Any] | Additional metadata about the sales order |
+
+</Accordion>
+<Accordion title="ZohoCRMInvoiceEntity">
+
+Schema for Zoho CRM Invoice entities.
+
+Invoices are billing documents sent to customers.
+
+Reference:
+    https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
+
+| Field | Type | Description |
+|-------|------|-------------|
+| invoice_id | str | Unique Zoho CRM ID for the invoice. |
+| invoice_name | str | Display name/subject of the invoice. |
+| created_time | datetime | When the invoice was created. |
+| updated_time | datetime | When the invoice was last updated. |
+| web_url_value | Optional[str] | URL to view the invoice in Zoho CRM. |
+| invoice_number | Optional[str] | Invoice number |
+| invoice_date | Optional[str] | Invoice date |
+| status | Optional[str] | Invoice status |
+| account_id | Optional[str] | ID of the associated account |
+| account_name | Optional[str] | Name of the associated account |
+| contact_id | Optional[str] | ID of the associated contact |
+| contact_name | Optional[str] | Name of the associated contact |
+| deal_id | Optional[str] | ID of the associated deal |
+| deal_name | Optional[str] | Name of the associated deal |
+| sales_order_id | Optional[str] | ID of the associated sales order |
+| sales_order_name | Optional[str] | Name of the associated sales order |
+| due_date | Optional[str] | Payment due date |
+| purchase_order | Optional[str] | Purchase order number |
+| sub_total | Optional[float] | Subtotal amount |
+| discount | Optional[float] | Discount amount |
+| tax | Optional[float] | Tax amount |
+| adjustment | Optional[float] | Adjustment amount |
+| grand_total | Optional[float] | Grand total amount |
+| shipping_charge | Optional[float] | Shipping charge |
+| excise_duty | Optional[float] | Excise duty |
+| terms_and_conditions | Optional[str] | Terms and conditions |
+| description | Optional[str] | Invoice description |
+| billing_street | Optional[str] | Billing street |
+| billing_city | Optional[str] | Billing city |
+| billing_state | Optional[str] | Billing state |
+| billing_code | Optional[str] | Billing postal code |
+| billing_country | Optional[str] | Billing country |
+| shipping_street | Optional[str] | Shipping street |
+| shipping_city | Optional[str] | Shipping city |
+| shipping_state | Optional[str] | Shipping state |
+| shipping_code | Optional[str] | Shipping postal code |
+| shipping_country | Optional[str] | Shipping country |
+| owner_id | Optional[str] | ID of the user who owns the invoice |
+| owner_name | Optional[str] | Name of the invoice owner |
+| metadata | Dict[str, Any] | Additional metadata about the invoice |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

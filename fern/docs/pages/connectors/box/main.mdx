@@ -12,6 +12,8 @@ description: "Box integration with Airweave"
   <h1 style={{ margin: 0 }}>Box</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Box through Airweave's unified search layer.
+
 ## Configuration
 
 Box source connector integrates with the Box API to extract and synchronize data.
@@ -64,11 +66,12 @@ The following data models are available for this connector:
 
 Schema for Box user entities.
 
-Reference:
-    https://developer.box.com/reference/resources/user/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| user_id | str | Box user ID |
+| name | str | Display name of the user |
+| created_at | Optional[str] | When the user was created |
+| updated_at | Optional[str] | When the user was last modified |
 | login | Optional[str] | Login email address of the user |
 | status | Optional[str] | Status of the user (active, inactive, etc.) |
 | job_title | Optional[str] | Job title of the user |
@@ -86,11 +89,12 @@ Reference:
 
 Schema for Box folder entities.
 
-Reference:
-    https://developer.box.com/reference/resources/folder/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| folder_id | str | Box folder ID |
+| name | str | Folder name |
+| created_at | Optional[str] | When the folder was created |
+| updated_at | Optional[str] | When the folder was last modified |
 | description | Optional[str] | Description of the folder |
 | size | Optional[int] | Size of the folder in bytes |
 | path_collection | List[Dict] | Path of parent folders from root to this folder |
@@ -116,11 +120,12 @@ Reference:
 
 Schema for Box file entities.
 
-Reference:
-    https://developer.box.com/reference/resources/file/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| file_id | str | Box file ID |
+| name | str | File name |
+| created_at | Optional[str] | When the file was created |
+| updated_at | Optional[str] | When the file was last modified |
 | description | Optional[str] | Description of the file |
 | parent_folder_id | str | ID of the parent folder |
 | parent_folder_name | str | Name of the parent folder |
@@ -149,11 +154,12 @@ Reference:
 
 Schema for Box comment entities.
 
-Reference:
-    https://developer.box.com/reference/resources/comment/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| comment_id | str | Box comment ID |
+| name | str | Comment preview or identifier |
+| created_at | Optional[str] | When the comment was created |
+| updated_at | Optional[str] | When the comment was last modified |
 | file_id | str | ID of the file this comment is on |
 | file_name | str | Name of the file |
 | message | str | Content of the comment |
@@ -166,11 +172,12 @@ Reference:
 
 Schema for Box collaboration entities.
 
-Reference:
-    https://developer.box.com/reference/resources/collaboration/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| collaboration_id | str | Box collaboration ID |
+| name | str | Collaboration display label |
+| created_at | Optional[str] | When the collaboration was created |
+| updated_at | Optional[str] | When the collaboration was last modified |
 | role | str | Role of the collaborator (editor, viewer, previewer, etc.) |
 | accessible_by | Dict | User or group that this collaboration applies to |
 | item | Dict | File or folder that is being collaborated on |

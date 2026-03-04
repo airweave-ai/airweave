@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.source_rate_limit import SourceRateLimit
@@ -54,7 +54,7 @@ class CRUDSourceRateLimit(
         db: AsyncSession,
         *,
         obj_in: SourceRateLimitCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> SourceRateLimit:
         """Create a new source rate limit configuration.

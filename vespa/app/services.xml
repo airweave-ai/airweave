@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<services version="1.0">
+
+  <admin version="2.0">
+    <adminserver hostalias="container0"/>
+  </admin>
+
+  <!-- Container cluster: handles queries and document API -->
+  <container id="default" version="1.0">
+    <http>
+      <server id="default" port="8081"/>
+    </http>
+    <search/>
+    <document-api/>
+    <document-processing/>
+
+    <nodes>
+      <node hostalias="container0"/>
+    </nodes>
+  </container>
+
+  <!-- Content cluster: stores and indexes documents -->
+  <content id="airweave" version="1.0">
+    <redundancy>1</redundancy>
+    <documents>
+      <document type="base_entity" mode="index"/>
+      <document type="file_entity" mode="index"/>
+      <document type="code_file_entity" mode="index"/>
+      <document type="email_entity" mode="index"/>
+      <document type="web_entity" mode="index"/>
+    </documents>
+    <nodes>
+      <node hostalias="content0" distribution-key="0"/>
+    </nodes>
+    <tuning>
+      <resource-limits>
+        <disk>0.90</disk>
+      </resource-limits>
+      <distribution type="loose"/>
+    </tuning>
+  </content>
+
+</services>

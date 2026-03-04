@@ -1,21 +1,24 @@
 """Module for syncing embedding models, sources, destinations, and auth providers."""
 
-import asyncio
 import importlib
 import inspect
 import os
 import re
+from pathlib import Path
 from typing import Callable, Dict, Type
-from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
+from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.models.entity_definition import EntityType
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.sources._base import BaseSource
+
+# Compute platform directory from this file's location (works regardless of cwd)
+PLATFORM_DIR = Path(__file__).parent
 
 sync_logger = logger.with_prefix("Platform sync: ").with_context(component="platform_sync")
 
@@ -48,8 +51,8 @@ def _validate_source_template_config(source_class: Type[BaseSource]) -> None:
     Raises:
         ValueError: If template variables don't match auth-required config fields
     """
-    short_name = source_class._short_name
-    config_class_name = source_class._config_class
+    short_name = source_class.short_name
+    config_class_name = source_class.config_class
 
     # Skip if no config class
     if not config_class_name:
@@ -59,8 +62,7 @@ def _validate_source_template_config(source_class: Type[BaseSource]) -> None:
     try:
         from airweave.platform.auth.settings import integration_settings
 
-        # Get settings (note: this is sync context, but integration_settings is loaded at startup)
-        oauth_settings = asyncio.run(integration_settings.get_by_short_name(short_name))
+        oauth_settings = integration_settings.get_settings(short_name)
 
         # Skip if no OAuth settings or no templates
         if not oauth_settings:
@@ -142,11 +144,11 @@ def _process_module_classes(module, components: Dict[str, list[Type | Callable]]
     """
     # Scan for classes
     for _, cls in inspect.getmembers(module, inspect.isclass):
-        if getattr(cls, "_is_source", False):
+        if getattr(cls, "is_source", False):
             components["sources"].append(cls)
-        elif getattr(cls, "_is_destination", False):
+        elif getattr(cls, "is_destination", False):
             components["destinations"].append(cls)
-        elif getattr(cls, "_is_auth_provider", False):
+        elif getattr(cls, "is_auth_provider", False):
             components["auth_providers"].append(cls)
 
 
@@ -154,11 +156,8 @@ def _process_module_classes(module, components: Dict[str, list[Type | Callable]]
 # using CodeChunker and SemanticChunker, not decorator-based transformers
 
 
-def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
-    """Scan directory for decorated classes and functions.
-
-    Args:
-        directory (str): The directory to scan.
+def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
+    """Scan platform directory for decorated classes and functions.
 
     Returns:
         Dict[str, list[Type | Callable]]: Dictionary of decorated classes and functions by type.
@@ -173,18 +172,19 @@ def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
         "auth_providers": [],
     }
 
-    base_package = directory.replace("/", ".")
+    base_package = "airweave.platform"
 
-    for root, _, files in os.walk(directory):
+    for root, dirs, files in os.walk(PLATFORM_DIR):
+        dirs[:] = [d for d in dirs if d != "tests"]
         # Skip files in the root directory
-        if root == directory:
+        if Path(root) == PLATFORM_DIR:
             continue
 
         for filename in files:
             if not filename.endswith(".py") or filename.startswith("_"):
                 continue
 
-            relative_path = os.path.relpath(root, directory)
+            relative_path = os.path.relpath(root, PLATFORM_DIR)
             module_path = os.path.join(relative_path, filename[:-3]).replace("/", ".")
             full_module_name = f"{base_package}.{module_path}"
 
@@ -202,6 +202,18 @@ def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
                 sync_logger.error(error_msg)
                 # Re-raise the exception to fail the sync process
                 raise ImportError(f"Module import failed: {full_module_name}") from e
+
+    # Filter out internal sources when ENABLE_INTERNAL_SOURCES is False.
+    # This uses the `internal=True` flag from the @source decorator as the single source of truth.
+    if not settings.ENABLE_INTERNAL_SOURCES:
+        internal_sources = [s for s in components["sources"] if s.is_internal()]
+        if internal_sources:
+            sync_logger.debug(
+                f"Skipping {len(internal_sources)} internal source(s) "
+                f"({', '.join(s.short_name for s in internal_sources)}) "
+                "(set ENABLE_INTERNAL_SOURCES=true to enable)"
+            )
+        components["sources"] = [s for s in components["sources"] if not s.is_internal()]
 
     return components
 
@@ -316,7 +328,7 @@ async def _sync_entity_definitions(db: AsyncSession) -> Dict[str, dict]:
     # Get all Python files in the entities directory that aren't base or init files
     entity_files = [
         f
-        for f in os.listdir("airweave/platform/entities")
+        for f in os.listdir(PLATFORM_DIR / "entities")
         if f.endswith(".py") and not f.startswith("__")
     ]
 
@@ -416,10 +428,22 @@ async def _sync_sources(
     """
     sync_logger.info("Syncing sources to database.")
 
+    # Filter out internal sources if ENABLE_INTERNAL_SOURCES is False.
+    # Uses the `internal=True` flag from the @source decorator as the single source of truth.
+    filtered_sources = sources
+    if not settings.ENABLE_INTERNAL_SOURCES:
+        filtered_sources = [s for s in sources if not s.is_internal()]
+        skipped_count = len(sources) - len(filtered_sources)
+        if skipped_count > 0:
+            sync_logger.info(
+                f"Skipping {skipped_count} internal source(s) "
+                "(set ENABLE_INTERNAL_SOURCES=true to enable)"
+            )
+
     source_definitions = []
-    for source_class in sources:
+    for source_class in filtered_sources:
         # Get the source's short name (e.g., "slack" for SlackSource)
-        source_module_name = source_class._short_name
+        source_module_name = source_class.short_name
 
         # NEW: Validate template configuration if source has templates
         try:
@@ -429,41 +453,43 @@ async def _sync_sources(
             sync_logger.error(f"Template validation failed for {source_module_name}")
             raise
 
-        # Get entity IDs for this module
-        output_entity_ids = []
+        # Get entity definition short names for this module
+        output_entity_definitions = []
         if source_module_name in module_entity_map:
-            output_entity_ids = [
-                UUID(id) for id in module_entity_map[source_module_name].get("entity_ids", [])
-            ]
+            output_entity_definitions = module_entity_map[source_module_name].get(
+                "entity_names", []
+            )
 
         # Convert oauth_type enum to string if present
-        oauth_type = getattr(source_class, "_oauth_type", None)
+        oauth_type = getattr(source_class, "oauth_type", None)
         if oauth_type:
             oauth_type = oauth_type.value if hasattr(oauth_type, "value") else oauth_type
 
         # Convert rate_limit_level enum to string if present
-        rate_limit_level = getattr(source_class, "_rate_limit_level", None)
+        rate_limit_level = getattr(source_class, "rate_limit_level", None)
         if rate_limit_level:
             rate_limit_level = (
                 rate_limit_level.value if hasattr(rate_limit_level, "value") else rate_limit_level
             )
 
         source_def = schemas.SourceCreate(
-            name=source_class._name,
+            name=source_class.source_name,
             description=source_class.__doc__,
-            auth_methods=[m.value for m in getattr(source_class, "_auth_methods", [])],
+            auth_methods=[m.value for m in getattr(source_class, "auth_methods", [])],
             oauth_type=oauth_type,
-            requires_byoc=getattr(source_class, "_requires_byoc", False),
-            auth_config_class=getattr(source_class, "_auth_config_class", None),
-            config_class=source_class._config_class,
-            short_name=source_class._short_name,
+            requires_byoc=getattr(source_class, "requires_byoc", False),
+            auth_config_class=getattr(source_class.auth_config_class, "__name__", None),
+            config_class=getattr(source_class.config_class, "__name__", None),
+            short_name=source_class.short_name,
             class_name=source_class.__name__,
-            output_entity_definition_ids=output_entity_ids,
-            labels=getattr(source_class, "_labels", []),
-            supports_continuous=getattr(source_class, "_supports_continuous", False),
-            federated_search=getattr(source_class, "_federated_search", False),
-            supports_temporal_relevance=getattr(source_class, "_supports_temporal_relevance", True),
+            output_entity_definitions=output_entity_definitions,
+            labels=getattr(source_class, "labels", []),
+            supports_continuous=getattr(source_class, "supports_continuous", False),
+            federated_search=getattr(source_class, "federated_search", False),
+            supports_temporal_relevance=getattr(source_class, "supports_temporal_relevance", True),
+            supports_access_control=getattr(source_class, "supports_access_control", False),
             rate_limit_level=rate_limit_level,
+            feature_flag=getattr(source_class, "feature_flag", None),
         )
         source_definitions.append(source_def)
 
@@ -483,12 +509,12 @@ async def _sync_destinations(db: AsyncSession, destinations: list[Type[BaseDesti
     destination_definitions = []
     for dest_class in destinations:
         dest_def = schemas.DestinationCreate(
-            name=dest_class._name,
+            name=dest_class.destination_name,
             description=dest_class.__doc__,
-            short_name=dest_class._short_name,
+            short_name=dest_class.short_name,
             class_name=dest_class.__name__,
-            auth_config_class=getattr(dest_class._auth_config_class, "__name__", None),
-            labels=getattr(dest_class, "_labels", []),
+            auth_config_class=getattr(dest_class.auth_config_class, "__name__", None),
+            labels=getattr(dest_class, "labels", []),
         )
         destination_definitions.append(dest_def)
 
@@ -509,13 +535,17 @@ async def _sync_auth_providers(
 
     auth_provider_definitions = []
     for auth_provider_class in auth_providers:
+        auth_config_cls = getattr(auth_provider_class, "auth_config_class", None)
+        config_cls = getattr(auth_provider_class, "config_class", None)
         auth_provider_def = schemas.AuthProviderCreate(
-            name=auth_provider_class._name,
-            short_name=auth_provider_class._short_name,
+            name=auth_provider_class.provider_name,
+            short_name=auth_provider_class.short_name,
             class_name=auth_provider_class.__name__,
             description=auth_provider_class.__doc__,
-            auth_config_class=getattr(auth_provider_class, "_auth_config_class", None),
-            config_class=getattr(auth_provider_class, "_config_class", None),
+            auth_config_class=getattr(auth_config_cls, "__name__", None)
+            if auth_config_cls
+            else None,
+            config_class=getattr(config_cls, "__name__", None) if config_cls else None,
         )
         auth_provider_definitions.append(auth_provider_def)
 
@@ -527,11 +557,10 @@ async def _sync_auth_providers(
 # CodeChunker and SemanticChunker in entity_pipeline.py, not decorator-based transformers
 
 
-async def sync_platform_components(platform_dir: str, db: AsyncSession) -> None:
+async def sync_platform_components(db: AsyncSession) -> None:
     """Sync all platform components with the database.
 
     Args:
-        platform_dir (str): Directory containing platform components
         db (AsyncSession): Database session
 
     Raises:
@@ -541,7 +570,7 @@ async def sync_platform_components(platform_dir: str, db: AsyncSession) -> None:
     sync_logger.info("Starting platform components sync...")
 
     try:
-        components = _get_decorated_classes(platform_dir)
+        components = _get_decorated_classes()
         c = components
 
         # Log component counts to help diagnose issues

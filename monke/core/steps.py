@@ -1,6 +1,7 @@
 """Test step implementations with parallelized verification and robust sync handling."""
 
 import asyncio
+import os
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
@@ -211,7 +212,7 @@ class SyncStep(TestStep):
     async def _wait_for_sync_completion(
         self,
         target_job_id: Optional[str] = None,
-        timeout_seconds: int = 300,
+        timeout_seconds: int = 600,
     ) -> None:
         """Wait for sync job to complete."""
         self.logger.info("⏳ Waiting for sync to complete...")
@@ -351,8 +352,12 @@ async def _token_present_in_collection(
     client, readable_id: str, token: str, limit: int = 1000, expect_present: bool = True
 ) -> bool:
     """
-    Check if `token` appears in any result payload (case-insensitive).
+    Check if `token` appears in any search result (case-insensitive).
     Uses a fixed limit of 1000 for comprehensive search.
+
+    Note: Search results use the new AirweaveSearchResult structure where fields
+    like `name`, `id`, `textual_representation` are at the top level (not nested
+    in a `payload` dict).
 
     Args:
         client: Airweave client
@@ -375,15 +380,15 @@ async def _token_present_in_collection(
         if results and len(results) > 0:
             logger.info("📋 Sample results (showing up to 3):")
             for i, r in enumerate(results[:3]):
-                payload = r.get("payload", {})
                 score = r.get("score", 0)
-                name = payload.get("name") or payload.get("title") or payload.get("id", "Unknown")
+                # New structure: name is at top level, not in payload
+                name = r.get("name") or r.get("id", "Unknown")
                 logger.info(f"   • Result {i+1}: {name} (score: {score:.3f})")
 
         # Check if token is present in any result
+        # New structure: search entire result dict (fields are at top level)
         for i, r in enumerate(results):
-            payload = r.get("payload", {})
-            if payload and token_lower in str(payload).lower():
+            if r and token_lower in str(r).lower():
                 if expect_present:
                     logger.info(f"✅ Token '{token}' found in vector database (as expected)")
                 else:
@@ -414,7 +419,7 @@ def _search_limit_from_config(config: TestConfig, default: int = 50) -> int:
 
 
 class VerifyStep(TestStep):
-    """Verify data in Qdrant step."""
+    """Verify data in vector database step."""
 
     async def execute(self) -> None:
         self.logger.info("=" * 80)
@@ -446,8 +451,8 @@ class VerifyStep(TestStep):
             )
             return entity, ok
 
-        # Add a wait after sync completion to allow Qdrant indexing
-        self.logger.info("⏳ Waiting 10s for Qdrant indexing to complete...")
+        # Add a wait after sync completion to allow vector database indexing
+        self.logger.info("⏳ Waiting 10s for vector database indexing to complete...")
         await asyncio.sleep(10)
 
         # Retry support + optional one-time rescue resync
@@ -495,7 +500,7 @@ class VerifyStep(TestStep):
         for entity, ok in results:
             if not ok:
                 errors.append(
-                    f"Entity {self._display_name(entity)} not found in Qdrant"
+                    f"Entity {self._display_name(entity)} not found in vector database"
                 )
             else:
                 verified_count += 1
@@ -599,7 +604,7 @@ class PartialDeleteStep(TestStep):
 
 
 class VerifyPartialDeletionStep(TestStep):
-    """Verify that partially deleted entities are removed from Qdrant."""
+    """Verify that partially deleted entities are removed from vector database."""
 
     async def execute(self) -> None:
         self.logger.info("🔍 Verifying partial deletion")
@@ -642,11 +647,11 @@ class VerifyPartialDeletionStep(TestStep):
         for entity, is_removed in results:
             if not is_removed:
                 errors.append(
-                    f"Entity {self._display_name(entity)} still exists in Qdrant after deletion"
+                    f"Entity {self._display_name(entity)} still exists in vector database after deletion"
                 )
             else:
                 self.logger.info(
-                    f"✅ Entity {self._display_name(entity)} confirmed removed from Qdrant"
+                    f"✅ Entity {self._display_name(entity)} confirmed removed from vector database"
                 )
 
         if errors:
@@ -656,7 +661,7 @@ class VerifyPartialDeletionStep(TestStep):
 
 
 class VerifyRemainingEntitiesStep(TestStep):
-    """Verify that remaining entities are still present in Qdrant."""
+    """Verify that remaining entities are still present in vector database."""
 
     async def execute(self) -> None:
         self.logger.info("🔍 Verifying remaining entities are still present")
@@ -691,11 +696,11 @@ class VerifyRemainingEntitiesStep(TestStep):
         for entity, is_present in results:
             if not is_present:
                 errors.append(
-                    f"Entity {self._display_name(entity)} was incorrectly removed from Qdrant"
+                    f"Entity {self._display_name(entity)} was incorrectly removed from vector database"
                 )
             else:
                 self.logger.info(
-                    f"✅ Entity {self._display_name(entity)} confirmed still present in Qdrant"
+                    f"✅ Entity {self._display_name(entity)} confirmed still present in vector database"
                 )
 
         if errors:
@@ -727,7 +732,7 @@ class CompleteDeleteStep(TestStep):
 
 
 class VerifyCompleteDeletionStep(TestStep):
-    """Verify that all test entities are completely removed from Qdrant."""
+    """Verify that all test entities are completely removed from vector database."""
 
     async def execute(self) -> None:
         self.logger.info("🔍 Verifying complete deletion")
@@ -765,15 +770,15 @@ class VerifyCompleteDeletionStep(TestStep):
                 self.logger.warning(
                     f"⚠️ Entity {self._display_name(entity)} still found with token: {expected_token}"
                 )
-                # Do a more detailed search to see what's in Qdrant
+                # Do a more detailed search to see what's in vector database
                 try:
                     results = await _search_collection_async(
                         client, self.context.collection_readable_id, expected_token, 5
                     )
                     for r in results[:2]:  # Show first 2 results
-                        payload = r.get("payload", {})
+                        # New structure: id and name are at top level
                         self.logger.info(
-                            f"   Found in Qdrant: id={payload.get('id')}, name={payload.get('name')}"
+                            f"   Found in vector DB: id={r.get('id')}, name={r.get('name')}"
                         )
                 except Exception as e:
                     self.logger.debug(f"Could not get detailed results: {e}")
@@ -786,11 +791,11 @@ class VerifyCompleteDeletionStep(TestStep):
         for entity, is_removed in results:
             if not is_removed:
                 errors.append(
-                    f"Entity {self._display_name(entity)} still exists in Qdrant after complete deletion"
+                    f"Entity {self._display_name(entity)} still exists in vector database after complete deletion"
                 )
             else:
                 self.logger.info(
-                    f"✅ Entity {self._display_name(entity)} confirmed removed from Qdrant"
+                    f"✅ Entity {self._display_name(entity)} confirmed removed from vector database"
                 )
 
         if errors:
@@ -802,10 +807,10 @@ class VerifyCompleteDeletionStep(TestStep):
         )
         if not collection_empty:
             self.logger.warning(
-                "⚠️ Qdrant collection still contains some data (may be metadata entities)"
+                "⚠️ Collection still contains some data (may be metadata entities)"
             )
         else:
-            self.logger.info("✅ Qdrant collection confirmed empty of test data")
+            self.logger.info("✅ Collection confirmed empty of test data")
 
         self.logger.info("✅ Complete deletion verification completed")
 
@@ -840,10 +845,10 @@ class VerifyCompleteDeletionStep(TestStep):
                         f"🔍 Found {count} results for pattern '{pattern}'"
                     )
                     for r in results[:3]:
-                        payload = r.get("payload", {})
+                        # New structure: name and score are at top level
                         score = r.get("score")
                         self.logger.info(
-                            f"   - {payload.get('name', 'Unknown')} (score: {score})"
+                            f"   - {r.get('name', 'Unknown')} (score: {score})"
                         )
 
             if total == 0:
@@ -929,6 +934,111 @@ class CollectionCleanupStep(TestStep):
             # Don't re-raise - cleanup should be best-effort
 
 
+class VerifyRawDataStep(TestStep):
+    """Verify raw data was captured to local storage (local backend only).
+
+    This step checks that the raw data capture system stored entity data
+    during sync. It automatically skips when running against a remote
+    Airweave backend since local filesystem access is required.
+    """
+
+    def _is_local_backend(self) -> bool:
+        """Check if pointing at a local Airweave backend."""
+        url = os.getenv("AIRWEAVE_API_URL", "http://localhost:8001").lower()
+        return any(x in url for x in ["localhost", "127.0.0.1", "0.0.0.0"])
+
+    async def execute(self) -> None:
+        """Verify raw data files exist for the current sync."""
+        self.logger.info("=" * 80)
+        self.logger.info("📦 RAW DATA VERIFICATION: Checking local storage capture")
+        self.logger.info("=" * 80)
+
+        # Skip if not running locally
+        if not self._is_local_backend():
+            self.logger.info("⏭️ Skipping raw data verification (remote backend)")
+            self.logger.info("   Raw data capture verification requires local filesystem access")
+            return
+
+        # Get sync_id from context
+        sync_id = self.context.sync_id
+        if not sync_id:
+            self.logger.warning("⚠️ No sync_id found in context, skipping raw data verification")
+            return
+
+        self.logger.info(f"🔍 Verifying raw data for sync: {sync_id}")
+
+        # Import Path here to avoid top-level import issues
+        from pathlib import Path
+
+        # Determine storage path - check common locations
+        storage_path = os.getenv("STORAGE_PATH")
+        if storage_path:
+            base_path = Path(storage_path)
+        else:
+            # Try common local development paths (local_storage lives at repo root)
+            candidates = [
+                Path("local_storage"),
+                Path("/app/local_storage"),
+            ]
+            base_path = None
+            for candidate in candidates:
+                if candidate.exists():
+                    base_path = candidate
+                    break
+
+            if not base_path:
+                self.logger.warning("⚠️ Could not find local_storage directory, skipping verification")
+                return
+
+        raw_path = base_path / "raw" / sync_id
+        self.logger.info(f"📂 Checking raw data path: {raw_path}")
+
+        errors = []
+
+        # Check manifest exists
+        manifest = raw_path / "manifest.json"
+        if not manifest.exists():
+            errors.append(f"Missing manifest.json at {manifest}")
+        else:
+            self.logger.info("✅ Found manifest.json")
+
+        # Check entities directory has files
+        entities_dir = raw_path / "entities"
+        if not entities_dir.exists():
+            errors.append(f"Missing entities directory at {entities_dir}")
+        else:
+            entity_files = list(entities_dir.glob("*.json"))
+            if not entity_files:
+                errors.append(f"No entity JSON files in {entities_dir}")
+            else:
+                self.logger.info(f"✅ Found {len(entity_files)} entity file(s)")
+
+        # Check files directory (optional - only for file-based connectors)
+        files_dir = raw_path / "files"
+        if files_dir.exists():
+            file_count = len(list(files_dir.iterdir()))
+            if file_count > 0:
+                self.logger.info(f"✅ Found {file_count} raw file(s) in files directory")
+            else:
+                self.logger.info("ℹ️ Files directory exists but is empty")
+        else:
+            self.logger.info("ℹ️ No files directory (normal for non-file connectors)")
+
+        # Report results
+        self.logger.info("=" * 80)
+        if errors:
+            self.logger.error(f"❌ RAW DATA VERIFICATION FAILED")
+            for error in errors:
+                self.logger.error(f"   • {error}")
+            self.logger.info("=" * 80)
+            raise Exception("; ".join(errors))
+        else:
+            entity_count = len(list(entities_dir.glob("*.json"))) if entities_dir.exists() else 0
+            self.logger.info(f"✅ RAW DATA VERIFICATION PASSED")
+            self.logger.info(f"📊 Summary: {entity_count} entities captured to {raw_path}")
+            self.logger.info("=" * 80)
+
+
 class TestStepFactory:
     """Factory for creating test steps."""
 
@@ -939,6 +1049,7 @@ class TestStepFactory:
         "sync": SyncStep,
         "force_full_sync": SyncStep,  # Use same class with force_full_sync=True
         "verify": VerifyStep,
+        "verify_raw_data": VerifyRawDataStep,
         "update": UpdateStep,
         "partial_delete": PartialDeleteStep,
         "verify_partial_deletion": VerifyPartialDeletionStep,

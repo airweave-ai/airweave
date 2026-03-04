@@ -41,7 +41,7 @@ names explicitly listed for each source or in Common fields.
 - If you cannot confidently map a term to an available field, omit the filter and lower \
 the confidence.
 - The value for source_name MUST be the exact short_name from the sources list (lowercase, \
-e.g., "asana", "github", "notion"). These are case-sensitive and stored exactly as shown.
+e.g., "asana", "github", "google_docs"). These are case-sensitive and stored exactly as shown.
 - When time-based language is used, identify the most relevant date field from the listed \
 fields.
 

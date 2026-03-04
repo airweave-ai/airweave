@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UsageSnapshot(BaseModel):
@@ -28,10 +28,7 @@ class UsageSnapshot(BaseModel):
     timestamp: datetime = Field(..., description="When this snapshot was taken")
     billing_period_id: UUID = Field(..., description="Associated billing period")
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BillingPeriodUsage(BaseModel):
@@ -48,17 +45,14 @@ class BillingPeriodUsage(BaseModel):
 
     # Daily usage trend (last 30 days or full period)
     daily_usage: List[UsageSnapshot] = Field(
-        default_factory=list, description="Daily snapshots for trend visualization", max_items=30
+        default_factory=list, description="Daily snapshots for trend visualization", max_length=30
     )
 
     # Computed fields
     days_remaining: Optional[int] = Field(None, description="Days left in period")
     is_current: bool = Field(False, description="Whether this is the current period")
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UsageTrend(BaseModel):
@@ -68,10 +62,7 @@ class UsageTrend(BaseModel):
     direction: str = Field(..., description="Trend direction: up, down, or stable")
     percentage_change: float = Field(..., description="Percentage change from previous period")
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UsageDashboard(BaseModel):
@@ -81,7 +72,7 @@ class UsageDashboard(BaseModel):
     previous_periods: List[BillingPeriodUsage] = Field(
         default_factory=list,
         description="Historical billing periods",
-        max_items=6,  # Last 6 periods
+        max_length=6,  # Last 6 periods
     )
 
     # Quick stats
@@ -95,11 +86,9 @@ class UsageDashboard(BaseModel):
         default_factory=list, description="Usage trends compared to previous period"
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "examples": [
                 {
                     "current_period": {
@@ -134,4 +123,5 @@ class UsageDashboard(BaseModel):
                     ],
                 }
             ]
-        }
+        },
+    )

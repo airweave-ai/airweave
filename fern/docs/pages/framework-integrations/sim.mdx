@@ -1,0 +1,81 @@
+---
+title: Sim
+subtitle: Search your Airweave collections directly from Sim workflows using the native Airweave block.
+slug: framework-integrations/sim
+---
+
+[Sim](https://www.sim.ai) is an open-source platform for building and deploying AI agent workflows visually. The native Airweave block lets you search your synced data collections from any workflow, no code required.
+
+### Prerequisites
+
+Before you start you'll need:
+
+- **A collection with data**: at least one source connection must have completed its initial sync. See the [Quickstart](https://docs.airweave.ai/quickstart) if you need to set this up.
+- **An API key**: Create one in the Airweave dashboard under **API Keys**.
+
+### Setup
+
+<Steps>
+  <Step title="Add the Airweave block">
+    Open a workflow in Sim and drag the **Airweave** block from the tools palette onto the canvas.
+  </Step>
+  <Step title="Enter your Collection ID">
+    Paste the readable ID of the Airweave collection you want to search. You can find this in the Airweave dashboard on the collection detail page.
+  </Step>
+  <Step title="Enter your API Key">
+    Paste your Airweave API key into the **API Key** field. The value is stored securely and masked in the UI.
+  </Step>
+  <Step title="Write your Search Query">
+    Type a natural-language query into the **Search Query** field. This field also accepts dynamic references from upstream blocks, so you can pass in user input or output from a previous step.
+  </Step>
+  <Step title="Configure search options (optional)">
+    Adjust the retrieval strategy, max results, query expansion, reranking, and answer generation toggles to fine-tune your search.
+  </Step>
+  <Step title="Connect outputs to downstream blocks">
+    Wire the block's outputs, the `results` array and optional `completion` string, into downstream blocks such as an LLM agent, a Slack notification, or a condition filter.
+  </Step>
+</Steps>
+
+### Configuration
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `collectionId` | string | - | The readable ID of the Airweave collection to search |
+| `query` | string | - | Search query text |
+| `apiKey` | string | - | Your Airweave API key |
+| `limit` | number | 25 | Maximum number of results to return (10, 25, 50, or 100) |
+| `retrievalStrategy` | string | `hybrid` | Retrieval strategy: `hybrid`, `neural`, or `keyword` |
+| `expandQuery` | boolean | false | Generate query variations for better recall |
+| `rerank` | boolean | false | Rerank results using an LLM for improved relevance |
+| `generateAnswer` | boolean | false | Generate a natural-language answer from the search results |
+
+### Output Format
+
+The Airweave block returns two outputs:
+
+**`results`** - an array of search result objects, each containing:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `entity_id` | string | Unique identifier for the result entity |
+| `source_name` | string | Name of the data source (e.g. "GitHub", "Slack") |
+| `md_content` | string | Markdown-formatted content of the result |
+| `score` | number | Relevance score |
+| `metadata` | object | Additional metadata associated with the result |
+| `breadcrumbs` | array | Navigation path to the result within its source |
+| `url` | string | URL to the original content |
+
+**`completion`** - an optional string containing an AI-generated answer to the query. Only returned when **Generate Answer** is enabled.
+
+### Example Use Cases
+
+- **RAG-style question answering**: Connect the Airweave block to an LLM agent block. Pass the `results` or `completion` output as context so the agent can answer questions grounded in your synced data.
+- **Automated notifications**: Route search results to a Slack or email block to alert your team when specific content is found in your collections.
+- **Relevance filtering**: Chain the Airweave block with a condition block to filter results by `score`, then pass only high-relevance results to the next step.
+
+### Learn More
+
+- [Sim Website](https://www.sim.ai)
+- [Sim GitHub](https://github.com/simstudioai/sim)
+- [Sim Documentation](https://docs.sim.ai)
+- [Airweave GitHub](https://github.com/airweave-ai/airweave)

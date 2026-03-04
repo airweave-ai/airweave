@@ -1,0 +1,465 @@
+---
+title: "Shopify"
+description: "Shopify integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Shopify logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Shopify</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Shopify through Airweave's unified search layer.
+
+## Configuration
+
+Shopify source connector integrates with the Shopify Admin API.
+
+Uses OAuth 2.0 client credentials grant to exchange client_id/client_secret
+for an access token, then syncs comprehensive data from your Shopify store:
+- Products and their variants with pricing and inventory
+- Customer profiles and purchase history
+- Orders with line items and fulfillment status
+- Custom and Smart Collections
+- Store locations and inventory levels
+- Fulfillments and shipment tracking
+- Gift cards and discounts/price rules
+- Metaobjects for custom data structures
+- Files/media via GraphQL
+- Themes and templates
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/shopify.py"
+>
+  Explore the Shopify connector implementation
+</Card>
+
+### Authentication
+
+This connector uses a custom authentication configuration.
+
+<Card
+  title="Authentication Configuration"
+  className="auth-config-card"
+  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
+>
+
+Shopify authentication credentials schema using client credentials grant.
+
+Uses client_id and client_secret to obtain an access token via OAuth 2.0
+client credentials flow. The token is exchanged for Admin API access.
+
+<ParamField
+  path="client_id"
+  type="str"
+  required={true}
+>
+  Client ID from your Shopify app in the Dev Dashboard
+</ParamField>
+<ParamField
+  path="client_secret"
+  type="str"
+  required={true}
+>
+  Client Secret from your Shopify app in the Dev Dashboard
+</ParamField>
+</Card>
+
+### Configuration Options
+
+The following configuration options are available for this connector:
+
+<Card
+  title="Configuration Parameters"
+  className="config-card"
+  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
+>
+
+Shopify configuration schema.
+<ParamField
+  path="shop_domain"
+  type="str"
+  required={true}
+>
+  Your Shopify store domain (e.g., 'my-store.myshopify.com')
+</ParamField>
+</Card>
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="ShopifyProductEntity">
+
+Schema for Shopify Product resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/product
+
+| Field | Type | Description |
+|-------|------|-------------|
+| product_id | str | Shopify product ID. |
+| product_title | str | Title of the product. |
+| created_time | datetime | When the product was created. |
+| updated_time | datetime | When the product was last updated. |
+| web_url_value | Optional[str] | URL to view this product in Shopify admin. |
+| body_html | Optional[str] | Product description in HTML format |
+| vendor | Optional[str] | Name of the product vendor |
+| product_type | Optional[str] | Product type/category |
+| handle | Optional[str] | URL-friendly product handle |
+| status | Optional[str] | Product status (active, archived, draft) |
+| tags | Optional[str] | Comma-separated list of product tags |
+| variants | List[Dict[str, Any]] | Product variants with pricing, inventory, etc. |
+| options | List[Dict[str, Any]] | Product options (size, color, etc.) |
+| images | List[Dict[str, Any]] | Product images |
+
+</Accordion>
+<Accordion title="ShopifyProductVariantEntity">
+
+Schema for Shopify Product Variant resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/product-variant
+
+| Field | Type | Description |
+|-------|------|-------------|
+| variant_id | str | Shopify variant ID. |
+| variant_title | str | Title of the variant. |
+| created_time | datetime | When the variant was created. |
+| updated_time | datetime | When the variant was last updated. |
+| web_url_value | Optional[str] | URL to view this variant in Shopify admin. |
+| product_id | Optional[str] | ID of the parent product |
+| sku | Optional[str] | Stock keeping unit (SKU) |
+| price | Optional[str] | Price of the variant |
+| compare_at_price | Optional[str] | Compare-at price for sale pricing |
+| inventory_quantity | Optional[int] | Available inventory quantity |
+| weight | Optional[float] | Weight of the variant |
+| weight_unit | Optional[str] | Weight unit (g, kg, oz, lb) |
+| barcode | Optional[str] | Barcode (ISBN, UPC, GTIN, etc.) |
+| option1 | Optional[str] | First option value |
+| option2 | Optional[str] | Second option value |
+| option3 | Optional[str] | Third option value |
+
+</Accordion>
+<Accordion title="ShopifyCustomerEntity">
+
+Schema for Shopify Customer resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/customer
+
+| Field | Type | Description |
+|-------|------|-------------|
+| customer_id | str | Shopify customer ID. |
+| customer_name | str | Display name of the customer. |
+| created_time | datetime | When the customer was created. |
+| updated_time | datetime | When the customer was last updated. |
+| web_url_value | Optional[str] | URL to view this customer in Shopify admin. |
+| email | Optional[str] | Customer's email address |
+| phone | Optional[str] | Customer's phone number |
+| first_name | Optional[str] | Customer's first name |
+| last_name | Optional[str] | Customer's last name |
+| verified_email | bool | Whether the email has been verified |
+| accepts_marketing | bool | Whether customer accepts marketing emails |
+| orders_count | int | Number of orders placed by customer |
+| total_spent | Optional[str] | Total amount spent by customer |
+| state | Optional[str] | Customer account state (disabled, invited, enabled, declined) |
+| currency | Optional[str] | Customer's preferred currency |
+| tags | Optional[str] | Comma-separated list of customer tags |
+| note | Optional[str] | Notes about the customer |
+| default_address | Optional[Dict[str, Any]] | Customer's default address |
+
+</Accordion>
+<Accordion title="ShopifyOrderEntity">
+
+Schema for Shopify Order resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/order
+
+| Field | Type | Description |
+|-------|------|-------------|
+| order_id | str | Shopify order ID. |
+| order_name | str | Order number/name (e.g., #1001). |
+| created_time | datetime | When the order was created. |
+| updated_time | datetime | When the order was last updated. |
+| web_url_value | Optional[str] | URL to view this order in Shopify admin. |
+| order_number | Optional[int] | Sequential order number |
+| email | Optional[str] | Customer's email address |
+| phone | Optional[str] | Customer's phone number |
+| total_price | Optional[str] | Total price of the order including taxes and shipping |
+| subtotal_price | Optional[str] | Subtotal price before taxes and shipping |
+| total_tax | Optional[str] | Total tax amount |
+| total_discounts | Optional[str] | Total discount amount applied |
+| currency | Optional[str] | Currency code (e.g., USD, EUR) |
+| financial_status | Optional[str] | Payment status (pending, authorized, paid, refunded, etc.) |
+| fulfillment_status | Optional[str] | Fulfillment status (fulfilled, partial, null) |
+| customer_id | Optional[str] | ID of the customer who placed the order |
+| line_items | List[Dict[str, Any]] | Line items in the order |
+| shipping_address | Optional[Dict[str, Any]] | Shipping address |
+| billing_address | Optional[Dict[str, Any]] | Billing address |
+| tags | Optional[str] | Comma-separated list of order tags |
+| note | Optional[str] | Notes about the order |
+| cancelled_at | Optional[datetime] | When the order was cancelled (if applicable) |
+| cancel_reason | Optional[str] | Reason for cancellation |
+
+</Accordion>
+<Accordion title="ShopifyDraftOrderEntity">
+
+Schema for Shopify Draft Order resource.
+
+Draft orders are orders created by merchants that haven't been completed/paid yet.
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/draftorder
+
+| Field | Type | Description |
+|-------|------|-------------|
+| draft_order_id | str | Shopify draft order ID. |
+| draft_order_name | str | Draft order name (e.g., #D1). |
+| created_time | datetime | When the draft order was created. |
+| updated_time | datetime | When the draft order was last updated. |
+| web_url_value | Optional[str] | URL to view this draft order in Shopify admin. |
+| email | Optional[str] | Customer's email address |
+| status | Optional[str] | Draft order status (open, invoice_sent, completed) |
+| total_price | Optional[str] | Total price of the draft order |
+| subtotal_price | Optional[str] | Subtotal price before taxes and shipping |
+| total_tax | Optional[str] | Total tax amount |
+| currency | Optional[str] | Currency code (e.g., USD, EUR) |
+| customer_id | Optional[str] | ID of the customer |
+| line_items | List[Dict[str, Any]] | Line items in the draft order |
+| shipping_address | Optional[Dict[str, Any]] | Shipping address |
+| billing_address | Optional[Dict[str, Any]] | Billing address |
+| tags | Optional[str] | Comma-separated list of tags |
+| note | Optional[str] | Notes about the draft order |
+| invoice_sent_at | Optional[datetime] | When the invoice was sent |
+| completed_at | Optional[datetime] | When the draft order was completed |
+
+</Accordion>
+<Accordion title="ShopifyCollectionEntity">
+
+Schema for Shopify Collection resources (Custom and Smart Collections).
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/customcollection
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/smartcollection
+
+| Field | Type | Description |
+|-------|------|-------------|
+| collection_id | str | Shopify collection ID. |
+| collection_title | str | Title of the collection. |
+| created_time | datetime | When the collection was created. |
+| updated_time | datetime | When the collection was last updated. |
+| web_url_value | Optional[str] | URL to view this collection in Shopify admin. |
+| handle | Optional[str] | URL-friendly collection handle |
+| body_html | Optional[str] | Collection description in HTML format |
+| published_at | Optional[datetime] | When the collection was published |
+| published_scope | Optional[str] | Publication scope (web, global) |
+| sort_order | Optional[str] | Sort order for products in collection |
+| collection_type | str | Type of collection (custom or smart) |
+| disjunctive | Optional[bool] | For smart collections: whether rules are OR (true) or AND (false) |
+| rules | List[Dict[str, Any]] | For smart collections: rules that define product membership |
+| products_count | Optional[int] | Number of products in the collection |
+
+</Accordion>
+<Accordion title="ShopifyInventoryItemEntity">
+
+Schema for Shopify Inventory Item resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/inventoryitem
+
+| Field | Type | Description |
+|-------|------|-------------|
+| inventory_item_id | str | Shopify inventory item ID. |
+| inventory_item_name | str | Display name for the inventory item. |
+| created_time | datetime | When the inventory item was created. |
+| updated_time | datetime | When the inventory item was last updated. |
+| web_url_value | Optional[str] | URL to view this inventory item in Shopify admin. |
+| sku | Optional[str] | Stock keeping unit (SKU) |
+| cost | Optional[str] | Unit cost of the inventory item |
+| tracked | bool | Whether inventory tracking is enabled |
+| requires_shipping | bool | Whether the item requires shipping |
+| country_code_of_origin | Optional[str] | Country code of origin |
+| province_code_of_origin | Optional[str] | Province/state code of origin |
+| harmonized_system_code | Optional[str] | Harmonized System (HS) tariff code |
+
+</Accordion>
+<Accordion title="ShopifyLocationEntity">
+
+Schema for Shopify Location resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/location
+
+| Field | Type | Description |
+|-------|------|-------------|
+| location_id | str | Shopify location ID. |
+| location_name | str | Name of the location. |
+| created_time | datetime | When the location was created. |
+| updated_time | datetime | When the location was last updated. |
+| web_url_value | Optional[str] | URL to view this location in Shopify admin. |
+| address1 | Optional[str] | Primary street address |
+| address2 | Optional[str] | Secondary address line |
+| city | Optional[str] | City |
+| province | Optional[str] | Province/state name |
+| province_code | Optional[str] | Province/state code |
+| country | Optional[str] | Country name |
+| country_code | Optional[str] | Country code (ISO 3166-1 alpha-2) |
+| zip | Optional[str] | Postal/ZIP code |
+| phone | Optional[str] | Phone number |
+| active | bool | Whether the location is active |
+| legacy | bool | Whether this is a legacy location |
+| localized_country_name | Optional[str] | Localized country name |
+| localized_province_name | Optional[str] | Localized province/state name |
+
+</Accordion>
+<Accordion title="ShopifyInventoryLevelEntity">
+
+Schema for Shopify Inventory Level resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/inventorylevel
+
+| Field | Type | Description |
+|-------|------|-------------|
+| inventory_level_id | str | Composite ID (inventory_item_id-location_id). |
+| inventory_level_name | str | Display name for the inventory level. |
+| created_time | datetime | When the inventory level was created. |
+| updated_time | datetime | When the inventory level was last updated. |
+| web_url_value | Optional[str] | URL to view this inventory in Shopify admin. |
+| inventory_item_id | str | ID of the inventory item |
+| location_id | str | ID of the location |
+| available | Optional[int] | Available quantity at this location |
+
+</Accordion>
+<Accordion title="ShopifyFulfillmentEntity">
+
+Schema for Shopify Fulfillment resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/fulfillment
+
+| Field | Type | Description |
+|-------|------|-------------|
+| fulfillment_id | str | Shopify fulfillment ID. |
+| fulfillment_name | str | Display name for the fulfillment. |
+| created_time | datetime | When the fulfillment was created. |
+| updated_time | datetime | When the fulfillment was last updated. |
+| web_url_value | Optional[str] | URL to view this fulfillment in Shopify admin. |
+| order_id | str | ID of the parent order |
+| status | Optional[str] | Status of the fulfillment (pending, open, success, cancelled, error, failure) |
+| tracking_company | Optional[str] | Name of the tracking company |
+| tracking_number | Optional[str] | Tracking number |
+| tracking_numbers | List[str] | List of tracking numbers |
+| tracking_url | Optional[str] | URL for tracking the shipment |
+| tracking_urls | List[str] | List of tracking URLs |
+| location_id | Optional[str] | ID of the fulfillment location |
+| line_items | List[Dict[str, Any]] | Line items in this fulfillment |
+| shipment_status | Optional[str] | Shipment status |
+
+</Accordion>
+<Accordion title="ShopifyGiftCardEntity">
+
+Schema for Shopify Gift Card resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/gift-card
+
+| Field | Type | Description |
+|-------|------|-------------|
+| gift_card_id | str | Shopify gift card ID. |
+| gift_card_name | str | Display name for the gift card. |
+| created_time | datetime | When the gift card was created. |
+| updated_time | datetime | When the gift card was last updated. |
+| web_url_value | Optional[str] | URL to view this gift card in Shopify admin. |
+| initial_value | Optional[str] | Initial value of the gift card |
+| balance | Optional[str] | Current balance |
+| currency | Optional[str] | Currency code |
+| code | Optional[str] | Gift card code (masked) |
+| last_characters | Optional[str] | Last 4 characters of the code |
+| disabled_at | Optional[datetime] | When the gift card was disabled |
+| expires_on | Optional[str] | Expiration date |
+| note | Optional[str] | Notes about the gift card |
+| customer_id | Optional[str] | ID of the customer who owns this gift card |
+| order_id | Optional[str] | ID of the order that created this gift card |
+
+</Accordion>
+<Accordion title="ShopifyDiscountEntity">
+
+Schema for Shopify Price Rule / Discount resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/pricerule
+
+| Field | Type | Description |
+|-------|------|-------------|
+| discount_id | str | Shopify price rule ID. |
+| discount_title | str | Title of the discount/price rule. |
+| created_time | datetime | When the discount was created. |
+| updated_time | datetime | When the discount was last updated. |
+| web_url_value | Optional[str] | URL to view this discount in Shopify admin. |
+| value_type | Optional[str] | Type of discount value (fixed_amount, percentage) |
+| value | Optional[str] | Discount value (negative for discounts) |
+| target_type | Optional[str] | Target type (line_item, shipping_line) |
+| target_selection | Optional[str] | Target selection (all, entitled) |
+| allocation_method | Optional[str] | Allocation method (across, each) |
+| once_per_customer | bool | Whether the discount can only be used once per customer |
+| usage_limit | Optional[int] | Maximum number of times the discount can be used |
+| starts_at | Optional[datetime] | When the discount becomes active |
+| ends_at | Optional[datetime] | When the discount expires |
+| prerequisite_subtotal_range | Optional[Dict[str, Any]] | Minimum subtotal required |
+| prerequisite_quantity_range | Optional[Dict[str, Any]] | Minimum quantity required |
+
+</Accordion>
+<Accordion title="ShopifyMetaobjectEntity">
+
+Schema for Shopify Metaobject resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/metaobject
+
+| Field | Type | Description |
+|-------|------|-------------|
+| metaobject_id | str | Shopify metaobject ID. |
+| metaobject_name | str | Display name/handle for the metaobject. |
+| created_time | datetime | When the metaobject was created. |
+| updated_time | datetime | When the metaobject was last updated. |
+| web_url_value | Optional[str] | URL to view this metaobject in Shopify admin. |
+| type | str | Metaobject definition type |
+| handle | Optional[str] | Unique handle for the metaobject |
+| fields | List[Dict[str, Any]] | Field values for the metaobject |
+| capabilities | Optional[Dict[str, Any]] | Capabilities of the metaobject |
+
+</Accordion>
+<Accordion title="ShopifyFileEntity">
+
+Schema for Shopify File resource.
+
+Inherits from FileEntity for consistency with other file entities in the codebase.
+
+https://shopify.dev/docs/api/admin-graphql/2024-01/objects/file
+
+| Field | Type | Description |
+|-------|------|-------------|
+| file_id | str | Shopify file ID. |
+| file_name | str | Name of the file. |
+| created_time | datetime | When the file was created. |
+| updated_time | datetime | When the file was last updated. |
+| web_url_value | Optional[str] | URL to view this file in Shopify admin. |
+| alt | Optional[str] | Alt text for accessibility |
+| file_status | Optional[str] | Status of the file (UPLOADED, PROCESSING, READY, FAILED) |
+| preview_image_url | Optional[str] | URL of the preview image |
+
+</Accordion>
+<Accordion title="ShopifyThemeEntity">
+
+Schema for Shopify Theme resource.
+
+https://shopify.dev/docs/api/admin-rest/2024-01/resources/theme
+
+| Field | Type | Description |
+|-------|------|-------------|
+| theme_id | str | Shopify theme ID. |
+| theme_name | str | Name of the theme. |
+| created_time | datetime | When the theme was created. |
+| updated_time | datetime | When the theme was last updated. |
+| web_url_value | Optional[str] | URL to view this theme in Shopify admin. |
+| role | Optional[str] | Role of the theme (main, unpublished, demo) |
+| theme_store_id | Optional[int] | ID from the Shopify Theme Store |
+| previewable | bool | Whether the theme can be previewed |
+| processing | bool | Whether the theme is currently being processed |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

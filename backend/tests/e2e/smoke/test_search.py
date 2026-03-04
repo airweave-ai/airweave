@@ -85,10 +85,11 @@ class TestSearch:
         assert results.get("completion") is None
 
         if results.get("results"):
-            # Validate result structure
+            # Validate result structure (new AirweaveSearchResult format)
             first_result = results["results"][0]
-            assert "payload" in first_result
+            assert "entity_id" in first_result
             assert "score" in first_result
+            assert "name" in first_result
 
     @pytest.mark.asyncio
     async def test_query_expansion_only(
@@ -276,7 +277,7 @@ class TestSearch:
         assert "results" in first_two
 
         if len(first_two.get("results", [])) >= 2:
-            second_result_id = first_two["results"][1]["payload"].get("entity_id")
+            second_result_id = first_two["results"][1].get("entity_id")
 
             # Now get just the second result using offset=1, limit=1
             search_payload_second_only = {
@@ -301,7 +302,7 @@ class TestSearch:
             second_only = response.json()
 
             assert len(second_only.get("results", [])) == 1
-            offset_result_id = second_only["results"][0]["payload"].get("entity_id")
+            offset_result_id = second_only["results"][0].get("entity_id")
 
             # The second result from first query should match the offset=1 query
             assert offset_result_id == second_result_id, (
@@ -342,7 +343,7 @@ class TestSearch:
         assert "results" in first_two
 
         if len(first_two.get("results", [])) >= 2:
-            second_result_id = first_two["results"][1]["payload"].get("entity_id")
+            second_result_id = first_two["results"][1].get("entity_id")
 
             # Now get just the second result using offset=1, limit=1 with reranking
             search_payload_second_only = {
@@ -367,7 +368,7 @@ class TestSearch:
             second_only = response.json()
 
             assert len(second_only.get("results", [])) == 1
-            offset_result_id = second_only["results"][0]["payload"].get("entity_id")
+            offset_result_id = second_only["results"][0].get("entity_id")
 
             # The second result from first query should match the offset=1 query
             # even with reranking enabled

@@ -4,7 +4,7 @@ Uses LLM to interpret natural language queries and extract structured Qdrant fil
 Enables users to filter results using natural language without knowing filter syntax.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -16,6 +16,9 @@ from airweave.search.prompts import QUERY_INTERPRETATION_SYSTEM_PROMPT
 from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 
 class ValueMatch(BaseModel):
@@ -105,14 +108,14 @@ class QueryInterpretation(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Extract filters from query using LLM."""
         ctx.logger.debug("[QueryInterpretation] Extracting filters from query")
 
         query = context.query
-        expanded_queries = state.get("expanded_queries", [])
+        expanded_queries = state.expanded_queries or []
 
         # Emit interpretation start
         await context.emitter.emit(
@@ -198,7 +201,7 @@ class QueryInterpretation(SearchOperation):
         ctx.logger.debug(f"[QueryInterpretation] Filter dict: {filter_dict}")
 
         # Write to state (UserFilter will merge with this if it runs)
-        state["filter"] = filter_dict
+        state.filter = filter_dict
 
         # Report metrics for analytics
         self._report_metrics(

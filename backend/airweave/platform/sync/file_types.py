@@ -14,14 +14,11 @@ SUPPORTED_FILE_EXTENSIONS = {
     ".jpg",
     ".jpeg",
     ".png",
-    # Spreadsheets (local extraction)
-    ".xlsx",
     # HTML
     ".html",
     ".htm",
     # Text files
     ".txt",
-    ".csv",
     ".json",
     ".xml",
     ".md",

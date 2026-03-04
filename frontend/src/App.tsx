@@ -10,7 +10,6 @@ import CollectionDetailView from "@/pages/CollectionDetailView";
 import CollectionsView from "@/pages/CollectionsView";
 
 import AuthProviders from '@/pages/AuthProviders';
-import SemanticMcp from '@/pages/SemanticMcp';
 import { useCollectionsStore } from '@/lib/stores';
 import { NotFound } from '@/pages/NotFound';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -25,6 +24,7 @@ import BillingCancel from '@/pages/BillingCancel';
 import BillingSetup from '@/pages/BillingSetup';
 import BillingPortal from '@/pages/BillingPortal';
 import { AdminDashboard } from '@/pages/AdminDashboard';
+import WebhooksPage from '@/pages/Webhooks';
 
 function App() {
   // Initialize collections event listeners when the app loads
@@ -39,7 +39,6 @@ function App() {
         {/* Public routes */}
         <Route path={publicPaths.login} element={<Login />} />
         <Route path={publicPaths.callback} element={<Callback />} />
-        <Route path={publicPaths.semanticMcp} element={<SemanticMcp />} />
         <Route path={publicPaths.onboarding} element={<Onboarding />} />
         <Route path={publicPaths.billingSuccess} element={<BillingSuccess />} />
         <Route path={publicPaths.billingCancel} element={<BillingCancel />} />
@@ -55,6 +54,7 @@ function App() {
           <Route path={protectedPaths.collectionDetail} element={<CollectionDetailView />} />
           <Route path={protectedPaths.apiKeys} />
           <Route path={protectedPaths.authProviders} element={<AuthProviders />} />
+          <Route path={protectedPaths.webhooks} element={<WebhooksPage />} />
 
           {/* Organization routes */}
           <Route path="/organization/settings" element={<OrganizationSettingsUnified />} />

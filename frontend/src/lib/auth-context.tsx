@@ -3,6 +3,10 @@ import { useAuth0 } from '@auth0/auth0-react';
 import authConfig from '../config/auth';
 import { apiClient } from './api';
 
+// Dev mode admin flag - defaults to true for local development convenience
+const DEV_IS_ADMIN = import.meta.env.VITE_DEV_IS_ADMIN !== 'false';
+console.log('[Auth] DEV_IS_ADMIN:', DEV_IS_ADMIN, 'env value:', import.meta.env.VITE_DEV_IS_ADMIN);
+
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -50,7 +54,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Default to Auth0 values, but override if auth is disabled
   const isAuthenticated = authConfig.authEnabled ? auth0IsAuthenticated : true;
   const isLoading = authConfig.authEnabled ? (auth0IsLoading || !tokenInitialized || userProfileLoading) : false;
-  const user = authConfig.authEnabled ? (enrichedUser || auth0User) : { name: 'Developer', email: 'dev@example.com', is_admin: false };
+  const user = authConfig.authEnabled ? (enrichedUser || auth0User) : (enrichedUser || { name: 'Developer', email: 'dev@example.com', is_admin: DEV_IS_ADMIN });
+
+  // Debug logging
+  console.log('[Auth] authEnabled:', authConfig.authEnabled, 'enrichedUser:', enrichedUser, 'user.is_admin:', user?.is_admin);
 
   // Get the token when authenticated
   useEffect(() => {
@@ -124,8 +131,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUserProfileLoading(false);
         }
       } else if (!authConfig.authEnabled) {
-        // For dev mode, set a mock user with admin rights
-        setEnrichedUser({ name: 'Developer', email: 'dev@example.com', is_admin: true });
+        // For dev mode, set a mock user with admin rights (controlled by VITE_DEV_IS_ADMIN)
+        setEnrichedUser({ name: 'Developer', email: 'dev@example.com', is_admin: DEV_IS_ADMIN });
       }
     };
 

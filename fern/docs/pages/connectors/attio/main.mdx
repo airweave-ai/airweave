@@ -12,6 +12,8 @@ description: "Attio integration with Airweave"
   <h1 style={{ margin: 0 }}>Attio</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Attio through Airweave's unified search layer.
+
 ## Configuration
 
 Attio source connector integrates with the Attio API to extract CRM data.
@@ -59,13 +61,11 @@ The following data models are available for this connector:
 
 Schema for Attio Object (e.g., Companies, People, Deals).
 
-Objects are the core data types in Attio's CRM.
-
-Reference:
-    https://docs.attio.com/rest-api/endpoint-reference/objects
-
 | Field | Type | Description |
 |-------|------|-------------|
+| object_id | str | Attio object ID |
+| name | str | Display name of the object |
+| created_at | Optional[datetime] | When the object was created |
 | singular_noun | str | Singular name of the object (e.g., 'Company') |
 | plural_noun | str | Plural name of the object (e.g., 'Companies') |
 | api_slug | str | API slug for the object |
@@ -76,13 +76,11 @@ Reference:
 
 Schema for Attio List.
 
-Lists are custom collections that can organize any type of record.
-
-Reference:
-    https://docs.attio.com/rest-api/endpoint-reference/lists
-
 | Field | Type | Description |
 |-------|------|-------------|
+| list_id | str | Attio list ID |
+| name | str | List name |
+| created_at | Optional[datetime] | When the list was created |
 | workspace_id | str | ID of the workspace this list belongs to |
 | parent_object | Optional[str] | Parent object type if applicable |
 
@@ -91,14 +89,13 @@ Reference:
 
 Schema for Attio Record.
 
-Records are individual entries in Objects or Lists (e.g., a specific company, person, or deal).
-
-Reference:
-    https://docs.attio.com/rest-api/endpoint-reference/records
-
 | Field | Type | Description |
 |-------|------|-------------|
-| object_id | Optional[str] | ID of the object this record belongs to |
+| record_id | str | Attio record ID |
+| name | str | Record display name |
+| created_at | Optional[datetime] | When the record was created |
+| updated_at | Optional[datetime] | When the record was last updated |
+| object_id | Optional[str] | ID/slug of the object this record belongs to |
 | list_id | Optional[str] | ID of the list this record belongs to |
 | parent_object_name | Optional[str] | Name of the parent object/list |
 | description | Optional[str] | Description of the record |
@@ -107,27 +104,26 @@ Reference:
 | domains | List[str] | Domain names (for company records) |
 | categories | List[str] | Categories/tags for this record |
 | attributes | Dict[str, Any] | Custom attributes and their values |
-| permalink_url | Optional[str] | URL to view this record in Attio |
+| permalink_url | Optional[str] | URL to view this record in Attio (if provided by API) |
 
 </Accordion>
 <Accordion title="AttioNoteEntity">
 
 Schema for Attio Note.
 
-Notes are text entries attached to records for context and collaboration.
-
-Reference:
-    https://docs.attio.com/rest-api/endpoint-reference/notes
-
 | Field | Type | Description |
 |-------|------|-------------|
+| note_id | str | Attio note ID |
+| name | str | Note title or preview |
+| created_at | Optional[datetime] | When the note was created |
+| updated_at | Optional[datetime] | When the note was last updated |
 | parent_record_id | str | ID of the record this note is attached to |
 | parent_object | Optional[str] | Type of parent object |
 | title | Optional[str] | Title of the note |
 | content | str | Content of the note |
 | format | Optional[str] | Format of the note (plaintext, markdown, etc.) |
 | author | Optional[Dict[str, Any]] | User who created this note |
-| permalink_url | Optional[str] | URL to view this note in Attio |
+| permalink_url | Optional[str] | URL to view this note in Attio (if provided by API) |
 
 </Accordion>
 

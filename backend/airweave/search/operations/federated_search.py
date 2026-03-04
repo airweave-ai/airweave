@@ -6,7 +6,7 @@ with vector database results using Reciprocal Rank Fusion (RRF).
 """
 
 import asyncio
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,9 @@ from airweave.search.context import SearchContext
 from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 
 class QueryKeywords(BaseModel):
@@ -83,7 +86,7 @@ class FederatedSearch(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Execute federated search and merge with vector results using RRF.
@@ -94,10 +97,10 @@ class FederatedSearch(SearchOperation):
         """
         ctx.logger.debug(f"[FederatedSearch] Searching {len(self.sources)} federated source(s)")
 
-        vector_results = state.get("results", [])
+        vector_results = state.results
         ctx.logger.debug(f"[FederatedSearch] Starting with {len(vector_results)} vector results")
 
-        all_queries = [context.query] + state.get("expanded_queries", [])
+        all_queries = [context.query] + (state.expanded_queries or [])
 
         keywords_to_search = await self._extract_keywords_from_queries(all_queries, ctx)
 
@@ -178,13 +181,19 @@ class FederatedSearch(SearchOperation):
                 )
 
             except Exception as e:
-                # Emit error event but continue with other sources
+                error_str = str(e)
+                source_conn_id = getattr(source, "_source_connection_id", None)
+
+                # Track auth failures for post-search DB update
+                if self._is_auth_error(error_str) and source_conn_id:
+                    state.failed_federated_auth.append(source_conn_id)
+
+                ctx.logger.warning(f"[FederatedSearch] {source_name} failed: {error_str}")
                 await context.emitter.emit(
                     "federated_source_error",
-                    {"source": source_name, "error": str(e)},
+                    {"source": source_name, "error": error_str},
                     op_name=self.__class__.__name__,
                 )
-                raise ValueError(f"Error searching {source_name} at query time: {e}")
 
         ctx.logger.debug(f"[FederatedSearch] Retrieved {len(all_results)} federated results")
 
@@ -202,10 +211,7 @@ class FederatedSearch(SearchOperation):
                 },
                 op_name=self.__class__.__name__,
             )
-            # If there were no vector results and we're in federated-only flow,
-            # write an explicit empty list to indicate that this operation ran.
-            if "results" not in state:
-                state["results"] = []
+            # results is already initialized as empty list in SearchState
             return
 
         # Merge vector and federated results using RRF
@@ -221,7 +227,7 @@ class FederatedSearch(SearchOperation):
         )
 
         # Replace results in state with merged results
-        state["results"] = final_results
+        state.results = final_results
 
         # Report metrics for analytics
         self._report_metrics(
@@ -447,18 +453,19 @@ class FederatedSearch(SearchOperation):
         return merged
 
     def _get_result_id(self, result: Dict) -> str:
-        """Extract unique ID from result."""
-        # Try different ID fields
-        return (
-            result.get("id")
-            or result.get("payload", {}).get("entity_id")
-            or result.get("payload", {}).get("id")
-            or result.get("payload", {}).get("_id")
-            or str(result)
-        )
+        """Extract unique ID from result in AirweaveSearchResult format.
+
+        In the new unified format, entity_id is at the top level.
+        """
+        # With AirweaveSearchResult format, entity_id is at top level
+        return result.get("id") or result.get("entity_id") or str(result)
 
     def _entity_to_result(self, entity: Any, source_name: str, rank: int) -> Dict:
-        """Convert entity to result dictionary matching vector DB format.
+        """Convert entity to result dictionary matching AirweaveSearchResult format.
+
+        Converts BaseEntity from federated source to the unified AirweaveSearchResult
+        format that matches what Qdrant and Vespa destinations return. This ensures
+        consistent result structure across all search sources.
 
         Args:
             entity: BaseEntity from federated source
@@ -466,9 +473,9 @@ class FederatedSearch(SearchOperation):
             rank: Position of this result in the source's result list (for RRF)
 
         Returns:
-            Dictionary with result data in vector DB format
+            Dictionary with result data in AirweaveSearchResult format
         """
-        # Convert entity to dict (UUIDs->strings, datetimes->ISO, same as vector DB)
+        # Convert entity to dict (UUIDs->strings, datetimes->ISO)
         payload = entity.model_dump(mode="json", exclude_none=True)
 
         # Extract score if available (from entity metadata or system metadata)
@@ -476,12 +483,96 @@ class FederatedSearch(SearchOperation):
         if hasattr(entity, "score") and entity.score is not None:
             score = float(entity.score)
 
-        # Build result in same format as Qdrant results
+        # Extract top-level fields that are part of AirweaveSearchResult schema
+        entity_id = payload.get("entity_id", "")
+        name = payload.get("name", "")
+        textual_representation = payload.get("textual_representation", "")
+        created_at = payload.get("created_at")
+        updated_at = payload.get("updated_at")
+        breadcrumbs = payload.get("breadcrumbs", [])
+
+        # Extract system metadata
+        sys_meta = payload.get("airweave_system_metadata", {})
+        system_metadata = {
+            "entity_type": sys_meta.get("entity_type", ""),
+            "source_name": sys_meta.get("source_name") or source_name,
+            "sync_id": sys_meta.get("sync_id"),
+            "sync_job_id": sys_meta.get("sync_job_id"),
+            "original_entity_id": sys_meta.get("original_entity_id"),
+            "chunk_index": sys_meta.get("chunk_index"),
+        }
+
+        # Extract access control
+        access = None
+        access_data = payload.get("access")
+        if access_data:
+            access = {
+                "is_public": access_data.get("is_public", False),
+                "viewers": access_data.get("viewers", []),
+            }
+
+        # Build source_fields from remaining payload fields
+        # Exclude known top-level fields that are in AirweaveSearchResult schema
+        known_fields = {
+            "entity_id",
+            "name",
+            "textual_representation",
+            "created_at",
+            "updated_at",
+            "breadcrumbs",
+            "airweave_system_metadata",
+            "access",
+        }
+        source_fields = {k: v for k, v in payload.items() if k not in known_fields}
+
+        # Build result in AirweaveSearchResult format (as dict, not Pydantic object)
+        # This matches the structure returned by Qdrant and Vespa destinations
         result = {
-            "id": entity.entity_id,
+            "id": entity_id,
             "score": score,
-            "payload": payload,
-            "source_type": "federated",  # Mark as federated for debugging
+            "entity_id": entity_id,
+            "name": name,
+            "textual_representation": textual_representation,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "breadcrumbs": breadcrumbs,
+            "system_metadata": system_metadata,
+            "access": access,
+            "source_fields": source_fields,
         }
 
         return result
+
+    def _is_auth_error(self, error_str: str) -> bool:
+        """Check if an error indicates an authentication/authorization failure.
+
+        These errors indicate the OAuth token or credentials are invalid and
+        the source connection should be marked as unauthenticated.
+
+        Args:
+            error_str: The error message string
+
+        Returns:
+            True if this is an auth-related error that should invalidate the connection
+        """
+        # Common OAuth/auth error indicators across different APIs
+        auth_error_indicators = [
+            "token_expired",
+            "token_revoked",
+            "invalid_token",
+            "not_authed",
+            "invalid_auth",
+            "account_inactive",
+            "missing_scope",
+            "unauthorized",
+            "401",
+            "403",
+            "authentication",
+            "access_denied",
+            "invalid_credentials",
+            "expired",
+            "revoked",
+        ]
+
+        error_lower = error_str.lower()
+        return any(indicator in error_lower for indicator in auth_error_indicators)

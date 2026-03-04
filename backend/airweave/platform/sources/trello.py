@@ -12,6 +12,8 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import TrelloAuthConfig
+from airweave.platform.configs.config import TrelloConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.trello import (
@@ -37,8 +39,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.OAUTH1,
-    auth_config_class="TrelloAuthConfig",
-    config_class="TrelloConfig",
+    auth_config_class=TrelloAuthConfig,
+    config_class=TrelloConfig,
     labels=["Project Management"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

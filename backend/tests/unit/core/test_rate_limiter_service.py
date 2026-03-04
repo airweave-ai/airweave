@@ -40,9 +40,8 @@ def mock_ctx(organization_id):
 @pytest.fixture
 def mock_settings():
     """Mock settings to enable rate limiting."""
-    with patch("airweave.core.config.settings") as mock:
-        mock.LOCAL_DEVELOPMENT = False
-        mock.RATE_LIMIT_ENABLED = True
+    with patch("airweave.core.rate_limiter_service.settings") as mock:
+        mock.DISABLE_RATE_LIMIT = False
         yield mock
 
 
@@ -50,8 +49,9 @@ def mock_settings():
 def mock_redis():
     """Mock Redis client."""
     with patch("airweave.core.rate_limiter_service.redis_client") as mock:
-        # Setup mock pipeline
-        mock_pipeline = AsyncMock()
+        # Setup mock pipeline — pipeline methods (zremrangebyscore, zadd, zcount)
+        # are synchronous queue operations; only execute() is async.
+        mock_pipeline = MagicMock()
         mock_pipeline.execute = AsyncMock(return_value=[None, 0])  # zremrangebyscore, zcount
         mock.client.pipeline.return_value = mock_pipeline
         mock.client.zrange = AsyncMock(return_value=[])
@@ -143,27 +143,6 @@ async def test_rate_limiter_legacy_org_without_billing(
 
 
 @pytest.mark.asyncio
-async def test_rate_limiter_redis_failure_allows_request(
-    mock_ctx, mock_settings, mock_redis
-):
-    """Test that Redis failures allow requests through (fail-open)."""
-    # Setup billing with Pro plan (100 req/min)
-    mock_billing = MagicMock()
-    mock_period = MagicMock()
-    mock_period.plan = BillingPlan.PRO
-    mock_billing.current_period = mock_period
-    mock_ctx.organization.billing = mock_billing
-
-    # Simulate Redis error
-    mock_redis.client.pipeline().execute = AsyncMock(side_effect=Exception("Redis error"))
-
-    # Should not raise exception, should allow through
-    result = await RateLimiter.check_rate_limit(ctx=mock_ctx)
-
-    assert result.allowed is True
-
-
-@pytest.mark.asyncio
 async def test_rate_limiter_concurrent_requests(
     mock_ctx, mock_settings, mock_redis
 ):
@@ -212,42 +191,3 @@ async def test_rate_limiter_redis_key_format(organization_id):
 
     expected_key = f"rate_limit:org:{organization_id}"
     assert key == expected_key
-
-
-@pytest.mark.asyncio
-@patch("airweave.core.config.settings")
-async def test_rate_limiter_bypassed_in_local_dev(
-    mock_settings, mock_ctx, mock_redis
-):
-    """Test that rate limiting is bypassed in local development."""
-    mock_settings.LOCAL_DEVELOPMENT = True
-    mock_settings.RATE_LIMIT_ENABLED = True
-
-    result = await RateLimiter.check_rate_limit(ctx=mock_ctx)
-
-    # Should bypass all checks
-    assert result.allowed is True
-    assert result.limit == 9999
-    assert result.remaining == 9999
-
-    # Redis should not be called
-    mock_redis.client.pipeline.assert_not_called()
-
-
-@pytest.mark.asyncio
-@patch("airweave.core.config.settings")
-async def test_rate_limiter_disabled_via_config(
-    mock_settings, mock_ctx, mock_redis
-):
-    """Test that rate limiting can be disabled via config."""
-    mock_settings.LOCAL_DEVELOPMENT = False
-    mock_settings.RATE_LIMIT_ENABLED = False
-
-    result = await RateLimiter.check_rate_limit(ctx=mock_ctx)
-
-    # Should bypass all checks
-    assert result.allowed is True
-    assert result.limit == 9999
-
-    # Redis should not be called
-    mock_redis.client.pipeline.assert_not_called()

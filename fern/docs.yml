@@ -29,10 +29,32 @@ navigation:
     path: docs/pages/search.mdx
   - page: MCP Server
     path: docs/pages/mcp-server.mdx
+  - page: Agent Skills
+    path: docs/pages/skills.mdx
+  - section: Webhooks
+    contents:
+    - page: Overview
+      path: docs/pages/webhooks/overview.mdx
+    - page: Types & Formats
+      path: docs/pages/webhooks/types-and-formats.mdx
+    - page: Setup Guide
+      path: docs/pages/webhooks/setup.mdx
   - page: Add New Connector
     path: docs/pages/add-new-source.mdx
   - page: Rate Limits
     path: docs/pages/rate-limits.mdx
+  - section: Framework Integrations
+    contents:
+    - page: LlamaIndex
+      path: docs/pages/framework-integrations/llamaindex.mdx
+    - page: Vercel AI SDK
+      path: docs/pages/framework-integrations/vercel-ai-sdk.mdx
+    - page: Google Antigravity
+      path: docs/pages/framework-integrations/google-antigravity.mdx
+    - page: Pipedream
+      path: docs/pages/framework-integrations/pipedream.mdx
+    - page: Sim
+      path: docs/pages/framework-integrations/sim.mdx
   - section: Authentication
     contents:
     - section: Auth Providers
@@ -49,6 +71,8 @@ navigation:
       path: docs/pages/direct-token-injection.mdx
   - section: Connectors
     contents:
+    - page: Overview
+      path: docs/pages/connectors/overview.mdx
     - page: Airtable
       path: docs/pages/connectors/airtable/main.mdx
     - page: Asana
@@ -67,8 +91,6 @@ navigation:
       path: docs/pages/connectors/ctti/main.mdx
     - page: Dropbox
       path: docs/pages/connectors/dropbox/main.mdx
-    - page: Excel
-      path: docs/pages/connectors/excel/main.mdx
     - page: Github
       path: docs/pages/connectors/github/main.mdx
     - page: Gitlab
@@ -101,12 +123,14 @@ navigation:
       path: docs/pages/connectors/outlook_calendar/main.mdx
     - page: Outlook Mail
       path: docs/pages/connectors/outlook_mail/main.mdx
-    - page: Postgresql
-      path: docs/pages/connectors/postgresql/main.mdx
+    - page: Pipedrive
+      path: docs/pages/connectors/pipedrive/main.mdx
     - page: Salesforce
       path: docs/pages/connectors/salesforce/main.mdx
     - page: Sharepoint
       path: docs/pages/connectors/sharepoint/main.mdx
+    - page: Shopify
+      path: docs/pages/connectors/shopify/main.mdx
     - page: Slack
       path: docs/pages/connectors/slack/main.mdx
     - page: Stripe
@@ -121,6 +145,8 @@ navigation:
       path: docs/pages/connectors/word/main.mdx
     - page: Zendesk
       path: docs/pages/connectors/zendesk/main.mdx
+    - page: Zoho Crm
+      path: docs/pages/connectors/zoho_crm/main.mdx
 - api: API Reference
   alphabetized: false
   display-errors: true
@@ -132,7 +158,7 @@ navigation:
     - GET /collections/{readable_id}/search
     - POST /collections/{readable_id}/search
     - POST /collections
-    - POST /collections/{readable_id}/refresh_all
+    - PATCH /collections/{readable_id}
     - DELETE /collections/{readable_id}
   - section: Source Connections
     contents:
@@ -148,6 +174,16 @@ navigation:
     contents:
     - GET /sources
     - GET /sources/{short_name}
+  - section: Webhooks
+    contents:
+    - GET /webhooks/messages
+    - GET /webhooks/messages/{message_id}
+    - GET /webhooks/subscriptions
+    - GET /webhooks/subscriptions/{subscription_id}
+    - POST /webhooks/subscriptions
+    - PATCH /webhooks/subscriptions/{subscription_id}
+    - POST /webhooks/subscriptions/{subscription_id}/recover
+    - DELETE /webhooks/subscriptions/{subscription_id}
   snippets:
     python: airweave-sdk
     typescript: '@airweave/sdk'

@@ -12,6 +12,8 @@ description: "Airtable integration with Airweave"
   <h1 style={{ margin: 0 }}>Airtable</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Airtable through Airweave's unified search layer.
+
 ## Configuration
 
 Airtable source connector integrates with the Airtable API to extract and synchronize data.
@@ -57,6 +59,8 @@ The authenticated user (from /meta/whoami endpoint).
 
 | Field | Type | Description |
 |-------|------|-------------|
+| user_id | str | Airtable user ID |
+| display_name | str | Display name derived from email or ID |
 | email | Optional[str] | User email address |
 | scopes | Optional[List[str]] | OAuth scopes granted to the token |
 
@@ -67,8 +71,10 @@ Metadata for an Airtable base.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| base_id | str | Airtable base ID |
+| name | str | Base name |
 | permission_level | Optional[str] | Permission level for this base |
-| url | Optional[str] | URL to open the base in Airtable |
+| url | Optional[str] | URL to open the base in Airtable (legacy API field) |
 
 </Accordion>
 <Accordion title="AirtableTableEntity">
@@ -77,6 +83,8 @@ Metadata for an Airtable table (schema-level info).
 
 | Field | Type | Description |
 |-------|------|-------------|
+| table_id | str | Airtable table ID |
+| name | str | Table name |
 | base_id | str | Parent base ID |
 | description | Optional[str] | Table description, if any |
 | fields_schema | Optional[List[Dict[str, Any]]] | List of field definitions from the schema API |
@@ -90,6 +98,9 @@ One Airtable record (row) as a searchable chunk.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| record_id | str | Record ID |
+| name | str | Record display name |
+| created_at | Optional[datetime] | Record creation time |
 | base_id | str | Parent base ID |
 | table_id | str | Parent table ID |
 | table_name | Optional[str] | Parent table name |
@@ -102,6 +113,10 @@ A comment on an Airtable record.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| comment_id | str | Comment ID |
+| name | str | Comment preview |
+| created_at | Optional[datetime] | When the comment was created |
+| updated_at | Optional[datetime] | When the comment was last updated |
 | record_id | str | Parent record ID |
 | base_id | str | Parent base ID |
 | table_id | str | Parent table ID |
@@ -115,11 +130,10 @@ A comment on an Airtable record.
 
 Attachment file from an Airtable record.
 
-Reference:
-    https://airtable.com/developers/web/api/field-model#multipleattachment
-
 | Field | Type | Description |
 |-------|------|-------------|
+| attachment_id | str | Attachment ID (or composite key) |
+| name | str | Attachment filename |
 | base_id | str | Base ID |
 | table_id | str | Table ID |
 | table_name | Optional[str] | Table name |

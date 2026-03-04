@@ -99,7 +99,7 @@ class JiraIssueEntity(BaseEntity):
 class ZephyrTestCaseEntity(BaseEntity):
     """Schema for a Zephyr Scale Test Case.
 
-    Test cases have keys in the format PROJECT-T<number> (e.g., PROJ-T1, PROJ-T2).
+    Test cases have keys in the format PROJECT-T### (e.g., PROJ-T1, PROJ-T2).
 
     Reference:
         https://support.smartbear.com/zephyr-scale-cloud/api-docs/#tag/Test-Cases
@@ -158,7 +158,7 @@ class ZephyrTestCaseEntity(BaseEntity):
 class ZephyrTestCycleEntity(BaseEntity):
     """Schema for a Zephyr Scale Test Cycle.
 
-    Test cycles have keys in the format PROJECT-R<number> (e.g., PROJ-R1, PROJ-R2).
+    Test cycles have keys in the format PROJECT-R### (e.g., PROJ-R1, PROJ-R2).
     They represent a collection of test executions for a specific testing iteration.
 
     Reference:
@@ -212,7 +212,7 @@ class ZephyrTestCycleEntity(BaseEntity):
 class ZephyrTestPlanEntity(BaseEntity):
     """Schema for a Zephyr Scale Test Plan.
 
-    Test plans have keys in the format PROJECT-P<number> (e.g., PROJ-P1, PROJ-P2).
+    Test plans have keys in the format PROJECT-P### (e.g., PROJ-P1, PROJ-P2).
     They represent a high-level collection of test cycles for release planning.
 
     Reference:

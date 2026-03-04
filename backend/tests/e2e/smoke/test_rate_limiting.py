@@ -23,6 +23,7 @@ Skip with: pytest -m "not rate_limit" (default behavior in CI)
 """
 
 import asyncio
+import os
 import time
 from typing import Dict, List, Tuple
 
@@ -44,6 +45,17 @@ def skip_if_not_local():
     """Skip all rate limit tests if not in local development."""
     if not settings.is_local:
         pytest.skip("Rate limit tests only run in local development environment", allow_module_level=True)
+
+
+def _rate_limiting_disabled() -> bool:
+    """Check if rate limiting is disabled via environment variable."""
+    return os.environ.get("DISABLE_RATE_LIMIT", "").lower() == "true"
+
+
+skip_if_rate_limit_disabled = pytest.mark.skipif(
+    _rate_limiting_disabled(),
+    reason="Rate limiting is disabled (DISABLE_RATE_LIMIT=true)",
+)
 
 
 class TestRateLimiting:
@@ -128,6 +140,7 @@ class TestRateLimiting:
         # (unless the first request from the previous window expires)
         print("✅ All remaining values are valid")
 
+    @skip_if_rate_limit_disabled
     async def test_retry_after_header_accuracy(
         self, api_client: httpx.AsyncClient, collection: Dict
     ):
@@ -161,6 +174,7 @@ class TestRateLimiting:
         else:
             print("ℹ️  No rate limiting triggered (rate limit might be very high)")
 
+    @skip_if_rate_limit_disabled
     async def test_post_requests_also_rate_limited(
         self, api_client: httpx.AsyncClient
     ):
@@ -214,6 +228,7 @@ class TestRateLimiting:
         # Give a moment for cleanup tasks to complete
         await asyncio.sleep(0.5)
 
+    @skip_if_rate_limit_disabled
     async def test_different_endpoints_share_rate_limit(
         self, api_client: httpx.AsyncClient
     ):

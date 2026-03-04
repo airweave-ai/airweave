@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class EntityCountBase(BaseModel):
@@ -14,10 +14,7 @@ class EntityCountBase(BaseModel):
     entity_definition_id: UUID
     count: int
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EntityCountCreate(EntityCountBase):
@@ -37,10 +34,7 @@ class EntityCount(EntityCountBase):
 
     id: UUID
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EntityCountWithDefinition(BaseModel):
@@ -53,7 +47,4 @@ class EntityCountWithDefinition(BaseModel):
     entity_definition_description: Optional[str] = None
     modified_at: datetime
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

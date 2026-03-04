@@ -12,6 +12,8 @@ description: "Salesforce integration with Airweave"
   <h1 style={{ margin: 0 }}>Salesforce</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Salesforce through Airweave's unified search layer.
+
 ## Configuration
 
 Salesforce source connector integrates with the Salesforce REST API to extract CRM data.
@@ -58,12 +60,15 @@ The following configuration options are available for this connector:
 >
 
 Salesforce configuration schema.
+
+Note: instance_url is automatically extracted from the OAuth response,
+so users don't need to provide it manually.
 <ParamField
   path="instance_url"
-  type="str"
-  required={true}
+  type="Optional[str]"
+  required={false}
 >
-  Your Salesforce instance domain only (e.g. 'mycompany.my.salesforce.com')
+  Your Salesforce instance domain (auto-populated from OAuth response)
 </ParamField>
 </Card>
 
@@ -80,6 +85,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| account_id | str | Unique Salesforce ID for the account. |
+| account_name | str | Display name of the account. |
+| created_time | datetime | When the account was created. |
+| updated_time | datetime | When the account was last updated. |
+| web_url_value | Optional[str] | URL to open the account in Salesforce. |
 | account_number | Optional[str] | Account number |
 | website | Optional[str] | Account website URL |
 | phone | Optional[str] | Account phone number |
@@ -130,6 +140,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| contact_id | str | Unique Salesforce ID for the contact. |
+| contact_name | str | Display name of the contact. |
+| created_time | datetime | When the contact was created. |
+| updated_time | datetime | When the contact was last updated. |
+| web_url_value | Optional[str] | URL to view the contact in Salesforce. |
 | first_name | Optional[str] | Contact's first name |
 | last_name | Optional[str] | Contact's last name |
 | email | Optional[str] | Contact's email address |
@@ -185,6 +200,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| opportunity_id | str | Unique Salesforce ID for the opportunity. |
+| opportunity_name | str | Display name of the opportunity. |
+| created_time | datetime | When the opportunity was created. |
+| updated_time | datetime | When the opportunity was last updated. |
+| web_url_value | Optional[str] | URL to view the opportunity in Salesforce. |
 | account_id | Optional[str] | ID of the associated account |
 | amount | Optional[float] | Opportunity amount |
 | close_date | Optional[Any] | Expected close date |

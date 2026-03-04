@@ -1,0 +1,117 @@
+name: Secret Scanning
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Detect hardcoded secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.0"
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+      - name: Run gitleaks
+        id: scan
+        env:
+          GITLEAKS_VERSION: "8.30.0"
+        run: |
+          set +e
+
+          args=(git --verbose --redact --report-format json --report-path results.json)
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+            args+=(--log-opts="${base}..${head}")
+          fi
+
+          gitleaks "${args[@]}"
+          exit_code=$?
+
+          set -e
+
+          commit_count=$(git rev-list --count HEAD)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            commit_count=$(git rev-list --count "${base}..${head}")
+          fi
+
+          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          echo "commit_count=${commit_count}" >> "$GITHUB_OUTPUT"
+          echo "gitleaks_version=${GITLEAKS_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Annotate findings and write summary
+        if: always() && steps.scan.outcome != 'skipped'
+        env:
+          EXIT_CODE: ${{ steps.scan.outputs.exit_code }}
+          COMMIT_COUNT: ${{ steps.scan.outputs.commit_count }}
+          GITLEAKS_VERSION: ${{ steps.scan.outputs.gitleaks_version }}
+        run: |
+          if [ "${EXIT_CODE}" -eq 0 ]; then
+            {
+              echo "### :white_check_mark: No secrets detected"
+              echo ""
+              echo "Scanned ${COMMIT_COUNT} commit(s) — all clear."
+              echo ""
+              echo "---"
+              echo "*[gitleaks v${GITLEAKS_VERSION}](https://github.com/gitleaks/gitleaks)*"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          finding_count=$(jq length results.json)
+
+          # Emit ::error annotations (capped at 10)
+          jq -r '
+            .[:10][] |
+            "::error file=\(.File),line=\(.StartLine),endLine=\(.EndLine)"
+              + ",title=gitleaks: \(.RuleID)"
+              + "::\(.Description) (commit \(.Commit[0:7]))"
+          ' results.json
+
+          {
+            echo "### :x: ${finding_count} secret(s) detected"
+            echo ""
+            echo "| Rule | File | Line | Commit | Author |"
+            echo "|------|------|------|--------|--------|"
+            jq -r '.[] |
+              "| \(.RuleID) | `\(.File)` | \(.StartLine) | `\(.Commit[0:7])` | \(.Author) |"
+            ' results.json
+            echo ""
+            echo "> [!CAUTION]"
+            echo "> Detected secrets **may already be exposed** in git history."
+            echo "> Rotate affected credentials immediately — removing them"
+            echo "> from code alone is not sufficient."
+            echo ""
+            echo "---"
+            echo "*[gitleaks v${GITLEAKS_VERSION}](https://github.com/gitleaks/gitleaks)*"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always() && steps.scan.outcome != 'skipped'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gitleaks-report
+          path: results.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Fail if secrets found
+        if: steps.scan.outputs.exit_code != '0'
+        run: |
+          echo "::error::gitleaks detected secrets — see job summary for details"
+          exit 1

@@ -60,7 +60,6 @@ def _determine_file_type_from_mime(mime_type: Optional[str]) -> str:
         # Document formats
         "application/pdf": "pdf",
         "text/plain": "text",
-        "text/csv": "csv",
         "text/html": "html",
         "text/xml": "xml",
         "application/xml": "xml",

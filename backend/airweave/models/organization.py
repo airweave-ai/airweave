@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import JSON, String, Text
+from sqlalchemy import JSON, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
@@ -62,12 +62,12 @@ class Organization(Base):
         order_by="desc(BillingPeriod.period_start)",  # Most recent first
     )
 
-    # Relationship with feature flags (eager loaded for ApiContext)
+    # Relationship with feature flags (loaded via selectinload in CRUD)
     feature_flags: Mapped[List["FeatureFlag"]] = relationship(
         "FeatureFlag",
         back_populates="organization",
         cascade="all, delete-orphan",
-        lazy="selectin",  # Auto-load for feature checking
+        lazy="noload",
     )
 
     # Relationship with source rate limits
@@ -77,3 +77,5 @@ class Organization(Base):
         cascade="all, delete-orphan",
         lazy="noload",
     )
+
+    __table_args__ = (Index("idx_organization_auth0_org_id", "auth0_org_id"),)

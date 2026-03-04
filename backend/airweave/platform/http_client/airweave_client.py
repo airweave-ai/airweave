@@ -141,7 +141,39 @@ class AirweaveHttpClient:
         await self._check_rate_limit_and_convert_to_429(method, url)
 
         # Delegate to wrapped client (httpx or Pipedream)
-        return await self._client.request(method, url, **kwargs)
+        response = await self._client.request(method, url, **kwargs)
+
+        # Log full response details on HTTP errors (4xx/5xx)
+        if response.status_code >= 400:
+            await self._log_error_response(method, url, response)
+
+        return response
+
+    async def _log_error_response(self, method: str, url: str, response: httpx.Response) -> None:
+        """Log full HTTP error response for debugging.
+
+        Args:
+            method: HTTP method used
+            url: Request URL
+            response: The error response from the API
+        """
+        if not self._logger:
+            return
+
+        try:
+            # Try to read response body - may already be consumed
+            response_body = response.text
+        except Exception:
+            response_body = "<unable to read response body>"
+
+        self._logger.debug(
+            f"[AirweaveHttpClient] HTTP {response.status_code} error\n"
+            f"  Source: {self._source_short_name}\n"
+            f"  Method: {method}\n"
+            f"  URL: {url}\n"
+            f"  Response Headers: {dict(response.headers)}\n"
+            f"  Response Body: {response_body}"
+        )
 
     # Mimic httpx.AsyncClient methods
     async def get(self, url: str, **kwargs) -> httpx.Response:
@@ -192,6 +224,9 @@ class AirweaveHttpClient:
 
         # Delegate to wrapped client's stream
         async with self._client.stream(method, url, **kwargs) as response:
+            # Log error responses for streaming requests too
+            if response.status_code >= 400:
+                await self._log_error_response(method, url, response)
             yield response
 
     # Context manager support (delegate to wrapped client)

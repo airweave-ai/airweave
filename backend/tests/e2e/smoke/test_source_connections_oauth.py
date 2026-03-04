@@ -8,10 +8,73 @@ Tests OAuth authentication flows including:
 """
 
 import pytest
+import pytest_asyncio
 import httpx
 import asyncio
 from typing import Dict
 from urllib.parse import parse_qs, urlparse, unquote
+
+
+async def fetch_fresh_token_from_composio(
+    api_key: str,
+    auth_config_id: str,
+    account_id: str,
+    source_slug: str = "notion",
+) -> str:
+    """Fetch a fresh access token directly from Composio API."""
+    async with httpx.AsyncClient() as client:
+        headers = {"x-api-key": api_key}
+
+        page = 1
+        while True:
+            response = await client.get(
+                "https://backend.composio.dev/api/v3/connected_accounts",
+                headers=headers,
+                params={"limit": 100, "page": page},
+            )
+            response.raise_for_status()
+            data = response.json()
+            items = data.get("items", [])
+
+            if not items:
+                break
+
+            for account in items:
+                toolkit_slug = account.get("toolkit", {}).get("slug")
+                acc_auth_config_id = account.get("auth_config", {}).get("id")
+                acc_id = account.get("id")
+
+                if (toolkit_slug == source_slug and
+                    acc_auth_config_id == auth_config_id and
+                    acc_id == account_id):
+                    creds = account.get("state", {}).get("val", {})
+                    token = creds.get("access_token")
+                    if token:
+                        return token
+
+            if len(items) < 100:
+                break
+            page += 1
+
+    raise ValueError(f"Could not find access_token for {source_slug}")
+
+
+@pytest_asyncio.fixture
+async def fresh_notion_token(config) -> str:
+    """Fetch a fresh Notion access token from Composio. Fails if not configured."""
+    if not config.TEST_COMPOSIO_API_KEY:
+        pytest.fail("TEST_COMPOSIO_API_KEY not configured")
+    if not config.TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_1:
+        pytest.fail("TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_1 not configured")
+    if not config.TEST_COMPOSIO_NOTION_ACCOUNT_ID_1:
+        pytest.fail("TEST_COMPOSIO_NOTION_ACCOUNT_ID_1 not configured")
+
+    return await fetch_fresh_token_from_composio(
+        api_key=config.TEST_COMPOSIO_API_KEY,
+        auth_config_id=config.TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_1,
+        account_id=config.TEST_COMPOSIO_NOTION_ACCOUNT_ID_1,
+        source_slug="notion",
+    )
 
 
 def verify_redirect_uri(provider_url: str, expected_api_url: str) -> None:
@@ -122,7 +185,7 @@ class TestOAuthAuthentication:
 
     @pytest.mark.asyncio
     async def test_oauth_token_injection_notion(
-        self, api_client: httpx.AsyncClient, collection: Dict, config
+        self, api_client: httpx.AsyncClient, collection: Dict, fresh_notion_token: str
     ):
         """Test OAuth token injection with Notion."""
         payload = {
@@ -130,7 +193,7 @@ class TestOAuthAuthentication:
             "short_name": "notion",
             "readable_collection_id": collection["readable_id"],
             "description": "Testing OAuth token injection",
-            "authentication": {"access_token": config.TEST_NOTION_TOKEN},
+            "authentication": {"access_token": fresh_notion_token},
             "sync_immediately": False,
         }
 
@@ -150,7 +213,7 @@ class TestOAuthAuthentication:
 
     @pytest.mark.asyncio
     async def test_oauth_token_defaults_sync_immediately_true(
-        self, api_client: httpx.AsyncClient, collection: Dict, config
+        self, api_client: httpx.AsyncClient, collection: Dict, fresh_notion_token: str
     ):
         """Test that OAuth token injection defaults to sync_immediately=True when not specified."""
         payload = {
@@ -158,7 +221,7 @@ class TestOAuthAuthentication:
             "short_name": "notion",
             "readable_collection_id": collection["readable_id"],
             "authentication": {
-                "access_token": config.TEST_NOTION_TOKEN,
+                "access_token": fresh_notion_token,
             },
             # Note: sync_immediately is not specified, should default to True
         }

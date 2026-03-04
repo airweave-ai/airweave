@@ -187,12 +187,18 @@ class TestConfig(BaseModel):
         with open(config_path, "r") as f:
             content = f.read()
 
-        # Process environment variable substitution
+        # Process environment variable substitution (supports ${VAR} and ${VAR:-default})
         def substitute_env_vars(match):
-            var_name = match.group(1)
+            spec = match.group(1).strip()
+            if ":-" in spec:
+                var_name, default = spec.split(":-", 1)
+                var_name = var_name.strip()
+                default = default.strip()
+                return os.getenv(var_name) or default
+            var_name = spec
             return os.getenv(var_name, match.group(0))
 
-        # Replace ${VAR_NAME} with actual environment variable values
+        # Replace ${VAR_NAME} and ${VAR_NAME:-default} with actual values
         processed_content = re.sub(r"\$\{([^}]+)\}", substitute_env_vars, content)
 
         # Load the processed YAML

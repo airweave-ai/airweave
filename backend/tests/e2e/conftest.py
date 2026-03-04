@@ -102,7 +102,11 @@ async def module_collection(module_api_client: httpx.AsyncClient) -> AsyncGenera
 async def composio_auth_provider(
     module_api_client: httpx.AsyncClient, config
 ) -> AsyncGenerator[Dict, None]:
-    """Create Composio auth provider connection for testing."""
+    """Create Composio auth provider connection for testing.
+
+    Uses get-or-create with retry to handle race conditions when multiple
+    pytest-xdist workers try to create the same provider simultaneously.
+    """
     if not config.TEST_COMPOSIO_API_KEY:
         pytest.fail("Composio API key not configured")
 
@@ -114,22 +118,47 @@ async def composio_auth_provider(
         "auth_fields": {"api_key": config.TEST_COMPOSIO_API_KEY},
     }
 
-    # Check if connection already exists
-    response = await module_api_client.get(f"/auth-providers/connections/{provider_readable_id}")
+    # Get-or-create with retry to handle parallel worker race conditions.
+    # Two workers can both GET 404 then both POST, causing a duplicate key error.
+    # On conflict, retry the GET since the other worker already created it.
+    for attempt in range(3):
+        # Check if connection already exists
+        response = await module_api_client.get(
+            f"/auth-providers/connections/{provider_readable_id}"
+        )
 
-    if response.status_code == 200:
-        # Connection already exists, use it
-        provider = response.json()
-        yield provider
-    else:
-        # Create new connection
+        if response.status_code == 200:
+            # Connection already exists, use it
+            yield response.json()
+            return
+
+        # Try to create it
         response = await module_api_client.post("/auth-providers/", json=auth_provider_payload)
 
-        if response.status_code != 200:
-            pytest.fail(f"Failed to create Composio auth provider: {response.text}")
+        if response.status_code == 200:
+            yield response.json()
+            return
 
-        provider = response.json()
-        yield provider
+        # If creation failed due to duplicate key (race condition), retry GET
+        if "UniqueViolation" in response.text or "duplicate key" in response.text:
+            await asyncio.sleep(0.5 * (attempt + 1))
+            continue
+
+        # Some other error — fail immediately
+        pytest.fail(f"Failed to create Composio auth provider: {response.text}")
+
+    # Final fallback: one last GET after all retries
+    response = await module_api_client.get(
+        f"/auth-providers/connections/{provider_readable_id}"
+    )
+    if response.status_code == 200:
+        yield response.json()
+        return
+
+    pytest.fail(
+        f"Failed to get or create Composio auth provider after retries. "
+        f"Last response: {response.status_code} {response.text}"
+    )
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -216,6 +245,78 @@ async def source_connection_medium(
         pass  # Best effort cleanup
 
 
+@pytest_asyncio.fixture(scope="function")
+async def timed_source_connection_fast(
+    api_client: httpx.AsyncClient,
+    collection: Dict,
+) -> AsyncGenerator[Dict, None]:
+    """Create a fast TimedSource connection for testing.
+
+    Generates 20 entities over 2 seconds. Use for tests that need a
+    sync to complete quickly (e.g., testing post-completion state).
+    No external service dependencies.
+    """
+    connection_data = {
+        "name": f"Timed Fast {uuid.uuid4().hex[:8]}",
+        "short_name": "timed",
+        "readable_collection_id": collection["readable_id"],
+        "authentication": {"credentials": {"timed_key": "test"}},
+        "config": {"entity_count": 20, "duration_seconds": 2, "seed": 42},
+        "sync_immediately": False,
+    }
+
+    response = await api_client.post("/source-connections", json=connection_data)
+
+    if response.status_code != 200:
+        pytest.fail(f"Failed to create timed fast connection: {response.text}")
+
+    connection = response.json()
+
+    yield connection
+
+    # Cleanup
+    try:
+        await api_client.delete(f"/source-connections/{connection['id']}")
+    except Exception:
+        pass  # Best effort cleanup
+
+
+@pytest_asyncio.fixture(scope="function")
+async def timed_source_connection_medium(
+    api_client: httpx.AsyncClient,
+    collection: Dict,
+) -> AsyncGenerator[Dict, None]:
+    """Create a medium-speed TimedSource connection for testing.
+
+    Generates 100 entities over 30 seconds. Use for tests that need
+    a sync to stay running long enough to cancel mid-flight.
+    No external service dependencies.
+    """
+    connection_data = {
+        "name": f"Timed Medium {uuid.uuid4().hex[:8]}",
+        "short_name": "timed",
+        "readable_collection_id": collection["readable_id"],
+        "authentication": {"credentials": {"timed_key": "test"}},
+        "config": {"entity_count": 100, "duration_seconds": 30, "seed": 42},
+        "sync_immediately": False,
+    }
+
+    response = await api_client.post("/source-connections", json=connection_data)
+
+    if response.status_code != 200:
+        pytest.fail(f"Failed to create timed medium connection: {response.text}")
+
+    connection = response.json()
+
+    yield connection
+
+    # Cleanup
+    try:
+        await api_client.delete(f"/source-connections/{connection['id']}")
+    except Exception:
+        pass  # Best effort cleanup
+
+
 @pytest_asyncio.fixture
 async def module_source_connection_stripe(
     module_api_client: httpx.AsyncClient, module_collection: Dict, config
@@ -275,7 +376,39 @@ async def module_source_connection_stripe(
                     break
 
     if not sync_completed:
-        print(f"Warning: Initial sync may not have completed after {max_wait_time} seconds")
+        pytest.fail(f"Stripe sync did not complete within {max_wait_time} seconds")
+
+    # Verify data is actually searchable (sync complete != indexed)
+    readable_id = module_collection["readable_id"]
+    data_verified = False
+    for attempt in range(12):
+        wait_secs = 3 if attempt < 5 else 5
+        await asyncio.sleep(wait_secs)
+        verify_resp = await module_api_client.post(
+            f"/collections/{readable_id}/search",
+            json={
+                "query": "customer OR invoice OR payment",
+                "expand_query": False,
+                "interpret_filters": False,
+                "rerank": False,
+                "generate_answer": False,
+                "limit": 5,
+            },
+            timeout=60,
+        )
+        if verify_resp.status_code == 200:
+            verify_data = verify_resp.json()
+            if verify_data.get("results") and len(verify_data["results"]) > 0:
+                data_verified = True
+                print(
+                    f"✓ Stripe data searchable: {len(verify_data['results'])} results "
+                    f"(attempt {attempt + 1})"
+                )
+                break
+        print(f"  [stripe verify] attempt {attempt + 1}: no results yet, retrying...")
+
+    if not data_verified:
+        pytest.fail("Stripe sync completed but data not searchable after retries")
 
     # Yield for tests to use
     yield connection
@@ -418,6 +551,52 @@ async def pipedream_auth_provider(api_client: httpx.AsyncClient, config) -> Dict
         pass  # Best effort cleanup
 
 
+# ---------------------------------------------------------------------------
+# Enable agentic_search feature flag for the test organization
+# ---------------------------------------------------------------------------
+_agentic_search_flag_enabled = False
+
+
+async def _enable_agentic_search_feature_flag() -> None:
+    """Enable the agentic_search feature flag on the test organization via admin API.
+
+    In dev mode the test user is a superuser, so the admin endpoint succeeds.
+    Runs once per session; subsequent calls are no-ops.
+    """
+    global _agentic_search_flag_enabled
+    if _agentic_search_flag_enabled:
+        return
+
+    async with httpx.AsyncClient(
+        base_url=settings.api_url,
+        headers=settings.api_headers,
+        timeout=httpx.Timeout(15),
+        follow_redirects=True,
+    ) as client:
+        # Discover the test organization ID
+        orgs_resp = await client.get("/users/me/organizations")
+        if orgs_resp.status_code != 200 or not orgs_resp.json():
+            print("Warning: could not fetch organizations to enable agentic_search flag")
+            return
+
+        org_id = orgs_resp.json()[0]["id"]
+
+        resp = await client.post(
+            f"/admin/organizations/{org_id}/feature-flags/agentic_search/enable"
+        )
+        if resp.status_code == 200:
+            _agentic_search_flag_enabled = True
+            print(f"✓ agentic_search feature flag enabled for org {org_id}")
+        else:
+            print(f"Warning: failed to enable agentic_search flag: {resp.status_code} {resp.text}")
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _ensure_agentic_search_flag():
+    """Session-scoped fixture that enables the agentic_search feature flag once."""
+    await _enable_agentic_search_feature_flag()
+
+
 # Markers for test categorization
 def pytest_configure(config):
     """Register custom markers."""
@@ -434,19 +613,36 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "rate_limit: tests that consume rate limit quota (run last)"
     )
+    config.addinivalue_line(
+        "markers", "api_rate_limit: tests that consume API rate limit quota (skipped in CI)"
+    )
+    config.addinivalue_line(
+        "markers", "local_only: tests that require local environment (direct storage access)"
+    )
 
 
 def pytest_collection_modifyitems(config, items):
-    """Reorder tests to ensure rate_limit tests run last.
+    """Modify test collection: skip tests based on environment, reorder rate_limit tests.
 
-    This prevents rate limiting tests from interfering with other tests
-    by consuming the rate limit quota.
+    - Skip local_only tests when TEST_ENV is not "local"
+    - Move rate_limit tests to run last
     """
+    import os
+
+    test_env = os.environ.get("TEST_ENV", "local")
+    skip_local_only = pytest.mark.skip(
+        reason="Test requires local environment (TEST_ENV != local)"
+    )
+
     # Separate rate_limit tests from others
     rate_limit_tests = []
     other_tests = []
 
     for item in items:
+        # Skip local_only tests when not in local environment
+        if item.get_closest_marker("local_only") and test_env != "local":
+            item.add_marker(skip_local_only)
+
         if item.get_closest_marker("rate_limit"):
             rate_limit_tests.append(item)
         else:

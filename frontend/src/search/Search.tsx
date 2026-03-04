@@ -1,12 +1,15 @@
 import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme-provider";
-import { SearchBox } from "@/search/SearchBox";
+import { SearchBox, type SearchMode } from "@/search/SearchBox";
 import { SearchResponse } from "@/search/SearchResponse";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
+import { useOrganizationStore } from "@/lib/stores/organizations";
+import { FeatureFlags } from "@/lib/constants/feature-flags";
 
 interface SearchProps {
     collectionReadableId: string;
+    disabled?: boolean;  // Disable search when no sources are connected
 }
 
 /**
@@ -17,9 +20,15 @@ interface SearchProps {
  * - SearchResponseDisplay for showing results
  * - Clean separation of concerns for maintainability
  */
-export const Search = ({ collectionReadableId }: SearchProps) => {
+export const Search = ({ collectionReadableId, disabled = false }: SearchProps) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
+
+    // Check if the organization has the agentic search feature flag
+    const agenticEnabled = useOrganizationStore((state) => state.hasFeature(FeatureFlags.AGENTIC_SEARCH));
+
+    // Search mode (search vs agent) — defaults to agent only if feature is enabled
+    const [searchMode, setSearchMode] = useState<SearchMode>(agenticEnabled ? "agent" : "search");
 
     // Search response state (final)
     const [searchResponse, setSearchResponse] = useState<any>(null);
@@ -83,6 +92,10 @@ export const Search = ({ collectionReadableId }: SearchProps) => {
             <div>
                 <SearchBox
                     collectionId={collectionReadableId}
+                    disabled={disabled}
+                    agenticEnabled={agenticEnabled}
+                    searchMode={searchMode}
+                    onSearchModeChange={setSearchMode}
                     onSearch={handleSearchResult}
                     onSearchStart={handleSearchStart}
                     onSearchEnd={handleSearchEnd}

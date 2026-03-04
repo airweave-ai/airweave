@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 if TYPE_CHECKING:
     from airweave.search.emitter import EventEmitter
     from airweave.search.operations import (
+        AccessControlFilter,
         EmbedQuery,
         FederatedSearch,
         GenerateAnswer,
@@ -17,7 +18,6 @@ if TYPE_CHECKING:
         QueryInterpretation,
         Reranking,
         Retrieval,
-        TemporalRelevance,
         UserFilter,
     )
 
@@ -40,11 +40,11 @@ class SearchContext(BaseModel):
 
     emitter: EventEmitter = Field()
 
+    access_control_filter: Optional[AccessControlFilter] = Field()
     query_expansion: Optional[QueryExpansion] = Field()
     query_interpretation: Optional[QueryInterpretation] = Field()
     embed_query: Optional[EmbedQuery] = Field()
     user_filter: Optional[UserFilter] = Field()
-    temporal_relevance: Optional[TemporalRelevance] = Field()
     retrieval: Optional[Retrieval] = Field()
     federated_search: Optional[FederatedSearch] = Field()
     reranking: Optional[Reranking] = Field()

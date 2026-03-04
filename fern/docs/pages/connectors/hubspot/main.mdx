@@ -12,6 +12,8 @@ description: "Hubspot integration with Airweave"
   <h1 style={{ margin: 0 }}>Hubspot</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Hubspot through Airweave's unified search layer.
+
 ## Configuration
 
 HubSpot source connector integrates with the HubSpot CRM API to extract CRM data.
@@ -54,11 +56,16 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| contact_id | str | The HubSpot contact ID. |
+| display_name | str | Display name derived from first/last name or email. |
+| created_time | datetime | When the contact was created. |
+| updated_time | datetime | When the contact was last updated. |
 | first_name | Optional[str] | The contact's first name |
 | last_name | Optional[str] | The contact's last name |
 | email | Optional[str] | The contact's email address |
 | properties | Dict[str, Any] | All properties from HubSpot contact object |
 | archived | bool | Whether the contact is archived |
+| web_url_value | Optional[str] | URL to view this contact in HubSpot. |
 
 </Accordion>
 <Accordion title="HubspotCompanyEntity">
@@ -70,9 +77,14 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| company_id | str | The HubSpot company ID. |
+| company_name | str | Display name of the company. |
+| created_time | datetime | When the company was created. |
+| updated_time | datetime | When the company was last updated. |
 | domain | Optional[str] | The company's domain name |
 | properties | Dict[str, Any] | All properties from HubSpot company object |
 | archived | bool | Whether the company is archived |
+| web_url_value | Optional[str] | URL to view this company in HubSpot. |
 
 </Accordion>
 <Accordion title="HubspotDealEntity">
@@ -84,10 +96,14 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| deal_name | Optional[str] | The name of the deal |
+| deal_id | str | The HubSpot deal ID. |
+| deal_name | str | The name of the deal. |
+| created_time | datetime | When the deal was created. |
+| updated_time | datetime | When the deal was last updated. |
 | amount | Optional[float] | The monetary value of the deal |
 | properties | Dict[str, Any] | All properties from HubSpot deal object |
 | archived | bool | Whether the deal is archived |
+| web_url_value | Optional[str] | URL to view this deal in HubSpot. |
 
 </Accordion>
 <Accordion title="HubspotTicketEntity">
@@ -99,10 +115,15 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| ticket_id | str | The HubSpot ticket ID. |
+| ticket_name | str | Display name for the ticket. |
+| created_time | datetime | When the ticket was created. |
+| updated_time | datetime | When the ticket was last updated. |
 | subject | Optional[str] | The subject of the support ticket |
 | content | Optional[str] | The content or description of the ticket |
 | properties | Dict[str, Any] | All properties from HubSpot ticket object |
 | archived | bool | Whether the ticket is archived |
+| web_url_value | Optional[str] | URL to view this ticket in HubSpot. |
 
 </Accordion>
 

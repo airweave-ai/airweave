@@ -9,8 +9,8 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import ClickUpAuthConfig
+from airweave.platform.configs.config import ClickUpConfig
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.clickup import (
     ClickUpCommentEntity,
@@ -27,6 +27,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
+from airweave.platform.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -39,8 +40,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.ACCESS_ONLY,
-    auth_config_class="ClickUpAuthConfig",
-    config_class="ClickUpConfig",
+    auth_config_class=ClickUpAuthConfig,
+    config_class=ClickUpConfig,
     labels=["Project Management"],
     supports_continuous=False,
     supports_temporal_relevance=False,
@@ -422,7 +423,7 @@ class ClickUpSource(BaseSource):
                 reactions=comment.get("reactions", []),
             )
 
-    async def _generate_file_entities(
+    async def _generate_file_entities(  # noqa: C901
         self,
         client: httpx.AsyncClient,
         task_id: str,

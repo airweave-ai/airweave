@@ -12,6 +12,8 @@ description: "Asana integration with Airweave"
   <h1 style={{ margin: 0 }}>Asana</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Asana through Airweave's unified search layer.
+
 ## Configuration
 
 Asana source connector integrates with the Asana API to extract and synchronize data.
@@ -51,6 +53,8 @@ Schema for Asana workspace entities.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| gid | str | Asana workspace GID |
+| name | str | Workspace name |
 | is_organization | bool | Whether the workspace is an organization |
 | email_domains | List[str] | List of email domains that can access this workspace |
 | permalink_url | Optional[str] | URL to access the workspace in the Asana application |
@@ -62,6 +66,10 @@ Schema for Asana project entities.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| gid | str | Asana project GID |
+| name | str | Project name |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
 | workspace_gid | str | Globally unique identifier of the workspace the project belongs to |
 | workspace_name | str | The name of the workspace the project belongs to |
 | color | Optional[str] | Color of the project (e.g. 'dark-pink', 'light-blue') |
@@ -91,6 +99,9 @@ Schema for Asana section entities.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| gid | str | Asana section GID |
+| name | str | Section name |
+| created_at | Optional[datetime] | Created at |
 | project_gid | str | Globally unique identifier of the project this section belongs to |
 | projects | List[Dict] | Deprecated. Array of projects this section is associated with |
 
@@ -101,6 +112,10 @@ Schema for Asana task entities.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| gid | str | Asana task GID |
+| name | str | Task name |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
 | project_gid | str | Globally unique identifier of the project this task belongs to |
 | section_gid | Optional[str] | Globally unique identifier of the section this task belongs to |
 | actual_time_minutes | Optional[int] | The actual time spent on this task in minutes |
@@ -139,6 +154,8 @@ Schema for Asana comment/story entities.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| gid | str | Asana comment GID |
+| created_at | Optional[datetime] | Created at |
 | task_gid | str | Globally unique identifier of the task this comment belongs to |
 | author | Dict | The user who created this comment |
 | resource_subtype | str | The subtype of the comment resource |
@@ -162,12 +179,16 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| gid | str | Asana file attachment GID |
+| name | str | File name |
+| created_at | Optional[datetime] | Created at |
 | task_gid | str | GID of the task this file is attached to |
 | task_name | str | Name of the task this file is attached to |
+| project_gid | Optional[str] | GID of the project (for web URL construction) |
 | resource_type | str | Type of the attachment resource |
 | host | Optional[str] | Service hosting the attachment |
 | parent | Optional[Dict[str, Any]] | Parent resource the attachment is on |
-| view_url | Optional[str] | URL to view the attachment |
+| view_url | Optional[str] | URL to view the attachment in browser |
 | permanent | bool | Whether this is a permanent attachment |
 
 </Accordion>

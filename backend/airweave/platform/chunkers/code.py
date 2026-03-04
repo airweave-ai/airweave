@@ -3,9 +3,11 @@
 from typing import Any, Dict, List, Optional
 
 from airweave.core.logging import logger
-from airweave.platform.chunkers._base import BaseChunker, TiktokenWrapperForChonkie
+from airweave.platform.chunkers._base import BaseChunker
+from airweave.platform.chunkers.tiktoken_compat import SafeEncoding
 from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.sync.exceptions import SyncFailureError
+from airweave.platform.tokenizers import TikTokenTokenizer, get_tokenizer
 
 
 class CodeChunker(BaseChunker):
@@ -64,32 +66,34 @@ class CodeChunker(BaseChunker):
             return
 
         try:
-            import tiktoken
             from chonkie import CodeChunker as ChonkieCodeChunker
             from chonkie import TokenChunker
 
-            # Initialize tiktoken tokenizer for accurate OpenAI token counting
-            self._tiktoken_tokenizer = tiktoken.get_encoding(self.TOKENIZER)
+            # Get tokenizer wrapper for our own token counting
+            tokenizer = get_tokenizer(self.TOKENIZER)
+            self._tiktoken_tokenizer = tokenizer
 
-            # Wrap tiktoken for Chonkie to handle special tokens like <|endoftext|>
-            # Chonkie's internal AutoTokenizer doesn't pass allowed_special="all",
-            # which causes failures when syncing code with special tokens
-            tiktoken_wrapper = TiktokenWrapperForChonkie(self._tiktoken_tokenizer)
+            if not isinstance(tokenizer, TikTokenTokenizer):
+                raise SyncFailureError(
+                    f"Chonkie requires tiktoken encoding, got {type(tokenizer).__name__}"
+                )
+
+            # Wrap the raw encoding to allow special tokens like <|endoftext|>
+            # that may appear in code comments/strings. Without this wrapper,
+            # Chonkie calls encode() directly without allowed_special='all'.
+            safe_encoding = SafeEncoding(tokenizer.encoding)
 
             # Initialize Chonkie's CodeChunker with auto language detection
-            # Uses Magika (Google's ML-based language detector) to identify language
             self._code_chunker = ChonkieCodeChunker(
-                language="auto",  # Auto-detect using Magika
-                tokenizer=tiktoken_wrapper,  # Use wrapper that handles special tokens
+                language="auto",
+                tokenizer=safe_encoding,
                 chunk_size=self.CHUNK_SIZE,
                 include_nodes=False,
             )
 
-            # Initialize TokenChunker for fallback
-            # Splits at exact token boundaries when code chunking produces oversized chunks
-            # GUARANTEES chunks ≤ MAX_TOKENS_PER_CHUNK (uses same tokenizer for encode/decode)
+            # Initialize TokenChunker for fallback (also needs safe encoding)
             self._token_chunker = TokenChunker(
-                tokenizer=tiktoken_wrapper,  # Use wrapper that handles special tokens
+                tokenizer=safe_encoding,
                 chunk_size=self.MAX_TOKENS_PER_CHUNK,
                 chunk_overlap=0,
             )
@@ -141,12 +145,17 @@ class CodeChunker(BaseChunker):
             self._apply_safety_net_batched, code_results_with_tiktoken
         )
 
-        # Validate all chunks meet requirements
+        # Validate and filter chunks
+        filtered_results = []
         for doc_chunks in final_results:
+            valid_chunks = []
             for chunk in doc_chunks:
-                # Check for empty chunks
+                # Skip empty chunks with warning
                 if not chunk["text"] or not chunk["text"].strip():
-                    raise SyncFailureError("PROGRAMMING ERROR: Empty chunk produced by CodeChunker")
+                    logger.warning(
+                        "[CodeChunker] Skipping empty chunk - this may indicate a chunker bug"
+                    )
+                    continue
 
                 # Check token limit enforced
                 if chunk["token_count"] > self.MAX_TOKENS_PER_CHUNK:
@@ -155,7 +164,11 @@ class CodeChunker(BaseChunker):
                         f"after safety net (max: {self.MAX_TOKENS_PER_CHUNK})"
                     )
 
-        return final_results
+                valid_chunks.append(chunk)
+
+            filtered_results.append(valid_chunks)
+
+        return filtered_results
 
     def _apply_safety_net_batched(
         self, code_results: List[List[Any]]

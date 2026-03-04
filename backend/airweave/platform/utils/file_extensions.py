@@ -103,7 +103,6 @@ LANGUAGE_MAP: Dict[str, str] = {
     ".yml": "YAML",
     ".toml": "TOML",
     ".xml": "XML",
-    ".csv": "CSV",
     ".ini": "INI",
     ".cfg": "Configuration",
     ".conf": "Configuration",

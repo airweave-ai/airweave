@@ -1,7 +1,6 @@
 """Text file to markdown converter."""
 
 import asyncio
-import csv
 import json
 import os
 import xml.dom.minidom
@@ -16,10 +15,9 @@ from airweave.platform.sync.exceptions import EntityProcessingError
 
 
 class TxtConverter(BaseTextConverter):
-    """Converts text files (TXT, CSV, JSON, XML, MD, YAML, TOML) to markdown.
+    """Converts text files (TXT, JSON, XML, MD, YAML, TOML) to markdown.
 
     Features:
-    - CSV: Converts to markdown tables
     - JSON: Pretty-prints with code fence
     - XML: Pretty-prints with code fence
     - Others: Returns as plain text
@@ -47,9 +45,7 @@ class TxtConverter(BaseTextConverter):
                     ext = ext.lower()
 
                     # Dispatch to format-specific handler
-                    if ext == ".csv":
-                        text = await self._convert_csv(path)
-                    elif ext == ".json":
+                    if ext == ".json":
                         text = await self._convert_json(path)
                     elif ext == ".xml":
                         text = await self._convert_xml(path)
@@ -76,54 +72,75 @@ class TxtConverter(BaseTextConverter):
         return results
 
     async def _convert_plain_text(self, path: str) -> str:
-        """Read plain text file.
+        """Read plain text file with encoding detection.
 
         Args:
             path: Path to text file
 
         Returns:
             File content as string
-        """
-        async with aiofiles.open(path, "r", encoding="utf-8", errors="ignore") as f:
-            return await f.read()
-
-    async def _convert_csv(self, path: str) -> str:
-        """Convert CSV to markdown table.
-
-        Args:
-            path: Path to CSV file
-
-        Returns:
-            Markdown table string
 
         Raises:
-            EntityProcessingError: If CSV is empty
+            EntityProcessingError: If file contains excessive binary/corrupted data
         """
+        # Read raw bytes for encoding detection
+        async with aiofiles.open(path, "rb") as f:
+            raw_bytes = await f.read()
 
-        def _read_and_convert():
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                reader = csv.reader(f)
-                rows = list(reader)
+        if not raw_bytes:
+            return ""
 
-            if not rows:
-                raise EntityProcessingError(f"CSV file {path} is empty")
+        # Try UTF-8 first (most common)
+        try:
+            text = raw_bytes.decode("utf-8")
+            replacement_count = text.count("\ufffd")
+            if replacement_count == 0:
+                return text
+        except UnicodeDecodeError:
+            pass
 
-            # Create markdown table
-            md = []
+        # Try encoding detection
+        try:
+            import chardet
 
-            # Header
-            md.append("| " + " | ".join(rows[0]) + " |")
-            md.append("|" + "|".join(["---"] * len(rows[0])) + "|")
+            detection = chardet.detect(raw_bytes[:100000])  # Sample first 100KB
+            if detection and detection.get("confidence", 0) > 0.7:
+                detected_encoding = detection["encoding"]
+                if detected_encoding:
+                    try:
+                        text = raw_bytes.decode(detected_encoding)
+                        replacement_count = text.count("\ufffd")
+                        if replacement_count == 0:
+                            logger.debug(
+                                f"Detected encoding {detected_encoding} for {os.path.basename(path)}"
+                            )
+                            return text
+                    except (UnicodeDecodeError, LookupError):
+                        pass
+        except ImportError:
+            logger.debug("chardet not available, falling back to UTF-8 with ignore")
 
-            # Data rows
-            for row in rows[1:]:
-                # Pad if row is shorter than header
-                padded = row + [""] * (len(rows[0]) - len(row))
-                md.append("| " + " | ".join(padded[: len(rows[0])]) + " |")
+        # Fallback: decode with replace to create U+FFFD for validation
+        text = raw_bytes.decode("utf-8", errors="replace")
+        replacement_count = text.count("\ufffd")
 
-            return "\n".join(md)
+        if replacement_count > 0:
+            text_length = len(text)
+            replacement_ratio = replacement_count / text_length if text_length > 0 else 0
 
-        return await run_in_thread_pool(_read_and_convert)
+            # Warn if high replacement ratio
+            if replacement_ratio > 0.25 or replacement_count > 5000:
+                logger.warning(
+                    f"File {os.path.basename(path)} contains {replacement_count} "
+                    f"replacement characters ({replacement_ratio:.1%}). "
+                    f"This may indicate binary data or encoding issues."
+                )
+                raise EntityProcessingError(
+                    f"Text file contains excessive binary/corrupted data: "
+                    f"{replacement_count} replacement chars ({replacement_ratio:.1%})"
+                )
+
+        return text
 
     async def _convert_json(self, path: str) -> str:
         """Convert JSON to pretty-printed code fence.
@@ -135,13 +152,27 @@ class TxtConverter(BaseTextConverter):
             Formatted JSON in markdown code fence
 
         Raises:
-            EntityProcessingError: If JSON syntax is invalid
+            EntityProcessingError: If JSON syntax is invalid or contains corrupted data
         """
 
         def _read_and_format():
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                data = json.load(f)
+            # Read raw bytes
+            with open(path, "rb") as f:
+                raw_bytes = f.read()
 
+            # Try UTF-8 first
+            try:
+                text = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                # Fallback with replace to detect corruption
+                text = raw_bytes.decode("utf-8", errors="replace")
+                replacement_count = text.count("\ufffd")
+                if replacement_count > 50:  # Strict for JSON
+                    raise EntityProcessingError(
+                        f"JSON contains binary data ({replacement_count} replacement chars)"
+                    )
+
+            data = json.loads(text)
             formatted = json.dumps(data, indent=2)
             return f"```json\n{formatted}\n```"
 
@@ -159,11 +190,27 @@ class TxtConverter(BaseTextConverter):
 
         Returns:
             Formatted XML in markdown code fence
+
+        Raises:
+            EntityProcessingError: If XML contains corrupted data
         """
 
         def _read_and_format():
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read()
+            # Read raw bytes
+            with open(path, "rb") as f:
+                raw_bytes = f.read()
+
+            # Try UTF-8 first
+            try:
+                content = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                # Fallback with replace to detect corruption
+                content = raw_bytes.decode("utf-8", errors="replace")
+                replacement_count = content.count("\ufffd")
+                if replacement_count > 50:  # Strict for XML
+                    raise EntityProcessingError(
+                        f"XML contains binary data ({replacement_count} replacement chars)"
+                    )
 
             dom = xml.dom.minidom.parseString(content)
             formatted = dom.toprettyxml()
@@ -171,9 +218,22 @@ class TxtConverter(BaseTextConverter):
 
         try:
             return await run_in_thread_pool(_read_and_format)
+        except EntityProcessingError:
+            raise
         except Exception as e:
             logger.warning(f"XML parsing failed for {path}: {e}, using raw content")
-            # Fallback to raw content
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                raw = f.read()
+            # Fallback to raw content - read with validation
+            with open(path, "rb") as f:
+                raw_bytes = f.read()
+
+            try:
+                raw = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                raw = raw_bytes.decode("utf-8", errors="replace")
+                replacement_count = raw.count("\ufffd")
+                if replacement_count > 100:  # More lenient for fallback
+                    raise EntityProcessingError(
+                        f"XML contains excessive binary data ({replacement_count} replacement chars)"
+                    )
+
             return f"```xml\n{raw}\n```" if raw.strip() else None

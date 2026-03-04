@@ -10,13 +10,13 @@ from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
-from airweave.platform.sync.pubsub import SyncProgressUpdate
+from airweave.platform.sync.pipeline.entity_tracker import SyncStats
 
 
 class SyncJobService:
     """Service for managing sync job status updates."""
 
-    def _build_stats_update_data(self, stats: SyncProgressUpdate) -> Dict[str, Any]:
+    def _build_stats_update_data(self, stats: SyncStats) -> Dict[str, Any]:
         """Build update data from stats."""
         update_data = {
             "entities_inserted": stats.inserted,
@@ -26,9 +26,7 @@ class SyncJobService:
             "entities_skipped": stats.skipped,
         }
 
-        # Use the counts directly - they're already in the right format
-        if hasattr(stats, "entities_encountered"):
-            update_data["entities_encountered"] = stats.entities_encountered
+        update_data["entities_encountered"] = stats.entities_encountered
 
         return update_data
 
@@ -78,13 +76,24 @@ class SyncJobService:
         sync_job_id: UUID,
         status: SyncJobStatus,
         ctx: ApiContext,
-        stats: Optional[SyncProgressUpdate] = None,
+        stats: Optional[SyncStats] = None,
         error: Optional[str] = None,
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
         failed_at: Optional[datetime] = None,
     ) -> None:
-        """Update sync job status with provided details."""
+        """Update sync job status with provided details.
+
+        Args:
+            sync_job_id: ID of the sync job
+            status: New status
+            ctx: API context
+            stats: Optional stats object (SyncProgressUpdate or SyncStats)
+            error: Optional error message
+            started_at: Optional start time
+            completed_at: Optional completion time
+            failed_at: Optional failure time
+        """
         try:
             async with get_db_context() as db:
                 db_sync_job = await crud.sync_job.get(db=db, id=sync_job_id, ctx=ctx)

@@ -1,0 +1,56 @@
+name: slab_test
+description: End-to-end test for Slab source using Monke
+
+# Slab E2E requires an API token with write access (create/edit/delete topics and posts).
+# Schema reference: https://studio.apollographql.com/public/Slab/variant/current/home
+connector:
+  name: Slab
+  type: slab
+  auth_mode: direct
+  auth_fields:
+    api_key: MONKE_SLAB_API_TOKEN
+  config_fields:
+    # Use MONKE_SLAB_HOST for your workspace host (from Slab URL when logged in, e.g. myteam.slab.com)
+    host: ${MONKE_SLAB_HOST:-app.slab.com}
+    openai_model: "gpt-4.1-mini"
+    rate_limit_delay_ms: 400
+    max_concurrency: 2
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+    - collection_cleanup
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+entity_count: 2
+
+collection:
+  name: Slab Test Collection
+
+verification:
+  retry_attempts: 5
+  retry_delay_seconds: 10
+  score_threshold: 0.0
+  expected_fields:
+    - name
+    - title
+    - content

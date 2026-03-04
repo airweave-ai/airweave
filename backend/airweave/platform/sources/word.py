@@ -23,8 +23,8 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import WordConfig
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.word import WordDocumentEntity
 from airweave.platform.sources._base import BaseSource
@@ -32,6 +32,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
+from airweave.platform.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -45,7 +46,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     ],
     oauth_type=OAuthType.WITH_ROTATING_REFRESH,
     auth_config_class=None,
-    config_class="WordConfig",
+    config_class=WordConfig,
     labels=["Productivity", "Document", "Word Processing"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,
@@ -419,7 +420,7 @@ class WordSource(BaseSource):
                         yield document_entity
 
                     except FileSkippedException as e:
-                        # Document intentionally skipped (unsupported type, too large, etc.) - not an error
+                        # Document intentionally skipped (unsupported type, too large, etc.)
                         self.logger.debug(f"Skipping document {document_entity.title}: {e.reason}")
                         continue
 

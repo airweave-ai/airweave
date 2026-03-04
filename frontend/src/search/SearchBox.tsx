@@ -8,11 +8,12 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowUp, CodeXml, X, Loader2, Square, ClockArrowUp, ListStart, ChartScatter, RefreshCw } from "lucide-react";
-import { FiGitMerge, FiType, FiLayers, FiFilter, FiSliders, FiClock, FiList, FiMessageSquare, FiBox } from "react-icons/fi";
+import { ArrowUp, CodeXml, X, Loader2, Square, ListStart, ChartScatter, RefreshCw, Brain, Zap } from "lucide-react";
+import { FiGitMerge, FiType, FiLayers, FiFilter, FiSliders, FiMessageSquare } from "react-icons/fi";
 import { ApiIntegrationDoc } from "@/search/CodeBlock";
 import { JsonFilterEditor } from "@/search/JsonFilterEditor";
-import { RecencyBiasSlider } from "@/search/RecencyBiasSlider";
+import { FilterBuilderPopover, FilterGroup, toBackendFilterGroups, countActiveFilters } from "@/search/FilterBuilderModal";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { apiClient } from "@/lib/api";
 import type { SearchEvent, PartialStreamUpdate, StreamPhase } from "@/search/types";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
@@ -21,12 +22,15 @@ import { SingleActionCheckResponse } from "@/types";
 // Search method types
 type SearchMethod = "hybrid" | "neural" | "keyword";
 
+// Search mode: regular pipeline search vs agentic multi-step search
+export type SearchMode = "search" | "agent";
+type AgenticMode = "fast" | "thinking";
+
 // Toggle state interface
 interface SearchToggles {
     queryExpansion: boolean;
     filter: boolean;
     queryInterpretation: boolean;
-    recencyBias: boolean;
     reRanking: boolean;
     answer: boolean;
 }
@@ -36,7 +40,7 @@ export interface SearchConfig {
     search_method: SearchMethod;
     expansion_strategy: "auto" | "no_expansion";
     enable_query_interpretation: boolean;
-    recency_bias: number | null;
+    recency_bias: number;  // Always 0 - feature under construction
     enable_reranking: boolean;
     response_type: "completion" | "raw";
     filter?: any;
@@ -49,10 +53,15 @@ interface SearchBoxProps {
     onSearchStart?: (responseType: 'raw' | 'completion') => void;
     onSearchEnd?: () => void;
     className?: string;
+    disabled?: boolean;  // Disable search when no sources are connected
     // Streaming callbacks (Milestone 3)
     onStreamEvent?: (event: SearchEvent) => void;
     onStreamUpdate?: (partial: PartialStreamUpdate) => void;
     onCancel?: () => void;
+    // Search mode
+    agenticEnabled?: boolean;
+    searchMode?: SearchMode;
+    onSearchModeChange?: (mode: SearchMode) => void;
 }
 
 class TransientStreamError extends Error {
@@ -82,7 +91,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     onStreamEvent: onStreamEventProp,
     onStreamUpdate: onStreamUpdateProp,
     onCancel,
-    className
+    className,
+    disabled = false,
+    agenticEnabled = true,
+    searchMode = "agent",
+    onSearchModeChange,
 }) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
@@ -92,15 +105,20 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     const [searchMethod, setSearchMethod] = useState<SearchMethod>("hybrid");
     const [isSearching, setIsSearching] = useState(false);
 
+    // Agentic search sub-mode (fast/thinking)
+    const [agenticMode, setAgenticMode] = useState<AgenticMode>("thinking");
+    const isAgenticMode = searchMode === "agent";
+
     // Filter state
     const [filterJson, setFilterJson] = useState("");
     const [isFilterValid, setIsFilterValid] = useState(true);
 
+    // Agentic filter builder state
+    const [agenticFilterGroups, setAgenticFilterGroups] = useState<FilterGroup[]>([]);
+    const [showFilterBuilder, setShowFilterBuilder] = useState(false);
+
     // API key state
     const [apiKey, setApiKey] = useState<string>("YOUR_API_KEY");
-
-    // Recency bias state
-    const [recencyBiasValue, setRecencyBiasValue] = useState(0.0);
 
     // Code block modal state
     const [showCodeBlock, setShowCodeBlock] = useState(false);
@@ -110,7 +128,6 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
         queryExpansion: true,
         filter: false,
         queryInterpretation: false,
-        recencyBias: false,
         reRanking: true,
         answer: true
     });
@@ -182,6 +199,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
     const hasQuery = query.trim().length > 0;
     const canRetrySearch = Boolean(transientIssue) && !isSearching;
+    const activeFilterCount = countActiveFilters(agenticFilterGroups);
 
     // Streaming controls
     const abortRef = useRef<AbortController | null>(null);
@@ -233,7 +251,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
     // Main search handler
     const handleSendQuery = useCallback(async () => {
-        if (!hasQuery || !collectionId || isSearching || !queriesAllowed || isCheckingUsage) return;
+        if (!hasQuery || !collectionId || isSearching || !queriesAllowed || isCheckingUsage || disabled) return;
 
         // Abort previous stream if any
         if (abortRef.current) {
@@ -248,7 +266,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
         abortRef.current = abortController;
 
         // Store the response type being used for this search
-        const currentResponseType = toggles.answer ? "completion" : "raw";
+        // Agentic mode always generates a completion answer
+        const currentResponseType = isAgenticMode ? "completion" : (toggles.answer ? "completion" : "raw");
 
         setIsSearching(true);
         onSearchStart?.(currentResponseType);
@@ -267,49 +286,51 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 }
             }
 
-            // Determine the recency bias value to send
-            // IMPORTANT: Always send a number (0 or the slider value), never null
-            // If we send null, the backend applies DEFAULT_RECENCY_BIAS = 0.3
-            const recencyBiasToSend = toggles.recencyBias ? recencyBiasValue : 0;
+            // Build request body and stream URL based on search mode
+            let requestBody: any;
+            let streamUrl: string;
 
-            console.log('[SearchBox] Recency bias logic:', {
-                toggleState: toggles.recencyBias,
-                sliderValue: recencyBiasValue,
-                valueToSend: recencyBiasToSend,
-                explanation: toggles.recencyBias
-                    ? `Toggle ON, sending slider value: ${recencyBiasValue}`
-                    : `Toggle OFF, sending 0 (not null to avoid default 0.3)`
-            });
+            if (isAgenticMode) {
+                // Agentic search: query + optional filters + mode
+                requestBody = {
+                    query: query,
+                    filter: toBackendFilterGroups(agenticFilterGroups),
+                    mode: agenticMode,
+                };
+                streamUrl = `/collections/${collectionId}/agentic-search/stream`;
+            } else {
+                // Regular pipeline search
+                requestBody = {
+                    query: query,
+                    retrieval_strategy: searchMethod,
+                    expand_query: toggles.queryExpansion,
+                    interpret_filters: toggles.queryInterpretation,
+                    temporal_relevance: 0,  // Feature disabled - under construction
+                    rerank: toggles.reRanking,
+                    generate_answer: toggles.answer,
+                };
 
-            // Build request body with all parameters (matching new backend schema)
-            const requestBody: any = {
-                query: query,
-                retrieval_strategy: searchMethod,  // Changed from search_method
-                expand_query: toggles.queryExpansion,  // Changed from expansion_strategy
-                interpret_filters: toggles.queryInterpretation,  // Changed from enable_query_interpretation
-                temporal_relevance: recencyBiasToSend,  // Changed from recency_bias
-                rerank: toggles.reRanking,  // Changed from enable_reranking
-                generate_answer: toggles.answer,  // Changed from response_type
-            };
+                // Add filter only if it's valid
+                if (parsedFilter) {
+                    requestBody.filter = parsedFilter;
+                }
 
-            // Add filter only if it's valid
-            if (parsedFilter) {
-                requestBody.filter = parsedFilter;
+                const debugParams = new URLSearchParams();
+                if (typeof window !== 'undefined') {
+                    if (window.localStorage.getItem('airweave-debug-force-transient-search-error') === 'true') {
+                        debugParams.set('debug_force_transient_error', 'true');
+                    }
+                    if (window.localStorage.getItem('airweave-debug-force-search-error') === 'true') {
+                        debugParams.set('debug_force_search_error', 'true');
+                    }
+                }
+                const debugQuery = debugParams.toString();
+                streamUrl = `/collections/${collectionId}/search/stream${debugQuery ? `?${debugQuery}` : ''}`;
             }
 
-            console.log("Sending search request:", requestBody);
-
-            const debugParams = new URLSearchParams();
-            if (typeof window !== 'undefined') {
-                if (window.localStorage.getItem('airweave-debug-force-transient-search-error') === 'true') {
-                    debugParams.set('debug_force_transient_error', 'true');
-                }
-                if (window.localStorage.getItem('airweave-debug-force-search-error') === 'true') {
-                    debugParams.set('debug_force_search_error', 'true');
-                }
-            }
-            const debugQuery = debugParams.toString();
-            const streamUrl = `/collections/${collectionId}/search/stream${debugQuery ? `?${debugQuery}` : ''}`;
+            console.log(`[SearchBox] ---- ${isAgenticMode ? 'AGENTIC' : 'REGULAR'} SEARCH ----`);
+            console.log(`[SearchBox] URL: POST ${streamUrl}`);
+            console.log(`[SearchBox] Body:`, JSON.stringify(requestBody, null, 2));
 
             // Make the streaming API call
             const response = await apiClient.post(
@@ -318,8 +339,59 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 { signal: abortController.signal, extraHeaders: {} }
             );
 
+            console.log(`[SearchBox] Response status: ${response.status} ${response.statusText}`);
+            console.log(`[SearchBox] Response has body: ${!!response.body}`);
+
             if (!response.ok || !response.body) {
                 const errorText = await response.text().catch(() => "");
+                console.error(`[SearchBox] Stream failed (${response.status}):`, errorText);
+
+                // Surface validation errors (422) with the actual message
+                if (response.status === 422) {
+                    let detail = "Invalid filter configuration.";
+                    try {
+                        const parsed = JSON.parse(errorText);
+
+                        // Helper: extract human-readable messages from the custom
+                        // error_messages / errors shape used by the Airweave middleware.
+                        const extractFromErrors = (errArr: any[]): string[] => {
+                            const out: string[] = [];
+                            for (const entry of errArr) {
+                                if (typeof entry === "string") { out.push(entry); continue; }
+                                if (typeof entry === "object" && entry !== null) {
+                                    for (const v of Object.values(entry)) {
+                                        if (typeof v === "string") out.push(v);
+                                    }
+                                }
+                            }
+                            return out;
+                        };
+
+                        // Dev mode: { error_messages: { errors: [...] }, ... }
+                        const errRoot = parsed.error_messages ?? parsed;
+                        if (errRoot.errors && Array.isArray(errRoot.errors)) {
+                            const msgs = extractFromErrors(errRoot.errors);
+                            if (msgs.length) detail = msgs.join("; ");
+                        } else if (parsed.detail) {
+                            // FastAPI default: { detail: [...] } or { detail: "string" }
+                            detail = Array.isArray(parsed.detail)
+                                ? parsed.detail.map((d: any) => d.msg ?? JSON.stringify(d)).join("; ")
+                                : String(parsed.detail);
+                        }
+                    } catch { /* use default detail */ }
+
+                    const endTime = performance.now();
+                    const responseTime = Math.round(endTime - startTime);
+                    onSearch(
+                        { error: detail, errorIsTransient: false, status: 422 },
+                        currentResponseType,
+                        responseTime,
+                    );
+                    setIsSearching(false);
+                    onSearchEnd?.();
+                    return;
+                }
+
                 throw new Error(errorText || `Stream failed: ${response.status} ${response.statusText}`);
             }
 
@@ -362,8 +434,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                     try {
                         event = JSON.parse(payloadStr);
                     } catch {
+                        console.log(`[SearchBox] SSE non-JSON frame:`, payloadStr);
                         continue; // non-JSON heartbeat or noise
                     }
+
+                    console.log(`[SearchBox] SSE event:`, event.type, event);
 
                     emitEvent(event as SearchEvent);
 
@@ -412,17 +487,31 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                         case 'done': {
                             const endTime = performance.now();
                             const responseTime = Math.round(endTime - startTime);
-                            // Build final response from collected data
-                            const finalResponse = {
-                                completion: latestCompletion || null,
-                                results: latestResults || [],
-                                responseTime,
-                            };
+
+                            let finalResponse;
+                            if (isAgenticMode && event.response) {
+                                // Agentic done: extract answer + results from response envelope
+                                finalResponse = {
+                                    completion: event.response.answer?.text || null,
+                                    citations: event.response.answer?.citations || [],
+                                    results: event.response.results || [],
+                                    responseTime,
+                                };
+                            } else {
+                                // Regular done: assemble from accumulated stream data
+                                finalResponse = {
+                                    completion: latestCompletion || null,
+                                    results: latestResults || [],
+                                    responseTime,
+                                };
+                            }
+
                             console.log('[SearchBox] Done event - sending final response:', {
-                                hasCompletion: !!latestCompletion,
-                                completionLength: latestCompletion?.length,
+                                hasCompletion: !!finalResponse.completion,
+                                completionLength: finalResponse.completion?.length,
                                 responseType: currentResponseType,
-                                resultsCount: latestResults?.length
+                                resultsCount: finalResponse.results?.length,
+                                agentic: isAgenticMode,
                             });
                             onSearch(finalResponse, currentResponseType, responseTime);
                             break;
@@ -470,52 +559,25 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 }
             }
         }
-    }, [hasQuery, collectionId, query, searchMethod, toggles, filterJson, isFilterValid, recencyBiasValue, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, queriesAllowed, isCheckingUsage, checkQueriesAllowed]);
+    }, [hasQuery, collectionId, query, searchMethod, toggles, filterJson, isFilterValid, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, queriesAllowed, isCheckingUsage, disabled, checkQueriesAllowed, searchMode, agenticMode, isAgenticMode]);
 
     // Handle search method change
     const handleMethodChange = useCallback((newMethod: SearchMethod) => {
         setSearchMethod(newMethod);
+        // Disable query expansion for keyword-only search
+        // Reason: Expansion only benefits neural/semantic search, not keyword matching
+        if (newMethod === "keyword") {
+            setToggles(prev => ({ ...prev, queryExpansion: false }));
+        }
     }, []);
 
     // Handle toggle button clicks
     const handleToggle = useCallback((name: keyof SearchToggles, displayName: string) => {
-        // Special handling for recency bias
-        if (name === 'recencyBias') {
-            const newToggleState = !toggles.recencyBias;
-            console.log('[SearchBox] Recency toggle clicked:', {
-                currentToggle: toggles.recencyBias,
-                newToggle: newToggleState,
-                currentSliderValue: recencyBiasValue
-            });
-
-            // If turning off manually, keep the slider value
-            setToggles(prev => ({
-                ...prev,
-                recencyBias: !prev.recencyBias
-            }));
-        } else {
-            setToggles(prev => ({
-                ...prev,
-                [name]: !prev[name]
-            }));
-        }
-    }, [toggles.recencyBias, recencyBiasValue]);
-
-    // Handle recency bias slider changes
-    const handleRecencyBiasChange = useCallback((value: number) => {
-        console.log('[SearchBox] Recency slider changed:', {
-            newValue: value,
-            currentToggle: toggles.recencyBias,
-            willAutoToggle: value > 0
-        });
-
-        setRecencyBiasValue(value);
-        // Auto-toggle on when value > 0, off when value = 0
         setToggles(prev => ({
             ...prev,
-            recencyBias: value > 0
+            [name]: !prev[name]
         }));
-    }, [toggles.recencyBias]);
+    }, []);
 
     // Tooltip management helpers
     const handleTooltipMouseEnter = useCallback((tooltipId: string) => {
@@ -558,6 +620,43 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     return (
         <>
             <div className={cn("w-full", className)}>
+                {/* Mode toggle (above search box) — only shown when agentic search is enabled */}
+                {agenticEnabled && (
+                    <div className="flex items-center justify-end gap-2 mb-1.5">
+                        <div
+                            className={cn(
+                                "inline-flex items-center h-6 rounded-md border p-0.5",
+                                isDark ? "border-border/50 bg-background" : "border-border bg-white"
+                            )}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => onSearchModeChange?.("agent")}
+                                className={cn(
+                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all",
+                                    isAgenticMode
+                                        ? "text-primary bg-primary/10"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                Agentic Search
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onSearchModeChange?.("search")}
+                                className={cn(
+                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all",
+                                    !isAgenticMode
+                                        ? "text-primary bg-primary/10"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                Classic Search
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div
                     className={cn(
                         DESIGN_SYSTEM.radius.card,
@@ -614,7 +713,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                             </Tooltip>
                         </TooltipProvider>
 
-                        {(!queriesAllowed || isCheckingUsage) ? (
+                        {(!queriesAllowed || isCheckingUsage || disabled) ? (
                             <TooltipProvider delayDuration={0}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -624,20 +723,18 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                 onChange={(e) => setQuery(e.target.value)}
                                                 onKeyDown={(e) => {
                                                     if (e.key === "Enter" && !e.shiftKey) {
-                                                        if (!hasQuery || isSearching || !queriesAllowed || isCheckingUsage) return;
+                                                        if (!hasQuery || isSearching || !queriesAllowed || isCheckingUsage || disabled) return;
                                                         e.preventDefault();
                                                         handleSendQuery();
                                                     }
                                                 }}
-                                                placeholder="Ask a question about your data"
-                                                disabled={!queriesAllowed || isCheckingUsage}
+                                                placeholder={isAgenticMode ? "Ask your agent a question..." : "Ask a question about your data"}
+                                                disabled={!queriesAllowed || isCheckingUsage || disabled}
                                                 className={cn(
-                                                    // pr-16 ensures text wraps before overlay button
-                                                    // increase right padding to prevent text from flowing under the top-right Code button at all widths
-                                                    "w-full h-20 px-2 pr-28 sm:pr-24 md:pr-28 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
+                                                    "w-full h-20 px-2 pr-32 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
                                                     DESIGN_SYSTEM.typography.sizes.header,
                                                     isDark ? "placeholder:text-gray-500" : "placeholder:text-gray-500",
-                                                    (!queriesAllowed || isCheckingUsage) && "opacity-60 cursor-not-allowed"
+                                                    (!queriesAllowed || isCheckingUsage || disabled) && "opacity-60 cursor-not-allowed"
                                                 )}
                                             />
                                         </div>
@@ -646,6 +743,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         <p className={DESIGN_SYSTEM.typography.sizes.body}>
                                             {isCheckingUsage ? (
                                                 "Checking usage…"
+                                            ) : disabled ? (
+                                                "Connect a source to enable search."
                                             ) : queriesCheckDetails?.reason === 'usage_limit_exceeded' ? (
                                                 <>
                                                     Query limit reached.{' '}
@@ -683,16 +782,14 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                 onChange={(e) => setQuery(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (e.key === "Enter" && !e.shiftKey) {
-                                        if (!hasQuery || isSearching || !queriesAllowed || isCheckingUsage) return;
+                                        if (!hasQuery || isSearching || !queriesAllowed || isCheckingUsage || disabled) return;
                                         e.preventDefault();
                                         handleSendQuery();
                                     }
                                 }}
-                                placeholder="Ask a question about your data"
+                                placeholder={isAgenticMode ? "Ask your agent a question..." : "Ask a question about your data"}
                                 className={cn(
-                                    // pr-16 ensures text wraps before overlay button
-                                    // increase right padding to prevent text from flowing under the top-right Code button at all widths
-                                    "w-full h-20 px-2 pr-28 sm:pr-24 md:pr-28 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
+                                    "w-full h-20 px-2 pr-32 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
                                     DESIGN_SYSTEM.typography.sizes.header,
                                     isDark ? "placeholder:text-gray-500" : "placeholder:text-gray-500"
                                 )}
@@ -707,6 +804,108 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                         <TooltipProvider delayDuration={0}>
                             {/* Left side controls */}
                             <div className="flex items-center gap-1.5">
+                                {isAgenticMode ? (
+                                    <>
+                                        {/* Agent mode controls */}
+
+                                        {/* 1. Filter popover */}
+                                        <Popover open={showFilterBuilder} onOpenChange={setShowFilterBuilder}>
+                                            <PopoverTrigger asChild>
+                                                <div className="relative">
+                                                    <div
+                                                        className={cn(
+                                                            DESIGN_SYSTEM.buttons.heights.secondary,
+                                                            "w-8 p-0 border cursor-pointer",
+                                                            DESIGN_SYSTEM.radius.button,
+                                                            activeFilterCount > 0
+                                                                ? "border-primary"
+                                                                : isDark ? "border-border/50 bg-background" : "border-border bg-white"
+                                                        )}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            className={cn(
+                                                                "h-full w-full flex items-center justify-center",
+                                                                DESIGN_SYSTEM.radius.button,
+                                                                DESIGN_SYSTEM.transitions.standard,
+                                                                activeFilterCount > 0
+                                                                    ? "text-primary hover:bg-primary/10"
+                                                                    : "text-foreground hover:bg-muted"
+                                                            )}
+                                                        >
+                                                            <FiSliders className="h-4 w-4" strokeWidth={1.5} />
+                                                        </button>
+                                                    </div>
+                                                    {activeFilterCount > 0 && (
+                                                        <span className={cn(
+                                                            "absolute -top-1.5 -right-1.5 h-4 min-w-4 rounded-full",
+                                                            "bg-primary text-primary-foreground text-[9px] font-bold",
+                                                            "flex items-center justify-center px-1 pointer-events-none"
+                                                        )}>
+                                                            {activeFilterCount}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </PopoverTrigger>
+                                            <PopoverContent
+                                                side="bottom"
+                                                align="start"
+                                                sideOffset={6}
+                                                className={cn(
+                                                    "w-[620px] h-[340px] p-0 overflow-hidden",
+                                                    isDark ? "bg-background" : "bg-background",
+                                                )}
+                                            >
+                                                <FilterBuilderPopover
+                                                    value={agenticFilterGroups}
+                                                    onChange={setAgenticFilterGroups}
+                                                    onClose={() => setShowFilterBuilder(false)}
+                                                />
+                                            </PopoverContent>
+                                        </Popover>
+
+                                        {/* 2. Thinking mode slider */}
+                                        <div
+                                            className={cn(
+                                                DESIGN_SYSTEM.buttons.heights.secondary,
+                                                "inline-flex items-center rounded-md border p-0.5",
+                                                isDark ? "border-border/50 bg-background" : "border-border bg-white"
+                                            )}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => setAgenticMode("fast")}
+                                                className={cn(
+                                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all flex items-center gap-1",
+                                                    agenticMode === "fast"
+                                                        ? "text-primary bg-primary/10"
+                                                        : "text-muted-foreground hover:text-foreground"
+                                                )}
+                                                title="Single-pass fast search"
+                                            >
+                                                <Zap className="h-3 w-3" strokeWidth={1.5} />
+                                                Fast
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAgenticMode("thinking")}
+                                                className={cn(
+                                                    "h-full px-2 rounded-[4px] text-[11px] font-medium transition-all flex items-center gap-1",
+                                                    agenticMode === "thinking"
+                                                        ? "text-primary bg-primary/10"
+                                                        : "text-muted-foreground hover:text-foreground"
+                                                )}
+                                                title="Multi-step reasoning search"
+                                            >
+                                                <Brain className="h-3 w-3" strokeWidth={1.5} />
+                                                Thinking
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                <>
+                                {/* Regular search controls */}
+
                                 {/* 1. Method segmented control (icons) */}
                                 <div className={cn(DESIGN_SYSTEM.buttons.heights.secondary, "inline-block")}>
                                     <div
@@ -863,7 +1062,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                     </div>
                                 </div>
 
-                                {/* 2. Query expansion (icon) */}
+                                {/* 2. Query expansion (icon) - disabled for keyword-only search */}
                                 <Tooltip open={openTooltip === "queryExpansion"}>
                                     <TooltipTrigger asChild>
                                         <div
@@ -873,18 +1072,28 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                 DESIGN_SYSTEM.buttons.heights.secondary,
                                                 "w-8 p-0 overflow-hidden border",
                                                 DESIGN_SYSTEM.radius.button,
-                                                toggles.queryExpansion ? "border-primary" : (isDark ? "border-border/50" : "border-border"),
-                                                isDark ? "bg-background" : "bg-white"
+                                                searchMethod === "keyword"
+                                                    ? (isDark ? "border-border/30 bg-background/50" : "border-border/50 bg-gray-50")
+                                                    : toggles.queryExpansion
+                                                        ? "border-primary"
+                                                        : (isDark ? "border-border/50" : "border-border"),
+                                                searchMethod !== "keyword" && (isDark ? "bg-background" : "bg-white")
                                             )}
                                         >
                                             <button
                                                 type="button"
-                                                onClick={() => handleToggle("queryExpansion", "query expansion")}
+                                                onClick={() => {
+                                                    if (searchMethod === "keyword") return; // Disabled for keyword search
+                                                    handleToggle("queryExpansion", "query expansion");
+                                                }}
+                                                disabled={searchMethod === "keyword"}
                                                 className={cn(
                                                     "h-full w-full flex items-center justify-center",
                                                     DESIGN_SYSTEM.radius.button,
                                                     DESIGN_SYSTEM.transitions.standard,
-                                                    toggles.queryExpansion
+                                                    searchMethod === "keyword"
+                                                        ? "text-muted-foreground/50 cursor-not-allowed"
+                                                        : toggles.queryExpansion
                                                         ? "text-primary hover:bg-primary/10"
                                                         : "text-foreground hover:bg-muted"
                                                 )}
@@ -902,7 +1111,13 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                     >
                                         <div className="space-y-2">
                                             <div className={DESIGN_SYSTEM.tooltip.title}>Query expansion</div>
+                                            {searchMethod === "keyword" ? (
+                                                <p className={DESIGN_SYSTEM.tooltip.description}>
+                                                    Not available with keyword search. Switch to hybrid or neural to use query expansion.
+                                                </p>
+                                            ) : (
                                             <p className={DESIGN_SYSTEM.tooltip.description}>Generates similar versions of your query to improve recall.</p>
+                                            )}
                                             <div className={DESIGN_SYSTEM.tooltip.divider}>
                                                 <a
                                                     href="https://docs.airweave.ai/search#query-expansion"
@@ -1047,73 +1262,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                     </TooltipContent>
                                 </Tooltip>
 
-                                {/* 5. Recency bias */}
-                                <Tooltip open={openTooltip === "recencyBias"}>
-                                    <TooltipTrigger asChild>
-                                        <div
-                                            onMouseEnter={() => handleTooltipMouseEnter("recencyBias")}
-                                            onMouseLeave={() => handleTooltipMouseLeave("recencyBias")}
-                                            className={cn(
-                                                DESIGN_SYSTEM.buttons.heights.secondary,
-                                                "w-8 p-0 overflow-hidden border",
-                                                DESIGN_SYSTEM.radius.button,
-                                                toggles.recencyBias ? "border-primary" : (isDark ? "border-border/50" : "border-border"),
-                                                isDark ? "bg-background" : "bg-white"
-                                            )}
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    handleToggle("recencyBias", "recency bias");
-                                                    // Open tooltip when enabling
-                                                    if (!toggles.recencyBias) {
-                                                        setOpenTooltip("recencyBias");
-                                                    }
-                                                }}
-                                                className={cn(
-                                                    "h-full w-full flex items-center justify-center",
-                                                    DESIGN_SYSTEM.radius.button,
-                                                    DESIGN_SYSTEM.transitions.standard,
-                                                    toggles.recencyBias
-                                                        ? "text-primary hover:bg-primary/10"
-                                                        : "text-foreground hover:bg-muted"
-                                                )}
-                                            >
-                                                <ClockArrowUp className="h-4 w-4" strokeWidth={1.5} />
-                                            </button>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent
-                                        side="bottom"
-                                        className={cn(DESIGN_SYSTEM.tooltip.content, "w-[240px] max-w-[90vw]")}
-                                        arrowClassName={DESIGN_SYSTEM.tooltip.arrow}
-                                        onMouseEnter={() => handleTooltipContentMouseEnter("recencyBias")}
-                                        onMouseLeave={() => handleTooltipContentMouseLeave("recencyBias")}
-                                    >
-                                        <div className="space-y-2">
-                                            <div className={DESIGN_SYSTEM.tooltip.title}>Recency bias</div>
-                                            <p className={DESIGN_SYSTEM.tooltip.description}>Prioritize recent documents. Higher values give more weight to newer content.</p>
-                                            <div className="pt-1 pb-1 px-1.5">
-                                                <RecencyBiasSlider
-                                                    value={recencyBiasValue}
-                                                    onChange={handleRecencyBiasChange}
-                                                />
-                                            </div>
-                                            <div className={DESIGN_SYSTEM.tooltip.divider}>
-                                                <a
-                                                    href="https://docs.airweave.ai/search#recency-bias"
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className={DESIGN_SYSTEM.tooltip.link}
-                                                >
-                                                    Docs
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                {/* 6. Re-ranking */}
+                                {/* 5. Re-ranking (Recency bias removed - feature under construction) */}
                                 <Tooltip open={openTooltip === "reRanking"}>
                                     <TooltipTrigger asChild>
                                         <div
@@ -1220,6 +1369,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         </div>
                                     </TooltipContent>
                                 </Tooltip>
+                                </>
+                                )}
                             </div>
 
                             {/* Right side send button with usage gating */}
@@ -1238,7 +1389,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                 }
                                                 void handleSendQuery();
                                             }}
-                                            disabled={isSearching ? false : (!hasQuery || !queriesAllowed || isCheckingUsage)}
+                                            disabled={isSearching ? false : (!hasQuery || !queriesAllowed || isCheckingUsage || disabled)}
                                             className={cn(
                                                 "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all",
                                                 isSearching
@@ -1249,7 +1400,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                         ? (isDark
                                                             ? "bg-gray-800 border-border hover:bg-muted text-foreground border-gray-700"
                                                             : "bg-white border-border hover:bg-muted text-foreground")
-                                                        : (hasQuery && queriesAllowed && !isCheckingUsage)
+                                                        : (hasQuery && queriesAllowed && !isCheckingUsage && !disabled)
                                                             ? (isDark
                                                                 ? "bg-gray-800 border-border hover:bg-muted text-foreground border-gray-700"
                                                                 : "bg-white border-border hover:bg-muted text-foreground")
@@ -1261,11 +1412,13 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                 ? "Stop search"
                                                 : canRetrySearch
                                                     ? (transientIssue?.message || "Connection interrupted. Click to retry.")
-                                                    : (!hasQuery
-                                                        ? "Type a question to enable"
-                                                        : (!queriesAllowed
-                                                            ? "Query limit reached — upgrade to run searches"
-                                                            : (isCheckingUsage ? "Checking usage..." : "Send query")))}
+                                                    : (disabled
+                                                        ? "Connect a source to enable search."
+                                                        : (!hasQuery
+                                                            ? "Type a question to enable"
+                                                            : (!queriesAllowed
+                                                                ? "Query limit reached — upgrade to run searches"
+                                                                : (isCheckingUsage ? "Checking usage..." : "Send query"))))}
                                         >
                                             {isSearching ? (
                                                 <Square className={cn(DESIGN_SYSTEM.icons.button, "text-red-500")} />
@@ -1349,15 +1502,25 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                             <ApiIntegrationDoc
                                 collectionReadableId={collectionId}
                                 query={query || "Ask a question about your data"}
-                                searchConfig={{
-                                    search_method: searchMethod,
-                                    expansion_strategy: toggles.queryExpansion ? "auto" : "no_expansion",
-                                    enable_query_interpretation: toggles.queryInterpretation,
-                                    recency_bias: toggles.recencyBias ? recencyBiasValue : 0.0,
-                                    enable_reranking: toggles.reRanking,
-                                    response_type: toggles.answer ? "completion" : "raw"
-                                }}
-                                filter={toggles.filter ? filterJson : null}
+                                {...(isAgenticMode
+                                    ? {
+                                          agenticConfig: {
+                                              mode: agenticMode,
+                                              filter: toBackendFilterGroups(agenticFilterGroups),
+                                          },
+                                      }
+                                    : {
+                                          searchConfig: {
+                                              search_method: searchMethod,
+                                              expansion_strategy: toggles.queryExpansion ? "auto" : "no_expansion",
+                                              enable_query_interpretation: toggles.queryInterpretation,
+                                              recency_bias: 0,
+                                              enable_reranking: toggles.reRanking,
+                                              response_type: toggles.answer ? "completion" : "raw",
+                                          },
+                                          filter: toggles.filter ? filterJson : null,
+                                      }
+                                )}
                                 apiKey={apiKey}
                             />
                         </div>

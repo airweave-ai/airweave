@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.logging import logger
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.connection_init_session import (
@@ -30,7 +30,7 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
         db: AsyncSession,
         *,
         obj_in: Dict[str, Any],
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> ConnectionInitSession:
         """Create a new ConnectionInitSession, filtering unknown fields.
@@ -66,7 +66,7 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
         db: AsyncSession,
         *,
         state: str,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Optional[ConnectionInitSession]:
         """Fetch a session by its state, scoped to the caller's org."""
         q = select(self.model).where(
@@ -141,7 +141,7 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
         *,
         session_id: UUID,
         final_connection_id: Optional[UUID],
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> Optional[ConnectionInitSession]:
         """Mark a session completed and store the resulting connection id."""
         obj = await self.get(db, id=session_id, ctx=ctx)

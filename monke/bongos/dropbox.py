@@ -338,7 +338,7 @@ class DropboxBongo(BaseBongo):
 
     def _get_file_extension(self, file_type: str) -> str:
         """Get file extension for a given file type."""
-        extensions = {"markdown": "md", "text": "txt", "json": "json", "csv": "csv", "yaml": "yml"}
+        extensions = {"markdown": "md", "text": "txt", "json": "json", "yaml": "yml"}
         return extensions.get(file_type, "txt")
 
     async def _rate_limit(self):

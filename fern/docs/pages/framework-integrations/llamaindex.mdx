@@ -1,0 +1,243 @@
+---
+title: LlamaIndex
+subtitle: Connect your LlamaIndex agent to Airweave for semantic search across all your synced data sources.
+slug: framework-integrations/llamaindex
+---
+
+The `llama-index-tools-airweave` package provides an `AirweaveToolSpec` that gives your LlamaIndex agents access to Airweave's semantic search capabilities.
+
+### Prerequisites
+
+Before you start you'll need:
+
+- **A collection with data**: at least one source connection must have completed its initial sync. See the [Quickstart](https://docs.airweave.ai/quickstart) if you need to set this up.
+- **An API key**: Create one in the Airweave dashboard under **API Keys**.
+
+### Installation
+
+```bash
+pip install llama-index llama-index-tools-airweave
+```
+
+### Quick Start
+
+```python
+import os
+import asyncio
+from llama_index.tools.airweave import AirweaveToolSpec
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.llms.openai import OpenAI
+
+# Initialize the Airweave tool
+airweave_tool = AirweaveToolSpec(
+    api_key=os.environ["AIRWEAVE_API_KEY"],
+)
+
+# Create an agent with the Airweave tools
+agent = FunctionAgent(
+    tools=airweave_tool.to_tool_list(),
+    llm=OpenAI(model="gpt-4o-mini"),
+    system_prompt="""You are a helpful assistant that can search through
+    Airweave collections to answer questions about your organization's data.""",
+)
+
+# Use the agent to search your data
+async def main():
+    response = await agent.run(
+        "Search the finance-data collection for Q4 revenue reports"
+    )
+    print(response)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Available Tools
+
+The `AirweaveToolSpec` provides five tools that your agent can use:
+
+#### `search_collection`
+
+Simple search in a collection with default settings (most common use case).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `collection_id` | str | The readable ID of the collection |
+| `query` | str | Your search query |
+| `limit` | int | Max results to return (default: 10) |
+| `offset` | int | Pagination offset (default: 0) |
+
+#### `advanced_search_collection`
+
+Advanced search with full control over retrieval parameters.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `collection_id` | str | The readable ID of the collection |
+| `query` | str | Your search query |
+| `limit` | int | Max results to return (default: 10) |
+| `offset` | int | Pagination offset (default: 0) |
+| `retrieval_strategy` | str | `"hybrid"`, `"neural"`, or `"keyword"` |
+| `temporal_relevance` | float | Weight recent content (0.0-1.0) |
+| `expand_query` | bool | Generate query variations |
+| `interpret_filters` | bool | Extract filters from natural language |
+| `rerank` | bool | Use LLM-based reranking |
+| `generate_answer` | bool | Generate natural language answer |
+
+Returns a dictionary with `documents` list and optional `answer` field.
+
+#### `search_and_generate_answer`
+
+Convenience method that searches and returns a direct natural language answer (RAG-style).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `collection_id` | str | The readable ID of the collection |
+| `query` | str | Your question in natural language |
+| `limit` | int | Max results to consider (default: 10) |
+| `use_reranking` | bool | Use reranking (default: True) |
+
+#### `list_collections`
+
+List all collections in your organization.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `skip` | int | Pagination skip (default: 0) |
+| `limit` | int | Max collections to return (default: 100) |
+
+#### `get_collection_info`
+
+Get detailed information about a specific collection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `collection_id` | str | The readable ID of the collection |
+
+### Advanced Examples
+
+#### Direct Tool Usage
+
+You can use the tools directly without an agent:
+
+```python
+from llama_index.tools.airweave import AirweaveToolSpec
+
+airweave_tool = AirweaveToolSpec(api_key="your-key")
+
+# List collections
+collections = airweave_tool.list_collections()
+print(f"Found {len(collections)} collections")
+
+# Simple search
+results = airweave_tool.search_collection(
+    collection_id="finance-data",
+    query="Q4 revenue reports",
+    limit=5
+)
+
+for doc in results:
+    print(f"Score: {doc.metadata.get('score', 'N/A')}")
+    print(f"Text: {doc.text[:200]}...")
+```
+
+#### Advanced Search with All Options
+
+```python
+result = airweave_tool.advanced_search_collection(
+    collection_id="finance-data",
+    query="Q4 revenue reports",
+    limit=20,
+    retrieval_strategy="hybrid",
+    temporal_relevance=0.3,
+    expand_query=True,
+    interpret_filters=True,
+    rerank=True,
+    generate_answer=True,
+)
+
+documents = result["documents"]
+if "answer" in result:
+    print(f"Generated Answer: {result['answer']}")
+```
+
+#### RAG-Style Direct Answers
+
+```python
+answer = airweave_tool.search_and_generate_answer(
+    collection_id="finance-data",
+    query="What was our Q4 revenue growth?",
+    limit=10,
+    use_reranking=True,
+)
+print(answer)  # "Q4 revenue grew by 23% to $45M compared to Q3..."
+```
+
+#### Using Different Retrieval Strategies
+
+```python
+# Keyword search for exact term matching
+results = airweave_tool.advanced_search_collection(
+    collection_id="legal-docs",
+    query="GDPR compliance",
+    retrieval_strategy="keyword",
+)
+
+# Neural search for semantic understanding
+results = airweave_tool.advanced_search_collection(
+    collection_id="research-papers",
+    query="papers about transformer architectures",
+    retrieval_strategy="neural",
+)
+
+# Hybrid search (default) - best of both worlds
+results = airweave_tool.advanced_search_collection(
+    collection_id="all-docs",
+    query="machine learning best practices",
+    retrieval_strategy="hybrid",
+)
+```
+
+#### Temporal Relevance
+
+Weight recent documents higher in results:
+
+```python
+results = airweave_tool.advanced_search_collection(
+    collection_id="news-articles",
+    query="AI breakthroughs",
+    temporal_relevance=0.8,  # 0.0 = no recency bias, 1.0 = only recent matters
+)
+```
+
+### Custom Base URL
+
+If you're self-hosting Airweave:
+
+```python
+airweave_tool = AirweaveToolSpec(
+    api_key="your-api-key",
+    base_url="https://your-airweave-instance.com",
+)
+```
+
+### Using with Local Models
+
+```bash
+pip install llama-index-llms-ollama
+```
+
+```python
+from llama_index.llms.ollama import Ollama
+
+agent = FunctionAgent(
+    tools=airweave_tool.to_tool_list(),
+    llm=Ollama(model="llama3.1", request_timeout=360.0),
+)
+```
+
+### Learn More
+
+- [LlamaIndex Documentation](https://docs.llamaindex.ai/)
+- [LlamaIndex Airweave Tool on LlamaHub](https://llamahub.ai/l/tools/llama-index-tools-airweave?from=all)
+- [Airweave GitHub](https://github.com/airweave-ai/airweave)

@@ -1,0 +1,126 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/unit-tests.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/unit-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0  # Full history for diff-cover
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+        with:
+          version: 1.8.2
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ./backend/.venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Install project
+        run: poetry install --no-interaction
+
+      - name: Write coverage config
+        run: |
+          cat > .coveragerc << 'EOF'
+          [run]
+          omit =
+              airweave/platform/sources/*
+              airweave/platform/entities/*
+              airweave/domains/sources/*
+              airweave/domains/entities/*
+              **/fake.py
+              **/fakes/*
+              **/tests/*
+          EOF
+
+      - name: Run unit tests with coverage
+        run: >
+          poetry run pytest
+          tests/unit/
+          airweave/
+          -m "not slow"
+          --cov=airweave
+          --cov-config=.coveragerc
+          --cov-report=xml:coverage.xml
+          --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./backend/coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+
+      - name: Run live integration tests (storage backends)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          # AWS credentials
+          AWS_ACCESS_KEY_ID: ${{ secrets.STORAGE_TEST_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_TEST_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+          # Azure credentials
+          AZURE_CLIENT_ID: ${{ secrets.STORAGE_TEST_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.STORAGE_TEST_AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.STORAGE_TEST_AZURE_TENANT_ID }}
+          # GCP credentials
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.STORAGE_TEST_GCP_CREDENTIALS_JSON }}
+          # Airweave Settings required by transitive import chain (not used by storage tests)
+          FIRST_SUPERUSER: "test@test.com"
+          FIRST_SUPERUSER_PASSWORD: "testpassword"
+          ENCRYPTION_KEY: "test-encryption-key-for-ci-only"
+          STATE_SECRET: "test-state-secret-for-ci-only-must-be-32-chars-long"
+          POSTGRES_HOST: "localhost"
+          POSTGRES_USER: "test"
+          POSTGRES_PASSWORD: "test"
+        run: |
+          # Write GCP credentials to file
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/gcp-creds.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-creds.json
+          poetry run pytest tests/integration/storage/ -m "live_integration" -v --tb=short
+
+      - name: Install diff-cover
+        if: github.event_name == 'pull_request'
+        run: pip install diff-cover
+
+      - name: Check diff coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          diff-cover coverage.xml \
+            --compare-branch=origin/${{ github.base_ref }} \
+            --fail-under=80

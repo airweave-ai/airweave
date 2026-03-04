@@ -1,0 +1,255 @@
+---
+title: "Pipedrive"
+description: "Pipedrive integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Pipedrive logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Pipedrive</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Pipedrive through Airweave's unified search layer.
+
+## Configuration
+
+Pipedrive source connector integrates with the Pipedrive CRM API to extract CRM data.
+
+Synchronizes customer relationship management data including persons, organizations,
+deals, activities, products, leads, and notes.
+
+Uses API token authentication.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/pipedrive.py"
+>
+  Explore the Pipedrive connector implementation
+</Card>
+
+### Authentication
+
+This connector uses a custom authentication configuration.
+
+<Card
+  title="Authentication Configuration"
+  className="auth-config-card"
+  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
+>
+
+Pipedrive authentication credentials schema.
+
+<ParamField
+  path="api_token"
+  type="str"
+  required={true}
+>
+  Your Pipedrive API token. Find it in Settings &gt; Personal preferences &gt; API.
+</ParamField>
+</Card>
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="PipedrivePersonEntity">
+
+Schema for Pipedrive person (contact) entities.
+
+Reference:
+    https://developers.pipedrive.com/docs/api/v1/Persons
+
+| Field | Type | Description |
+|-------|------|-------------|
+| person_id | str | The Pipedrive person ID. |
+| display_name | str | Display name of the person. |
+| created_time | datetime | When the person was created. |
+| updated_time | datetime | When the person was last updated. |
+| first_name | Optional[str] | The person's first name. |
+| last_name | Optional[str] | The person's last name. |
+| email | Optional[str] | Primary email address. |
+| phone | Optional[str] | Primary phone number. |
+| organization_id | Optional[int] | ID of the linked organization. |
+| organization_name | Optional[str] | Name of the linked organization. |
+| owner_id | Optional[int] | ID of the user who owns the person. |
+| properties | Dict[str, Any] | All properties from Pipedrive person object. |
+| active_flag | bool | Whether the person is active. |
+| web_url_value | Optional[str] | URL to view this person in Pipedrive. |
+
+</Accordion>
+<Accordion title="PipedriveOrganizationEntity">
+
+Schema for Pipedrive organization (company) entities.
+
+Reference:
+    https://developers.pipedrive.com/docs/api/v1/Organizations
+
+| Field | Type | Description |
+|-------|------|-------------|
+| organization_id | str | The Pipedrive organization ID. |
+| organization_name | str | Name of the organization. |
+| created_time | datetime | When the organization was created. |
+| updated_time | datetime | When the organization was last updated. |
+| address | Optional[str] | Organization address. |
+| owner_id | Optional[int] | ID of the user who owns the organization. |
+| people_count | Optional[int] | Number of people linked to the organization. |
+| properties | Dict[str, Any] | All properties from Pipedrive organization object. |
+| active_flag | bool | Whether the organization is active. |
+| web_url_value | Optional[str] | URL to view this organization in Pipedrive. |
+
+</Accordion>
+<Accordion title="PipedriveDealEntity">
+
+Schema for Pipedrive deal entities.
+
+Reference:
+    https://developers.pipedrive.com/docs/api/v1/Deals
+
+| Field | Type | Description |
+|-------|------|-------------|
+| deal_id | str | The Pipedrive deal ID. |
+| deal_title | str | Title of the deal. |
+| created_time | datetime | When the deal was created. |
+| updated_time | datetime | When the deal was last updated. |
+| value | Optional[float] | Monetary value of the deal. |
+| currency | Optional[str] | Currency of the deal value. |
+| status | Optional[str] | Status of the deal (open, won, lost, deleted). |
+| stage_id | Optional[int] | ID of the pipeline stage. |
+| stage_name | Optional[str] | Name of the pipeline stage. |
+| pipeline_id | Optional[int] | ID of the pipeline. |
+| pipeline_name | Optional[str] | Name of the pipeline. |
+| person_id | Optional[int] | ID of the linked person. |
+| person_name | Optional[str] | Name of the linked person. |
+| organization_id | Optional[int] | ID of the linked organization. |
+| organization_name | Optional[str] | Name of the linked organization. |
+| owner_id | Optional[int] | ID of the user who owns the deal. |
+| expected_close_date | Optional[datetime] | Expected close date of the deal. |
+| probability | Optional[float] | Deal success probability (0-100). |
+| properties | Dict[str, Any] | All properties from Pipedrive deal object. |
+| active_flag | bool | Whether the deal is active. |
+| web_url_value | Optional[str] | URL to view this deal in Pipedrive. |
+
+</Accordion>
+<Accordion title="PipedriveActivityEntity">
+
+Schema for Pipedrive activity entities (tasks, calls, meetings).
+
+Reference:
+    https://developers.pipedrive.com/docs/api/v1/Activities
+
+| Field | Type | Description |
+|-------|------|-------------|
+| activity_id | str | The Pipedrive activity ID. |
+| activity_subject | str | Subject/title of the activity. |
+| created_time | datetime | When the activity was created. |
+| updated_time | datetime | When the activity was last updated. |
+| activity_type | Optional[str] | Type of activity (call, meeting, task, etc.). |
+| due_date | Optional[datetime] | Due date of the activity. |
+| due_time | Optional[str] | Due time of the activity. |
+| duration | Optional[str] | Duration of the activity. |
+| done | bool | Whether the activity is done. |
+| note | Optional[str] | Note/description of the activity. |
+| deal_id | Optional[int] | ID of the linked deal. |
+| deal_title | Optional[str] | Title of the linked deal. |
+| person_id | Optional[int] | ID of the linked person. |
+| person_name | Optional[str] | Name of the linked person. |
+| organization_id | Optional[int] | ID of the linked organization. |
+| organization_name | Optional[str] | Name of the linked organization. |
+| owner_id | Optional[int] | ID of the user who owns the activity. |
+| properties | Dict[str, Any] | All properties from Pipedrive activity object. |
+| active_flag | bool | Whether the activity is active. |
+| web_url_value | Optional[str] | URL to view this activity in Pipedrive. |
+
+</Accordion>
+<Accordion title="PipedriveProductEntity">
+
+Schema for Pipedrive product entities.
+
+Reference:
+    https://developers.pipedrive.com/docs/api/v1/Products
+
+| Field | Type | Description |
+|-------|------|-------------|
+| product_id | str | The Pipedrive product ID. |
+| product_name | str | Name of the product. |
+| created_time | datetime | When the product was created. |
+| updated_time | datetime | When the product was last updated. |
+| code | Optional[str] | Product code/SKU. |
+| description | Optional[str] | Product description. |
+| unit | Optional[str] | Unit of the product. |
+| tax | Optional[float] | Tax percentage. |
+| category | Optional[str] | Product category. |
+| owner_id | Optional[int] | ID of the user who owns the product. |
+| prices | Dict[str, Any] | Product prices in different currencies. |
+| properties | Dict[str, Any] | All properties from Pipedrive product object. |
+| active_flag | bool | Whether the product is active. |
+| web_url_value | Optional[str] | URL to view this product in Pipedrive. |
+
+</Accordion>
+<Accordion title="PipedriveLeadEntity">
+
+Schema for Pipedrive lead entities.
+
+Reference:
+    https://developers.pipedrive.com/docs/api/v1/Leads
+
+| Field | Type | Description |
+|-------|------|-------------|
+| lead_id | str | The Pipedrive lead ID. |
+| lead_title | str | Title of the lead. |
+| created_time | datetime | When the lead was created. |
+| updated_time | datetime | When the lead was last updated. |
+| value | Optional[float] | Potential value of the lead. |
+| currency | Optional[str] | Currency of the lead value. |
+| expected_close_date | Optional[datetime] | Expected close date. |
+| person_id | Optional[int] | ID of the linked person. |
+| person_name | Optional[str] | Name of the linked person. |
+| organization_id | Optional[int] | ID of the linked organization. |
+| organization_name | Optional[str] | Name of the linked organization. |
+| owner_id | Optional[int] | ID of the user who owns the lead. |
+| source_name | Optional[str] | Source of the lead. |
+| label_ids | Optional[List[str]] | List of label IDs. |
+| properties | Dict[str, Any] | All properties from Pipedrive lead object. |
+| is_archived | bool | Whether the lead is archived. |
+| web_url_value | Optional[str] | URL to view this lead in Pipedrive. |
+
+</Accordion>
+<Accordion title="PipedriveNoteEntity">
+
+Schema for Pipedrive note entities.
+
+Reference:
+    https://developers.pipedrive.com/docs/api/v1/Notes
+
+| Field | Type | Description |
+|-------|------|-------------|
+| note_id | str | The Pipedrive note ID. |
+| note_title | str | Title/summary of the note. |
+| created_time | datetime | When the note was created. |
+| updated_time | datetime | When the note was last updated. |
+| content | Optional[str] | Content of the note. |
+| deal_id | Optional[int] | ID of the linked deal. |
+| deal_title | Optional[str] | Title of the linked deal. |
+| person_id | Optional[int] | ID of the linked person. |
+| person_name | Optional[str] | Name of the linked person. |
+| organization_id | Optional[int] | ID of the linked organization. |
+| organization_name | Optional[str] | Name of the linked organization. |
+| lead_id | Optional[str] | ID of the linked lead. |
+| user_id | Optional[int] | ID of the user who created the note. |
+| pinned_to_deal_flag | bool | Whether the note is pinned to a deal. |
+| pinned_to_person_flag | bool | Whether the note is pinned to a person. |
+| pinned_to_organization_flag | bool | Whether the note is pinned to an organization. |
+| properties | Dict[str, Any] | All properties from Pipedrive note object. |
+| active_flag | bool | Whether the note is active. |
+| web_url_value | Optional[str] | URL to view this note in Pipedrive. |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

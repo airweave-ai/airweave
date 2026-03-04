@@ -670,7 +670,9 @@ class TemporalScheduleService:
         )
 
         sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
-        collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
+        collection_schema = schemas.CollectionRecord.model_validate(
+            collection, from_attributes=True
+        )
 
         # Convert to dicts for Temporal workflow
         sync_dict = sync_schema.model_dump(mode="json")

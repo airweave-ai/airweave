@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
@@ -29,4 +29,10 @@ class SyncConnection(Base):
         "Connection",
         back_populates="sync_connections",
         lazy="noload",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("sync_id", "connection_id", name="uq_sync_connection"),
+        Index("idx_sync_connection_sync_id", "sync_id"),
+        Index("idx_sync_connection_connection_id", "connection_id"),
     )

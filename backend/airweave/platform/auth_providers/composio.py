@@ -1,6 +1,6 @@
 """Composio Test Auth Provider - provides authentication services for other integrations."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import httpx
 from fastapi import HTTPException
@@ -10,14 +10,16 @@ from airweave.core.credential_sanitizer import (
     sanitize_credentials_dict,
 )
 from airweave.platform.auth_providers._base import BaseAuthProvider
+from airweave.platform.configs.auth import ComposioAuthConfig
+from airweave.platform.configs.config import ComposioConfig
 from airweave.platform.decorators import auth_provider
 
 
 @auth_provider(
     name="Composio",
     short_name="composio",
-    auth_config_class="ComposioAuthConfig",
-    config_class="ComposioConfig",
+    auth_config_class=ComposioAuthConfig,
+    config_class=ComposioConfig,
 )
 class ComposioAuthProvider(BaseAuthProvider):
     """Composio authentication provider."""
@@ -27,6 +29,8 @@ class ComposioAuthProvider(BaseAuthProvider):
         "postgresql",
         "ctti",
         "sharepoint",
+        "document360",
+        "slab",
     ]
 
     # Mapping of Airweave field names to Composio field names
@@ -72,6 +76,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         instance.api_key = credentials["api_key"]
         instance.auth_config_id = config.get("auth_config_id")
         instance.account_id = config.get("account_id")
+        instance._last_credential_blob = None
         return instance
 
     def _get_composio_slug(self, airweave_short_name: str) -> str:
@@ -167,13 +172,17 @@ class ComposioAuthProvider(BaseAuthProvider):
         return all_accounts
 
     async def get_creds_for_source(
-        self, source_short_name: str, source_auth_config_fields: List[str]
+        self,
+        source_short_name: str,
+        source_auth_config_fields: List[str],
+        optional_fields: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """Get credentials for a specific source integration.
 
         Args:
             source_short_name: The short name of the source to get credentials for
             source_auth_config_fields: The fields required for the source auth config
+            optional_fields: Fields that can be skipped if not available in Composio
 
         Returns:
             Credentials dictionary for the source
@@ -194,6 +203,8 @@ class ComposioAuthProvider(BaseAuthProvider):
             )
 
         self.logger.info(f"📋 [Composio] Required auth fields: {source_auth_config_fields}")
+        if optional_fields:
+            self.logger.info(f"📋 [Composio] Optional auth fields: {optional_fields}")
         self.logger.info(
             f"🔑 [Composio] Using auth_config_id='{self.auth_config_id}', "
             f"account_id='{self.account_id}'"
@@ -205,14 +216,17 @@ class ComposioAuthProvider(BaseAuthProvider):
                 client, composio_slug, source_short_name
             )
 
-            # Find the matching connection
+            # Find the matching connection (also caches blob for get_config_for_source)
             source_creds_dict = self._find_matching_connection(
                 source_connected_accounts, source_short_name
             )
 
             # Map and validate required fields
             found_credentials = self._map_and_validate_fields(
-                source_creds_dict, source_auth_config_fields, source_short_name
+                source_creds_dict,
+                source_auth_config_fields,
+                source_short_name,
+                optional_fields=optional_fields,
             )
 
             safe_log_credentials(
@@ -314,6 +328,9 @@ class ComposioAuthProvider(BaseAuthProvider):
                 )
                 source_creds_dict = connected_account.get("state", {}).get("val")
 
+                # Cache the full credential blob for get_config_for_source
+                self._last_credential_blob = source_creds_dict
+
                 # Log available credential fields
                 if source_creds_dict:
                     available_fields = list(source_creds_dict.keys())
@@ -348,24 +365,27 @@ class ComposioAuthProvider(BaseAuthProvider):
         source_creds_dict: Dict[str, Any],
         source_auth_config_fields: List[str],
         source_short_name: str,
+        optional_fields: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
-        """Map Airweave field names to Composio fields and validate all required fields exist.
+        """Map Airweave field names to Composio fields and validate required fields exist.
 
         Args:
             source_creds_dict: The credentials dictionary from Composio
-            source_auth_config_fields: Required auth fields
+            source_auth_config_fields: Auth fields to fetch
             source_short_name: The source short name
+            optional_fields: Fields that can be skipped if not found in Composio
 
         Returns:
             Dictionary with mapped credentials
 
         Raises:
-            HTTPException: If required fields are missing
+            HTTPException: If required (non-optional) fields are missing
         """
-        missing_fields = []
+        missing_required_fields = []
         found_credentials = {}
+        _optional_fields = optional_fields or set()
 
-        self.logger.info("🔍 [Composio] Checking for required auth fields...")
+        self.logger.info("🔍 [Composio] Checking for auth fields...")
 
         for airweave_field in source_auth_config_fields:
             # Map the field name if needed
@@ -398,34 +418,66 @@ class ComposioAuthProvider(BaseAuthProvider):
                     break
 
             if not found:
-                missing_fields.append(airweave_field)
-                self.logger.warning(
-                    f"\n  ❌ Missing field: '{airweave_field}' (looked for "
-                    f"{possible_fields} in Composio)\n"
-                )
+                if airweave_field in _optional_fields:
+                    self.logger.info(
+                        f"\n  ⏭️ Skipping optional field: '{airweave_field}' "
+                        f"(not available in Composio)\n"
+                    )
+                else:
+                    missing_required_fields.append(airweave_field)
+                    self.logger.warning(
+                        f"\n  ❌ Missing required field: '{airweave_field}' (looked for "
+                        f"{possible_fields} in Composio)\n"
+                    )
 
-        if missing_fields:
+        if missing_required_fields:
             available_fields = list(source_creds_dict.keys())
             self.logger.error(
                 f"\n❌ [Composio] Missing required fields! "
-                f"Required: {source_auth_config_fields}, "
-                f"Missing: {missing_fields}, "
+                f"Required: {[f for f in source_auth_config_fields if f not in _optional_fields]}, "
+                f"Missing: {missing_required_fields}, "
                 f"Available in Composio: {available_fields}\n"
             )
             raise HTTPException(
                 status_code=422,
                 detail=f"Missing required auth fields for source '{source_short_name}': "
-                f"{missing_fields}. "
-                f"Required fields: {source_auth_config_fields}. "
+                f"{missing_required_fields}. "
                 f"Available fields in Composio credentials: {available_fields}",
             )
 
         self.logger.info(
-            f"\n✅ [Composio] Successfully retrieved all {len(found_credentials)} required "
+            f"\n✅ [Composio] Successfully retrieved {len(found_credentials)} "
             f"credential fields for source '{source_short_name}'\n"
         )
 
         return found_credentials
+
+    async def get_config_for_source(
+        self,
+        source_short_name: str,
+        source_config_field_mappings: Dict[str, str],
+    ) -> Dict[str, Any]:
+        """Extract config fields from the cached Composio credential blob.
+
+        Called after get_creds_for_source which caches the full credential blob.
+
+        Args:
+            source_short_name: The short name of the source
+            source_config_field_mappings: Mapping of config_field_name -> provider_field_name
+
+        Returns:
+            Dict of config field values found in the credential blob
+        """
+        blob = getattr(self, "_last_credential_blob", None) or {}
+        result = {}
+        for config_field, provider_field in source_config_field_mappings.items():
+            if provider_field in blob:
+                result[config_field] = blob[provider_field]
+                self.logger.info(
+                    f"🔧 [Composio] Extracted config field '{config_field}' "
+                    f"from provider field '{provider_field}'"
+                )
+        return result
 
     async def validate(self) -> bool:
         """Validate that the Composio connection works by testing API access.

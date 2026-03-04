@@ -12,6 +12,8 @@ description: "Bitbucket integration with Airweave"
   <h1 style={{ margin: 0 }}>Bitbucket</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Bitbucket through Airweave's unified search layer.
+
 ## Configuration
 
 Bitbucket source connector integrates with the Bitbucket REST API to extract data.
@@ -117,26 +119,26 @@ The following data models are available for this connector:
 
 Schema for Bitbucket workspace entity.
 
-Reference:
-    https://developer.atlassian.com/cloud/bitbucket/rest/api-group-workspaces/
-
 | Field | Type | Description |
 |-------|------|-------------|
-| slug | str | Workspace slug identifier |
 | uuid | str | Workspace UUID |
+| display_name | str | Display name of the workspace |
+| created_on | Optional[datetime] | Workspace creation timestamp |
+| slug | str | Workspace slug identifier |
 | is_private | bool | Whether the workspace is private |
-| url | Optional[str] | URL to view the workspace |
+| html_url | Optional[str] | URL to view the workspace |
 
 </Accordion>
 <Accordion title="BitbucketRepositoryEntity">
 
 Schema for Bitbucket repository entity.
 
-Reference:
-    https://developer.atlassian.com/cloud/bitbucket/rest/api-group-repositories/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| uuid | str | Repository UUID |
+| repo_name | str | Repository display name |
+| created_on | datetime | Repository creation timestamp |
+| updated_on | datetime | Last update timestamp |
 | slug | str | Repository slug |
 | full_name | str | Full repository name including workspace |
 | description | Optional[str] | Repository description |
@@ -146,7 +148,7 @@ Reference:
 | size | Optional[int] | Size of the repository in bytes |
 | mainbranch | Optional[str] | Main branch name |
 | workspace_slug | str | Slug of the parent workspace |
-| url | Optional[str] | URL to view the repository |
+| html_url | Optional[str] | URL to view the repository |
 
 </Accordion>
 <Accordion title="BitbucketDirectoryEntity">
@@ -155,22 +157,25 @@ Schema for Bitbucket directory entity.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| path_id | str | Unique identifier for the directory path |
+| directory_name | str | Display name of the directory |
 | path | str | Path of the directory within the repository |
+| branch | Optional[str] | Branch for this directory view |
 | repo_slug | str | Slug of the repository containing this directory |
 | repo_full_name | str | Full name of the repository |
 | workspace_slug | str | Slug of the workspace |
-| url | Optional[str] | URL to view the directory |
+| html_url | Optional[str] | URL to view the directory |
 
 </Accordion>
 <Accordion title="BitbucketCodeFileEntity">
 
 Schema for Bitbucket code file entity.
 
-Reference:
-    https://developer.atlassian.com/cloud/bitbucket/rest/api-group-source/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| file_id | str | Unique identifier for the file path |
+| file_name | str | Display name of the file |
+| branch | Optional[str] | Branch for this file version |
 | commit_hash | Optional[str] | Commit hash of the file version |
 | repo_slug | str | Slug of the repository |
 | repo_full_name | str | Full name of the repository |

@@ -12,6 +12,8 @@ description: "Sharepoint integration with Airweave"
   <h1 style={{ margin: 0 }}>Sharepoint</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Sharepoint through Airweave's unified search layer.
+
 ## Configuration
 
 SharePoint source connector integrates with the Microsoft Graph API.
@@ -56,7 +58,8 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| display_name | Optional[str] | The name displayed in the address book for the user. |
+| id | str | SharePoint user ID. |
+| display_name | str | The name displayed in the address book for the user. |
 | user_principal_name | Optional[str] | The user principal name (UPN) of the user (e.g., user@contoso.com). |
 | mail | Optional[str] | The SMTP address for the user. |
 | job_title | Optional[str] | The user's job title. |
@@ -65,6 +68,7 @@ Reference:
 | mobile_phone | Optional[str] | The primary cellular telephone number for the user. |
 | business_phones | Optional[List[str]] | The telephone numbers for the user. |
 | account_enabled | Optional[bool] | Whether the account is enabled. |
+| web_url_override | Optional[str] | Link to the user's profile in SharePoint. |
 
 </Accordion>
 <Accordion title="SharePointGroupEntity">
@@ -76,13 +80,15 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| display_name | Optional[str] | The display name for the group. |
+| id | str | Group ID. |
+| display_name | str | The display name for the group. |
 | description | Optional[str] | An optional description for the group. |
 | mail | Optional[str] | The SMTP address for the group. |
 | mail_enabled | Optional[bool] | Whether the group is mail-enabled. |
 | security_enabled | Optional[bool] | Whether the group is a security group. |
 | group_types | List[str] | Specifies the group type (e.g., 'Unified' for Microsoft 365 groups). |
 | visibility | Optional[str] | Visibility of the group (Public, Private, HiddenMembership). |
+| web_url_override | Optional[str] | Link to the group in Microsoft 365. |
 
 </Accordion>
 <Accordion title="SharePointSiteEntity">
@@ -94,10 +100,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| display_name | Optional[str] | The full title for the site. |
+| id | str | Site ID from Microsoft Graph. |
+| display_name | str | The full title for the site. |
 | site_name | Optional[str] | The name/title of the site. |
 | description | Optional[str] | The descriptive text for the site. |
-| web_url | Optional[str] | URL that displays the site in the browser. |
+| web_url_override | Optional[str] | URL that displays the site in the browser. |
 | is_personal_site | Optional[bool] | Whether the site is a personal site. |
 | site_collection | Optional[Dict[str, Any]] | Details about the site's site collection. |
 
@@ -111,9 +118,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Drive ID. |
+| name | str | Drive name. |
 | description | Optional[str] | User-visible description of the drive. |
 | drive_type | Optional[str] | Type of drive (documentLibrary, business, etc.). |
-| web_url | Optional[str] | URL to view the drive in a browser. |
+| web_url_override | Optional[str] | URL to view the drive in a browser. |
 | owner | Optional[Dict[str, Any]] | Information about the drive's owner. |
 | quota | Optional[Dict[str, Any]] | Information about the drive's storage quota. |
 | site_id | Optional[str] | ID of the site that contains this drive. |
@@ -128,8 +137,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Drive item ID. |
+| name | str | Graph item name. |
 | description | Optional[str] | User-visible description of the item. |
-| web_url | Optional[str] | URL to display the item in a browser. |
+| web_url_override | Optional[str] | URL to display the item in a browser. |
 | file | Optional[Dict[str, Any]] | File metadata if the item is a file (e.g., mimeType, hashes). |
 | folder | Optional[Dict[str, Any]] | Folder metadata if the item is a folder (e.g., childCount). |
 | parent_reference | Optional[Dict[str, Any]] | Information about the parent of this item (driveId, path, etc). |
@@ -148,10 +159,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| display_name | Optional[str] | The displayable title of the list. |
+| id | str | List ID. |
+| display_name | str | The displayable title of the list. |
 | list_name | Optional[str] | The name of the list. |
 | description | Optional[str] | The description of the list. |
-| web_url | Optional[str] | URL to view the list in browser. |
+| web_url_override | Optional[str] | URL to view the list in browser. |
 | list_info | Optional[Dict[str, Any]] | Additional list metadata (template, hidden, etc). |
 | site_id | Optional[str] | ID of the site that contains this list. |
 
@@ -165,11 +177,13 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | List item ID. |
+| title | str | Display title for the list item. |
 | fields | Optional[Dict[str, Any]] | The values of the columns set on this list item (dynamic schema). |
 | content_type | Optional[Dict[str, Any]] | The content type of this list item. |
 | created_by | Optional[Dict[str, Any]] | Identity of the user who created the item. |
 | last_modified_by | Optional[Dict[str, Any]] | Identity of the user who last modified the item. |
-| web_url | Optional[str] | URL to view the item in browser. |
+| web_url_override | Optional[str] | URL to view the item in browser. |
 | list_id | Optional[str] | ID of the list that contains this item. |
 | site_id | Optional[str] | ID of the site that contains this item. |
 
@@ -183,12 +197,13 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| title | Optional[str] | The title of the page. |
+| id | str | Page ID. |
+| title | str | The title of the page. |
 | page_name | Optional[str] | The name of the page. |
 | content | Optional[str] | The actual page content (extracted from webParts). |
 | description | Optional[str] | Description or summary of the page content. |
 | page_layout | Optional[str] | The layout type of the page (article, home, etc). |
-| web_url | Optional[str] | URL to view the page in browser. |
+| web_url_override | Optional[str] | URL to view the page in browser. |
 | created_by | Optional[Dict[str, Any]] | Identity of the user who created the page. |
 | last_modified_by | Optional[Dict[str, Any]] | Identity of the user who last modified the page. |
 | publishing_state | Optional[Dict[str, Any]] | Publishing status of the page. |

@@ -24,6 +24,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import StripeAuthConfig
+from airweave.platform.configs.config import StripeConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.stripe import (
@@ -52,8 +53,8 @@ from airweave.schemas.source_connection import AuthenticationMethod
     short_name="stripe",
     auth_methods=[AuthenticationMethod.DIRECT, AuthenticationMethod.AUTH_PROVIDER],
     oauth_type=None,
-    auth_config_class="StripeAuthConfig",
-    config_class="StripeConfig",
+    auth_config_class=StripeAuthConfig,
+    config_class=StripeConfig,
     labels=["Payment"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

@@ -12,6 +12,8 @@ description: "Notion integration with Airweave"
   <h1 style={{ margin: 0 }}>Notion</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Notion through Airweave's unified search layer.
+
 ## Configuration
 
 Notion source connector integrates with the Notion API to extract and synchronize content.
@@ -52,7 +54,10 @@ Schema for a Notion database.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| database_id | str | The ID of the database. |
 | title | str | The title of the database |
+| created_time | Optional[datetime] | When the database was created. |
+| updated_time | Optional[datetime] | When the database was last edited. |
 | description | str | The description of the database |
 | properties | Dict[str, Any] | Database properties schema |
 | properties_text | Optional[str] | Human-readable schema description |
@@ -71,9 +76,12 @@ Schema for a Notion page with aggregated content.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| page_id | str | The ID of the page. |
 | parent_id | str | The ID of the parent |
 | parent_type | str | The type of the parent (workspace, page_id, database_id, etc.) |
 | title | str | The title of the page |
+| created_time | Optional[datetime] | When the page was created. |
+| updated_time | Optional[datetime] | When the page was last edited. |
 | content | Optional[str] | Full aggregated content |
 | properties | Dict[str, Any] | Formatted page properties for search |
 | properties_text | Optional[str] | Human-readable properties text |
@@ -94,6 +102,7 @@ Schema for a Notion database page property.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| property_key | str | Stable unique identifier for the property entity. |
 | property_id | str | The ID of the property |
 | property_name | str | The name of the property |
 | property_type | str | The type of the property |
@@ -113,8 +122,10 @@ Reference:
 | Field | Type | Description |
 |-------|------|-------------|
 | file_id | str | ID of the file in Notion |
+| file_name | str | Display name of the file |
 | expiry_time | Optional[datetime] | When the file URL expires (for Notion-hosted files) |
 | caption | str | The caption of the file |
+| web_url_value | Optional[str] | Link to view/download the file. |
 
 </Accordion>
 

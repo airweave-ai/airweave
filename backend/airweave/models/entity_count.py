@@ -53,5 +53,4 @@ class EntityCount(Base):
         ),
         Index("idx_entity_count_sync_id", "sync_id"),
         Index("idx_entity_count_entity_def_id", "entity_definition_id"),
-        Index("idx_entity_count_sync_def", "sync_id", "entity_definition_id"),
     )

@@ -4,6 +4,8 @@ omit =
     app/alembic/*
     app/tests/*
     app/local.py
+    **/fake*.py
+    **/fakes/**
 
 [report]
 exclude_lines =
@@ -13,3 +15,7 @@ exclude_lines =
     if __name__ == .__main__.:
     pass
     raise ImportError
+    # Bare Ellipsis used as protocol/abstract stub body.
+    # Matches all bare `...` lines; acceptable because this
+    # codebase only uses `...` for stub bodies.
+    ^\s*\.\.\.\s*$

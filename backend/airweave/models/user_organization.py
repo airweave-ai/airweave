@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, Boolean, ForeignKey, String
+from sqlalchemy import UUID, Boolean, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
@@ -31,3 +31,5 @@ class UserOrganization(Base):
     organization: Mapped["Organization"] = relationship(
         "Organization", back_populates="user_organizations", lazy="noload"
     )
+
+    __table_args__ = (UniqueConstraint("user_id", "organization_id", name="uq_user_organization"),)

@@ -3,7 +3,7 @@
 from typing import Dict, List, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from airweave.models.entity_definition import EntityType
 
@@ -38,7 +38,4 @@ class EntityDefinition(EntityDefinitionBase):
     id: UUID
     organization_id: Optional[UUID] = None
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

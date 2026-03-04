@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { AirweaveClient } from "../api/airweave-client.js";
+import { AirweaveConfig } from "../api/types.js";
 import { formatSearchResponse, formatErrorResponse } from "../utils/error-handling.js";
 
 export function createSearchTool(
@@ -9,16 +10,12 @@ export function createSearchTool(
     collection: string,
     airweaveClient: AirweaveClient
 ) {
-    // Define the enhanced schema shape for MCP SDK (ZodRawShape format)
     const searchSchema = {
-        // Core parameters (existing)
         query: z.string().min(1).max(1000).describe("The search query text to find relevant documents and data"),
         response_type: z.enum(["raw", "completion"]).optional().default("raw").describe("Format of the response: 'raw' returns search results, 'completion' returns AI-generated answers"),
         limit: z.number().min(1).max(1000).optional().default(100).describe("Maximum number of results to return"),
         offset: z.number().min(0).optional().default(0).describe("Number of results to skip for pagination"),
         recency_bias: z.number().min(0).max(1).optional().describe("How much to weigh recency vs similarity (0..1). 0 = no recency effect; 1 = rank by recency only"),
-
-        // Advanced parameters (Phase 1 - safe parameters)
         score_threshold: z.number().min(0).max(1).optional().describe("Minimum similarity score threshold (0..1). Only return results above this score"),
         search_method: z.enum(["hybrid", "neural", "keyword"]).optional().describe("Search method: 'hybrid' (combines neural + keyword), 'neural' (semantic only), 'keyword' (text matching only)"),
         expansion_strategy: z.enum(["auto", "llm", "no_expansion"]).optional().describe("Query expansion strategy: 'auto' (generates query variations), 'llm' (AI-powered expansion), 'no_expansion' (use exact query)"),
@@ -26,7 +23,6 @@ export function createSearchTool(
         enable_query_interpretation: z.boolean().optional().describe("Enable automatic filter extraction from natural language query")
     };
 
-    // Create the full schema for validation
     const fullSchema = z.object(searchSchema);
 
     const parameterDescriptions = [
@@ -65,20 +61,18 @@ export function createSearchTool(
     return {
         name: toolName,
         description: `Enhanced search within the Airweave collection '${collection}' with advanced filtering and ranking options.\n\n**Parameters:**\n${parameterDescriptions}\n\n${naturalLanguageExamples}`,
-        schema: searchSchema, // Use the shape, not the full ZodObject
-        handler: async (params: any) => {
+        schema: searchSchema,
+        handler: async (params: Record<string, unknown>) => {
             try {
-                // Zod will automatically validate and apply defaults
                 const validatedParams = fullSchema.parse(params);
                 const { response_type } = validatedParams;
 
                 const searchResponse = await airweaveClient.search(validatedParams);
-                return formatSearchResponse(searchResponse, response_type);
+                return formatSearchResponse(searchResponse, response_type, collection);
             } catch (error) {
                 console.error("Error in search tool:", error);
 
                 if (error instanceof z.ZodError) {
-                    // Handle validation errors
                     const errorMessages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`);
                     return {
                         content: [
@@ -90,7 +84,12 @@ export function createSearchTool(
                     };
                 }
 
-                return formatErrorResponse(error as Error, params);
+                return formatErrorResponse(
+                    error as Error,
+                    params,
+                    collection,
+                    airweaveClient['config'].baseUrl
+                );
             }
         }
     };

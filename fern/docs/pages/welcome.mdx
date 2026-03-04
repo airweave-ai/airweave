@@ -3,7 +3,9 @@ title: Welcome to Airweave
 slug: welcome
 ---
 
-Airweave is an open-source platform that connects to your apps, databases, documents, and productivity tools, transforming them into searchable knowledge bases. These knowledge bases are accessible through our SDKs, REST APIs and MCP servers. Airweave is built for developers who want their AI agents to access and search across multiple data sources seamlessly.
+Airweave is an open-source context retrieval layer that gives AI agents unified search across all your apps, databases, and documents. Instead of wiring each data source separately, Airweave connects directly to all of your existing tools and exposes their data through a single search interface.
+
+Airweave continuously syncs information from connected sources and makes it available as a unified, searchable retrieval layer. This allows AI agents to retrieve current, source-grounded context at query time, rather than relying on static embeddings or custom data pipelines that quickly fall out of date.
 
 <CardGroup cols={2}>
   <Card
@@ -33,5 +35,68 @@ Airweave is an open-source platform that connects to your apps, databases, docum
     href="https://github.com/airweave-ai/airweave"
   >
     Star the repo and contribute to the project
+  </Card>
+</CardGroup>
+
+---
+
+## Who it's for
+
+Developers and teams building AI agents and other AI-powered applications that need reliable access to information across multiple tools and data sources.
+
+If you're working on long-running AI agents, retrieval-augmented generation, or any context-heavy LLM application, Airweave provides the infrastructure to retrieve and manage context without maintaining bespoke integrations for every data source.
+
+## Use cases
+
+Airweave lets AI agents search across company knowledge bases, cloud drives, databases, and SaaS tools in a single query.
+
+Common use cases include:
+
+<CardGroup cols={3}>
+  <Card
+    title="Internal Knowledge Assistants"
+    icon="fa-solid fa-brain"
+  >
+    Pull information from tools like Notion, Google Drive, and Slack
+  </Card>
+  <Card
+    title="Customer Support Agents"
+    icon="fa-solid fa-headset"
+  >
+    Access context from tickets, docs, and CRM systems
+  </Card>
+  <Card
+    title="Multi-Source Context Retrieval"
+    icon="fa-solid fa-database"
+  >
+    Retrieve and combine relevant context from structured and unstructured sources at query time.
+  </Card>
+</CardGroup>
+
+In all cases, Airweave helps agents retrieve facts from the right source instead of guessing or relying on incomplete context.
+
+## Where to go next
+
+<CardGroup cols={3}>
+  <Card
+    title="Quickstart"
+    icon="fa-solid fa-play"
+    href="/quickstart"
+  >
+    Set up your first Airweave collection and start syncing data
+  </Card>
+  <Card
+    title="Concepts"
+    icon="fa-solid fa-book"
+    href="/concepts"
+  >
+    Learn about Airweave's core architecture and how it works
+  </Card>
+  <Card
+    title="Homepage"
+    icon="fa-solid fa-home"
+    href="https://airweave.ai"
+  >
+    High-level overview and latest product updates
   </Card>
 </CardGroup>

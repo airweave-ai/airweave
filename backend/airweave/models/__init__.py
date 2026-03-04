@@ -1,5 +1,6 @@
 """Models for the application."""
 
+from .access_control_membership import AccessControlMembership
 from .api_key import APIKey
 from .auth_provider import AuthProvider
 from .billing_period import BillingPeriod
@@ -16,7 +17,6 @@ from .feature_flag import FeatureFlag
 from .integration_credential import IntegrationCredential
 from .organization import Organization
 from .organization_billing import OrganizationBilling
-from .pg_field_catalog import PgFieldCatalogColumn, PgFieldCatalogTable
 from .redirect_session import RedirectSession
 from .search_query import SearchQuery
 from .source import Source
@@ -30,8 +30,10 @@ from .transformer import Transformer
 from .usage import Usage
 from .user import User
 from .user_organization import UserOrganization
+from .vector_db_deployment_metadata import VectorDbDeploymentMetadata
 
 __all__ = [
+    "AccessControlMembership",
     "APIKey",
     "AuthProvider",
     "BillingPeriod",
@@ -48,8 +50,6 @@ __all__ = [
     "IntegrationCredential",
     "Organization",
     "OrganizationBilling",
-    "PgFieldCatalogColumn",
-    "PgFieldCatalogTable",
     "RedirectSession",
     "SearchQuery",
     "Source",
@@ -63,4 +63,5 @@ __all__ = [
     "Usage",
     "User",
     "UserOrganization",
+    "VectorDbDeploymentMetadata",
 ]

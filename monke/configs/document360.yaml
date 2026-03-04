@@ -1,0 +1,35 @@
+# Document360 connector test (sync + verify only).
+# Document360 Customer API is read-only; no create/update/delete.
+# Use a knowledge base that already has content. Set MONKE_DOCUMENT360_API_TOKEN
+# (and optionally base_url via config_fields) before running.
+name: Document360 Connector Test
+description: End-to-end test for Document360 source (sync and verify only; API is read-only)
+
+connector:
+  name: document360_test
+  type: document360
+  auth_mode: direct
+  auth_fields:
+    api_token: MONKE_DOCUMENT360_API_TOKEN
+  config_fields:
+    # base_url: optional, e.g. https://apihub.us.document360.io
+    lang_code: "en"
+
+# Do not run collection_cleanup first - it deletes the test collection (and source
+# connection), causing 404 on sync. Only clean up at the end.
+test_flow:
+  steps:
+    - sync
+    - verify
+    - collection_cleanup
+
+# Schema requires entity_count >= 1; bongo returns [] (read-only API)
+entity_count: 1
+
+collection:
+  name: Document360 Test Collection
+
+verification:
+  retry_attempts: 5
+  retry_delay_seconds: 10
+  score_threshold: 0.0
