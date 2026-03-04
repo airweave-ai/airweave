@@ -565,7 +565,7 @@ async def test_create_with_oauth_token_builds_full_payload_and_delegates():
 
     kwargs = svc._create_authenticated_connection.await_args.kwargs
     assert kwargs["credential_payload"]["access_token"] == "tok"
-    assert kwargs["credential_payload"]["refresh_token"] == "rtok"
+    assert "refresh_token" not in kwargs["credential_payload"]
     assert kwargs["credential_payload"]["expires_at"] == expires.isoformat()
     assert kwargs["auth_method"] == AuthenticationMethod.OAUTH_TOKEN
 
