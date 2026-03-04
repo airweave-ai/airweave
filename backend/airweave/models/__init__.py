@@ -17,6 +17,7 @@ from .feature_flag import FeatureFlag
 from .integration_credential import IntegrationCredential
 from .organization import Organization
 from .organization_billing import OrganizationBilling
+from .processed_webhook_event import ProcessedWebhookEvent
 from .redirect_session import RedirectSession
 from .search_query import SearchQuery
 from .source import Source
@@ -50,6 +51,7 @@ __all__ = [
     "IntegrationCredential",
     "Organization",
     "OrganizationBilling",
+    "ProcessedWebhookEvent",
     "RedirectSession",
     "SearchQuery",
     "Source",

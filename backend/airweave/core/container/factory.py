@@ -692,6 +692,7 @@ def _create_billing_services(settings: Settings) -> dict:
         OrganizationBillingRepository,
     )
     from airweave.domains.billing.service import BillingService
+    from airweave.domains.billing.repository import WebhookEventRepository
     from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
     from airweave.domains.organizations.repository import OrganizationRepository
     from airweave.domains.usage.repository import UsageRepository
@@ -715,12 +716,14 @@ def _create_billing_services(settings: Settings) -> dict:
         billing_ops=billing_ops,
         org_repo=org_repo,
     )
+    webhook_event_repo = WebhookEventRepository()
     billing_webhook = BillingWebhookProcessor(
         payment_gateway=payment_gateway,
         billing_repo=billing_repo,
         period_repo=period_repo,
         billing_ops=billing_ops,
         org_repo=org_repo,
+        webhook_event_repo=webhook_event_repo,
     )
 
     return {
