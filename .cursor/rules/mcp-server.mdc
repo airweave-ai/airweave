@@ -7,161 +7,169 @@ alwaysApply: false
 
 ## Overview
 
-The Airweave MCP Server provides search capabilities for AI assistants through the Model Context Protocol (MCP). It supports both local desktop clients and cloud-based AI platforms.
+The Airweave MCP Server provides search capabilities for AI assistants through the Model Context Protocol (MCP). It supports both local desktop clients and cloud-based AI platforms, with API key and OAuth 2.0 authentication.
 
 ## Deployment Modes
 
 ### 1. Local Mode (Desktop AI Clients)
 - **Transport**: stdio (standard input/output)
-- **Target**: Claude Desktop, Cursor, and other desktop AI assistants
+- **Target**: Claude Desktop, Cursor, VS Code
 - **Entry Point**: `src/index.ts`
-- **Installation**: npm package or npx
-- **Architecture**: Single-tenant, one server instance per user's local environment
+- **Installation**: `npx airweave-mcp-search`
+- **Architecture**: Single-tenant, one server instance per user
 - **Authentication**: API key from environment variables
 
 ### 2. Hosted Mode (Cloud AI Platforms)
 - **Transport**: Streamable HTTP (MCP 2025-03-26)
-- **Target**: OpenAI Agent Builder and cloud-based AI platforms
+- **Target**: OpenAI Agent Builder, Cursor (remote), any HTTP MCP client
 - **Entry Point**: `src/index-http.ts`
 - **Deployment**: Azure Kubernetes Service
-- **URL**: `https://mcp.airweave.ai`
-- **Architecture**: Multi-tenant, per-session server instances with isolated API keys
-- **Authentication**: API key per request via headers or query parameters
-
-**Key Difference**: Hosted mode creates separate `McpServer` instances for each session/API key combination, ensuring complete isolation between different users and allowing API key changes without server restart.
+- **URL**: `https://mcp.airweave.ai/mcp`
+- **Architecture**: Fully stateless — a fresh McpServer + transport is created per request
+- **Authentication**: API key (via headers) or OAuth 2.0 (via Auth0)
 
 ## Architecture Components
 
 ### Core Server (`src/server.ts`)
-- **McpServer**: Main MCP server instance
-- **Tool Registration**: Dynamic tool creation based on collection
-- **Airweave Client**: API client for search operations
-- **Environment Validation**: Configuration validation for both modes
+- **McpServer**: MCP server factory — `createMcpServer(config)` returns an isolated instance
+- **Tool Registration**: Dynamic tool creation based on collection (`search-{collection}`, `get-config`)
+- **Airweave Client**: API client for search operations (`src/api/airweave-client.ts`)
 
 ### Streamable HTTP Server (`src/index-http.ts`)
 - **Express App**: HTTP server with health checks and info endpoints
-- **Streamable HTTP Transport**: Modern MCP 2025-03-26 transport for bidirectional communication
-- **Request Handling**: POST `/mcp` endpoint for all MCP requests
-- **Session Management**: Redis-backed distributed sessions with local caching for performance
-- **Authentication**: API key extraction from headers or query parameters per request
-- **Security**: API key hashing, session binding (IP/User-Agent), rate limiting, audit logging
+- **Streamable HTTP Transport**: MCP 2025-03-26 transport, stateless (no sessions)
+- **Request Handling**: POST `/mcp` — creates fresh McpServer per request
+- **Dual Auth**: `resolveAuth` middleware resolves API key vs OAuth per request
+- **OAuth Router**: `mcpAuthRouter` from MCP SDK handles OAuth protocol endpoints when enabled
+
+### Authentication (`src/auth/`)
+
+#### `resolveAuth` middleware (in `index-http.ts`)
+Priority-based auth resolution per request:
+1. `X-API-Key` header present → API key auth, no JWT check
+2. `Authorization: Bearer <token>` with OAuth enabled → attempt JWT verification via `Auth0OAuthProvider.verifyAccessToken`; if valid → OAuth path (`req.auth` set); if invalid → fallback to API key
+3. No credential → 401
+
+#### Auth0 OAuth Provider (`src/auth/auth0-provider.ts`)
+- Implements `OAuthServerProvider` from the MCP SDK
+- Handles: `authorize` (redirect to Auth0), `exchangeAuthorizationCode`, `exchangeRefreshToken`, `verifyAccessToken` (JWKS-based JWT verification), `revokeToken`
+- Uses `jose` library for JWT verification with JWKS auto-discovery
+- Config via env vars: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `AUTH0_AUDIENCE`
+
+#### Auth0 Callback (`src/auth/auth0-callback.ts`)
+- Express handler for `/oauth/callback`
+- Receives Auth0 authorization code, exchanges it for a local authorization code via the provider
+- Redirects back to the MCP client's `redirect_uri` with the local code
+
+#### OAuth Transaction Store (`src/auth/oauth-transaction-store.ts`)
+- Redis-backed store for pending OAuth authorizations and authorization codes
+- TTL-based expiry (10 min for pending auths, 10 min for codes)
+- Atomic code consumption (Redis `GET` + `DEL`)
+
+#### Registered Clients Store (`src/auth/registered-clients-store.ts`)
+- Redis-backed store for dynamically registered OAuth clients (RFC 7591)
+- 7-day TTL — stateless MCP means clients re-register naturally after expiry
+
+#### Redis Client (`src/auth/redis.ts`)
+- Singleton Redis client with lazy connect
+- `getRedisClient()`, `ensureRedisReady()`, `disconnectRedis()`
+- URL built from `MCP_REDIS_URL` or `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`
+
+#### Security Utilities (`src/auth/security.ts`)
+- `redactSensitiveValue`: masks tokens/secrets for logging
+- `hashIdentifier`: SHA-256 hashing for identifiers
+- `safeLogObject`: recursively redacts sensitive keys in objects
+
+### Organization Resolver (`src/api/org-resolver.ts`)
+- Resolves which organization owns a collection for OAuth users
+- Fetches user's orgs, probes each in parallel (`Promise.all`) for the target collection
+- LRU in-memory cache (max 500 entries, 5-min TTL) keyed by `hash(token):collection`
 
 ### Tools
-- **Search Tool**: `search-{collection}` - Main search functionality with natural language queries
-- **Config Tool**: `get-config` - Server configuration display
-
-## Key Features
-
-### Search Capabilities
-- Natural language queries with full parameter control
-- AI completion responses
-- Pagination control (limit/offset)
-- Recency bias configuration
-- Score thresholds and filtering
-
-### Authentication
-- Multiple API key methods:
-  - `Authorization: Bearer <key>`
-  - `X-API-Key: <key>`
-  - Query parameters: `?apiKey=<key>` or `?api_key=<key>`
-
-### Error Handling
-- Comprehensive error responses
-- Structured logging with timestamps
-- Graceful connection handling
+- **Search Tool**: `search-{collection}` — full search with query, filters, pagination, reranking
+- **Config Tool**: `get-config` — server configuration display
 
 ## Configuration
 
 ### Environment Variables
-- `AIRWEAVE_COLLECTION`: Target collection name
-- `AIRWEAVE_BASE_URL`: API base URL (default: production)
+
+**Core (both modes):**
+- `AIRWEAVE_COLLECTION`: Default collection readable ID
+- `AIRWEAVE_BASE_URL`: API base URL (default: `https://api.airweave.ai`)
 - `PORT`: Server port (default: 8080)
-- `REDIS_HOST`: Redis server hostname (default: redis)
-- `REDIS_PORT`: Redis server port (default: 6379)
-- `REDIS_PASSWORD`: Redis authentication password
-- `REDIS_URL`: Complete Redis connection string
 
-### Client Configuration
-- API key provided by client (not server environment)
-- Collection-specific tool naming
-- Dynamic configuration per connection
+**Local mode only:**
+- `AIRWEAVE_API_KEY`: API key for authentication
 
-## Implementation Details
+**OAuth (hosted mode, when `MCP_OAUTH_ENABLED=true`):**
+- `MCP_OAUTH_ENABLED`: Set to `true` to enable OAuth 2.0
+- `MCP_BASE_URL`: Public URL of the MCP server (used for OAuth metadata/redirects)
+- `AUTH0_DOMAIN`: Auth0 tenant domain
+- `AUTH0_AUDIENCE`: Auth0 API audience identifier
+- `AUTH0_CLIENT_ID`: Auth0 application client ID
+- `AUTH0_CLIENT_SECRET`: Auth0 application client secret
+- `REDIS_HOST`: Redis host (default: `localhost`)
+- `REDIS_PORT`: Redis port (default: `6379`)
+- `REDIS_PASSWORD`: Redis password (optional)
+- `MCP_REDIS_URL`: Full Redis URL (overrides individual REDIS_* vars)
 
-### Redis-Backed Session Management Pattern
-```typescript
-// Local cache: Map session IDs to { server, transport, data }
-// This cache is per-pod and reconstructed from Redis as needed
-const localSessionCache = new Map<string, SessionWithTransport>();
+## OAuth Flow
 
-// Redis session manager for distributed storage
-const sessionManager = new RedisSessionManager({
-    host: process.env.REDIS_HOST || 'redis',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD
-});
-
-// Handle all MCP requests with Redis-backed session persistence
-app.post('/mcp', async (req, res) => {
-    // Extract API key and client metadata
-    const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
-    const sessionId = req.headers['mcp-session-id'] || generateSessionId();
-    const clientIP = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
-    
-    // Check local cache first (fastest path)
-    let session = localSessionCache.get(sessionId);
-    
-    if (!session) {
-        // Retrieve from Redis and recreate server instance
-        const sessionData = await sessionManager.getSession(sessionId);
-        if (sessionData) {
-            session = await createSessionObjects(sessionData, apiKey);
-            localSessionCache.set(sessionId, session);
-        } else {
-            // Create new session with rate limiting and security checks
-            const rateLimit = await sessionManager.checkRateLimit(apiKey);
-            if (!rateLimit.allowed) throw new Error('Rate limit exceeded');
-            
-            const newSessionData = {
-                sessionId,
-                apiKeyHash: RedisSessionManager.hashApiKey(apiKey),
-                collection: process.env.AIRWEAVE_COLLECTION,
-                baseUrl: process.env.AIRWEAVE_BASE_URL,
-                clientIP,
-                userAgent: req.headers['user-agent']
-            };
-            await sessionManager.setSession(newSessionData);
-            session = await createSessionObjects(newSessionData, apiKey);
-            localSessionCache.set(sessionId, session);
-        }
-    }
-    
-    // Handle request with session's transport
-    await session.transport.handleRequest(req, res, req.body);
-});
+```
+MCP Client (Cursor/mcp-remote)
+    │
+    ├─ GET /.well-known/oauth-authorization-server  → discover endpoints
+    ├─ POST /register                                → dynamic client registration
+    ├─ GET /authorize                                → redirect to Auth0 login
+    │       └─ Auth0 login page
+    │           └─ POST /oauth/callback              → exchange Auth0 code for local code
+    ├─ POST /token                                   → exchange local code for Auth0 tokens
+    └─ POST /mcp (Authorization: Bearer <jwt>)       → authenticated MCP request
 ```
 
-### Tool Registration
-- Dynamic tool names based on collection
-- Schema validation with Pydantic-like structure
-- Async handlers for all operations
+## Testing
+
+### Test Files
+- `tests/mcp-server.test.ts` — core MCP functionality, tool registration, parameter validation
+- `tests/http-transport.test.ts` — stateless HTTP transport, collection headers
+- `tests/auth/auth0-provider.test.ts` — OAuth provider: authorize, token exchange, JWT verification, revocation
+- `tests/auth/auth0-callback.test.ts` — callback handler: param validation, redirects, error handling
+- `tests/auth/oauth-transaction-store.test.ts` — pending auth CRUD, code issuance/consumption, TTLs
+- `tests/auth/registered-clients-store.test.ts` — client registration, retrieval, TTL expiry
+- `tests/auth/redis.test.ts` — singleton lifecycle, URL construction, connect/disconnect
+- `tests/auth/security.test.ts` — redaction, hashing, safe logging
+- `tests/api/org-resolver.test.ts` — org resolution, parallel probing, LRU cache eviction
+- `tests/index-http-oauth.test.ts` — dual-auth integration: API key priority, JWT verification, fallback
+
+### Test Commands
+- `npm run test:all` — run everything
+- `npm run test:mcp` — core MCP tests only
+- `npm run test:http` — HTTP transport tests only
+- `npm run test:oauth` — OAuth + org-resolver tests only
+- `npm run test:coverage` — full suite with coverage report
+
+### Test Patterns
+- All external dependencies are mocked (`vi.mock`): Redis, fetch, jose
+- Auth0 provider tests mock JWKS/JWT verification via `jose`
+- Org resolver tests mock fetch responses for orgs and collection probes
+- OAuth integration tests replicate the Express app with `supertest`
 
 ## Development Guidelines
 
 ### Code Structure
 - TypeScript with strict typing
-- Async/await for all I/O operations
-- Comprehensive error handling
-- Structured logging
+- Async/await for all I/O
+- No sessions — every request is independent
+- `express.Request` extended with `_authMethod` and `auth` for dual-auth
 
-### Testing
-- **MCP Server Tests** (`tests/mcp-server.test.ts`): Core functionality tests including tool registration, parameter passing, response formatting, and error handling
-- **HTTP Transport Tests** (`tests/http-transport.test.ts`): Session management, API key authentication, and multi-tenant behavior
-- **Redis Session Tests** (`tests/redis-session-manager.test.ts`): Redis connection, session storage/retrieval, rate limiting, and cross-pod session sharing
-- **Test Commands**: `npm run test:mcp`, `npm run test:http`, `npm run test:redis`, `npm run test:all`
+### Key Patterns
+- **Stateless requests**: fresh `McpServer` + `StreamableHTTPServerTransport` per POST
+- **Auth resolution**: `resolveAuth` middleware runs before `/mcp` handler
+- **OAuth gating**: all OAuth code paths check `oauthEnabled` flag
+- **Org resolution**: only runs for OAuth requests (API key users have org context built-in)
 
 ### Deployment
 - Docker containerization
-- Kubernetes deployment manifests
-- Health check endpoints
-- Graceful shutdown handling
+- Kubernetes deployment (AKS)
+- Health check at `/health`
+- Graceful shutdown: `disconnectRedis()` + `shutdownPostHog()` on SIGTERM/SIGINT

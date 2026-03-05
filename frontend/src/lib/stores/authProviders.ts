@@ -16,18 +16,14 @@ export interface AuthFields {
 }
 
 export interface AuthProvider {
-    id: string;
     name: string;
     short_name: string;
     description?: string;
-    auth_type: string;
     class_name: string;
     auth_config_class: string;
     config_class: string;
-    organization_id?: string;
-    created_at: string;
-    modified_at: string;
     auth_fields?: AuthFields;
+    config_fields?: AuthFields;
 }
 
 export interface AuthProviderConnection {

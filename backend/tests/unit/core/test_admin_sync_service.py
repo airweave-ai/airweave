@@ -579,11 +579,10 @@ async def test_fetch_destination_counts_disabled(
         include_counts=False,
         ctx=mock_ctx,
         timings=timings,
-        is_qdrant=True,
     )
-    
+
     assert all(count is None for count in count_map.values())
-    assert timings["destination_counts_qdrant"] == 0
+    assert timings["destination_counts_vespa"] == 0
 
 
 @pytest.mark.asyncio
@@ -600,7 +599,6 @@ async def test_fetch_destination_counts_no_collection_id(
         include_counts=True,
         ctx=mock_ctx,
         timings=timings,
-        is_qdrant=True,
     )
     
     # All should be None due to missing collection IDs
@@ -642,9 +640,8 @@ def test_build_sync_data_list(admin_sync_service, sample_syncs):
     all_tags_map = {sample_syncs[0].id: ["tag1", "tag2"]}
     entity_count_map = {sample_syncs[0].id: 100}
     arf_count_map = {sample_syncs[0].id: 95}
-    qdrant_count_map = {sample_syncs[0].id: 100}
     vespa_count_map = {sample_syncs[0].id: 100}
-    
+
     sync_data_list = admin_sync_service._build_sync_data_list(
         syncs=sample_syncs,
         sync_connections=sync_connections,
@@ -653,19 +650,17 @@ def test_build_sync_data_list(admin_sync_service, sample_syncs):
         all_tags_map=all_tags_map,
         entity_count_map=entity_count_map,
         arf_count_map=arf_count_map,
-        qdrant_count_map=qdrant_count_map,
         vespa_count_map=vespa_count_map,
     )
-    
+
     assert len(sync_data_list) == 3
-    
+
     # Check first sync has enriched data
     sync_dict = sync_data_list[0]
     assert "source_connection_id" in sync_dict
     assert "destination_connection_ids" in sync_dict
     assert sync_dict["total_entity_count"] == 100
     assert sync_dict["total_arf_entity_count"] == 95
-    assert sync_dict["total_qdrant_entity_count"] == 100
     assert sync_dict["total_vespa_entity_count"] == 100
     assert sync_dict["source_short_name"] == "slack"
     assert sync_dict["all_tags"] == ["tag1", "tag2"]
@@ -680,9 +675,8 @@ def test_build_sync_data_list_with_missing_data(admin_sync_service, sample_syncs
     all_tags_map = {}
     entity_count_map = {}
     arf_count_map = {}
-    qdrant_count_map = {}
     vespa_count_map = {}
-    
+
     sync_data_list = admin_sync_service._build_sync_data_list(
         syncs=sample_syncs,
         sync_connections=sync_connections,
@@ -691,7 +685,6 @@ def test_build_sync_data_list_with_missing_data(admin_sync_service, sample_syncs
         all_tags_map=all_tags_map,
         entity_count_map=entity_count_map,
         arf_count_map=arf_count_map,
-        qdrant_count_map=qdrant_count_map,
         vespa_count_map=vespa_count_map,
     )
     
@@ -739,7 +732,6 @@ async def test_list_syncs_timing_information(
         "all_tags",
         "source_connections",
         "sync_connections",
-        "destination_counts_qdrant",
         "destination_counts_vespa",
         "build_response",
         "total",
@@ -759,11 +751,6 @@ async def test_list_syncs_timing_information(
 def test_max_concurrent_destination_queries_constant():
     """Test that max concurrent queries constant is set appropriately."""
     assert AdminSyncService.MAX_CONCURRENT_DESTINATION_QUERIES == 10
-
-
-# ============================================================================
-# Qdrant Count Implementation Tests
-# ============================================================================
 
 
 # ============================================================================

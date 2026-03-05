@@ -9,12 +9,44 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 from uuid import UUID, uuid4
 
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.core.logging import logger as root_logger
 from airweave.core.shared_models import AuthMethod
+
+
+class RequestHeaders(BaseModel):
+    """Structured representation of tracking-relevant request headers."""
+
+    # Standard headers
+    user_agent: Optional[str] = None
+
+    # Client/Frontend headers
+    client_name: Optional[str] = None
+    client_version: Optional[str] = None
+    session_id: Optional[str] = None
+
+    # SDK headers
+    sdk_name: Optional[str] = None
+    sdk_version: Optional[str] = None
+
+    # Fern-specific headers
+    fern_language: Optional[str] = None
+    fern_runtime: Optional[str] = None
+    fern_runtime_version: Optional[str] = None
+
+    # Agent framework headers
+    framework_name: Optional[str] = None
+    framework_version: Optional[str] = None
+
+    # Request tracking
+    request_id: str = "unknown"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for PostHog properties, excluding None values."""
+        return {k: v for k, v in self.model_dump().items() if v is not None}
 
 
 @dataclass
@@ -37,8 +69,8 @@ class ApiContext(BaseContext):
     auth_method: AuthMethod = AuthMethod.SYSTEM
     auth_metadata: Optional[Dict[str, Any]] = None
 
-    # Analytics service with context and headers pre-configured
-    analytics: Optional[Any] = field(default=None, repr=False)
+    # Request headers for analytics enrichment
+    headers: Optional[RequestHeaders] = field(default=None, repr=False)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

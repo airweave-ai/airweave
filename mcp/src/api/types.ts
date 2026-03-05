@@ -10,4 +10,5 @@ export interface AirweaveConfig {
     apiKey: string;
     collection: string;
     baseUrl: string;
+    organizationId?: string;
 }

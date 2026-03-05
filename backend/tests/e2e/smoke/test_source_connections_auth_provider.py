@@ -17,6 +17,22 @@ SLEEP_TIME = 30
 class TestAuthProviderAuthentication:
     """Test suite for auth provider source connections."""
 
+    @pytest.mark.asyncio
+    async def test_auth_provider_public_metadata_endpoints(self, api_client: httpx.AsyncClient):
+        """Smoke-check /auth-providers/list and /auth-providers/detail/{short_name}."""
+        list_response = await api_client.get("/auth-providers/list")
+        list_response.raise_for_status()
+        providers = list_response.json()
+
+        if not providers:
+            pytest.skip("No auth providers available in this environment")
+
+        provider_short_name = providers[0]["short_name"]
+        detail_response = await api_client.get(f"/auth-providers/detail/{provider_short_name}")
+        detail_response.raise_for_status()
+        detail = detail_response.json()
+        assert detail["short_name"] == provider_short_name
+
     async def _wait_for_job_status(
         self,
         api_client: httpx.AsyncClient,

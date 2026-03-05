@@ -1,5 +1,4 @@
-# Multi-stage build for Airweave MCP Search Server
-FROM node:20-alpine AS builder
+FROM node:24.14.0-alpine@sha256:7fddd9ddeae8196abf4a3ef2de34e11f7b1a722119f91f28ddf1e99dcafdf114 AS builder
 
 WORKDIR /app
 
@@ -16,8 +15,7 @@ COPY src/ ./src/
 # Build TypeScript
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine
+FROM node:24.14.0-alpine@sha256:7fddd9ddeae8196abf4a3ef2de34e11f7b1a722119f91f28ddf1e99dcafdf114
 
 WORKDIR /app
 

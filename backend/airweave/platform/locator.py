@@ -4,6 +4,7 @@ import importlib
 from typing import Type
 
 from airweave import schemas
+from airweave.domains.auth_provider.types import AuthProviderMetadata
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.configs._base import BaseConfig
 from airweave.platform.destinations._base import BaseDestination
@@ -54,11 +55,11 @@ class ResourceLocator:
         return getattr(module, destination.class_name)
 
     @staticmethod
-    def get_auth_provider(auth_provider: schemas.AuthProvider) -> Type[BaseAuthProvider]:
+    def get_auth_provider(auth_provider: AuthProviderMetadata) -> Type[BaseAuthProvider]:
         """Get the auth provider class.
 
         Args:
-            auth_provider (schemas.AuthProvider): Auth provider schema
+            auth_provider (AuthProviderMetadata): Auth provider metadata
 
         Returns:
             Type[BaseAuthProvider]: Auth provider class

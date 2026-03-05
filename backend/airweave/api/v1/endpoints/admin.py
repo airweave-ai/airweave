@@ -18,14 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from airweave import crud, schemas
+from airweave.adapters.identity.auth0 import auth0_management_client
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.core import container as container_mod
 from airweave.core.context import SystemContext
-from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import InvalidStateError, NotFoundException
-from airweave.core.organization_service import organization_service
 from airweave.core.protocols import PubSub
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.shared_models import AuthMethod
@@ -39,9 +39,9 @@ from airweave.domains.billing.repository import (
     OrganizationBillingRepository,
 )
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.organizations.logic import generate_org_name
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.domains.usage.repository import UsageRepository
-from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
 from airweave.models.user_organization import UserOrganization
@@ -604,7 +604,7 @@ async def add_self_to_organization(
         # Don't fail the request if Auth0 fails
 
     if membership_changed and ctx.user and ctx.user.email:
-        await context_cache.invalidate_user(ctx.user.email)
+        await container_mod.container.context_cache.invalidate_user(ctx.user.email)
 
     return schemas.OrganizationWithRole(
         id=org_data["id"],
@@ -761,7 +761,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
 
     # Refresh and return
     await db.refresh(org)
-    await context_cache.invalidate_organization(organization_id)
+    await container_mod.container.context_cache.invalidate_organization(organization_id)
     return schemas.Organization.model_validate(org)
 
 
@@ -862,9 +862,7 @@ async def create_enterprise_organization(
     try:
         if owner_user.auth0_id and auth0_management_client:
             # Create Auth0 org name (lowercase, URL-safe)
-            auth0_org_name = organization_service._create_org_name(
-                schemas.OrganizationCreate(name=org.name, description=org.description)
-            )
+            auth0_org_name = generate_org_name(org.name)
 
             auth0_org = await auth0_management_client.create_organization(
                 name=auth0_org_name,
@@ -887,7 +885,7 @@ async def create_enterprise_organization(
         ctx.logger.warning(f"Failed to create Auth0 organization: {e}")
         # Don't fail the request if Auth0 fails
 
-    await context_cache.invalidate_user(owner_user.email)
+    await container_mod.container.context_cache.invalidate_user(owner_user.email)
 
     return schemas.Organization.model_validate(org)
 
@@ -930,7 +928,7 @@ async def enable_feature_flag(
     await crud.organization.enable_feature(db, organization_id, feature_flag)
 
     # Invalidate organization cache so next request sees updated feature flags
-    await context_cache.invalidate_organization(organization_id)
+    await container_mod.container.context_cache.invalidate_organization(organization_id)
 
     ctx.logger.info(f"Admin enabled feature flag {flag} for org {organization_id}")
 
@@ -975,7 +973,7 @@ async def disable_feature_flag(
     await crud.organization.disable_feature(db, organization_id, feature_flag)
 
     # Invalidate organization cache so next request sees updated feature flags
-    await context_cache.invalidate_organization(organization_id)
+    await container_mod.container.context_cache.invalidate_organization(organization_id)
 
     ctx.logger.info(f"Admin disabled feature flag {flag} for org {organization_id}")
 
@@ -1240,7 +1238,6 @@ class AdminSyncInfo(schemas.Sync):
 
     total_entity_count: int = 0
     total_arf_entity_count: Optional[int] = None
-    total_qdrant_entity_count: Optional[int] = None
     total_vespa_entity_count: Optional[int] = None
 
     last_job_status: Optional[str] = None
@@ -1255,7 +1252,6 @@ class AdminSyncInfo(schemas.Sync):
 class AdminSearchDestination(str, Enum):
     """Destination options for admin search."""
 
-    QDRANT = "qdrant"
     VESPA = "vespa"
 
 
@@ -1266,8 +1262,8 @@ async def admin_search_collection(
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     destination: AdminSearchDestination = Query(
-        AdminSearchDestination.QDRANT,
-        description="Search destination: 'qdrant' (default) or 'vespa'",
+        AdminSearchDestination.VESPA,
+        description="Search destination (default: 'vespa')",
     ),
     pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
@@ -1278,14 +1274,12 @@ async def admin_search_collection(
     This endpoint allows admins or API keys with `api_key_admin_sync` permission
     to search collections across organizations for migration and support purposes.
 
-    Supports selecting the search destination (Qdrant or Vespa) for migration testing.
-
     Args:
         readable_id: The readable ID of the collection to search
         search_request: The search request parameters
         db: Database session
         ctx: API context
-        destination: Search destination ('qdrant' or 'vespa')
+        destination: Search destination ('vespa')
         pubsub: PubSub adapter for event streaming
         dense_embedder: Domain dense embedder for generating neural embeddings
         sparse_embedder: Domain sparse embedder for generating BM25 embeddings
@@ -1326,7 +1320,7 @@ async def admin_search_collection_as_user(
     ctx: ApiContext = Depends(deps.get_context),
     destination: AdminSearchDestination = Query(
         AdminSearchDestination.VESPA,
-        description="Search destination: 'qdrant' or 'vespa' (default)",
+        description="Search destination (default: 'vespa')",
     ),
     pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
@@ -1343,7 +1337,7 @@ async def admin_search_collection_as_user(
         user_principal: Username to search as
         db: Database session
         ctx: API context
-        destination: Search destination ('qdrant' or 'vespa')
+        destination: Search destination ('vespa')
         pubsub: PubSub adapter for event streaming
         dense_embedder: Domain dense embedder for generating neural embeddings
         sparse_embedder: Domain sparse embedder for generating BM25 embeddings
@@ -1372,11 +1366,7 @@ async def admin_search_collection_as_user(
     )
 
 
-@router.get(
-    "/collections/{readable_id}/user-principals",
-    response_model=List[str],
-    summary="Get resolved principals for a user in a collection",
-)
+@router.get("/collections/{readable_id}/user-principals")
 async def admin_get_user_principals(
     readable_id: str = Path(..., description="The readable ID of the collection"),
     user_principal: str = Query(..., description="Username to resolve principals for"),
@@ -1387,17 +1377,18 @@ async def admin_get_user_principals(
 
     Returns all principals (user + group memberships) that would be used for
     access control filtering when the user searches the collection.
-
-    Principals are formatted as:
-    - "user:<username>" - direct user access
-    - "group:ad:<group_name>" - AD group membership
-    - "group:sp:<group_name>" - SharePoint group membership
     """
     from airweave.platform.access_control.broker import access_broker
 
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 
-    collection = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
+    collection = await crud.collection.get_by_readable_id(
+        db,
+        readable_id=readable_id,
+        ctx=ctx,
+    )
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Collection not found")
 
     access_context = await access_broker.resolve_access_context_for_collection(
         db=db,
@@ -1542,7 +1533,7 @@ async def admin_list_all_syncs(
     ),
     include_destination_counts: bool = Query(
         False,
-        description="Include Qdrant and Vespa document counts (slower, queries destinations)",
+        description="Include Vespa document counts (slower, queries destination)",
     ),
     include_arf_counts: bool = Query(
         False,
@@ -1567,7 +1558,6 @@ async def admin_list_all_syncs(
     **Entity Counts**:
         - total_entity_count: Count from Postgres (EntityCount table) - always included
         - total_arf_entity_count: Count from ARF storage (None unless include_arf_counts=true)
-        - total_qdrant_entity_count: Count from Qdrant (None unless include_destination_counts=true)
         - total_vespa_entity_count: Count from Vespa (None unless include_destination_counts=true)
 
     **Performance Note**: Setting `include_destination_counts=true` or `include_arf_counts=true`
@@ -1590,7 +1580,7 @@ async def admin_list_all_syncs(
         ghost_syncs_last_n: Optional filter to syncs with N consecutive failures
         tags: Optional comma-separated list of tags to filter by
         exclude_tags: Optional comma-separated list of tags to exclude
-        include_destination_counts: Whether to fetch Qdrant/Vespa counts (slower)
+        include_destination_counts: Whether to fetch Vespa counts (slower)
         include_arf_counts: Whether to fetch ARF entity counts (slower)
 
     Returns:
@@ -1650,7 +1640,6 @@ async def admin_list_all_syncs(
         f"arf_counts={timings.get('arf_counts', 0):.1f}ms, "
         f"last_job={timings.get('last_job_info', 0):.1f}ms, "
         f"source_conn={timings.get('source_connections', 0):.1f}ms, "
-        f"dest_qdrant={timings.get('destination_counts_qdrant', 0):.1f}ms, "
         f"dest_vespa={timings.get('destination_counts_vespa', 0):.1f}ms, "
         f"sync_conn={timings.get('sync_connections', 0):.1f}ms, "
         f"build={timings.get('build_response', 0):.1f}ms | "
@@ -1901,7 +1890,6 @@ async def admin_delete_sync(
     This endpoint reuses the existing source connection deletion logic which handles:
     - Cancelling active jobs
     - Cleaning up Temporal schedules
-    - Removing data from Qdrant
     - Removing data from Vespa
     - Removing ARF storage
     - Cascading deletes in Postgres (sync, connection, source_connection)

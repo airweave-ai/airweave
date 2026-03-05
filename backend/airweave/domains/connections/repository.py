@@ -1,16 +1,17 @@
 """Connection repository wrapping crud.connection."""
 
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.api.context import ApiContext
+from airweave.core.shared_models import IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
-from airweave.models.connection import Connection, IntegrationType
-from airweave.schemas.connection import ConnectionCreate
+from airweave.models.connection import Connection
+from airweave.schemas.connection import ConnectionCreate, ConnectionUpdate
 
 
 class ConnectionRepository(ConnectionRepositoryProtocol):
@@ -42,3 +43,24 @@ class ConnectionRepository(ConnectionRepositoryProtocol):
         uow: Optional[UnitOfWork] = None,
     ) -> Connection:
         return await crud.connection.create(db, obj_in=obj_in, ctx=ctx, uow=uow)
+
+    async def get_by_integration_type(
+        self, db: AsyncSession, *, integration_type: IntegrationType, ctx: ApiContext
+    ) -> list[Connection]:
+        return await crud.connection.get_by_integration_type(
+            db, integration_type=integration_type, ctx=ctx
+        )
+
+    async def update(
+        self,
+        db: AsyncSession,
+        *,
+        db_obj: Connection,
+        obj_in: Union[ConnectionUpdate, dict],
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> Connection:
+        return await crud.connection.update(db, db_obj=db_obj, obj_in=obj_in, ctx=ctx, uow=uow)
+
+    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+        return await crud.connection.remove(db, id=id, ctx=ctx)

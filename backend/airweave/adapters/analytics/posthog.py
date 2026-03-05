@@ -68,3 +68,23 @@ class PostHogTracker:
             )
         except Exception as e:
             logger.error("Failed to track analytics event '%s': %s", event_name, e)
+
+    def group_identify(
+        self,
+        group_type: str,
+        group_key: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Set properties on a PostHog group (e.g. organization)."""
+        if not self._enabled:
+            return
+
+        try:
+            merged = {**self._base_properties(), **(properties or {})}
+            posthog.group_identify(
+                group_type=group_type,
+                group_key=group_key,
+                properties=merged,
+            )
+        except Exception as e:
+            logger.error("Failed to set group properties for '%s/%s': %s", group_type, group_key, e)

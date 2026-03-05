@@ -95,6 +95,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
         "outlook_mail": "outlook",
         "outlook_calendar": "outlook",
         "slack": "slack_v2",  # Pipedream uses slack_v2 for their newer Slack app
+        "powerpoint": "microsoft_onedrive",
         # Add more mappings as needed when names differ
     }
 

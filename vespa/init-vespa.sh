@@ -14,6 +14,7 @@ RETRY_INTERVAL=5
 
 # Get embedding dimensions from environment (default: 1536 for OpenAI)
 EMBEDDING_DIM="${EMBEDDING_DIMENSIONS:-1536}"
+VERSION="${VERSION:-dev}"
 
 echo "=== Vespa Init Container ==="
 echo "Config server: ${CONFIG_SERVER}"
@@ -55,13 +56,14 @@ for schema_file in "${BUILD_DIR}"/schemas/*.sd; do
         sed -i "s/{{EMBEDDING_DIM}}/${EMBEDDING_DIM}/g" "$schema_file"
     fi
 done
+sed -i "s/{{VERSION}}/${VERSION}/g" "${BUILD_DIR}/services.xml"
 
 # Create application package zip
 echo ""
 echo "Creating application package from ${BUILD_DIR}..."
 cd "${BUILD_DIR}"
 rm -f /tmp/app.zip
-zip -rq /tmp/app.zip . -x ".*" -x "__MACOSX/*"
+zip -rq /tmp/app.zip . -x ".*" "*/.*" -x "__MACOSX/*"
 echo "Application package created: $(ls -lh /tmp/app.zip | awk '{print $5}')"
 
 # Deploy application package

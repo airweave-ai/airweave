@@ -118,6 +118,7 @@ class ComposioBroker(BaseAuthBroker):
             "teams": "microsoft_teams",
             "onenote": "one_drive",  # OneNote uses OneDrive integration (same Graph API)
             "word": "one_drive",  # Word uses OneDrive integration (same Graph API)
+            "powerpoint": "one_drive",  # PowerPoint uses OneDrive integration (same Graph API)
         }
 
         # Check if we have an explicit mapping
