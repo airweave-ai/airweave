@@ -21,6 +21,7 @@ from .gmail import GmailSource
 from .google_calendar import GoogleCalendarSource
 from .google_docs import GoogleDocsSource
 from .google_drive import GoogleDriveSource
+from .google_sheets import GoogleSheetsSource
 from .google_slides import GoogleSlidesSource
 from .hubspot import HubspotSource
 from .incremental_stub import IncrementalStubSource
@@ -76,6 +77,7 @@ ALL_SOURCES: list[type] = [
     GoogleCalendarSource,
     GoogleDocsSource,
     GoogleDriveSource,
+    GoogleSheetsSource,
     GoogleSlidesSource,
     HubspotSource,
     IncrementalStubSource,

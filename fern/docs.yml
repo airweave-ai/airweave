@@ -103,6 +103,8 @@ navigation:
       path: docs/pages/connectors/google_docs/main.mdx
     - page: Google Drive
       path: docs/pages/connectors/google_drive/main.mdx
+    - page: Google Sheets
+      path: docs/pages/connectors/google_sheets/main.mdx
     - page: Google Slides
       path: docs/pages/connectors/google_slides/main.mdx
     - page: Hubspot

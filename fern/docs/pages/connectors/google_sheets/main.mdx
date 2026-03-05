@@ -1,0 +1,45 @@
+---
+title: "Google Sheets"
+description: "Google Sheets integration with Airweave"
+---
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Google Sheets logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Google Sheets</h1>
+</div>
+
+This connector enables AI agents and RAG systems to search across Google Sheets spreadsheets through Airweave's unified search layer.
+
+## Configuration
+
+The Google Sheets source connector integrates with the Google Drive and Sheets APIs to extract spreadsheets and their sheet data. It connects to your Google Drive account to list and retrieve Google Sheets (application/vnd.google-apps.spreadsheet), then uses the Sheets API to fetch spreadsheet metadata and cell values for embedding and search.
+
+The connector handles:
+- Spreadsheet listing and filtering via Drive API
+- Sheet metadata and cell data extraction via Sheets API
+- Incremental sync via Drive Changes API (start_page_token)
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/google_sheets.py"
+>
+  Explore the Google Sheets connector implementation
+</Card>
+
+### Authentication
+
+This connector uses **OAuth 2.0 with refresh tokens**. You can connect via the browser OAuth flow, direct token injection, or an auth provider (e.g. Composio). Google Sheets typically reuses the same Google OAuth scopes as Google Docs/Drive.
+
+### Configuration Options
+
+Optional configuration includes:
+- **include_trashed**: Include trashed spreadsheets (default: False)
+- **include_shared**: Include shared spreadsheets (default: True)
+- **max_rows_per_sheet**: Maximum rows to read per sheet (default: 10000)
+- **batch_size**, **batch_generation**, **max_queue_size**, **preserve_order**, **stop_on_error**: Concurrency and batching options
+
+## Data Models
+
+- **GoogleSheetsSpreadsheetEntity**: Spreadsheet file with title, timestamps, locale, time zone, sheet count, owners, and web link.
+- **GoogleSheetsSheetEntity**: A sheet (tab) within a spreadsheet, with sheet title, spreadsheet reference, headers, data preview, and full cell data for embedding.

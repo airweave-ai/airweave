@@ -138,6 +138,10 @@ from .google_drive import (
     GoogleDriveFileDeletionEntity,
     GoogleDriveFileEntity,
 )
+from .google_sheets import (
+    GoogleSheetsSheetEntity,
+    GoogleSheetsSpreadsheetEntity,
+)
 from .google_slides import (
     GoogleSlidesPresentationEntity,
     GoogleSlidesSlideEntity,
@@ -466,6 +470,10 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         GoogleDriveDriveEntity,
         GoogleDriveFileDeletionEntity,
         GoogleDriveFileEntity,
+    ],
+    "google_sheets": [
+        GoogleSheetsSpreadsheetEntity,
+        GoogleSheetsSheetEntity,
     ],
     "google_slides": [
         GoogleSlidesPresentationEntity,

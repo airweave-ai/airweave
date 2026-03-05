@@ -83,6 +83,7 @@ cd airweave
 <img src="frontend/src/components/icons/apps/google_calendar.svg" alt="Google Calendar" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/google_docs.svg" alt="Google Docs" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/google_drive.svg" alt="Google Drive" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/google_sheets.svg" alt="Google Sheets" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/hubspot.svg" alt="Hubspot" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/jira.svg" alt="Jira" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/linear.svg" alt="Linear" width="40" height="40" style="margin: 6px;" />

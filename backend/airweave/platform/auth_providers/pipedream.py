@@ -72,6 +72,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
         "word",
         # ServiceNow seems to be broken for now
         "servicenow",
+        "google_sheets",
     ]
 
     # Mapping of Airweave field names to Pipedream field names

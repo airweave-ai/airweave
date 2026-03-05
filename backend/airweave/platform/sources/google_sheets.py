@@ -19,6 +19,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import GoogleSheetsConfig
 from airweave.platform.cursors import GoogleSheetsCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -46,7 +47,7 @@ SHEETS_API = "https://sheets.googleapis.com/v4"
     oauth_type=OAuthType.WITH_REFRESH,
     requires_byoc=True,
     auth_config_class=None,
-    config_class="GoogleSheetsConfig",
+    config_class=GoogleSheetsConfig,
     labels=["Productivity", "Spreadsheets"],
     supports_continuous=True,
     rate_limit_level=RateLimitLevel.ORG,
@@ -180,31 +181,29 @@ class GoogleSheetsSource(BaseSource):
             return None
 
     # --- Main sync method ---
-    async def generate_entities(
-        self, existing_cursor_value: Optional[Dict[str, Any]] = None
-    ) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from Google Sheets spreadsheets.
 
-        Args:
-            existing_cursor_value: Optional cursor for incremental sync with start_page_token
+        Uses self.cursor (injected by sync factory) for incremental sync:
+        - If cursor has start_page_token: incremental sync via Drive Changes API
+        - Otherwise: full sync, then persist startPageToken for next run
 
         Yields:
             GoogleSheetsSpreadsheetEntity and GoogleSheetsSheetEntity objects
         """
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            # If we have a cursor, do incremental sync via changes API
-            if existing_cursor_value and "start_page_token" in existing_cursor_value:
-                start_token = existing_cursor_value["start_page_token"]
-                self.logger.debug(f"Starting incremental sync from page token: {start_token}")
+        cursor_data = self.cursor.data if self.cursor else {}
+        start_token = cursor_data.get("start_page_token") if cursor_data else None
 
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            if start_token:
+                self.logger.debug(f"Starting incremental sync from page token: {start_token}")
                 async for entity in self._process_changes(client, start_token):
                     yield entity
             else:
-                # Full sync: list all Google Sheets
                 self.logger.debug("Starting full sync of Google Sheets")
-
                 async for entity in self._list_and_process_spreadsheets(client):
                     yield entity
+                await self._store_next_start_page_token(client)
 
     # --- Incremental sync via Changes API ---
     async def _process_changes(
@@ -269,9 +268,23 @@ class GoogleSheetsSource(BaseSource):
             if not page_token:
                 break
 
-        # Update cursor for next incremental sync
-        if latest_new_start:
-            self._latest_new_start_page_token = latest_new_start
+        # Persist cursor for next incremental sync
+        if latest_new_start and self.cursor:
+            self.cursor.update(start_page_token=latest_new_start)
+
+    async def _store_next_start_page_token(self, client: httpx.AsyncClient) -> None:
+        """Persist startPageToken after full sync so the next run can do incremental sync."""
+        if not self.cursor:
+            return
+        try:
+            initial = await self.get_initial_cursor_value()
+            next_token = initial.get("start_page_token") if initial else None
+        except Exception as exc:
+            self.logger.warning(f"Could not fetch startPageToken for cursor: {exc}")
+            return
+        if next_token:
+            self.cursor.update(start_page_token=next_token)
+            self.logger.debug("Saved start_page_token for next incremental sync")
 
     # --- Full sync: list all spreadsheets ---
     async def _list_and_process_spreadsheets(
