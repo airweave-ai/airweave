@@ -329,6 +329,131 @@ class TestForwardOverlapDetection:
 
 
 # ===========================================================================
+# UoW atomicity: period + usage record in one transaction
+# ===========================================================================
+
+
+class TestUoWAtomicity:
+    """Verify create_billing_period wraps overlap resolution, period creation,
+    and usage-record creation in a single UnitOfWork transaction.
+
+    Uses the real BillingOperations (not FakeBillingOperations) wired to
+    fake repos + AsyncMock db, same as TestForwardOverlapDetection.
+    """
+
+    @pytest.mark.asyncio
+    async def test_usage_record_created(self):
+        """create_billing_period should create a usage record alongside the period."""
+        db = AsyncMock()
+        ctx = _make_ctx()
+        pr = FakeBillingPeriodRepository()
+        br = FakeOrganizationBillingRepository()
+        usage_repo = AsyncMock()
+        usage_repo.create = AsyncMock()
+        gw = FakePaymentGateway()
+
+        now = datetime.now(timezone.utc)
+
+        ops = BillingOperations(
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+        )
+
+        result = await ops.create_billing_period(
+            db=db,
+            organization_id=DEFAULT_ORG_ID,
+            period_start=now,
+            period_end=now + timedelta(days=30),
+            plan=BillingPlan.PRO,
+            transition=BillingTransition.RENEWAL,
+            ctx=ctx,
+            stripe_subscription_id="sub_test",
+        )
+
+        usage_repo.create.assert_called_once()
+        obj_in = usage_repo.create.call_args.kwargs["obj_in"]
+        assert obj_in.billing_period_id == result.id
+
+    @pytest.mark.asyncio
+    async def test_rollback_on_usage_create_failure(self):
+        """If usage-record creation fails, the UoW should rollback — no commit."""
+        db = AsyncMock()
+        ctx = _make_ctx()
+        pr = FakeBillingPeriodRepository()
+        br = FakeOrganizationBillingRepository()
+        usage_repo = AsyncMock()
+        usage_repo.create = AsyncMock(side_effect=RuntimeError("usage insert failed"))
+        gw = FakePaymentGateway()
+
+        now = datetime.now(timezone.utc)
+
+        ops = BillingOperations(
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+        )
+
+        with pytest.raises(RuntimeError, match="usage insert failed"):
+            await ops.create_billing_period(
+                db=db,
+                organization_id=DEFAULT_ORG_ID,
+                period_start=now,
+                period_end=now + timedelta(days=30),
+                plan=BillingPlan.PRO,
+                transition=BillingTransition.RENEWAL,
+                ctx=ctx,
+                stripe_subscription_id="sub_test",
+            )
+
+        assert db.rollback.called
+        assert not db.commit.called
+
+    @pytest.mark.asyncio
+    async def test_multiple_overlaps_all_resolved_before_create(self):
+        """Both overlapping periods completed AND usage record created in one UoW."""
+        db = AsyncMock()
+        ctx = _make_ctx()
+        pr = FakeBillingPeriodRepository()
+        br = FakeOrganizationBillingRepository()
+        usage_repo = AsyncMock()
+        usage_repo.create = AsyncMock()
+        gw = FakePaymentGateway()
+
+        now = datetime.now(timezone.utc)
+        earlier = _make_period_model(
+            period_start=now - timedelta(days=30),
+            period_end=now + timedelta(days=5),
+            status=BillingPeriodStatus.ACTIVE,
+        )
+        later = _make_period_model(
+            period_start=now + timedelta(days=10),
+            period_end=now + timedelta(days=40),
+            status=BillingPeriodStatus.ACTIVE,
+        )
+        pr.seed(earlier)
+        pr.seed(later)
+
+        ops = BillingOperations(
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+        )
+
+        result = await ops.create_billing_period(
+            db=db,
+            organization_id=DEFAULT_ORG_ID,
+            period_start=now,
+            period_end=now + timedelta(days=30),
+            plan=BillingPlan.PRO,
+            transition=BillingTransition.RENEWAL,
+            ctx=ctx,
+            stripe_subscription_id="sub_test",
+        )
+
+        assert earlier.status == BillingPeriodStatus.COMPLETED
+        assert later.status == BillingPeriodStatus.COMPLETED
+        assert result.status == BillingPeriodStatus.ACTIVE
+        usage_repo.create.assert_called_once()
+        obj_in = usage_repo.create.call_args.kwargs["obj_in"]
+        assert obj_in.billing_period_id == result.id
+
+
+# ===========================================================================
 # Layer 3: Yearly prepay idempotency guard
 # ===========================================================================
 

@@ -11,7 +11,7 @@ ENTITIES and QUERIES accept cached usage data (30s TTL).
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +55,17 @@ def _parse_plan(raw: object) -> Optional[BillingPlan]:
 _FRESH_ACTION_TYPES: frozenset[ActionType] = frozenset(
     {ActionType.SOURCE_CONNECTIONS, ActionType.TEAM_MEMBERS}
 )
+
+
+def _parse_plan(raw: Union[str, BillingPlan]) -> Optional[BillingPlan]:
+    """Parse a raw plan value into a BillingPlan enum, or None on failure."""
+    if isinstance(raw, BillingPlan):
+        return raw
+    try:
+        return BillingPlan(str(raw))
+    except ValueError:
+        _log.error("Unrecognised billing plan value of type %s", type(raw).__name__)
+        return None
 
 
 class _OrgCache:
