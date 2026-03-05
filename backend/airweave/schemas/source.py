@@ -115,6 +115,12 @@ class SourceBase(BaseModel):
             "and apply it during search to filter results based on user permissions."
         ),
     )
+    supports_browse_tree: bool = Field(
+        False,
+        description=(
+            "Whether this source supports lazy-loaded browse tree for selective node syncing."
+        ),
+    )
     rate_limit_level: Optional[str] = Field(
         None,
         description=(

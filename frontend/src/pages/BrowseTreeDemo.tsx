@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { apiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,9 @@ import {
   XCircle,
   Clock,
   Play,
+  Shield,
+  RefreshCw,
+  User,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -76,6 +79,8 @@ const NODE_ICONS: Record<string, React.ElementType> = {
   file: FileText,
   item: File,
 };
+
+const PAGE_SIZE = 10;
 
 const STEPS = [
   { number: 1, label: "Browse Tree" },
@@ -244,22 +249,34 @@ function TreeNodeRow({
 
 export default function BrowseTreeDemo() {
   const { readable_id } = useParams<{ readable_id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
+
+  // Auto-select SC from URL ?sc= param (set by creation flow)
+  const scFromUrl = searchParams.get("sc") || "";
+  const isFromCreationFlow = !!scFromUrl;
 
   // Wizard state
   const [step, setStep] = useState(1);
 
   // Step 1: Browse tree
   const [sourceConnections, setSourceConnections] = useState<SourceConnection[]>([]);
-  const [scId, setScId] = useState("");
+  const [scId, setScId] = useState(scFromUrl);
   const [treeNodes, setTreeNodes] = useState<Map<string | null, BrowseNode[]>>(new Map());
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeLoaded, setTreeLoaded] = useState(false);
+  const [visibleCounts, setVisibleCounts] = useState<Map<string, number>>(new Map());
+
+  // ACL sync state
+  const [aclSyncing, setAclSyncing] = useState(false);
+  const [aclSyncDone, setAclSyncDone] = useState(false);
+  const [aclSyncError, setAclSyncError] = useState("");
+  const aclPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Step 2: Select & Sync
   const [syncing, setSyncing] = useState(false);
@@ -271,8 +288,12 @@ export default function BrowseTreeDemo() {
 
   // Step 3: Search
   const [searchQuery, setSearchQuery] = useState("");
+  const [userPrincipal, setUserPrincipal] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+
+  // Track whether auto-load has been triggered
+  const autoLoadTriggered = useRef(false);
 
   // ---------------------------------------------------------------------------
   // Load source connections on mount
@@ -285,25 +306,76 @@ export default function BrowseTreeDemo() {
       if (resp.ok) {
         const data = await resp.json();
         setSourceConnections(data);
-        if (data.length === 1) setScId(data[0].id);
+        // Only auto-select if no SC from URL and only one available
+        if (!scFromUrl && data.length === 1) setScId(data[0].id);
       }
     })();
-  }, [readable_id]);
+  }, [readable_id, scFromUrl]);
 
-  // Cleanup poll on unmount
+  // Cleanup polls on unmount
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (aclPollRef.current) clearInterval(aclPollRef.current);
     };
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // ACL Sync
+  // ---------------------------------------------------------------------------
+
+  const handleAclSync = useCallback(async () => {
+    if (!scId) return;
+    setAclSyncing(true);
+    setAclSyncDone(false);
+    setAclSyncError("");
+
+    try {
+      const resp = await apiClient.post(`/admin/source-connections/${scId}/sync-acl`);
+      if (resp.ok) {
+        const data = await resp.json();
+        // Poll sync job for ACL completion
+        const jobId = data.sync_job_id;
+        if (jobId) {
+          aclPollRef.current = setInterval(async () => {
+            const jobResp = await apiClient.get(`/source-connections/${scId}/jobs`);
+            if (jobResp.ok) {
+              const jobs: SyncJob[] = await jobResp.json();
+              const aclJob = jobs.find((j) => j.id === jobId);
+              if (aclJob && ["completed", "failed", "cancelled"].includes(aclJob.status.toLowerCase())) {
+                if (aclPollRef.current) clearInterval(aclPollRef.current);
+                setAclSyncing(false);
+                if (aclJob.status.toLowerCase() === "completed") {
+                  setAclSyncDone(true);
+                } else {
+                  setAclSyncError(`ACL sync ${aclJob.status.toLowerCase()}`);
+                }
+              }
+            }
+          }, 3000);
+        } else {
+          // No job ID — may have completed synchronously
+          setAclSyncing(false);
+          setAclSyncDone(true);
+        }
+      } else {
+        const errText = await resp.text();
+        setAclSyncError(errText);
+        setAclSyncing(false);
+      }
+    } catch (err) {
+      setAclSyncError(String(err));
+      setAclSyncing(false);
+    }
+  }, [scId]);
 
   // ---------------------------------------------------------------------------
   // Step 1: Load tree (lazy-loaded from source API)
   // ---------------------------------------------------------------------------
 
   const loadTree = useCallback(
-    async (parentNodeId: string | null = null) => {
-      if (!scId) return;
+    async (parentNodeId: string | null = null): Promise<BrowseNode[]> => {
+      if (!scId) return [];
 
       if (!parentNodeId) {
         setTreeLoading(true);
@@ -323,13 +395,16 @@ export default function BrowseTreeDemo() {
 
         if (resp.ok) {
           const data = await resp.json();
+          const nodes: BrowseNode[] = data.nodes;
           setTreeNodes((prev) => {
             const next = new Map(prev);
-            next.set(parentNodeId, data.nodes);
+            next.set(parentNodeId, nodes);
             return next;
           });
           if (!parentNodeId) setTreeLoaded(true);
+          return nodes;
         }
+        return [];
       } finally {
         if (!parentNodeId) setTreeLoading(false);
         if (parentNodeId)
@@ -342,6 +417,35 @@ export default function BrowseTreeDemo() {
     },
     [scId]
   );
+
+  // Auto-load tree + depth-2 greedy prefetch when scId is set
+  useEffect(() => {
+    if (!scId || autoLoadTriggered.current) return;
+    autoLoadTriggered.current = true;
+
+    (async () => {
+      // Auto-trigger ACL sync if arriving from creation flow
+      if (isFromCreationFlow) {
+        handleAclSync();
+      }
+
+      // Load root
+      const rootNodes = await loadTree(null);
+
+      // Depth-2 prefetch: expand all root nodes that have children
+      const expandIds = new Set<string>();
+      for (const node of rootNodes) {
+        if (node.has_children) {
+          expandIds.add(node.source_node_id);
+          // Fire child load (don't await — let them run in parallel)
+          loadTree(node.source_node_id);
+        }
+      }
+      if (expandIds.size > 0) {
+        setExpandedNodes((prev) => new Set([...prev, ...expandIds]));
+      }
+    })();
+  }, [scId, loadTree, isFromCreationFlow, handleAclSync]);
 
   const handleExpand = useCallback(
     (sourceNodeId: string) => {
@@ -374,24 +478,52 @@ export default function BrowseTreeDemo() {
     });
   }, []);
 
-  // Render tree recursively
+  // "Show next 10" helper
+  const getVisibleLimit = (parentKey: string) => visibleCounts.get(parentKey) ?? PAGE_SIZE;
+  const showMore = (parentKey: string) => {
+    setVisibleCounts((prev) => {
+      const next = new Map(prev);
+      next.set(parentKey, (prev.get(parentKey) ?? PAGE_SIZE) + PAGE_SIZE);
+      return next;
+    });
+  };
+
+  // Render tree recursively with pagination
   const renderNodes = (parentNodeId: string | null, depth: number): React.ReactNode => {
     const nodes = treeNodes.get(parentNodeId) || [];
-    return nodes.map((node) => (
-      <div key={node.source_node_id}>
-        <TreeNodeRow
-          node={node}
-          depth={depth}
-          isSelected={selectedNodeIds.has(node.source_node_id)}
-          isExpanded={expandedNodes.has(node.source_node_id)}
-          isLoading={loadingNodes.has(node.source_node_id)}
-          onSelect={() => handleSelect(node.source_node_id)}
-          onExpand={() => handleExpand(node.source_node_id)}
-        />
-        {expandedNodes.has(node.source_node_id) &&
-          renderNodes(node.source_node_id, depth + 1)}
-      </div>
-    ));
+    const parentKey = parentNodeId ?? "__root__";
+    const limit = getVisibleLimit(parentKey);
+    const visible = nodes.slice(0, limit);
+    const remaining = nodes.length - limit;
+
+    return (
+      <>
+        {visible.map((node) => (
+          <div key={node.source_node_id}>
+            <TreeNodeRow
+              node={node}
+              depth={depth}
+              isSelected={selectedNodeIds.has(node.source_node_id)}
+              isExpanded={expandedNodes.has(node.source_node_id)}
+              isLoading={loadingNodes.has(node.source_node_id)}
+              onSelect={() => handleSelect(node.source_node_id)}
+              onExpand={() => handleExpand(node.source_node_id)}
+            />
+            {expandedNodes.has(node.source_node_id) &&
+              renderNodes(node.source_node_id, depth + 1)}
+          </div>
+        ))}
+        {remaining > 0 && (
+          <button
+            onClick={() => showMore(parentKey)}
+            className="text-xs text-blue-500 hover:text-blue-400 py-1 px-2 ml-4"
+            style={{ paddingLeft: `${depth * 24 + 32}px` }}
+          >
+            Show next {Math.min(PAGE_SIZE, remaining)} of {remaining} remaining...
+          </button>
+        )}
+      </>
+    );
   };
 
   // ---------------------------------------------------------------------------
@@ -455,7 +587,7 @@ export default function BrowseTreeDemo() {
   };
 
   // ---------------------------------------------------------------------------
-  // Step 3: Search
+  // Step 3: Search (with optional search-as-user)
   // ---------------------------------------------------------------------------
 
   const handleSearch = async () => {
@@ -463,15 +595,27 @@ export default function BrowseTreeDemo() {
     setSearching(true);
 
     try {
-      const resp = await apiClient.post(
-        `/collections/${readable_id}/search`,
-        {
-          query: searchQuery,
-          source_connection_ids: scId ? [scId] : undefined,
-          generate_answer: false,
-          rerank: false,
-        }
-      );
+      const body = {
+        query: searchQuery,
+        source_connection_ids: scId ? [scId] : undefined,
+        generate_answer: false,
+        rerank: false,
+      };
+
+      let resp: Response;
+      if (userPrincipal.trim()) {
+        // Search as a specific user (admin endpoint with ACL filtering)
+        const encodedPrincipal = encodeURIComponent(userPrincipal.trim());
+        resp = await apiClient.post(
+          `/admin/collections/${readable_id}/search/as-user?user_principal=${encodedPrincipal}&destination=vespa`,
+          body
+        );
+      } else {
+        resp = await apiClient.post(
+          `/collections/${readable_id}/search`,
+          body
+        );
+      }
 
       if (resp.ok) {
         const data = await resp.json();
@@ -537,11 +681,46 @@ export default function BrowseTreeDemo() {
           Back to Collection
         </Button>
         <h1 className="text-xl font-bold text-foreground">
-          Browse Tree Demo
+          Browse Tree
         </h1>
       </div>
 
       <StepIndicator currentStep={step} />
+
+      {/* ============================================================ */}
+      {/* ACL Sync Status Banner */}
+      {/* ============================================================ */}
+      {(aclSyncing || aclSyncDone || aclSyncError) && (
+        <div
+          className={cn(
+            "w-full rounded-lg border p-3 mb-4 flex items-center gap-3",
+            aclSyncDone
+              ? isDark ? "border-green-800 bg-green-900/20" : "border-green-200 bg-green-50"
+              : aclSyncError
+                ? isDark ? "border-red-800 bg-red-900/20" : "border-red-200 bg-red-50"
+                : isDark ? "border-gray-800 bg-gray-800/50" : "border-gray-200 bg-gray-50"
+          )}
+        >
+          {aclSyncing ? (
+            <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+          ) : aclSyncDone ? (
+            <CheckCircle2 className="w-4 h-4 text-green-500" />
+          ) : (
+            <XCircle className="w-4 h-4 text-red-500" />
+          )}
+          <div className="flex-1">
+            <span className="text-sm font-medium">
+              {aclSyncing ? "Syncing ACL data..." : aclSyncDone ? "ACL sync complete" : `ACL sync error: ${aclSyncError}`}
+            </span>
+          </div>
+          {!aclSyncing && (
+            <Button variant="ghost" size="sm" onClick={handleAclSync}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1" />
+              Re-sync ACL
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* ============================================================ */}
       {/* STEP 1: Browse Tree */}
@@ -557,53 +736,71 @@ export default function BrowseTreeDemo() {
             Step 1: Browse Tree
           </h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Select a source connection and browse its content tree. The tree is
-            lazy-loaded directly from the source API.
+            {isFromCreationFlow
+              ? "Your source connection is set up. Browse and select the content you want to sync."
+              : "Select a source connection and browse its content tree. The tree is lazy-loaded directly from the source API."}
           </p>
 
-          {/* SC selector */}
-          <div className="flex gap-3 mb-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium text-foreground block mb-1">
-                Source Connection
-              </label>
-              <select
-                value={scId}
-                onChange={(e) => {
-                  setScId(e.target.value);
-                  setTreeLoaded(false);
-                  setTreeNodes(new Map());
-                  setExpandedNodes(new Set());
-                  setSelectedNodeIds(new Set());
-                }}
-                className={cn(
-                  "w-full h-9 rounded-md border px-3 text-sm",
-                  isDark
-                    ? "bg-gray-800 border-gray-700 text-foreground"
-                    : "bg-white border-gray-300"
-                )}
-              >
-                <option value="">Select...</option>
-                {sourceConnections.map((sc) => (
-                  <option key={sc.id} value={sc.id}>
-                    {sc.name} ({sc.short_name})
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* SC selector — hidden when auto-set from URL */}
+          {!isFromCreationFlow && (
+            <div className="flex gap-3 mb-4">
+              <div className="flex-1">
+                <label className="text-sm font-medium text-foreground block mb-1">
+                  Source Connection
+                </label>
+                <select
+                  value={scId}
+                  onChange={(e) => {
+                    setScId(e.target.value);
+                    setTreeLoaded(false);
+                    setTreeNodes(new Map());
+                    setExpandedNodes(new Set());
+                    setSelectedNodeIds(new Set());
+                    setVisibleCounts(new Map());
+                    autoLoadTriggered.current = false;
+                  }}
+                  className={cn(
+                    "w-full h-9 rounded-md border px-3 text-sm",
+                    isDark
+                      ? "bg-gray-800 border-gray-700 text-foreground"
+                      : "bg-white border-gray-300"
+                  )}
+                >
+                  <option value="">Select...</option>
+                  {sourceConnections.map((sc) => (
+                    <option key={sc.id} value={sc.id}>
+                      {sc.name} ({sc.short_name})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <div className="flex items-end">
-              <Button
-                onClick={() => loadTree(null)}
-                disabled={!scId || treeLoading}
-              >
-                {treeLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                ) : null}
-                Load Tree
+              <div className="flex items-end">
+                <Button
+                  onClick={() => {
+                    autoLoadTriggered.current = false;
+                    loadTree(null);
+                  }}
+                  disabled={!scId || treeLoading}
+                >
+                  {treeLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                  ) : null}
+                  Load Tree
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Manual ACL sync button (for non-creation-flow) */}
+          {!isFromCreationFlow && scId && !aclSyncing && !aclSyncDone && (
+            <div className="mb-4">
+              <Button variant="outline" size="sm" onClick={handleAclSync}>
+                <Shield className="w-3.5 h-3.5 mr-1" />
+                Sync ACL
               </Button>
             </div>
-          </div>
+          )}
 
           {/* Tree view */}
           {treeLoading && (
@@ -774,8 +971,25 @@ export default function BrowseTreeDemo() {
         >
           <h2 className="text-lg font-semibold mb-4">Step 3: Search</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Search within the synced data, scoped to the source connection.
+            Search within the synced data. Optionally search as a specific user to verify access control filtering.
           </p>
+
+          {/* Search-as-user input */}
+          <div className="mb-3">
+            <label className="text-xs font-medium text-muted-foreground block mb-1">
+              <User className="w-3 h-3 inline mr-1" />
+              Search as user (optional)
+            </label>
+            <Input
+              value={userPrincipal}
+              onChange={(e) => setUserPrincipal(e.target.value)}
+              placeholder="e.g. user:sp_admin or user:hr_demo"
+              className="text-sm"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Results filtered by this user's access permissions
+            </p>
+          </div>
 
           <div className="flex gap-3 mb-4">
             <Input
@@ -800,6 +1014,9 @@ export default function BrowseTreeDemo() {
             <div className="space-y-2">
               <p className="text-sm font-medium">
                 {searchResults.length} result(s)
+                {userPrincipal.trim() && (
+                  <span className="text-muted-foreground font-normal"> — filtered for {userPrincipal.trim()}</span>
+                )}
               </p>
               {searchResults.map((result, i) => (
                 <div

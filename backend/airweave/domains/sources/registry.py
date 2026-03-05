@@ -135,6 +135,7 @@ class SourceRegistry(SourceRegistryProtocol):
             federated_search=source_cls.federated_search,
             supports_temporal_relevance=source_cls.supports_temporal_relevance,
             supports_access_control=source_cls.supports_access_control,
+            supports_browse_tree=source_cls.supports_browse_tree,
             rate_limit_level=_enum_to_str(source_cls.rate_limit_level),
             feature_flag=source_cls.feature_flag,
             labels=source_cls.labels,

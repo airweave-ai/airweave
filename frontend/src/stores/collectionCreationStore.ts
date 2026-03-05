@@ -37,6 +37,9 @@ interface CollectionCreationState {
   authConfig?: Record<string, any>;
   configFields?: Record<string, any>;
 
+  // Browse tree capability
+  supportsBrowseTree?: boolean;
+
   // Auth provider data
   selectedAuthProvider?: string; // readable_id of auth provider connection
   authProviderConfig?: Record<string, any>; // Provider-specific config (e.g. auth_config_id, account_id)
@@ -66,6 +69,9 @@ interface CollectionCreationState {
   setAuthMode: (mode: AuthMode) => void;
   setAuthConfig: (config: Record<string, any>) => void;
   setConfigFields: (fields: Record<string, any>) => void;
+
+  // Browse tree actions
+  setSupportsBrowseTree: (supports: boolean) => void;
 
   // Auth provider actions
   setSelectedAuthProvider: (providerId: string | undefined) => void;
@@ -99,6 +105,7 @@ const initialState = {
   authMode: undefined,
   authConfig: undefined,
   configFields: undefined,
+  supportsBrowseTree: undefined,
   selectedAuthProvider: undefined,
   authProviderConfig: undefined,
   oauthState: undefined,
@@ -236,6 +243,8 @@ export const useCollectionCreationStore = create<CollectionCreationState>()(
       setAuthConfig: (config) => set({ authConfig: config }),
       setConfigFields: (fields) => set({ configFields: fields }),
 
+      setSupportsBrowseTree: (supports) => set({ supportsBrowseTree: supports }),
+
       setSelectedAuthProvider: (providerId) => set({ selectedAuthProvider: providerId }),
       setAuthProviderConfig: (config) => set({ authProviderConfig: config }),
 
@@ -253,6 +262,7 @@ export const useCollectionCreationStore = create<CollectionCreationState>()(
         selectedSource: undefined,
         sourceName: undefined,
         sourceConnectionName: undefined,
+        supportsBrowseTree: undefined,
         authMode: undefined,
         authConfig: undefined,
         configFields: undefined,
