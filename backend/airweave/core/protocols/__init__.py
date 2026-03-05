@@ -22,7 +22,7 @@ from airweave.core.protocols.metrics import (
 )
 from airweave.core.protocols.ocr import OcrProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
-from airweave.core.protocols.pubsub import PubSub
+from airweave.core.protocols.pubsub import PubSub, PubSubSubscription
 from airweave.core.protocols.rate_limiter import RateLimiter
 from airweave.core.protocols.webhooks import (
     EndpointVerifier,
@@ -53,6 +53,7 @@ __all__ = [
     "OcrProvider",
     "PaymentGatewayProtocol",
     "PubSub",
+    "PubSubSubscription",
     "RateLimiter",
     "WebhookAdmin",
     "WebhookPublisher",

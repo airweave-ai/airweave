@@ -10,6 +10,16 @@ from collections import defaultdict
 from typing import Any, AsyncIterator
 
 
+class FakePubSubSubscription:
+    """In-memory subscription handle satisfying PubSubSubscription protocol."""
+
+    def listen(self) -> AsyncIterator[dict[str, Any]]:
+        return _empty_listen()
+
+    async def close(self) -> None:
+        pass
+
+
 class FakePubSub:
     """Test implementation of the PubSub protocol.
 
@@ -34,10 +44,10 @@ class FakePubSub:
         self.published[key].append(data)
         return 1
 
-    async def subscribe(self, namespace: str, id_value: Any) -> AsyncIterator:
-        """Record a subscription and return an empty async iterator."""
+    async def subscribe(self, namespace: str, id_value: Any) -> FakePubSubSubscription:
+        """Record a subscription and return a no-op subscription handle."""
         self.subscriptions.append((namespace, str(id_value)))
-        return _empty_iter()
+        return FakePubSubSubscription()
 
     async def store_snapshot(self, key: str, data: str, ttl_seconds: int) -> None:
         """Record a snapshot with its TTL."""
@@ -50,7 +60,7 @@ class FakePubSub:
         self.subscriptions.clear()
 
 
-async def _empty_iter():
-    """Yield nothing — placeholder for subscribe in tests."""
+async def _empty_listen() -> AsyncIterator[dict[str, Any]]:
+    """Yield nothing -- placeholder for listen() in tests."""
     return
-    yield  # noqa: RET504 — makes this an async generator
+    yield  # noqa: RET504 -- makes this an async generator

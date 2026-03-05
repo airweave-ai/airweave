@@ -8,6 +8,23 @@ from typing import Any, AsyncIterator, Protocol, runtime_checkable
 
 
 @runtime_checkable
+class PubSubSubscription(Protocol):
+    """A single subscription handle returned by PubSub.subscribe().
+
+    Wraps the transport-specific subscription (e.g. redis.client.PubSub)
+    behind a stable interface so SSE consumers never depend on Redis directly.
+    """
+
+    def listen(self) -> AsyncIterator[dict[str, Any]]:
+        """Yield messages from the subscribed channel."""
+        ...
+
+    async def close(self) -> None:
+        """Release the subscription and its underlying connection."""
+        ...
+
+
+@runtime_checkable
 class PubSub(Protocol):
     """Protocol for namespaced publish/subscribe messaging.
 
@@ -34,7 +51,7 @@ class PubSub(Protocol):
         """
         ...
 
-    async def subscribe(self, namespace: str, id_value: Any) -> AsyncIterator:
+    async def subscribe(self, namespace: str, id_value: Any) -> PubSubSubscription:
         """Subscribe to a namespaced channel for consuming messages.
 
         Args:
@@ -42,7 +59,7 @@ class PubSub(Protocol):
             id_value: Identifier for the channel
 
         Returns:
-            An async iterator that yields messages.
+            A subscription handle with listen() and close() methods.
         """
         ...
 
