@@ -8,6 +8,7 @@ through the entire bus → subscriber chain, so correctness here is critical.
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from airweave.core.events.enums import OrganizationEventType
 from airweave.core.events.organization import OrganizationLifecycleEvent
@@ -59,7 +60,7 @@ class TestCreatedEvent:
             organization_name="X",
             owner_email="x@x.com",
         )
-        with pytest.raises(AttributeError):
+        with pytest.raises((AttributeError, ValidationError)):
             e.organization_name = "changed"
 
 

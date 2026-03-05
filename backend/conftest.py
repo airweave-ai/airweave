@@ -463,6 +463,38 @@ def fake_usage_ledger():
 
 
 @pytest.fixture
+def fake_context_cache():
+    """Fake ContextCache backed by in-memory dicts."""
+    from airweave.adapters.cache.fake import FakeContextCache
+
+    return FakeContextCache()
+
+
+@pytest.fixture
+def fake_rate_limiter():
+    """Fake RateLimiter that records calls and never rejects by default."""
+    from airweave.adapters.rate_limiter.fake import FakeRateLimiter
+
+    return FakeRateLimiter()
+
+
+@pytest.fixture
+def fake_identity_provider():
+    """Fake IdentityProvider with in-memory state."""
+    from airweave.adapters.identity.fake import FakeIdentityProvider
+
+    return FakeIdentityProvider()
+
+
+@pytest.fixture
+def fake_organization_service():
+    """Fake OrganizationService that records calls."""
+    from airweave.domains.organizations.fakes.service import FakeOrganizationService
+
+    return FakeOrganizationService()
+
+
+@pytest.fixture
 def fake_oauth_flow_service():
     """Fake OAuthFlowService."""
     from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
@@ -488,6 +520,8 @@ def fake_init_session_repo():
 
 @pytest.fixture
 def test_container(
+    fake_context_cache,
+    fake_rate_limiter,
     fake_health_service,
     fake_event_bus,
     fake_pubsub,
@@ -534,6 +568,8 @@ def test_container(
     fake_sparse_embedder,
     fake_usage_checker,
     fake_usage_ledger,
+    fake_identity_provider,
+    fake_organization_service,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -546,6 +582,8 @@ def test_container(
     from airweave.core.container import Container
 
     return Container(
+        context_cache=fake_context_cache,
+        rate_limiter=fake_rate_limiter,
         health=fake_health_service,
         event_bus=fake_event_bus,
         pubsub=fake_pubsub,
@@ -592,4 +630,6 @@ def test_container(
         sparse_embedder=fake_sparse_embedder,
         usage_checker=fake_usage_checker,
         usage_ledger=fake_usage_ledger,
+        identity_provider=fake_identity_provider,
+        organization_service=fake_organization_service,
     )
