@@ -19,7 +19,7 @@ export const SourceListView: React.FC<SourceListViewProps> = ({ context }) => {
 
     const handleSourceSelect = (source: any) => {
         setView('sourceConfig', {
-            sourceId: source.id,
+            sourceId: source.short_name,
             sourceName: source.name,
             sourceShortName: source.short_name,
         });
@@ -54,8 +54,8 @@ export const SourceListView: React.FC<SourceListViewProps> = ({ context }) => {
                     <div className="grid grid-cols-1 gap-3">
                         {sortedFilteredSources.map((source) => (
                             <SourceButton
-                                key={source.id}
-                                id={source.id}
+                                key={source.short_name}
+                                id={source.short_name}
                                 name={source.name}
                                 shortName={source.short_name}
                                 onClick={() => handleSourceSelect(source)}

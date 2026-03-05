@@ -12,6 +12,8 @@ description: "Github integration with Airweave"
   <h1 style={{ margin: 0 }}>Github</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Github through Airweave's unified search layer.
+
 ## Configuration
 
 GitHub source connector integrates with the GitHub REST API to extract and synchronize data.
@@ -88,6 +90,10 @@ Schema for GitHub repository entity.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| repo_id | int | Unique GitHub repository ID |
+| name | str | Repository short name |
+| created_at | datetime | Timestamp when the repository was created |
+| updated_at | datetime | Timestamp when the repository was last updated |
 | full_name | str | Full repository name including owner |
 | description | Optional[str] | Repository description |
 | default_branch | str | Default branch of the repository |
@@ -106,9 +112,12 @@ Schema for GitHub directory entity.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| full_path | str | Repository-qualified directory path (owner/repo/path) |
+| name | str | Directory name |
 | path | str | Path of the directory within the repository |
 | repo_name | str | Name of the repository containing this directory |
 | repo_owner | str | Owner of the repository |
+| branch | str | Branch that was traversed for this directory |
 
 </Accordion>
 <Accordion title="GitHubCodeFileEntity">
@@ -117,9 +126,13 @@ Schema for GitHub code file entity.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| full_path | str | Repository-qualified file path (owner/repo/path) |
+| name | str | Filename |
+| branch | str | Branch that was traversed for this file |
 | sha | str | SHA hash of the file content |
 | line_count | Optional[int] | Number of lines in the file |
 | is_binary | bool | Flag indicating if file is binary |
+| html_url | Optional[str] | HTML URL for viewing this content on GitHub. |
 
 </Accordion>
 <Accordion title="GithubRepoEntity">
@@ -184,9 +197,12 @@ and should be deleted from the destination.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| full_path | str | Repository-qualified file path (owner/repo/path) |
+| deletion_label | str | Human-readable deletion label |
 | file_path | str | Path of the deleted file within the repository |
 | repo_name | str | Name of the repository containing the deleted file |
 | repo_owner | str | Owner of the repository |
+| branch | Optional[str] | Branch context for the deleted file |
 
 </Accordion>
 

@@ -44,6 +44,14 @@ class NotFoundException(AirweaveException):
         super().__init__(self.message)
 
 
+class InvalidInputError(AirweaveException):
+    """Exception raised when user-supplied input fails validation (maps to 422)."""
+
+    def __init__(self, message: Optional[str] = "Invalid input"):
+        self.message = message
+        super().__init__(self.message)
+
+
 class ImmutableFieldError(AirweaveException):
     """Exception raised for attempts to modify immutable fields in a database model."""
 
@@ -129,75 +137,6 @@ class ScheduleNotExistsException(AirweaveException):
     """Raised when trying to perform operations on a schedule that doesn't exist."""
 
     pass
-
-
-class UsageLimitExceededException(Exception):
-    """Exception raised when usage limits are exceeded."""
-
-    def __init__(
-        self,
-        action_type: Optional[str] = None,
-        limit: Optional[int] = None,
-        current_usage: Optional[int] = None,
-        message: Optional[str] = None,
-    ):
-        """Create a new UsageLimitExceededException instance.
-
-        Args:
-        ----
-            action_type (str, optional): The type of action that exceeded the limit.
-            limit (int, optional): The limit that was exceeded.
-            current_usage (int, optional): The current usage count.
-            message (str, optional): Custom error message. If not provided, generates one.
-
-        """
-        if message is None:
-            if action_type:
-                message = f"Usage limit exceeded for {action_type}"
-                if limit is not None and current_usage is not None:
-                    message += f": {current_usage}/{limit}"
-            else:
-                message = "Usage limit exceeded"
-
-        self.action_type = action_type
-        self.limit = limit
-        self.current_usage = current_usage
-        self.message = message
-        super().__init__(self.message)
-
-
-class PaymentRequiredException(Exception):
-    """Exception raised when an action is blocked due to payment status."""
-
-    def __init__(
-        self,
-        action_type: Optional[str] = None,
-        payment_status: Optional[str] = None,
-        message: Optional[str] = None,
-    ):
-        """Create a new PaymentRequiredException instance.
-
-        Args:
-        ----
-            action_type (str, optional): The type of action that was blocked.
-            payment_status (str, optional): The current payment status.
-            message (str, optional): Custom error message. If not provided, generates one.
-
-        """
-        if message is None:
-            if action_type and payment_status:
-                message = (
-                    f"Action '{action_type}' is not allowed due to payment status: {payment_status}"
-                )
-            elif action_type:
-                message = f"Action '{action_type}' requires an active subscription"
-            else:
-                message = "This action requires an active subscription"
-
-        self.action_type = action_type
-        self.payment_status = payment_status
-        self.message = message
-        super().__init__(self.message)
 
 
 class ExternalServiceError(Exception):

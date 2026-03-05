@@ -3,6 +3,7 @@
 import re
 from typing import Any, Dict, List, Optional
 
+from airweave.analytics.service import analytics
 from airweave.api.context import ApiContext
 
 
@@ -72,7 +73,7 @@ def build_search_properties(
         "has_completion": completion is not None,
         "completion_length": len(completion) if completion else 0,
         "completion_text": completion if completion else None,
-        # Context data (automatically included by ContextualAnalyticsService)
+        # Context data (automatically included by AnalyticsService via ctx)
         "organization_name": ctx.organization.name,
         "auth_method": ctx.auth_method,
     }
@@ -104,7 +105,7 @@ def _flatten_operation_metrics(properties: Dict[str, Any], state: Dict[str, Any]
         state: State dict containing operation metrics
     """
     # Extract operation metrics
-    operation_metrics = state.get("_operation_metrics", {})
+    operation_metrics = state.get("operation_metrics", {})
     if not operation_metrics:
         return
 
@@ -145,7 +146,7 @@ def _flatten_operation_metrics(properties: Dict[str, Any], state: Dict[str, Any]
             properties[prop_name] = value
 
     # Extract provider usage (captured by fallback method)
-    provider_usage = state.get("_provider_usage", {})
+    provider_usage = state.get("provider_usage", {})
     if provider_usage:
         # Keep nested structure for full context
         properties["providers_used"] = provider_usage
@@ -212,4 +213,4 @@ def track_search_completion(
         state=state,  # Pass state for automatic metrics extraction
         **additional_properties,
     )
-    ctx.analytics.track_event("search_query", properties)
+    analytics.track_event("search_query", properties, ctx=ctx)

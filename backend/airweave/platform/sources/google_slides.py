@@ -22,9 +22,9 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import GoogleSlidesConfig
 from airweave.platform.cursors import GoogleSlidesCursor
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.google_slides import (
     GoogleSlidesPresentationEntity,
@@ -34,6 +34,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
+from airweave.platform.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -49,7 +50,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     oauth_type=OAuthType.WITH_REFRESH,
     requires_byoc=True,
     auth_config_class=None,
-    config_class="GoogleSlidesConfig",
+    config_class=GoogleSlidesConfig,
     labels=["Productivity", "Presentations"],
     supports_continuous=True,
     rate_limit_level=RateLimitLevel.ORG,

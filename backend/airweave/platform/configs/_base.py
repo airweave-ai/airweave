@@ -123,6 +123,8 @@ class ConfigField(BaseModel):
     type: str
     required: bool = True  # Default to True for backward compatibility
     items_type: Optional[str] = None  # For array types, the type of items
+    feature_flag: Optional[str] = None  # Feature flag required to show this field
+    is_secret: bool = False  # Whether this field should be treated as a secret
 
 
 _type_map = {str: "string", int: "number", float: "number", bool: "boolean"}
@@ -138,6 +140,11 @@ class Fields(BaseModel):
         """Create fields from config class."""
         fields = []
         for field_name, field_info in config_class.model_fields.items():
+            # Skip fields marked as excluded from UI
+            json_schema_extra = field_info.json_schema_extra or {}
+            if json_schema_extra.get("exclude_from_ui"):
+                continue
+
             # Get the actual type, handling Optional types
             annotation = field_info.annotation
             is_optional = False
@@ -165,6 +172,11 @@ class Fields(BaseModel):
             has_default = field_info.default is not PydanticUndefined
             is_required = not has_default and not is_optional
 
+            # Extract feature_flag and is_secret from json_schema_extra
+            json_schema_extra = field_info.json_schema_extra or {}
+            feature_flag = json_schema_extra.get("feature_flag")
+            is_secret = json_schema_extra.get("is_secret", False)
+
             fields.append(
                 ConfigField(
                     name=field_name,
@@ -173,9 +185,30 @@ class Fields(BaseModel):
                     type=type_str,
                     required=is_required,
                     items_type=items_type,
+                    feature_flag=feature_flag,
+                    is_secret=is_secret,
                 )
             )
         return Fields(fields=fields)
+
+    def filter_by_features(self, enabled_features: list[str]) -> "Fields":
+        """Filter fields to only include those whose feature flags are enabled.
+
+        Fields without a feature_flag are always included.
+        Fields with a feature_flag are only included if the flag is in enabled_features.
+
+        Args:
+            enabled_features: List of feature flag names that are enabled
+
+        Returns:
+            New Fields instance with filtered fields
+        """
+        filtered = []
+        for field in self.fields:
+            # Include field if no feature_flag, or if the flag is enabled
+            if field.feature_flag is None or field.feature_flag in enabled_features:
+                filtered.append(field)
+        return Fields(fields=filtered)
 
 
 class ConfigValues(BaseModel):

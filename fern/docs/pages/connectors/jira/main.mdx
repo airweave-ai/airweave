@@ -12,11 +12,15 @@ description: "Jira integration with Airweave"
   <h1 style={{ margin: 0 }}>Jira</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Jira through Airweave's unified search layer.
+
 ## Configuration
 
 Jira source connector integrates with the Jira REST API to extract project management data.
 
-Connects to your Jira Cloud instance.
+Connects to your Jira Cloud instance. Optionally integrates with Zephyr Scale
+for test management entities (test cases, test cycles, test plans) when a
+Zephyr Scale API token is provided.
 
 It provides comprehensive access to projects, issues, and their
 relationships for agile development and issue tracking workflows.
@@ -40,7 +44,30 @@ This connector uses **OAuth 2.0 authentication**. You can connect through the Ai
 
 ### Configuration Options
 
-This connector does not have any additional configuration options.
+The following configuration options are available for this connector:
+
+<Card
+  title="Configuration Parameters"
+  className="config-card"
+  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
+>
+
+Jira configuration schema.
+<ParamField
+  path="project_keys"
+  type="list[str]"
+  required={true}
+>
+  List of Jira project keys to sync (e.g., 'PROJ', 'DEV', 'MARKET'). Only the specified projects will be synced. Hit enter to add new project.  You can find project keys in your Jira project settings.
+</ParamField>
+<ParamField
+  path="zephyr_scale_api_token"
+  type="Optional[str]"
+  required={false}
+>
+  API token for Zephyr Scale test management integration. Leave empty if not using Zephyr Scale.
+</ParamField>
+</Card>
 
 ## Data Models
 
@@ -55,8 +82,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| project_id | str | Unique numeric identifier for the project. |
+| project_name | str | Display name of the project. |
 | project_key | str | Unique key of the project (e.g., 'PROJ'). |
 | description | Optional[str] | Description of the project. |
+| web_url_value | Optional[str] | Link to the project in Jira. |
 
 </Accordion>
 <Accordion title="JiraIssueEntity">
@@ -68,11 +98,89 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| issue_id | str | Unique identifier for the issue. |
 | issue_key | str | Jira key for the issue (e.g. 'PROJ-123'). |
-| summary | Optional[str] | Short summary field of the issue. |
+| summary | str | Short summary field of the issue. |
 | description | Optional[str] | Detailed description of the issue. |
 | status | Optional[str] | Current workflow status of the issue. |
 | issue_type | Optional[str] | Type of the issue (bug, task, story, etc.). |
+| project_key | str | Key of the project that owns this issue. |
+| created_time | datetime | Timestamp when the issue was created. |
+| updated_time | datetime | Timestamp when the issue was last updated. |
+| web_url_value | Optional[str] | Link to the issue in Jira. |
+
+</Accordion>
+<Accordion title="ZephyrTestCaseEntity">
+
+Schema for a Zephyr Scale Test Case.
+
+Test cases have keys in the format PROJECT-T### (e.g., PROJ-T1, PROJ-T2).
+
+Reference:
+    https://support.smartbear.com/zephyr-scale-cloud/api-docs/#tag/Test-Cases
+
+| Field | Type | Description |
+|-------|------|-------------|
+| test_case_id | str | Unique internal identifier for the test case. |
+| test_case_key | str | Zephyr Scale key for the test case (e.g., 'PROJ-T1'). |
+| name | str | Name/title of the test case. |
+| objective | Optional[str] | Objective or purpose of the test case. |
+| precondition | Optional[str] | Preconditions required before executing the test. |
+| status_name | Optional[str] | Current status of the test case (e.g., Draft, Approved). |
+| priority_name | Optional[str] | Priority level of the test case. |
+| folder_path | Optional[str] | Folder path where the test case is organized. |
+| project_key | str | Key of the Jira project this test case belongs to. |
+| created_time | datetime | Timestamp when the test case was created. |
+| updated_time | datetime | Timestamp when the test case was last updated. |
+| web_url_value | Optional[str] | Link to the test case in Zephyr Scale. |
+
+</Accordion>
+<Accordion title="ZephyrTestCycleEntity">
+
+Schema for a Zephyr Scale Test Cycle.
+
+Test cycles have keys in the format PROJECT-R### (e.g., PROJ-R1, PROJ-R2).
+They represent a collection of test executions for a specific testing iteration.
+
+Reference:
+    https://support.smartbear.com/zephyr-scale-cloud/api-docs/#tag/Test-Cycles
+
+| Field | Type | Description |
+|-------|------|-------------|
+| test_cycle_id | str | Unique internal identifier for the test cycle. |
+| test_cycle_key | str | Zephyr Scale key for the test cycle (e.g., 'PROJ-R1'). |
+| name | str | Name/title of the test cycle. |
+| description | Optional[str] | Description of the test cycle. |
+| status_name | Optional[str] | Current status of the test cycle (e.g., Not Executed, In Progress, Done). |
+| folder_path | Optional[str] | Folder path where the test cycle is organized. |
+| project_key | str | Key of the Jira project this test cycle belongs to. |
+| created_time | datetime | Timestamp when the test cycle was created. |
+| updated_time | datetime | Timestamp when the test cycle was last updated. |
+| web_url_value | Optional[str] | Link to the test cycle in Zephyr Scale. |
+
+</Accordion>
+<Accordion title="ZephyrTestPlanEntity">
+
+Schema for a Zephyr Scale Test Plan.
+
+Test plans have keys in the format PROJECT-P### (e.g., PROJ-P1, PROJ-P2).
+They represent a high-level collection of test cycles for release planning.
+
+Reference:
+    https://support.smartbear.com/zephyr-scale-cloud/api-docs/#tag/Test-Plans
+
+| Field | Type | Description |
+|-------|------|-------------|
+| test_plan_id | str | Unique internal identifier for the test plan. |
+| test_plan_key | str | Zephyr Scale key for the test plan (e.g., 'PROJ-P1'). |
+| name | str | Name/title of the test plan. |
+| objective | Optional[str] | Objective or purpose of the test plan. |
+| status_name | Optional[str] | Current status of the test plan (e.g., Draft, Approved, Archived). |
+| folder_path | Optional[str] | Folder path where the test plan is organized. |
+| project_key | str | Key of the Jira project this test plan belongs to. |
+| created_time | datetime | Timestamp when the test plan was created. |
+| updated_time | datetime | Timestamp when the test plan was last updated. |
+| web_url_value | Optional[str] | Link to the test plan in Zephyr Scale. |
 
 </Accordion>
 

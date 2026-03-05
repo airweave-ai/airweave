@@ -7,11 +7,11 @@ Does not support embeddings or reranking.
 import json
 from typing import Any, Dict, List, Optional
 
-from cerebras.cloud.sdk import Cerebras
+from cerebras.cloud.sdk import AsyncCerebras
 from pydantic import BaseModel
-from tiktoken import Encoding
 
 from airweave.api.context import ApiContext
+from airweave.platform.tokenizers import BaseTokenizer
 
 from ._base import BaseProvider, ProviderError
 from .schemas import ProviderModelSpec
@@ -28,13 +28,14 @@ class CerebrasProvider(BaseProvider):
         super().__init__(api_key, model_spec, ctx)
 
         try:
-            self.client = Cerebras(api_key=api_key)
+            # Set 30s timeout to prevent indefinite hangs
+            self.client = AsyncCerebras(api_key=api_key, timeout=30.0)
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Cerebras client: {e}") from e
 
         self.ctx.logger.debug(f"[CerebrasProvider] Initialized with model spec: {model_spec}")
 
-        self.llm_tokenizer: Optional[Encoding] = None
+        self.llm_tokenizer: Optional[BaseTokenizer] = None
 
         if model_spec.llm_model:
             self.llm_tokenizer = self._load_tokenizer(model_spec.llm_model.tokenizer, "llm")
@@ -48,7 +49,7 @@ class CerebrasProvider(BaseProvider):
             raise ValueError("Cannot generate completion with empty messages")
 
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model_spec.llm_model.name,
                 messages=messages,
                 max_completion_tokens=self.MAX_COMPLETION_TOKENS,
@@ -88,7 +89,7 @@ class CerebrasProvider(BaseProvider):
 
         try:
             # Strict schema mode (preferred)
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model_spec.llm_model.name,
                 messages=messages,
                 response_format={
@@ -146,7 +147,7 @@ class CerebrasProvider(BaseProvider):
 
     # Removed sanitizer; models are now provider-agnostic
 
-    async def embed(self, texts: List[str]) -> List[List[float]]:
+    async def embed(self, texts: List[str], dimensions: Optional[int] = None) -> List[List[float]]:
         """Not supported by Cerebras."""
         raise NotImplementedError("Cerebras does not support embeddings")
 

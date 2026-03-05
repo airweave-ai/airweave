@@ -1,57 +1,72 @@
 // Airweave API client using the official SDK
 
 import { AirweaveSDKClient } from '@airweave/sdk';
-import { AirweaveConfig, SearchResponse } from './types.js';
+import { AirweaveConfig, SearchRequest, SearchResponse } from './types.js';
+import { VERSION } from '../config/constants.js';
 
 export class AirweaveClient {
     private client: AirweaveSDKClient;
 
     constructor(private config: AirweaveConfig) {
+        const headers: Record<string, string> = {
+            'Authorization': `Bearer ${config.apiKey}`,
+            'X-Client-Name': 'airweave-mcp-search',
+            'X-Client-Version': VERSION,
+        };
+        if (config.organizationId) {
+            headers['X-Organization-ID'] = config.organizationId;
+        }
         this.client = new AirweaveSDKClient({
             apiKey: config.apiKey,
-            baseUrl: config.baseUrl
+            baseUrl: config.baseUrl,
+            headers,
         });
     }
 
-    async search(searchRequest: any): Promise<SearchResponse> {
-        console.log(`[${new Date().toISOString()}] AirweaveClient.search called with:`, JSON.stringify(searchRequest, null, 2));
+    async listCollections(limit = 25): Promise<{ readable_id: string; name?: string }[]> {
+        try {
+            const response = await this.client.collections.list({ limit });
+            return (response as any[]).map((c: any) => ({
+                readable_id: c.readable_id ?? c.readableId ?? c.id,
+                name: c.name,
+            }));
+        } catch (error: unknown) {
+            const err = error as { statusCode?: number; message?: string };
+            throw new Error(`Failed to list collections: ${err.message || 'Unknown error'}`);
+        }
+    }
 
+    async search(searchRequest: SearchRequest): Promise<SearchResponse> {
         // Mock mode for testing
         if (this.config.apiKey === 'test-key' && this.config.baseUrl.includes('localhost')) {
             return this.getMockResponse(searchRequest);
         }
 
         try {
-            // Use the SDK's search method - it handles both basic and advanced parameters
-            // The SDK will automatically use GET for basic params and POST for advanced
-            console.log(`[${new Date().toISOString()}] Calling SDK search with all params`);
+            console.log(`[search] collection=${this.config.collection} baseUrl=${this.config.baseUrl} orgId=${this.config.organizationId || 'none'}`);
             const response = await this.client.collections.search(this.config.collection, searchRequest);
-            console.log(`[${new Date().toISOString()}] Search successful, got ${response.results?.length || 0} results`);
             return response;
-        } catch (error: any) {
-            // Handle SDK errors and convert to our error format
-            console.error(`[${new Date().toISOString()}] Search error:`, error);
-            if (error.statusCode) {
-                const errorBody = typeof error.body === 'string' ? error.body : JSON.stringify(error.body);
-                throw new Error(`Airweave API error (${error.statusCode}): ${error.message}\nStatus code: ${error.statusCode}\nBody: ${errorBody}`);
+        } catch (error: unknown) {
+            const err = error as { statusCode?: number; message?: string; body?: unknown };
+            if (err.statusCode) {
+                const errorBody = typeof err.body === 'string' ? err.body : JSON.stringify(err.body);
+                throw new Error(`Airweave API error (${err.statusCode}): ${err.message}\nStatus code: ${err.statusCode}\nBody: ${errorBody}`);
             } else {
-                throw new Error(`Airweave API error: ${error.message || 'Unknown error'}`);
+                throw new Error(`Airweave API error: ${err.message || 'Unknown error'}`);
             }
         }
     }
 
-    private getMockResponse(request: any): SearchResponse {
-        const { query, response_type, limit, offset, recency_bias, score_threshold, search_method, expansion_strategy, enable_reranking, enable_query_interpretation } = request;
+    private getMockResponse(request: SearchRequest): SearchResponse {
+        const { query, responseType, limit, offset, recencyBias, scoreThreshold } = request as any;
 
-        // Generate mock results based on the query
         const mockResults = [];
-        const resultCount = Math.min(limit || 100, 5); // Limit to 5 for testing
+        const resultCount = Math.min(limit || 100, 5);
 
         for (let i = 0; i < resultCount; i++) {
             const score = 0.95 - (i * 0.1);
 
-            // Apply score threshold if specified
-            if (score_threshold !== undefined && score < score_threshold) {
+            if (scoreThreshold !== undefined && score < scoreThreshold) {
                 continue;
             }
 
@@ -61,27 +76,15 @@ export class AirweaveClient {
                     source_name: `Mock Source ${i + 1}`,
                     entity_id: `mock_${i + 1}`,
                     title: `Mock Document ${i + 1} about "${query}"`,
-                    md_content: `This is a mock response for the query "${query}". This document contains relevant information about ${query} and demonstrates how the MCP server would return search results.`,
-                    created_at: new Date(Date.now() - (i * 24 * 60 * 60 * 1000)).toISOString(), // Different dates
-                    metadata: {
-                        test: true,
-                        query: query,
-                        limit: limit,
-                        offset: offset,
-                        recency_bias: recency_bias,
-                        score_threshold: score_threshold,
-                        search_method: search_method,
-                        expansion_strategy: expansion_strategy,
-                        enable_reranking: enable_reranking,
-                        enable_query_interpretation: enable_query_interpretation
-                    }
+                    md_content: `This is a mock response for the query "${query}".`,
+                    created_at: new Date(Date.now() - (i * 24 * 60 * 60 * 1000)).toISOString(),
                 }
             });
         }
 
         return {
             results: mockResults,
-            completion: response_type === "completion"
+            completion: responseType === "completion"
                 ? `Based on the search results for "${query}", here's a comprehensive summary of the findings...`
                 : undefined
         };

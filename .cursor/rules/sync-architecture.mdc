@@ -23,35 +23,48 @@ The sync module orchestrates data flow from sources to destinations using a high
 ## Component Deep Dive
 
 ### SyncFactory
-**Purpose**: Factory pattern for creating fully-initialized sync orchestrators
+**Purpose**: Factory that builds SyncContext (data), SyncRuntime (services), and wires them into the orchestrator
 
 **Key Responsibilities**:
-- Creates `SyncContext` with all required dependencies
-- Initializes transformer cache to eliminate runtime database lookups
+- Builds SyncContext (frozen data) via SyncContextBuilder
+- Builds live services (source, destinations, trackers) via sub-builders directly
+- Assembles SyncRuntime from the services
 - Configures contextual logging with sync metadata
-- Manages OAuth token initialization
+- Wires pipelines, handlers, worker pool, and stream
 
-**Critical Implementation Details**:
-```python
-# CRITICAL FIX: Pre-loads transformers to avoid 1.5s database lookups per entity
-await sync_context.router.initialize_transformer_cache(db)
-```
+### SyncContext (frozen data)
+**Purpose**: Immutable data describing a sync run. Inherits from `BaseContext` (sibling to `ApiContext`).
 
-### SyncContext
-**Purpose**: Immutable container holding all resources needed during sync execution
-
-**Components**:
-- `source`: Source instance with OAuth token management
-- `destinations`: List of destination instances (vector/graph databases)
-- `embedding_model`: Model for text vectorization
-- `transformers`: Dictionary of callable transformers
-- `sync`, `sync_job`, `dag`: Configuration objects
-- `progress`: Real-time progress tracker with Redis pubsub
-- `router`: DAG-based entity routing engine
+**Fields** (flat, no sub-contexts):
+- `sync_id`, `sync_job_id`, `collection_id`, `source_connection_id`: Scope IDs
+- `sync`, `sync_job`, `collection`, `connection`: Schema objects
+- `execution_config`, `force_full_sync`, `batch_size`, `max_batch_latency_ms`: Config
 - `entity_map`: Maps entity types to UUIDs
-- `logger`: Contextual logger with sync metadata
+- `source_short_name`: Derived from source at build time
+- From `BaseContext`: `organization`, `user`, `logger`
 
-**Design Pattern**: Context Object - passes all dependencies as a single parameter
+Can be passed directly as `ctx` to CRUD operations (it IS a `BaseContext`).
+
+### SyncRuntime (live services)
+**Purpose**: Holds live services and mutable state for a sync run. Separate from SyncContext.
+
+**Fields**:
+- `source`: Source instance with OAuth token management
+- `cursor`: Mutable sync cursor for incremental syncs
+- `destinations`: List of destination instances
+- `entity_tracker`: Centralized entity state tracker
+- `event_bus`: Central EventBus for domain events (progress, lifecycle)
+- `usage_checker`: Usage limit enforcement (`UsageLimitCheckerProtocol`)
+
+Built by the factory, held by the orchestrator, injected into pipeline/handler constructors.
+
+### Builders
+- **SyncContextBuilder** (`builders/sync.py`): Builds data-only SyncContext
+- **SourceContextBuilder** (`builders/source.py`): Builds source + cursor (returns tuple)
+- **DestinationsContextBuilder** (`builders/destinations.py`): Builds destinations + entity_map
+- **TrackingContextBuilder** (`builders/tracking.py`): Builds entity_tracker
+
+The factory calls sub-builders in parallel where possible, then assembles SyncRuntime.
 
 ### SyncOrchestrator
 **Purpose**: Coordinates the entire sync workflow with error handling and progress tracking
@@ -73,7 +86,7 @@ await sync_context.router.initialize_transformer_cache(db)
 async for entity in stream.get_entities():
     if entity.airweave_system_metadata.should_skip:
         # Skip without using a worker
-        await sync_context.progress.increment("skipped")
+        await sync_context.entity_tracker.record_skipped(1)
         continue
 
     # Submit to worker pool (blocks if all workers busy)
@@ -95,26 +108,31 @@ async for entity in stream.get_entities():
 - Graceful shutdown with timeout handling
 - Sentinel value (None) signals end of stream
 
-### EntityProcessor
-**Purpose**: Processes entities through a multi-stage pipeline
+### EntityPipeline
+**Purpose**: Orchestrates entity processing through the action/handler architecture
 
 **Pipeline Stages**:
-1. **Duplicate Detection**: Tracks processed entities to prevent reprocessing
-2. **Enrichment**: Adds metadata (sync_id, timestamps, organization_id)
-3. **Action Determination**: Decides INSERT/UPDATE/DELETE/KEEP based on hash comparison
-4. **Transformation**: Routes through DAG-defined transformers
-5. **Vectorization**: Computes embeddings for text content
-6. **Persistence**: Writes to destination databases
+1. **Track & Dedupe**: EntityTracker records encounter, skips duplicates
+2. **Prepare**: Populate fields, enrich metadata, compute content hash
+3. **Resolve Actions**: ActionResolver determines INSERT/UPDATE/DELETE/KEEP
+4. **Dispatch**: ActionDispatcher routes actions to handlers concurrently
 
-**Performance Optimizations**:
-- Detailed timing logs for each stage
-- Database sessions created only when needed
-- Concurrent vector computation for multiple entities
-- Skip early for entities marked with `should_skip`
+**Action Types** (`platform/sync/actions/types.py`):
+- `InsertAction`: New entity, not in database
+- `UpdateAction`: Hash changed from stored value
+- `DeleteAction`: DeletionEntity from source
+- `KeepAction`: Hash matches stored value (no-op)
+
+**Handlers** (`platform/sync/handlers/`):
+| Handler | Responsibility | Execution |
+|---------|----------------|-----------|
+| `VectorDBHandler` | Chunking → embedding → vector DB writes | Concurrent |
+| `RawDataHandler` | Captures raw entities to ARF storage | Concurrent |
+| `PostgresMetadataHandler` | Persists entity metadata | Sequential (last) |
 
 **Error Handling**:
 - Catches exceptions per entity (doesn't fail entire sync)
-- Marks failed entities as "skipped" in progress tracking
+- Marks failed entities as "skipped" via EntityTracker
 - Detailed error logging with entity context
 
 ### SyncDAGRouter
@@ -128,7 +146,7 @@ async for entity in stream.get_entities():
 **Routing Logic**:
 ```python
 # Route map: (producer_node_id, entity_type_id) -> consumer_node_id
-route_map[(producer, entity_definition_id)] = consumer_node_id
+route_map[(producer, entity_definition_short_name)] = consumer_node_id
 
 # Special case: routes to destination return None (stops routing)
 if all_edges_go_to_destinations:
@@ -136,7 +154,6 @@ if all_edges_go_to_destinations:
 ```
 
 **Advanced Features**:
-- Supports polymorphic entities (one-to-many transformations)
 - Handles multi-path routing through DAG
 - Optimized for chunk processing (files → chunks)
 
@@ -154,35 +171,37 @@ if all_edges_go_to_destinations:
 - `_run_with_semaphore()`: Wraps coroutine with semaphore acquisition
 - `_handle_task_completion()`: Cleans up completed/failed tasks
 
-### SyncProgress (with PubSub)
-**Purpose**: Tracks sync progress with real-time updates via Redis pubsub
+### EntityTracker
+**Purpose**: Centralized entity state tracking (dedup + progress + encounter tracking)
+
+**Responsibilities**:
+- **Deduplication**: Tracks `(entity_id, entity_definition_short_name)` to prevent reprocessing
+- **Encounter Counting**: Maintains count of entities by type for stats
+- **Progress Stats**: Thread-safe counters for inserted/updated/deleted/kept/skipped
+
+**Key Methods**:
+- `track()`: Records entity encounter, returns False if duplicate
+- `record_action()`: Increments stat counter (inserted, updated, etc.)
+- `get_stats()`: Returns `SyncStats` for job completion
+- `get_all_encountered_ids_flat()`: Returns set of all entity IDs (for orphan cleanup)
+
+### SyncProgressRelay (EventSubscriber)
+**Purpose**: Event-driven subscriber that relays sync progress to Redis pubsub for real-time updates
+
+**Architecture**:
+- Extends `EventSubscriber`, subscribes to `entity.*`, `access_control.*`, and `sync.*` events on the EventBus
+- Sessions are auto-created on `sync.running` events — no factory wiring needed
+- Accumulates progress in per-sync sessions, publishes aggregated updates
 
 **Features**:
-- **Atomic Counters**: Thread-safe increment operations with async locks
-- **Threshold Publishing**: Publishes updates every N operations (default: 3)
-- **Entity Tracking**: Maintains count of unique entities by type
-- **Redis Integration**: Publishes to `sync_job:{job_id}` channels and stores snapshots for cleanup job
-
-**Statistics Tracked**:
-- `inserted`, `updated`, `deleted`: Destination operations
-- `kept`: Unchanged entities (hash match)
-- `skipped`: Failed or filtered entities
-- `entities_encountered`: Count by entity type
-- `status`: Final job status (None if still in progress)
-- `last_update_timestamp`: ISO timestamp of last update (for cleanup job stuck detection)
+- **Event-Driven**: Reacts to `EntityBatchProcessedEvent`, `SyncLifecycleEvent`, etc.
+- **Redis Integration**: Publishes to `sync_job:{job_id}` channels
+- **Snapshot Storage**: Stores progress snapshots with TTL for stuck job detection
 
 **Redis Snapshot Storage**:
-- Each progress update stores a snapshot in Redis with key `sync_progress_snapshot:{job_id}`
-- Snapshot includes `last_update_timestamp` for cleanup job to detect stuck syncs
+- Key: `sync_progress_snapshot:{job_id}`
+- Includes `last_update_timestamp` for cleanup job to detect stuck syncs
 - 30-minute TTL to automatically clean up completed syncs
-- Used by `cleanup_stuck_sync_jobs_activity` to identify RUNNING jobs with no recent activity
-
-**Critical Fix**:
-```python
-# Async lock prevents race conditions from concurrent workers
-async with self._lock:
-    setattr(self.stats, stat_name, current_value + amount)
-```
 
 ### TokenManager
 **Purpose**: Manages OAuth2 token refresh for long-running syncs
@@ -219,9 +238,13 @@ SyncFactory.create_orchestrator()
 │   ├── Initialize source with OAuth token
 │   ├── Create destinations
 │   ├── Setup embedding model
-│   └── Build DAG router
+│   ├── Build DAG router
+│   ├── Create EntityTracker
+│   └── Create EventBus (SyncProgressRelay auto-subscribes)
 ├── Initialize transformer cache (CRITICAL)
-├── Create EntityProcessor
+├── Create EntityPipeline
+│   ├── ActionResolver
+│   └── ActionDispatcher (with handlers)
 └── Create AsyncWorkerPool
 ```
 
@@ -239,27 +262,32 @@ SyncOrchestrator (Consumer)
 └── Submits to worker pool
 ```
 
-### 3. Processing Phase (Per Entity)
+### 3. Processing Phase (Per Batch)
 ```
-EntityProcessor.process()
-├── Check duplicates
-├── Enrich with metadata
-├── Determine action (query destination)
-├── Route through transformers (DAG)
-├── Compute vectors (if needed)
-└── Persist to destinations
+EntityPipeline.process()
+├── Track & dedupe (EntityTracker)
+├── Prepare entities (enrich, compute hash)
+├── Resolve actions (ActionResolver)
+│   ├── Query DB for existing hashes
+│   └── Return ActionBatch (inserts, updates, deletes, keeps)
+└── Dispatch to handlers (ActionDispatcher)
+    ├── VectorDBHandler (concurrent)
+    │   └── text → chunks → embeddings → vector DB
+    ├── RawDataHandler (concurrent)
+    │   └── Capture to ARF storage
+    └── PostgresMetadataHandler (sequential, last)
+        └── Persist entity metadata
 ```
 
 ### 4. Progress Tracking
 ```
-Every operation increments counter
-├── Async lock ensures thread safety
-├── Threshold check (every 3 ops)
-├── Publish to Redis pubsub if threshold met
-│   ├── Real-time updates to subscribers
-│   └── Snapshot stored in Redis (sync_progress_snapshot:{job_id})
-│       └── Includes last_update_timestamp for cleanup job detection
-└── Subscribers receive real-time updates
+EntityTracker records action
+├── Emits domain events via EventBus (entity.batch_processed, etc.)
+├── SyncProgressRelay (EventSubscriber) receives events
+│   ├── Accumulates progress in per-sync session
+│   ├── Publishes to Redis pubsub (sync_job:{job_id})
+│   └── Stores snapshot in Redis (sync_progress_snapshot:{job_id})
+└── Frontend/API subscribers receive real-time updates
 ```
 
 ## Orphaned Workflow Self-Destruct
@@ -316,8 +344,3 @@ if sync_job_dict.get("_orphaned") or "ORPHANED_SYNC" in str(e):
 5. Test with large datasets
 
 This architecture enables efficient processing of millions of entities with optimal resource usage, real-time monitoring, and robust error handling.
-
-   - Final statistics are published
-   - Resources are cleaned up
-
-This architecture enables efficient processing of large datasets with optimal resource usage and real-time progress reporting.

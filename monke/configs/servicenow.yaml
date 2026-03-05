@@ -1,0 +1,54 @@
+name: servicenow_test
+description: End-to-end test for ServiceNow source using Monke
+
+connector:
+  name: ServiceNow
+  type: servicenow
+  auth_mode: direct
+  auth_fields:
+    url: MONKE_SERVICENOW_URL
+    username: MONKE_SERVICENOW_USERNAME
+    password: MONKE_SERVICENOW_PASSWORD
+  config_fields:
+    openai_model: "gpt-4o-mini"
+    rate_limit_delay_ms: 500
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+    - collection_cleanup
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+entity_count: 3
+
+collection:
+  name: ServiceNow Test Collection
+
+verification:
+  retry_attempts: 3
+  retry_delay_seconds: 5
+  score_threshold: 0.0
+  expected_fields:
+    - number
+    - short_description
+    - description
+    - sys_id

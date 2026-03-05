@@ -6,9 +6,9 @@ import { AirweaveSDK } from '@airweave/sdk';
 export type SearchResponse = AirweaveSDK.SearchResponse;
 export type SearchRequest = AirweaveSDK.SearchRequest;
 
-// Keep our custom config interface
 export interface AirweaveConfig {
     apiKey: string;
     collection: string;
     baseUrl: string;
+    organizationId?: string;
 }

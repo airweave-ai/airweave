@@ -11,7 +11,7 @@ from airweave import crud
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
-from airweave.platform.storage import storage_manager
+from airweave.platform.storage import sync_file_manager
 
 router = TrailingSlashRouter()
 
@@ -74,7 +74,7 @@ async def download_file(
 
     try:
         # Download to temp file
-        content, file_path = await storage_manager.download_ctti_file(
+        content, file_path = await sync_file_manager.download_ctti_file(
             ctx.logger,
             entity_id,
             output_path=f"/tmp/{entity_id.replace(':', '_').replace('/', '_')}.md",
@@ -126,7 +126,7 @@ async def get_file_content(
     await verify_picnic_health_access(ctx, db)
 
     try:
-        content = await storage_manager.get_ctti_file_content(ctx.logger, entity_id)
+        content = await sync_file_manager.get_ctti_file_content(ctx.logger, entity_id)
 
         if content is None:
             raise HTTPException(
@@ -183,7 +183,7 @@ async def download_files_batch(
 
     try:
         # Download all files
-        results = await storage_manager.download_ctti_files_batch(
+        results = await sync_file_manager.download_ctti_files_batch(
             ctx.logger, entity_ids, continue_on_error=True
         )
 
@@ -268,7 +268,7 @@ async def check_files_exist(
 
     for entity_id in entity_ids:
         try:
-            exists = await storage_manager.check_ctti_file_exists(ctx.logger, entity_id)
+            exists = await sync_file_manager.check_ctti_file_exists(ctx.logger, entity_id)
             results[entity_id] = exists
         except Exception as e:
             ctx.logger.warning(f"Error checking file {entity_id}: {e}")

@@ -12,6 +12,8 @@ description: "Outlook Mail integration with Airweave"
   <h1 style={{ margin: 0 }}>Outlook Mail</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Outlook Mail through Airweave's unified search layer.
+
 ## Configuration
 
 Outlook Mail source connector integrates with the Microsoft Graph API to extract email data.
@@ -87,12 +89,14 @@ See:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Mail folder ID from Microsoft Graph. |
 | display_name | str | Display name of the mail folder (e.g., 'Inbox'). |
 | parent_folder_id | Optional[str] | ID of the parent mail folder, if any. |
 | child_folder_count | Optional[int] | Number of child mail folders under this folder. |
 | total_item_count | Optional[int] | Total number of items (messages) in this folder. |
 | unread_item_count | Optional[int] | Number of unread items in this folder. |
 | well_known_name | Optional[str] | Well-known name of this folder if applicable (e.g., 'inbox'). |
+| web_url_override | Optional[str] | URL to open this folder in Outlook on the web. |
 
 </Accordion>
 <Accordion title="OutlookMessageEntity">
@@ -103,8 +107,9 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/message?view=gr
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Message ID from Microsoft Graph. |
 | folder_name | str | Name of the folder containing this message |
-| subject | Optional[str] | Subject line of the message |
+| subject | str | Subject line of the message. |
 | sender | Optional[str] | Email address of the sender |
 | to_recipients | List[str] | Recipients of the message |
 | cc_recipients | List[str] | CC recipients |
@@ -116,6 +121,7 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/message?view=gr
 | importance | Optional[str] | Importance level (Low, Normal, High) |
 | has_attachments | bool | Whether the message has attachments |
 | internet_message_id | Optional[str] | Internet message ID |
+| web_url_override | Optional[str] | Link to the message in Outlook on the web. |
 
 </Accordion>
 <Accordion title="OutlookAttachmentEntity">
@@ -126,12 +132,15 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/fileattachment?
 
 | Field | Type | Description |
 |-------|------|-------------|
+| composite_id | str | Composite attachment ID (message + attachment). |
+| name | str | Attachment filename. |
 | message_id | str | ID of the message this attachment belongs to |
 | attachment_id | str | Outlook's attachment ID |
 | content_type | Optional[str] | Content type of the attachment |
 | is_inline | bool | Whether this is an inline attachment |
 | content_id | Optional[str] | Content ID for inline attachments |
 | metadata | Dict[str, Any] | Additional metadata about the attachment |
+| message_web_url | Optional[str] | URL to the parent message in Outlook on the web. |
 
 </Accordion>
 <Accordion title="OutlookMessageDeletionEntity">
@@ -139,12 +148,13 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/fileattachment?
 Deletion signal for an Outlook message.
 
 Emitted when the Graph delta API reports a message was removed.
-The `entity_id` matches the original message's id so downstream deletion
-can target the correct parent/children.
+The `entity_id` (derived from `message_id`) matches the original message's id
+so downstream deletion can target the correct parent/children.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | message_id | str | ID of the deleted message |
+| label | str | Human-readable deletion label |
 
 </Accordion>
 <Accordion title="OutlookMailFolderDeletionEntity">
@@ -152,11 +162,12 @@ can target the correct parent/children.
 Deletion signal for an Outlook mail folder.
 
 Emitted when the Graph delta API reports a folder was removed.
-The `entity_id` matches the original folder's id.
+The `entity_id` (derived from `folder_id`) matches the original folder's id.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | folder_id | str | ID of the deleted folder |
+| label | str | Human-readable deletion label |
 
 </Accordion>
 

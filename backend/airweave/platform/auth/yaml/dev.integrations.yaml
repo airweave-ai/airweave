@@ -70,20 +70,6 @@ integrations:
     additional_frontend_params:
       token_access_type: "offline"
 
-  excel:
-    oauth_type: "with_rotating_refresh"
-    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-    grant_type: "authorization_code"
-    client_id: "5d873553-04c7-48f1-8a59-172a288a72f4"
-    client_secret: "dfd8Q~T7FC9EDGGdcobkbKdYJJQg6v0_ojuwrbIO"
-    content_type: "application/x-www-form-urlencoded"
-    client_credential_location: "body"
-    scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All"
-    additional_frontend_params:
-      response_type: "code"
-      response_mode: "query"
-
   github:
 
   gitlab:
@@ -336,6 +322,10 @@ integrations:
       response_type: "code"
       response_mode: "query"
 
+  slab:
+
+  slite:
+
   slack:
     oauth_type: "access_only"
     url: "https://slack.com/oauth/v2/authorize"
@@ -365,7 +355,7 @@ integrations:
     request_token_url: "https://trello.com/1/OAuthGetRequestToken"
     authorization_url: "https://trello.com/1/OAuthAuthorizeToken"
     access_token_url: "https://trello.com/1/OAuthGetAccessToken"
-    consumer_key: "88e61134b0cbdbced53c8b652a1461bf"  # Get from https://trello.com/power-ups/admin
+    consumer_key: "88e61134b0cbdbced53c8b652a1461bf" # Get from https://trello.com/power-ups/admin
     consumer_secret: "ddc6b96b7c9f0854a05dd291bfac082d2a553630cda92c216073d6d39b94f775"
     scope: "read,write"
     expiration: "never"
@@ -382,6 +372,9 @@ integrations:
     scope: "read write"
     url_template: true
     backend_url_template: true
+
+  coda:
+    # Coda API v1 uses Personal API Token (DIRECT auth). OAuth via Packs can be added later.
 
   clickup:
     oauth_type: "access_only"
@@ -400,9 +393,7 @@ integrations:
   salesforce:
     oauth_type: "with_refresh"
     url: "https://login.salesforce.com/services/oauth2/authorize"
-    backend_url: "https://{instance_url}/services/oauth2/token"
-    url_template: true
-    backend_url_template: true
+    backend_url: "https://login.salesforce.com/services/oauth2/token"
     grant_type: "authorization_code"
     client_id: "3MVG9dAEux2v1sLseF_0jBTN_sDLP7fVLtwbpycDbE8dR99sf7irwffkExkYz80vLsd_Wqh.SbBHaaWsjTB0D"
     client_secret: "817BA10D3DDEEAAA309B6D38B6B58A0339BD3F2073AD6D72232382F1B99F73BF"
@@ -411,6 +402,8 @@ integrations:
     scope: "api refresh_token"
     additional_frontend_params:
       response_type: "code"
+
+  servicenow:
 
   word:
     oauth_type: "with_rotating_refresh"
@@ -426,4 +419,36 @@ integrations:
       response_type: "code"
       response_mode: "query"
 
+  powerpoint:
+    oauth_type: "with_rotating_refresh"
+    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    grant_type: "authorization_code"
+    client_id: "cfd357e8-7ee7-4786-bfff-34caa7272c41"
+    client_secret: "APMST~62ee4b8a504eee45b16ed7a4fb85f46a~t1bdMkV5I4laOH"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All"
+    additional_frontend_params:
+      response_type: "code"
+      response_mode: "query"
+
+  zoho_crm:
+    oauth_type: "with_refresh"
+    url: "https://accounts.zoho.com/oauth/v2/auth"
+    backend_url: "https://accounts.zoho.com/oauth/v2/token"
+    grant_type: "authorization_code"
+    client_id: "1000.0PIPY9NUC20ESJKFTT2E0M6M1PL5CQ"
+    client_secret: "c1e35e2ca4ddedc14a5652fbdc6cf13261d16dedf4"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "ZohoCRM.modules.READ ZohoCRM.settings.READ ZohoCRM.users.READ"
+    additional_frontend_params:
+      access_type: "offline"
+      prompt: "consent"
+
   qdrant:
+
+  fireflies:
+  freshdesk:
+  document360:

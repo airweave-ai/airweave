@@ -1,0 +1,306 @@
+# OVERVIEW (chunk-as-document model):
+# - Each chunk is a separate document
+# - entity_id: "{original_id}__chunk_{idx}"
+# - original_entity_id: tracks parent entity
+# - Single {{EMBEDDING_DIM}}-dim bfloat16 embedding for both matching and ranking
+#
+# EMBEDDING DIMENSIONS: Controlled by EMBEDDING_DIMENSIONS in .env
+# This schema uses {{EMBEDDING_DIM}} dimensions - must match your embedding provider:
+#   - 1024 = Mistral (mistral-embed)
+#   - 1536 = OpenAI (text-embedding-3-small)
+#   - 3072 = OpenAI (text-embedding-3-large)
+#
+# MATCHING: hybrid (lexical + ANN) to maximize recall
+# - ANN index: bfloat16 {{EMBEDDING_DIM}}-dim with angular distance
+# - HNSW: M=32 (higher recall), ef_construct=200
+# - Pre-filtering by collection_id (approximateThreshold=0.05 for exact NN fallback)
+# - targetHits: 5000 candidates
+#
+# RANKING (simplified - no second-phase needed with bfloat16 precision):
+# - first-phase: BM25 + closeness (all candidates)
+# - global-phase: RRF fusion (top 100)
+#
+# NOTE: Entity-level deduplication is now handled in the backend search module
+# by grouping chunks by original_entity_id and keeping the best-scoring chunk.
+
+schema base_entity {
+
+    document base_entity {
+
+        # Entity ID - includes __chunk_{idx} suffix for chunk documents
+        field entity_id type string {
+            indexing: summary | attribute
+            attribute: fast-search
+        }
+
+        field name type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # Breadcrumbs for hierarchy navigation
+        field breadcrumbs type array<breadcrumb> {
+            indexing: summary
+            struct-field entity_id {
+                indexing: attribute
+                attribute: fast-search
+            }
+            struct-field name {
+                indexing: attribute
+                attribute: fast-search
+            }
+            struct-field entity_type {
+                indexing: attribute
+                attribute: fast-search
+            }
+        }
+
+        # Timestamps as epoch seconds for filtering and temporal relevance
+        field created_at type long {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field updated_at type long {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # =============================================================================
+        # System Metadata Fields (flattened)
+        # =============================================================================
+        field airweave_system_metadata_collection_id type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field airweave_system_metadata_entity_type type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field airweave_system_metadata_sync_id type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field airweave_system_metadata_sync_job_id type string {
+            indexing: attribute | summary
+        }
+
+        field airweave_system_metadata_hash type string {
+            indexing: attribute | summary
+        }
+
+        # Original entity ID (before __chunk_{idx} suffix)
+        # CRITICAL for entity-level deduplication in search results
+        field airweave_system_metadata_original_entity_id type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field airweave_system_metadata_source_name type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # Chunk index within the parent entity
+        field airweave_system_metadata_chunk_index type int {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # =============================================================================
+        # Access Control Fields (flattened from AccessControl model)
+        # =============================================================================
+        field access_is_public type bool {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field access_viewers type array<string> {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # =============================================================================
+        # Content Fields
+        # =============================================================================
+
+        # The chunk text (this is what gets embedded and searched)
+        field textual_representation type string {
+            indexing: index | summary
+            index: enable-bm25
+        }
+
+        # Payload stores all other fields from the source entity (as JSON string)
+        # Indexed for keyword search (BM25)
+        field payload type string {
+            indexing: index | summary
+            index: enable-bm25
+        }
+
+        # =============================================================================
+        # Embedding Field (unified {{EMBEDDING_DIM}}-dim)
+        # =============================================================================
+
+        # Single {{EMBEDDING_DIM}}-dim bfloat16 embedding for both ANN matching and ranking
+        # Client sends float32, Vespa auto-converts to bfloat16 for storage
+        # Uses angular distance (maps to cosine similarity)
+        # HNSW parameters tuned for high recall with 5000 candidates:
+        # - M=32: more links per node for better recall
+        # - ef_construct=200: more neighbors explored during index building
+        field dense_embedding type tensor<bfloat16>(x[{{EMBEDDING_DIM}}]) {
+            indexing: attribute | index
+            attribute {
+                distance-metric: angular
+            }
+            index {
+                hnsw {
+                    max-links-per-node: 32
+                    neighbors-to-explore-at-insert: 200
+                }
+            }
+        }
+
+        # =============================================================================
+        # Sparse Embedding Field (FastEmbed BM25 - for keyword SCORING)
+        # =============================================================================
+
+        # Sparse embedding for keyword SCORING (FastEmbed Qdrant/bm25 model)
+        # Mapped tensor: token ID → weight
+        # Uses same pre-computed embeddings as Qdrant for consistent keyword ranking
+        # Note: Retrieval still uses inverted index via userInput(), this is for SCORING only
+        # Benefits over Vespa native BM25:
+        # - Pre-trained vocabulary & IDF (not dependent on Vespa index size)
+        # - Stopword removal built into the model
+        # - Learned term weights (not just raw frequency)
+        field sparse_embedding type tensor<float>(token{}) {
+            indexing: attribute
+            attribute {
+                paged  # Disk-based, not in RAM - only loaded during ranking
+            }
+        }
+    }
+
+    struct breadcrumb {
+        field entity_id   type string {}
+        field name        type string {}
+        field entity_type type string {}
+    }
+
+    # Default fieldset used by userInput() / unspecified text search
+    fieldset default {
+        fields: textual_representation, payload
+    }
+
+    # Note: We use Vespa's default summary (no explicit document-summary)
+    # which automatically includes ALL fields with "summary" in their indexing,
+    # including fields from child schemas (e.g., url from file_entity)
+
+    # =========================================================================
+    # BASE RANK PROFILE - shared inputs and functions
+    # =========================================================================
+    rank-profile default {
+        inputs {
+            # Query embedding for ranking - client sends float32
+            query(query_embedding) tensor<float>(x[{{EMBEDDING_DIM}}])
+            # Multi-query support: q0=primary, q1-q9=expanded queries
+            # Each used by nearestNeighbor operators in YQL
+            query(q0) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q1) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q2) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q3) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q4) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q5) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q6) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q7) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q8) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q9) tensor<float>(x[{{EMBEDDING_DIM}}])
+
+            # Sparse query embedding for keyword SCORING (FastEmbed BM25)
+            # Token IDs as strings mapped to weights
+            query(q_sparse) tensor<float>(token{})
+        }
+
+        # -----------------------------------------------------------------------
+        # Semantic similarity (cosine) with the single embedding
+        # Uses closeness from HNSW which is already computed during matching
+        # -----------------------------------------------------------------------
+        function semantic_score() {
+            expression: closeness(field, dense_embedding)
+        }
+
+        # -----------------------------------------------------------------------
+        # Keyword score using pre-computed FastEmbed sparse embeddings
+        # Replaces bm25() for consistent scoring with Qdrant
+        # Benefits: pre-trained IDF, stopword removal, learned term weights
+        # -----------------------------------------------------------------------
+        function keyword_score() {
+            expression: sum(query(q_sparse) * attribute(sparse_embedding))
+        }
+    }
+
+    # =========================================================================
+    # HYBRID RANK PROFILE with RRF (Reciprocal Rank Fusion)
+    # Uses FastEmbed sparse embeddings for keyword scoring instead of Vespa BM25
+    # =========================================================================
+    rank-profile hybrid inherits default {
+
+        # -----------------------------------------------------------------------
+        # FIRST PHASE: Runs on all matched candidates
+        # Combines FastEmbed sparse dotproduct and semantic closeness
+        # Note: keyword_score() uses pre-computed FastEmbed embeddings
+        # -----------------------------------------------------------------------
+        first-phase {
+            expression: keyword_score() + semantic_score()
+        }
+
+        # NO SECOND PHASE - bfloat16 with {{EMBEDDING_DIM}} dimensions is accurate enough
+        # No need for expensive rescoring with float32 like in Qdrant
+
+        # -----------------------------------------------------------------------
+        # GLOBAL PHASE: RRF fusion - normalizes by rank, not raw scores
+        # reciprocal_rank converts each score to 1/(k+rank) where k=60
+        # This makes scores comparable without training data
+        # rerank-count: 100 for final ranking
+        # -----------------------------------------------------------------------
+        global-phase {
+            rerank-count: 100
+            expression {
+                reciprocal_rank(keyword_score) +
+                reciprocal_rank(semantic_score)
+            }
+        }
+
+        # Match features for debugging and potential future model training
+        match-features {
+            keyword_score
+            semantic_score
+        }
+    }
+
+    # =========================================================================
+    # SEMANTIC RANK PROFILE (for neural-only search)
+    # =========================================================================
+    rank-profile semantic inherits default {
+        first-phase {
+            expression: semantic_score()
+        }
+    }
+
+    # =========================================================================
+    # KEYWORD RANK PROFILE (for keyword-only search)
+    # Uses FastEmbed sparse embeddings for consistent behavior with Qdrant
+    # =========================================================================
+    rank-profile keyword inherits default {
+        first-phase {
+            expression: keyword_score()
+        }
+
+        # Match features for debugging
+        match-features {
+            keyword_score
+        }
+    }
+}

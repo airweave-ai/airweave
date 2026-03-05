@@ -1,27 +1,29 @@
 """Search factory."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
-from airweave.platform.destinations.collection_strategy import get_default_vector_size
+from airweave.core.container import (
+    container as app_container,
+)  # [code blue] todo: remove container import
+from airweave.core.protocols.pubsub import PubSub
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.sync.token_manager import TokenManager
-from airweave.platform.utils.source_factory_utils import (
-    get_auth_configuration,
-    process_credentials_for_source,
-)
-from airweave.schemas.search import SearchDefaults, SearchRequest
+from airweave.schemas.search import RetrievalStrategy, SearchDefaults, SearchRequest
 from airweave.search.context import SearchContext
 from airweave.search.emitter import EventEmitter
 from airweave.search.helpers import search_helpers
 from airweave.search.operations import (
+    AccessControlFilter,
     EmbedQuery,
     FederatedSearch,
     GenerateAnswer,
@@ -29,13 +31,13 @@ from airweave.search.operations import (
     QueryInterpretation,
     Reranking,
     Retrieval,
-    TemporalRelevance,
     UserFilter,
 )
 from airweave.search.providers._base import BaseProvider
 from airweave.search.providers.cerebras import CerebrasProvider
 from airweave.search.providers.cohere import CohereProvider
 from airweave.search.providers.groq import GroqProvider
+from airweave.search.providers.mistral import MistralProvider
 from airweave.search.providers.openai import OpenAIProvider
 from airweave.search.providers.schemas import (
     EmbeddingModelConfig,
@@ -43,6 +45,9 @@ from airweave.search.providers.schemas import (
     ProviderModelSpec,
     RerankModelConfig,
 )
+
+# Type alias for destination override
+DestinationOverride = Literal["qdrant", "vespa"]
 
 # Rebuild SearchContext model now that all operation classes are imported
 SearchContext.model_rebuild()
@@ -65,62 +70,107 @@ class SearchFactory:
         stream: bool,
         ctx: ApiContext,
         db: AsyncSession,
+        pubsub: PubSub,
+        *,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
+        # --- Optional parameters for admin/ACL search ---
+        destination_override: Optional[DestinationOverride] = None,
+        user_principal_override: Optional[str] = None,
+        skip_organization_check: bool = False,
     ) -> SearchContext:
-        """Build SearchContext from request with validated YAML defaults."""
+        """Build SearchContext from request with validated YAML defaults.
+
+        Args:
+            request_id: Unique request identifier
+            collection_id: Collection UUID
+            readable_collection_id: Human-readable collection ID
+            search_request: Search parameters
+            stream: Whether to enable SSE streaming
+            ctx: API context with auth info
+            db: Database session
+            pubsub: PubSub adapter for event streaming
+            dense_embedder: Domain dense embedder for generating neural embeddings
+            sparse_embedder: Domain sparse embedder for generating BM25 embeddings
+            destination_override: Override destination ("qdrant" or "vespa").
+                If None, uses collection's default destination (Qdrant).
+            user_principal_override: Username to use for ACL filtering.
+                If None, uses ctx.user for ACL (normal behavior).
+            skip_organization_check: If True, skip organization filtering when
+                fetching collection (for admin cross-org access).
+
+        Returns:
+            Configured SearchContext ready for orchestration
+        """
+        # Enrich logger with collection context for all downstream logs
+        ctx.logger = ctx.logger.with_context(collection=readable_collection_id)
+
         if not search_request.query or not search_request.query.strip():
             raise HTTPException(status_code=422, detail="Query is required")
 
         # Apply defaults and validate parameters
-        params = self._apply_defaults_and_validate(search_request)
+        params = self._apply_defaults_and_validate(search_request, ctx)
 
-        # Get collection sources
-        collection = await crud.collection.get(db, id=collection_id, ctx=ctx)
+        # Get collection - with or without organization filtering
+        if skip_organization_check:
+            from airweave.models.collection import Collection
+
+            result = await db.execute(sa_select(Collection).where(Collection.id == collection_id))
+            collection = result.scalar_one_or_none()
+        else:
+            collection = await crud.collection.get(db, id=collection_id, ctx=ctx)
+
+        if not collection:
+            raise ValueError(f"Collection {collection_id} not found")
+
         federated_sources = await self.get_federated_sources(db, collection, ctx)
         has_federated_sources = bool(federated_sources)
         has_vector_sources = await self._has_vector_sources(db, collection, ctx)
 
+        # Resolve destination (may be overridden for admin search)
+        destination = await self._resolve_destination(db, collection, ctx, destination_override)
+        requires_embedding = getattr(destination, "requires_client_embedding", True)
+
         self._log_source_modes(ctx, federated_sources, has_vector_sources)
+        ctx.logger.info(
+            f"[SearchFactory] Destination: {destination.__class__.__name__}, "
+            f"requires_client_embedding: {requires_embedding}"
+        )
 
         if not has_federated_sources and not has_vector_sources:
             raise ValueError("Collection has no sources")
 
-        # Use collection's stored vector_size for provider initialization
-        vector_size = collection.vector_size
+        vector_size = dense_embedder.dimensions
 
-        # Fail-fast: vector_size must be set
-        if vector_size is None:
-            raise ValueError(f"Collection {collection.readable_id} has no vector_size set.")
-
-        # Select providers for operations
+        # Select LLM providers for operations (embedding is handled by domain embedders)
         api_keys = self._get_available_api_keys()
-        providers = self._create_provider_for_each_operation(
-            api_keys, params, has_federated_sources, has_vector_sources, ctx, vector_size
+        providers = self._create_llm_providers_for_operations(
+            api_keys,
+            params,
+            has_federated_sources,
+            has_vector_sources,
+            ctx,
         )
 
         # Create event emitter and emit skip notices if needed
-        emitter = EventEmitter(request_id=request_id, stream=stream)
+        emitter = EventEmitter(request_id=request_id, stream=stream, pubsub=pubsub)
         await self._emit_skip_notices_if_needed(emitter, has_vector_sources, params, search_request)
 
-        # Get sources that support temporal relevance (for filtering when enabled)
-        temporal_supporting_sources = None
-        if params["temporal_weight"] > 0 and has_vector_sources:
-            try:
-                temporal_supporting_sources = await self._get_temporal_supporting_sources(
-                    db, collection, ctx, emitter
-                )
-            except Exception as e:
-                # If we can't determine source support, raise the error
-                raise ValueError(f"Failed to check temporal relevance support: {e}") from e
-
-        # Build operations with vector_size
+        # Build operations with destination (destination-agnostic)
         operations = self._build_operations(
             params,
             providers,
             federated_sources,
             has_vector_sources,
             search_request,
-            temporal_supporting_sources,
-            vector_size,
+            destination=destination,
+            requires_client_embedding=requires_embedding,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
+            db=db,
+            ctx=ctx,
+            user_principal_override=user_principal_override,
+            organization_id=collection.organization_id,
         )
 
         search_context = SearchContext(
@@ -144,7 +194,9 @@ class SearchFactory:
 
         return search_context
 
-    def _apply_defaults_and_validate(self, search_request: SearchRequest) -> Dict[str, Any]:
+    def _apply_defaults_and_validate(
+        self, search_request: SearchRequest, ctx: Optional["ApiContext"] = None
+    ) -> Dict[str, Any]:
         """Apply defaults to search request and validate parameters."""
         retrieval_strategy = (
             search_request.retrieval_strategy
@@ -164,6 +216,18 @@ class SearchFactory:
             if search_request.expand_query is not None
             else defaults.expand_query
         )
+
+        # Disable query expansion for keyword-only search
+        # Reason: Vespa uses a single sparse embedding for keyword scoring, not per-expanded-query.
+        # Qdrant does support expanded sparse queries, but for consistency across destinations,
+        # we disable expansion for keyword-only searches entirely.
+        if retrieval_strategy == RetrievalStrategy.KEYWORD and expand_query:
+            if ctx:
+                ctx.logger.warning(
+                    "[SearchFactory] Query expansion disabled for keyword-only search. "
+                    "Expansion only benefits neural/hybrid retrieval strategies."
+                )
+            expand_query = False
         interpret_filters = (
             search_request.interpret_filters
             if search_request.interpret_filters is not None
@@ -175,17 +239,6 @@ class SearchFactory:
             if search_request.generate_answer is not None
             else defaults.generate_answer
         )
-        temporal_weight = (
-            search_request.temporal_relevance
-            if search_request.temporal_relevance is not None
-            else defaults.temporal_relevance
-        )
-
-        if not (0 <= temporal_weight <= 1):
-            raise HTTPException(
-                status_code=422, detail="temporal_relevance must be between 0 and 1"
-            )
-
         return {
             "retrieval_strategy": retrieval_strategy,
             "offset": offset,
@@ -194,7 +247,6 @@ class SearchFactory:
             "interpret_filters": interpret_filters,
             "rerank": rerank,
             "generate_answer": generate_answer,
-            "temporal_weight": temporal_weight,
         }
 
     def _log_source_modes(self, ctx: ApiContext, federated_sources: List, has_vector_sources: bool):
@@ -208,10 +260,6 @@ class SearchFactory:
         except Exception:
             pass
         ctx.logger.info(f"[SearchFactory] Vector-backed sources present: {has_vector_sources}")
-
-    def _get_vector_size(self) -> int:
-        """Get the default vector size for embeddings."""
-        return get_default_vector_size()
 
     async def _emit_skip_notices_if_needed(
         self,
@@ -241,14 +289,6 @@ class SearchFactory:
                         "reason": "All sources in the collection use federated search",
                     },
                 )
-            if params["temporal_weight"] > 0:
-                await emitter.emit(
-                    "operation_skipped",
-                    {
-                        "operation": "TemporalRelevance",
-                        "reason": "All sources in the collection use federated search",
-                    },
-                )
         except Exception:
             raise ValueError("Failed to emit skip notices for Qdrant-only features")
 
@@ -259,29 +299,76 @@ class SearchFactory:
         federated_sources: List[BaseSource],
         has_vector_sources: bool,
         search_request: SearchRequest,
-        temporal_supporting_sources: Optional[List[str]] = None,
-        vector_size: Optional[int] = None,
+        destination: Optional[BaseDestination] = None,
+        requires_client_embedding: bool = True,
+        dense_embedder: Optional[DenseEmbedderProtocol] = None,
+        sparse_embedder: Optional[SparseEmbedderProtocol] = None,
+        db: Optional[AsyncSession] = None,
+        ctx: Optional[ApiContext] = None,
+        user_principal_override: Optional[str] = None,
+        organization_id: Optional[UUID] = None,
     ) -> Dict[str, Any]:
         """Build operation instances for the search context.
 
         Args:
             params: Validated search parameters from request with defaults applied
-            providers: Dict with:
-                - "embed": Single BaseProvider (embeddings must be consistent - no fallback)
-                - Other keys: List[BaseProvider] (with fallback support)
+            providers: Dict of List[BaseProvider] for LLM operations (with fallback support)
             federated_sources: List of instantiated federated source objects
             has_vector_sources: Whether collection has any vector-backed sources
             search_request: Original search request from user
-            temporal_supporting_sources: List of source short_names to filter temporal search:
-                - Non-empty list: Filter to these sources (some don't support temporal)
-                - Empty list: Skip operation (no sources support temporal)
-                - None: No filtering needed (temporal disabled or not checked)
-            vector_size: Vector dimensions for this collection (used by EmbedQuery)
+            destination: The destination instance for search (Qdrant, Vespa, etc.)
+            requires_client_embedding: Whether destination needs client-side embeddings
+            dense_embedder: Domain dense embedder for generating neural embeddings
+            sparse_embedder: Domain sparse embedder for generating BM25 embeddings
+            db: Database session for access control queries
+            ctx: API context with user and organization info
+            user_principal_override: If provided, use this user for ACL filtering
+                instead of ctx.user. Used for admin "search as user" functionality.
+            organization_id: Organization ID for access control queries. Required
+                when user_principal_override is provided.
         """
+        # Operations that need client-side embeddings (Qdrant-specific for now)
+        # TODO: Make these destination-agnostic when filter DSL is abstracted
+        needs_embedding_ops = has_vector_sources and requires_client_embedding
+
+        # Build access control filter operation if we have user context
+        # This resolves the user's access principals and builds the filter
+        access_control_op = None
+
+        # Determine the user email for ACL - prefer override, fall back to logged-in user
+        acl_user_email = user_principal_override
+        if acl_user_email is None and ctx is not None and ctx.user is not None:
+            acl_user_email = ctx.user.email
+
+        # Determine organization ID - prefer explicit, fall back to ctx
+        acl_org_id = organization_id
+        if acl_org_id is None and ctx is not None:
+            acl_org_id = ctx.organization.id
+
+        has_acl_context = (
+            db is not None
+            and acl_user_email is not None
+            and acl_org_id is not None
+            and has_vector_sources
+        )
+        if has_acl_context:
+            access_control_op = AccessControlFilter(
+                db=db,
+                user_email=acl_user_email,
+                organization_id=acl_org_id,
+            )
+            if user_principal_override:
+                ctx.logger.info(
+                    f"[SearchFactory] Created AccessControlFilter for override user: "
+                    f"'{user_principal_override}'"
+                )
+
         return {
+            "access_control_filter": access_control_op,
             "query_expansion": (
                 QueryExpansion(providers=providers["expansion"]) if params["expand_query"] else None
             ),
+            # Query interpretation - destination-agnostic (filters are translated by destination)
             "query_interpretation": (
                 QueryInterpretation(providers=providers["interpretation"])
                 if (params["interpret_filters"] and has_vector_sources)
@@ -290,36 +377,27 @@ class SearchFactory:
             "embed_query": (
                 EmbedQuery(
                     strategy=params["retrieval_strategy"],
-                    provider=providers["embed"],  # Single provider - embeddings must be consistent
-                    vector_size=vector_size,
+                    dense_embedder=dense_embedder,
+                    sparse_embedder=sparse_embedder,
                 )
-                if has_vector_sources
+                if needs_embedding_ops
                 else None
             ),
-            "temporal_relevance": (
-                TemporalRelevance(
-                    weight=params["temporal_weight"], supporting_sources=temporal_supporting_sources
-                )
-                if (
-                    params["temporal_weight"] > 0
-                    and has_vector_sources
-                    # Skip only if explicitly empty list (no sources support it)
-                    and temporal_supporting_sources != []
-                )
-                else None
-            ),
+            # User filter - destination-agnostic (filters are translated by destination)
             "user_filter": (
                 UserFilter(filter=search_request.filter)
                 if (search_request.filter and has_vector_sources)
                 else None
             ),
+            # Unified retrieval operation (destination-agnostic)
             "retrieval": (
                 Retrieval(
+                    destination=destination,
                     strategy=params["retrieval_strategy"],
                     offset=params["offset"],
                     limit=params["limit"],
                 )
-                if has_vector_sources
+                if (has_vector_sources and destination)
                 else None
             ),
             "federated_search": (
@@ -355,8 +433,7 @@ class SearchFactory:
             f"query='{search_request.query[:50]}...', \n"
             f"retrieval_strategy={params['retrieval_strategy']}, \n"
             f"offset={params['offset']}, \n"
-            f"limit={params['limit']}, "
-            f"temporal_weight={params['temporal_weight']}, \n"
+            f"limit={params['limit']}, \n"
             f"expand_query={params['expand_query']}, \n"
             f"interpret_filters={params['interpret_filters']}, \n"
             f"rerank={params['rerank']}, \n"
@@ -370,53 +447,10 @@ class SearchFactory:
             "groq": getattr(settings, "GROQ_API_KEY", None),
             "openai": getattr(settings, "OPENAI_API_KEY", None),
             "cohere": getattr(settings, "COHERE_API_KEY", None),
+            "mistral": getattr(settings, "MISTRAL_API_KEY", None),
         }
 
-    def _create_provider_for_each_operation(
-        self,
-        api_keys: Dict[str, Optional[str]],
-        params: Dict[str, Any],
-        has_federated_sources: bool,
-        has_vector_sources: bool,
-        ctx: ApiContext,
-        vector_size: int,
-    ) -> Dict[str, BaseProvider]:
-        """Select and validate all required providers."""
-        providers = {}
-
-        # Create embedding provider if needed
-        if has_vector_sources:
-            providers["embed"] = self._create_embedding_provider(api_keys, ctx, vector_size)
-
-        # Create LLM providers for enabled operations
-        providers.update(
-            self._create_llm_providers(
-                api_keys, params, has_federated_sources, has_vector_sources, ctx
-            )
-        )
-
-        ctx.logger.debug(f"[SearchFactory] Providers: {providers}")
-        return providers
-
-    def _create_embedding_provider(
-        self, api_keys: Dict[str, Optional[str]], ctx: ApiContext, vector_size: int
-    ) -> BaseProvider:
-        """Create embedding provider for vector-backed search.
-
-        Note: Returns single provider, not a list. Embeddings must use consistent
-        models within a collection and cannot fallback to different providers.
-        """
-        providers = self._init_all_providers_for_operation(
-            "embed_query", api_keys, ctx, vector_size
-        )
-        if not providers:
-            raise ValueError(
-                "Embedding provider required for vector-backed search. Configure OPENAI_API_KEY"
-            )
-        # Return first (and only) available embedding provider
-        return providers[0]
-
-    def _create_llm_providers(
+    def _create_llm_providers_for_operations(
         self,
         api_keys: Dict[str, Optional[str]],
         params: Dict[str, Any],
@@ -454,7 +488,8 @@ class SearchFactory:
                 "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
             )
 
-        # Query interpretation
+        # Query interpretation - works with any destination (filters are translated)
+        # Produces Qdrant-style filters which destinations translate to their native format
         if params["interpret_filters"] and has_vector_sources:
             self._add_provider_list_or_error(
                 providers,
@@ -524,7 +559,7 @@ class SearchFactory:
                 if not source_model:
                     raise ValueError(f"Source model not found for {source_connection.short_name}")
                 source_class = resource_locator.get_source(source_model)
-                if not getattr(source_class, "_federated_search", False):
+                if not getattr(source_class, "federated_search", False):
                     return True
             return False
         except Exception:
@@ -532,84 +567,66 @@ class SearchFactory:
                 f"Error getting vector sources for collection {collection.readable_id}"
             )
 
-    async def _get_temporal_supporting_sources(
-        self, db: AsyncSession, collection, ctx: ApiContext, emitter: EventEmitter
-    ) -> List[str]:
-        """Get list of source short_names that support temporal relevance.
+    async def _resolve_destination(
+        self,
+        db: AsyncSession,
+        collection,
+        ctx: ApiContext,
+        destination_override: Optional[DestinationOverride] = None,
+    ) -> BaseDestination:
+        """Resolve the destination for search.
+
+        If destination_override is provided, creates that specific destination.
+        Otherwise, uses collection's default destination (currently always Qdrant).
 
         Args:
             db: Database session
             collection: Collection object
             ctx: API context
-            emitter: Event emitter for skip notices
+            destination_override: Override destination ("qdrant" or "vespa")
 
         Returns:
-            - Non-empty list: Some/all sources support temporal relevance (apply filtering)
-            - Empty list []: No sources support it (caller should skip operation)
-
-        Raises:
-            ValueError: If source connections or models cannot be retrieved
+            Destination instance (Qdrant or Vespa)
         """
-        source_connections = await crud.source_connection.get_for_collection(
-            db, readable_collection_id=collection.readable_id, ctx=ctx
+        if destination_override == "vespa":
+            from airweave.platform.destinations.vespa import VespaDestination
+
+            ctx.logger.info(
+                f"[SearchFactory] Using Vespa destination (override) for "
+                f"collection {collection.readable_id}"
+            )
+            return await VespaDestination.create(
+                collection_id=collection.id,
+                organization_id=collection.organization_id,
+                logger=ctx.logger,
+            )
+        else:
+            # No override - use default destination resolution
+            return await self._get_destination_for_collection(db, collection, ctx)
+
+    async def _get_destination_for_collection(
+        self, db: AsyncSession, collection, ctx: ApiContext
+    ) -> BaseDestination:
+        """Get the default destination instance for a collection.
+
+        Uses Vespa as the sole vector database destination.
+        """
+        from airweave.platform.destinations.vespa import VespaDestination
+
+        ctx.logger.info(f"[SearchFactory] Collection {collection.readable_id} uses Vespa")
+        return await VespaDestination.create(
+            collection_id=collection.id,
+            organization_id=collection.organization_id,
+            logger=ctx.logger,
         )
-        if not source_connections:
-            raise ValueError(f"No source connections found for collection {collection.readable_id}")
 
-        supporting_sources = []
-        non_supporting_sources = []
-
-        for source_connection in source_connections:
-            source_model = await crud.source.get_by_short_name(db, source_connection.short_name)
-            if not source_model:
-                raise ValueError(
-                    f"Source model not found for short_name={source_connection.short_name}"
-                )
-
-            # Check if source supports temporal relevance
-            supports_temporal = getattr(source_model, "supports_temporal_relevance", True)
-
-            if supports_temporal:
-                supporting_sources.append(source_connection.short_name)
-            else:
-                non_supporting_sources.append(source_connection.short_name)
-
-        # Log the results
-        if supporting_sources:
-            ctx.logger.info(
-                f"[SearchFactory] Temporal relevance: {len(supporting_sources)} "
-                f"supporting source(s): {supporting_sources}"
-            )
-        if non_supporting_sources:
-            ctx.logger.info(
-                f"[SearchFactory] Temporal relevance: {len(non_supporting_sources)} "
-                f"non-supporting source(s) will be filtered out: {non_supporting_sources}"
-            )
-
-        # If no sources support temporal relevance, emit skip event and return empty list
-        if not supporting_sources:
-            await emitter.emit(
-                "operation_skipped",
-                {
-                    "operation": "TemporalRelevance",
-                    "reason": "no_sources_support_temporal_relevance",
-                    "non_supporting_sources": non_supporting_sources,
-                },
-            )
-            ctx.logger.warning(
-                f"[SearchFactory] No sources in collection support temporal relevance. "
-                f"Skipping temporal decay. Non-supporting sources: {non_supporting_sources}"
-            )
-            return []  # Empty list signals "skip operation"
-
-        return supporting_sources
-
-    def _init_all_providers_for_operation(
+    def _init_all_providers_for_operation(  # noqa: C901
         self,
         operation_name: str,
         api_keys: Dict[str, Optional[str]],
         ctx: ApiContext,
         vector_size: Optional[int] = None,
+        preferred_provider: Optional[str] = None,
     ) -> List[BaseProvider]:
         """Initialize ALL available providers for an operation in preference order.
 
@@ -621,6 +638,7 @@ class SearchFactory:
             api_keys: Dict of provider API keys
             ctx: API context
             vector_size: Optional vector dimensions for embedding model selection
+            preferred_provider: Optional preferred provider name to filter to
         """
         preferences = operation_preferences.get(operation_name, {})
         order = preferences.get("order", [])
@@ -632,6 +650,8 @@ class SearchFactory:
             provider_name = entry.get("provider")
             if not provider_name:
                 # Skip malformed entries
+                continue
+            if preferred_provider and provider_name != preferred_provider:
                 continue
 
             api_key = api_keys.get(provider_name)
@@ -673,6 +693,11 @@ class SearchFactory:
                         f"[Factory] Attempting to initialize OpenAIProvider for {operation_name}"
                     )
                     provider = OpenAIProvider(api_key=api_key, model_spec=model_spec, ctx=ctx)
+                elif provider_name == "mistral":
+                    ctx.logger.debug(
+                        f"[Factory] Attempting to initialize MistralProvider for {operation_name}"
+                    )
+                    provider = MistralProvider(api_key=api_key, model_spec=model_spec, ctx=ctx)
                 elif provider_name == "cohere":
                     ctx.logger.debug(
                         f"[Factory] Attempting to initialize CohereProvider for {operation_name}"
@@ -728,6 +753,7 @@ class SearchFactory:
         For OpenAI embeddings, selects between embedding_small and embedding_large:
         - 3072: uses embedding_large (text-embedding-3-large)
         - 1536: uses embedding_small (text-embedding-3-small)
+        For other providers, supports explicit embedding_{vector_size} keys.
         - Other: uses the provided model_key (e.g., "embedding" as fallback)
 
         Args:
@@ -747,6 +773,10 @@ class SearchFactory:
             actual_model_key = "embedding_large"
         elif vector_size == 1536:
             actual_model_key = "embedding_small"
+        elif vector_size:
+            vector_key = f"embedding_{vector_size}"
+            if vector_key in provider_spec:
+                actual_model_key = vector_key
         # else: use provided model_key (fallback to "embedding" for other sizes)
 
         model_dict = provider_spec.get(actual_model_key)
@@ -756,7 +786,14 @@ class SearchFactory:
             if not model_dict:
                 return None
 
-        return EmbeddingModelConfig(**model_dict)
+        embedding_config = EmbeddingModelConfig(**model_dict)
+        if vector_size and embedding_config.dimensions != vector_size:
+            raise ValueError(
+                "Embedding dimensions mismatch for provider config: "
+                f"requested {vector_size}, model {embedding_config.name} "
+                f"({embedding_config.dimensions}-dim)."
+            )
+        return embedding_config
 
     def _build_rerank_config(
         self, provider_spec: dict, model_key: Optional[str]
@@ -805,6 +842,7 @@ class SearchFactory:
         except Exception as e:
             raise ValueError(f"Error getting federated sources: {e}")
 
+    # [code blue] replace with SourceLifecycleService.create()
     async def _instantiate_federated_source(
         self, db: AsyncSession, source_connection, ctx: ApiContext
     ) -> Optional[BaseSource]:
@@ -826,7 +864,7 @@ class SearchFactory:
             return None
 
         source_class = resource_locator.get_source(source_model)
-        if not getattr(source_class, "_federated_search", False):
+        if not getattr(source_class, "federated_search", False):
             return None
 
         # From here, source IS federated - any error should fail the search
@@ -835,108 +873,14 @@ class SearchFactory:
         )
 
         try:
-            # Step 2: Build source_connection_data dict
-            source_connection_data = {
-                "source_model": source_model,
-                "source_class": source_class,
-                "short_name": source_connection.short_name,
-                "config_fields": source_connection.config_fields,
-                "readable_auth_provider_id": getattr(
-                    source_connection, "readable_auth_provider_id", None
-                ),
-                "auth_provider_config": getattr(source_connection, "auth_provider_config", None),
-                "connection_id": getattr(source_connection, "connection_id", None),
-                "integration_credential_id": None,  # Loaded below
-                "auth_config_class": None,  # Not used for federated search
-            }
-
-            # Load integration_credential_id from connection if exists
-            if source_connection_data["connection_id"]:
-                connection = await crud.connection.get(
-                    db, source_connection_data["connection_id"], ctx
-                )
-                if connection:
-                    source_connection_data["integration_credential_id"] = (
-                        connection.integration_credential_id
-                    )
-
-            # Step 3: Get complete auth configuration (shared utility)
-            auth_config = await get_auth_configuration(
+            if app_container is None:
+                raise RuntimeError("Container not initialized")
+            source_instance = await app_container.source_lifecycle_service.create(
                 db=db,
-                source_connection_data=source_connection_data,
-                ctx=ctx,
-                logger=ctx.logger,
-                access_token=None,  # Search never uses direct injection
-            )
-
-            # Step 4: Process credentials for source consumption (shared utility)
-            source_credentials = await process_credentials_for_source(
-                raw_credentials=auth_config["credentials"],
-                source_connection_data=source_connection_data,
-                logger=ctx.logger,
-            )
-
-            # Step 5: Create source instance
-            source_instance = await source_class.create(
-                source_credentials, config=source_connection_data["config_fields"]
-            )
-
-            # Step 6: Set logger
-            if hasattr(source_instance, "set_logger"):
-                source_instance.set_logger(ctx.logger)
-
-            # Step 7: Set HTTP client factory for proxy mode
-            if auth_config.get("http_client_factory"):
-                ctx.logger.info(f"Proxy mode active for {source_connection.short_name}")
-                source_instance.set_http_client_factory(auth_config["http_client_factory"])
-
-            # Step 8: Wrap HTTP client with AirweaveHttpClient for rate limiting
-            # This ensures federated sources respect rate limits just like sync sources
-            from airweave.platform.utils.source_factory_utils import (
-                wrap_source_with_airweave_client,
-            )
-
-            wrap_source_with_airweave_client(
-                source=source_instance,
-                source_short_name=source_connection.short_name,
                 source_connection_id=source_connection.id,
                 ctx=ctx,
-                logger=ctx.logger,
+                access_token=None,
             )
-
-            # Step 9: Setup token manager for OAuth sources that support refresh
-            # Skip for proxy mode (proxy client manages tokens internally)
-            from airweave.platform.auth_providers.auth_result import AuthProviderMode
-            from airweave.schemas.source_connection import OAuthType
-
-            auth_mode = auth_config.get("auth_mode")
-            is_proxy_mode = auth_mode == AuthProviderMode.PROXY
-
-            if source_model.oauth_type and not is_proxy_mode:
-                # Only create token manager for sources with refresh capability
-                if source_model.oauth_type in (
-                    OAuthType.WITH_REFRESH,
-                    OAuthType.WITH_ROTATING_REFRESH,
-                ):
-                    self._setup_token_manager(
-                        source_instance,
-                        db,
-                        source_connection,
-                        source_connection_data.get("integration_credential_id"),
-                        auth_config["credentials"],
-                        ctx,
-                        auth_provider_instance=auth_config.get("auth_provider_instance"),
-                    )
-                else:
-                    ctx.logger.debug(
-                        f"⏭️ Skipping token manager for {source_connection.short_name} - "
-                        f"oauth_type={source_model.oauth_type} does not support token refresh"
-                    )
-            elif is_proxy_mode:
-                ctx.logger.info(
-                    f"⏭️ Skipping token manager for {source_connection.short_name} - "
-                    f"proxy mode (proxy client manages tokens internally)"
-                )
 
             ctx.logger.info(
                 f"Successfully instantiated federated source: {source_connection.short_name}"
@@ -954,39 +898,6 @@ class SearchFactory:
                 f"This source is configured for your collection but cannot be searched. "
                 f"Error: {str(e)}"
             ) from e
-
-    def _setup_token_manager(
-        self,
-        source_instance: BaseSource,
-        db: AsyncSession,
-        source_connection,
-        integration_credential_id: Optional[UUID],
-        decrypted_credential: dict,
-        ctx: ApiContext,
-        auth_provider_instance=None,
-    ):
-        """Setup token manager for OAuth sources with auth provider support."""
-        minimal_connection = type(
-            "MinimalConnection",
-            (),
-            {
-                "id": source_connection.connection_id,
-                "integration_credential_id": integration_credential_id,
-                "config_fields": source_connection.config_fields,
-            },
-        )()
-
-        token_manager = TokenManager(
-            db=db,
-            source_short_name=source_connection.short_name,
-            source_connection=minimal_connection,
-            ctx=ctx,
-            initial_credentials=decrypted_credential,
-            is_direct_injection=False,
-            logger_instance=ctx.logger,
-            auth_provider_instance=auth_provider_instance,
-        )
-        source_instance.set_token_manager(token_manager)
 
 
 factory = SearchFactory()

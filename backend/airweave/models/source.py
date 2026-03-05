@@ -29,8 +29,9 @@ class Source(Base):
     )
     description = Column(String)
     organization_id = Column(ForeignKey("organization.id"), nullable=True)
-    # List of entity IDs this source can output
-    output_entity_definition_ids = Column(JSON, nullable=False)
+    # List of entity definition short names this source can output
+    # Column is still named output_entity_definition_ids in DB to avoid migration
+    output_entity_definitions = Column("output_entity_definition_ids", JSON, nullable=False)
     config_schema = Column(JSON, nullable=True)  # JSON Schema for configuration
     labels: Mapped[list[str]] = mapped_column(JSON, nullable=True, default=list)
     supports_continuous: Mapped[bool] = mapped_column(
@@ -42,9 +43,15 @@ class Source(Base):
     supports_temporal_relevance: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default="true"
     )
+    supports_access_control: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
     rate_limit_level: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )  # "org", "connection", or None
+    feature_flag: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # FeatureFlag enum value required to see this source
 
     __table_args__ = (UniqueConstraint("name", "organization_id", name="uq_source_name_org"),)
 

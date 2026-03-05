@@ -12,14 +12,14 @@ description: "Ctti integration with Airweave"
   <h1 style={{ margin: 0 }}>Ctti</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Ctti through Airweave's unified search layer.
+
 ## Configuration
 
 CTTI source connector integrates with the AACT PostgreSQL database to extract trials.
 
 Connects to the Aggregate Analysis of ClinicalTrials.gov database.
-
-It creates web entities that link to
-ClinicalTrials.gov pages.
+Creates web entities that link to ClinicalTrials.gov pages.
 
 <Card
   title="View Source Code"
@@ -92,21 +92,14 @@ The following data models are available for this connector:
 
 <Accordion title="CTTIWebEntity">
 
-Web entity for CTTI clinical trials.
+Web entity for CTTI clinical trials from ClinicalTrials.gov.
 
-Represents a clinical trial study from ClinicalTrials.gov with an NCT ID.
-    "WebFileEntity",
-    "WebFileEntity",
 This entity will be processed by the web_fetcher transformer to download
 the actual clinical trial content from ClinicalTrials.gov.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | nct_id | str | The NCT ID of the clinical trial study |
-| study_url | str | The full URL to the clinical trial study on ClinicalTrials.gov |
-| data_source | str | The source of the clinical trial data |
-| metadata | Dict[str, Any] | Additional metadata about the clinical trial |
-| breadcrumbs | List[Breadcrumb] | List of breadcrumbs for this clinical trial entity |
 
 </Accordion>
 

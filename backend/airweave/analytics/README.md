@@ -46,7 +46,7 @@ business_events.track_organization_created(
 
 # Track events with context (recommended for API endpoints)
 async def my_endpoint(ctx: ApiContext, ...):
-    ctx.analytics.track_event("custom_event", {"key": "value"})
+    analytics.track_event("custom_event", {"key": "value"})
 ```
 
 ### 3. Dependency Injection Architecture
@@ -55,8 +55,8 @@ async def my_endpoint(ctx: ApiContext, ...):
 # Analytics service is automatically injected via ApiContext
 async def my_endpoint(ctx: ApiContext, ...):
     # Track custom events with automatic context
-    ctx.analytics.track_event("custom_event", {"key": "value"})
-    
+    analytics.track_event("custom_event", {"key": "value"})
+
     # Search operations are automatically tracked
     # No manual tracking needed in endpoints
 ```
@@ -85,11 +85,11 @@ track_search_completion(
 ## 📊 Complete Analytics Events Overview
 
 ### API Events
-- **Custom Events**: Tracked via `ctx.analytics.track_event()` in API endpoints
+- **Custom Events**: Tracked via `analytics.track_event()` in API endpoints
 - **Business Events**: Tracked via `business_events.track_*()` methods
 
 **Covered Endpoints:**
-- All API endpoints can track custom events using `ctx.analytics.track_event()`
+- All API endpoints can track custom events using `analytics.track_event()`
 - Business events tracked for key milestones (organization creation, sync completion, etc.)
 
 ### Search Events
@@ -277,8 +277,8 @@ ENVIRONMENT=test
 ```python
 async def my_endpoint(ctx: ApiContext, ...):
     # Analytics service is pre-configured with user/org context
-    ctx.analytics.track_event("custom_event", {"key": "value"})
-    
+    analytics.track_event("custom_event", {"key": "value"})
+
     # Search operations are automatically tracked - no manual work needed
     pass
 ```

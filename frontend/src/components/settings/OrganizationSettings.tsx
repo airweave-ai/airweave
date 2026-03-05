@@ -10,7 +10,6 @@ import { apiClient } from "@/lib/api";
 import { toast } from 'sonner';
 import { useOrganizationStore } from '@/lib/stores/organizations';
 import { useNavigate } from 'react-router-dom';
-import { S3StatusCard } from '@/components/S3StatusCard';
 
 interface Organization {
   id: string;
@@ -248,11 +247,6 @@ export const OrganizationSettings = ({
             )}
           </Tooltip>
         </div>
-      </div>
-
-      {/* S3 Event Streaming Configuration */}
-      <div className="pt-6 border-t border-border">
-        <S3StatusCard />
       </div>
 
       {/* Danger Zone */}

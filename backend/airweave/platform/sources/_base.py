@@ -7,6 +7,7 @@ import time  # for exp checks
 from abc import abstractmethod
 from contextlib import asynccontextmanager
 from typing import (
+    TYPE_CHECKING,
     Any,
     AsyncGenerator,
     AsyncIterable,
@@ -18,10 +19,14 @@ from typing import (
     Union,
 )
 
+if TYPE_CHECKING:
+    from airweave.platform.access_control.schemas import MembershipTuple
+
 import httpx
 from pydantic import BaseModel
 
 from airweave.core.logging import logger
+from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.entities._base import BaseEntity
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
@@ -29,11 +34,30 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 class BaseSource:
     """Base class for all sources."""
 
-    _labels: ClassVar[list[str]] = []
-    _auth_methods: ClassVar[list[AuthenticationMethod]] = []
-    _oauth_type: ClassVar[Optional[OAuthType]] = None
-    _requires_byoc: ClassVar[bool] = False
-    _auth_config_class: ClassVar[Optional[str]] = None
+    # Identity (set by @source decorator — required)
+    is_source: ClassVar[bool] = False
+    source_name: ClassVar[str] = ""
+    short_name: ClassVar[str] = ""
+
+    # Auth (set by @source decorator)
+    auth_methods: ClassVar[list[AuthenticationMethod]] = []
+    oauth_type: ClassVar[Optional[OAuthType]] = None
+    requires_byoc: ClassVar[bool] = False
+    auth_config_class: ClassVar[Optional[type]] = None
+    config_class: ClassVar[Optional[type]] = None
+
+    # Capabilities (set by @source decorator)
+    supports_continuous: ClassVar[bool] = False
+    federated_search: ClassVar[bool] = False
+    supports_temporal_relevance: ClassVar[bool] = True
+    supports_access_control: ClassVar[bool] = False
+    cursor_class: ClassVar[Optional[type]] = None
+    rate_limit_level: ClassVar[Optional[RateLimitLevel]] = None
+
+    # Metadata (set by @source decorator)
+    labels: ClassVar[list[str]] = []
+    feature_flag: ClassVar[Optional[str]] = None
+    internal: ClassVar[bool] = False
 
     def __init__(self):
         """Initialize the base source."""
@@ -149,6 +173,16 @@ class BaseSource:
         return getattr(self, "_cursor", None)
 
     @classmethod
+    def is_internal(cls) -> bool:
+        """Check if this is an internal/test source.
+
+        Internal sources are excluded from documentation generation and only
+        loaded when ENABLE_INTERNAL_SOURCES=true. Set via `internal=True`
+        in the @source decorator.
+        """
+        return cls.internal
+
+    @classmethod
     def supports_auth_method(cls, method: AuthenticationMethod) -> bool:
         """Check if source supports a given authentication method."""
         methods = cls.get_supported_auth_methods()
@@ -158,7 +192,7 @@ class BaseSource:
     def get_supported_auth_methods(cls) -> list[AuthenticationMethod]:
         """Get all supported authentication methods."""
         # Always include BYOC if OAUTH_BROWSER is supported
-        methods = list(cls._auth_methods)
+        methods = list(cls.auth_methods)
         if (
             AuthenticationMethod.OAUTH_BROWSER in methods
             and AuthenticationMethod.OAUTH_BYOC not in methods
@@ -169,22 +203,22 @@ class BaseSource:
     @classmethod
     def get_oauth_type(cls) -> Optional[OAuthType]:
         """Get OAuth token type if this is an OAuth source."""
-        return cls._oauth_type
+        return cls.oauth_type
 
     @classmethod
     def is_oauth_source(cls) -> bool:
         """Check if this is an OAuth-based source."""
-        return AuthenticationMethod.OAUTH_BROWSER in cls._auth_methods
+        return AuthenticationMethod.OAUTH_BROWSER in cls.auth_methods
 
     @classmethod
     def requires_refresh_token(cls) -> bool:
         """Check if source requires refresh token."""
-        return cls._oauth_type in [OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH]
+        return cls.oauth_type in [OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH]
 
     @classmethod
-    def requires_byoc(cls) -> bool:
+    def does_require_byoc(cls) -> bool:
         """Check if source requires user to bring their own OAuth client credentials."""
-        return cls._requires_byoc
+        return cls.requires_byoc
 
     async def get_access_token(self) -> Optional[str]:
         """Get a valid access token using the token manager.
@@ -231,6 +265,42 @@ class BaseSource:
         """Generate entities for the source."""
         pass
 
+    async def generate_access_control_memberships(
+        self,
+    ) -> AsyncGenerator["MembershipTuple", None]:
+        r"""Generate access control membership tuples.
+
+        Only implement this if your source has @source(supports_access_control=True).
+
+        Yields user→group and group→group membership tuples for access
+        control resolution at search time. These tuples are persisted to
+        PostgreSQL and used by AccessBroker to expand user principals.
+
+        Principal format conventions:
+        - Users: "user:{identifier}" (e.g., "user:john@acme.com")
+        - SharePoint groups: "group:sp:{id}" (e.g., "group:sp:42")
+        - AD groups: "group:ad:{login_name}" (e.g., "group:ad:DOMAIN\\Engineers")
+
+        Example implementation (SharePoint):
+        ```python
+        async def generate_access_control_memberships(self):
+            for group in await self._get_all_sharepoint_groups():
+                for member in await self._get_group_members(group.id):
+                    yield MembershipTuple(
+                        member_id=member.email,
+                        member_type="user",
+                        group_id=f"sp:{group.id}",
+                        group_name=group.name,
+                    )
+        ```
+
+        Yields:
+            MembershipTuple objects
+        """
+        # Default: yield nothing (source doesn't support access control)
+        return
+        yield  # Make it a generator
+
     @abstractmethod
     async def validate(self) -> bool:
         """Validate that this source is reachable and credentials are usable."""
@@ -253,7 +323,7 @@ class BaseSource:
         Raises:
             NotImplementedError: If source does not support federated search
         """
-        if not getattr(self.__class__, "_federated_search", False):
+        if not getattr(self.__class__, "federated_search", False):
             raise NotImplementedError(
                 f"Source {self.__class__.__name__} does not support federated search"
             )
@@ -469,100 +539,153 @@ class BaseSource:
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generic bounded-concurrency driver.
 
-        Returns:
-            True if the source is healthy/authorized; False otherwise.
+        Uses a fixed pool of ``batch_size`` worker tasks fed by a bounded queue
+        so the total number of asyncio tasks stays at ``batch_size + 1``
+        regardless of how many items are provided.
 
-        Notes:
-            OAuth2-based sources should generally implement this by calling
-            `await self._validate_oauth2(...)` with the appropriate endpoints/
-            credentials from their config.
-        - `items`: async iterator (or iterable) of units of work.
-        - `worker(item)`: async generator yielding 0..N BaseEntity objects for that item.
-        - `batch_size`: max concurrent workers.
-        - `preserve_order`: if True, buffers per-item results and yields in input order.
-        - `stop_on_error`: if True, cancels remaining work on first error.
+        Args:
+            items: Sync or async iterable of units of work.
+            worker: Async generator ``worker(item)`` yielding 0..N BaseEntity.
+            batch_size: Maximum concurrent workers.
+            preserve_order: If True, buffer per-item results and yield in input order.
+            stop_on_error: If True, cancel remaining work on first error.
+            max_queue_size: Backpressure cap on the results queue.
         """
-        results, tasks, total_workers, sentinel = await self._start_entity_workers(
-            items=items,
-            worker=worker,
-            batch_size=batch_size,
-            max_queue_size=max_queue_size,
+        import asyncio as _asyncio
+
+        pool = self._create_bounded_pool(
+            items, worker, batch_size=batch_size, max_queue_size=max_queue_size
         )
 
         try:
             if preserve_order:
                 async for ent in self._drain_results_preserve_order(
-                    results, tasks, total_workers, stop_on_error, sentinel
+                    pool["results"],
+                    pool["all_tasks"],
+                    pool["producer_finished"],
+                    pool["get_total_items"],
+                    stop_on_error,
+                    pool["sentinel"],
                 ):
                     yield ent
             else:
                 async for ent in self._drain_results_unordered(
-                    results, tasks, total_workers, stop_on_error, sentinel
+                    pool["results"],
+                    pool["all_tasks"],
+                    pool["producer_finished"],
+                    pool["get_total_items"],
+                    stop_on_error,
+                    pool["sentinel"],
                 ):
                     yield ent
         finally:
-            # Ensure all tasks are cleaned up even if consumer stops early
-            import asyncio as _asyncio
+            for t in pool["all_tasks"]:
+                t.cancel()
+            await _asyncio.gather(*pool["all_tasks"], return_exceptions=True)
 
-            await _asyncio.gather(*tasks, return_exceptions=True)
-
-    async def _start_entity_workers(
+    def _create_bounded_pool(  # noqa: C901
         self,
         items: Union[Iterable[Any], AsyncIterable[Any]],
         worker: Callable[[Any], AsyncIterable[BaseEntity]],
         *,
         batch_size: int,
         max_queue_size: int,
-    ):
-        """Spin up worker tasks and return (results_queue, tasks, total_workers, sentinel)."""
+    ) -> Dict[str, Any]:
+        """Create a bounded producer + fixed worker pool.
+
+        Returns a dict with keys: results, all_tasks, producer_finished,
+        get_total_items, sentinel.
+        """
         import asyncio as _asyncio
 
-        semaphore = _asyncio.Semaphore(batch_size)
         results: _asyncio.Queue = _asyncio.Queue(maxsize=max_queue_size)
+        items_queue: _asyncio.Queue = _asyncio.Queue(maxsize=batch_size)
         sentinel = object()
+        items_done = object()
+        producer_finished = _asyncio.Event()
+        total_items_cell: list[int] = [0]
 
-        async def run_worker(idx: int, item: Any) -> None:
-            await semaphore.acquire()
+        async def _producer() -> None:
+            import time as _time
+
             try:
-                agen = worker(item)
-                if not hasattr(agen, "__aiter__"):
-                    raise TypeError("worker(item) must return an async iterator (async generator).")
-                async for entity in agen:
-                    await results.put((idx, entity, None))
-            except BaseException as e:  # propagate cancellation & capture other errors
-                await results.put((idx, None, e))
+                idx = 0
+                last_yield_time = _time.monotonic()
+
+                if hasattr(items, "__aiter__"):
+                    async for item in items:  # type: ignore[union-attr]
+                        now = _time.monotonic()
+                        gap = now - last_yield_time
+                        if gap > 60:
+                            self.logger.warning(
+                                f"Source producer resumed after {int(gap)}s gap "
+                                f"(item {idx}, {total_items_cell[0]} total)"
+                            )
+                        await items_queue.put((idx, item))
+                        idx += 1
+                        total_items_cell[0] = idx
+                        last_yield_time = _time.monotonic()
+                else:
+                    for item in items:  # type: ignore[union-attr]
+                        await items_queue.put((idx, item))
+                        idx += 1
+                        total_items_cell[0] = idx
             finally:
-                await results.put((idx, sentinel, None))  # signal completion for idx
-                semaphore.release()
+                await items_queue.put(items_done)
+                producer_finished.set()
+                await results.put(None)
 
-        tasks: list[_asyncio.Task] = []
-        idx = 0
+        async def _pool_worker() -> None:
+            while True:
+                msg = await items_queue.get()
+                if msg is items_done:
+                    await items_queue.put(items_done)
+                    return
+                idx, item = msg
+                try:
+                    agen = worker(item)
+                    if not hasattr(agen, "__aiter__"):
+                        raise TypeError(
+                            "worker(item) must return an async iterator (async generator)."
+                        )
+                    async for entity in agen:
+                        await results.put((idx, entity, None))
+                except BaseException as e:
+                    await results.put((idx, None, e))
+                finally:
+                    await results.put((idx, sentinel, None))
 
-        if hasattr(items, "__aiter__"):
-            async for item in items:  # type: ignore[truthy-bool]
-                tasks.append(_asyncio.create_task(run_worker(idx, item)))
-                idx += 1
-        else:
-            for item in items:  # type: ignore[arg-type]
-                tasks.append(_asyncio.create_task(run_worker(idx, item)))
-                idx += 1
+        producer_task = _asyncio.create_task(_producer())
+        pool_tasks = [_asyncio.create_task(_pool_worker()) for _ in range(batch_size)]
 
-        return results, tasks, idx, sentinel
+        return {
+            "results": results,
+            "all_tasks": [producer_task] + pool_tasks,
+            "producer_finished": producer_finished,
+            "get_total_items": lambda: total_items_cell[0],
+            "sentinel": sentinel,
+        }
 
     async def _drain_results_unordered(
         self,
         results,
         tasks,
-        total_workers: int,
+        producer_finished,
+        get_total_items: Callable[[], int],
         stop_on_error: bool,
         sentinel: object,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Yield results as they arrive; stop early on error if requested."""
-        done_workers = 0
-        while done_workers < total_workers:
-            i, payload, err = await results.get()
+        done_items = 0
+        while True:
+            if producer_finished.is_set() and done_items >= get_total_items():
+                break
+            msg = await results.get()
+            if msg is None:
+                continue  # producer-done wake-up
+            i, payload, err = msg
             if payload is sentinel:
-                done_workers += 1
+                done_items += 1
                 continue
             if err:
                 self.logger.error(f"Worker {i} error: {err}", exc_info=True)
@@ -577,7 +700,8 @@ class BaseSource:
         self,
         results,
         tasks,
-        total_workers: int,
+        producer_finished,
+        get_total_items: Callable[[], int],
         stop_on_error: bool,
         sentinel: object,
     ) -> AsyncGenerator[BaseEntity, None]:
@@ -585,20 +709,24 @@ class BaseSource:
         buffers: Dict[int, list[BaseEntity]] = {}
         finished: set[int] = set()
         next_idx = 0
-        done_workers = 0
+        done_items = 0
 
-        while done_workers < total_workers:
-            i, payload, err = await results.get()
+        while True:
+            if producer_finished.is_set() and done_items >= get_total_items():
+                break
+            msg = await results.get()
+            if msg is None:
+                continue  # producer-done wake-up
+            i, payload, err = msg
             if payload is sentinel:
                 finished.add(i)
-                done_workers += 1
+                done_items += 1
             elif err:
                 self.logger.error(f"Worker {i} error: {err}", exc_info=True)
                 if stop_on_error:
                     for t in tasks:
                         t.cancel()
                     raise err
-                # We'll still wait for this worker's sentinel to preserve ordering.
             else:
                 buffers.setdefault(i, []).append(payload)  # type: ignore[arg-type]
 

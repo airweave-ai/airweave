@@ -1,9 +1,10 @@
 from datetime import datetime
-from typing import Any, ClassVar, Dict, List, Optional, Type
+from typing import ClassVar, List, Optional, Type
 from uuid import UUID
 
-from fastembed import SparseEmbedding
-from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from airweave.domains.embedders.types import SparseEmbedding
 
 
 class Breadcrumb(BaseModel):
@@ -17,6 +18,29 @@ class Breadcrumb(BaseModel):
     entity_id: str = Field(..., description="ID of the entity in the source.")
     name: str = Field(..., description="Display name of the entity.")
     entity_type: str = Field(..., description="Entity class name (e.g., 'AsanaProjectEntity').")
+
+
+class AccessControl(BaseModel):
+    """Access control metadata for an entity (source-agnostic).
+
+    Stores who can view this entity as principal identifiers.
+    Principals are NOT expanded - groups stored as-is.
+
+    Format:
+        - Users: "user:john@acme.com"
+        - Groups: "group:<group_id>" (e.g., "group:engineering" or "group:uuid-123")
+
+    Note: Only sources with supports_access_control=True should set this field.
+    Sources without access control support should leave this as None.
+    """
+
+    viewers: List[str] = Field(
+        default_factory=list, description="Principal IDs who can view this entity"
+    )
+    is_public: bool = Field(
+        default=False,
+        description="Whether this entity is publicly accessible.",
+    )
 
 
 class AirweaveSystemMetadata(BaseModel):
@@ -48,8 +72,11 @@ class AirweaveSystemMetadata(BaseModel):
     )
 
     # Set during embedding
-    vectors: Optional[List[List[float] | SparseEmbedding]] = Field(
-        None, description="Vectors for this entity."
+    dense_embedding: Optional[List[float]] = Field(
+        None, description="3072-dim dense embedding from text-embedding-3-large"
+    )
+    sparse_embedding: Optional[SparseEmbedding] = Field(
+        None, description="BM25 sparse embedding for hybrid search (Qdrant only)"
     )
 
     # Set during persistence
@@ -60,8 +87,6 @@ class AirweaveSystemMetadata(BaseModel):
     db_updated_at: Optional[datetime] = Field(
         None, description="Timestamp of when the entity was last updated in Airweave."
     )
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class BaseEntity(BaseModel):
@@ -87,26 +112,21 @@ class BaseEntity(BaseModel):
         None, description="System metadata for this entity."
     )
 
+    # Access control - only set by sources with supports_access_control=True
+    access: Optional[AccessControl] = Field(
+        None, description="Access control - who can view this entity (not expanded)"
+    )
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @model_validator(mode="after")
-    def validate_flagged_fields(self) -> "BaseEntity":
+    def validate_flagged_fields(self) -> "BaseEntity":  # noqa: C901
         """Validate that exactly one field has each unique flag.
 
         This enforces composition over inheritance by ensuring entity definitions
         properly flag their fields (is_entity_id, is_name, etc.).
         """
         from airweave.core.shared_models import AirweaveFieldFlag
-
-        # Polymorphic entities (e.g. PostgreSQL table entities) are generated dynamically
-        # and populate BaseEntity fields directly in the source connector instead of using
-        # AirweaveField flags. For these, we skip strict flag enforcement while still
-        # requiring basic BaseEntity invariants (like breadcrumbs being a list).
-        if any(cls.__name__ == "PolymorphicEntity" for cls in self.__class__.__mro__):
-            if self.breadcrumbs is None:
-                # Root polymorphic entities are allowed to have an empty breadcrumb list
-                self.breadcrumbs = []
-            return self
 
         # Define which flags must be unique (and validate their presence)
         unique_flags = [
@@ -130,8 +150,8 @@ class BaseEntity(BaseModel):
             if len(flagged_fields) == 0:
                 raise ValueError(
                     f"{self.__class__.__name__} must have exactly ONE field marked with "
-                    f"{flag_label}. Found 0. Please add AirweaveField(..., {flag_label}=True) to the "
-                    f"appropriate field (e.g., 'gid', 'id', 'name')."
+                    f"{flag_label}. Found 0. Please add AirweaveField(..., {flag_label}=True) "
+                    f"to the appropriate field (e.g., 'gid', 'id', 'name')."
                 )
             elif len(flagged_fields) > 1:
                 raise ValueError(
@@ -141,7 +161,7 @@ class BaseEntity(BaseModel):
 
             # Validate the flagged field is not Optional in type definition
             flagged_field_name = flagged_fields[0]
-            field_info = self.model_fields[flagged_field_name]
+            field_info = self.__class__.model_fields[flagged_field_name]
             if field_info.is_required() is False:
                 raise ValueError(
                     f"{self.__class__.__name__}.{flagged_field_name} is marked with {flag_label} "
@@ -203,49 +223,6 @@ class FileEntity(BaseEntity):
     mime_type: Optional[str] = Field(None, description="MIME type of the file.")
 
     local_path: Optional[str] = Field(None, description="Local path of the file.")
-
-
-class PolymorphicEntity(BaseEntity):
-    """Base class for entities that are generated dynamically from table schemas."""
-
-    table_name: str = Field(..., description="Name of the table this entity belongs to.")
-    schema_name: Optional[str] = Field(
-        None, description="Name of the schema this entity belongs to."
-    )
-    primary_key_columns: List[str] = Field(
-        default_factory=list, description="List of primary key columns."
-    )
-
-    @classmethod
-    def create_table_entity_class(
-        cls,
-        table_name: str,
-        schema_name: Optional[str],
-        columns: Dict[str, Dict[str, Any]],
-        primary_keys: List[str],
-    ) -> Type["PolymorphicEntity"]:
-        """Create a polymorphic entity subclass for the given table definition."""
-
-        def _pk_default_factory() -> List[str]:
-            return list(primary_keys)
-
-        fields: Dict[str, tuple[Any, Field]] = {
-            "table_name": (str, Field(default=table_name)),
-            "schema_name": (Optional[str], Field(default=schema_name)),
-            "primary_key_columns": (List[str], Field(default_factory=_pk_default_factory)),
-        }
-
-        for column_name, column_info in columns.items():
-            field_name = f"{column_name}_" if column_name == "id" else column_name
-            python_type = column_info.get("python_type", Any)
-            fields[field_name] = (Optional[python_type], Field(default=None))
-
-        model_name = f"{table_name.title().replace('_', '')}TableEntity"
-        return create_model(
-            model_name,
-            __base__=cls,
-            **fields,
-        )
 
 
 class CodeFileEntity(FileEntity):

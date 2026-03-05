@@ -12,6 +12,8 @@ description: "Zendesk integration with Airweave"
   <h1 style={{ margin: 0 }}>Zendesk</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Zendesk through Airweave's unified search layer.
+
 ## Configuration
 
 Zendesk source connector integrates with the Zendesk API to extract and synchronize data.
@@ -85,6 +87,9 @@ Reference:
 |-------|------|-------------|
 | ticket_id | int | Unique identifier of the ticket |
 | subject | str | The subject of the ticket |
+| created_time | datetime | When the ticket was created. |
+| updated_time | datetime | When the ticket was last updated. |
+| web_url_value | Optional[str] | UI URL to open the ticket in Zendesk. |
 | description | Optional[str] | The description of the ticket (first comment) |
 | requester_id | Optional[int] | ID of the user who requested the ticket |
 | requester_name | Optional[str] | Name of the user who requested the ticket |
@@ -123,6 +128,8 @@ Reference:
 | html_body | Optional[str] | HTML formatted content of the comment |
 | public | bool | Whether the comment is public or internal |
 | attachments | List[Dict[str, Any]] | Attachments associated with this comment |
+| created_time | datetime | When the comment was created. |
+| web_url_value | Optional[str] | URL to view this comment (falls back to ticket). |
 
 </Accordion>
 <Accordion title="ZendeskUserEntity">
@@ -135,6 +142,10 @@ Reference:
 | Field | Type | Description |
 |-------|------|-------------|
 | user_id | int | Unique identifier of the user |
+| display_name | str | Display name of the user. |
+| created_time | datetime | When the user was created. |
+| updated_time | datetime | When the user was last updated. |
+| web_url_value | Optional[str] | URL to the user's profile in Zendesk. |
 | email | str | Email address of the user |
 | role | str | Role of the user (end-user, agent, admin) |
 | active | bool | Whether the user account is active |
@@ -147,6 +158,7 @@ Reference:
 | custom_fields | List[Dict[str, Any]] | Custom field values for the user |
 | tags | List[str] | Tags associated with the user |
 | user_fields | Dict[str, Any] | User-specific custom fields |
+| profile_url | Optional[str] | API URL to the user resource |
 
 </Accordion>
 <Accordion title="ZendeskOrganizationEntity">
@@ -159,12 +171,17 @@ Reference:
 | Field | Type | Description |
 |-------|------|-------------|
 | organization_id | int | Unique identifier of the organization |
+| organization_name | str | Display name of the organization. |
+| created_time | datetime | When the organization was created. |
+| updated_time | datetime | When the organization was last updated. |
+| web_url_value | Optional[str] | URL to view the organization in Zendesk. |
 | domain_names | List[str] | Domain names associated with the organization |
 | details | Optional[str] | Details about the organization |
 | notes | Optional[str] | Notes about the organization |
 | tags | List[str] | Tags associated with the organization |
 | custom_fields | List[Dict[str, Any]] | Custom field values for the organization |
 | organization_fields | Dict[str, Any] | Organization-specific custom fields |
+| api_url | Optional[str] | API URL for this organization resource. |
 
 </Accordion>
 <Accordion title="ZendeskAttachmentEntity">
@@ -183,6 +200,9 @@ Reference:
 | content_type | str | MIME type of the attachment |
 | file_name | str | Original filename of the attachment |
 | thumbnails | List[Dict[str, Any]] | Thumbnail information for the attachment |
+| created_time | datetime | When the attachment was created. |
+| updated_time | datetime | When the attachment metadata was updated. |
+| web_url_value | Optional[str] | URL to download the attachment. |
 
 </Accordion>
 

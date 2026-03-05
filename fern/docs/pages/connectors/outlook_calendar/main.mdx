@@ -12,6 +12,8 @@ description: "Outlook Calendar integration with Airweave"
   <h1 style={{ margin: 0 }}>Outlook Calendar</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Outlook Calendar through Airweave's unified search layer.
+
 ## Configuration
 
 Outlook Calendar source connector integrates with the Microsoft Graph API to extract data.
@@ -55,6 +57,8 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Calendar ID from Microsoft Graph. |
+| name | str | Calendar display name. |
 | color | Optional[str] | Color theme to distinguish the calendar (auto, lightBlue, etc.). |
 | hex_color | Optional[str] | Calendar color in hex format (e.g., #FF0000). |
 | change_key | Optional[str] | Version identifier that changes when the calendar is modified. |
@@ -67,6 +71,7 @@ Reference:
 | owner | Optional[Dict[str, Any]] | Information about the calendar owner (name and email). |
 | allowed_online_meeting_providers | List[str] | Online meeting providers that can be used (teamsForBusiness, etc.). |
 | default_online_meeting_provider | Optional[str] | Default online meeting provider for this calendar. |
+| web_url_override | Optional[str] | URL to open this calendar in Outlook on the web. |
 
 </Accordion>
 <Accordion title="OutlookCalendarEventEntity">
@@ -78,7 +83,8 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| subject | Optional[str] | The subject/title of the event. |
+| id | str | Event ID from Microsoft Graph. |
+| subject | str | The subject/title of the event. |
 | body_preview | Optional[str] | Preview of the event body content. |
 | body_content | Optional[str] | Full body content of the event. |
 | body_content_type | Optional[str] | Content type of the body (html or text). |
@@ -115,6 +121,9 @@ Reference:
 | original_end_timezone | Optional[str] | End timezone when event was originally created. |
 | allow_new_time_proposals | bool | Whether invitees can propose new meeting times. |
 | hide_attendees | bool | Whether attendees are hidden from each other. |
+| created_datetime | Optional[Any] | When the event was created. |
+| last_modified_datetime | Optional[Any] | When the event was last modified. |
+| web_url_override | Optional[str] | URL to open the event in Outlook on the web. |
 
 </Accordion>
 <Accordion title="OutlookCalendarAttachmentEntity">
@@ -128,12 +137,15 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| composite_id | str | Composite attachment ID (event + attachment). |
+| name | str | Attachment display name. |
 | event_id | str | ID of the event this attachment belongs to |
 | attachment_id | str | Microsoft Graph attachment ID |
 | content_type | Optional[str] | MIME type of the attachment |
 | is_inline | bool | Whether the attachment is inline |
 | content_id | Optional[str] | Content ID for inline attachments |
 | last_modified_at | Optional[str] | When the attachment was last modified |
+| event_web_url | Optional[str] | URL to the parent event. |
 
 </Accordion>
 

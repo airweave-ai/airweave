@@ -12,6 +12,8 @@ description: "Stripe integration with Airweave"
   <h1 style={{ margin: 0 }}>Stripe</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Stripe through Airweave's unified search layer.
+
 ## Configuration
 
 Stripe source connector integrates with the Stripe API to extract payment and financial data.
@@ -66,6 +68,10 @@ https://stripe.com/docs/api/balance/balance_object
 
 | Field | Type | Description |
 |-------|------|-------------|
+| balance_id | str | Synthetic ID for the balance snapshot. |
+| balance_name | str | Display label for this balance snapshot. |
+| snapshot_time | datetime | Timestamp when the balance snapshot was taken. |
+| web_url_value | Optional[str] | Dashboard URL for viewing the balance. |
 | available | List[Dict[str, Any]] | Funds that are available to be paid out, broken down by currency |
 | pending | List[Dict[str, Any]] | Funds not yet available, broken down by currency |
 | instant_available | Optional[List[Dict[str, Any]]] | Funds available for Instant Payouts (if enabled) |
@@ -81,6 +87,10 @@ https://stripe.com/docs/api/balance_transactions
 
 | Field | Type | Description |
 |-------|------|-------------|
+| transaction_id | str | Stripe ID of the balance transaction. |
+| transaction_name | str | Display name of the transaction. |
+| created_time | datetime | When the transaction was created. |
+| web_url_value | Optional[str] | Dashboard URL for viewing the transaction. |
 | amount | Optional[int] | Gross amount of the transaction, in cents |
 | currency | Optional[str] | Three-letter ISO currency code |
 | description | Optional[str] | Text description of the transaction |
@@ -101,6 +111,11 @@ https://stripe.com/docs/api/charges
 
 | Field | Type | Description |
 |-------|------|-------------|
+| charge_id | str | Stripe charge ID. |
+| charge_name | str | Display name of the charge. |
+| created_time | datetime | When the charge was created. |
+| updated_time | datetime | Last activity timestamp for the charge. |
+| web_url_value | Optional[str] | Dashboard URL for the charge. |
 | amount | Optional[int] | Amount charged in cents |
 | currency | Optional[str] | Three-letter ISO currency code |
 | captured | bool | Whether the charge was captured |
@@ -121,6 +136,11 @@ https://stripe.com/docs/api/customers
 
 | Field | Type | Description |
 |-------|------|-------------|
+| customer_id | str | Stripe customer ID. |
+| customer_name | str | Display name of the customer. |
+| created_time | datetime | When the customer was created. |
+| updated_time | datetime | Timestamp of the latest update. |
+| web_url_value | Optional[str] | Dashboard URL for the customer. |
 | email | Optional[str] | The customer's email address |
 | phone | Optional[str] | The customer's phone number |
 | description | Optional[str] | Arbitrary description of the customer |
@@ -139,6 +159,10 @@ https://stripe.com/docs/api/events
 
 | Field | Type | Description |
 |-------|------|-------------|
+| event_id | str | Stripe event ID. |
+| event_name | str | Display name of the event. |
+| created_time | datetime | When the event was created. |
+| web_url_value | Optional[str] | Dashboard URL for the event. |
 | event_type | Optional[str] | The event's type (e.g., 'charge.succeeded', 'customer.created') |
 | api_version | Optional[str] | API version used to render event data |
 | data | Dict[str, Any] | The event payload. Typically includes 'object' and 'previous_attributes'. |
@@ -155,6 +179,11 @@ https://stripe.com/docs/api/invoices
 
 | Field | Type | Description |
 |-------|------|-------------|
+| invoice_id | str | Stripe invoice ID. |
+| invoice_name | str | Display name of the invoice. |
+| created_time | datetime | When the invoice was created. |
+| updated_time | datetime | When the invoice was last updated. |
+| web_url_value | Optional[str] | Dashboard URL for the invoice. |
 | customer_id | Optional[str] | The ID of the customer this invoice belongs to |
 | number | Optional[str] | A unique, user-facing reference for this invoice |
 | status | Optional[str] | Invoice status (e.g., 'draft', 'open', 'paid', 'void') |
@@ -175,6 +204,11 @@ https://stripe.com/docs/api/payment_intents
 
 | Field | Type | Description |
 |-------|------|-------------|
+| payment_intent_id | str | Stripe payment intent ID. |
+| payment_intent_name | str | Display name of the payment intent. |
+| created_time | datetime | When the payment intent was created. |
+| updated_time | datetime | Last update timestamp for the payment intent. |
+| web_url_value | Optional[str] | Dashboard URL for the payment intent. |
 | amount | Optional[int] | Amount in cents intended to be collected by this PaymentIntent |
 | currency | Optional[str] | Three-letter ISO currency code |
 | status | Optional[str] | Status of the PaymentIntent (e.g. 'requires_payment_method', 'succeeded') |
@@ -191,6 +225,10 @@ https://stripe.com/docs/api/payment_methods
 
 | Field | Type | Description |
 |-------|------|-------------|
+| payment_method_id | str | Stripe payment method ID. |
+| payment_method_name | str | Display name of the payment method. |
+| created_time | datetime | When the payment method was created. |
+| web_url_value | Optional[str] | Dashboard URL for the payment method. |
 | type | Optional[str] | Type of the PaymentMethod (card, ideal, etc.) |
 | billing_details | Dict[str, Any] | Billing information associated with the PaymentMethod |
 | customer_id | Optional[str] | ID of the Customer to which this PaymentMethod is saved (if any) |
@@ -206,6 +244,11 @@ https://stripe.com/docs/api/payouts
 
 | Field | Type | Description |
 |-------|------|-------------|
+| payout_id | str | Stripe payout ID. |
+| payout_name | str | Display name of the payout. |
+| created_time | datetime | When the payout was created. |
+| updated_time | datetime | Last update timestamp for the payout. |
+| web_url_value | Optional[str] | Dashboard URL for the payout. |
 | amount | Optional[int] | Amount in cents to be transferred |
 | currency | Optional[str] | Three-letter ISO currency code |
 | arrival_date | Optional[datetime] | Date the payout is expected to arrive in the bank |
@@ -225,6 +268,10 @@ https://stripe.com/docs/api/refunds
 
 | Field | Type | Description |
 |-------|------|-------------|
+| refund_id | str | Stripe refund ID. |
+| refund_name | str | Display name of the refund. |
+| created_time | datetime | When the refund was created. |
+| web_url_value | Optional[str] | Dashboard URL for the refund. |
 | amount | Optional[int] | Amount in cents refunded |
 | currency | Optional[str] | Three-letter ISO currency code |
 | status | Optional[str] | Status of the refund (e.g., 'pending', 'succeeded', 'failed') |
@@ -243,6 +290,11 @@ https://stripe.com/docs/api/subscriptions
 
 | Field | Type | Description |
 |-------|------|-------------|
+| subscription_id | str | Stripe subscription ID. |
+| subscription_name | str | Display name of the subscription. |
+| created_time | datetime | When the subscription was created. |
+| updated_time | datetime | Last update timestamp for the subscription. |
+| web_url_value | Optional[str] | Dashboard URL for the subscription. |
 | customer_id | Optional[str] | The ID of the customer who owns this subscription |
 | status | Optional[str] | Status of the subscription (e.g., 'active', 'past_due', 'canceled') |
 | current_period_start | Optional[datetime] | Start of the current billing period for this subscription |

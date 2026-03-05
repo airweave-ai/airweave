@@ -56,15 +56,19 @@ The `get_context` dependency provides unified authentication and request context
 async def my_endpoint(
     ctx: ApiContext = Depends(deps.get_context),
 ):
-    # Provides: organization_id, user, auth_method, auth_metadata, logger
+    # Provides: organization, user, logger, request_id, auth_method, analytics
 ```
+
+`ApiContext` inherits from `BaseContext` (`core.context`), which provides organization identity and logger. `ApiContext` adds HTTP-specific fields: `request_id`, `auth_method`, `auth_metadata`, `analytics`.
+
+CRUD operations accept `BaseContext` (the parent type), so `ApiContext` works everywhere. Background jobs and Temporal activities use `BaseContext` directly without API-specific fields.
 
 **ApiContext Resolution Flow:**
 1. Check auth method: system (dev), Auth0, or API key
 2. Resolve organization ID from header or defaults
 3. Validate organization access
 4. Create contextual logger with request metadata
-5. Return unified `ApiContext` object with injected logger
+5. Return `ApiContext` (extends `BaseContext`) with injected logger and analytics
 
 **Key Features:**
 - Supports multiple auth methods simultaneously
@@ -128,6 +132,25 @@ async def create_resource(
     """Clear description."""
     # Validate → Delegate to CRUD/Service → Return schema
 ```
+
+### Protocol-based DI with Inject()
+For domain services, use `Inject(Protocol)` to resolve implementations from the DI container:
+```python
+from airweave.api.deps import Inject
+from airweave.domains.organizations.protocols import OrganizationServiceProtocol
+
+@router.post("/")
+async def create_organization(
+    org_data: schemas.OrganizationCreate,
+    db: AsyncSession = Depends(deps.get_db),
+    user: User = Depends(deps.get_user),
+    org_service: OrganizationServiceProtocol = Inject(OrganizationServiceProtocol),
+) -> schemas.Organization:
+    return await org_service.create_organization(db=db, org_data=org_data, owner_user=user)
+```
+`Inject()` introspects the `Container` dataclass to find the field matching the requested protocol type. This decouples endpoints from concrete implementations.
+
+Identity and payment providers are abstracted behind protocols (`IdentityProvider`, `PaymentGatewayProtocol`) with concrete adapters (Auth0, Stripe) and null/fake adapters for dev/testing.
 
 ### Naming Conventions
 - `list_resources()` → GET `/`

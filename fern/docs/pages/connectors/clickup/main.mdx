@@ -12,6 +12,8 @@ description: "Clickup integration with Airweave"
   <h1 style={{ margin: 0 }}>Clickup</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Clickup through Airweave's unified search layer.
+
 ## Configuration
 
 ClickUp source connector integrates with the ClickUp API to extract and synchronize data.
@@ -49,11 +51,10 @@ The following data models are available for this connector:
 
 Schema for ClickUp workspace entities.
 
-Reference:
-    https://clickup.com/api/clickupreference/operation/GetAuthorizedTeams/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| workspace_id | str | Workspace ID |
+| name | str | Workspace name |
 | color | Optional[str] | Workspace color |
 | avatar | Optional[str] | Workspace avatar URL |
 | members | List[Dict[str, Any]] | List of workspace members |
@@ -63,11 +64,11 @@ Reference:
 
 Schema for ClickUp space entities.
 
-Reference:
-    https://clickup.com/api/clickupreference/operation/GetSpaces/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| space_id | str | Space ID |
+| name | str | Space name |
+| workspace_id | str | Parent workspace ID |
 | private | bool | Whether the space is private |
 | status | Dict[str, Any] | Space status configuration |
 | multiple_assignees | bool | Whether multiple assignees are allowed |
@@ -78,13 +79,13 @@ Reference:
 
 Schema for ClickUp folder entities.
 
-Reference:
-    https://clickup.com/api/clickupreference/operation/GetFolders/
-
 | Field | Type | Description |
 |-------|------|-------------|
-| hidden | bool | Whether the folder is hidden |
+| folder_id | str | Folder ID |
+| name | str | Folder name |
+| workspace_id | str | Parent workspace ID |
 | space_id | str | Parent space ID |
+| hidden | bool | Whether the folder is hidden |
 | task_count | Optional[int] | Number of tasks in the folder |
 
 </Accordion>
@@ -92,13 +93,13 @@ Reference:
 
 Schema for ClickUp list entities.
 
-Reference:
-    https://clickup.com/api/clickupreference/operation/GetLists/
-
 | Field | Type | Description |
 |-------|------|-------------|
-| folder_id | Optional[str] | Parent folder ID (optional) |
+| list_id | str | List ID |
+| name | str | List name |
+| workspace_id | str | Parent workspace ID |
 | space_id | str | Parent space ID |
+| folder_id | Optional[str] | Parent folder ID (optional) |
 | content | Optional[str] | List content/description |
 | status | Optional[Dict[str, Any]] | List status configuration |
 | priority | Optional[Dict[str, Any]] | List priority configuration |
@@ -114,11 +115,12 @@ Reference:
 
 Schema for ClickUp task entities.
 
-Reference:
-    https://clickup.com/api/clickupreference/operation/GetTasks/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| task_id | str | Task ID |
+| name | str | Task name |
+| created_at | Optional[Any] | Task creation timestamp |
+| updated_at | Optional[Any] | Task update timestamp |
 | status | Dict[str, Any] | Task status configuration |
 | priority | Optional[Dict[str, Any]] | Task priority configuration |
 | assignees | List[Dict[str, Any]] | List of task assignees |
@@ -129,8 +131,9 @@ Reference:
 | time_spent | Optional[int] | Time spent in milliseconds |
 | custom_fields | List[Dict[str, Any]] | List of custom fields |
 | list_id | str | Parent list ID |
-| folder_id | str | Parent folder ID |
+| folder_id | Optional[str] | Parent folder ID |
 | space_id | str | Parent space ID |
+| workspace_id | str | Parent workspace ID |
 | url | str | Task URL |
 | description | Optional[str] | Task description |
 | parent | Optional[str] | Parent task ID if this is a subtask |
@@ -140,11 +143,11 @@ Reference:
 
 Schema for ClickUp comment entities.
 
-Reference:
-    https://clickup.com/api/clickupreference/operation/GetTaskComments/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| comment_id | str | Comment ID |
+| name | str | Comment preview |
+| created_at | Optional[Any] | When the comment was created |
 | task_id | str | Parent task ID |
 | user | Dict[str, Any] | Comment author information |
 | text_content | Optional[str] | Comment text content |
@@ -158,33 +161,29 @@ Reference:
 
 Schema for ClickUp subtask entities.
 
-Supports nested subtasks where subtasks can have their own subtasks.
-The parent_task_id points to the immediate parent (task or subtask).
-
-Reference:
-    https://clickup.com/api/clickupreference/operation/GetTasks/
-
 | Field | Type | Description |
 |-------|------|-------------|
+| subtask_id | str | Subtask ID |
+| name | str | Subtask name |
+| created_at | Optional[Any] | Subtask creation timestamp |
+| updated_at | Optional[Any] | Subtask update timestamp |
 | parent_task_id | str | Immediate parent task/subtask ID |
 | status | Dict[str, Any] | Subtask status configuration |
 | assignees | List[Dict[str, Any]] | List of subtask assignees |
 | due_date | Optional[Any] | Subtask due date |
 | description | Optional[str] | Subtask description |
 | nesting_level | Optional[int] | Nesting level (1 = direct subtask, 2 = nested subtask, etc.) |
+| url | Optional[str] | Subtask URL |
 
 </Accordion>
 <Accordion title="ClickUpFileEntity">
 
 Schema for ClickUp file attachments.
 
-Represents files attached to ClickUp tasks.
-
-Reference:
-    https://api.clickup.com/api/v2/task/{task_id}
-
 | Field | Type | Description |
 |-------|------|-------------|
+| attachment_id | str | Attachment ID |
+| name | str | Attachment name |
 | task_id | str | ID of the task this file is attached to |
 | task_name | str | Name of the task this file is attached to |
 | version | Optional[int] | Version number of the attachment |

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import OrganizationBase
@@ -69,6 +69,8 @@ class ConnectionInitSession(OrganizationBase):
     )
 
     redirect_session: Mapped[Optional["RedirectSession"]] = relationship("RedirectSession")
+
+    __table_args__ = (Index("idx_connection_init_session_expires_at", "expires_at"),)
 
     @staticmethod
     def default_expires_at(minutes: int = 30) -> datetime:

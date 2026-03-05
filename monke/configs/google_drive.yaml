@@ -12,7 +12,7 @@ connector:
     # access_token: "${GOOGLE_DRIVE_ACCESS_TOKEN}"
   config_fields:
     openai_model: "gpt-4.1-mini"
-    file_types: ["document", "spreadsheet", "text"]  # Exclude PDF - requires real binary generation
+    file_types: ["document", "text"]  # Exclude PDF and spreadsheet - requires real binary generation / xlsx not supported
     post_create_sleep_seconds: 20  # Wait for Google Drive API to index new files
 
 test_flow:
@@ -20,9 +20,11 @@ test_flow:
     - cleanup
     - create
     - sync                     # First sync: Full sync (no cursor exists yet)
+    - verify_raw_data          # Verify raw data capture (local only)
     - verify
     - update
     - sync                     # Second sync: Incremental with cursor
+    - verify_raw_data          # Verify raw data still present after update
     - verify
     - partial_delete
     - force_full_sync          # Third sync: Force full sync to detect deletion

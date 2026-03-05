@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class OAuth2TokenResponse(BaseModel):
@@ -25,16 +25,7 @@ class OAuth2TokenResponse(BaseModel):
     scope: Optional[str] = None
     extra_fields: dict[str, Any] = {}
 
-    class Config:
-        """Pydantic configuration.
-
-        Attributes:
-        ----------
-            extra: Configuration to allow extra fields.
-
-        """
-
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class BaseAuthSettings(BaseModel):

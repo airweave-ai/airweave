@@ -113,6 +113,10 @@ class IntegrationSettings:
             for name, config in data.items():
                 self._settings[name] = self._parse_integration(name, config)
 
+    def get_settings(self, short_name: str) -> BaseAuthSettings | None:
+        """Return cached settings by short name, without secret enrichment."""
+        return self._settings.get(short_name)
+
     async def _get_client_secret(self, settings: BaseAuthSettings) -> str:
         """Retrieves the client secret for a specific integration.
 

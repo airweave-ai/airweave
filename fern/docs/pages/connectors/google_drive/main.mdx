@@ -12,6 +12,8 @@ description: "Google Drive integration with Airweave"
   <h1 style={{ margin: 0 }}>Google Drive</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Google Drive through Airweave's unified search layer.
+
 ## Configuration
 
 Google Drive source connector integrates with the Google Drive API to extract files.
@@ -79,6 +81,9 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| drive_id | str | Unique identifier for the shared drive. |
+| title | str | Display name of the shared drive. |
+| created_time | Optional[datetime] | Creation timestamp of the shared drive. |
 | kind | Optional[str] | Identifies what kind of resource this is; typically "drive#drive". |
 | color_rgb | Optional[str] | The color of this shared drive as an RGB hex string. |
 | hidden | bool | Whether the shared drive is hidden from default view. |
@@ -94,6 +99,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| file_id | str | Unique identifier for the file. |
+| title | str | Display title of the file. |
+| created_time | datetime | Timestamp when the file was created. |
+| modified_time | datetime | Timestamp when the file was last modified. |
 | description | Optional[str] | Optional description of the file. |
 | starred | bool | Indicates whether the user has starred the file. |
 | trashed | bool | Whether the file is in the trash. |
@@ -104,18 +113,20 @@ Reference:
 | web_view_link | Optional[str] | Link for opening the file in a relevant Google editor or viewer. |
 | icon_link | Optional[str] | A static, far-reaching URL to the file's icon. |
 | md5_checksum | Optional[str] | MD5 checksum for the content of the file. |
+| shared_with_me_time | Optional[datetime] | Time when this file was shared with the user. |
+| modified_by_me_time | Optional[datetime] | Last time the user modified the file. |
+| viewed_by_me_time | Optional[datetime] | Last time the user viewed the file. |
 
 </Accordion>
 <Accordion title="GoogleDriveFileDeletionEntity">
 
 Deletion signal for a Google Drive file.
 
-Emitted when the Drive Changes API reports a file was removed (deleted or access lost).
-The `entity_id` matches the original file's ID so downstream deletion can target
-the correct parent/children.
-
 | Field | Type | Description |
 |-------|------|-------------|
+| file_id | str | ID of the file that was deleted. |
+| label | str | Human-readable deletion label. |
+| drive_id | Optional[str] | Drive identifier that contained the file. |
 
 </Accordion>
 

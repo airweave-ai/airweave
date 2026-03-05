@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 
 import { Copy, Eye, Key, Plus, ExternalLink, FileText, Github, Code, Sparkles, TrendingUp, Search, Package } from "lucide-react";
 import { useNavigate, Link, useLocation, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
 import { useTheme } from "@/lib/theme-provider";
 import {
   CollectionCard,
@@ -35,7 +34,6 @@ interface Collection {
 
 // Source type definition
 interface Source {
-  id: string;
   name: string;
   description?: string | null;
   short_name: string;
@@ -135,11 +133,6 @@ const Dashboard = () => {
   // Usage limits are now checked by UsageChecker component
 
 
-  const handleRequestNewKey = () => {
-    // Placeholder for requesting a new API key
-    toast.info("New API key feature coming soon");
-  };
-
   const handleSourceClick = (source: Source) => {
     const store = useCollectionCreationStore.getState();
     // Determine auth mode based on source
@@ -226,8 +219,8 @@ const Dashboard = () => {
                 <>
                   {[...sources].sort((a, b) => a.name.localeCompare(b.name)).map((source) => (
                     <SourceButton
-                      key={source.id}
-                      id={source.id}
+                      key={source.short_name}
+                      id={source.short_name}
                       name={source.name}
                       shortName={source.short_name}
                       onClick={() => handleSourceClick(source)}
@@ -246,9 +239,7 @@ const Dashboard = () => {
         {/* Right Column */}
         <div className="md:col-span-1 space-y-6">
           {/* API Key Card */}
-          <ApiKeyCard
-            onRequestNewKey={handleRequestNewKey}
-          />
+          <ApiKeyCard />
 
           {/* Example Projects Section */}
           <div className="space-y-4">

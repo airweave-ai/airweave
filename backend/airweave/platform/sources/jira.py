@@ -1,25 +1,31 @@
 """Jira source implementation.
 
-Simplified connector that retrieves Projects and Issues from a Jira Cloud instance.
+Connector that retrieves Projects and Issues from a Jira Cloud instance,
+with optional Zephyr Scale test management integration.
 
 References:
-    https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/
-    https://developer.atlassian.com/cloud/jira/platform/rest/v3/overview
+    Jira REST API: https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/
+    Zephyr Scale API: https://support.smartbear.com/zephyr-scale-cloud/api-docs/
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import JiraAuthConfig
+from airweave.platform.configs.config import JiraConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.jira import (
     JiraIssueEntity,
     JiraProjectEntity,
+    ZephyrTestCaseEntity,
+    ZephyrTestCycleEntity,
+    ZephyrTestPlanEntity,
 )
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import (
@@ -27,6 +33,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+# Zephyr Scale API base URL for Cloud
+ZEPHYR_SCALE_BASE_URL = "https://api.zephyrscale.smartbear.com/v2"
 
 
 @source(
@@ -38,16 +47,18 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.WITH_ROTATING_REFRESH,
-    auth_config_class=None,
-    config_class="JiraConfig",
-    labels=["Project Management", "Issue Tracking"],
+    auth_config_class=JiraAuthConfig,
+    config_class=JiraConfig,
+    labels=["Project Management", "Issue Tracking", "Test Management"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,
 )
 class JiraSource(BaseSource):
     """Jira source connector integrates with the Jira REST API to extract project management data.
 
-    Connects to your Jira Cloud instance.
+    Connects to your Jira Cloud instance. Optionally integrates with Zephyr Scale
+    for test management entities (test cases, test cycles, test plans) when a
+    Zephyr Scale API token is provided.
 
     It provides comprehensive access to projects, issues, and their
     relationships for agile development and issue tracking workflows.
@@ -57,6 +68,7 @@ class JiraSource(BaseSource):
         """Initialize Jira source with placeholders for site metadata."""
         super().__init__()
         self.site_url: Optional[str] = None
+        self.zephyr_api_token: Optional[str] = None
 
     async def _get_accessible_resources(self) -> list[dict]:
         """Get the list of accessible Atlassian resources for this token.
@@ -98,12 +110,30 @@ class JiraSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+        cls, access_token: Any, config: Optional[Dict[str, Any]] = None
     ) -> "JiraSource":
-        """Create a new Jira source instance."""
+        """Create a new Jira source instance.
+
+        Args:
+            access_token: Either a string (OAuth access token) or a dict containing
+                credentials including access_token.
+            config: Configuration options for the source, may include zephyr_scale_api_token.
+        """
         instance = cls()
-        instance.access_token = access_token
         instance.config = config or {}
+
+        # Handle credentials being either a string or dict
+        if isinstance(access_token, dict):
+            # Credentials dict from JiraAuthConfig
+            instance.access_token = access_token.get("access_token", "")
+        else:
+            # Simple string token (legacy OAuth flow)
+            instance.access_token = access_token
+
+        # Zephyr Scale token comes from config (not auth credentials)
+        # This allows it to be provided alongside OAuth authentication
+        instance.zephyr_api_token = instance.config.get("zephyr_scale_api_token")
+
         return instance
 
     @retry(
@@ -442,7 +472,7 @@ class JiraSource(BaseSource):
                 break
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        """Generate all entities from Jira."""
+        """Generate all entities from Jira and optionally Zephyr Scale."""
         self.logger.info("Starting Jira entity generation process")
 
         resources = await self._get_accessible_resources()
@@ -457,11 +487,35 @@ class JiraSource(BaseSource):
 
         self.base_url = f"https://api.atlassian.com/ex/jira/{cloud_id}"
         self.logger.debug(f"Base URL set to: {self.base_url}")
+
+        # Check if Zephyr Scale integration is enabled
+        # Token will only be present if:
+        # 1. The ZEPHYR_SCALE feature flag is enabled for the organization
+        # 2. The user provided the API token in the config
+        zephyr_enabled = self._is_zephyr_enabled()
+        if zephyr_enabled:
+            self.logger.info(
+                "🧪 Zephyr Scale integration ENABLED - "
+                "API token configured, will sync test entities"
+            )
+        else:
+            self.logger.info(
+                "ℹ️ Zephyr Scale integration DISABLED - "
+                "no API token in config (feature flag may be off or token not provided)"
+            )
+
         async with httpx.AsyncClient() as client:
             project_count = 0
             issue_count = 0
+            zephyr_test_case_count = 0
+            zephyr_test_cycle_count = 0
+            zephyr_test_plan_count = 0
+
             # Track already processed entity IDs with their type to avoid duplicates
             processed_entities = set()  # Will store tuples of (entity_id, key)
+
+            # Store projects for Zephyr integration (need to iterate twice)
+            projects: List[JiraProjectEntity] = []
 
             # 1) Generate (and yield) all Projects
             async for project_entity in self._generate_project_entities(client):
@@ -478,6 +532,7 @@ class JiraSource(BaseSource):
                     continue
 
                 processed_entities.add(project_identifier)
+                projects.append(project_entity)
                 self.logger.info(
                     f"Yielding project entity: {project_entity.project_key} ({project_entity.name})"
                 )
@@ -512,6 +567,57 @@ class JiraSource(BaseSource):
                 f"Completed Jira entity generation: {project_count} projects, "
                 f"{issue_count} issues total"
             )
+
+            # 3) Zephyr Scale Integration (if configured)
+            if zephyr_enabled:
+                self.logger.info("🧪 Starting Zephyr Scale entity generation")
+
+                for project in projects:
+                    # Generate Test Cases
+                    async for test_case in self._generate_zephyr_test_case_entities(
+                        client, project
+                    ):
+                        tc_identifier = (test_case.entity_id, test_case.test_case_key)
+                        if tc_identifier not in processed_entities:
+                            processed_entities.add(tc_identifier)
+                            zephyr_test_case_count += 1
+                            self.logger.debug(
+                                f"Yielding test case entity: {test_case.test_case_key}"
+                            )
+                            yield test_case
+
+                    # Generate Test Cycles
+                    async for test_cycle in self._generate_zephyr_test_cycle_entities(
+                        client, project
+                    ):
+                        tcyc_identifier = (test_cycle.entity_id, test_cycle.test_cycle_key)
+                        if tcyc_identifier not in processed_entities:
+                            processed_entities.add(tcyc_identifier)
+                            zephyr_test_cycle_count += 1
+                            self.logger.debug(
+                                f"Yielding test cycle entity: {test_cycle.test_cycle_key}"
+                            )
+                            yield test_cycle
+
+                    # Generate Test Plans
+                    async for test_plan in self._generate_zephyr_test_plan_entities(
+                        client, project
+                    ):
+                        tp_identifier = (test_plan.entity_id, test_plan.test_plan_key)
+                        if tp_identifier not in processed_entities:
+                            processed_entities.add(tp_identifier)
+                            zephyr_test_plan_count += 1
+                            self.logger.debug(
+                                f"Yielding test plan entity: {test_plan.test_plan_key}"
+                            )
+                            yield test_plan
+
+                self.logger.info(
+                    f"✅ Completed Zephyr Scale entity generation: "
+                    f"{zephyr_test_case_count} test cases, "
+                    f"{zephyr_test_cycle_count} test cycles, "
+                    f"{zephyr_test_plan_count} test plans"
+                )
 
     async def validate(self) -> bool:
         """Verify Jira OAuth2 token by calling accessible-resources endpoint.
@@ -554,3 +660,356 @@ class JiraSource(BaseSource):
         if not self.site_url:
             return None
         return f"{self.site_url}/browse/{issue_key}"
+
+    # =========================================================================
+    # Zephyr Scale Integration
+    # =========================================================================
+    # These methods integrate with the Zephyr Scale test management API.
+    # Requires:
+    # 1. ZEPHYR_SCALE feature flag enabled for the organization
+    # 2. Zephyr Scale API token configured in credentials
+
+    def _is_zephyr_enabled(self) -> bool:
+        """Check if Zephyr Scale integration is enabled and configured.
+
+        Returns True if a Zephyr Scale API token is present in config.
+        The token will only be present if the ZEPHYR_SCALE feature flag is enabled
+        for the organization - config fields with feature flags are stripped
+        during validation if the flag is not enabled.
+        """
+        return bool(self.zephyr_api_token)
+
+    @retry(
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def _get_zephyr_with_auth(self, client: httpx.AsyncClient, url: str) -> Any:
+        """Make an authenticated GET request to the Zephyr Scale API.
+
+        Note: Zephyr Scale uses a separate API token, not the Jira OAuth token.
+        """
+        if not self.zephyr_api_token:
+            raise ValueError("Zephyr Scale API token not configured")
+
+        headers = {
+            "Authorization": f"Bearer {self.zephyr_api_token}",
+            "Accept": "application/json",
+        }
+
+        self.logger.debug(f"Making Zephyr Scale request to {url}")
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            self.logger.debug(f"Zephyr response status: {response.status_code}")
+            return data
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                f"Zephyr Scale HTTP error: {e.response.status_code} - {e.response.text}"
+            )
+            raise
+        except httpx.TimeoutException as e:
+            self.logger.warning(f"Zephyr Scale request timeout ({type(e).__name__}): {url}")
+            raise
+        except httpx.RequestError as e:
+            # Catches ConnectError, PoolTimeout, etc.
+            self.logger.warning(f"Zephyr Scale request error ({type(e).__name__}): {e}")
+            raise
+        except Exception as e:
+            # Fallback for unexpected exceptions
+            self.logger.error(f"Zephyr Scale unexpected error ({type(e).__name__}): {e!r}")
+            raise
+
+    def _build_zephyr_test_case_url(self, test_case_key: str) -> Optional[str]:
+        """Construct a URL for a Zephyr Scale test case."""
+        if not self.site_url:
+            return None
+        # Zephyr Scale test cases are accessed via the Jira plugin servlet
+        return (
+            f"{self.site_url}/plugins/servlet/ac/com.kanoah.test-manager/"
+            f"testcase-details?testCaseKey={test_case_key}"
+        )
+
+    def _build_zephyr_test_cycle_url(self, test_cycle_key: str) -> Optional[str]:
+        """Construct a URL for a Zephyr Scale test cycle."""
+        if not self.site_url:
+            return None
+        return (
+            f"{self.site_url}/plugins/servlet/ac/com.kanoah.test-manager/"
+            f"testcycle-details?testCycleKey={test_cycle_key}"
+        )
+
+    def _build_zephyr_test_plan_url(self, test_plan_key: str) -> Optional[str]:
+        """Construct a URL for a Zephyr Scale test plan."""
+        if not self.site_url:
+            return None
+        return (
+            f"{self.site_url}/plugins/servlet/ac/com.kanoah.test-manager/"
+            f"testplan-details?testPlanKey={test_plan_key}"
+        )
+
+    def _create_zephyr_test_case_entity(
+        self, test_case_data: Dict[str, Any], project: JiraProjectEntity
+    ) -> ZephyrTestCaseEntity:
+        """Transform raw Zephyr Scale test case data into a ZephyrTestCaseEntity."""
+        test_case_key = test_case_data.get("key", "unknown")
+        test_case_id = str(test_case_data.get("id", test_case_key))
+
+        # Parse timestamps
+        created_time = self._parse_datetime(test_case_data.get("createdOn")) or datetime.utcnow()
+        updated_time = self._parse_datetime(test_case_data.get("updatedOn")) or created_time
+
+        # Extract nested fields safely
+        status = test_case_data.get("status", {})
+        status_name = status.get("name") if isinstance(status, dict) else None
+
+        priority = test_case_data.get("priority", {})
+        priority_name = priority.get("name") if isinstance(priority, dict) else None
+
+        folder = test_case_data.get("folder", {})
+        folder_path = folder.get("name") if isinstance(folder, dict) else None
+
+        self.logger.debug(f"Creating Zephyr test case entity: {test_case_key}")
+
+        return ZephyrTestCaseEntity(
+            entity_id=test_case_id,
+            breadcrumbs=[
+                Breadcrumb(
+                    entity_id=project.project_id,
+                    name=project.project_name,
+                    entity_type=JiraProjectEntity.__name__,
+                )
+            ],
+            name=test_case_data.get("name", test_case_key),
+            created_at=created_time,
+            updated_at=updated_time,
+            test_case_id=test_case_id,
+            test_case_key=test_case_key,
+            objective=test_case_data.get("objective"),
+            precondition=test_case_data.get("precondition"),
+            status_name=status_name,
+            priority_name=priority_name,
+            folder_path=folder_path,
+            project_key=project.project_key,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=self._build_zephyr_test_case_url(test_case_key),
+        )
+
+    def _create_zephyr_test_cycle_entity(
+        self, test_cycle_data: Dict[str, Any], project: JiraProjectEntity
+    ) -> ZephyrTestCycleEntity:
+        """Transform raw Zephyr Scale test cycle data into a ZephyrTestCycleEntity."""
+        test_cycle_key = test_cycle_data.get("key", "unknown")
+        test_cycle_id = str(test_cycle_data.get("id", test_cycle_key))
+
+        # Parse timestamps
+        created_time = self._parse_datetime(test_cycle_data.get("createdOn")) or datetime.utcnow()
+        updated_time = self._parse_datetime(test_cycle_data.get("updatedOn")) or created_time
+
+        # Extract nested fields safely
+        status = test_cycle_data.get("status", {})
+        status_name = status.get("name") if isinstance(status, dict) else None
+
+        folder = test_cycle_data.get("folder", {})
+        folder_path = folder.get("name") if isinstance(folder, dict) else None
+
+        self.logger.debug(f"Creating Zephyr test cycle entity: {test_cycle_key}")
+
+        return ZephyrTestCycleEntity(
+            entity_id=test_cycle_id,
+            breadcrumbs=[
+                Breadcrumb(
+                    entity_id=project.project_id,
+                    name=project.project_name,
+                    entity_type=JiraProjectEntity.__name__,
+                )
+            ],
+            name=test_cycle_data.get("name", test_cycle_key),
+            created_at=created_time,
+            updated_at=updated_time,
+            test_cycle_id=test_cycle_id,
+            test_cycle_key=test_cycle_key,
+            description=test_cycle_data.get("description"),
+            status_name=status_name,
+            folder_path=folder_path,
+            project_key=project.project_key,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=self._build_zephyr_test_cycle_url(test_cycle_key),
+        )
+
+    def _create_zephyr_test_plan_entity(
+        self, test_plan_data: Dict[str, Any], project: JiraProjectEntity
+    ) -> ZephyrTestPlanEntity:
+        """Transform raw Zephyr Scale test plan data into a ZephyrTestPlanEntity."""
+        test_plan_key = test_plan_data.get("key", "unknown")
+        test_plan_id = str(test_plan_data.get("id", test_plan_key))
+
+        # Parse timestamps
+        created_time = self._parse_datetime(test_plan_data.get("createdOn")) or datetime.utcnow()
+        updated_time = self._parse_datetime(test_plan_data.get("updatedOn")) or created_time
+
+        # Extract nested fields safely
+        status = test_plan_data.get("status", {})
+        status_name = status.get("name") if isinstance(status, dict) else None
+
+        folder = test_plan_data.get("folder", {})
+        folder_path = folder.get("name") if isinstance(folder, dict) else None
+
+        self.logger.debug(f"Creating Zephyr test plan entity: {test_plan_key}")
+
+        return ZephyrTestPlanEntity(
+            entity_id=test_plan_id,
+            breadcrumbs=[
+                Breadcrumb(
+                    entity_id=project.project_id,
+                    name=project.project_name,
+                    entity_type=JiraProjectEntity.__name__,
+                )
+            ],
+            name=test_plan_data.get("name", test_plan_key),
+            created_at=created_time,
+            updated_at=updated_time,
+            test_plan_id=test_plan_id,
+            test_plan_key=test_plan_key,
+            objective=test_plan_data.get("objective"),
+            status_name=status_name,
+            folder_path=folder_path,
+            project_key=project.project_key,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=self._build_zephyr_test_plan_url(test_plan_key),
+        )
+
+    async def _generate_zephyr_test_case_entities(
+        self, client: httpx.AsyncClient, project: JiraProjectEntity
+    ) -> AsyncGenerator[ZephyrTestCaseEntity, None]:
+        """Generate ZephyrTestCaseEntity objects for a project."""
+        project_key = project.project_key
+        self.logger.info(f"Fetching Zephyr Scale test cases for project: {project_key}")
+
+        max_results = 100
+        start_at = 0
+        total_fetched = 0
+
+        while True:
+            url = (
+                f"{ZEPHYR_SCALE_BASE_URL}/testcases"
+                f"?projectKey={project_key}&maxResults={max_results}&startAt={start_at}"
+            )
+
+            try:
+                data = await self._get_zephyr_with_auth(client, url)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    self.logger.warning(
+                        f"Zephyr Scale not found for project {project_key} - "
+                        "may not have Zephyr Scale enabled"
+                    )
+                    return
+                raise
+
+            values = data.get("values", [])
+            self.logger.info(f"Retrieved {len(values)} test cases for project {project_key}")
+
+            for test_case_data in values:
+                total_fetched += 1
+                yield self._create_zephyr_test_case_entity(test_case_data, project)
+
+            # Handle pagination
+            if data.get("isLast", True) or not values:
+                self.logger.info(
+                    f"✅ Completed fetching {total_fetched} test cases for project {project_key}"
+                )
+                break
+
+            start_at += max_results
+
+    async def _generate_zephyr_test_cycle_entities(
+        self, client: httpx.AsyncClient, project: JiraProjectEntity
+    ) -> AsyncGenerator[ZephyrTestCycleEntity, None]:
+        """Generate ZephyrTestCycleEntity objects for a project."""
+        project_key = project.project_key
+        self.logger.info(f"Fetching Zephyr Scale test cycles for project: {project_key}")
+
+        max_results = 100
+        start_at = 0
+        total_fetched = 0
+
+        while True:
+            url = (
+                f"{ZEPHYR_SCALE_BASE_URL}/testcycles"
+                f"?projectKey={project_key}&maxResults={max_results}&startAt={start_at}"
+            )
+
+            try:
+                data = await self._get_zephyr_with_auth(client, url)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    self.logger.warning(
+                        f"Zephyr Scale test cycles not found for project {project_key}"
+                    )
+                    return
+                raise
+
+            values = data.get("values", [])
+            self.logger.info(f"Retrieved {len(values)} test cycles for project {project_key}")
+
+            for test_cycle_data in values:
+                total_fetched += 1
+                yield self._create_zephyr_test_cycle_entity(test_cycle_data, project)
+
+            # Handle pagination
+            if data.get("isLast", True) or not values:
+                self.logger.info(
+                    f"✅ Completed fetching {total_fetched} test cycles for project {project_key}"
+                )
+                break
+
+            start_at += max_results
+
+    async def _generate_zephyr_test_plan_entities(
+        self, client: httpx.AsyncClient, project: JiraProjectEntity
+    ) -> AsyncGenerator[ZephyrTestPlanEntity, None]:
+        """Generate ZephyrTestPlanEntity objects for a project."""
+        project_key = project.project_key
+        self.logger.info(f"Fetching Zephyr Scale test plans for project: {project_key}")
+
+        max_results = 100
+        start_at = 0
+        total_fetched = 0
+
+        while True:
+            url = (
+                f"{ZEPHYR_SCALE_BASE_URL}/testplans"
+                f"?projectKey={project_key}&maxResults={max_results}&startAt={start_at}"
+            )
+
+            try:
+                data = await self._get_zephyr_with_auth(client, url)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    self.logger.warning(
+                        f"Zephyr Scale test plans not found for project {project_key}"
+                    )
+                    return
+                raise
+
+            values = data.get("values", [])
+            self.logger.info(f"Retrieved {len(values)} test plans for project {project_key}")
+
+            for test_plan_data in values:
+                total_fetched += 1
+                yield self._create_zephyr_test_plan_entity(test_plan_data, project)
+
+            # Handle pagination
+            if data.get("isLast", True) or not values:
+                self.logger.info(
+                    f"✅ Completed fetching {total_fetched} test plans for project {project_key}"
+                )
+                break
+
+            start_at += max_results

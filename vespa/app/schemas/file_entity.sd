@@ -1,0 +1,37 @@
+# FILE ENTITY SCHEMA
+# Inherits from base_entity, adding file-specific fields for FileEntity types.
+# All ranking, embedding, and chunking configuration is inherited from base_entity.
+
+schema file_entity inherits base_entity {
+
+    document file_entity inherits base_entity {
+
+        # URL to the file (source system URL or download URL)
+        field url type string {
+            indexing: attribute | summary
+        }
+
+        # Size of the file in bytes
+        field size type long {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # Type of the file (e.g., "pdf", "docx", "txt")
+        field file_type type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # MIME type of the file (e.g., "application/pdf")
+        field mime_type type string {
+            indexing: attribute | summary
+        }
+
+        # Local path where the file was downloaded (for processing)
+        # Not indexed as attribute since it's only relevant during sync
+        field local_path type string {
+            indexing: summary
+        }
+    }
+}

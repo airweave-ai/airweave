@@ -3,58 +3,244 @@ name: Build Application and Push Docker Image
 on:
   push:
     tags: ["v*"]
+
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_BACKEND: ${{ github.repository }}-backend
-  IMAGE_NAME_FRONTEND: ${{ github.repository }}-frontend
 
 jobs:
-  build-and-push-image:
-    runs-on: ubuntu-latest
+  # Build each component on native runners for each platform
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        component:
+          - name: backend
+            context: ./backend
+          - name: frontend
+            context: ./frontend
+          - name: mcp
+            context: ./mcp
+        platform:
+          - runner: ubuntu-latest
+            arch: linux/amd64
+            suffix: amd64
+          - runner: ubuntu-24.04-arm
+            arch: linux/arm64
+            suffix: arm64
+
+    runs-on: ${{ matrix.platform.runner }}
 
     permissions:
       contents: read
       packages: write
-      attestations: write
-      id-token: write
+
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta-backend
-        uses: docker/metadata-action@v5
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component.name }}
 
-      - name: Build and push Docker image
-        id: push-backend
-        uses: docker/build-push-action@v6
+      - name: Build and push ${{ matrix.component.name }} (${{ matrix.platform.suffix }})
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
-          context: ./backend
+          context: ${{ matrix.component.context }}
           push: true
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
+          platforms: ${{ matrix.platform.arch }}
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component.name }}:${{ steps.meta.outputs.version }}-${{ matrix.platform.suffix }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Disable provenance to create simple images instead of manifest lists with attestations
+          provenance: false
+          # Cache scope includes version to allow busting corrupt caches
+          cache-from: type=gha,scope=${{ matrix.component.name }}-${{ matrix.platform.suffix }}-v2
+          cache-to: type=gha,mode=max,scope=${{ matrix.component.name }}-${{ matrix.platform.suffix }}-v2
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+  # Merge platform-specific images into multi-arch manifests
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
 
-      - name: Build and push Docker image
-        id: push-frontend
-        uses: docker/build-push-action@v6
+    strategy:
+      fail-fast: true
+      matrix:
+        component: [backend, frontend, mcp]
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
-          context: ./frontend
-          push: true
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}"
+
+          echo "Creating manifest for ${IMAGE}:${VERSION}"
+
+          # Use buildx imagetools to create multi-arch manifest from platform images
+          docker buildx imagetools create -t "${IMAGE}:${VERSION}" \
+            "${IMAGE}:${VERSION}-amd64" \
+            "${IMAGE}:${VERSION}-arm64"
+
+          # Also create 'latest' tag for version tags
+          if [[ "${VERSION}" == v* ]]; then
+            docker buildx imagetools create -t "${IMAGE}:latest" \
+              "${IMAGE}:${VERSION}-amd64" \
+              "${IMAGE}:${VERSION}-arm64"
+          fi
+
+  # Scan images, generate SBOMs, and create supply-chain attestations
+  scan-and-attest:
+    needs: merge
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend, mcp]
+
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}:${{ steps.meta.outputs.version }}
+          format: sarif
+          output: trivy-${{ matrix.component }}.sarif
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+          limit-severities-for-sarif: true
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@c793b717bc78562f491db7b0e93a3a178b099162 # v4.32.5
+        with:
+          sarif_file: trivy-${{ matrix.component }}.sarif
+          category: trivy-${{ matrix.component }}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11 # v0.23.0
+        with:
+          image: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}:${{ steps.meta.outputs.version }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.component }}.json
+
+      - name: Vulnerability scan on SBOM
+        uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7.3.2
+        with:
+          sbom: sbom-${{ matrix.component }}.json
+          fail-build: "true"
+          severity-cutoff: critical
+
+      - name: Get image digest
+        id: digest
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          DIGEST="$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --format '{{printf "%s" .Manifest.Digest}}')"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Image digest: ${DIGEST}"
+
+      - name: Attest SBOM
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          sbom-path: sbom-${{ matrix.component }}.json
+          push-to-registry: true
+
+      - name: Attest build provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: sbom-${{ matrix.component }}
+          path: sbom-${{ matrix.component }}.json
+          retention-days: 90
+
+  # Package Vespa application and attach to the GitHub Release
+  package-vespa:
+    needs: scan-and-attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Package Vespa application
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp -r vespa/app vespa/build
+          sed -i "s/{{VERSION}}/${VERSION}/g" vespa/build/services.xml
+          cd vespa/build && zip -r ../../vespa-app.zip . -x ".*" "*/.*"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          files: vespa-app.zip

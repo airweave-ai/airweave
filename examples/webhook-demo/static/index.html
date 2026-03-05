@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Airweave — Webhook Receiver</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ============================================================
+       Airweave Brand Tokens (dark mode)
+       ============================================================ */
+    :root {
+      --bg:         #060606;
+      --bg-card:    #0d0d0d;
+      --bg-muted:   #141414;
+      --fg:         #FAFCFE;
+      --fg-muted:   #b3b3b3;
+      --fg-dim:     #666;
+      --border:     #262626;
+      --border-subtle: #1a1a1a;
+      --primary:    #1692E5;
+      --primary-dim:#1692E5cc;
+      --green:      #34d399;
+      --green-dim:  rgba(52, 211, 153, 0.12);
+      --red:        #f87171;
+      --red-dim:    rgba(248, 113, 113, 0.12);
+      --amber:      #fbbf24;
+      --amber-dim:  rgba(251, 191, 36, 0.12);
+      --blue:       #60a5fa;
+      --blue-dim:   rgba(96, 165, 250, 0.12);
+      --gray:       #9ca3af;
+      --gray-dim:   rgba(156, 163, 175, 0.12);
+      --radius:     8px;
+      --font:       'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono:       'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    /* ============================================================
+       Reset & Base
+       ============================================================ */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ============================================================
+       Layout
+       ============================================================ */
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ============================================================
+       Header
+       ============================================================ */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 0 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .logo img { height: 26px; width: auto; }
+    .separator {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+    }
+    .header-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--fg-muted);
+      letter-spacing: -0.01em;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--fg-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--fg-dim);
+      transition: background 0.3s;
+    }
+    .status-dot.listening { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: pulse-dot 2s ease-in-out infinite; }
+    .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.flash { animation: dot-flash 0.4s ease-out; }
+    .status-dot.disconnected { background: var(--red); }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.5; }
+      50%      { opacity: 1; }
+    }
+    @keyframes dot-flash {
+      0%   { box-shadow: 0 0 12px var(--green); transform: scale(1.5); }
+      100% { box-shadow: 0 0 6px var(--green); transform: scale(1); }
+    }
+
+    .counter {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--fg-dim);
+      background: var(--bg-muted);
+      padding: 3px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .clear-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+      font-family: var(--font);
+      font-size: 11px;
+      padding: 3px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .clear-btn:hover { color: var(--fg); border-color: var(--fg-dim); }
+    .clear-btn:disabled { opacity: 0.3; cursor: default; }
+
+    /* ============================================================
+       Config bar (endpoint + secret)
+       ============================================================ */
+    .config-bar {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .config-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+    }
+    .config-card.endpoint { flex: 1; min-width: 0; }
+    .config-card.secret { flex-shrink: 0; }
+
+    .config-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-dim);
+      white-space: nowrap;
+    }
+    .config-value {
+      flex: 1;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--fg-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .small-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+      font-family: var(--font);
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .small-btn:hover { color: var(--fg); border-color: var(--fg-dim); }
+    .small-btn.copied, .small-btn.active { color: var(--green); border-color: var(--green); }
+
+    /* Secret input */
+    .secret-input {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--fg-muted);
+      padding: 4px 10px;
+      border-radius: 6px;
+      width: 200px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .secret-input::placeholder { color: var(--fg-dim); opacity: 0.5; }
+    .secret-input:focus { border-color: var(--primary); }
+    .secret-status {
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .secret-status.active { color: var(--green); }
+    .secret-status.inactive { color: var(--fg-dim); opacity: 0.5; }
+
+    /* ============================================================
+       Event Feed
+       ============================================================ */
+    .feed {
+      flex: 1;
+      overflow-y: auto;
+      margin-top: 16px;
+      padding-bottom: 32px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(75, 85, 99, 0.4) transparent;
+    }
+    .feed::-webkit-scrollbar { width: 6px; }
+    .feed::-webkit-scrollbar-track { background: transparent; }
+    .feed::-webkit-scrollbar-thumb { background: rgba(75, 85, 99, 0.4); border-radius: 3px; }
+
+    /* Animated waiting state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 20px;
+      color: var(--fg-dim);
+    }
+    .empty-state p { font-size: 13px; letter-spacing: 0.01em; }
+    .empty-state .hint {
+      font-size: 11px;
+      color: var(--fg-dim);
+      opacity: 0.5;
+      max-width: 320px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .pulse-container {
+      position: relative;
+      width: 100px;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pulse-ring {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      border: 1px solid var(--primary);
+      opacity: 0;
+      animation: ripple 3s cubic-bezier(0.2, 0, 0.3, 1) infinite;
+    }
+    .pulse-ring:nth-child(2) { animation-delay: 1s; }
+    .pulse-ring:nth-child(3) { animation-delay: 2s; }
+
+    @keyframes ripple {
+      0%   { width: 20px; height: 20px; opacity: 0.5; }
+      100% { width: 100px; height: 100px; opacity: 0; }
+    }
+
+    .pulse-core {
+      position: relative;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--primary);
+      animation: breathe 3s ease-in-out infinite;
+      z-index: 1;
+    }
+    .pulse-core::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      background: var(--primary);
+      opacity: 0.2;
+      filter: blur(6px);
+      animation: breathe 3s ease-in-out infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: 0.6; transform: scale(0.9); }
+      50%      { opacity: 1;   transform: scale(1.15); }
+    }
+
+    .orbit {
+      position: absolute;
+      width: 70px;
+      height: 70px;
+      animation: spin 8s linear infinite;
+    }
+    .orbit:nth-child(5) { animation-duration: 12s; animation-direction: reverse; width: 90px; height: 90px; }
+
+    .orbit-dot {
+      position: absolute;
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: var(--primary);
+      opacity: 0.5;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .orbit:nth-child(5) .orbit-dot { width: 2px; height: 2px; opacity: 0.3; }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+
+    .waiting-text {
+      background: linear-gradient(90deg, var(--fg-dim) 0%, var(--fg-muted) 40%, var(--fg-dim) 80%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 3s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 200% center; }
+      50%      { background-position: 0% center; }
+    }
+
+    /* ============================================================
+       Event Card
+       ============================================================ */
+    .event-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: border-color 0.15s;
+    }
+    .event-card:hover { border-color: var(--border); }
+    .event-card.new {
+      animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1), glow 0.6s ease-out;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes glow {
+      0%   { border-color: var(--primary); box-shadow: 0 0 12px rgba(22, 146, 229, 0.15); }
+      100% { border-color: var(--border-subtle); box-shadow: none; }
+    }
+
+    .event-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .event-badge {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .badge-completed { background: var(--green-dim); color: var(--green); }
+    .badge-failed    { background: var(--red-dim);   color: var(--red); }
+    .badge-running   { background: var(--blue-dim);  color: var(--blue); }
+    .badge-pending   { background: var(--amber-dim); color: var(--amber); }
+    .badge-cancelled { background: var(--gray-dim);  color: var(--gray); }
+    .badge-created   { background: var(--green-dim); color: var(--green); }
+    .badge-updated   { background: var(--blue-dim);  color: var(--blue); }
+    .badge-deleted   { background: var(--red-dim);   color: var(--red); }
+    .badge-default   { background: var(--gray-dim);  color: var(--gray); }
+    .badge-auth      { background: var(--green-dim); color: var(--green); }
+
+    /* Verification badge */
+    .verified-badge {
+      font-size: 10px;
+      font-weight: 500;
+      padding: 1px 7px;
+      border-radius: 4px;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .verified-badge.verified   { background: var(--green-dim); color: var(--green); }
+    .verified-badge.unverified { background: var(--red-dim);   color: var(--red); }
+
+    .event-type {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--fg);
+      flex: 1;
+    }
+    .event-time {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--fg-dim);
+      white-space: nowrap;
+    }
+    .event-chevron {
+      color: var(--fg-dim);
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .event-chevron.open { transform: rotate(90deg); }
+
+    .event-body {
+      display: none;
+      padding: 0 14px 12px;
+    }
+    .event-body.open { display: block; }
+
+    .payload-container {
+      background: var(--bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 12px 14px;
+      overflow-x: auto;
+      position: relative;
+    }
+    .payload-copy {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--bg-muted);
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+      font-family: var(--font);
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .payload-copy:hover { color: var(--fg); }
+    .payload-copy.copied { color: var(--green); border-color: var(--green); }
+
+    pre.json {
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.7;
+      white-space: pre;
+      color: var(--fg-muted);
+    }
+    .json-key    { color: #f9a8d4; }
+    .json-string { color: #86efac; }
+    .json-number { color: #93c5fd; }
+    .json-bool   { color: #c4b5fd; }
+    .json-null   { color: #fdba74; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <img src="/static/logo.png" alt="Airweave" />
+        </div>
+        <div class="separator"></div>
+        <span class="header-title">Webhook Receiver</span>
+      </div>
+      <div class="header-right">
+        <div class="status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Connecting</span>
+        </div>
+        <span class="counter" id="counter">0 events</span>
+        <button class="clear-btn" id="clearBtn" onclick="clearEvents()" disabled>Clear</button>
+      </div>
+    </header>
+
+    <!-- Config bar: endpoint + signing secret -->
+    <div class="config-bar">
+      <div class="config-card endpoint">
+        <span class="config-label">Endpoint</span>
+        <span class="config-value" id="endpointUrl">—</span>
+        <button class="small-btn" id="copyBtn" onclick="copyEndpoint()">Copy</button>
+      </div>
+      <div class="config-card secret">
+        <span class="config-label">Secret</span>
+        <input
+          type="password"
+          class="secret-input"
+          id="secretInput"
+          placeholder="whsec_..."
+          spellcheck="false"
+          autocomplete="off"
+        />
+        <button class="small-btn" id="secretBtn" onclick="setSecret()">Set</button>
+        <span class="secret-status inactive" id="secretStatus">Not set</span>
+      </div>
+    </div>
+
+    <!-- Event feed -->
+    <div class="feed" id="feed">
+      <div class="empty-state" id="emptyState">
+        <div class="pulse-container">
+          <div class="pulse-ring"></div>
+          <div class="pulse-ring"></div>
+          <div class="pulse-ring"></div>
+          <div class="orbit"><div class="orbit-dot"></div></div>
+          <div class="orbit"><div class="orbit-dot"></div></div>
+          <div class="pulse-core"></div>
+        </div>
+        <p class="waiting-text">Waiting for events&hellip;</p>
+        <p class="hint">
+          Create a webhook subscription in Airweave pointing to the endpoint above,
+          then trigger a sync to see events appear here.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ================================================================
+    // State
+    // ================================================================
+    let events = [];
+    let ws = null;
+    let eventCount = 0;
+    let hasSecret = false;
+
+    const feed         = document.getElementById('feed');
+    const emptyState   = document.getElementById('emptyState');
+    const statusDot    = document.getElementById('statusDot');
+    const statusText   = document.getElementById('statusText');
+    const counter      = document.getElementById('counter');
+    const endpointEl   = document.getElementById('endpointUrl');
+    const clearBtn     = document.getElementById('clearBtn');
+    const secretInput  = document.getElementById('secretInput');
+    const secretBtn    = document.getElementById('secretBtn');
+    const secretStatus = document.getElementById('secretStatus');
+
+    // Fetch the best endpoint URL (ngrok if available)
+    endpointEl.textContent = 'Detecting...';
+    fetch('/api/endpoint-url')
+      .then(r => r.json())
+      .then(data => { endpointEl.textContent = data.url; })
+      .catch(() => { endpointEl.textContent = window.location.origin + '/webhook'; });
+
+    // Check if secret is already set
+    fetch('/api/secret')
+      .then(r => r.json())
+      .then(data => { updateSecretUI(data.has_secret); });
+
+    // ================================================================
+    // WebSocket
+    // ================================================================
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+      ws.onopen = () => {
+        if (eventCount === 0) {
+          statusDot.className = 'status-dot listening';
+          statusText.textContent = 'Listening';
+        } else {
+          statusDot.className = 'status-dot connected';
+          statusText.textContent = 'Connected';
+        }
+      };
+
+      ws.onclose = () => {
+        statusDot.className = 'status-dot disconnected';
+        statusText.textContent = 'Disconnected';
+        setTimeout(connect, 2000);
+      };
+
+      ws.onerror = () => { ws.close(); };
+
+      ws.onmessage = (msg) => {
+        const data = JSON.parse(msg.data);
+
+        if (data.type === 'history') {
+          data.events.forEach(evt => addEvent(evt, false));
+        } else if (data.type === 'clear') {
+          resetFeed();
+        } else if (data.type === 'secret_updated') {
+          updateSecretUI(data.has_secret);
+        } else {
+          addEvent(data, true);
+        }
+      };
+    }
+
+    connect();
+
+    // ================================================================
+    // Signing secret
+    // ================================================================
+    function setSecret() {
+      const value = secretInput.value.trim();
+      fetch('/api/secret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: value || null }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          updateSecretUI(data.has_secret);
+          if (data.has_secret) {
+            secretInput.value = '';
+            secretInput.placeholder = '••••••••';
+          }
+        });
+    }
+
+    // Allow Enter key to set secret
+    secretInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') setSecret();
+    });
+
+    function updateSecretUI(active) {
+      hasSecret = active;
+      if (active) {
+        secretStatus.textContent = 'Active';
+        secretStatus.className = 'secret-status active';
+        secretBtn.textContent = 'Clear';
+        secretBtn.onclick = clearSecret;
+        secretInput.placeholder = '••••••••';
+        secretInput.value = '';
+        secretInput.disabled = true;
+      } else {
+        secretStatus.textContent = 'Not set';
+        secretStatus.className = 'secret-status inactive';
+        secretBtn.textContent = 'Set';
+        secretBtn.onclick = setSecret;
+        secretInput.placeholder = 'whsec_...';
+        secretInput.disabled = false;
+      }
+    }
+
+    function clearSecret() {
+      fetch('/api/secret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: null }),
+      })
+        .then(r => r.json())
+        .then(data => updateSecretUI(data.has_secret));
+    }
+
+    // ================================================================
+    // Clear events
+    // ================================================================
+    function clearEvents() {
+      clearBtn.disabled = true;
+      fetch('/api/events', { method: 'DELETE' })
+        .then(() => resetFeed())
+        .catch(() => { clearBtn.disabled = false; });
+    }
+
+    function resetFeed() {
+      events = [];
+      eventCount = 0;
+      counter.textContent = '0 events';
+      clearBtn.disabled = true;
+      const cards = feed.querySelectorAll('.event-card');
+      cards.forEach(c => c.remove());
+      emptyState.style.display = '';
+      statusDot.className = 'status-dot listening';
+      statusText.textContent = 'Listening';
+    }
+
+    // ================================================================
+    // Event rendering
+    // ================================================================
+    function addEvent(evt, isNew) {
+      events.push(evt);
+      eventCount++;
+      counter.textContent = eventCount + (eventCount === 1 ? ' event' : ' events');
+      clearBtn.disabled = false;
+      emptyState.style.display = 'none';
+
+      // Flip status from Listening → Connected on first event
+      if (eventCount === 1 || statusText.textContent === 'Listening') {
+        statusDot.className = 'status-dot connected';
+        statusText.textContent = 'Connected';
+      }
+      if (isNew) {
+        statusDot.classList.add('flash');
+        setTimeout(() => statusDot.classList.remove('flash'), 400);
+      }
+
+      const card = document.createElement('div');
+      card.className = 'event-card' + (isNew ? ' new' : '');
+
+      const eventType = evt.payload?.event_type || 'unknown';
+      const badgeClass = getBadgeClass(eventType);
+      const badgeLabel = getBadgeLabel(eventType);
+      const time = formatTime(evt.received_at);
+      const verifiedHtml = getVerifiedBadge(evt.verified);
+
+      // Header
+      const header = document.createElement('div');
+      header.className = 'event-header';
+      header.innerHTML = `
+        <span class="event-badge ${badgeClass}">${badgeLabel}</span>
+        <span class="event-type">${escapeHtml(eventType)}</span>
+        ${verifiedHtml}
+        <span class="event-time">${time}</span>
+        <svg class="event-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      `;
+
+      // Body
+      const body = document.createElement('div');
+      body.className = 'event-body';
+      const payloadId = 'payload-' + eventCount;
+      body.innerHTML = `
+        <div class="payload-container">
+          <button class="payload-copy" onclick="copyPayload(this, '${payloadId}')">Copy</button>
+          <pre class="json" id="${payloadId}">${syntaxHighlight(JSON.stringify(evt.payload, null, 2))}</pre>
+        </div>
+      `;
+
+      header.addEventListener('click', () => {
+        const chevron = header.querySelector('.event-chevron');
+        const isOpen = body.classList.toggle('open');
+        chevron.classList.toggle('open', isOpen);
+      });
+
+      card.appendChild(header);
+      card.appendChild(body);
+
+      if (feed.firstChild === emptyState) {
+        feed.appendChild(card);
+      } else {
+        feed.insertBefore(card, feed.children[1] || null);
+      }
+
+      if (isNew) feed.scrollTop = 0;
+    }
+
+    // ================================================================
+    // Verification badge
+    // ================================================================
+    function getVerifiedBadge(verified) {
+      if (verified === true) {
+        return `<span class="verified-badge verified">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          Verified
+        </span>`;
+      }
+      if (verified === false) {
+        return `<span class="verified-badge unverified">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          Invalid
+        </span>`;
+      }
+      // null = no secret configured, don't show badge
+      return '';
+    }
+
+    // ================================================================
+    // Badge helpers
+    // ================================================================
+    function getBadgeClass(eventType) {
+      if (eventType.includes('completed'))      return 'badge-completed';
+      if (eventType.includes('failed'))         return 'badge-failed';
+      if (eventType.includes('running'))        return 'badge-running';
+      if (eventType.includes('pending'))        return 'badge-pending';
+      if (eventType.includes('cancelled'))      return 'badge-cancelled';
+      if (eventType.includes('created'))        return 'badge-created';
+      if (eventType.includes('updated'))        return 'badge-updated';
+      if (eventType.includes('deleted'))        return 'badge-deleted';
+      if (eventType.includes('auth_completed')) return 'badge-auth';
+      return 'badge-default';
+    }
+
+    function getBadgeLabel(eventType) {
+      const parts = eventType.split('.');
+      return parts.length >= 2 ? parts[parts.length - 1] : eventType;
+    }
+
+    // ================================================================
+    // JSON syntax highlighting
+    // ================================================================
+    function syntaxHighlight(json) {
+      return json.replace(
+        /("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        (match) => {
+          let cls = 'json-number';
+          if (/^"/.test(match)) {
+            cls = /:$/.test(match) ? 'json-key' : 'json-string';
+          } else if (/true|false/.test(match)) {
+            cls = 'json-bool';
+          } else if (/null/.test(match)) {
+            cls = 'json-null';
+          }
+          return `<span class="${cls}">${escapeHtml(match)}</span>`;
+        }
+      );
+    }
+
+    // ================================================================
+    // Utilities
+    // ================================================================
+    function formatTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function copyEndpoint() {
+      const url = endpointEl.textContent;
+      navigator.clipboard.writeText(url);
+      const btn = document.getElementById('copyBtn');
+      btn.textContent = 'Copied';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    }
+
+    function copyPayload(btn, id) {
+      const pre = document.getElementById(id);
+      navigator.clipboard.writeText(pre.textContent);
+      btn.textContent = 'Copied';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    }
+  </script>
+</body>
+</html>

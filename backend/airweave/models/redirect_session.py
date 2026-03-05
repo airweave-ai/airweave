@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from airweave.models._base import OrganizationBase
@@ -28,6 +28,8 @@ class RedirectSession(OrganizationBase):
 
     # Expiry; entries are consumed (deleted) on first use or when expired
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (Index("idx_redirect_session_expires_at", "expires_at"),)
 
     @staticmethod
     def default_expires_at(minutes: int = 5) -> datetime:

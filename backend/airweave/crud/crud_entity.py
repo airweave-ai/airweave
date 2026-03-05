@@ -8,7 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.db.unit_of_work import UnitOfWork
@@ -31,7 +31,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         db: AsyncSession,
         *,
         obj_in: EntityCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional["UnitOfWork"] = None,
         skip_validation: bool = False,
     ) -> Entity:
@@ -61,18 +61,22 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
 
         obj_in_dict["organization_id"] = ctx.organization.id
 
+        if not obj_in_dict.get("entity_definition_short_name"):
+            raise ValueError(
+                "EntityCreate missing entity_definition_short_name for: "
+                f"{obj_in_dict.get('entity_id', '?')}"
+            )
+
         # Ensure we have timestamps
         if "created_at" not in obj_in_dict:
             obj_in_dict["created_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
         if "modified_at" not in obj_in_dict:
             obj_in_dict["modified_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
 
-        # Use PostgreSQL's INSERT ... ON CONFLICT DO UPDATE
         stmt = insert(Entity).values(**obj_in_dict)
 
-        # On conflict, update the existing row with the new data
         stmt = stmt.on_conflict_do_update(
-            index_elements=["sync_id", "entity_id", "entity_definition_id"],
+            index_elements=["sync_id", "entity_id", "entity_definition_short_name"],
             set_={
                 "sync_job_id": stmt.excluded.sync_job_id,
                 "hash": stmt.excluded.hash,
@@ -138,41 +142,41 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         db: AsyncSession,
         *,
         sync_id: UUID,
-        entity_requests: list[tuple[str, UUID]],
-    ) -> dict[tuple[str, UUID], Entity]:
-        """Get many entities by (entity_id, sync_id, entity_definition_id).
+        entity_requests: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], Entity]:
+        """Get many entities by (entity_id, sync_id, entity_definition_short_name).
 
-        This method handles multi-type entities correctly by including entity_definition_id
-        in the lookup. For example, GoogleCalendarList and GoogleCalendarCalendar can both
-        use "daan@airweave.ai" as entity_id, but they'll have different entity_definition_ids.
+        Handles multi-type entities correctly by including entity_definition_short_name
+        in the lookup.
 
-        For large datasets (>1000 entities), this method chunks requests to avoid
+        For large datasets (>1000 entities), chunks requests to avoid
         database timeouts from massive OR conditions.
 
         Args:
             db: Database session
             sync_id: The sync ID to filter by
-            entity_requests: List of (entity_id, entity_definition_id) tuples
+            entity_requests: List of (entity_id, entity_definition_short_name) tuples
 
         Returns:
-            Dict mapping (entity_id, entity_definition_id) -> Entity
+            Dict mapping (entity_id, entity_definition_short_name) -> Entity
         """
         if not entity_requests:
             return {}
 
         from sqlalchemy import and_, or_
 
-        # Chunk requests to avoid timeouts with large datasets
         CHUNK_SIZE = 1000
-        result_map: dict[tuple[str, UUID], Entity] = {}
+        result_map: dict[tuple[str, str], Entity] = {}
 
         for i in range(0, len(entity_requests), CHUNK_SIZE):
             chunk = entity_requests[i : i + CHUNK_SIZE]
 
-            # Build OR conditions for this chunk
             conditions = [
-                and_(Entity.entity_id == eid, Entity.entity_definition_id == def_id)
-                for eid, def_id in chunk
+                and_(
+                    Entity.entity_id == eid,
+                    Entity.entity_definition_short_name == short_name,
+                )
+                for eid, short_name in chunk
             ]
 
             stmt = select(Entity).where(Entity.sync_id == sync_id, or_(*conditions))
@@ -180,13 +184,12 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
             result = await db.execute(stmt)
             rows = list(result.unique().scalars().all())
 
-            # Merge into result map with composite key to avoid collisions
             for row in rows:
-                result_map[(row.entity_id, row.entity_definition_id)] = row
+                result_map[(row.entity_id, row.entity_definition_short_name)] = row
 
         return result_map
 
-    def _get_org_id_from_context(self, ctx: ApiContext) -> UUID | None:
+    def _get_org_id_from_context(self, ctx: BaseContext) -> UUID | None:
         """Attempt to extract organization ID from the API context."""
         # 1) Direct attributes
         for attr in ("organization_id", "org_id"):
@@ -205,7 +208,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         db: AsyncSession,
         *,
         objs: list[EntityCreate],
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> list[Entity]:
         """Create many Entity rows in a single transaction with conflict resolution.
 
@@ -218,20 +221,19 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         if not objs:
             return []
 
-        # HARD GUARANTEE: entity_definition_id must be present for every row
         missing_def = [
-            o.entity_id for o in objs if getattr(o, "entity_definition_id", None) is None
+            o.entity_id for o in objs if getattr(o, "entity_definition_short_name", None) is None
         ]
         if missing_def:
             preview = ", ".join(missing_def[:5])
             more = f" (+{len(missing_def) - 5} more)" if len(missing_def) > 5 else ""
             raise ValueError(
-                f"EntityCreate missing entity_definition_id for parent(s): {preview}{more}"
+                f"EntityCreate missing entity_definition_short_name for: {preview}{more}"
             )
 
         org_id = self._get_org_id_from_context(ctx)
         if org_id is None:
-            raise ValueError("ApiContext must contain valid organization information")
+            raise ValueError("BaseContext must contain valid organization information")
 
         # Prepare data for bulk upsert
         values_list = []
@@ -245,20 +247,14 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
                 data["modified_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
             values_list.append(data)
 
-        # Use PostgreSQL's INSERT ... ON CONFLICT DO UPDATE
-        # This handles the unique constraint on (sync_id, entity_id, entity_definition_id)
         stmt = insert(Entity).values(values_list)
 
-        # On conflict, update the existing row with the new data
-        # This ensures we always have the latest sync_job_id and hash
         stmt = stmt.on_conflict_do_update(
-            index_elements=["sync_id", "entity_id", "entity_definition_id"],
+            index_elements=["sync_id", "entity_id", "entity_definition_short_name"],
             set_={
                 "sync_job_id": stmt.excluded.sync_job_id,
                 "hash": stmt.excluded.hash,
                 "modified_at": stmt.excluded.modified_at,
-                # Keep the original organization_id to prevent cross-org updates
-                # organization_id is not updated on conflict
             },
         ).returning(Entity)
 

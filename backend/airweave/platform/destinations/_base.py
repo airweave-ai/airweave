@@ -1,12 +1,15 @@
 """Base destination classes."""
 
 from abc import ABC, abstractmethod
-from typing import ClassVar, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 from uuid import UUID
 
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.entities._base import BaseEntity
+from airweave.platform.sync.pipeline import ProcessingRequirement
+from airweave.schemas.search import AirweaveTemporalConfig
+from airweave.schemas.search_result import AirweaveSearchResult
 
 
 class BaseDestination(ABC):
@@ -15,14 +18,25 @@ class BaseDestination(ABC):
     # Class variables for integration metadata
     _labels: ClassVar[List[str]] = []
 
-    def __init__(self):
-        """Initialize the base destination."""
+    # Processing requirement - override in subclasses
+    # Default is CHUNKS_AND_EMBEDDINGS for backward compatibility
+    processing_requirement: ClassVar[ProcessingRequirement] = (
+        ProcessingRequirement.CHUNKS_AND_EMBEDDINGS
+    )
+
+    def __init__(self, soft_fail: bool = False):
+        """Initialize the base destination.
+
+        Args:
+            soft_fail: If True, errors won't fail the sync (for migrations)
+        """
         self._logger: Optional[ContextualLogger] = (
             None  # Store contextual logger as instance variable
         )
+        self.soft_fail = soft_fail
 
     @property
-    def logger(self):
+    def logger(self) -> ContextualLogger:
         """Get the logger for this destination, falling back to default if not set."""
         if self._logger is not None:
             return self._logger
@@ -37,7 +51,7 @@ class BaseDestination(ABC):
     @abstractmethod
     async def create(
         cls,
-        credentials: Optional[any],
+        credentials: Optional[Any],
         config: Optional[dict],
         collection_id: UUID,
         organization_id: Optional[UUID] = None,
@@ -46,7 +60,7 @@ class BaseDestination(ABC):
         """Create a new destination with credentials and config (matches source pattern).
 
         Args:
-            credentials: Authentication credentials (e.g., S3AuthConfig, QdrantAuthConfig)
+            credentials: Authentication credentials
             config: Configuration parameters (e.g., bucket_name, url)
             collection_id: Collection UUID
             organization_id: Organization UUID
@@ -60,23 +74,8 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def insert(self, entity: BaseEntity) -> None:
-        """Insert a single entity into the destination."""
-        pass
-
-    @abstractmethod
     async def bulk_insert(self, entities: list[BaseEntity]) -> None:
         """Bulk insert entities into the destination."""
-        pass
-
-    @abstractmethod
-    async def delete(self, db_entity_id: UUID) -> None:
-        """Delete a single entity from the destination."""
-        pass
-
-    @abstractmethod
-    async def bulk_delete(self, entity_ids: list[str], sync_id: UUID) -> None:
-        """Bulk delete entities from the destination within a given sync."""
         pass
 
     @abstractmethod
@@ -85,28 +84,71 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: UUID) -> None:
-        """Bulk delete entities from the destination by parent ID within a given sync."""
-        pass
-
     async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
-        """Bulk delete entities for multiple parent IDs within a given sync.
+        """Bulk delete entities for multiple parent IDs within a given sync."""
+        pass
 
-        Default fan-out implementation that calls `bulk_delete_by_parent_id` for each ID.
-        Destinations can override this to issue a single optimized call.
+    @abstractmethod
+    async def search(
+        self,
+        queries: List[str],
+        airweave_collection_id: UUID,
+        limit: int,
+        offset: int,
+        filter: Optional[Dict[str, Any]] = None,
+        dense_embeddings: Optional[List[List[float]]] = None,
+        sparse_embeddings: Optional[List[Any]] = None,
+        retrieval_strategy: str = "hybrid",
+        temporal_config: Optional[AirweaveTemporalConfig] = None,
+    ) -> List[AirweaveSearchResult]:
+        """Execute search against the destination.
+
+        This is the standard search interface that all destinations must implement.
+        Destinations handle embedding generation (if needed) and filter translation internally.
+
+        Args:
+            queries: List of search query texts (supports query expansion)
+            airweave_collection_id: Airweave collection UUID for multi-tenant filtering
+            limit: Maximum number of results to return
+            offset: Number of results to skip (pagination)
+            filter: Optional filter dict (Airweave canonical format, destination translates)
+            dense_embeddings: Pre-computed dense embeddings (if client-side embedding)
+            sparse_embeddings: Pre-computed sparse embeddings for hybrid search
+            retrieval_strategy: Search strategy - "hybrid", "neural", or "keyword"
+            temporal_config: Optional temporal relevance config (destination translates)
+
+        Returns:
+            List of AirweaveSearchResult objects (unified format for all destinations)
         """
-        for pid in parent_ids:
-            await self.bulk_delete_by_parent_id(pid, sync_id)
-
-    @abstractmethod
-    async def search(self, query_vector: list[float]) -> None:
-        """Search for a sync_id in the destination."""
         pass
 
-    @abstractmethod
-    async def has_keyword_index(self) -> bool:
-        """Check if the destination has a keyword index."""
-        pass
+    def translate_filter(self, filter: Optional[Dict[str, Any]]) -> Any:
+        """Translate Airweave filter to destination-native format.
+
+        Default implementation is a no-op.
+        Override this method for destinations that use different filter formats.
+
+        Args:
+            filter: Airweave canonical filter dict
+
+        Returns:
+            Destination-native filter format
+        """
+        return filter
+
+    def translate_temporal(self, config: Optional[AirweaveTemporalConfig]) -> Any:
+        """Translate Airweave temporal config to destination-native format.
+
+        Default implementation is a no-op. Override for destinations that
+        require different temporal relevance configurations.
+
+        Args:
+            config: Airweave temporal relevance configuration
+
+        Returns:
+            Destination-native temporal config (or None if not supported)
+        """
+        return config
 
 
 class VectorDBDestination(BaseDestination):

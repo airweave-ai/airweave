@@ -3,9 +3,6 @@
  * Must match backend FeatureFlag enum exactly.
  */
 export const FeatureFlags = {
-  // Storage & Infrastructure
-  S3_DESTINATION: 's3_destination',
-
   // Search & Query
   ADVANCED_SEARCH: 'advanced_search',
 
@@ -18,6 +15,9 @@ export const FeatureFlags = {
 
   // Rate Limiting
   SOURCE_RATE_LIMITING: 'source_rate_limiting',
+
+  // Search
+  AGENTIC_SEARCH: 'agentic_search',
 } as const;
 
 export type FeatureFlag = typeof FeatureFlags[keyof typeof FeatureFlags];

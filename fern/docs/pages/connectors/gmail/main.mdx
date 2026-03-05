@@ -12,6 +12,8 @@ description: "Gmail integration with Airweave"
   <h1 style={{ margin: 0 }}>Gmail</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Gmail through Airweave's unified search layer.
+
 ## Configuration
 
 Gmail source connector integrates with the Gmail API to extract and synchronize email data.
@@ -107,6 +109,10 @@ Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.threa
 
 | Field | Type | Description |
 |-------|------|-------------|
+| thread_key | str | Stable Airweave thread key (thread_&lt;gmail_id&gt;) |
+| gmail_thread_id | str | Native Gmail thread ID |
+| title | str | Display title derived from snippet |
+| last_message_at | Optional[datetime] | Timestamp of the most recent message in the thread |
 | snippet | Optional[str] | A short snippet from the thread |
 | history_id | Optional[str] | The thread's history ID |
 | message_count | Optional[int] | Number of messages in the thread |
@@ -121,8 +127,12 @@ Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.messa
 
 | Field | Type | Description |
 |-------|------|-------------|
+| message_key | str | Stable Airweave message key (msg_&lt;gmail_id&gt;) |
+| message_id | str | Native Gmail message ID |
+| subject | str | Subject line (fallback applied if missing) |
+| sent_at | datetime | Timestamp from the Date header (or internal date fallback) |
+| internal_timestamp | datetime | Gmail internal timestamp representing last modification |
 | thread_id | str | ID of the thread this message belongs to |
-| subject | Optional[str] | Subject line of the message |
 | sender | Optional[str] | Email address of the sender |
 | to | List[str] | Recipients of the message |
 | cc | List[str] | CC recipients |
@@ -131,6 +141,7 @@ Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.messa
 | snippet | Optional[str] | Brief snippet of the message content |
 | label_ids | List[str] | Labels applied to this message |
 | internal_date | Optional[datetime] | Internal Gmail timestamp |
+| web_url_value | Optional[str] | Direct Gmail URL for the message |
 
 </Accordion>
 <Accordion title="GmailAttachmentEntity">
@@ -141,9 +152,12 @@ Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.messa
 
 | Field | Type | Description |
 |-------|------|-------------|
+| attachment_key | str | Stable Airweave attachment key (attach_&lt;message&gt;_&lt;filename&gt;) |
+| filename | str | Attachment filename |
 | message_id | str | ID of the message this attachment belongs to |
 | attachment_id | str | Gmail's attachment ID |
 | thread_id | str | ID of the thread containing the message |
+| web_url_value | Optional[str] | URL to view the parent message in Gmail |
 
 </Accordion>
 <Accordion title="GmailMessageDeletionEntity">
@@ -156,6 +170,8 @@ correct parent/children.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| message_key | str | Stable Airweave message key (msg_&lt;gmail_id&gt;) |
+| label | str | Human-readable deletion label |
 | message_id | str | The Gmail message ID that was deleted |
 | thread_id | Optional[str] | Thread ID (optional if not provided by change record) |
 

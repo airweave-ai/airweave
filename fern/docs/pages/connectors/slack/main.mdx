@@ -12,6 +12,8 @@ description: "Slack integration with Airweave"
   <h1 style={{ margin: 0 }}>Slack</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Slack through Airweave's unified search layer.
+
 ## Configuration
 
 Slack source connector using federated search.
@@ -69,6 +71,8 @@ Reference:
 | score | Optional[float] | Search relevance score from Slack |
 | iid | Optional[str] | Internal search ID |
 | url | Optional[str] | URL to view the message in Slack |
+| message_time | datetime | Timestamp converted to datetime for hashing checks. |
+| web_url_value | Optional[str] | Permalink to open the message. |
 
 </Accordion>
 

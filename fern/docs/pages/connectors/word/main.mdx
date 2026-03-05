@@ -12,6 +12,8 @@ description: "Word integration with Airweave"
   <h1 style={{ margin: 0 }}>Word</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Word through Airweave's unified search layer.
+
 ## Configuration
 
 Microsoft Word source connector integrates with the Microsoft Graph API.
@@ -66,8 +68,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| title | str | The title/name of the document. |
-| web_url | Optional[str] | URL to open the document in Word Online. |
+| id | str | Drive item ID for the Word document. |
+| title | str | Human-readable title for the document. |
+| created_datetime | Optional[datetime] | When the document was created. |
+| last_modified_datetime | Optional[datetime] | When the document was last modified. |
+| web_url_override | Optional[str] | URL to open the document in Word Online. |
 | content_download_url | Optional[str] | Direct download URL for the document content. |
 | created_by | Optional[Dict[str, Any]] | Identity of the user who created the document. |
 | last_modified_by | Optional[Dict[str, Any]] | Identity of the user who last modified the document. |

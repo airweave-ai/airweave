@@ -1,11 +1,9 @@
 // Error handling utilities
 
 import { SearchResponse } from "../api/types.js";
-import { ERROR_MESSAGES } from "../config/constants.js";
 
-export function formatSearchResponse(searchResponse: SearchResponse, responseType: string) {
+export function formatSearchResponse(searchResponse: SearchResponse, responseType: string, collection: string) {
     if (responseType === "completion") {
-        // For AI completion, return the completion text
         return {
             content: [
                 {
@@ -15,23 +13,38 @@ export function formatSearchResponse(searchResponse: SearchResponse, responseTyp
             ],
         };
     } else {
-        // For raw results, format the search results simply
         const formattedResults = searchResponse.results
             .map((result: any, index) => {
                 const parts = [
                     `**Result ${index + 1}${result.score ? ` (Score: ${result.score.toFixed(3)})` : ""}:**`
                 ];
 
-                // Extract content from various possible fields
-                const content = result.content || result.text || result.payload?.content || result.payload?.text || JSON.stringify(result, null, 2);
-                parts.push(content);
+                if (result.entity_id || result.name) {
+                    const metadata = [];
+                    if (result.entity_id) metadata.push(`ID: ${result.entity_id}`);
+                    if (result.name) metadata.push(`Name: ${result.name}`);
+                    parts.push(metadata.join(" | "));
+                }
+
+                const content = result.textual_representation ||
+                    result.content ||
+                    result.text ||
+                    result.payload?.content ||
+                    result.payload?.text;
+
+                if (content) {
+                    parts.push(content);
+                } else {
+                    const jsonStr = JSON.stringify(result, null, 2);
+                    parts.push(jsonStr.length > 500 ? jsonStr.substring(0, 500) + "..." : jsonStr);
+                }
 
                 return parts.join("\n");
             })
             .join("\n\n---\n\n");
 
         const summaryText = [
-            `**Collection:** ${process.env.AIRWEAVE_COLLECTION}`,
+            `**Collection:** ${collection}`,
             `**Results:** ${searchResponse.results.length}`,
             "",
             formattedResults || "No results found.",
@@ -48,17 +61,13 @@ export function formatSearchResponse(searchResponse: SearchResponse, responseTyp
     }
 }
 
-export function formatErrorResponse(error: Error, searchRequest: any) {
-    const errorMessage = error.message;
-
+export function formatErrorResponse(error: Error, searchRequest: any, collection: string, baseUrl: string) {
     return {
         content: [
             {
                 type: "text" as const,
-                text: `**Error:** Failed to search collection.\n\n**Details:** ${errorMessage}\n\n**Debugging Info:**\n- Collection: ${process.env.AIRWEAVE_COLLECTION}\n- Base URL: ${process.env.AIRWEAVE_BASE_URL || "https://api.airweave.ai"}\n- Endpoint: /collections/${process.env.AIRWEAVE_COLLECTION}/search\n- Parameters: ${JSON.stringify(searchRequest, null, 2)}`,
+                text: `**Error:** Failed to search collection.\n\n**Details:** ${error.message}\n\n**Debugging Info:**\n- Collection: ${collection}\n- Base URL: ${baseUrl}\n- Endpoint: /collections/${collection}/search\n- Parameters: ${JSON.stringify(searchRequest, null, 2)}`,
             },
         ],
     };
 }
-
-// Validation errors are now handled directly in the search tool

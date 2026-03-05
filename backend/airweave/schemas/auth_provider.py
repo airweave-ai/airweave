@@ -4,9 +4,9 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from airweave.platform.configs._base import ConfigValues, Fields
+from airweave.platform.configs._base import ConfigValues
 
 
 class AuthProviderBase(BaseModel):
@@ -48,64 +48,7 @@ class AuthProviderBase(BaseModel):
         "this set to null.",
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
-
-
-class AuthProviderCreate(AuthProviderBase):
-    """Schema for creating an auth provider."""
-
-    pass
-
-
-class AuthProviderUpdate(BaseModel):
-    """Schema for updating an auth provider."""
-
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = Field(None, max_length=1000)
-
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
-
-
-class AuthProviderInDBBase(AuthProviderBase):
-    """Base schema for auth provider in DB."""
-
-    id: UUID
-    created_at: datetime
-    modified_at: datetime
-
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
-
-
-class AuthProvider(AuthProviderInDBBase):
-    """Schema for auth provider response."""
-
-    auth_fields: Optional[Fields] = Field(
-        None,
-        description=(
-            "Dynamically populated field definitions for authentication configuration. "
-            "These describe what credentials are required to connect to this auth provider."
-        ),
-    )
-
-    config_fields: Optional[Fields] = Field(
-        None,
-        description=(
-            "Dynamically populated field definitions for auth provider-specific configuration. "
-            "These describe what additional configuration is required when using this auth "
-            "provider to connect to a source (e.g., auth_config_id and account_id for Composio)."
-        ),
-    )
-
-    pass
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Auth Provider Connection Schemas
@@ -147,10 +90,8 @@ class AuthProviderConnectionCreate(BaseModel):
         ),
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "My Composio Connection",
                 "short_name": "composio",
@@ -158,6 +99,7 @@ class AuthProviderConnectionCreate(BaseModel):
                 "auth_fields": {"api_key": "comp_1234567890abcdef"},
             }
         }
+    )
 
 
 class AuthProviderConnection(BaseModel):
@@ -189,10 +131,7 @@ class AuthProviderConnection(BaseModel):
         description="Masked client ID for OAuth providers (first 7 and last 4 characters visible)",
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuthProviderConnectionUpdate(BaseModel):
@@ -216,13 +155,12 @@ class AuthProviderConnectionUpdate(BaseModel):
         ),
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "Updated Composio Connection",
                 "description": "Updated description",
                 "auth_fields": {"api_key": "comp_new_api_key_1234"},
             }
         }
+    )

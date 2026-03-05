@@ -9,7 +9,6 @@ from typing import Literal, Optional
 
 import tiktoken
 from pydantic import BaseModel, Field, field_validator
-from qdrant_client.http.models import Filter as QdrantFilter
 
 
 class ResponseType(str, Enum):
@@ -60,7 +59,8 @@ class LegacySearchRequest(BaseModel):
         """
         try:
             encoding = tiktoken.get_encoding("cl100k_base")
-            token_count = len(encoding.encode(v))
+            # Use allowed_special="all" to handle special tokens like <|endoftext|>
+            token_count = len(encoding.encode(v, allowed_special="all"))
 
             max_tokens = 2048
             if token_count > max_tokens:
@@ -76,10 +76,8 @@ class LegacySearchRequest(BaseModel):
             # If tokenization itself fails, let it through (shouldn't happen)
             return v
 
-    # Qdrant native filter support
-    filter: Optional[QdrantFilter] = Field(
-        None, description="Qdrant native filter for metadata-based filtering"
-    )
+    # Filter support (accepts any dict structure, converted by legacy_adapter)
+    filter: Optional[dict] = Field(None, description="Filter for metadata-based filtering")
 
     # Pagination
     offset: Optional[int] = Field(0, ge=0, description="Number of results to skip")

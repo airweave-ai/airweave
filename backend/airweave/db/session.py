@@ -7,19 +7,19 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from airweave.core.config import settings
 
-# Connection Pool Sizing Strategy:
-# - With proper connection management, workers only hold DB connections for milliseconds
-# - Database operations: entity lookup (~0.1s), insert/update (~0.1s)
-# - Even with 100 concurrent workers, only a few need connections at the same time
-# - Pool size 15 + overflow 15 = 30 total connections available
-# - This efficiently handles bursts while preventing connection exhaustion
-# - Multiple sync jobs can run simultaneously without issues
+# Connection Pool Sizing Strategy (PgBouncer-aware):
+# - PgBouncer handles connection pooling to PostgreSQL (2000 client → 300 DB connections)
+# - Production: 6 worker pods × 60 connections = 360 total (120% of backend pool capacity)
+# - SQLAlchemy pool sized for per-pod concurrency, not total system capacity
+# - During batch processing, workers can hold 2-3 connections simultaneously:
+#   1. ActionResolver bulk entity hash lookup
+#   2. EntityPostgresHandler batch insert/update/delete
+#   3. Usage enforcement service flush (every 100 entities)
+# - Base pool = worker count, overflow = 2× workers for peak concurrent DB operations
+# - Example: 20 workers → 20 base + 40 overflow = 60 total connections per pod
 
-# Determine pool size based on worker count
-worker_count = getattr(settings, "SYNC_MAX_WORKERS", 100)
-# With on-demand connections: pool_size = workers * 0.15 (only 15% need DB at once)
-POOL_SIZE = min(15, max(10, int(worker_count * 0.15)))
-MAX_OVERFLOW = POOL_SIZE  # Allow doubling during spikes
+POOL_SIZE = settings.db_pool_size
+MAX_OVERFLOW = settings.db_pool_max_overflow
 
 # Connection Pool Timeout Behavior:
 # - pool_timeout=30: Wait up to 30 seconds for a connection to become available
@@ -57,6 +57,18 @@ async_engine = create_async_engine(
 )
 
 AsyncSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=async_engine)
+
+# Dedicated engine for health checks — isolated from the application pool so that
+# a fully-saturated app pool cannot cause the readiness probe to false-negative.
+health_check_engine = create_async_engine(
+    str(settings.SQLALCHEMY_ASYNC_DATABASE_URI),
+    pool_size=1,
+    max_overflow=0,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_timeout=10,
+    connect_args=connect_args_config,
+)
 
 
 @asynccontextmanager

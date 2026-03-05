@@ -4,12 +4,10 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      # Only trigger on platform-related changes (reduced footprint)
       - "monke/**"
-      - ".github/workflows/**"
-      - "docker/**"
-      - "backend/**"
-      - "frontend/**"
-      - "start.sh"
+      - "backend/airweave/platform/**"
+      - ".github/workflows/monke.yml"
 
 concurrency:
   group: monke-${{ github.ref }}
@@ -18,6 +16,10 @@ concurrency:
 jobs:
   # Job 1: Build images once and determine connectors
   build-and-determine:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,7 +29,7 @@ jobs:
       connector-count: ${{ steps.set-matrix.outputs.connector-count }}
       image-tag: ${{ steps.set-tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0 # Need full history for git diff
 
@@ -41,11 +43,11 @@ jobs:
 
       # Setup Docker Buildx for efficient builds
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       # Login to GitHub Container Registry
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -53,7 +55,7 @@ jobs:
 
       # Build and push backend image (ONCE for all parallel jobs)
       - name: Build and push backend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ./backend
           push: true
@@ -68,6 +70,7 @@ jobs:
         id: set-matrix
         env:
           BASE_BRANCH: ${{ github.base_ref || 'main' }}
+          MONKE_MIN_CONNECTORS: 0 # Don't pad to minimum - only test what's needed
         run: |
           # Use monke.sh CLI to determine connectors (keeps logic DRY)
           # This returns space-separated list: core + changed, minimum 4 connectors
@@ -133,13 +136,13 @@ jobs:
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0 # Fetch all history for change detection
 
       # Login to GitHub Container Registry to pull images
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -166,12 +169,14 @@ jobs:
           docker pull qdrant/qdrant:latest &
           docker pull temporalio/auto-setup:1.24.2 &
           docker pull temporalio/ui:2.26.2 &
+          docker pull vespaengine/vespa:8 &
+          docker pull alpine:3.19 &
           wait
           echo "All infrastructure images pre-pulled successfully"
 
       # Python deps (cached)
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
           cache: "pip"
@@ -193,6 +198,7 @@ jobs:
           # Skip services not needed for connector tests
           SKIP_LOCAL_EMBEDDINGS: "1" # Use OpenAI embeddings (saves ~2GB)
           SKIP_FRONTEND: "1" # Backend-only testing (saves time)
+          SKIP_CONNECT: "1" # Backend-only testing (saves time)
           # Set required environment variables for the containers
           AUTH0_ENABLED: "false"
           DEV_MODE: "true"
@@ -253,8 +259,39 @@ jobs:
           # Stripe direct auth credentials
           MONKE_STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 
+          # Zoho CRM direct auth credentials
+          MONKE_ZOHO_CRM_CLIENT_ID: ${{ secrets.MONKE_ZOHO_CRM_CLIENT_ID }}
+          MONKE_ZOHO_CRM_CLIENT_SECRET: ${{ secrets.MONKE_ZOHO_CRM_CLIENT_SECRET }}
+          MONKE_ZOHO_CRM_REFRESH_TOKEN: ${{ secrets.MONKE_ZOHO_CRM_REFRESH_TOKEN }}
           # Pipedrive direct auth credentials
           MONKE_PIPEDRIVE_API_TOKEN: ${{ secrets.MONKE_PIPEDRIVE_API_TOKEN }}
+
+          # Apollo direct auth (master API key for sequences/email activities)
+          MONKE_APOLLO_API_KEY: ${{ secrets.MONKE_APOLLO_API_KEY }}
+
+          # Shopify direct auth credentials (client credentials grant)
+          MONKE_SHOPIFY_CLIENT_ID: ${{ secrets.MONKE_SHOPIFY_CLIENT_ID }}
+          MONKE_SHOPIFY_CLIENT_SECRET: ${{ secrets.MONKE_SHOPIFY_CLIENT_SECRET }}
+          MONKE_SHOPIFY_SHOP_DOMAIN: ${{ secrets.MONKE_SHOPIFY_SHOP_DOMAIN }}
+
+          # FireFlies API key & audio fixture URL
+          MONKE_FIREFLIES_API_KEY: ${{ secrets.MONKE_FIREFLIES_API_KEY }}
+          MONKE_FIREFLIES_AUDIO_URL: ${{ secrets.MONKE_FIREFLIES_AUDIO_URL }}
+          # Freshdesk API key and domain
+          MONKE_FRESHDESK_API_KEY: ${{ secrets.MONKE_FRESHDESK_API_KEY }}
+          MONKE_FRESHDESK_DOMAIN: ${{ secrets.MONKE_FRESHDESK_DOMAIN }}
+
+          MONKE_CODA_API_TOKEN: ${{ secrets.MONKE_CODA_API_TOKEN }}
+          MONKE_DOCUMENT360_API_TOKEN: ${{ secrets.MONKE_DOCUMENT360_API_TOKEN }}
+
+          MONKE_SLITE_API_KEY: ${{ secrets.MONKE_SLITE_API_KEY }}
+
+          MONKE_SERVICENOW_URL: ${{ secrets.MONKE_SERVICENOW_URL }}
+          MONKE_SERVICENOW_USERNAME: ${{ secrets.MONKE_SERVICENOW_USERNAME }}
+          MONKE_SERVICENOW_PASSWORD: ${{ secrets.MONKE_SERVICENOW_PASSWORD }}
+
+          MONKE_SLAB_API_TOKEN: ${{ secrets.MONKE_SLAB_API_TOKEN }}
+          MONKE_SLAB_HOST: ${{ secrets.MONKE_SLAB_HOST }}
 
           # All SaaS app credentials (Composio configs, API tokens, etc.)
           # will be fetched from Azure Key Vault at runtime
@@ -301,7 +338,7 @@ jobs:
 
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: monke-logs-${{ matrix.connector }}
           path: monke/logs/**

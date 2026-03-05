@@ -5,10 +5,11 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from airweave import schemas
 from airweave.core.shared_models import SyncStatus
+from airweave.platform.sync.config.base import SyncConfig
 
 
 class SyncBase(BaseModel):
@@ -23,6 +24,7 @@ class SyncBase(BaseModel):
     temporal_schedule_id: Optional[str] = None
     sync_type: str = "full"
     sync_metadata: Optional[dict] = None
+    sync_config: Optional[SyncConfig] = None
     status: Optional[SyncStatus] = SyncStatus.ACTIVE
 
     @field_validator("cron_schedule")
@@ -58,10 +60,7 @@ class SyncBase(BaseModel):
             raise ValueError("sync_type must be 'full' or 'incremental'")
         return v
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SyncCreate(SyncBase):
@@ -81,6 +80,7 @@ class SyncUpdate(BaseModel):
     cron_schedule: Optional[str] = None
     next_scheduled_run: Optional[datetime] = None
     sync_metadata: Optional[dict] = None
+    sync_config: Optional[SyncConfig] = None
     status: Optional[SyncStatus] = None
     temporal_schedule_id: Optional[str] = None
     sync_type: Optional[str] = None
@@ -134,10 +134,7 @@ class SyncInDBBase(SyncBase):
     modified_by_email: Optional[EmailStr] = None
     status: SyncStatus
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Sync(SyncInDBBase):
@@ -155,6 +152,7 @@ class SyncWithoutConnections(BaseModel):
     next_scheduled_run: Optional[datetime] = None
     status: SyncStatus
     sync_metadata: Optional[dict] = None
+    sync_config: Optional[SyncConfig] = None
     temporal_schedule_id: Optional[str] = None
     sync_type: str = "full"
     id: UUID
@@ -171,10 +169,7 @@ class SyncWithoutConnections(BaseModel):
             raise ValueError("sync_type must be 'full' or 'incremental'")
         return v
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SyncWithSourceConnection(SyncInDBBase):

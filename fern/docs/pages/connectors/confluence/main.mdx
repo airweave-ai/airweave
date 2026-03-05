@@ -12,6 +12,8 @@ description: "Confluence integration with Airweave"
   <h1 style={{ margin: 0 }}>Confluence</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Confluence through Airweave's unified search layer.
+
 ## Configuration
 
 Confluence source connector integrates with the Confluence REST API to extract content.
@@ -56,11 +58,14 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| space_id | str | Unique identifier for the space. |
+| space_name | str | Display name of the space. |
 | space_key | str | Unique key for the space. |
 | space_type | Optional[str] | Type of space (e.g. 'global'). |
 | description | Optional[str] | Description of the space. |
 | status | Optional[str] | Status of the space if applicable. |
 | homepage_id | Optional[str] | ID of the homepage for this space. |
+| site_url | Optional[str] | Base Confluence site URL. |
 
 </Accordion>
 <Accordion title="ConfluencePageEntity">
@@ -75,12 +80,14 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| content_id | Optional[str] | Actual Confluence page ID. |
-| title | Optional[str] | Title of the page. |
+| content_id | str | Actual Confluence page ID. |
+| title | str | Title of the page. |
 | space_id | Optional[str] | ID of the space this page belongs to. |
+| space_key | Optional[str] | Key of the space this page belongs to. |
 | body | Optional[str] | HTML body or excerpt of the page. |
 | version | Optional[int] | Page version number. |
 | status | Optional[str] | Status of the page (e.g., 'current'). |
+| site_url | Optional[str] | Base Confluence site URL. |
 
 </Accordion>
 <Accordion title="ConfluenceBlogPostEntity">
@@ -92,12 +99,14 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| content_id | Optional[str] | Actual Confluence blog post ID. |
-| title | Optional[str] | Title of the blog post. |
+| content_id | str | Actual Confluence blog post ID. |
+| title | str | Title of the blog post. |
 | space_id | Optional[str] | ID of the space this blog post is in. |
+| space_key | Optional[str] | Key of the space this blog post is in. |
 | body | Optional[str] | HTML body of the blog post. |
 | version | Optional[int] | Blog post version number. |
 | status | Optional[str] | Status of the blog post (e.g., 'current'). |
+| site_url | Optional[str] | Base Confluence site URL. |
 
 </Accordion>
 <Accordion title="ConfluenceCommentEntity">
@@ -109,10 +118,13 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| comment_id | str | Unique identifier for the comment. |
 | parent_content_id | Optional[str] | ID of the content this comment is attached to. |
-| text | Optional[str] | Text/HTML body of the comment. |
+| parent_space_key | Optional[str] | Key of the space the parent content belongs to. |
+| text | str | Text/HTML body of the comment. |
 | created_by | Optional[Dict[str, Any]] | Information about the user who created the comment. |
 | status | Optional[str] | Status of the comment (e.g., 'current'). |
+| site_url | Optional[str] | Base Confluence site URL. |
 
 </Accordion>
 <Accordion title="ConfluenceDatabaseEntity">
@@ -123,8 +135,8 @@ Note: The "database" content type in Confluence Cloud.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| content_id | Optional[str] | Actual Confluence database ID. |
-| title | Optional[str] | Title or name of the database. |
+| content_id | str | Actual Confluence database ID. |
+| title | str | Title or name of the database. |
 | space_key | Optional[str] | Space key for the database item. |
 | description | Optional[str] | Description or extra info about the DB. |
 | status | Optional[str] | Status of the database content item. |
@@ -138,8 +150,8 @@ Note: The "folder" content type in Confluence Cloud.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| content_id | Optional[str] | Actual Confluence folder ID. |
-| title | Optional[str] | Name of the folder. |
+| content_id | str | Actual Confluence folder ID. |
+| title | str | Name of the folder. |
 | space_key | Optional[str] | Key of the space this folder is in. |
 | status | Optional[str] | Status of the folder (e.g., 'current'). |
 
@@ -153,8 +165,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| label_id | str | Unique identifier for the label. |
+| label_name | str | Display name of the label. |
 | label_type | Optional[str] | Type of the label (e.g., 'global'). |
 | owner_id | Optional[str] | ID of the user or content that owns label. |
+| site_url | Optional[str] | Base Confluence site URL. |
 
 </Accordion>
 <Accordion title="ConfluenceTaskEntity">
@@ -165,9 +180,10 @@ For example, tasks extracted from Confluence pages or macros.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| task_id | str | Unique identifier for the task. |
 | content_id | Optional[str] | The content ID (page, blog, etc.) that this task is associated with. |
 | space_key | Optional[str] | Space key if task is associated with a space. |
-| text | Optional[str] | Text of the task. |
+| text | str | Text of the task. |
 | assignee | Optional[Dict[str, Any]] | Information about the user assigned to this task. |
 | completed | bool | Indicates if this task is completed. |
 | due_date | Optional[Any] | Due date/time if applicable. |
@@ -181,7 +197,8 @@ Note: The "whiteboard" content type in Confluence Cloud.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| title | Optional[str] | Title of the whiteboard. |
+| whiteboard_id | str | Unique identifier for the whiteboard. |
+| title | str | Title of the whiteboard. |
 | space_key | Optional[str] | Key of the space this whiteboard is in. |
 | status | Optional[str] | Status of the whiteboard (e.g., 'current'). |
 
@@ -194,7 +211,8 @@ Note: The "custom content" type in Confluence Cloud.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| title | Optional[str] | Title or name of this custom content. |
+| custom_content_id | str | Unique identifier for the custom content. |
+| title | str | Title or name of this custom content. |
 | space_key | Optional[str] | Key of the space this content resides in. |
 | body | Optional[str] | Optional HTML body or representation. |
 | status | Optional[str] | Status of the custom content item (e.g., 'current'). |

@@ -3,7 +3,7 @@
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SearchQueryBase(BaseModel):
@@ -77,10 +77,7 @@ class SearchQueryResponse(SearchQueryBase):
         None, description="Email of the user who last modified the record"
     )
 
-    class Config:
-        """Pydantic configuration for SearchQueryInDBBase."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SearchQueryAnalytics(BaseModel):

@@ -12,6 +12,8 @@ description: "Google Docs integration with Airweave"
   <h1 style={{ margin: 0 }}>Google Docs</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Google Docs through Airweave's unified search layer.
+
 ## Configuration
 
 Google Docs source connector integrates with Google Drive API to extract Google Docs.
@@ -97,25 +99,29 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| title | Optional[str] | Display title of the document (without .docx extension). |
+| document_key | str | Stable Google Docs file ID. |
+| title | str | Display title of the document (without .docx extension). |
+| created_timestamp | datetime | Document creation timestamp. |
+| modified_timestamp | datetime | Last modification timestamp. |
 | description | Optional[str] | Optional description of the document. |
 | starred | bool | Whether the user has starred this document. |
 | trashed | bool | Whether the document is in the trash. |
 | explicitly_trashed | bool | Whether the document was explicitly trashed by the user. |
 | shared | bool | Whether the document is shared with others. |
-| shared_with_me_time | Optional[Any] | Time when this document was shared with the user. |
+| shared_with_me_time | Optional[datetime] | Time when this document was shared with the user. |
 | sharing_user | Optional[Dict[str, Any]] | User who shared this document. |
 | owners | List[Dict[str, Any]] | Owners of the document. |
 | permissions | Optional[List[Dict[str, Any]]] | Permissions for this document. |
 | parents | List[str] | IDs of parent folders containing this document. |
 | web_view_link | Optional[str] | Link to open the document in Google Docs editor. |
 | icon_link | Optional[str] | Link to the document's icon. |
-| created_time | Optional[Any] | When the document was created. |
-| modified_time | Optional[Any] | When the document was last modified. |
-| modified_by_me_time | Optional[Any] | Last time the user modified the document. |
-| viewed_by_me_time | Optional[Any] | Last time the user viewed the document. |
+| created_time | Optional[datetime] | When the document was created. |
+| modified_time | Optional[datetime] | When the document was last modified. |
+| modified_by_me_time | Optional[datetime] | Last time the user modified the document. |
+| viewed_by_me_time | Optional[datetime] | Last time the user viewed the document. |
 | version | Optional[int] | Version number of the document. |
 | export_mime_type | Optional[str] | MIME type used for exporting the document content (DOCX). |
+| web_url_value | Optional[str] | Direct link to the Google Docs editor. |
 
 </Accordion>
 

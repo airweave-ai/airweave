@@ -10,9 +10,10 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from airweave.core.shared_models import CollectionStatus
+from airweave.platform.sync.config.base import SyncConfig
 
 
 def generate_readable_id(name: str) -> str:
@@ -93,10 +94,7 @@ class CollectionBase(BaseModel):
             raise ValueError("readable_id must not start or end with a hyphen")
         return v
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CollectionCreate(CollectionBase):
@@ -105,7 +103,18 @@ class CollectionCreate(CollectionBase):
     Collections serve as logical containers for organizing related data sources.
     Once created, you can add source connections to populate the collection with data
     from various sources like databases, APIs, and file systems.
+
+    You can optionally set a default sync configuration that will apply to all syncs
+    within this collection unless overridden at the sync or job level.
     """
+
+    sync_config: Optional[SyncConfig] = Field(
+        None,
+        description=(
+            "Default sync configuration for all syncs in this collection. "
+            "This provides collection-level defaults that can be overridden at sync or job level."
+        ),
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -115,6 +124,15 @@ class CollectionCreate(CollectionBase):
                     "name": "Customer Support"
                     # readable_id will be auto-generated as "customer-support-abc123"
                 },
+                {
+                    "name": "ARF Test Collection",
+                    "sync_config": {
+                        "handlers": {
+                            "enable_vector_handlers": False,
+                            "enable_postgres_handler": False,
+                        }
+                    },
+                },
             ]
         }
     }
@@ -123,8 +141,8 @@ class CollectionCreate(CollectionBase):
 class CollectionUpdate(BaseModel):
     """Schema for updating an existing collection.
 
-    Only the collection's display name can be updated. The readable_id is immutable
-    to maintain stable API endpoints and references.
+    Allows updating the collection's display name and default sync configuration.
+    The readable_id is immutable to maintain stable API endpoints and references.
     """
 
     name: Optional[str] = Field(
@@ -133,12 +151,22 @@ class CollectionUpdate(BaseModel):
         min_length=4,
         max_length=64,
     )
+    sync_config: Optional[SyncConfig] = Field(
+        None,
+        description=(
+            "Default sync configuration for all syncs in this collection. "
+            "This provides collection-level defaults that can be overridden at sync or job level."
+        ),
+    )
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {"name": "Updated Finance Data"},
-                {"name": "Marketing Analytics - Q1 2024"},
+                {
+                    "name": "Marketing Analytics - Q1 2024",
+                    "sync_config": {"handlers": {"enable_vector_handlers": True}},
+                },
                 {"name": "Customer Support Archive"},
             ]
         }
@@ -166,20 +194,15 @@ class CollectionInDBBase(CollectionBase):
             "once the collection is created."
         ),
     )
-    vector_size: int = Field(
+    vector_db_deployment_metadata_id: UUID = Field(
         ...,
-        description=(
-            "Vector dimensions used by this collection. Determines which embedding model "
-            "is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), "
-            "or 384 (MiniLM-L6-v2)."
-        ),
+        description="Reference to the deployment-wide embedding configuration.",
     )
-    embedding_model_name: str = Field(
-        ...,
+    sync_config: Optional[SyncConfig] = Field(
+        None,
         description=(
-            "Name of the embedding model used for this collection "
-            "(e.g., 'text-embedding-3-large', 'text-embedding-3-small'). "
-            "This ensures queries use the same model as the indexed data."
+            "Default sync configuration for all syncs in this collection. "
+            "Overridable at sync and job level."
         ),
     )
     created_at: datetime = Field(
@@ -206,17 +229,15 @@ class CollectionInDBBase(CollectionBase):
         description="Email address of the user who last modified this collection.",
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
-class Collection(CollectionInDBBase):
-    """Complete collection representation returned by the API.
+class CollectionRecord(CollectionInDBBase):
+    """Internal collection schema with status.
 
-    This schema includes all collection metadata plus computed status information
-    based on the health and state of associated source connections.
+    Used throughout the codebase for internal operations. Does NOT include
+    embedding-derived fields (vector_size, embedding_model_name) — use
+    Collection for API responses that need those fields.
     """
 
     status: CollectionStatus = Field(
@@ -231,22 +252,49 @@ class Collection(CollectionInDBBase):
         ),
     )
 
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Collection(CollectionRecord):
+    """API-facing collection schema with embedding metadata.
+
+    Extends CollectionRecord with vector_size and embedding_model_name, which
+    are resolved by the CollectionService from the deployment metadata and the
+    dense embedder registry.
+
+    Excludes vector_db_deployment_metadata_id (internal FK).
+    """
+
+    vector_db_deployment_metadata_id: UUID = Field(exclude=True)
+    vector_size: int = Field(
+        ...,
+        description="Vector dimensions used by this collection (derived from deployment metadata).",
+    )
+    embedding_model_name: str = Field(
+        ...,
+        description=(
+            "Name of the embedding model used for this collection "
+            "(derived from deployment metadata)."
+        ),
+    )
+
     model_config = {
         "from_attributes": True,
         "json_schema_extra": {
-            "examples": [
-                {
-                    "id": "550e8400-e29b-41d4-a716-446655440000",
-                    "name": "Finance Data",
-                    "readable_id": "finance-data-ab123",
-                    "created_at": "2024-01-15T09:30:00Z",
-                    "modified_at": "2024-01-15T14:22:15Z",
-                    "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-                    "created_by_email": "admin@company.com",
-                    "modified_by_email": "finance@company.com",
-                    "status": "ACTIVE",
-                }
-            ]
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "name": "Finance Data",
+                "readable_id": "finance-data-ab123",
+                "vector_size": 3072,
+                "embedding_model_name": "text-embedding-3-large",
+                "sync_config": None,
+                "created_at": "2024-01-15T09:30:00Z",
+                "modified_at": "2024-01-15T14:22:15Z",
+                "organization_id": "org12345-6789-abcd-ef01-234567890abc",
+                "created_by_email": "admin@company.com",
+                "modified_by_email": "finance@company.com",
+                "status": "ACTIVE",
+            }
         },
     }
 

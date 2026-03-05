@@ -1,6 +1,7 @@
 {
   "name": "airweave-mcp-search",
   "version": "0.5.7",
+  "mcpName": "io.github.airweave-ai/search",
   "description": "MCP server for searching Airweave collections",
   "type": "module",
   "main": "build/index.js",
@@ -18,7 +19,8 @@
     "test:coverage": "vitest run --coverage",
     "test:mcp": "vitest run tests/mcp-server.test.ts",
     "test:http": "vitest run tests/http-transport.test.ts",
-    "test:all": "npm run test:mcp && npm run test:http",
+    "test:oauth": "vitest run tests/auth/ tests/api/org-resolver.test.ts tests/index-http-oauth.test.ts",
+    "test:all": "npm run test:mcp && npm run test:http && npm run test:oauth",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -43,13 +45,16 @@
     "url": "https://github.com/airweave-ai/airweave/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@airweave/sdk": "^0.6.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "express": "^4.18.2",
-    "redis": "^4.6.13",
+    "ioredis": "^5.8.1",
+    "jose": "^6.1.0",
+    "posthog-node": "^5.24.11",
+    "prom-client": "^15.1.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {

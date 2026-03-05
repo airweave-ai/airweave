@@ -1,10 +1,10 @@
 """Source connection model."""
 
 from time import sleep
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, Text, event
+from sqlalchemy import JSON, Boolean, ForeignKey, Index, String, Text, event
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from airweave.models._base import OrganizationBase, UserMixin
@@ -90,10 +90,16 @@ class SourceConnection(OrganizationBase, UserMixin):
         lazy="noload",
     )
 
+    __table_args__ = (
+        Index("idx_source_connection_sync_id", "sync_id"),
+        Index("idx_source_connection_connection_id", "connection_id"),
+        Index("idx_source_connection_collection_id", "readable_collection_id"),
+    )
+
 
 # Event to delete parent Sync when SourceConnection is deleted
 @event.listens_for(SourceConnection, "before_delete")
-def delete_parent_sync_and_connection(mapper, connection, target):
+def delete_parent_sync_and_connection(mapper: Any, connection: Any, target: Any) -> None:
     """When a SourceConnection is deleted, also delete its parent Sync and Connection."""
     # Delete parent Sync if it exists
     if target.sync_id:

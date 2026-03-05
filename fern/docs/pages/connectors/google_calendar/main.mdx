@@ -12,6 +12,8 @@ description: "Google Calendar integration with Airweave"
   <h1 style={{ margin: 0 }}>Google Calendar</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Google Calendar through Airweave's unified search layer.
+
 ## Configuration
 
 Google Calendar source connector integrates with the Google Calendar API to extract data.
@@ -61,10 +63,13 @@ See: https://developers.google.com/calendar/api/v3/reference/calendars
 
 | Field | Type | Description |
 |-------|------|-------------|
+| calendar_key | str | Stable calendar identifier (matches Google calendar ID). |
+| display_name | str | Display name for the calendar. |
 | summary | Optional[str] | Title of the calendar. |
 | description | Optional[str] | Description of the calendar. |
 | location | Optional[str] | Geographic location of the calendar. |
 | time_zone | Optional[str] | The time zone of the calendar. |
+| web_url_value | Optional[str] | Direct link to the calendar in Google Calendar. |
 
 </Accordion>
 <Accordion title="GoogleCalendarListEntity">
@@ -75,6 +80,8 @@ See: https://developers.google.com/calendar/api/v3/reference/calendarList
 
 | Field | Type | Description |
 |-------|------|-------------|
+| calendar_key | str | Calendar ID for this list entry. |
+| display_name | str | Display name used by the user. |
 | summary | Optional[str] | Title of the calendar. |
 | summary_override | Optional[str] | User-defined name for the calendar, if set. |
 | color_id | Optional[str] | Color ID reference for the calendar. |
@@ -85,6 +92,7 @@ See: https://developers.google.com/calendar/api/v3/reference/calendarList
 | access_role | Optional[str] | The effective access role that the authenticated user has on the calendar. E.g., 'owner', 'reader', 'writer'. |
 | primary | bool | Flag to indicate if this is the primary calendar. |
 | deleted | bool | Flag to indicate if this calendar has been deleted. |
+| web_url_value | Optional[str] | Direct link to the calendar in Google Calendar. |
 
 </Accordion>
 <Accordion title="GoogleCalendarEventEntity">
@@ -95,6 +103,11 @@ See: https://developers.google.com/calendar/api/v3/reference/events
 
 | Field | Type | Description |
 |-------|------|-------------|
+| event_key | str | Stable event identifier. |
+| calendar_key | str | Calendar ID for this event. |
+| title | str | Display title of the event. |
+| created_time | datetime | Creation timestamp for the event. |
+| updated_time | datetime | Last modification timestamp for the event. |
 | status | Optional[str] | Status of the event (e.g., 'confirmed'). |
 | html_link | Optional[str] | An absolute link to the event in the Google Calendar UI. |
 | summary | Optional[str] | Title of the event. |
@@ -114,6 +127,7 @@ See: https://developers.google.com/calendar/api/v3/reference/events
 | visibility | Optional[str] | Visibility of the event (e.g., 'default', 'public'). |
 | conference_data | Optional[Dict[str, Any]] | Conference data associated with the event, e.g., hangout or meet link. |
 | event_type | Optional[str] | Event type. E.g., 'default' or 'focus'. |
+| web_url_value | Optional[str] | Direct link to the event in Google Calendar. |
 
 </Accordion>
 <Accordion title="GoogleCalendarFreeBusyEntity">
@@ -124,8 +138,11 @@ See: https://developers.google.com/calendar/api/v3/reference/freebusy
 
 | Field | Type | Description |
 |-------|------|-------------|
+| freebusy_key | str | Stable identifier for the free/busy snapshot. |
+| label | str | Display label for the free/busy entry. |
 | calendar_id | str | ID of the calendar for which free/busy is returned. |
 | busy | List[Dict[str, str]] | List of time ranges during which this calendar is busy. |
+| web_url_value | Optional[str] | Link back to the calendar UI. |
 
 </Accordion>
 

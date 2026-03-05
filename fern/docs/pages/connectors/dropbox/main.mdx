@@ -12,6 +12,8 @@ description: "Dropbox integration with Airweave"
   <h1 style={{ margin: 0 }}>Dropbox</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Dropbox through Airweave's unified search layer.
+
 ## Configuration
 
 Dropbox source connector integrates with the Dropbox API to extract and synchronize files.
@@ -61,6 +63,8 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| account_id | str | Dropbox account ID |
+| display_name | str | Display name for the account |
 | abbreviated_name | Optional[str] | Abbreviated form of the person's name (typically initials) |
 | familiar_name | Optional[str] | Locale-dependent name (usually given name in US) |
 | given_name | Optional[str] | Also known as first name |
@@ -91,6 +95,8 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Dropbox folder ID |
+| name | str | Folder name |
 | path_lower | Optional[str] | Lowercase full path starting with slash |
 | path_display | Optional[str] | Display path with proper casing |
 | sharing_info | Optional[Dict] | Sharing information for the folder |
@@ -109,6 +115,8 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Dropbox file ID |
+| name | str | File name |
 | path_lower | Optional[str] | Lowercase full path in Dropbox |
 | path_display | Optional[str] | Display path with proper casing |
 | rev | Optional[str] | Unique identifier for the file revision |

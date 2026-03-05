@@ -1,77 +1,63 @@
 /**
- * HTTP Transport Tests - Tests the Streamable HTTP server
+ * HTTP Transport Tests - Tests the stateless Streamable HTTP server
  * 
  * These tests verify:
- * 1. Session management works correctly
- * 2. API keys are handled per-request
- * 3. Multiple users can have separate sessions
- * 4. Sessions are cleaned up properly
+ * 1. API key authentication works correctly (X-API-Key, Bearer, query params)
+ * 2. Bearer token parsing follows RFC 6750
+ * 3. Multi-tenant isolation via per-request API keys
+ * 4. DELETE endpoint returns success in stateless mode
+ * 5. Concurrent requests from different users
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-// This is a simplified test - in practice, we'd test the actual index-http.ts
-// But the key concepts are: session management, API key isolation, concurrent requests
-
-describe('HTTP Transport - Session Management', () => {
+describe('HTTP Transport - Stateless Architecture', () => {
     let app: express.Application;
-    const sessions = new Map();
+
+    /**
+     * Extract Bearer token per RFC 6750.
+     */
+    function extractBearerToken(header: string | undefined): string | undefined {
+        if (!header || header.length < 8) return undefined;
+        if (header.slice(0, 7).toLowerCase() !== 'bearer ') return undefined;
+        return header.slice(7);
+    }
 
     beforeEach(() => {
-        sessions.clear();
         app = express();
         app.use(express.json());
 
-        // Simplified version of the /mcp endpoint for testing
+        // Simplified stateless /mcp endpoint matching production behavior
         app.post('/mcp', async (req, res) => {
-            const apiKey = req.headers['authorization']?.toString().replace('Bearer ', '') ||
-                req.headers['x-api-key']?.toString();
+            const apiKey = (req.headers['x-api-key'] as string) ||
+                extractBearerToken(req.headers['authorization'] as string);
 
             if (!apiKey) {
-                return res.status(401).json({ error: 'API key required' });
+                return res.status(401).json({
+                    jsonrpc: '2.0',
+                    error: { code: -32001, message: 'Authentication required' },
+                    id: req.body?.id || null
+                });
             }
 
-            const sessionId = req.headers['mcp-session-id']?.toString() ||
-                `session_${Date.now()}_${Math.random()}`;
-
-            let session = sessions.get(sessionId);
-
-            if (!session) {
-                session = {
-                    apiKey,
-                    createdAt: Date.now(),
-                    requestCount: 0
-                };
-                sessions.set(sessionId, session);
-            }
-
-            session.requestCount++;
+            const collection = (req.headers['x-collection-readable-id'] as string) || 'default';
 
             res.json({
-                sessionId,
-                apiKey: session.apiKey,
-                requestCount: session.requestCount,
-                totalSessions: sessions.size
+                apiKey,
+                collection,
+                method: req.body?.method
             });
         });
 
         app.delete('/mcp', (req, res) => {
-            const sessionId = req.headers['mcp-session-id']?.toString();
-            if (sessionId && sessions.has(sessionId)) {
-                sessions.delete(sessionId);
-                res.json({ message: 'Session terminated' });
-            } else {
-                res.status(404).json({ error: 'Session not found' });
-            }
+            res.status(200).json({
+                jsonrpc: '2.0',
+                result: { message: 'Session terminated (stateless mode)' },
+                id: null
+            });
         });
-    });
-
-    afterEach(() => {
-        sessions.clear();
     });
 
     describe('API Key Authentication', () => {
@@ -81,17 +67,6 @@ describe('HTTP Transport - Session Management', () => {
                 .send({ method: 'test' });
 
             expect(response.status).toBe(401);
-            expect(response.body.error).toContain('API key required');
-        });
-
-        it('should accept API key via Authorization header', async () => {
-            const response = await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer test-api-key-123')
-                .send({ method: 'test' });
-
-            expect(response.status).toBe(200);
-            expect(response.body.apiKey).toBe('test-api-key-123');
         });
 
         it('should accept API key via X-API-Key header', async () => {
@@ -103,186 +78,116 @@ describe('HTTP Transport - Session Management', () => {
             expect(response.status).toBe(200);
             expect(response.body.apiKey).toBe('test-api-key-456');
         });
-    });
 
-    describe('Session Creation and Reuse', () => {
-        it('should create new session on first request', async () => {
+        it('should accept API key via Authorization Bearer header', async () => {
             const response = await request(app)
                 .post('/mcp')
-                .set('Authorization', 'Bearer test-key')
+                .set('Authorization', 'Bearer test-api-key-123')
                 .send({ method: 'test' });
 
             expect(response.status).toBe(200);
-            expect(response.body.sessionId).toBeDefined();
-            expect(response.body.requestCount).toBe(1);
-            expect(response.body.totalSessions).toBe(1);
+            expect(response.body.apiKey).toBe('test-api-key-123');
         });
 
-        it('should reuse existing session with same session ID', async () => {
-            // First request
-            const response1 = await request(app)
+        it('should reject non-Bearer Authorization schemes', async () => {
+            const response = await request(app)
                 .post('/mcp')
-                .set('Authorization', 'Bearer test-key')
-                .set('MCP-Session-ID', 'session-123')
+                .set('Authorization', 'Basic dXNlcjpwYXNz')
                 .send({ method: 'test' });
 
-            expect(response1.body.requestCount).toBe(1);
-
-            // Second request with same session ID
-            const response2 = await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer test-key')
-                .set('MCP-Session-ID', 'session-123')
-                .send({ method: 'test' });
-
-            expect(response2.body.sessionId).toBe('session-123');
-            expect(response2.body.requestCount).toBe(2);
-            expect(response2.body.totalSessions).toBe(1);
+            expect(response.status).toBe(401);
         });
 
-        it('should create separate sessions for different session IDs', async () => {
-            // First session
-            const response1 = await request(app)
+        it('should accept case-insensitive Bearer scheme per RFC 7235', async () => {
+            const response = await request(app)
                 .post('/mcp')
-                .set('Authorization', 'Bearer test-key')
-                .set('MCP-Session-ID', 'session-A')
+                .set('Authorization', 'BEARER test-api-key')
                 .send({ method: 'test' });
 
-            // Second session
-            const response2 = await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer test-key')
-                .set('MCP-Session-ID', 'session-B')
+            expect(response.status).toBe(200);
+            expect(response.body.apiKey).toBe('test-api-key');
+        });
+
+        it('should reject API key via query parameter', async () => {
+            const response = await request(app)
+                .post('/mcp?apiKey=query-key')
                 .send({ method: 'test' });
 
-            expect(response1.body.sessionId).toBe('session-A');
-            expect(response2.body.sessionId).toBe('session-B');
-            expect(response2.body.totalSessions).toBe(2);
+            expect(response.status).toBe(401);
         });
     });
 
-    describe('Multi-Tenant Isolation', () => {
-        it('should create separate sessions for different API keys', async () => {
-            // User 1
-            const response1 = await request(app)
+    describe('Collection Selection', () => {
+        it('should use X-Collection-Readable-ID header when provided', async () => {
+            const response = await request(app)
                 .post('/mcp')
-                .set('Authorization', 'Bearer user1-key')
-                .set('MCP-Session-ID', 'session-user1')
+                .set('X-API-Key', 'test-key')
+                .set('X-Collection-Readable-ID', 'my-collection')
                 .send({ method: 'test' });
 
-            // User 2
+            expect(response.status).toBe(200);
+            expect(response.body.collection).toBe('my-collection');
+        });
+
+        it('should fall back to default when no collection header', async () => {
+            const response = await request(app)
+                .post('/mcp')
+                .set('X-API-Key', 'test-key')
+                .send({ method: 'test' });
+
+            expect(response.status).toBe(200);
+            expect(response.body.collection).toBe('default');
+        });
+    });
+
+    describe('Stateless Behavior', () => {
+        it('should handle each request independently', async () => {
+            const response1 = await request(app)
+                .post('/mcp')
+                .set('X-API-Key', 'user1-key')
+                .set('X-Collection-Readable-ID', 'collection-a')
+                .send({ method: 'initialize' });
+
             const response2 = await request(app)
                 .post('/mcp')
-                .set('Authorization', 'Bearer user2-key')
-                .set('MCP-Session-ID', 'session-user2')
-                .send({ method: 'test' });
+                .set('X-API-Key', 'user2-key')
+                .set('X-Collection-Readable-ID', 'collection-b')
+                .send({ method: 'initialize' });
 
             expect(response1.body.apiKey).toBe('user1-key');
+            expect(response1.body.collection).toBe('collection-a');
             expect(response2.body.apiKey).toBe('user2-key');
-            expect(response2.body.totalSessions).toBe(2);
+            expect(response2.body.collection).toBe('collection-b');
         });
 
-        it('should maintain session state per user', async () => {
-            // User 1 - Request 1
-            await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer user1-key')
-                .set('MCP-Session-ID', 'session-user1')
-                .send({ method: 'test' });
-
-            // User 2 - Request 1
-            await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer user2-key')
-                .set('MCP-Session-ID', 'session-user2')
-                .send({ method: 'test' });
-
-            // User 1 - Request 2
+        it('should allow DELETE without prior session', async () => {
             const response = await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer user1-key')
-                .set('MCP-Session-ID', 'session-user1')
-                .send({ method: 'test' });
+                .delete('/mcp');
 
-            // User 1's session should have 2 requests
-            expect(response.body.requestCount).toBe(2);
-            expect(response.body.totalSessions).toBe(2);
-        });
-    });
-
-    describe('Session Cleanup', () => {
-        it('should allow session termination via DELETE', async () => {
-            // Create session
-            await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer test-key')
-                .set('MCP-Session-ID', 'session-123')
-                .send({ method: 'test' });
-
-            // Terminate session
-            const deleteResponse = await request(app)
-                .delete('/mcp')
-                .set('MCP-Session-ID', 'session-123');
-
-            expect(deleteResponse.status).toBe(200);
-            expect(deleteResponse.body.message).toContain('terminated');
-
-            // Verify session is gone
-            expect(sessions.has('session-123')).toBe(false);
-        });
-
-        it('should return 404 for non-existent session termination', async () => {
-            const response = await request(app)
-                .delete('/mcp')
-                .set('MCP-Session-ID', 'non-existent-session');
-
-            expect(response.status).toBe(404);
+            expect(response.status).toBe(200);
+            expect(response.body.result.message).toContain('stateless');
         });
     });
 
     describe('Concurrent Requests', () => {
-        it('should handle concurrent requests to same session', async () => {
-            const promises = Array.from({ length: 5 }, (_, i) =>
-                request(app)
-                    .post('/mcp')
-                    .set('Authorization', 'Bearer test-key')
-                    .set('MCP-Session-ID', 'session-concurrent')
-                    .send({ method: `test-${i}` })
-            );
-
-            const responses = await Promise.all(promises);
-
-            // All should succeed
-            responses.forEach(r => expect(r.status).toBe(200));
-
-            // All should have same session
-            responses.forEach(r => expect(r.body.sessionId).toBe('session-concurrent'));
-
-            // Total requests should be 5
-            const lastResponse = responses[responses.length - 1];
-            expect(lastResponse.body.requestCount).toBeGreaterThan(0);
-        });
-
         it('should handle concurrent requests from different users', async () => {
             const users = ['user1', 'user2', 'user3', 'user4', 'user5'];
 
             const promises = users.map(user =>
                 request(app)
                     .post('/mcp')
-                    .set('Authorization', `Bearer ${user}-key`)
-                    .set('MCP-Session-ID', `session-${user}`)
+                    .set('X-API-Key', `${user}-key`)
+                    .set('X-Collection-Readable-ID', `${user}-collection`)
                     .send({ method: 'test' })
             );
 
             const responses = await Promise.all(promises);
 
-            // All should succeed
-            responses.forEach(r => expect(r.status).toBe(200));
-
-            // Should have 5 separate sessions
-            const lastResponse = responses[responses.length - 1];
-            expect(lastResponse.body.totalSessions).toBe(5);
+            responses.forEach((r, i) => {
+                expect(r.status).toBe(200);
+                expect(r.body.apiKey).toBe(`${users[i]}-key`);
+                expect(r.body.collection).toBe(`${users[i]}-collection`);
+            });
         });
     });
 });
-

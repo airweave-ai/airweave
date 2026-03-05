@@ -1,0 +1,66 @@
+# Shopify connector test configuration using Client Credentials Grant
+name: "Shopify Connector Test"
+description: "End-to-end test of Shopify connector sync functionality with all entity types"
+
+connector:
+  name: "shopify_test"
+  type: "shopify"
+  auth_mode: direct
+  auth_fields:
+    # OAuth 2.0 client credentials from Shopify Dev Dashboard
+    client_id: MONKE_SHOPIFY_CLIENT_ID
+    client_secret: MONKE_SHOPIFY_CLIENT_SECRET
+  config_fields:
+    shop_domain: "${MONKE_SHOPIFY_SHOP_DOMAIN}"
+    openai_model: "gpt-4.1-mini"
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+
+# Entity configuration
+# Creates 3 of each: products (with variants), customers, collections, draft orders, discounts, gift cards
+entity_count: 3
+
+deletion:
+  # Phase 1: Partial deletion
+  partial_delete_count: 1  # Number of entities to delete during partial deletion
+
+  # Verification settings
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+collection:
+  name_template: "monke-{connector_type}-test-{timestamp}"
+  description: "Test collection for {connector_type} connector"
+
+verification:
+  score_threshold: 0.1
+  max_retries: 5
+  retry_delay_seconds: 30  # Increased to allow more time for orphan cleanup
+# Test-specific notes:
+# - Uses OAuth 2.0 client credentials grant to obtain access token
+# - Access tokens expire after 24 hours and are refreshed automatically
+# - Products, Variants, Customers, Collections, Draft Orders, Discounts, Gift Cards are tested
+# - Additional synced entities: Orders, Locations, Inventory, Fulfillments, Metaobjects, Files, Themes
+# - All entities tagged with "monke-test" for easy identification
+#
+# Environment variables required in monke/.env:
+#   MONKE_SHOPIFY_CLIENT_ID=your_client_id_here
+#   MONKE_SHOPIFY_CLIENT_SECRET=your_client_secret_here
+#   MONKE_SHOPIFY_SHOP_DOMAIN=your-store.myshopify.com

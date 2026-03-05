@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import AsyncGenerator, List, Optional, Union
+from typing import AsyncGenerator, List, Optional
 from uuid import UUID
 
 from fastapi import BackgroundTasks, Body, Depends, HTTPException, Query
@@ -12,44 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
-from airweave.core.pubsub import core_pubsub
+from airweave.core.protocols import PubSub
 from airweave.core.sync_service import sync_service
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 
 router = TrailingSlashRouter()
-
-
-@router.get("/", response_model=Union[list[schemas.Sync], list[schemas.SyncWithSourceConnection]])
-async def list_syncs(
-    *,
-    db: AsyncSession = Depends(deps.get_db),
-    skip: int = 0,
-    limit: int = 100,
-    with_source_connection: bool = False,
-    ctx: ApiContext = Depends(deps.get_context),
-) -> list[schemas.Sync] | list[schemas.SyncWithSourceConnection]:
-    """List all syncs for the current user.
-
-    Args:
-    -----
-        db: The database session
-        skip: The number of syncs to skip
-        limit: The number of syncs to return
-        with_source_connection: Whether to include the source connection in the response
-        ctx: The current authentication context
-
-    Returns:
-    --------
-        list[schemas.Sync] | list[schemas.SyncWithSourceConnection]: A list of syncs
-    """
-    return await sync_service.list_syncs(
-        db=db,
-        ctx=ctx,
-        skip=skip,
-        limit=limit,
-        with_source_connection=with_source_connection,
-    )
 
 
 @router.get("/jobs", response_model=list[schemas.SyncJob])
@@ -107,6 +77,8 @@ async def create_sync(
     sync_in: schemas.SyncCreate = Body(...),
     ctx: ApiContext = Depends(deps.get_context),
     background_tasks: BackgroundTasks,
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> schemas.Sync:
     """Create a new sync configuration.
 
@@ -116,12 +88,13 @@ async def create_sync(
         sync_in: The sync to create
         ctx: The current authentication context
         background_tasks: The background tasks
+        dense_embedder: The dense embedder protocol instance
+        sparse_embedder: The sparse embedder protocol instance
 
     Returns:
     --------
         sync (schemas.Sync): The created sync
     """
-    # Create the sync and sync job - kinda, not really, we'll do that in the background
     sync, sync_job = await sync_service.create_and_run_sync(db=db, sync_in=sync_in, ctx=ctx)
     source_connection = await crud.source_connection.get(
         db=db, id=sync_in.source_connection_id, ctx=ctx
@@ -129,16 +102,22 @@ async def create_sync(
     collection = await crud.collection.get_by_readable_id(
         db=db, readable_id=source_connection.readable_collection_id, ctx=ctx
     )
-    collection = schemas.Collection.model_validate(collection, from_attributes=True)
+    collection = schemas.CollectionRecord.model_validate(collection, from_attributes=True)
 
     source_connection = schemas.SourceConnection.model_validate(
         source_connection, from_attributes=True
     )
 
-    # If job was created and should run immediately, start it in background
     if sync_job and sync_in.run_immediately:
         background_tasks.add_task(
-            sync_service.run, sync, sync_job, collection, source_connection, ctx
+            sync_service.run,
+            sync,
+            sync_job,
+            collection,
+            source_connection,
+            ctx,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
         )
 
     return sync
@@ -166,49 +145,6 @@ async def delete_sync(
         sync (schemas.Sync): The deleted sync
     """
     return await sync_service.delete_sync(db=db, sync_id=sync_id, ctx=ctx, delete_data=delete_data)
-
-
-@router.post("/{sync_id}/run", response_model=schemas.SyncJob)
-async def run_sync(
-    *,
-    db: AsyncSession = Depends(deps.get_db),
-    sync_id: UUID,
-    ctx: ApiContext = Depends(deps.get_context),
-    background_tasks: BackgroundTasks,
-) -> schemas.SyncJob:
-    """Trigger a sync run.
-
-    Args:
-    -----
-        db: The database session
-        sync_id: The ID of the sync to run
-        ctx: The current authentication context
-        background_tasks: The background tasks
-
-    Returns:
-    --------
-        sync_job (schemas.SyncJob): The sync job
-    """
-    # Trigger the sync run - kinda, not really, we'll do that in the background
-    sync, sync_job = await sync_service.trigger_sync_run(db=db, sync_id=sync_id, ctx=ctx)
-
-    # Get collection and source connection for sync.run
-    source_conn = await crud.source_connection.get_by_sync_id(db=db, sync_id=sync.id, ctx=ctx)
-    collection = await crud.collection.get_by_readable_id(
-        db=db, readable_id=source_conn.readable_collection_id, ctx=ctx
-    )
-    collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
-    source_conn_connection = await crud.connection.get(db=db, id=source_conn.connection_id, ctx=ctx)
-    connection_schema = schemas.Connection.model_validate(
-        source_conn_connection, from_attributes=True
-    )
-
-    # Start the sync job in the background - this is where the sync actually runs
-    background_tasks.add_task(
-        sync_service.run, sync, sync_job, collection_schema, connection_schema, ctx
-    )
-
-    return sync_job
 
 
 @router.get("/{sync_id}/jobs", response_model=list[schemas.SyncJob])
@@ -260,7 +196,8 @@ async def get_sync_job(
 @router.get("/job/{job_id}/subscribe")
 async def subscribe_sync_job(
     job_id: UUID,
-    ctx: ApiContext = Depends(deps.get_context),  # Standard dependency injection
+    ctx: ApiContext = Depends(deps.get_context),
+    pubsub: PubSub = Inject(PubSub),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) endpoint to subscribe to a sync job's progress.
 
@@ -268,7 +205,7 @@ async def subscribe_sync_job(
     -----
         job_id: The ID of the job to subscribe to
         ctx: The API context
-        db: The database session
+        pubsub: PubSub adapter for event streaming
 
     Returns:
     --------
@@ -279,8 +216,7 @@ async def subscribe_sync_job(
     # Track active SSE connections
     connection_id = f"{ctx}:{job_id}:{asyncio.get_event_loop().time()}"
 
-    # Get a new pubsub instance subscribed to this job
-    pubsub = await core_pubsub.subscribe("sync_job", job_id)
+    ps = await pubsub.subscribe("sync_job", job_id)
 
     async def event_stream() -> AsyncGenerator[str, None]:
         try:
@@ -291,7 +227,7 @@ async def subscribe_sync_job(
             last_heartbeat = asyncio.get_event_loop().time()
             heartbeat_interval = 30  # seconds
 
-            async for message in pubsub.listen():
+            async for message in ps.listen():
                 # Check if we need to send a heartbeat
                 current_time = asyncio.get_event_loop().time()
                 if current_time - last_heartbeat > heartbeat_interval:
@@ -311,9 +247,8 @@ async def subscribe_sync_job(
             logger.error(f"SSE error for job {job_id}: {str(e)}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
-            # Clean up when SSE connection closes
             try:
-                await pubsub.close()
+                await ps.close()
             except Exception as e:
                 logger.warning(f"Error closing pubsub for job {job_id}: {e}")
 
@@ -334,6 +269,7 @@ async def subscribe_sync_job(
 async def subscribe_entity_state(
     job_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
+    pubsub: PubSub = Inject(PubSub),
 ) -> StreamingResponse:
     """SSE endpoint for total entity state updates during sync.
 
@@ -345,6 +281,7 @@ async def subscribe_entity_state(
     -----
         job_id: The ID of the job to subscribe to
         ctx: The API context
+        pubsub: PubSub adapter for event streaming
 
     Returns:
     --------
@@ -356,35 +293,27 @@ async def subscribe_entity_state(
     channel = f"sync_job_state:{job_id}"
     logger.info(f"📡 Subscribing to Redis channel: {channel}")
 
-    # Get a new pubsub instance subscribed to entity state for this job
-    # Using the new core_pubsub with "sync_job_state" namespace
-    from airweave.core.pubsub import core_pubsub
-
-    pubsub = await core_pubsub.subscribe("sync_job_state", job_id)
+    ps = await pubsub.subscribe("sync_job_state", job_id)
 
     async def event_stream() -> AsyncGenerator[str, None]:
         try:
-            logger.info(f"🚀 Starting entity state event stream for job {job_id}")
+            logger.info(f"Starting entity state event stream for job {job_id}")
 
-            # Send initial connection event
             yield f"data: {json.dumps({'type': 'connected', 'job_id': str(job_id)})}\n\n"
 
-            # Track heartbeat timing
             last_heartbeat = asyncio.get_event_loop().time()
-            heartbeat_interval = 30  # seconds
+            heartbeat_interval = 30
 
-            async for message in pubsub.listen():
-                # Send heartbeat to keep connection alive
+            async for message in ps.listen():
                 current_time = asyncio.get_event_loop().time()
                 if current_time - last_heartbeat > heartbeat_interval:
-                    logger.debug(f"💓 Sending heartbeat for job {job_id}")
                     yield 'data: {"type": "heartbeat"}\n\n'
                     last_heartbeat = current_time
 
                 if message["type"] == "message":
                     yield f"data: {message['data']}\n\n"
                 elif message["type"] == "subscribe":
-                    logger.info(f"✅ SSE subscribed to entity state channel for job {job_id}")
+                    logger.info(f"SSE subscribed to entity state channel for job {job_id}")
 
         except asyncio.CancelledError:
             logger.info(f"SSE entity state connection cancelled for job {job_id}")
@@ -392,9 +321,8 @@ async def subscribe_entity_state(
             logger.error(f"SSE entity state error for job {job_id}: {str(e)}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
-            # Clean up
             try:
-                await pubsub.close()
+                await ps.close()
             except Exception as e:
                 logger.warning(f"Error closing entity state pubsub for job {job_id}: {e}")
 

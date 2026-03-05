@@ -3,7 +3,7 @@
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from airweave.models.integration_credential import IntegrationType
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
@@ -48,10 +48,7 @@ class IntegrationCredentialInDBBase(IntegrationCredentialBase):
     organization_id: UUID
     encrypted_credentials: str
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class IntegrationCredentialInDB(IntegrationCredentialInDBBase):

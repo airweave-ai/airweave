@@ -1,0 +1,147 @@
+# yaml-language-server: $schema=https://json.schemastore.org/dependabot-2.0.json
+#
+# Dependabot version-update configuration.
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # --- pip — backend (Poetry) ---------------------------------------------
+  # Main Python application.  Poetry manages the lockfile, so Dependabot
+  # proposes version bumps that are then reflected in poetry.lock.
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "monthly"
+    groups:
+      pip-backend:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "chore"
+      - "deps:python"
+      - "area:backend"
+    open-pull-requests-limit: 5
+
+  # --- pip — monke (E2E testing framework) --------------------------------
+  # Standalone end-to-end test suite with its own dependency tree.
+  - package-ecosystem: "pip"
+    directory: "/monke"
+    schedule:
+      interval: "monthly"
+    groups:
+      pip-monke:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "chore"
+      - "deps:python"
+      - "area:testing"
+    open-pull-requests-limit: 5
+
+  # --- npm — frontend (React / Vite) -------------------------------------
+  # Single-page application served by Vite in development and built for
+  # production as static assets.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "monthly"
+    groups:
+      npm-frontend:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "chore"
+      - "deps:javascript"
+      - "area:frontend"
+    open-pull-requests-limit: 5
+
+  # --- npm — MCP server (TypeScript) -------------------------------------
+  # Model Context Protocol server, packaged separately from the frontend.
+  - package-ecosystem: "npm"
+    directory: "/mcp"
+    schedule:
+      interval: "monthly"
+    groups:
+      npm-mcp:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "chore"
+      - "deps:javascript"
+      - "area:mcp"
+    open-pull-requests-limit: 5
+
+  # --- Docker — backend ---------------------------------------------------
+  # Base image updates for the backend Dockerfile.
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "monthly"
+    groups:
+      docker-backend:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "chore"
+      - "deps:docker"
+      - "area:backend"
+    open-pull-requests-limit: 5
+
+  # --- Docker — frontend --------------------------------------------------
+  # Base image updates for the frontend Dockerfile.
+  - package-ecosystem: "docker"
+    directory: "/frontend"
+    schedule:
+      interval: "monthly"
+    groups:
+      docker-frontend:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "chore"
+      - "deps:docker"
+      - "area:frontend"
+    open-pull-requests-limit: 5
+
+  # --- Docker — MCP server ------------------------------------------------
+  # Base image updates for the MCP server Dockerfile.
+  - package-ecosystem: "docker"
+    directory: "/mcp"
+    schedule:
+      interval: "monthly"
+    groups:
+      docker-mcp:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "chore"
+      - "deps:docker"
+      - "area:mcp"
+    open-pull-requests-limit: 5
+
+  # --- GitHub Actions -----------------------------------------------------
+  # Workflows are typically quite forgiving in terms of backwards
+  # compatibility, and major-version bumps are most often due to Node.js
+  # runtime changes.  Bundling all updates into a single PR keeps noise
+  # low without meaningful risk.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "chore"
+      - "deps:actions"
+      - "area:infra"
+    open-pull-requests-limit: 5

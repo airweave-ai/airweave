@@ -8,6 +8,7 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.config import HubspotConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.hubspot import (
@@ -34,7 +35,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.WITH_REFRESH,
-    config_class="HubspotConfig",
+    config_class=HubspotConfig,
     labels=["CRM", "Marketing"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,

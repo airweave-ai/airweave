@@ -37,6 +37,7 @@ def generate_mdx_content(
     # Avoid f-string for style attribute to prevent curly brace interpretation
     content += "  <h1 style={{ margin: 0 }}>" + display_name + "</h1>\n"
     content += "</div>\n\n"
+    content += f"This connector enables AI agents and RAG systems to retrieve context from {display_name} through Airweave's unified search layer.\n\n"
     content += "## Configuration\n"
 
     # Add source information

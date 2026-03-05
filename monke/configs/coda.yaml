@@ -1,0 +1,50 @@
+name: coda_test
+description: End-to-end test for Coda source using Monke
+
+connector:
+  name: Coda
+  type: coda
+  auth_mode: direct
+  auth_fields:
+    api_key: MONKE_CODA_API_TOKEN
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+entity_count: 3
+
+collection:
+  name: Coda Test Collection
+
+verification:
+  retry_attempts: 3
+  retry_delay_seconds: 5
+  score_threshold: 0.0
+  require_token_match: false
+  expected_fields:
+    - title
+    - token
+    - id

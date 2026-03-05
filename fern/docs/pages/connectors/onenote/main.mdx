@@ -12,6 +12,8 @@ description: "Onenote integration with Airweave"
   <h1 style={{ margin: 0 }}>Onenote</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Onenote through Airweave's unified search layer.
+
 ## Configuration
 
 Microsoft OneNote source connector integrates with the Microsoft Graph API.
@@ -55,6 +57,7 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Notebook ID. |
 | display_name | str | The name of the notebook. |
 | is_default | Optional[bool] | Indicates whether this is the user's default notebook. |
 | is_shared | Optional[bool] | Indicates whether the notebook is shared with other users. |
@@ -63,6 +66,7 @@ Reference:
 | last_modified_by | Optional[Dict[str, Any]] | Identity of the user who last modified the notebook. |
 | links | Optional[Dict[str, Any]] | Links for opening the notebook. |
 | self_url | Optional[str] | The endpoint URL where you can get details about the notebook. |
+| web_url_override | Optional[str] | Direct URL to open the notebook in OneNote. |
 
 </Accordion>
 <Accordion title="OneNoteSectionGroupEntity">
@@ -98,11 +102,13 @@ Reference:
 |-------|------|-------------|
 | notebook_id | str | ID of the notebook this section belongs to. |
 | parent_section_group_id | Optional[str] | ID of the parent section group, if any. |
+| id | str | Section ID. |
 | display_name | str | The name of the section. |
 | is_default | Optional[bool] | Indicates whether this is the user's default section. |
 | created_by | Optional[Dict[str, Any]] | Identity of the user who created the section. |
 | last_modified_by | Optional[Dict[str, Any]] | Identity of the user who last modified the section. |
 | pages_url | Optional[str] | The endpoint URL where you can get all the pages in the section. |
+| web_url_override | Optional[str] | Direct URL to open the section. |
 
 </Accordion>
 <Accordion title="OneNotePageFileEntity">
@@ -117,6 +123,7 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | str | Page ID. |
 | notebook_id | str | ID of the notebook this page belongs to. |
 | section_id | str | ID of the section this page belongs to. |
 | title | str | The title of the page. |
@@ -127,6 +134,7 @@ Reference:
 | last_modified_by | Optional[Dict[str, Any]] | Identity of the user who last modified the page. |
 | links | Optional[Dict[str, Any]] | Links for opening the page in OneNote client or web. |
 | user_tags | Optional[List[str]] | User-defined tags associated with the page. |
+| web_url_override | Optional[str] | Direct URL to open the page in OneNote. |
 
 </Accordion>
 

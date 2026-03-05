@@ -8,8 +8,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
 from airweave.core import credentials
+from airweave.core.context import BaseContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.exceptions import NotFoundException, PermissionException
 from airweave.crud._base_organization import CRUDBaseOrganization
@@ -26,7 +26,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         db: AsyncSession,
         *,
         obj_in: APIKeyCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> APIKey:
         """Create a new API key with auth context.
@@ -35,7 +35,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         ----
             db (AsyncSession): The database session.
             obj_in (APIKeyCreate): The API key creation data.
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
             uow (Optional[UnitOfWork]): The unit of work to use for the transaction.
 
         Returns:
@@ -67,7 +67,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
     async def get_all_for_ctx(
         self,
         db: AsyncSession,
-        ctx: ApiContext,
+        ctx: BaseContext,
         organization_id: Optional[UUID] = None,
         *,
         skip: int = 0,
@@ -78,7 +78,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         Args:
         ----
             db (AsyncSession): The database session.
-            ctx (ApiContext): The API context.
+            ctx (BaseContext): The API context.
             organization_id (Optional[UUID]): The organization ID to filter by.
             skip (int): The number of records to skip.
             limit (int): The maximum number of records to return.

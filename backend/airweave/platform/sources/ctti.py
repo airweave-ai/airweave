@@ -11,6 +11,7 @@ from typing import Any, AsyncGenerator, Dict, Optional, Union
 import asyncpg
 
 from airweave.platform.configs.auth import CTTIAuthConfig
+from airweave.platform.configs.config import CTTIConfig
 from airweave.platform.cursors import CTTICursor
 from airweave.platform.decorators import source
 from airweave.platform.entities.ctti import CTTIWebEntity
@@ -23,8 +24,8 @@ from airweave.schemas.source_connection import AuthenticationMethod
     short_name="ctti",
     auth_methods=[AuthenticationMethod.DIRECT],
     oauth_type=None,
-    auth_config_class="CTTIAuthConfig",
-    config_class="CTTIConfig",
+    auth_config_class=CTTIAuthConfig,
+    config_class=CTTIConfig,
     labels=["Clinical Trials", "Database"],
     supports_continuous=True,
     cursor_class=CTTICursor,

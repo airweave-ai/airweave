@@ -1,7 +1,9 @@
 """The services for handling OAuth2 authentication and token exchange for integrations."""
 
+import asyncio
 import base64
 import hashlib
+import random
 import secrets
 from typing import Optional, Tuple
 from urllib.parse import urlencode
@@ -441,7 +443,7 @@ class OAuth2Service:
     async def _get_integration_config(
         logger: ContextualLogger,
         integration_short_name: str,
-    ) -> schemas.Source | schemas.Destination | schemas.EmbeddingModel:
+    ) -> schemas.Source | schemas.Destination:
         """Get and validate integration configuration exists.
 
         Args:
@@ -451,7 +453,7 @@ class OAuth2Service:
 
         Returns:
         -------
-            schemas.Source | schemas.Destination | schemas.EmbeddingModel: The integration
+            schemas.Source | schemas.Destination: The integration
                 configuration.
 
         Raises:
@@ -469,7 +471,7 @@ class OAuth2Service:
     @staticmethod
     async def _get_client_credentials(
         logger: ContextualLogger,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: schemas.Source | schemas.Destination,
         auth_fields: Optional[dict] = None,
         decrypted_credential: Optional[dict] = None,
     ) -> tuple[str, str]:
@@ -509,7 +511,7 @@ class OAuth2Service:
     @staticmethod
     def _prepare_token_request(
         logger: ContextualLogger,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: schemas.Source | schemas.Destination,
         refresh_token: str,
         client_id: str,
         client_secret: str,
@@ -519,7 +521,7 @@ class OAuth2Service:
         Args:
         ----
             logger (ContextualLogger): The logger to use.
-            integration_config (schemas.Source | schemas.Destination | schemas.EmbeddingModel):
+            integration_config (schemas.Source | schemas.Destination):
                 The integration configuration.
             refresh_token (str): The refresh token.
             client_id (str): The client ID.
@@ -542,9 +544,18 @@ class OAuth2Service:
         # IMPORTANT: For WITH_ROTATING_REFRESH OAuth (Jira, Confluence, Microsoft),
         # do NOT include scope parameter - Atlassian/Microsoft reject it with 403
         # For WITH_REFRESH OAuth (Google, Slack), scope should be included
+        # EXCEPTION: Salesforce is with_refresh but does NOT support scope parameter during refresh
         # See: https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/#refresh-a-token
         oauth_type = getattr(integration_config, "oauth_type", None)
-        if (
+        integration_short_name = getattr(integration_config, "integration_short_name", None)
+
+        # Skip scope for: rotating_refresh types, or Salesforce
+        if oauth_type == "with_rotating_refresh" or integration_short_name == "salesforce":
+            logger.debug(
+                f"Skipping scope in token refresh "
+                f"(oauth_type={oauth_type}, integration={integration_short_name})"
+            )
+        elif (
             oauth_type == "with_refresh"
             and hasattr(integration_config, "scope")
             and integration_config.scope
@@ -554,8 +565,6 @@ class OAuth2Service:
                 f"Including scope in token refresh (oauth_type=with_refresh): "
                 f"{integration_config.scope}"
             )
-        elif oauth_type == "with_rotating_refresh":
-            logger.debug("Skipping scope in token refresh (oauth_type=with_rotating_refresh)")
 
         if integration_config.client_credential_location == "header":
             encoded_credentials = OAuth2Service._encode_client_credentials(client_id, client_secret)
@@ -578,45 +587,97 @@ class OAuth2Service:
         return headers, payload
 
     @staticmethod
+    def _is_oauth_rate_limit_error(response: httpx.Response) -> bool:
+        """Check if response is an OAuth rate limit error.
+
+        Some providers (like Zoho) return 400 instead of 429 for rate limits:
+        {"error_description": "You have made too many requests...", "error": "Access Denied"}
+        """
+        if response.status_code == 429:
+            return True
+        if response.status_code == 400:
+            try:
+                data = response.json()
+                error_desc = data.get("error_description", "").lower()
+                error_type = data.get("error", "").lower()
+                if "too many requests" in error_desc and error_type == "access denied":
+                    return True
+            except Exception:
+                pass
+        return False
+
+    @staticmethod
     async def _make_token_request(
         logger: ContextualLogger, url: str, headers: dict, payload: dict
     ) -> httpx.Response:
-        """Make the token refresh request."""
+        """Make the token refresh request with retry on rate limit."""
         logger.info(f"Making token request to: {url}")
 
-        try:
-            async with httpx.AsyncClient() as client:
-                logger.info(f"Sending request to {url}")
-                response = await client.post(url, headers=headers, data=payload)
+        max_retries = 5
+        base_delay = 5.0  # Start with 5 seconds for OAuth rate limits
 
-                logger.info(f"Received response: Status {response.status_code}, ")
-
-                response.raise_for_status()
-                return response
-
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error during token request: {e.response.status_code} "
-                f"{e.response.reason_phrase}"
-            )
-
-            # Try to log the error response
+        for attempt in range(max_retries):
             try:
-                error_content = e.response.json()
-                logger.error(f"Error response body: {error_content}")
-            except Exception:
-                logger.error(f"Error response text: {e.response.text}")
+                async with httpx.AsyncClient() as client:
+                    logger.info(f"Sending request to {url}")
+                    response = await client.post(url, headers=headers, data=payload)
 
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error during token request: {str(e)}")
-            raise
+                    logger.info(f"Received response: Status {response.status_code}, ")
+
+                    # Check for rate limiting before raising
+                    if OAuth2Service._is_oauth_rate_limit_error(response):
+                        # Exponential backoff with jitter
+                        delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                        logger.warning(
+                            f"OAuth rate limit hit, waiting {delay:.1f}s before retry "
+                            f"(attempt {attempt + 1}/{max_retries})"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+
+                    response.raise_for_status()
+                    return response
+
+            except httpx.HTTPStatusError as e:
+                # Check if it's a rate limit we should retry
+                if OAuth2Service._is_oauth_rate_limit_error(e.response):
+                    delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                    logger.warning(
+                        f"OAuth rate limit hit (exception), waiting {delay:.1f}s before retry "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                logger.error(
+                    f"HTTP error during token request: {e.response.status_code} "
+                    f"{e.response.reason_phrase}"
+                )
+
+                # Try to log the error response
+                try:
+                    error_content = e.response.json()
+                    logger.error(f"Error response body: {error_content}")
+                except Exception:
+                    logger.error(f"Error response text: {e.response.text}")
+
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error during token request: {str(e)}")
+                raise
+
+        # Exhausted all retries
+        raise httpx.HTTPStatusError(
+            f"OAuth token request failed after {max_retries} retries (rate limited)",
+            request=httpx.Request("POST", url),
+            response=httpx.Response(429),
+        )
 
     @staticmethod
     async def _handle_token_response(
         db: AsyncSession,
         response: httpx.Response,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: schemas.Source | schemas.Destination,
         ctx: ApiContext,
         connection_id: UUID,
     ) -> OAuth2TokenResponse:
@@ -627,7 +688,7 @@ class OAuth2Service:
             db (AsyncSession): The database session.
             logger (ContextualLogger): The logger to use.
             response (httpx.Response): The response from the token refresh request.
-            integration_config (schemas.Source | schemas.Destination | schemas.EmbeddingModel):
+            integration_config (schemas.Source | schemas.Destination):
                 The integration configuration.
             ctx (ApiContext): The API context.
             connection_id (UUID): The ID of the connection to update.
@@ -799,7 +860,7 @@ class OAuth2Service:
         client_id: str,
         client_secret: str,
         backend_url: str,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: schemas.Source | schemas.Destination,
         code_verifier: Optional[str] = None,
     ) -> OAuth2TokenResponse:
         """Core method to exchange an authorization code for tokens.

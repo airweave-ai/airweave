@@ -5,7 +5,7 @@ Uses LLM to generate semantic alternatives that might match relevant documents
 using different terminology while preserving the original search intent.
 """
 
-from typing import Any, List
+from typing import TYPE_CHECKING, List
 
 from pydantic import BaseModel, Field
 
@@ -15,6 +15,9 @@ from airweave.search.prompts import QUERY_EXPANSION_SYSTEM_PROMPT
 from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 # Number of query expansion alternatives to generate (module-level for Pydantic model)
 _NUMBER_OF_EXPANSIONS = 4
@@ -61,7 +64,7 @@ class QueryExpansion(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Expand the query into variations."""
@@ -69,11 +72,26 @@ class QueryExpansion(SearchOperation):
 
         query = context.query
 
+        # DEBUG: Log input
+        ctx.logger.debug(
+            f"\n[QueryExpansion] INPUT:\n"
+            f"  Original query: '{query}'\n"
+            f"  Target expansions: {self.NUMBER_OF_EXPANSIONS}\n"
+            f"  Providers available: {[p.__class__.__name__ for p in self.providers]}\n"
+        )
+
         # Build prompts
         system_prompt = QUERY_EXPANSION_SYSTEM_PROMPT.format(
             number_of_expansions=self.NUMBER_OF_EXPANSIONS
         )
         user_prompt = f"Original query: {query}"
+
+        # DEBUG: Log prompt preview
+        ctx.logger.debug(
+            f"\n[QueryExpansion] PROMPT (first 500 chars):\n"
+            f"  System: {system_prompt[:500]}...\n"
+            f"  User: {user_prompt}\n"
+        )
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -98,7 +116,14 @@ class QueryExpansion(SearchOperation):
         # Validate and deduplicate alternatives
         alternatives = result.alternatives or []
         valid_alternatives = self._validate_alternatives(alternatives, query)
-        ctx.logger.debug(f"[QueryExpansion] Valid alternatives: {valid_alternatives}")
+
+        # DEBUG: Log output
+        ctx.logger.debug(
+            f"\n[QueryExpansion] OUTPUT:\n"
+            f"  Raw alternatives from LLM: {alternatives}\n"
+            f"  Valid alternatives (after dedup): {valid_alternatives}\n"
+            f"  Count: {len(valid_alternatives)}/{self.NUMBER_OF_EXPANSIONS}\n"
+        )
 
         # Ensure we got exactly the expected number of alternatives
         if len(valid_alternatives) != self.NUMBER_OF_EXPANSIONS:
@@ -109,7 +134,7 @@ class QueryExpansion(SearchOperation):
             )
 
         # Write alternatives to state (original query remains in context.query)
-        state["expanded_queries"] = valid_alternatives
+        state.expanded_queries = valid_alternatives
 
         # Report metrics for analytics
         self._report_metrics(

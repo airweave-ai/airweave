@@ -46,6 +46,7 @@ class TestFlow:
             "sync": "Sync data from source to vector database",
             "force_full_sync": "Force full sync (ignore cursor, fetch all entities)",
             "verify": "Verify entities appear in vector database",
+            "verify_raw_data": "Verify raw data captured to local storage",
             "update": "Update existing test entities",
             "partial_delete": "Delete subset of test entities",
             "verify_partial_deletion": "Verify deleted entities are removed",

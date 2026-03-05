@@ -1,8 +1,14 @@
-"""Collections search endpoints.
+"""Search API endpoints for querying data within collections.
 
 These endpoints are mounted under the `/collections` prefix in `api/v1/api.py`,
-so paths remain `/collections/{readable_id}/search` et al., while being defined
-in this dedicated module.
+enabling powerful semantic and hybrid search across synced data sources.
+
+Key features:
+- Hybrid search combining neural (semantic) and keyword (BM25) matching
+- Optional query expansion for improved recall
+- Filter extraction from natural language queries
+- AI-powered answer generation from search results
+- Streaming support for real-time results
 """
 
 import asyncio
@@ -11,16 +17,23 @@ from typing import Any, Dict, Union
 
 from fastapi import Depends, HTTPException, Path, Query, Response
 from fastapi.responses import StreamingResponse
-from qdrant_client.http.models import Filter as QdrantFilter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.guard_rail_service import GuardRailService
-from airweave.core.pubsub import core_pubsub
-from airweave.core.shared_models import ActionType
+from airweave.core.events.sync import QueryProcessedEvent
+from airweave.core.protocols import EventBus, PubSub
 from airweave.db.session import AsyncSessionLocal
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
+from airweave.domains.usage.types import ActionType
+from airweave.schemas.errors import (
+    NotFoundErrorResponse,
+    RateLimitErrorResponse,
+    ValidationErrorResponse,
+)
 from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.schemas.search_legacy import LegacySearchRequest, LegacySearchResponse, ResponseType
 from airweave.search.legacy_adapter import (
@@ -36,15 +49,33 @@ router = TrailingSlashRouter()
     "/{readable_id}/search",
     response_model=LegacySearchResponse,
     deprecated=True,
+    summary="Search Collection (Legacy)",
+    description="""**DEPRECATED**: Use POST /collections/{readable_id}/search instead.
+
+This legacy GET endpoint provides basic search functionality via query parameters.
+Migrate to the POST endpoint for access to advanced features like:
+- Structured filters
+- Query expansion
+- Reranking
+- Streaming responses""",
+    responses={
+        200: {"model": LegacySearchResponse, "description": "Search results"},
+        404: {"model": NotFoundErrorResponse, "description": "Collection Not Found"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
 )
 async def search_get_legacy(
     response: Response,
     readable_id: str = Path(
-        ..., description="The unique readable identifier of the collection to search"
+        ...,
+        description="The unique readable identifier of the collection to search",
+        json_schema_extra={"example": "customer-support-tickets-x7k9m"},
     ),
     query: str = Query(
         ...,
         description="The search query text to find relevant documents and data",
+        json_schema_extra={"example": "How do I reset my password?"},
     ),
     response_type: ResponseType = Query(
         ResponseType.RAW,
@@ -52,25 +83,38 @@ async def search_get_legacy(
             "Format of the response: 'raw' returns search results, "
             "'completion' returns AI-generated answers"
         ),
+        json_schema_extra={"example": "raw"},
     ),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of results to return"),
-    offset: int = Query(0, ge=0, description="Number of results to skip for pagination"),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=1000,
+        description="Maximum number of results to return",
+        json_schema_extra={"example": 10},
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Number of results to skip for pagination",
+        json_schema_extra={"example": 0},
+    ),
     recency_bias: float | None = Query(
         None,
         ge=0.0,
         le=1.0,
-        description="How much to weigh recency vs similarity (0..1)",
+        description="How much to weigh recency vs similarity (0=similarity only, 1=recency only)",
+        json_schema_extra={"example": 0.3},
     ),
     db: AsyncSession = Depends(deps.get_db),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
     ctx: ApiContext = Depends(deps.get_context),
+    pubsub: PubSub = Inject(PubSub),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> LegacySearchResponse:
-    """Legacy GET search endpoint for backwards compatibility.
-
-    DEPRECATED: This endpoint uses the old schema. Please migrate to POST with the new
-    SearchRequest format for access to all features.
-    """
-    await guard_rail.is_allowed(ActionType.QUERIES)
+    """Legacy GET search endpoint for backwards compatibility."""
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
     # Add deprecation warning headers
     response.headers["X-API-Deprecation"] = "true"
@@ -93,7 +137,6 @@ async def search_get_legacy(
     # Convert to new format
     new_request = convert_legacy_request_to_new(legacy_request)
 
-    # Call new search service
     new_response = await service.search(
         request_id=ctx.request_id,
         readable_collection_id=readable_id,
@@ -101,12 +144,15 @@ async def search_get_legacy(
         stream=False,
         db=db,
         ctx=ctx,
+        pubsub=pubsub,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
     )
 
     # Convert back to legacy format
     legacy_response = convert_new_response_to_legacy(new_response, response_type)
 
-    await guard_rail.increment(ActionType.QUERIES)
+    await event_bus.publish(QueryProcessedEvent(organization_id=ctx.organization.id))
 
     return legacy_response
 
@@ -114,24 +160,49 @@ async def search_get_legacy(
 @router.post(
     "/{readable_id}/search",
     response_model=Union[SearchResponse, LegacySearchResponse],
+    summary="Search Collection",
+    description="""Search your collection using semantic and hybrid search.
+
+This is the primary search endpoint providing powerful AI-powered search capabilities:
+
+**Search Strategies:**
+- **hybrid** (default): Combines neural (semantic) and keyword (BM25) matching
+- **neural**: Pure semantic search using embeddings
+- **keyword**: Traditional keyword-based BM25 search
+
+**Features:**
+- **Query expansion**: Generate query variations to improve recall
+- **Filter interpretation**: Extract structured filters from natural language
+- **Reranking**: LLM-based reranking for improved relevance
+- **Answer generation**: AI-generated answers based on search results
+
+**Note**: Accepts both new SearchRequest and legacy LegacySearchRequest formats
+for backwards compatibility.""",
+    responses={
+        200: {"model": SearchResponse, "description": "Search results with optional AI completion"},
+        404: {"model": NotFoundErrorResponse, "description": "Collection Not Found"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
 )
 async def search(
     http_response: Response,
     readable_id: str = Path(
         ...,
-        description="The unique readable identifier of the collection",
+        description="The unique readable identifier of the collection to search",
+        json_schema_extra={"example": "customer-support-tickets-x7k9m"},
     ),
     search_request: Union[SearchRequest, LegacySearchRequest] = ...,
     db: AsyncSession = Depends(deps.get_db),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    pubsub: PubSub = Inject(PubSub),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> Union[SearchResponse, LegacySearchResponse]:
-    """Search your collection.
-
-    Accepts both new SearchRequest and legacy LegacySearchRequest formats
-    for backwards compatibility.
-    """
-    await guard_rail.is_allowed(ActionType.QUERIES)
+    """Search your collection with AI-powered semantic search."""
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
     ctx.logger.info(f"Starting search for collection '{readable_id}'")
 
@@ -149,7 +220,17 @@ async def search(
         requested_response_type = search_request.response_type
         search_request = convert_legacy_request_to_new(search_request)
 
-    # Execute search with new service
+    # Warn if temporal_relevance was requested but is removed
+    if (
+        hasattr(search_request, "temporal_relevance")
+        and search_request.temporal_relevance is not None
+        and search_request.temporal_relevance > 0
+    ):
+        http_response.headers["X-Feature-Removed"] = "temporal_relevance"
+        http_response.headers["X-Feature-Removed-Message"] = (
+            "temporal_relevance has been removed and was ignored"
+        )
+
     search_response = await service.search(
         request_id=ctx.request_id,
         readable_collection_id=readable_id,
@@ -157,10 +238,14 @@ async def search(
         stream=False,
         db=db,
         ctx=ctx,
+        pubsub=pubsub,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
+        destination_override="vespa",
     )
 
     ctx.logger.info(f"Search completed for collection '{readable_id}'")
-    await guard_rail.increment(ActionType.QUERIES)
+    await event_bus.publish(QueryProcessedEvent(organization_id=ctx.organization.id))
 
     # Convert response back to legacy format if needed
     if is_legacy:
@@ -176,8 +261,12 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
     ),
     search_request: Union[SearchRequest, LegacySearchRequest] = ...,
     db: AsyncSession = Depends(deps.get_db),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    pubsub: PubSub = Inject(PubSub),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming endpoint for advanced search.
 
@@ -189,14 +278,13 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
         f"[SearchStream] Starting stream for collection '{readable_id}' id={request_id}"
     )
 
-    await guard_rail.is_allowed(ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
-    # Convert legacy request if needed
     if isinstance(search_request, LegacySearchRequest):
         ctx.logger.debug("Processing legacy streaming search request")
         search_request = convert_legacy_request_to_new(search_request)
 
-    pubsub = await core_pubsub.subscribe("search", request_id)
+    ps = await pubsub.subscribe("search", request_id)
 
     async def _publish_stream_error(
         *, message: str, transient: bool, detail: str | None = None
@@ -208,11 +296,12 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
         }
         if detail:
             payload["detail"] = detail
-        await core_pubsub.publish("search", request_id, payload)
+        await pubsub.publish("search", request_id, payload)
 
     async def _run_search() -> None:
         try:
             async with AsyncSessionLocal() as search_db:
+                # Always use Vespa for public endpoints
                 await service.search(
                     request_id=request_id,
                     readable_collection_id=readable_id,
@@ -220,6 +309,10 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                     stream=True,
                     db=search_db,
                     ctx=ctx,
+                    pubsub=pubsub,
+                    dense_embedder=dense_embedder,
+                    sparse_embedder=sparse_embedder,
+                    destination_override="vespa",
                 )
         except ValueError as e:
             await _publish_stream_error(message=str(e), transient=False)
@@ -255,7 +348,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
             last_heartbeat = asyncio.get_event_loop().time()
             heartbeat_interval = 30
 
-            async for message in pubsub.listen():
+            async for message in ps.listen():
                 now = asyncio.get_event_loop().time()
                 if now - last_heartbeat > heartbeat_interval:
                     heartbeat_event = {
@@ -277,7 +370,9 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                                 "Closing stream"
                             )
                             try:
-                                await guard_rail.increment(ActionType.QUERIES)
+                                await event_bus.publish(
+                                    QueryProcessedEvent(organization_id=ctx.organization.id)
+                                )
                             except Exception:
                                 pass
                             break
@@ -318,7 +413,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                 except Exception:
                     pass
             try:
-                await pubsub.close()
+                await ps.close()
                 ctx.logger.info(
                     f"[SearchStream] Closed pubsub subscription for search:{request_id}"
                 )
@@ -340,16 +435,63 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
 
 @router.get("/internal/filter-schema")
 async def get_filter_schema() -> Dict[str, Any]:
-    """Get the JSON schema for Qdrant filter validation.
+    """Get the JSON schema for filter validation.
 
     This endpoint returns the JSON schema that can be used to validate
-    filter objects in the frontend.
+    filter objects in the frontend. Uses the destination-agnostic Airweave
+    filter format (must/should/must_not with field conditions).
     """
-    schema = QdrantFilter.model_json_schema()
-
-    if "$defs" in schema:
-        for _def_name, def_schema in schema.get("$defs", {}).items():
-            if "discriminator" in def_schema:
-                del def_schema["discriminator"]
-
-    return schema
+    return {
+        "type": "object",
+        "properties": {
+            "must": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/FieldCondition"},
+                "description": "All conditions must match (AND)",
+            },
+            "must_not": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/FieldCondition"},
+                "description": "None of these conditions must match (NOT)",
+            },
+            "should": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/FieldCondition"},
+                "description": "At least one condition should match (OR)",
+            },
+            "minimum_should_match": {
+                "type": "integer",
+                "description": "Minimum number of should conditions that must match",
+            },
+        },
+        "additionalProperties": False,
+        "$defs": {
+            "FieldCondition": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Field name to filter on",
+                    },
+                    "match": {
+                        "type": "object",
+                        "properties": {
+                            "value": {
+                                "description": "Exact value to match",
+                            },
+                        },
+                    },
+                    "range": {
+                        "type": "object",
+                        "properties": {
+                            "gt": {"description": "Greater than"},
+                            "gte": {"description": "Greater than or equal"},
+                            "lt": {"description": "Less than"},
+                            "lte": {"description": "Less than or equal"},
+                        },
+                    },
+                },
+                "required": ["key"],
+            },
+        },
+    }

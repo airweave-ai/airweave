@@ -1,111 +1,150 @@
 #!/usr/bin/env node
 
 /**
- * Airweave MCP Server - HTTP/Streamable Transport with Redis Session Management
- * 
- * This is the production HTTP server for cloud-based AI platforms like OpenAI Agent Builder.
- * Uses the modern Streamable HTTP transport (MCP 2025-03-26) instead of deprecated SSE.
- * 
- * Session Management:
- * - Redis stores session metadata (API key, collection, timestamps)
- * - Each pod maintains an in-memory cache of McpServer/Transport instances
- * - Sessions can be served by any pod (stateless, horizontally scalable)
- * 
+ * Airweave MCP Server - Stateless HTTP/Streamable Transport
+ *
+ * Production HTTP server for cloud-based AI platforms like OpenAI Agent Builder.
+ * Uses the modern Streamable HTTP transport (MCP 2025-03-26).
+ *
+ * Fully stateless: a fresh McpServer + transport is created per request.
+ * Authentication is per-request via headers. No sessions, no Redis.
+ *
  * Endpoint: https://mcp.airweave.ai/mcp
  * Protocol: MCP 2025-03-26 (Streamable HTTP)
- * Authentication: Bearer token, X-API-Key, or query parameter
+ * Authentication: X-API-Key or Bearer token
  */
 
 import express from 'express';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { decodeJwt } from 'jose';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import { createMcpServer, VERSION } from './server.js';
+import { AirweaveConfig } from './api/types.js';
+import { DEFAULT_BASE_URL } from './config/constants.js';
+import { initPostHog, shutdownPostHog, trackMcpRequest, trackMcpError } from './analytics/posthog.js';
+import { resolveOrganizationForCollection } from './api/org-resolver.js';
+import { Auth0OAuthProvider } from './auth/auth0-provider.js';
+import { createAuth0CallbackHandler } from './auth/auth0-callback.js';
+import { ensureRedisReady, disconnectRedis } from './auth/redis.js';
+import { register, httpRequestDuration, httpRequestsTotal } from './metrics/prometheus.js';
 import { AirweaveClient } from './api/airweave-client.js';
-import { createSearchTool } from './tools/search-tool.js';
-import { createConfigTool } from './tools/config-tool.js';
-import { RedisSessionManager, SessionData, SessionWithTransport, SessionMetadata } from './session/redis-session-manager.js';
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 
-// Initialize Redis session manager
-const sessionManager = new RedisSessionManager();
+const oauthEnabled = process.env.MCP_OAUTH_ENABLED === 'true';
+let auth0Provider: Auth0OAuthProvider | null = null;
 
-// Create MCP server instance with tools
-const createMcpServer = (apiKey: string) => {
-    const collection = process.env.AIRWEAVE_COLLECTION || 'default';
-    const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
+if (oauthEnabled) {
+    auth0Provider = new Auth0OAuthProvider();
+    const baseUrl = new URL(process.env.MCP_BASE_URL || 'https://mcp.airweave.ai');
 
-    const config = {
-        collection,
-        baseUrl,
-        apiKey // Use the provided API key from the request
-    };
+    app.use(
+        mcpAuthRouter({
+            provider: auth0Provider,
+            issuerUrl: baseUrl,
+            baseUrl,
+            scopesSupported: ['openid', 'profile', 'email', 'offline_access'],
+            resourceName: 'Airweave MCP',
+        })
+    );
 
-    const server = new McpServer({
-        name: 'airweave-search',
-        version: '2.1.0',
-    }, {
-        capabilities: {
-            tools: {},
-            logging: {}
+    app.get('/oauth/callback', createAuth0CallbackHandler(auth0Provider));
+}
+
+type ReqWithAuth = express.Request & { auth?: AuthInfo; _authMethod?: 'oauth' | 'api-key' };
+
+/**
+ * Extract Bearer token per RFC 6750.
+ * RFC 7235 Section 2.1 / RFC 9110 Section 11.1: auth scheme is case-insensitive.
+ */
+function extractBearerToken(header: string | undefined): string | undefined {
+    if (!header || header.length < 8) return undefined;
+    if (header.slice(0, 7).toLowerCase() !== 'bearer ') return undefined;
+    return header.slice(7);
+}
+
+function extractApiKey(req: express.Request): string | undefined {
+    return (req.headers['x-api-key'] as string) ||
+        extractBearerToken(req.headers['authorization'] as string) ||
+        undefined;
+}
+
+/**
+ * Per-request auth resolution middleware.
+ *
+ * 1. X-API-Key header → always API key, no JWT verification attempted.
+ * 2. Authorization: Bearer <token> with OAuth enabled → try JWT verification.
+ *    If valid JWT → OAuth path (req.auth set, _authMethod = 'oauth').
+ *    If JWT verification fails and token is structurally a JWT (per jose
+ *    decodeJwt) → return 401 so the client can refresh the token.
+ *    If JWT verification fails and token is NOT a JWT → treat as API key.
+ * 3. No credential → _authMethod stays undefined; handler returns 401.
+ */
+async function resolveAuth(req: ReqWithAuth, res: express.Response, next: express.NextFunction) {
+    if (req.headers['x-api-key']) {
+        req._authMethod = 'api-key';
+        return next();
+    }
+
+    const bearer = extractBearerToken(req.headers['authorization'] as string);
+    if (bearer && oauthEnabled && auth0Provider) {
+        try {
+            req.auth = await auth0Provider.verifyAccessToken(bearer);
+            req._authMethod = 'oauth';
+        } catch {
+            let isJwt = false;
+            try { decodeJwt(bearer); isJwt = true; } catch {}
+            if (isJwt) {
+                res.status(401).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32001,
+                        message: 'Token expired or invalid',
+                    },
+                    id: null,
+                });
+                return;
+            }
+            req._authMethod = 'api-key';
         }
-    });
+        return next();
+    }
 
-    // Create dynamic tool name based on collection
-    const toolName = `search-${collection}`;
+    if (bearer) {
+        req._authMethod = 'api-key';
+    }
+    next();
+}
 
-    // Initialize Airweave client with the request's API key
-    const airweaveClient = new AirweaveClient(config);
-
-    // Create tools using shared tool creation functions
-    const searchTool = createSearchTool(toolName, collection, airweaveClient);
-    const configTool = createConfigTool(toolName, collection, baseUrl, apiKey);
-
-    // Register tools
-    server.tool(
-        searchTool.name,
-        searchTool.description,
-        searchTool.schema,
-        searchTool.handler
-    );
-
-    server.tool(
-        configTool.name,
-        configTool.description,
-        configTool.schema,
-        configTool.handler
-    );
-
-    return server;
-};
+// Prometheus metrics endpoint
+app.get('/metrics', async (_req, res) => {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+});
 
 // Health check endpoint
-app.get('/health', async (req, res) => {
-    const redisConnected = sessionManager.isConnected();
-
+app.get('/health', (req, res) => {
     res.json({
-        status: redisConnected ? 'healthy' : 'degraded',
+        status: 'healthy',
         transport: 'streamable-http',
         protocol: 'MCP 2025-03-26',
-        collection: process.env.AIRWEAVE_COLLECTION || 'unknown',
-        redis: {
-            connected: redisConnected
-        },
+        mode: 'stateless',
+        version: VERSION,
         timestamp: new Date().toISOString()
     });
 });
 
 // Root endpoint with server info
 app.get('/', (req, res) => {
-    const collection = process.env.AIRWEAVE_COLLECTION || 'default';
-    const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
-
     res.json({
         name: "Airweave MCP Search Server",
-        version: "2.1.0",
+        version: VERSION,
         transport: "Streamable HTTP",
         protocol: "MCP 2025-03-26",
-        collection: collection,
+        mode: "stateless",
         endpoints: {
             health: "/health",
             mcp: "/mcp"
@@ -113,237 +152,143 @@ app.get('/', (req, res) => {
         authentication: {
             required: true,
             methods: [
-                "Authorization: Bearer <your-api-key> (recommended for OpenAI Agent Builder)",
-                "X-API-Key: <your-api-key>",
-                "Query parameter: ?apiKey=your-key",
-                "Query parameter: ?api_key=your-key"
+                "X-API-Key: <your-api-key> (recommended)",
+                "Authorization: Bearer <your-api-key-or-oauth-token>"
             ],
+            headers: {
+                "X-API-Key": "Your Airweave API key (required)",
+                "X-Collection-Readable-ID": "Collection readable ID to search (optional, falls back to env default)"
+            },
             openai_agent_builder: {
                 url: "https://mcp.airweave.ai/mcp",
                 headers: {
-                    Authorization: "Bearer <your-airweave-api-key>"
+                    "X-API-Key": "<your-airweave-api-key>",
+                    "X-Collection-Readable-ID": "<your-collection-readable-id>"
                 }
-            }
+            },
+            oauth: oauthEnabled ? {
+                enabled: true,
+                discovery: "/.well-known/oauth-authorization-server",
+                callback: "/oauth/callback"
+            } : { enabled: false }
         }
     });
 });
 
-// Local cache: Map session IDs to { server, transport, data }
-// This cache is per-pod and reconstructed from Redis as needed
-const localSessionCache = new Map<string, SessionWithTransport>();
-
-/**
- * Helper function to create or recreate session objects (server + transport)
- * Note: apiKey parameter is the PLAINTEXT key needed for API calls
- */
-async function createSessionObjects(sessionData: SessionData, apiKey: string): Promise<SessionWithTransport> {
-    const { sessionId, collection, baseUrl } = sessionData;
-
-    // Create a new server with the API key
-    const server = createMcpServer(apiKey);
-
-    // Create a new transport for this session
-    const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => sessionId
+// Main MCP endpoint - fully stateless, fresh server per request
+app.post('/mcp', resolveAuth, async (req: ReqWithAuth, res) => {
+    const startTime = Date.now();
+    const authType = req._authMethod || 'none';
+    res.on('finish', () => {
+        const duration = (Date.now() - startTime) / 1000;
+        const labels = { method: 'POST', route: '/mcp', status_code: String(res.statusCode), auth_type: authType };
+        httpRequestDuration.observe(labels, duration);
+        httpRequestsTotal.inc(labels);
     });
 
-    // Set up session management callbacks
-    (transport as any).onsessioninitialized = (sid: string) => {
-        console.log(`[${new Date().toISOString()}] Session initialized: ${sid}`);
-    };
-
-    // Set up cleanup on close
-    transport.onclose = async () => {
-        console.log(`[${new Date().toISOString()}] Session closed: ${sessionId}`);
-        localSessionCache.delete(sessionId);
-        await sessionManager.deleteSession(sessionId);
-    };
-
-    // Connect the transport to the server
-    await server.connect(transport);
-
-    return { server, transport, data: sessionData };
-}
-
-// Main MCP endpoint (Streamable HTTP) with Redis session management
-app.post('/mcp', async (req, res) => {
     try {
-        // Extract API key from request headers or query parameters
-        const apiKey = req.headers['x-api-key'] ||
-            req.headers['authorization']?.replace('Bearer ', '') ||
-            req.query.apiKey ||
-            req.query.api_key;
+        const isOAuth = req._authMethod === 'oauth';
+        const credential = isOAuth ? req.auth!.token : extractApiKey(req);
 
-        if (!apiKey) {
+        if (!credential) {
+            trackMcpError(undefined, {
+                errorCode: -32001,
+                errorMessage: 'Authentication required'
+            });
             res.status(401).json({
                 jsonrpc: '2.0',
                 error: {
                     code: -32001,
                     message: 'Authentication required',
-                    data: 'Please provide an API key via X-API-Key header, Authorization header, or apiKey query parameter'
+                    data: 'Please provide API key or complete OAuth authorization flow'
                 },
-                id: req.body.id || null
+                id: req.body?.id || null
             });
             return;
         }
 
-        // Get or create session ID from MCP-Session-ID header
-        const sessionId = req.headers['mcp-session-id'] as string ||
-            `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const collectionHeader = req.headers['x-collection-readable-id'] as string | undefined;
+        const collectionEnv = process.env.AIRWEAVE_COLLECTION;
+        const collection = collectionHeader || collectionEnv || 'default';
+        const baseUrl = process.env.AIRWEAVE_BASE_URL || DEFAULT_BASE_URL;
+        const method = req.body?.method || 'unknown';
 
-        const collection = process.env.AIRWEAVE_COLLECTION || 'default';
-        const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
-
-        // Security: Extract client metadata for session binding
-        const clientIP = (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-            (req.headers['x-real-ip'] as string) ||
-            req.socket.remoteAddress ||
-            'unknown';
-        const userAgent = req.headers['user-agent'] || 'unknown';
-
-        let session: SessionWithTransport | undefined;
-
-        // Step 1: Check local cache (fastest path - same pod, same session)
-        session = localSessionCache.get(sessionId);
-
-        if (session) {
-            // Security: Validate API key hasn't changed
-            const apiKeyMatches = RedisSessionManager.validateApiKey(
-                apiKey as string,
-                session.data.apiKeyHash
-            );
-
-            if (!apiKeyMatches) {
-                console.log(`[${new Date().toISOString()}] API key changed for session ${sessionId}, recreating...`);
-
-                // Close old session
-                session.transport.close();
-                localSessionCache.delete(sessionId);
-
-                // Create new session data with hash
-                const newSessionData: SessionData = {
-                    sessionId,
-                    apiKeyHash: RedisSessionManager.hashApiKey(apiKey as string),
-                    collection,
-                    baseUrl,
-                    createdAt: Date.now(),
-                    lastAccessedAt: Date.now(),
-                    clientIP,
-                    userAgent
-                };
-
-                // Store in Redis
-                await sessionManager.setSession(newSessionData, true);
-
-                // Create new session objects
-                session = await createSessionObjects(newSessionData, apiKey as string);
-                localSessionCache.set(sessionId, session);
-            } else {
-                // Security: Validate session binding
-                if (session.data.clientIP && session.data.clientIP !== clientIP) {
-                    console.warn(`[${new Date().toISOString()}] Session hijacking attempt detected: IP mismatch for ${sessionId}`);
-                    res.status(403).json({
-                        jsonrpc: '2.0',
-                        error: {
-                            code: -32003,
-                            message: 'Session validation failed: Client identity mismatch',
-                        },
-                        id: req.body.id || null
-                    });
-                    return;
+        if (!collectionHeader && !collectionEnv) {
+            let collectionList = '';
+            try {
+                const tmpClient = new AirweaveClient({ apiKey: credential, collection: '', baseUrl });
+                const collections = await tmpClient.listCollections(25);
+                if (collections.length > 0) {
+                    collectionList = '\n\nYour available collections:\n' +
+                        collections.map(c => `- ${c.name || c.readable_id} (${c.readable_id})`).join('\n');
                 }
+            } catch {
+                // listing failed — still return guidance without the list
             }
-        } else {
-            // Step 2: Not in local cache - check Redis (different pod or first request)
-            const sessionData = await sessionManager.getSession(sessionId);
 
-            if (sessionData) {
-                // Session exists in Redis but not in this pod's cache
-                console.log(`[${new Date().toISOString()}] Restoring session from Redis: ${sessionId}`);
+            res.status(200).json({
+                jsonrpc: '2.0',
+                result: {
+                    content: [{
+                        type: 'text',
+                        text: `No collection specified. Set the X-Collection-Readable-ID header or AIRWEAVE_COLLECTION env var.\n\nSee: https://docs.airweave.ai/mcp-server${collectionList}`,
+                    }],
+                },
+                id: req.body?.id || null,
+            });
+            return;
+        }
 
-                // Security: Validate API key matches
-                const apiKeyMatches = RedisSessionManager.validateApiKey(
-                    apiKey as string,
-                    sessionData.apiKeyHash
-                );
-
-                if (!apiKeyMatches) {
-                    console.log(`[${new Date().toISOString()}] API key mismatch for session ${sessionId}, recreating...`);
-
-                    // Update session data with new API key hash
-                    sessionData.apiKeyHash = RedisSessionManager.hashApiKey(apiKey as string);
-                    sessionData.lastAccessedAt = Date.now();
-                    sessionData.clientIP = clientIP;
-                    sessionData.userAgent = userAgent;
-                    await sessionManager.setSession(sessionData, false);
-                }
-
-                // Security: Validate session binding
-                if (sessionData.clientIP && sessionData.clientIP !== clientIP) {
-                    console.warn(`[${new Date().toISOString()}] Session hijacking attempt detected: IP mismatch for ${sessionId}`);
-                    res.status(403).json({
-                        jsonrpc: '2.0',
-                        error: {
-                            code: -32003,
-                            message: 'Session validation failed: Client identity mismatch',
-                        },
-                        id: req.body.id || null
-                    });
-                    return;
-                }
-
-                // Recreate server and transport from session data
-                session = await createSessionObjects(sessionData, apiKey as string);
-                localSessionCache.set(sessionId, session);
-            } else {
-                // Step 3: New session - check rate limit first
-                console.log(`[${new Date().toISOString()}] Creating new session: ${sessionId}`);
-
-                // Security: Check rate limit
-                const rateLimit = await sessionManager.checkRateLimit(apiKey as string);
-                if (!rateLimit.allowed) {
-                    console.warn(`[${new Date().toISOString()}] Rate limit exceeded for API key (${rateLimit.count} sessions/hour)`);
-                    res.status(429).json({
-                        jsonrpc: '2.0',
-                        error: {
-                            code: -32002,
-                            message: 'Too many sessions created. Please try again later.',
-                            data: {
-                                limit: 100,
-                                current: rateLimit.count,
-                                retryAfter: 3600
-                            }
-                        },
-                        id: req.body.id || null
-                    });
-                    return;
-                }
-
-                const newSessionData: SessionData = {
-                    sessionId,
-                    apiKeyHash: RedisSessionManager.hashApiKey(apiKey as string),
-                    collection,
-                    baseUrl,
-                    createdAt: Date.now(),
-                    lastAccessedAt: Date.now(),
-                    clientIP,
-                    userAgent
-                };
-
-                // Store in Redis
-                await sessionManager.setSession(newSessionData, true);
-
-                // Create session objects
-                session = await createSessionObjects(newSessionData, apiKey as string);
-                localSessionCache.set(sessionId, session);
+        let organizationId: string | undefined;
+        if (isOAuth) {
+            try {
+                organizationId = await resolveOrganizationForCollection(credential, baseUrl, collection);
+                console.log(`[${new Date().toISOString()}] Resolved org=${organizationId} for collection=${collection}`);
+            } catch (err) {
+                console.error(`[${new Date().toISOString()}] Org resolution failed:`, err);
+                res.status(400).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32002,
+                        message: err instanceof Error ? err.message : 'Organization resolution failed',
+                    },
+                    id: req.body?.id || null
+                });
+                return;
             }
         }
 
-        // Handle the request with the session's transport
-        await session.transport.handleRequest(req, res, req.body);
+        const config: AirweaveConfig = { apiKey: credential, collection, baseUrl, organizationId };
+        const server = createMcpServer(config);
+
+        const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined
+        });
+
+        await server.connect(transport);
+        await transport.handleRequest(req as ReqWithAuth, res, req.body);
+
+        trackMcpRequest(credential, {
+            method,
+            collection,
+            responseTimeMs: Date.now() - startTime
+        });
+
+        res.on('close', async () => {
+            try {
+                await transport.close();
+                await server.close();
+            } catch (err) {
+                console.error(`[${new Date().toISOString()}] Error during cleanup:`, err);
+            }
+        });
 
     } catch (error) {
         console.error(`[${new Date().toISOString()}] Error handling MCP request:`, error);
+        trackMcpError(extractApiKey(req), {
+            errorCode: -32603,
+            errorMessage: error instanceof Error ? error.message : 'Internal server error'
+        });
         if (!res.headersSent) {
             res.status(500).json({
                 jsonrpc: '2.0',
@@ -351,44 +296,17 @@ app.post('/mcp', async (req, res) => {
                     code: -32603,
                     message: 'Internal server error',
                 },
-                id: req.body.id || null
+                id: req.body?.id || null
             });
         }
     }
 });
 
-// DELETE endpoint for session termination
-app.delete('/mcp', async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'] as string;
-
-    if (!sessionId) {
-        res.status(400).json({
-            jsonrpc: '2.0',
-            error: {
-                code: -32000,
-                message: 'Bad Request: No session ID provided',
-            },
-            id: null
-        });
-        return;
-    }
-
-    // Close the session if it exists locally
-    const session = localSessionCache.get(sessionId);
-    if (session) {
-        console.log(`[${new Date().toISOString()}] Terminating session: ${sessionId}`);
-        session.transport.close();
-        localSessionCache.delete(sessionId);
-    }
-
-    // Delete from Redis (works across all pods)
-    await sessionManager.deleteSession(sessionId);
-
+// DELETE endpoint - no-op in stateless mode, return success for protocol compliance
+app.delete('/mcp', (req, res) => {
     res.status(200).json({
         jsonrpc: '2.0',
-        result: {
-            message: 'Session terminated successfully'
-        },
+        result: { message: 'Session terminated (stateless mode)' },
         id: null
     });
 });
@@ -408,69 +326,44 @@ app.use((error: Error, req: express.Request, res: express.Response, next: expres
     }
 });
 
-// Initialize and start server
+// Start server
 async function startServer() {
     const PORT = process.env.PORT || 8080;
     const collection = process.env.AIRWEAVE_COLLECTION || 'default';
-    const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
+    const baseUrl = process.env.AIRWEAVE_BASE_URL || DEFAULT_BASE_URL;
 
-    try {
-        // Connect to Redis
-        console.log('🔌 Connecting to Redis...');
-        await sessionManager.connect();
-        console.log('✅ Redis connected');
-
-        // Start HTTP server
-        const server = app.listen(PORT, () => {
-            console.log(`\n🚀 Airweave MCP Search Server (Streamable HTTP) started`);
-            console.log(`📡 Protocol: MCP 2025-03-26`);
-            console.log(`🔗 Endpoint: http://localhost:${PORT}/mcp`);
-            console.log(`🏥 Health: http://localhost:${PORT}/health`);
-            console.log(`📋 Info: http://localhost:${PORT}/`);
-            console.log(`📚 Collection: ${collection}`);
-            console.log(`🌐 Base URL: ${baseUrl}`);
-            console.log(`💾 Session Storage: Redis (stateless, horizontally scalable)`);
-            console.log(`\n🔑 Authentication required: Provide your Airweave API key via:`);
-            console.log(`   - Authorization: Bearer <your-api-key>`);
-            console.log(`   - X-API-Key: <your-api-key>`);
-            console.log(`   - Query parameter: ?apiKey=your-key`);
-        });
-
-        // Graceful shutdown
-        const shutdown = async (signal: string) => {
-            console.log(`\n${signal} received. Shutting down gracefully...`);
-
-            // Close HTTP server
-            server.close(() => {
-                console.log('HTTP server closed');
-            });
-
-            // Close all local sessions
-            console.log(`Closing ${localSessionCache.size} local sessions...`);
-            for (const [sessionId, session] of localSessionCache.entries()) {
-                try {
-                    session.transport.close();
-                } catch (err) {
-                    console.error(`Error closing session ${sessionId}:`, err);
-                }
-            }
-            localSessionCache.clear();
-
-            // Disconnect from Redis
-            await sessionManager.disconnect();
-            console.log('Redis disconnected');
-
-            process.exit(0);
-        };
-
-        process.on('SIGTERM', () => shutdown('SIGTERM'));
-        process.on('SIGINT', () => shutdown('SIGINT'));
-
-    } catch (error) {
-        console.error('Failed to start server:', error);
-        process.exit(1);
+    if (oauthEnabled) {
+        await ensureRedisReady();
     }
+
+    initPostHog();
+
+    const server = app.listen(PORT, () => {
+        console.log(`Airweave MCP Search Server v${VERSION} (Streamable HTTP) started`);
+        console.log(`Protocol: MCP 2025-03-26 | Mode: stateless`);
+        console.log(`Endpoint: http://localhost:${PORT}/mcp`);
+        console.log(`Health: http://localhost:${PORT}/health`);
+        console.log(`Default collection: ${collection} | Base URL: ${baseUrl}`);
+        if (oauthEnabled) {
+            console.log('OAuth enabled with mcpAuthRouter');
+        }
+    });
+
+    const shutdown = async (signal: string) => {
+        console.log(`${signal} received. Shutting down...`);
+        await shutdownPostHog();
+        await disconnectRedis();
+        server.close(() => {
+            console.log('HTTP server closed');
+            process.exit(0);
+        });
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-// Start the server
-startServer().catch(console.error);
+startServer().catch((error) => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+});

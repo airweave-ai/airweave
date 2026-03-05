@@ -12,6 +12,8 @@ description: "Todoist integration with Airweave"
   <h1 style={{ margin: 0 }}>Todoist</h1>
 </div>
 
+This connector enables AI agents and RAG systems to retrieve context from Todoist through Airweave's unified search layer.
+
 ## Configuration
 
 Todoist source connector integrates with the Todoist REST API to extract task data.
@@ -55,6 +57,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| project_id | str | Todoist project ID. |
+| project_name | str | Display name of the project. |
+| created_time | datetime | When the project snapshot was created. |
+| updated_time | datetime | When the project snapshot was updated. |
+| web_url_value | Optional[str] | URL to open the project in Todoist. |
 | color | Optional[str] | Color of the project (e.g., 'grey', 'blue') |
 | comment_count | int | Number of comments in the project |
 | order | int | Project order in the project list |
@@ -76,6 +83,8 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| section_id | str | Todoist section ID. |
+| section_name | str | Display name of the section. |
 | project_id | str | ID of the project this section belongs to |
 | order | int | Section order in the project |
 
@@ -89,7 +98,11 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| task_id | str | Todoist task ID. |
 | content | str | The task content/title |
+| created_time | datetime | When the task was created. |
+| updated_time | datetime | Last update timestamp for the task. |
+| web_url_value | Optional[str] | URL to open the task in Todoist. |
 | description | Optional[str] | Optional detailed description of the task |
 | comment_count | int | Number of comments on the task |
 | is_completed | bool | Whether the task is completed |
@@ -122,9 +135,10 @@ Reference:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| comment_id | str | Todoist comment ID. |
 | task_id | str | ID of the task this comment belongs to |
-| content | Optional[str] | The comment content |
-| posted_at | Any | When the comment was posted |
+| content | str | The comment content |
+| posted_at | datetime | When the comment was posted |
 
 </Accordion>
 

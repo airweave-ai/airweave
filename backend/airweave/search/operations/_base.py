@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, List, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, List, TypeVar
 
 from airweave.api.context import ApiContext
 from airweave.search.context import SearchContext
 from airweave.search.providers._base import BaseProvider
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 T = TypeVar("T")
 
@@ -20,20 +23,20 @@ class SearchOperation(ABC):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Execute the operation."""
         pass
 
-    def _report_metrics(self, state: dict[str, Any], **metrics: Any) -> None:
+    def _report_metrics(self, state: "SearchState", **metrics: Any) -> None:
         """Report operation-specific metrics for analytics tracking.
 
         This helper allows operations to report custom metrics that will be
         automatically collected by the orchestrator and sent to PostHog.
 
         Args:
-            state: Shared state dictionary
+            state: Shared SearchState instance
             **metrics: Key-value pairs of metrics to report
 
         Example:
@@ -44,12 +47,10 @@ class SearchOperation(ABC):
             )
         """
         op_name = self.__class__.__name__
-        if "_operation_metrics" not in state:
-            state["_operation_metrics"] = {}
-        if op_name not in state["_operation_metrics"]:
-            state["_operation_metrics"][op_name] = {}
+        if op_name not in state.operation_metrics:
+            state.operation_metrics[op_name] = {}
 
-        state["_operation_metrics"][op_name].update(metrics)
+        state.operation_metrics[op_name].update(metrics)
 
     async def _execute_with_provider_fallback(
         self,
@@ -57,7 +58,7 @@ class SearchOperation(ABC):
         operation_call: Callable[[BaseProvider], Any],
         operation_name: str,
         ctx: ApiContext,
-        state: dict[str, Any] | None = None,
+        state: "SearchState | None" = None,
     ) -> T:
         """Execute an operation with provider fallback on retryable errors.
 
@@ -70,7 +71,7 @@ class SearchOperation(ABC):
             operation_call: Async callable that takes a provider and returns the result
             operation_name: Name of the operation for logging
             ctx: API context for logging
-            state: Optional state dict to track provider usage for analytics
+            state: Optional SearchState to track provider usage for analytics
 
         Returns:
             Result from the provider call
@@ -90,9 +91,7 @@ class SearchOperation(ABC):
 
                 # Track successful provider for analytics
                 if state is not None:
-                    if "_provider_usage" not in state:
-                        state["_provider_usage"] = {}
-                    state["_provider_usage"][operation_name] = provider.__class__.__name__
+                    state.provider_usage[operation_name] = provider.__class__.__name__
 
                 if i > 0:
                     ctx.logger.info(

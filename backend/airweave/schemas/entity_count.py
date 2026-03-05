@@ -4,20 +4,17 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class EntityCountBase(BaseModel):
     """Base schema for EntityCount."""
 
     sync_id: UUID
-    entity_definition_id: UUID
+    entity_definition_short_name: str
     count: int
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EntityCountCreate(EntityCountBase):
@@ -37,23 +34,21 @@ class EntityCount(EntityCountBase):
 
     id: UUID
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EntityCountWithDefinition(BaseModel):
-    """Entity count with entity definition details."""
+    """Entity count with entity definition details.
+
+    After the entity_definition table elimination, name/type/description
+    are populated from the in-memory registry or derived from the short_name.
+    """
 
     count: int
-    entity_definition_id: UUID
+    entity_definition_short_name: str
     entity_definition_name: str
     entity_definition_type: str
     entity_definition_description: Optional[str] = None
     modified_at: datetime
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

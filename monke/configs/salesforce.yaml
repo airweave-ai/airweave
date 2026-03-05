@@ -1,11 +1,13 @@
 name: "salesforce_test"
-description: "End-to-end test for Salesforce Contacts via Monke"
+description: "End-to-end test for Salesforce Contacts via Monke (Composio auth)"
 connector:
   name: "Salesforce"
   type: "salesforce"
-  auth_mode: direct
+  auth_mode: composio
+  composio_config:
+    auth_config_id: "ac_iqGd05R_CF9l"
+    account_id: "ca_F48tk4JYURvO"
   config_fields:
-    instance_url: "${SALESFORCE_INSTANCE_URL}"
     openai_model: "gpt-4.1-mini"
     rate_limit_delay_ms: 200
 test_flow:
