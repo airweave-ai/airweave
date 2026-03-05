@@ -233,7 +233,7 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
         sync_job_id = await self._dispatch_sync(
             db,
             source_connection_id,
-            SyncConfig.default(),
+            SyncConfig.targeted_content(),
             "targeted_content",
             ctx,
         )

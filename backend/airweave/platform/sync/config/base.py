@@ -47,11 +47,11 @@ class BehaviorConfig(BaseModel):
         False, description="Replay from ARF storage instead of calling source"
     )
     skip_guardrails: bool = Field(False, description="Skip usage guardrails (entity count checks)")
-    metadata_only: bool = Field(
-        False, description="Skip file downloads, just yield metadata + ACLs"
-    )
     skip_entity_processing: bool = Field(
         False, description="Skip entity processing and orphan cleanup (ACL-only sync)"
+    )
+    skip_acl_sync: bool = Field(
+        False, description="Skip access control membership sync (targeted content sync)"
     )
 
 
@@ -152,6 +152,18 @@ class SyncConfig(BaseSettings):
             ),
             cursor=CursorConfig(skip_load=True, skip_updates=True),
             behavior=BehaviorConfig(skip_hash_comparison=True, replay_from_arf=True),
+        )
+
+    @classmethod
+    def targeted_content(cls) -> "SyncConfig":
+        """Targeted content sync: process entities but skip ACL sync.
+
+        Used after browse tree node selection — ACL was already synced separately.
+        """
+        return cls(
+            behavior=BehaviorConfig(
+                skip_acl_sync=True,
+            ),
         )
 
     @classmethod

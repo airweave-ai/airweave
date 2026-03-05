@@ -40,6 +40,10 @@ AD_SEARCH_BASE = "DC=AIRWEAVE-SP2019,DC=local"
 ADMIN_SP_USERNAME = "SP_Admin"
 ADMIN_SP_PASSWORD = "FOKVgLLhxvyvPwFmY#"
 
+# User principals for search-as-user verification
+FULL_ACCESS_USER = "sp_admin"  # Member of site owner/member groups — sees everything
+LIMITED_ACCESS_USER = "hr_demo"  # Member of Demo HR Readers only — sees subset
+
 # Collection name for this test
 COLLECTION_NAME = "Browse Tree V2 Test"
 
@@ -267,30 +271,59 @@ async def step4_select_nodes(
 # ---------------------------------------------------------------------------
 
 
-async def step5_search(client: httpx.AsyncClient, collection_id: str, sc_id: str) -> None:
-    """Search within SC's synced data."""
-    print("\n" + "#" * 60)
-    print("STEP 5: Search scoped to SC")
-    print("#" * 60)
-
+async def search_as_user(
+    client: httpx.AsyncClient, collection_id: str, user_principal: str, query: str
+) -> list[dict[str, Any]]:
+    """Search as a specific user and return results."""
     data = await api(
         client,
         "POST",
-        f"/collections/{collection_id}/search",
+        f"/admin/collections/{collection_id}/search/as-user",
+        params={"user_principal": user_principal, "destination": "vespa"},
         json={
-            "query": "quarterly report",
-            "source_connection_ids": [sc_id],
-            "generate_answer": False,
+            "query": query,
+            "limit": 50,
+            "expand_query": False,
+            "interpret_filters": False,
             "rerank": False,
+            "generate_answer": False,
         },
     )
+    return data.get("results", [])
 
-    results = data.get("results", [])
-    print(f"\n  Found {len(results)} results")
-    for r in results[:5]:
+
+async def step5_search(client: httpx.AsyncClient, collection_id: str) -> None:
+    """Search as different users to verify access control."""
+    print("\n" + "#" * 60)
+    print("STEP 5: Search-as-user (access control verification)")
+    print("#" * 60)
+
+    query = "Calendar Standup"
+
+    # 5a: Search as full-access user — should see all entities
+    print(f"\n  --- 5a: Search as {FULL_ACCESS_USER} (full access) ---")
+    admin_results = await search_as_user(client, collection_id, FULL_ACCESS_USER, query)
+    print(f"\n  {FULL_ACCESS_USER} sees {len(admin_results)} results:")
+    for r in admin_results[:10]:
         print(f"    - {r.get('name', 'untitled')} (score={r.get('score', 'N/A')})")
-    if len(results) > 5:
-        print(f"    ... and {len(results) - 5} more")
+
+    # 5b: Search as limited-access user — should see fewer or no entities
+    print(f"\n  --- 5b: Search as {LIMITED_ACCESS_USER} (limited access) ---")
+    limited_results = await search_as_user(client, collection_id, LIMITED_ACCESS_USER, query)
+    print(f"\n  {LIMITED_ACCESS_USER} sees {len(limited_results)} results:")
+    for r in limited_results[:10]:
+        print(f"    - {r.get('name', 'untitled')} (score={r.get('score', 'N/A')})")
+
+    # Summary
+    print("\n  --- Access control summary ---")
+    print(f"    {FULL_ACCESS_USER:20s} (full):    {len(admin_results)} results")
+    print(f"    {LIMITED_ACCESS_USER:20s} (limited): {len(limited_results)} results")
+    if len(admin_results) > len(limited_results):
+        print("    ✓ Access control is filtering correctly")
+    elif len(admin_results) == len(limited_results) == 0:
+        print("    ⚠ No results for either user — check if entities were synced")
+    else:
+        print("    ⚠ Both users see same results — check ACL data")
 
 
 # ---------------------------------------------------------------------------
@@ -328,8 +361,8 @@ async def main() -> None:
         # Step 4: Select nodes → auto-triggers targeted sync
         await step4_select_nodes(client, sc_id, source_node_ids)
 
-        # Step 5: Search scoped to SC
-        await step5_search(client, collection_id, sc_id)
+        # Step 5: Search as different users to verify access control
+        await step5_search(client, collection_id)
 
     print("\n" + "=" * 60)
     print("DONE")

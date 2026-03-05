@@ -335,13 +335,6 @@ class BaseSource:
         """
         raise NotImplementedError(f"{self.__class__.__name__} does not support browse tree")
 
-    def set_metadata_only(self, flag: bool) -> None:
-        """Set metadata-only mode (skip file downloads during sync).
-
-        Override in sources that support metadata-only mode.
-        """
-        pass
-
     def set_node_selections(self, selections: list) -> None:
         """Set node selections for targeted sync.
 

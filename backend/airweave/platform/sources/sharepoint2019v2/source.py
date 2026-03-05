@@ -165,8 +165,7 @@ class SharePoint2019V2Source(BaseSource):
         # These are AD groups directly assigned to items, not via SP site groups
         instance._item_level_ad_groups: set = set()
 
-        # Browse tree support: metadata-only sync and targeted sync
-        instance._metadata_only: bool = False
+        # Browse tree support: targeted sync via node selections
         instance._node_selections: Optional[List[NodeSelectionData]] = None
 
         return instance
@@ -188,10 +187,6 @@ class SharePoint2019V2Source(BaseSource):
                 self._ad_search_base,
             ]
         )
-
-    def set_metadata_only(self, flag: bool) -> None:
-        """Set metadata-only mode (skip file downloads)."""
-        self._metadata_only = flag
 
     def set_node_selections(self, selections: List[NodeSelectionData]) -> None:
         """Set node selections for targeted sync."""
@@ -556,12 +551,6 @@ class SharePoint2019V2Source(BaseSource):
         for entity in non_file_entities:
             yield entity
 
-        # In metadata_only mode, yield file entities without downloading content
-        if self._metadata_only:
-            for pf in pending_files:
-                yield pf.entity
-            return
-
         # Download files in parallel, then yield
         if pending_files:
             self.logger.debug(
@@ -731,7 +720,7 @@ class SharePoint2019V2Source(BaseSource):
 
                             # Collect items into batches for parallel file downloads
                             batch: List[Dict[str, Any]] = []
-                            item_page_size = 1000 if self._metadata_only else 100
+                            item_page_size = 100
                             async for item_meta in sp_client.discover_items(
                                 client,
                                 current_site_url,
@@ -1079,7 +1068,7 @@ class SharePoint2019V2Source(BaseSource):
 
         # Fetch all items in batches
         batch: List[Dict[str, Any]] = []
-        item_page_size = 1000 if self._metadata_only else 100
+        item_page_size = 100
         async for item_meta in sp_client.discover_items(
             client,
             site_url,
@@ -1155,12 +1144,6 @@ class SharePoint2019V2Source(BaseSource):
                     item_meta, site_url, list_id, breadcrumbs, ldap_client
                 )
                 self.logger.debug(f"File entity: {json.dumps(file_entity, indent=2, default=str)}")
-
-                # Skip download in metadata_only mode
-                if self._metadata_only:
-                    self._track_entity_ad_groups(file_entity)
-                    yield file_entity
-                    return
 
                 file_entity = await self._download_and_save_file(file_entity, client, site_url)
                 self._track_entity_ad_groups(file_entity)

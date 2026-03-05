@@ -39,21 +39,12 @@ class CleanupService:
         cleaned_count = 0
         failed_deletions: List[str] = []
 
-        metadata_only = (
-            sync_context.execution_config
-            and sync_context.execution_config.behavior
-            and sync_context.execution_config.behavior.metadata_only
-        )
-
         for entity in entities_to_clean:
             # Only clean up file entities
             if not isinstance(entity, FileEntity):
                 continue
 
-            # In metadata-only mode, files are never downloaded so local_path is expected to be None
             if not hasattr(entity, "local_path") or not entity.local_path:
-                if metadata_only:
-                    continue
                 raise SyncFailureError(
                     f"FileEntity {entity.__class__.__name__}[{entity.entity_id}] "
                     f"has no local_path after processing. This indicates download/save failed "

@@ -103,12 +103,7 @@ class SourceContextBuilder:
         # 4. Set cursor on source
         source.set_cursor(cursor)
 
-        # 5. Set metadata_only flag from execution config
-        if execution_config and execution_config.behavior.metadata_only:
-            source.set_metadata_only(True)
-            logger.info("Metadata-only mode enabled on source")
-
-        # 6. Load node selections if they exist for this source connection
+        # 5. Load node selections if they exist for this source connection
         source_connection_id = source_connection_data["source_connection_id"]
         node_selections = await cls._load_node_selections(db, source_connection_id, ctx)
         if node_selections:

@@ -101,15 +101,7 @@ class SyncOrchestrator:
                 self.sync_context.logger.info("⏭️ Skipping entity processing (disabled by config)")
 
             # Phase 2.5: Process access control memberships (if source supports it)
-            if self._source_supports_access_control():
-                phase_start = time.time()
-                self.sync_context.logger.info(
-                    "🚀 PHASE 2.5: Processing access control memberships..."
-                )
-                await self._process_access_control_memberships()
-                self.sync_context.logger.info(
-                    f"✅ PHASE 2.5 complete ({time.time() - phase_start:.2f}s)"
-                )
+            await self._run_acl_phase()
 
             # Phase 3: Cleanup orphaned entities (skip for ACL-only syncs)
             if not skip_entities:
@@ -487,6 +479,19 @@ class SyncOrchestrator:
                 "⏩ Skipping orphaned entity cleanup for INCREMENTAL sync "
                 "(cursor data exists, only changed entities are processed)"
             )
+
+    async def _run_acl_phase(self) -> None:
+        """Run Phase 2.5: access control membership sync (if applicable)."""
+        skip_acl = self.sync_context.execution_config.behavior.skip_acl_sync
+        if self._source_supports_access_control() and not skip_acl:
+            phase_start = time.time()
+            self.sync_context.logger.info("🚀 PHASE 2.5: Processing access control memberships...")
+            await self._process_access_control_memberships()
+            self.sync_context.logger.info(
+                f"✅ PHASE 2.5 complete ({time.time() - phase_start:.2f}s)"
+            )
+        elif skip_acl:
+            self.sync_context.logger.info("⏭️ Skipping ACL membership sync (disabled by config)")
 
     def _source_supports_access_control(self) -> bool:
         """Check if the source supports access control membership syncing."""
