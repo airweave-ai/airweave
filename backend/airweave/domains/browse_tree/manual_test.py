@@ -1,20 +1,15 @@
-"""Manual test script for the full browse tree + node selection + targeted sync flow.
+"""Manual test script for single-SC browse tree + node selection + targeted sync flow.
 
 Prerequisites:
 - Backend running at BASE_URL
 - SharePoint 2019 V2 source is registered
-- AD user hr_demo exists in Demo_HR_Team group
-- SP group Demo HR Readers has Read on HR_Tasks, HR_Announcements, HR_Calendar, HR_Discussion
-- All other lists are NOT accessible to hr_demo
 
-Flow:
-1. IT Admin (SP_Admin) creates SC1 (sync_immediately=false) — admin's source connection
+Flow (single SC):
+1. IT Admin creates SC1 (sync_immediately=false)
 2. IT Admin triggers ACL sync on SC1
-3. IT Admin triggers metadata sync on SC1
-4. HR Admin (hr_demo) sees filtered tree — only HR_* lists visible
-5. HR Admin creates SC2 (own credentials, same collection, sync_immediately=false)
-6. HR Admin selects nodes → stored on SC2, sync auto-triggered
-7. Search scoped to SC2
+3. IT Admin browses tree (lazy-loaded from source API, unfiltered)
+4. IT Admin selects nodes → stored on SC1, targeted sync auto-triggered
+5. Search scoped to SC1
 """
 
 import asyncio
@@ -34,32 +29,25 @@ BASE_URL = "http://localhost:8001"
 SP_SITE_URL = "http://sharepoint-2019.demos.airweave.ai"
 SP_DOMAIN = "AIRWEAVE-SP2019"
 
-# Active Directory credentials (for SID resolution — shared by both SCs)
+# Active Directory credentials
 AD_USERNAME = "sp2019admin"
 AD_PASSWORD = "OEtJV0DenQDF21gug#"
 AD_DOMAIN = "AIRWEAVE-SP2019"
 AD_SERVER = "ldaps://108.143.169.156:636"
 AD_SEARCH_BASE = "DC=AIRWEAVE-SP2019,DC=local"
 
-# IT Admin credentials (full access — used for SC1: metadata + ACL sync)
+# IT Admin credentials (full access)
 ADMIN_SP_USERNAME = "SP_Admin"
 ADMIN_SP_PASSWORD = "FOKVgLLhxvyvPwFmY#"
 
-# HR Admin credentials (limited access — only HR_* lists via Demo HR Readers)
-HR_SP_USERNAME = "hr_demo"
-HR_SP_PASSWORD = "xK9mPwR2qJ7nL#"
-
 # Collection name for this test
-COLLECTION_NAME = "Browse Tree Test"
-
-# User principal for access filtering (the HR user browsing the tree)
-USER_PRINCIPAL = "user:hr_demo"
+COLLECTION_NAME = "Browse Tree V2 Test"
 
 # ---------------------------------------------------------------------------
-# Source connection payloads (admin vs HR user)
+# Source connection payload
 # ---------------------------------------------------------------------------
 
-_BASE_SC_PAYLOAD = {
+SC_PAYLOAD = {
     "short_name": "sharepoint2019v2",
     "config": {
         "site_url": SP_SITE_URL,
@@ -67,28 +55,10 @@ _BASE_SC_PAYLOAD = {
         "ad_search_base": AD_SEARCH_BASE,
     },
     "sync_immediately": False,
-}
-
-ADMIN_SC_PAYLOAD = {
-    **_BASE_SC_PAYLOAD,
     "authentication": {
         "credentials": {
             "sharepoint_username": ADMIN_SP_USERNAME,
             "sharepoint_password": ADMIN_SP_PASSWORD,
-            "sharepoint_domain": SP_DOMAIN,
-            "ad_username": AD_USERNAME,
-            "ad_password": AD_PASSWORD,
-            "ad_domain": AD_DOMAIN,
-        },
-    },
-}
-
-HR_SC_PAYLOAD = {
-    **_BASE_SC_PAYLOAD,
-    "authentication": {
-        "credentials": {
-            "sharepoint_username": HR_SP_USERNAME,
-            "sharepoint_password": HR_SP_PASSWORD,
             "sharepoint_domain": SP_DOMAIN,
             "ad_username": AD_USERNAME,
             "ad_password": AD_PASSWORD,
@@ -167,74 +137,58 @@ async def get_or_create_collection(client: httpx.AsyncClient) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Step 1: IT Admin creates SC1 (sync_immediately=false)
+# Step 1: Create SC (sync_immediately=false)
 # ---------------------------------------------------------------------------
 
 
-async def step1_create_admin_sc(client: httpx.AsyncClient, collection_id: str) -> str:
-    """Create admin source connection (SC1) without triggering sync."""
+async def step1_create_sc(client: httpx.AsyncClient, collection_id: str) -> str:
+    """Create source connection without triggering sync."""
     print("\n" + "#" * 60)
-    print("STEP 1: IT Admin creates SC1 (sync_immediately=false)")
+    print("STEP 1: Create SC (sync_immediately=false)")
     print("#" * 60)
 
     payload = {
-        **ADMIN_SC_PAYLOAD,
-        "name": "SP Admin (browse tree)",
+        **SC_PAYLOAD,
+        "name": "SP Admin (browse tree v2)",
         "readable_collection_id": collection_id,
     }
     data = await api(client, "POST", "/source-connections/", json=payload)
-    sc1_id = str(data["id"])
-    print(f"\n  -> SC1 = {sc1_id}")
-    return sc1_id
+    sc_id = str(data["id"])
+    print(f"\n  -> SC = {sc_id}")
+    return sc_id
 
 
 # ---------------------------------------------------------------------------
-# Step 2: IT Admin triggers ACL sync on SC1
+# Step 2: Trigger ACL sync
 # ---------------------------------------------------------------------------
 
 
-async def step2_acl_sync(client: httpx.AsyncClient, sc1_id: str) -> None:
+async def step2_acl_sync(client: httpx.AsyncClient, sc_id: str) -> None:
     """Trigger ACL-only sync to populate access_control_membership rows."""
     print("\n" + "#" * 60)
-    print("STEP 2: IT Admin triggers ACL sync on SC1")
+    print("STEP 2: Trigger ACL sync")
     print("#" * 60)
 
-    await api(client, "POST", f"/admin/source-connections/{sc1_id}/sync-acl")
-    await wait_for_sync(client, sc1_id, "ACL sync")
+    await api(client, "POST", f"/admin/source-connections/{sc_id}/sync-acl")
+    await wait_for_sync(client, sc_id, "ACL sync")
 
 
 # ---------------------------------------------------------------------------
-# Step 3: IT Admin triggers metadata sync on SC1
+# Step 3: Browse tree (lazy-loaded from source API)
 # ---------------------------------------------------------------------------
 
 
-async def step3_metadata_sync(client: httpx.AsyncClient, sc1_id: str) -> None:
-    """Trigger metadata-only sync to populate data_tree_node rows."""
+async def step3_browse_tree(client: httpx.AsyncClient, sc_id: str) -> list[str]:
+    """Browse the tree and return source_node_ids to select."""
     print("\n" + "#" * 60)
-    print("STEP 3: IT Admin triggers metadata sync on SC1")
+    print("STEP 3: Browse tree (lazy-loaded)")
     print("#" * 60)
 
-    await api(client, "POST", f"/admin/source-connections/{sc1_id}/sync-metadata")
-    await wait_for_sync(client, sc1_id, "metadata sync")
-
-
-# ---------------------------------------------------------------------------
-# Step 4: HR Admin sees filtered tree
-# ---------------------------------------------------------------------------
-
-
-async def step4_browse_tree(client: httpx.AsyncClient, sc1_id: str) -> list[str]:
-    """Browse the tree filtered by user access. Returns source_node_ids to select."""
-    print("\n" + "#" * 60)
-    print("STEP 4: HR Admin browses filtered tree")
-    print("#" * 60)
-
-    # Get root-level nodes filtered by user principal
+    # Get root-level nodes
     data = await api(
         client,
         "GET",
-        f"/source-connections/{sc1_id}/browse-tree",
-        params={"user_principal": USER_PRINCIPAL},
+        f"/admin/source-connections/{sc_id}/browse-tree",
     )
 
     nodes = data.get("nodes", [])
@@ -242,102 +196,81 @@ async def step4_browse_tree(client: httpx.AsyncClient, sc1_id: str) -> list[str]
     for node in nodes:
         marker = " [+]" if node["has_children"] else ""
         print(
-            f"    [{node['node_type']}] {node['title']}{marker} (id={node['source_node_id'][:40]})"
+            f"    [{node['node_type']}] {node['title']}{marker} (id={node['source_node_id'][:50]})"
         )
 
-    # Expand first expandable node to demo lazy loading
+    # Expand root site to demo lazy loading
     for node in nodes:
         if node["has_children"]:
             print(f"\n  Expanding: {node['title']}...")
             children_data = await api(
                 client,
                 "GET",
-                f"/source-connections/{sc1_id}/browse-tree",
-                params={
-                    "user_principal": USER_PRINCIPAL,
-                    "parent_id": node["id"],
-                },
+                f"/admin/source-connections/{sc_id}/browse-tree",
+                params={"parent_node_id": node["source_node_id"]},
             )
             child_nodes = children_data.get("nodes", [])
             print(f"  Children ({len(child_nodes)}):")
             for child in child_nodes[:10]:
+                marker = " [+]" if child["has_children"] else ""
                 print(
-                    f"    [{child['node_type']}] {child['title']} "
-                    f"(id={child['source_node_id'][:40]})"
+                    f"    [{child['node_type']}] {child['title']}{marker} "
+                    f"(id={child['source_node_id'][:50]})"
                 )
             if len(child_nodes) > 10:
                 print(f"    ... and {len(child_nodes) - 10} more")
+
+            # Select some list nodes for targeted sync
+            list_nodes = [n for n in child_nodes if n["node_type"] == "list"]
+            if list_nodes:
+                selected = [n["source_node_id"] for n in list_nodes[:3]]
+                print(f"\n  -> Selecting {len(selected)} list nodes for targeted sync")
+                return selected
             break
 
-    # Select all root nodes (in a real UI, user would pick specific nodes)
-    source_node_ids = [n["source_node_id"] for n in nodes]
-    print(f"\n  -> Selecting {len(source_node_ids)} root nodes for targeted sync")
-    return source_node_ids
+    # Fallback: select root node
+    if nodes:
+        return [nodes[0]["source_node_id"]]
+    return []
 
 
 # ---------------------------------------------------------------------------
-# Step 5: HR Admin creates SC2 (own credentials, same collection)
+# Step 4: Select nodes → auto-trigger targeted sync
 # ---------------------------------------------------------------------------
 
 
-async def step5_create_user_sc(client: httpx.AsyncClient, collection_id: str) -> str:
-    """Create user source connection (SC2) without triggering sync."""
-    print("\n" + "#" * 60)
-    print("STEP 5: HR Admin creates SC2 (sync_immediately=false)")
-    print("#" * 60)
-
-    payload = {
-        **HR_SC_PAYLOAD,
-        "name": "SP HR Workspace",
-        "readable_collection_id": collection_id,
-    }
-    data = await api(client, "POST", "/source-connections/", json=payload)
-    sc2_id = str(data["id"])
-    print(f"\n  -> SC2 = {sc2_id}")
-    return sc2_id
-
-
-# ---------------------------------------------------------------------------
-# Step 6: HR Admin selects nodes → auto-triggers targeted sync
-# ---------------------------------------------------------------------------
-
-
-async def step6_select_nodes(
+async def step4_select_nodes(
     client: httpx.AsyncClient,
-    sc1_id: str,
-    sc2_id: str,
+    sc_id: str,
     source_node_ids: list[str],
 ) -> None:
-    """Submit node selections on SC2 and auto-trigger targeted sync."""
+    """Submit node selections and auto-trigger targeted sync."""
     print("\n" + "#" * 60)
-    print("STEP 6: HR Admin selects nodes (auto-triggers targeted sync)")
+    print("STEP 4: Select nodes (auto-triggers targeted sync)")
     print("#" * 60)
 
     data = await api(
         client,
         "POST",
-        f"/source-connections/{sc2_id}/browse-tree/select",
-        json={
-            "admin_source_connection_id": sc1_id,
-            "source_node_ids": source_node_ids,
-        },
+        f"/admin/source-connections/{sc_id}/browse-tree/select",
+        json={"source_node_ids": source_node_ids},
     )
 
     print(f"\n  Selections stored: {data['selections_count']}")
     print(f"  Sync job triggered: {data['sync_job_id']}")
 
-    await wait_for_sync(client, sc2_id, "targeted content sync")
+    await wait_for_sync(client, sc_id, "targeted content sync")
 
 
 # ---------------------------------------------------------------------------
-# Step 7: Search scoped to SC2
+# Step 5: Search scoped to SC
 # ---------------------------------------------------------------------------
 
 
-async def step7_search(client: httpx.AsyncClient, collection_id: str, sc2_id: str) -> None:
-    """Search within SC2's synced data."""
+async def step5_search(client: httpx.AsyncClient, collection_id: str, sc_id: str) -> None:
+    """Search within SC's synced data."""
     print("\n" + "#" * 60)
-    print("STEP 7: Search scoped to SC2")
+    print("STEP 5: Search scoped to SC")
     print("#" * 60)
 
     data = await api(
@@ -346,7 +279,7 @@ async def step7_search(client: httpx.AsyncClient, collection_id: str, sc2_id: st
         f"/collections/{collection_id}/search",
         json={
             "query": "quarterly report",
-            "source_connection_ids": [sc2_id],
+            "source_connection_ids": [sc_id],
             "generate_answer": False,
             "rerank": False,
         },
@@ -366,51 +299,42 @@ async def step7_search(client: httpx.AsyncClient, collection_id: str, sc2_id: st
 
 
 async def main() -> None:
-    """Run the full browse tree + node selection + targeted sync flow."""
+    """Run the single-SC browse tree + node selection + targeted sync flow."""
     print("=" * 60)
-    print("Browse Tree + Node Selection + Targeted Sync — Full Flow")
+    print("Browse Tree V2 — Single-SC Flow")
     print("=" * 60)
-    print(f"  SP Site:      {SP_SITE_URL}")
-    print(f"  AD Server:    {AD_SERVER}")
-    print(f"  IT Admin:     {ADMIN_SP_USERNAME}")
-    print(f"  HR User:      {HR_SP_USERNAME}")
-    print(f"  User filter:  {USER_PRINCIPAL}")
+    print(f"  SP Site:   {SP_SITE_URL}")
+    print(f"  AD Server: {AD_SERVER}")
+    print(f"  Admin:     {ADMIN_SP_USERNAME}")
     print()
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         # Setup: get or create collection
         collection_id = await get_or_create_collection(client)
 
-        # Step 1: IT Admin creates admin SC
-        sc1_id = await step1_create_admin_sc(client, collection_id)
+        # Step 1: Create SC
+        sc_id = await step1_create_sc(client, collection_id)
 
-        # Step 2: IT Admin triggers ACL sync
-        await step2_acl_sync(client, sc1_id)
+        # Step 2: Trigger ACL sync
+        await step2_acl_sync(client, sc_id)
 
-        # Step 3: IT Admin triggers metadata sync
-        await step3_metadata_sync(client, sc1_id)
-
-        # Step 4: HR Admin browses filtered tree, picks nodes
-        source_node_ids = await step4_browse_tree(client, sc1_id)
+        # Step 3: Browse tree, pick nodes
+        source_node_ids = await step3_browse_tree(client, sc_id)
 
         if not source_node_ids:
             print("\nNo nodes found in tree — nothing to select. Exiting.")
             return
 
-        # Step 5: HR Admin creates their own SC
-        sc2_id = await step5_create_user_sc(client, collection_id)
+        # Step 4: Select nodes → auto-triggers targeted sync
+        await step4_select_nodes(client, sc_id, source_node_ids)
 
-        # Step 6: HR Admin selects nodes → auto-triggers targeted sync
-        await step6_select_nodes(client, sc1_id, sc2_id, source_node_ids)
-
-        # Step 7: Search scoped to HR workspace
-        await step7_search(client, collection_id, sc2_id)
+        # Step 5: Search scoped to SC
+        await step5_search(client, collection_id, sc_id)
 
     print("\n" + "=" * 60)
     print("DONE")
     print(f"  Collection: {collection_id}")
-    print(f"  Admin SC (SC1): {sc1_id}")
-    print(f"  User SC  (SC2): {sc2_id}")
+    print(f"  SC: {sc_id}")
     print("=" * 60)
 
 

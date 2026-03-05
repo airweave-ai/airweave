@@ -63,5 +63,4 @@ api_router.include_router(
     prefix="/admin/source-connections",
     tags=["browse-tree"],
 )
-api_router.include_router(browse_tree.router, prefix="/source-connections", tags=["browse-tree"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])

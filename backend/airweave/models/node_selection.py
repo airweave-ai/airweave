@@ -14,21 +14,21 @@ if TYPE_CHECKING:
 
 
 class NodeSelection(OrganizationBase):
-    """A user's selected node for targeted sync.
+    """A selected node for targeted sync.
 
     When a user picks nodes from the browse tree, each selection becomes
-    a NodeSelection row linked to the user's source connection. During sync,
+    a NodeSelection row linked to the source connection. During sync,
     the source reads these to do targeted fetches instead of a full crawl.
     """
 
     __tablename__ = "node_selection"
 
-    # User's source connection (NOT the admin's)
+    # Source connection that owns these selections
     source_connection_id: Mapped[UUID] = mapped_column(
         ForeignKey("source_connection.id", ondelete="CASCADE"), nullable=False
     )
 
-    # Matches DataTreeNode.source_node_id
+    # Encoded source node ID (e.g., "site:url", "list:url|guid")
     source_node_id: Mapped[str] = mapped_column(String(512), nullable=False)
     node_type: Mapped[str] = mapped_column(String(20), nullable=False)
     node_title: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)

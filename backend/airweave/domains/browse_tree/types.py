@@ -6,37 +6,24 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-class DataTreeNodeResponse(BaseModel):
-    """Response schema for a single data tree node."""
+class BrowseNode(BaseModel):
+    """Source-agnostic browse tree node returned by source.get_browse_children()."""
 
-    id: UUID
-    source_connection_id: UUID
-    parent_id: Optional[UUID] = None
-    node_type: str
-    source_node_id: str
+    source_node_id: str  # unique ID within source (SP GUID, composite key, etc.)
+    node_type: str  # site/list/folder/file/item
     title: str
     description: Optional[str] = None
     item_count: Optional[int] = None
-    node_metadata: Optional[Dict[str, Any]] = None
-    is_public: bool = False
     has_children: bool = False
-
-    model_config = {"from_attributes": True}
+    node_metadata: Optional[Dict[str, Any]] = None  # source-specific (url, base_template, etc.)
 
 
 class BrowseTreeResponse(BaseModel):
-    """Response schema for browse tree listing."""
+    """API response for browse tree."""
 
-    nodes: List[DataTreeNodeResponse]
-    parent_id: Optional[UUID] = None
+    nodes: List[BrowseNode]
+    parent_node_id: Optional[str] = None  # string (source node ID), not UUID
     total: int
-
-
-class MetadataSyncResponse(BaseModel):
-    """Response after triggering a metadata sync."""
-
-    sync_job_id: UUID
-    message: str = "Metadata sync started"
 
 
 class AclSyncResponse(BaseModel):
@@ -44,23 +31,6 @@ class AclSyncResponse(BaseModel):
 
     sync_job_id: UUID
     message: str = "ACL sync started"
-
-
-class DataTreeNodeCreate(BaseModel):
-    """Schema for creating/upserting a data tree node row."""
-
-    id: UUID
-    organization_id: UUID
-    source_connection_id: UUID
-    parent_id: Optional[UUID] = None
-    node_type: str
-    source_node_id: str
-    title: str
-    description: Optional[str] = None
-    item_count: Optional[int] = None
-    node_metadata: Optional[Dict[str, Any]] = None
-    access_viewers: Optional[List[str]] = None
-    is_public: bool = False
 
 
 class NodeSelectionData(BaseModel):
@@ -73,9 +43,9 @@ class NodeSelectionData(BaseModel):
 
 
 class NodeSelectionCreate(BaseModel):
-    """Request schema for creating a node selection."""
+    """Schema for creating a node selection."""
 
-    source_node_id: str = Field(..., description="Matches DataTreeNode.source_node_id")
+    source_node_id: str = Field(..., description="Source node ID from browse tree")
     node_type: str = Field(..., description="site/list/folder/file/item")
     node_title: Optional[str] = Field(None, description="Display snapshot")
     node_metadata: Optional[Dict[str, Any]] = Field(
@@ -86,16 +56,13 @@ class NodeSelectionCreate(BaseModel):
 class NodeSelectionRequest(BaseModel):
     """Request body for selecting nodes."""
 
-    admin_source_connection_id: UUID = Field(
-        ..., description="Admin SC that owns the browse tree (DataTreeNode rows)"
-    )
     source_node_ids: List[str] = Field(..., description="Source node IDs to select")
 
 
 class NodeSelectionResponse(BaseModel):
     """Response after submitting node selections and triggering sync."""
 
-    source_connection_id: UUID = Field(..., description="User's source connection ID")
+    source_connection_id: UUID = Field(..., description="Source connection ID")
     selections_count: int
     sync_job_id: UUID = Field(..., description="ID of the triggered sync job")
     message: str = "Node selections saved and sync triggered"

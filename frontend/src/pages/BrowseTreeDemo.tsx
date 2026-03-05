@@ -29,18 +29,14 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-interface TreeNode {
-  id: string;
-  source_connection_id: string;
-  parent_id: string | null;
-  node_type: string;
+interface BrowseNode {
   source_node_id: string;
+  node_type: string;
   title: string;
   description: string | null;
   item_count: number | null;
-  node_metadata: Record<string, any> | null;
-  is_public: boolean;
   has_children: boolean;
+  node_metadata: Record<string, any> | null;
 }
 
 interface SourceConnection {
@@ -83,9 +79,8 @@ const NODE_ICONS: Record<string, React.ElementType> = {
 
 const STEPS = [
   { number: 1, label: "Browse Tree" },
-  { number: 2, label: "Create User SC" },
-  { number: 3, label: "Select & Sync" },
-  { number: 4, label: "Search" },
+  { number: 2, label: "Select & Sync" },
+  { number: 3, label: "Search" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -158,16 +153,14 @@ function TreeNodeRow({
   isSelected,
   isExpanded,
   isLoading,
-  onToggle,
   onSelect,
   onExpand,
 }: {
-  node: TreeNode;
+  node: BrowseNode;
   depth: number;
   isSelected: boolean;
   isExpanded: boolean;
   isLoading: boolean;
-  onToggle: () => void;
   onSelect: () => void;
   onExpand: () => void;
 }) {
@@ -260,28 +253,15 @@ export default function BrowseTreeDemo() {
 
   // Step 1: Browse tree
   const [sourceConnections, setSourceConnections] = useState<SourceConnection[]>([]);
-  const [adminScId, setAdminScId] = useState("");
-  const [userPrincipal, setUserPrincipal] = useState("hr_demo");
-  const [treeNodes, setTreeNodes] = useState<Map<string | null, TreeNode[]>>(new Map());
+  const [scId, setScId] = useState("");
+  const [treeNodes, setTreeNodes] = useState<Map<string | null, BrowseNode[]>>(new Map());
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeLoaded, setTreeLoaded] = useState(false);
 
-  // Step 2: Create user SC
-  const [scName, setScName] = useState("SP HR Workspace");
-  const [spUsername, setSpUsername] = useState("hr_demo");
-  const [spPassword, setSpPassword] = useState("xK9mPwR2qJ7nL#");
-  const [spDomain, setSpDomain] = useState("AIRWEAVE-SP2019");
-  const [adUsername, setAdUsername] = useState("sp2019admin");
-  const [adPassword, setAdPassword] = useState("OEtJV0DenQDF21gug#");
-  const [adDomain, setAdDomain] = useState("AIRWEAVE-SP2019");
-  const [userScId, setUserScId] = useState("");
-  const [creatingUserSc, setCreatingUserSc] = useState(false);
-  const [userScCreated, setUserScCreated] = useState(false);
-
-  // Step 3: Select & Sync
+  // Step 2: Select & Sync
   const [syncing, setSyncing] = useState(false);
   const [syncJobId, setSyncJobId] = useState("");
   const [syncStatus, setSyncStatus] = useState("");
@@ -289,7 +269,7 @@ export default function BrowseTreeDemo() {
   const [syncDone, setSyncDone] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Step 4: Search
+  // Step 3: Search
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -305,7 +285,7 @@ export default function BrowseTreeDemo() {
       if (resp.ok) {
         const data = await resp.json();
         setSourceConnections(data);
-        if (data.length === 1) setAdminScId(data[0].id);
+        if (data.length === 1) setScId(data[0].id);
       }
     })();
   }, [readable_id]);
@@ -318,63 +298,62 @@ export default function BrowseTreeDemo() {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Step 1: Load tree
+  // Step 1: Load tree (lazy-loaded from source API)
   // ---------------------------------------------------------------------------
 
   const loadTree = useCallback(
-    async (parentId: string | null = null) => {
-      if (!adminScId) return;
+    async (parentNodeId: string | null = null) => {
+      if (!scId) return;
 
-      if (!parentId) {
+      if (!parentNodeId) {
         setTreeLoading(true);
         setTreeLoaded(false);
       } else {
-        setLoadingNodes((prev) => new Set(prev).add(parentId));
+        setLoadingNodes((prev) => new Set(prev).add(parentNodeId));
       }
 
       try {
         const params: Record<string, string> = {};
-        if (userPrincipal) params.user_principal = userPrincipal;
-        if (parentId) params.parent_id = parentId;
+        if (parentNodeId) params.parent_node_id = parentNodeId;
 
         const qs = new URLSearchParams(params).toString();
         const resp = await apiClient.get(
-          `/source-connections/${adminScId}/browse-tree${qs ? `?${qs}` : ""}`
+          `/admin/source-connections/${scId}/browse-tree${qs ? `?${qs}` : ""}`
         );
 
         if (resp.ok) {
           const data = await resp.json();
           setTreeNodes((prev) => {
             const next = new Map(prev);
-            next.set(parentId, data.nodes);
+            next.set(parentNodeId, data.nodes);
             return next;
           });
-          if (!parentId) setTreeLoaded(true);
+          if (!parentNodeId) setTreeLoaded(true);
         }
       } finally {
-        if (!parentId) setTreeLoading(false);
-        if (parentId)
+        if (!parentNodeId) setTreeLoading(false);
+        if (parentNodeId)
           setLoadingNodes((prev) => {
             const next = new Set(prev);
-            next.delete(parentId);
+            next.delete(parentNodeId);
             return next;
           });
       }
     },
-    [adminScId, userPrincipal]
+    [scId]
   );
 
   const handleExpand = useCallback(
-    (nodeId: string) => {
+    (sourceNodeId: string) => {
       setExpandedNodes((prev) => {
         const next = new Set(prev);
-        if (next.has(nodeId)) {
-          next.delete(nodeId);
+        if (next.has(sourceNodeId)) {
+          next.delete(sourceNodeId);
         } else {
-          next.add(nodeId);
+          next.add(sourceNodeId);
           // Load children if not already loaded
-          if (!treeNodes.has(nodeId)) {
-            loadTree(nodeId);
+          if (!treeNodes.has(sourceNodeId)) {
+            loadTree(sourceNodeId);
           }
         }
         return next;
@@ -396,91 +375,38 @@ export default function BrowseTreeDemo() {
   }, []);
 
   // Render tree recursively
-  const renderNodes = (parentId: string | null, depth: number): React.ReactNode => {
-    const nodes = treeNodes.get(parentId) || [];
+  const renderNodes = (parentNodeId: string | null, depth: number): React.ReactNode => {
+    const nodes = treeNodes.get(parentNodeId) || [];
     return nodes.map((node) => (
-      <div key={node.id}>
+      <div key={node.source_node_id}>
         <TreeNodeRow
           node={node}
           depth={depth}
           isSelected={selectedNodeIds.has(node.source_node_id)}
-          isExpanded={expandedNodes.has(node.id)}
-          isLoading={loadingNodes.has(node.id)}
-          onToggle={() => handleSelect(node.source_node_id)}
+          isExpanded={expandedNodes.has(node.source_node_id)}
+          isLoading={loadingNodes.has(node.source_node_id)}
           onSelect={() => handleSelect(node.source_node_id)}
-          onExpand={() => handleExpand(node.id)}
+          onExpand={() => handleExpand(node.source_node_id)}
         />
-        {expandedNodes.has(node.id) && renderNodes(node.id, depth + 1)}
+        {expandedNodes.has(node.source_node_id) &&
+          renderNodes(node.source_node_id, depth + 1)}
       </div>
     ));
   };
 
   // ---------------------------------------------------------------------------
-  // Step 2: Create user SC
-  // ---------------------------------------------------------------------------
-
-  const handleCreateUserSc = async () => {
-    if (!readable_id || !adminScId) return;
-    setCreatingUserSc(true);
-
-    try {
-      // Get admin SC details for config
-      const adminResp = await apiClient.get(`/source-connections/${adminScId}`);
-      if (!adminResp.ok) throw new Error("Failed to fetch admin SC details");
-      const adminSc = await adminResp.json();
-
-      const payload = {
-        name: scName,
-        short_name: adminSc.short_name,
-        readable_collection_id: readable_id,
-        config: adminSc.config_fields || {
-          site_url: "http://sharepoint-2019.demos.airweave.ai",
-          ad_server: "ldaps://108.143.169.156:636",
-          ad_search_base: "DC=AIRWEAVE-SP2019,DC=local",
-        },
-        sync_immediately: false,
-        authentication: {
-          credentials: {
-            sharepoint_username: spUsername,
-            sharepoint_password: spPassword,
-            sharepoint_domain: spDomain,
-            ad_username: adUsername,
-            ad_password: adPassword,
-            ad_domain: adDomain,
-          },
-        },
-      };
-
-      const resp = await apiClient.post("/source-connections/", payload);
-      if (resp.ok) {
-        const data = await resp.json();
-        setUserScId(data.id);
-        setUserScCreated(true);
-      } else {
-        const errText = await resp.text();
-        alert(`Failed to create user SC: ${errText}`);
-      }
-    } catch (err) {
-      alert(`Error: ${err}`);
-    } finally {
-      setCreatingUserSc(false);
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Step 3: Select & Sync
+  // Step 2: Select & Sync
   // ---------------------------------------------------------------------------
 
   const handleSelectAndSync = async () => {
-    if (!userScId || selectedNodeIds.size === 0) return;
+    if (!scId || selectedNodeIds.size === 0) return;
     setSyncing(true);
     setSyncStatus("submitting");
 
     try {
       const resp = await apiClient.post(
-        `/source-connections/${userScId}/browse-tree/select`,
+        `/admin/source-connections/${scId}/browse-tree/select`,
         {
-          admin_source_connection_id: adminScId,
           source_node_ids: Array.from(selectedNodeIds),
         }
       );
@@ -493,7 +419,7 @@ export default function BrowseTreeDemo() {
         // Start polling
         pollRef.current = setInterval(async () => {
           const jobResp = await apiClient.get(
-            `/source-connections/${userScId}/jobs`
+            `/source-connections/${scId}/jobs`
           );
           if (jobResp.ok) {
             const jobs: SyncJob[] = await jobResp.json();
@@ -529,7 +455,7 @@ export default function BrowseTreeDemo() {
   };
 
   // ---------------------------------------------------------------------------
-  // Step 4: Search
+  // Step 3: Search
   // ---------------------------------------------------------------------------
 
   const handleSearch = async () => {
@@ -541,7 +467,7 @@ export default function BrowseTreeDemo() {
         `/collections/${readable_id}/search`,
         {
           query: searchQuery,
-          source_connection_ids: userScId ? [userScId] : undefined,
+          source_connection_ids: scId ? [scId] : undefined,
           generate_answer: false,
           rerank: false,
         }
@@ -560,8 +486,8 @@ export default function BrowseTreeDemo() {
   // Render helpers
   // ---------------------------------------------------------------------------
 
-  const selectedNodes = (): TreeNode[] => {
-    const all: TreeNode[] = [];
+  const selectedNodes = (): BrowseNode[] => {
+    const all: BrowseNode[] = [];
     treeNodes.forEach((nodes) => {
       nodes.forEach((n) => {
         if (selectedNodeIds.has(n.source_node_id)) all.push(n);
@@ -618,7 +544,7 @@ export default function BrowseTreeDemo() {
       <StepIndicator currentStep={step} />
 
       {/* ============================================================ */}
-      {/* STEP 1: Browse Filtered Tree */}
+      {/* STEP 1: Browse Tree */}
       {/* ============================================================ */}
       {step === 1 && (
         <div
@@ -628,23 +554,23 @@ export default function BrowseTreeDemo() {
           )}
         >
           <h2 className="text-lg font-semibold mb-4">
-            Step 1: Browse Filtered Tree
+            Step 1: Browse Tree
           </h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Select the admin source connection and enter a user principal to see
-            the tree filtered by that user&apos;s access.
+            Select a source connection and browse its content tree. The tree is
+            lazy-loaded directly from the source API.
           </p>
 
-          {/* Admin SC selector */}
+          {/* SC selector */}
           <div className="flex gap-3 mb-4">
             <div className="flex-1">
               <label className="text-sm font-medium text-foreground block mb-1">
-                Admin Source Connection
+                Source Connection
               </label>
               <select
-                value={adminScId}
+                value={scId}
                 onChange={(e) => {
-                  setAdminScId(e.target.value);
+                  setScId(e.target.value);
                   setTreeLoaded(false);
                   setTreeNodes(new Map());
                   setExpandedNodes(new Set());
@@ -666,21 +592,10 @@ export default function BrowseTreeDemo() {
               </select>
             </div>
 
-            <div className="flex-1">
-              <label className="text-sm font-medium text-foreground block mb-1">
-                User Principal
-              </label>
-              <Input
-                value={userPrincipal}
-                onChange={(e) => setUserPrincipal(e.target.value)}
-                placeholder="e.g., user:hr_demo"
-              />
-            </div>
-
             <div className="flex items-end">
               <Button
                 onClick={() => loadTree(null)}
-                disabled={!adminScId || treeLoading}
+                disabled={!scId || treeLoading}
               >
                 {treeLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-1" />
@@ -706,7 +621,7 @@ export default function BrowseTreeDemo() {
               )}
             >
               <p className="text-muted-foreground">
-                No nodes found — metadata sync may still be running.
+                No nodes found. The source may not support browse tree.
               </p>
             </div>
           )}
@@ -739,7 +654,7 @@ export default function BrowseTreeDemo() {
       )}
 
       {/* ============================================================ */}
-      {/* STEP 2: Create User Source Connection */}
+      {/* STEP 2: Select & Sync */}
       {/* ============================================================ */}
       {step === 2 && (
         <div
@@ -749,138 +664,11 @@ export default function BrowseTreeDemo() {
           )}
         >
           <h2 className="text-lg font-semibold mb-4">
-            Step 2: Create User Source Connection
+            Step 2: Select Nodes & Trigger Sync
           </h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Create a source connection with the HR user&apos;s credentials. This
-            will be used for the targeted sync of selected nodes.
-          </p>
-
-          {userScCreated ? (
-            <div className="flex flex-col items-center py-6 gap-3">
-              <CheckCircle2 className="w-10 h-10 text-green-500" />
-              <p className="text-foreground font-medium">
-                User source connection created!
-              </p>
-              <code className="text-xs text-muted-foreground bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded">
-                ID: {userScId}
-              </code>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="text-sm font-medium block mb-1">Name</label>
-                <Input value={scName} onChange={(e) => setScName(e.target.value)} />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  SP Username
-                </label>
-                <Input
-                  value={spUsername}
-                  onChange={(e) => setSpUsername(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  SP Password
-                </label>
-                <Input
-                  type="password"
-                  value={spPassword}
-                  onChange={(e) => setSpPassword(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  SP Domain
-                </label>
-                <Input
-                  value={spDomain}
-                  onChange={(e) => setSpDomain(e.target.value)}
-                />
-              </div>
-
-              <div className="col-span-2 border-t pt-3 mt-1">
-                <p className="text-xs text-muted-foreground mb-3">
-                  Active Directory credentials (shared infrastructure)
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  AD Username
-                </label>
-                <Input
-                  value={adUsername}
-                  onChange={(e) => setAdUsername(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  AD Password
-                </label>
-                <Input
-                  type="password"
-                  value={adPassword}
-                  onChange={(e) => setAdPassword(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  AD Domain
-                </label>
-                <Input
-                  value={adDomain}
-                  onChange={(e) => setAdDomain(e.target.value)}
-                />
-              </div>
-
-              <div className="col-span-2 mt-2">
-                <Button
-                  onClick={handleCreateUserSc}
-                  disabled={creatingUserSc || !spUsername || !spPassword}
-                  className="w-full"
-                >
-                  {creatingUserSc ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                  ) : null}
-                  Create Source Connection
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between mt-4">
-            <Button variant="ghost" onClick={() => setStep(1)}>
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back
-            </Button>
-            <Button onClick={() => setStep(3)} disabled={!userScCreated}>
-              Next
-              <ArrowRight className="w-4 h-4 ml-1" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* STEP 3: Select & Sync */}
-      {/* ============================================================ */}
-      {step === 3 && (
-        <div
-          className={cn(
-            "w-full rounded-lg border p-6",
-            isDark ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"
-          )}
-        >
-          <h2 className="text-lg font-semibold mb-4">
-            Step 3: Select Nodes & Trigger Sync
-          </h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            The selected nodes will be saved on the user&apos;s source connection
-            and a targeted sync will be triggered automatically.
+            The selected nodes will be saved and a targeted sync will be
+            triggered automatically.
           </p>
 
           {/* Selected nodes summary */}
@@ -962,11 +750,11 @@ export default function BrowseTreeDemo() {
           )}
 
           <div className="flex items-center justify-between mt-4">
-            <Button variant="ghost" onClick={() => setStep(2)}>
+            <Button variant="ghost" onClick={() => setStep(1)}>
               <ArrowLeft className="w-4 h-4 mr-1" />
               Back
             </Button>
-            <Button onClick={() => setStep(4)} disabled={!syncDone}>
+            <Button onClick={() => setStep(3)} disabled={!syncDone}>
               Next
               <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
@@ -975,19 +763,18 @@ export default function BrowseTreeDemo() {
       )}
 
       {/* ============================================================ */}
-      {/* STEP 4: Search */}
+      {/* STEP 3: Search */}
       {/* ============================================================ */}
-      {step === 4 && (
+      {step === 3 && (
         <div
           className={cn(
             "w-full rounded-lg border p-6",
             isDark ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"
           )}
         >
-          <h2 className="text-lg font-semibold mb-4">Step 4: Search</h2>
+          <h2 className="text-lg font-semibold mb-4">Step 3: Search</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Search within the synced data, scoped to the user&apos;s source
-            connection.
+            Search within the synced data, scoped to the source connection.
           </p>
 
           <div className="flex gap-3 mb-4">
@@ -1047,7 +834,7 @@ export default function BrowseTreeDemo() {
           )}
 
           <div className="flex items-center justify-between mt-4">
-            <Button variant="ghost" onClick={() => setStep(3)}>
+            <Button variant="ghost" onClick={() => setStep(2)}>
               <ArrowLeft className="w-4 h-4 mr-1" />
               Back
             </Button>

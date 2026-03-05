@@ -44,7 +44,7 @@ from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
-from airweave.domains.browse_tree.repository import BrowseTreeRepository, NodeSelectionRepository
+from airweave.domains.browse_tree.repository import NodeSelectionRepository
 from airweave.domains.browse_tree.service import BrowseTreeService
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.collections.service import CollectionService
@@ -350,9 +350,9 @@ def create_container(settings: Settings) -> Container:
     # Browse tree service
     # -----------------------------------------------------------------
     browse_tree_service = BrowseTreeService(
-        tree_repo=BrowseTreeRepository(),
         selection_repo=NodeSelectionRepository(),
         sc_repo=source_deps["sc_repo"],
+        source_lifecycle=source_deps["source_lifecycle_service"],
         sync_repo=source_deps["sync_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
         collection_repo=source_deps["collection_repo"],

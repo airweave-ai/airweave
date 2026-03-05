@@ -1,4 +1,4 @@
-"""Browse tree service — business logic for metadata tree browsing and node selection."""
+"""Browse tree service — business logic for lazy-loaded browse tree and node selection."""
 
 from typing import List, Optional
 from uuid import UUID
@@ -11,68 +11,49 @@ from airweave.core.exceptions import NotFoundException
 from airweave.core.temporal_service import temporal_service
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.browse_tree.protocols import (
-    BrowseTreeRepositoryProtocol,
     BrowseTreeServiceProtocol,
     NodeSelectionRepositoryProtocol,
 )
 from airweave.domains.browse_tree.types import (
     AclSyncResponse,
+    BrowseNode,
     BrowseTreeResponse,
-    DataTreeNodeResponse,
-    MetadataSyncResponse,
     NodeSelectionCreate,
     NodeSelectionResponse,
 )
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
+from airweave.domains.sources.protocols import SourceLifecycleServiceProtocol
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncRepositoryProtocol
-from airweave.platform.access_control.broker import access_broker
 from airweave.platform.sync.config import SyncConfig
 from airweave.schemas.sync_job import SyncJobCreate, SyncJobStatus
 
 
 class BrowseTreeService(BrowseTreeServiceProtocol):
-    """Domain service for browse tree operations."""
+    """Domain service for browse tree operations.
+
+    Uses SourceLifecycleService to instantiate a source and call get_browse_children()
+    for lazy-loaded tree browsing from the source API.
+    """
 
     def __init__(  # noqa: D107
         self,
-        tree_repo: BrowseTreeRepositoryProtocol,
         selection_repo: NodeSelectionRepositoryProtocol,
         sc_repo: SourceConnectionRepositoryProtocol,
+        source_lifecycle: SourceLifecycleServiceProtocol,
         sync_repo: SyncRepositoryProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,
         collection_repo: CollectionRepositoryProtocol,
         conn_repo: ConnectionRepositoryProtocol,
     ) -> None:
-        self._tree_repo = tree_repo
         self._selection_repo = selection_repo
         self._sc_repo = sc_repo
+        self._source_lifecycle = source_lifecycle
         self._sync_repo = sync_repo
         self._sync_job_repo = sync_job_repo
         self._collection_repo = collection_repo
         self._conn_repo = conn_repo
-
-    async def trigger_metadata_sync(
-        self,
-        db: AsyncSession,
-        source_connection_id: UUID,
-        ctx: ApiContext,
-    ) -> MetadataSyncResponse:
-        """Trigger a metadata-only sync on a source connection.
-
-        Creates a sync job with SyncConfig.metadata_tree() and dispatches
-        to Temporal for execution. The sync will yield entities with metadata
-        + ACLs but skip file downloads and all expensive processing.
-        """
-        sync_job_id = await self._dispatch_sync(
-            db,
-            source_connection_id,
-            SyncConfig.metadata_tree(),
-            "metadata_tree",
-            ctx,
-        )
-        return MetadataSyncResponse(sync_job_id=sync_job_id)
 
     async def trigger_acl_sync(
         self,
@@ -103,10 +84,7 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
         sync_type: str,
         ctx: ApiContext,
     ) -> UUID:
-        """Load SC context, create a SyncJob with the given config, and dispatch to Temporal.
-
-        Returns the sync_job_id.
-        """
+        """Load SC context, create a SyncJob with the given config, and dispatch to Temporal."""
         sc = await self._sc_repo.get(db, source_connection_id, ctx)
         if not sc:
             raise NotFoundException(f"Source connection {source_connection_id} not found")
@@ -178,108 +156,80 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
         db: AsyncSession,
         source_connection_id: UUID,
         ctx: ApiContext,
-        parent_id: Optional[UUID] = None,
-        user_principal: Optional[str] = None,
+        parent_node_id: Optional[str] = None,
     ) -> BrowseTreeResponse:
-        """Get the browse tree, optionally filtered by user access.
+        """Instantiate source, call get_browse_children(), return response."""
+        try:
+            source = await self._source_lifecycle.create(db, source_connection_id, ctx)
+        except Exception as exc:
+            raise NotFoundException(
+                f"Failed to initialize source for browse tree (SC {source_connection_id}): {exc}"
+            ) from exc
 
-        If user_principal is provided, resolves their group memberships
-        and filters nodes by access_viewers overlap.
-        """
-        # Resolve user principals for access filtering
-        user_principals = None
-        if user_principal:
-            access_context = await access_broker.resolve_access_context(
-                db=db,
-                user_principal=user_principal,
-                organization_id=ctx.organization.id,
+        if not getattr(source, "supports_browse_tree", False):
+            raise NotFoundException(
+                f"Source {source.__class__.__name__} does not support browse tree"
             )
-            # all_principals returns Set[str]; convert to List[str] for the repo query
-            user_principals = list(access_context.all_principals)
 
-        nodes = await self._tree_repo.get_children(
-            db=db,
-            source_connection_id=source_connection_id,
-            organization_id=ctx.organization.id,
-            parent_id=parent_id,
-            user_principals=user_principals,
-        )
-
-        # Batch check which nodes have children
-        node_ids: list[UUID] = [n.id for n in nodes]  # type: ignore[misc]
-        children_map = await self._tree_repo.get_children_existence_map(db, node_ids)
-
-        response_nodes = [
-            DataTreeNodeResponse(
-                id=n.id,  # type: ignore[arg-type]
-                source_connection_id=n.source_connection_id,
-                parent_id=n.parent_id,
-                node_type=n.node_type,
-                source_node_id=n.source_node_id,
-                title=n.title,
-                description=n.description,
-                item_count=n.item_count,
-                node_metadata=n.node_metadata,
-                is_public=n.is_public,
-                has_children=children_map.get(n.id, False),  # type: ignore[call-overload]
-            )
-            for n in nodes
-        ]
+        nodes: List[BrowseNode] = await source.get_browse_children(parent_node_id)
 
         return BrowseTreeResponse(
-            nodes=response_nodes,
-            parent_id=parent_id,
-            total=len(response_nodes),
+            nodes=nodes,
+            parent_node_id=parent_node_id,
+            total=len(nodes),
         )
 
     async def select_nodes(
         self,
         db: AsyncSession,
         source_connection_id: UUID,
-        admin_source_connection_id: UUID,
         source_node_ids: List[str],
         ctx: ApiContext,
     ) -> NodeSelectionResponse:
-        """Submit node selections, store on user SC, and auto-trigger targeted sync.
+        """Store selections on SC, trigger targeted sync.
 
-        Looks up tree nodes on the admin SC (where DataTreeNode rows live),
-        stores NodeSelection rows on the user's SC, then dispatches a targeted
-        content sync on the user's SC.
+        1. Instantiate source to resolve full node metadata from source_node_ids
+        2. Atomically replace existing selections with new ones (single transaction)
+        3. Dispatch targeted sync on same SC
         """
-        # Verify user SC exists
-        user_sc = await self._sc_repo.get(db, source_connection_id, ctx)
-        if not user_sc:
+        sc = await self._sc_repo.get(db, source_connection_id, ctx)
+        if not sc:
             raise NotFoundException(f"Source connection {source_connection_id} not found")
 
-        # Look up tree nodes using ADMIN SC ID (tree nodes are keyed to admin SC)
-        tree_nodes = await self._tree_repo.get_nodes_by_source_node_ids(
-            db=db,
-            source_connection_id=admin_source_connection_id,
-            source_node_ids=source_node_ids,
-        )
-        if not tree_nodes:
-            raise NotFoundException("No matching tree nodes found for the given source_node_ids")
+        # Instantiate source to resolve full metadata from node IDs.
+        # The source owns the node ID encoding, so it can extract all metadata fields
+        # (including base_template, item_count, etc.) that were embedded during browsing.
+        source = await self._source_lifecycle.create(db, source_connection_id, ctx)
 
-        selections = [
-            NodeSelectionCreate(
-                source_node_id=node.source_node_id,
-                node_type=node.node_type,
-                node_title=node.title,
-                node_metadata=node.node_metadata,
+        if not getattr(source, "supports_browse_tree", False):
+            raise NotFoundException(
+                f"Source {source.__class__.__name__} does not support browse tree"
             )
-            for node in tree_nodes
-        ]
 
-        # Replace existing selections on user SC
-        await self._selection_repo.delete_by_source_connection(db, source_connection_id)
-        created = await self._selection_repo.bulk_create(
-            db=db,
-            source_connection_id=source_connection_id,
-            organization_id=ctx.organization.id,
-            selections=selections,
-        )
+        # Let the source parse node IDs into selections with full metadata
+        selections: List[NodeSelectionCreate] = []
+        for node_id in source_node_ids:
+            node_type, node_metadata = source.parse_browse_node_id(node_id)
+            selections.append(
+                NodeSelectionCreate(
+                    source_node_id=node_id,
+                    node_type=node_type,
+                    node_title=None,
+                    node_metadata=node_metadata,
+                )
+            )
 
-        # Auto-trigger targeted content sync on user SC
+        # Atomically replace selections in a single transaction
+        async with UnitOfWork(db) as uow:
+            created = await self._selection_repo.replace_all(
+                db=db,
+                source_connection_id=source_connection_id,
+                organization_id=ctx.organization.id,
+                selections=selections,
+            )
+            await uow.commit()
+
+        # Auto-trigger targeted content sync on same SC
         sync_job_id = await self._dispatch_sync(
             db,
             source_connection_id,

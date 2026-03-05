@@ -7,7 +7,6 @@ from .billing_period import BillingPeriod
 from .collection import Collection
 from .connection import Connection
 from .connection_init_session import ConnectionInitSession
-from .data_tree_node import DataTreeNode
 from .destination import Destination
 from .embedding_model import EmbeddingModel
 from .entity import Entity
@@ -44,7 +43,6 @@ __all__ = [
     "EntityCount",
     "Connection",
     "ConnectionInitSession",
-    "DataTreeNode",
     "Destination",
     "EmbeddingModel",
     "EntityDefinition",

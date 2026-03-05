@@ -105,14 +105,13 @@ class SourceContextBuilder:
 
         # 5. Set metadata_only flag from execution config
         if execution_config and execution_config.behavior.metadata_only:
-            if hasattr(source, "set_metadata_only"):
-                source.set_metadata_only(True)
-                logger.info("Metadata-only mode enabled on source")
+            source.set_metadata_only(True)
+            logger.info("Metadata-only mode enabled on source")
 
         # 6. Load node selections if they exist for this source connection
         source_connection_id = source_connection_data["source_connection_id"]
         node_selections = await cls._load_node_selections(db, source_connection_id, ctx)
-        if node_selections and hasattr(source, "set_node_selections"):
+        if node_selections:
             source.set_node_selections(node_selections)
             logger.info(f"Loaded {len(node_selections)} node selections for targeted sync")
 

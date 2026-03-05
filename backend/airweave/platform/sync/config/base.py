@@ -30,9 +30,6 @@ class HandlerConfig(BaseModel):
     enable_vector_handlers: bool = Field(True, description="Enable VectorDBHandler")
     enable_raw_data_handler: bool = Field(True, description="Enable RawDataHandler (ARF)")
     enable_postgres_handler: bool = Field(True, description="Enable EntityPostgresHandler")
-    enable_datatreenode_handler: bool = Field(
-        False, description="Enable DataTreeNodeHandler (metadata tree writes)"
-    )
 
 
 class CursorConfig(BaseModel):
@@ -172,28 +169,6 @@ class SyncConfig(BaseSettings):
             cursor=CursorConfig(skip_load=True, skip_updates=True),
             behavior=BehaviorConfig(
                 skip_entity_processing=True,
-                skip_guardrails=True,
-            ),
-        )
-
-    @classmethod
-    def metadata_tree(cls) -> "SyncConfig":
-        """Metadata-only sync: yield entities with metadata + ACLs, write DataTreeNode rows.
-
-        Disables all expensive processing (chunking, OCR, embedding, Vespa, ARF, entity postgres).
-        Only the DataTreeNodeHandler runs, converting entities to data_tree_node rows.
-        """
-        return cls(
-            handlers=HandlerConfig(
-                enable_vector_handlers=False,
-                enable_raw_data_handler=False,
-                enable_postgres_handler=False,
-                enable_datatreenode_handler=True,
-            ),
-            cursor=CursorConfig(skip_load=True, skip_updates=True),
-            behavior=BehaviorConfig(
-                metadata_only=True,
-                skip_hash_comparison=True,
                 skip_guardrails=True,
             ),
         )

@@ -7,7 +7,6 @@ from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.sync.actions.entity.dispatcher import EntityActionDispatcher
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.handlers.arf import ArfHandler
-from airweave.platform.sync.handlers.datatreenode import DataTreeNodeHandler
 from airweave.platform.sync.handlers.destination import DestinationHandler
 from airweave.platform.sync.handlers.entity_postgres import EntityPostgresHandler
 from airweave.platform.sync.handlers.protocol import EntityActionHandler
@@ -68,16 +67,12 @@ class EntityDispatcherBuilder:
         enable_postgres = (
             execution_config.handlers.enable_postgres_handler if execution_config else True
         )
-        enable_datatreenode = (
-            execution_config.handlers.enable_datatreenode_handler if execution_config else False
-        )
 
         handlers: List[EntityActionHandler] = []
 
         cls._add_destination_handler(handlers, destinations, enable_vector, logger)
         cls._add_arf_handler(handlers, enable_arf, logger)
         cls._add_postgres_handler(handlers, enable_postgres, logger)
-        cls._add_datatreenode_handler(handlers, enable_datatreenode, logger)
 
         if not handlers and logger:
             logger.warning("No handlers created - sync will fetch entities but not persist them")
@@ -138,18 +133,3 @@ class EntityDispatcherBuilder:
                 logger.debug("Added EntityPostgresHandler")
         elif logger:
             logger.info("Skipping EntityPostgresHandler (disabled by execution_config)")
-
-    @classmethod
-    def _add_datatreenode_handler(
-        cls,
-        handlers: List[EntityActionHandler],
-        enabled: bool,
-        logger: Optional[ContextualLogger],
-    ) -> None:
-        """Add DataTreeNode handler if enabled (metadata tree sync)."""
-        if enabled:
-            handlers.append(DataTreeNodeHandler())
-            if logger:
-                logger.info("Added DataTreeNodeHandler (metadata tree sync)")
-        elif logger:
-            logger.debug("Skipping DataTreeNodeHandler (not enabled)")
