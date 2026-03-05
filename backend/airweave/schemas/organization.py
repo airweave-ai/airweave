@@ -85,9 +85,14 @@ class Organization(OrganizationInDBBase):
         if hasattr(data, "__dict__"):
             # Extract feature flags
             if "feature_flags" in data.__dict__:
-                enabled = [
-                    FeatureFlagEnum(ff.flag) for ff in data.__dict__["feature_flags"] if ff.enabled
-                ]
+                enabled = []
+                for ff in data.__dict__["feature_flags"]:
+                    if not ff.enabled:
+                        continue
+                    try:
+                        enabled.append(FeatureFlagEnum(ff.flag))
+                    except ValueError:
+                        pass
                 data.enabled_features = enabled
 
             # Note: billing relationship and current_period will be loaded by CRUD layer
@@ -134,9 +139,14 @@ class OrganizationWithRole(BaseModel):
         if hasattr(data, "__dict__"):
             # Extract feature flags
             if "feature_flags" in data.__dict__ and not hasattr(data, "enabled_features"):
-                enabled = [
-                    FeatureFlagEnum(ff.flag) for ff in data.__dict__["feature_flags"] if ff.enabled
-                ]
+                enabled = []
+                for ff in data.__dict__["feature_flags"]:
+                    if not ff.enabled:
+                        continue
+                    try:
+                        enabled.append(FeatureFlagEnum(ff.flag))
+                    except ValueError:
+                        pass
                 data.enabled_features = enabled
 
         return data
