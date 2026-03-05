@@ -3,12 +3,14 @@
 Conversation + tool-calling architecture:
   1. Build system prompt with collection metadata
   2. Send initial user message with the search query
-  3. Loop: LLM reasons in free text, calls search or submit_answer tools
+  3. Loop: LLM reasons in free text, calls search, mark_relevant, or submit_answer
   4. Context is managed via pruning old tool results (Layer 2)
-  5. Return results from the final search iteration (not all accumulated results)
-  6. If the model didn't find an answer, execute an optional consolidation search
+  5. Results: curated relevant_results > consolidation search > last search iteration
+  6. Post-loop: compose final answer from full content of curated relevant results
 
-The conversation IS the history — no separate state/history objects needed.
+The agent uses mark_relevant to persist results across search iterations.
+All seen results are stored in all_results; the agent selectively curates
+relevant_results which are used for the final response and answer composition.
 """
 
 import time
@@ -32,9 +34,11 @@ from airweave.search.agentic_search.core.messages import (
     build_assistant_message,
     build_initial_user_message,
     build_tool_result_message,
+    load_compose_answer_prompt,
     load_system_prompt,
 )
 from airweave.search.agentic_search.core.tools import (
+    MARK_RELEVANT_TOOL,
     SEARCH_TOOL,
     SUBMIT_ANSWER_TOOL,
     execute_search_tool,
@@ -55,6 +59,7 @@ from airweave.search.agentic_search.schemas.events import (
     AgenticSearchDoneEvent,
     AgenticSearchErrorEvent,
     AgenticSearchingEvent,
+    AgenticSearchMarkRelevantEvent,
     AgenticSearchThinkingEvent,
 )
 from airweave.search.agentic_search.schemas.plan import AgenticSearchPlan
@@ -87,6 +92,9 @@ class _LoopState:
     _current_iteration_seen: set[str] = field(default_factory=set)
     _iteration_had_search: bool = False
 
+    all_results: dict[str, AgenticSearchResult] = field(default_factory=dict)
+    relevant_results: dict[str, AgenticSearchResult] = field(default_factory=dict)
+
     def start_new_iteration(self) -> None:
         """Reset per-iteration tracking. Called at the start of each LLM turn.
 
@@ -103,6 +111,7 @@ class _LoopState:
         On the first search of a new iteration, replaces previous results.
         Multiple search calls within the same turn are merged together.
         Deduplication is within the iteration only (by entity_id).
+        All results are also accumulated into all_results for mark_relevant lookup.
         """
         if not self._iteration_had_search:
             self.last_search_results = []
@@ -111,6 +120,29 @@ class _LoopState:
             if r.entity_id not in self._current_iteration_seen:
                 self.last_search_results.append(r)
                 self._current_iteration_seen.add(r.entity_id)
+            if r.entity_id not in self.all_results:
+                self.all_results[r.entity_id] = r
+
+    def mark_relevant(self, entity_ids: list[str]) -> tuple[str, list[str], list[str]]:
+        """Move results from all_results into relevant_results.
+
+        Returns (summary_text, marked_ids, not_found_ids).
+        """
+        marked, not_found = [], []
+        for eid in entity_ids:
+            if eid in self.all_results:
+                self.relevant_results[eid] = self.all_results[eid]
+                marked.append(eid)
+            else:
+                not_found.append(eid)
+
+        lines = [f"Saved {len(marked)} relevant results ({len(self.relevant_results)} total):"]
+        for eid in marked:
+            r = self.relevant_results[eid]
+            lines.append(f"  - {r.name} ({r.airweave_system_metadata.entity_type}) [{eid}]")
+        if not_found:
+            lines.append(f"Not found in any search results: {not_found}")
+        return "\n".join(lines), marked, not_found
 
 
 class AgenticSearchAgent:
@@ -225,7 +257,7 @@ class AgenticSearchAgent:
                 mode=request.mode,
             )
         ]
-        tools = [SEARCH_TOOL, SUBMIT_ANSWER_TOOL]
+        tools = [SEARCH_TOOL, MARK_RELEVANT_TOOL, SUBMIT_ANSWER_TOOL]
         is_fast = request.mode == AgenticSearchMode.FAST
 
         while state.iteration < self.MAX_ITERATIONS:
@@ -283,9 +315,15 @@ class AgenticSearchAgent:
                 citations=[],
             )
 
-        # Execute consolidation search if the model provided one,
-        # otherwise use the last iteration's search results
-        if state.consolidation_plan is not None:
+        # Determine results: curated relevant_results > consolidation > last_search
+        if state.relevant_results:
+            results = list(state.relevant_results.values())
+            composed_text = await self._compose_answer(request.query, state.relevant_results, state)
+            state.answer = AgenticSearchAnswer(
+                text=composed_text,
+                citations=state.answer.citations if state.answer else [],
+            )
+        elif state.consolidation_plan is not None:
             results = await self._execute_consolidation_search(state)
             self._lap(state, "consolidation_search")
         else:
@@ -298,7 +336,7 @@ class AgenticSearchAgent:
         resp = AgenticSearchResponse(
             results=results,
             answer=state.answer,
-            answer_found=state.consolidation_plan is None,
+            answer_found=bool(state.relevant_results) or state.consolidation_plan is None,
         )
         await self.emitter.emit(AgenticSearchDoneEvent(response=resp))
 
@@ -345,6 +383,19 @@ class AgenticSearchAgent:
         for tc in tool_calls:
             if tc.name == "search":
                 await self._handle_search(tc, state)
+            elif tc.name == "mark_relevant":
+                entity_ids = tc.arguments.get("entity_ids", [])
+                summary, marked_ids, not_found_ids = state.mark_relevant(entity_ids)
+                state.messages.append(build_tool_result_message(tc.id, summary))
+                self._lap(state, f"iter_{state.iteration}/mark_relevant")
+                await self.emitter.emit(
+                    AgenticSearchMarkRelevantEvent(
+                        iteration=state.iteration,
+                        marked_ids=marked_ids,
+                        not_found_ids=not_found_ids,
+                        total_relevant=len(state.relevant_results),
+                    )
+                )
             elif tc.name == "submit_answer":
                 answer, consolidation_plan = parse_submit_answer(tc.arguments)
                 state.answer = answer
@@ -423,6 +474,37 @@ class AgenticSearchAgent:
                 f"Falling back to last_search_results."
             )
             return state.last_search_results
+
+    async def _compose_answer(
+        self,
+        query: str,
+        relevant_results: dict[str, AgenticSearchResult],
+        state: _LoopState,
+    ) -> str:
+        """Compose a final answer from the curated relevant results.
+
+        Makes a focused LLM call with just the query and the full content
+        of all relevant results. No conversation history or tool calls.
+        """
+        results_md = "\n\n---\n\n".join(r.to_md() for r in relevant_results.values())
+        messages = [
+            {
+                "role": "user",
+                "content": (
+                    f"## Query\n{query}\n\n"
+                    f"## Relevant Results ({len(relevant_results)} total)\n\n"
+                    f"{results_md}"
+                ),
+            }
+        ]
+        compose_prompt = load_compose_answer_prompt()
+        response = await self.services.llm.create_with_tools(
+            messages=messages,
+            tools=[],
+            system_prompt=compose_prompt,
+        )
+        self._lap(state, "compose_answer")
+        return response.text
 
     def _lap(self, state: _LoopState, label: str) -> None:
         """Record a timing lap."""

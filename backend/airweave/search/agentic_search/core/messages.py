@@ -36,6 +36,12 @@ def _load_static_prompt_parts() -> tuple[str, str]:
     return airweave_overview, agent_task
 
 
+@functools.cache
+def load_compose_answer_prompt() -> str:
+    """Load and cache the answer composition prompt (used post-loop)."""
+    return (CONTEXT_DIR / "compose_answer_prompt.md").read_text()
+
+
 def load_system_prompt(collection_metadata: AgenticSearchCollectionMetadata) -> str:
     """Build the full system prompt with static instructions and collection metadata.
 

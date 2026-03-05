@@ -16,6 +16,7 @@ from airweave.search.agentic_search.schemas.events import (
     AgenticSearchDoneEvent,
     AgenticSearchErrorEvent,
     AgenticSearchingEvent,
+    AgenticSearchMarkRelevantEvent,
     AgenticSearchThinkingEvent,
 )
 
@@ -23,6 +24,7 @@ from airweave.search.agentic_search.schemas.events import (
 _EventTypes = Union[
     AgenticSearchThinkingEvent,
     AgenticSearchingEvent,
+    AgenticSearchMarkRelevantEvent,
     AgenticSearchDoneEvent,
     AgenticSearchErrorEvent,
 ]
@@ -59,6 +61,11 @@ class AgenticSearchLoggingEmitter:
             self._ctx.logger.debug(
                 f"{prefix} Search (iter {event.iteration}): "
                 f"{event.result_count} results in {event.duration_ms}ms"
+            )
+        elif isinstance(event, AgenticSearchMarkRelevantEvent):
+            self._ctx.logger.debug(
+                f"{prefix} MarkRelevant (iter {event.iteration}): "
+                f"{len(event.marked_ids)} marked, {event.total_relevant} total"
             )
         elif isinstance(event, AgenticSearchDoneEvent):
             result_count = len(event.response.results)

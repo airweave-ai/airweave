@@ -83,6 +83,31 @@ SEARCH_TOOL: dict[str, Any] = {
     },
 }
 
+MARK_RELEVANT_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "mark_relevant",
+        "description": (
+            "Save search results as relevant to the user's query. "
+            "These results persist across all search iterations and will be "
+            "included in the final response. Call this after evaluating search "
+            "results to preserve entities that help answer the query. "
+            "Only mark entities that directly contribute to the answer."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "entity_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Entity IDs from search results to save as relevant.",
+                }
+            },
+            "required": ["entity_ids"],
+        },
+    },
+}
+
 SUBMIT_ANSWER_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {

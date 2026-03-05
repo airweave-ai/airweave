@@ -7,6 +7,7 @@ discriminator for clean JSON serialization and frontend consumption.
 Events:
 - thinking: Model's reasoning text between tool calls
 - searching: Search execution completed (result count + timing)
+- mark_relevant: Agent saved entities as relevant for the final answer
 - done: Search complete with final response
 - error: An error occurred during search
 """
@@ -45,6 +46,25 @@ class AgenticSearchingEvent(BaseModel):
     )
 
 
+class AgenticSearchMarkRelevantEvent(BaseModel):
+    """Emitted when the agent saves entities as relevant.
+
+    Tracks which entity IDs the agent curated and the running total,
+    giving visibility into the result accumulation process.
+    """
+
+    type: Literal["mark_relevant"] = "mark_relevant"
+    iteration: int = Field(..., description="Current iteration number (0-indexed).")
+    marked_ids: list[str] = Field(..., description="Entity IDs saved in this call.")
+    not_found_ids: list[str] = Field(
+        default_factory=list,
+        description="Entity IDs requested but not found in any prior search results.",
+    )
+    total_relevant: int = Field(
+        ..., description="Total number of curated relevant results after this call."
+    )
+
+
 class AgenticSearchDoneEvent(BaseModel):
     """Emitted when the search is complete.
 
@@ -66,6 +86,7 @@ AgenticSearchEvent = Annotated[
     Union[
         AgenticSearchThinkingEvent,
         AgenticSearchingEvent,
+        AgenticSearchMarkRelevantEvent,
         AgenticSearchDoneEvent,
         AgenticSearchErrorEvent,
     ],
