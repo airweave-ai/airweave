@@ -85,6 +85,7 @@ class _LoopState:
     messages: list[dict] = field(default_factory=list)
     last_search_results: list[AgenticSearchResult] = field(default_factory=list)
     answer: AgenticSearchAnswer | None = None
+    answer_found: bool | None = None
     consolidation_plan: AgenticSearchPlan | None = None
     search_count: int = 0
     iteration: int = 0
@@ -314,6 +315,7 @@ class AgenticSearchAgent:
                 "Please try refining your query.",
                 citations=[],
             )
+            state.answer_found = False
 
         # Determine results: curated relevant_results > consolidation > last_search
         if state.relevant_results:
@@ -336,7 +338,9 @@ class AgenticSearchAgent:
         resp = AgenticSearchResponse(
             results=results,
             answer=state.answer,
-            answer_found=bool(state.relevant_results) or state.consolidation_plan is None,
+            answer_found=state.answer_found
+            if state.answer_found is not None
+            else (bool(state.relevant_results) or state.consolidation_plan is None),
         )
         await self.emitter.emit(AgenticSearchDoneEvent(response=resp))
 
@@ -397,8 +401,9 @@ class AgenticSearchAgent:
                     )
                 )
             elif tc.name == "submit_answer":
-                answer, consolidation_plan = parse_submit_answer(tc.arguments)
+                answer, consolidation_plan, answer_found = parse_submit_answer(tc.arguments)
                 state.answer = answer
+                state.answer_found = answer_found
                 state.consolidation_plan = consolidation_plan
                 self._lap(state, f"iter_{state.iteration}/submit_answer")
                 return True

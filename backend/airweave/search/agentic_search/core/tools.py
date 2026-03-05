@@ -56,6 +56,16 @@ class SubmitAnswerPayload(BaseModel):
         ...,
         description="List of entity_ids from search results used to compose the answer.",
     )
+    answer_found: bool = Field(
+        ...,
+        description=(
+            "Whether you found entities that directly answer the query. "
+            "Set to true ONLY when your results satisfy the specific criteria "
+            "in the question. Set to false when: you found related context but "
+            "not the specific answer, no matching entities exist, or you are "
+            "uncertain whether results fully address the query."
+        ),
+    )
     consolidation_search: AgenticSearchPlan | None = Field(
         default=None,
         description=(
@@ -254,12 +264,13 @@ def format_results_for_tool_response(
 
 def parse_submit_answer(
     arguments: dict[str, Any],
-) -> tuple[AgenticSearchAnswer, AgenticSearchPlan | None]:
-    """Parse submit_answer tool arguments into an answer and optional consolidation plan.
+) -> tuple[AgenticSearchAnswer, AgenticSearchPlan | None, bool]:
+    """Parse submit_answer tool arguments into answer, consolidation plan, and answer_found.
 
     Uses SubmitAnswerPayload internally, then splits into:
     - AgenticSearchAnswer (API-facing, no consolidation field)
     - AgenticSearchPlan | None (internal consolidation search plan)
+    - bool (whether the model claims it found the answer)
     """
     # Normalize citations: some models return plain strings instead of objects
     raw_citations = arguments.get("citations", [])
@@ -274,4 +285,4 @@ def parse_submit_answer(
         text=payload.text,
         citations=payload.citations,
     )
-    return answer, payload.consolidation_search
+    return answer, payload.consolidation_search, payload.answer_found
