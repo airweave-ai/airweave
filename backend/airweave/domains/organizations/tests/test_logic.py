@@ -16,7 +16,6 @@ from airweave.domains.organizations.logic import (
     select_default_connections,
 )
 
-
 # ---------------------------------------------------------------------------
 # select_default_connections
 # ---------------------------------------------------------------------------
@@ -106,6 +105,7 @@ class TestCanUserDeleteOrg:
     def test_non_owner_blocked(self):
         allowed, reason = can_user_delete_org("admin", 5)
         assert allowed is False
+        assert reason is not None
         assert "owners" in reason.lower()
 
     def test_member_blocked(self):
@@ -115,6 +115,7 @@ class TestCanUserDeleteOrg:
     def test_owner_last_org_blocked(self):
         allowed, reason = can_user_delete_org("owner", 1)
         assert allowed is False
+        assert reason is not None
         assert "only organization" in reason.lower()
 
     def test_zero_orgs_blocked(self):
@@ -135,11 +136,13 @@ class TestCanUserLeaveOrg:
     def test_only_org_blocked(self):
         allowed, reason = can_user_leave_org("member", other_owner_count=1, total_user_orgs=1)
         assert allowed is False
+        assert reason is not None
         assert "only organization" in reason.lower()
 
     def test_sole_owner_blocked(self):
         allowed, reason = can_user_leave_org("owner", other_owner_count=0, total_user_orgs=3)
         assert allowed is False
+        assert reason is not None
         assert "only owner" in reason.lower()
 
     def test_owner_with_co_owners_allowed(self):
@@ -154,6 +157,7 @@ class TestCanUserLeaveOrg:
         """Both conditions fail — 'only org' should win because it checks first."""
         allowed, reason = can_user_leave_org("owner", other_owner_count=0, total_user_orgs=1)
         assert allowed is False
+        assert reason is not None
         assert "only organization" in reason.lower()
 
 
@@ -163,13 +167,16 @@ class TestCanUserLeaveOrg:
 
 
 class TestCanManageMembers:
-    @pytest.mark.parametrize("role,expected", [
-        ("owner", True),
-        ("admin", True),
-        ("member", False),
-        ("viewer", False),
-        ("", False),
-    ])
+    @pytest.mark.parametrize(
+        "role,expected",
+        [
+            ("owner", True),
+            ("admin", True),
+            ("member", False),
+            ("viewer", False),
+            ("", False),
+        ],
+    )
     def test_role_permissions(self, role, expected):
         assert can_manage_members(role) is expected
 

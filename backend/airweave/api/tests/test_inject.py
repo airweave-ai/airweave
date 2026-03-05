@@ -9,7 +9,6 @@ Verifies:
 import pytest
 
 from airweave.api.inject import _INJECT_CACHE, _resolve_field_name
-from airweave.core.container.container import Container
 from airweave.core.protocols.event_bus import EventBus
 
 

@@ -86,6 +86,44 @@ class AnalyticsService:
         except Exception as e:
             self.logger.error(f"Failed to identify user {user_id}: {e}")
 
+    @staticmethod
+    def _enrich_from_ctx(
+        ctx: Any,
+        event_properties: Dict[str, Any],
+        distinct_id: Optional[str],
+        groups: Optional[Dict[str, str]],
+    ) -> tuple[str | None, Dict[str, str] | None]:
+        """Extract distinct_id, groups, and metadata from a request context."""
+        if distinct_id is None:
+            user = getattr(ctx, "user", None)
+            if user:
+                distinct_id = str(user.id)
+            else:
+                distinct_id = f"api_key_{ctx.organization.id}"
+
+        if groups is None:
+            groups = {"organization": str(ctx.organization.id)}
+
+        auth_method = getattr(ctx, "auth_method", None)
+        if auth_method is not None:
+            event_properties.setdefault(
+                "auth_method",
+                auth_method.value if hasattr(auth_method, "value") else str(auth_method),
+            )
+        event_properties.setdefault("organization_name", ctx.organization.name)
+
+        request_id = getattr(ctx, "request_id", None)
+        if request_id:
+            event_properties.setdefault("request_id", request_id)
+
+        headers = getattr(ctx, "headers", None)
+        if headers:
+            event_properties.update(headers.to_dict())
+            if headers.session_id:
+                event_properties["$session_id"] = headers.session_id
+
+        return distinct_id, groups
+
     def track_event(
         self,
         event_name: str,
@@ -115,33 +153,12 @@ class AnalyticsService:
         event_properties = dict(properties) if properties else {}
 
         if ctx is not None:
-            if distinct_id is None:
-                user = getattr(ctx, "user", None)
-                if user:
-                    distinct_id = str(user.id)
-                else:
-                    distinct_id = f"api_key_{ctx.organization.id}"
-
-            if groups is None:
-                groups = {"organization": str(ctx.organization.id)}
-
-            auth_method = getattr(ctx, "auth_method", None)
-            if auth_method is not None:
-                event_properties.setdefault(
-                    "auth_method",
-                    auth_method.value if hasattr(auth_method, "value") else str(auth_method),
-                )
-            event_properties.setdefault("organization_name", ctx.organization.name)
-
-            request_id = getattr(ctx, "request_id", None)
-            if request_id:
-                event_properties.setdefault("request_id", request_id)
-
-            headers = getattr(ctx, "headers", None)
-            if headers:
-                event_properties.update(headers.to_dict())
-                if headers.session_id:
-                    event_properties["$session_id"] = headers.session_id
+            distinct_id, groups = self._enrich_from_ctx(
+                ctx,
+                event_properties,
+                distinct_id,
+                groups,
+            )
 
         if distinct_id is None:
             self.logger.warning(

@@ -10,7 +10,7 @@ Verifies:
 from dataclasses import dataclass
 from typing import Optional
 from unittest.mock import AsyncMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -22,7 +22,6 @@ from airweave.domains.organizations.fakes.repository import (
 )
 from airweave.domains.organizations.provisioning.operations import ProvisioningOperations
 from airweave.domains.users.fakes.repository import FakeUserRepository
-
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -140,9 +139,9 @@ async def test_provision_new_user_dispatch(case: ProvisionCase):
 
         ctx_managers = {k: p.__enter__() for k, p in patches.items()}
         try:
-            result = await ops.provision_new_user(AsyncMock(), USER_DATA, create_org=case.create_org)
+            await ops.provision_new_user(AsyncMock(), USER_DATA, create_org=case.create_org)
             m.assert_called_once()
-            for k, mock_obj in ctx_managers.items():
+            for _k, mock_obj in ctx_managers.items():
                 mock_obj.assert_not_called()
         finally:
             for p in patches.values():
@@ -217,9 +216,7 @@ class TestSyncUserOrganizations:
     async def test_existing_membership_not_duplicated(self):
         """When the user already has a membership, don't create another."""
         identity = FakeIdentityProvider()
-        identity.seed_user_organizations(
-            "auth0|u1", [{"id": "org_remote", "name": "remote-org"}]
-        )
+        identity.seed_user_organizations("auth0|u1", [{"id": "org_remote", "name": "remote-org"}])
 
         org_repo = FakeOrganizationRepository()
         user_org_repo = FakeUserOrganizationRepository()

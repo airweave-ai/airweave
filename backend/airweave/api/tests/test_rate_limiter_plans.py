@@ -47,10 +47,11 @@ class TestPlanLimits:
             assert plan.value in PLAN_LIMITS, f"Missing limit for plan: {plan.value}"
 
     def test_limits_are_monotonically_increasing(self):
-        """developer < pro < team. Enterprise is None (unlimited)."""
+        """Developer < pro < team. Enterprise is None (unlimited)."""
         dev = PLAN_LIMITS[BillingPlan.DEVELOPER.value]
         pro = PLAN_LIMITS[BillingPlan.PRO.value]
         team = PLAN_LIMITS[BillingPlan.TEAM.value]
+        assert dev is not None and pro is not None and team is not None
         assert dev < pro < team
 
 

@@ -18,15 +18,19 @@ ORG_ID = uuid4()
 class TestCreatedEvent:
     def test_event_type(self):
         e = OrganizationLifecycleEvent.created(
-            organization_id=ORG_ID, organization_name="Acme", owner_email="a@b.com",
+            organization_id=ORG_ID,
+            organization_name="Acme",
+            owner_email="a@b.com",
         )
         assert e.event_type == OrganizationEventType.CREATED
         assert e.event_type.value == "organization.created"
 
     def test_carries_all_fields(self):
         e = OrganizationLifecycleEvent.created(
-            organization_id=ORG_ID, organization_name="Acme",
-            owner_email="a@b.com", plan="team",
+            organization_id=ORG_ID,
+            organization_name="Acme",
+            owner_email="a@b.com",
+            plan="team",
         )
         assert e.organization_id == ORG_ID
         assert e.organization_name == "Acme"
@@ -35,49 +39,59 @@ class TestCreatedEvent:
 
     def test_plan_defaults_to_developer(self):
         e = OrganizationLifecycleEvent.created(
-            organization_id=ORG_ID, organization_name="X", owner_email="x@x.com",
+            organization_id=ORG_ID,
+            organization_name="X",
+            owner_email="x@x.com",
         )
         assert e.plan == "developer"
 
     def test_timestamp_auto_populated(self):
         e = OrganizationLifecycleEvent.created(
-            organization_id=ORG_ID, organization_name="X", owner_email="x@x.com",
+            organization_id=ORG_ID,
+            organization_name="X",
+            owner_email="x@x.com",
         )
         assert e.timestamp is not None
 
     def test_frozen_immutability(self):
         e = OrganizationLifecycleEvent.created(
-            organization_id=ORG_ID, organization_name="X", owner_email="x@x.com",
+            organization_id=ORG_ID,
+            organization_name="X",
+            owner_email="x@x.com",
         )
-        with pytest.raises(Exception):
+        with pytest.raises(AttributeError):
             e.organization_name = "changed"
 
 
 class TestDeletedEvent:
     def test_event_type(self):
         e = OrganizationLifecycleEvent.deleted(
-            organization_id=ORG_ID, organization_name="Doomed",
+            organization_id=ORG_ID,
+            organization_name="Doomed",
         )
         assert e.event_type == OrganizationEventType.DELETED
 
     def test_affected_emails_carried(self):
         emails = ["a@x.com", "b@x.com"]
         e = OrganizationLifecycleEvent.deleted(
-            organization_id=ORG_ID, organization_name="X",
+            organization_id=ORG_ID,
+            organization_name="X",
             affected_user_emails=emails,
         )
         assert e.affected_user_emails == emails
 
     def test_none_affected_emails_becomes_empty_list(self):
         e = OrganizationLifecycleEvent.deleted(
-            organization_id=ORG_ID, organization_name="X",
+            organization_id=ORG_ID,
+            organization_name="X",
             affected_user_emails=None,
         )
         assert e.affected_user_emails == []
 
     def test_owner_email_empty_by_default(self):
         e = OrganizationLifecycleEvent.deleted(
-            organization_id=ORG_ID, organization_name="X",
+            organization_id=ORG_ID,
+            organization_name="X",
         )
         assert e.owner_email == ""
 
@@ -89,7 +103,8 @@ class TestMemberAddedEvent:
 
     def test_affected_emails(self):
         e = OrganizationLifecycleEvent.member_added(
-            organization_id=ORG_ID, affected_user_emails=["new@x.com"],
+            organization_id=ORG_ID,
+            affected_user_emails=["new@x.com"],
         )
         assert e.affected_user_emails == ["new@x.com"]
 

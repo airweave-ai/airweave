@@ -5,14 +5,12 @@ get_members, get_pending_invitations, and remove_invitation.
 All I/O is faked — no database or external providers.
 """
 
-from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
-from airweave import schemas
 from airweave.adapters.event_bus.fake import FakeEventBus
 from airweave.adapters.identity.fake import FakeIdentityProvider
 from airweave.core.protocols.identity import IdentityProviderError
@@ -21,7 +19,6 @@ from airweave.domains.organizations.fakes.repository import (
     FakeUserOrganizationRepository,
 )
 from airweave.domains.organizations.service import OrganizationService
-
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -88,9 +85,7 @@ class TestInviteUser:
         svc = _make_service(identity=identity, org_repo=org_repo)
         db = AsyncMock()
 
-        result = await svc.invite_user(
-            db, org_id, "new@test.com", "member", _make_user_schema()
-        )
+        result = await svc.invite_user(db, org_id, "new@test.com", "member", _make_user_schema())
 
         assert "id" in result
         identity.assert_called("invite_user")
@@ -124,19 +119,17 @@ class TestRemoveMember:
         user_org_repo.seed_membership(user_id, org_id, role="member")
 
         svc = _make_service(
-            identity=identity, event_bus=event_bus,
-            org_repo=org_repo, user_org_repo=user_org_repo,
+            identity=identity,
+            event_bus=event_bus,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
         )
 
         target_user = _UserStub(user_id=user_id, auth0_id="auth0|target")
 
         db = AsyncMock()
         # Simulate db.execute returning the user to remove
-        db.execute = AsyncMock(
-            return_value=SimpleNamespace(
-                scalar_one_or_none=lambda: target_user
-            )
-        )
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: target_user))
 
         result = await svc.remove_member(db, org_id, user_id, _UserStub())
         assert result is True
@@ -150,9 +143,7 @@ class TestRemoveMember:
 
         svc = _make_service(org_repo=org_repo)
         db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=SimpleNamespace(scalar_one_or_none=lambda: None)
-        )
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None))
 
         with pytest.raises(ValueError, match="User not found"):
             await svc.remove_member(db, org_id, uuid4(), _UserStub())
@@ -178,13 +169,13 @@ class TestRemoveMember:
         identity.remove_user_from_organization = fail_remove
 
         svc = _make_service(
-            identity=identity, event_bus=event_bus,
-            org_repo=org_repo, user_org_repo=user_org_repo,
+            identity=identity,
+            event_bus=event_bus,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
         )
         db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=SimpleNamespace(scalar_one_or_none=lambda: target_user)
-        )
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: target_user))
 
         result = await svc.remove_member(db, org_id, user_id, _UserStub())
         assert result is True
@@ -206,9 +197,7 @@ class TestGetMembers:
 
         user = _UserStub(email="member@test.com")
         # Override get_members_with_users to return test data
-        user_org_repo.get_members_with_users = AsyncMock(
-            return_value=[(user, "admin", True)]
-        )
+        user_org_repo.get_members_with_users = AsyncMock(return_value=[(user, "admin", True)])
 
         svc = _make_service(org_repo=org_repo, user_org_repo=user_org_repo)
         result = await svc.get_members(AsyncMock(), org_id)
@@ -235,13 +224,15 @@ class TestGetPendingInvitations:
         org_repo.seed(org_id, org)
 
         # Seed an invitation with Auth0-style invitee structure
-        identity._invitations.append({
-            "id": "inv_1",
-            "org_id": "org_abc",
-            "invitee": {"email": "invitee@test.com"},
-            "roles": ["role_member"],
-            "created_at": "2024-01-01T00:00:00Z",
-        })
+        identity._invitations.append(
+            {
+                "id": "inv_1",
+                "org_id": "org_abc",
+                "invitee": {"email": "invitee@test.com"},
+                "roles": ["role_member"],
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        )
 
         svc = _make_service(identity=identity, org_repo=org_repo)
         result = await svc.get_pending_invitations(AsyncMock(), org_id)

@@ -35,7 +35,6 @@ from airweave.domains.organizations.fakes.repository import (
 )
 from airweave.domains.organizations.operations import OrganizationLifecycleOperations
 
-
 # ---------------------------------------------------------------------------
 # Minimal fake for OrganizationBillingRepositoryProtocol (only get_by_org_id)
 # ---------------------------------------------------------------------------
@@ -154,7 +153,8 @@ class TestCreateHappyPath:
         identity = FakeIdentityProvider()
         ops = _make_operations(identity=identity)
 
-        with patch.object(ops, "_create_local", new_callable=AsyncMock, return_value=_make_org_schema()):
+        fake_org = _make_org_schema()
+        with patch.object(ops, "_create_local", new_callable=AsyncMock, return_value=fake_org):
             await ops.create_organization(AsyncMock(), ORG_DATA, _make_user())
 
         identity.assert_called("create_organization")
@@ -166,7 +166,8 @@ class TestCreateHappyPath:
         payment = FakePaymentGateway()
         ops = _make_operations(payment=payment)
 
-        with patch.object(ops, "_create_local", new_callable=AsyncMock, return_value=_make_org_schema()):
+        fake_org = _make_org_schema()
+        with patch.object(ops, "_create_local", new_callable=AsyncMock, return_value=fake_org):
             await ops.create_organization(AsyncMock(), ORG_DATA, _make_user())
 
         assert payment.call_count("create_customer") == 1
@@ -176,7 +177,8 @@ class TestCreateHappyPath:
         event_bus = FakeEventBus()
         ops = _make_operations(event_bus=event_bus)
 
-        with patch.object(ops, "_create_local", new_callable=AsyncMock, return_value=_make_org_schema()):
+        fake_org = _make_org_schema()
+        with patch.object(ops, "_create_local", new_callable=AsyncMock, return_value=fake_org):
             await ops.create_organization(AsyncMock(), ORG_DATA, _make_user())
 
         event_bus.assert_published("organization.created")
@@ -230,8 +232,6 @@ class TestCreateIdentityFailures:
         ops = _make_operations(identity=identity, payment=payment)
 
         call_count = 0
-
-        original_add_user = identity.add_user_to_organization
 
         async def fail_on_add_user(org_id, user_id):
             nonlocal call_count
@@ -392,8 +392,6 @@ class TestCreateEventBusFailureAfterCommit:
         payment = FakePaymentGateway()
         failing_bus = FakeEventBus()
 
-        original_publish = failing_bus.publish
-
         async def explode_on_publish(event):
             raise RuntimeError("event bus exploded")
 
@@ -401,7 +399,8 @@ class TestCreateEventBusFailureAfterCommit:
 
         ops = _make_operations(identity=identity, payment=payment, event_bus=failing_bus)
 
-        with patch.object(ops, "_create_local", new_callable=AsyncMock, return_value=_make_org_schema()):
+        fake_org = _make_org_schema()
+        with patch.object(ops, "_create_local", new_callable=AsyncMock, return_value=fake_org):
             with pytest.raises(RuntimeError, match="event bus exploded"):
                 await ops.create_organization(AsyncMock(), ORG_DATA, _make_user())
 
@@ -427,7 +426,9 @@ class TestDeleteHappyPath:
         org_repo.seed(org_id, org)
 
         ops = _make_operations(
-            org_repo=org_repo, user_org_repo=user_org_repo, event_bus=event_bus,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            event_bus=event_bus,
         )
         result = await ops.delete_organization(AsyncMock(), org_id, _make_user())
         assert result is True
@@ -443,7 +444,9 @@ class TestDeleteHappyPath:
         org_repo.seed(org_id, org)
 
         ops = _make_operations(
-            org_repo=org_repo, user_org_repo=user_org_repo, event_bus=event_bus,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            event_bus=event_bus,
         )
         await ops.delete_organization(AsyncMock(), org_id, _make_user())
         event_bus.assert_published("organization.deleted")
@@ -488,8 +491,10 @@ class TestDeleteExternalCleanupFailures:
         identity.delete_organization = fail_delete
 
         ops = _make_operations(
-            org_repo=org_repo, user_org_repo=user_org_repo,
-            identity=identity, event_bus=event_bus,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            identity=identity,
+            event_bus=event_bus,
         )
         result = await ops.delete_organization(AsyncMock(), org_id, _make_user())
         assert result is True
@@ -515,8 +520,11 @@ class TestDeleteExternalCleanupFailures:
         payment.cancel_subscription = fail_cancel
 
         ops = _make_operations(
-            org_repo=org_repo, user_org_repo=user_org_repo,
-            payment=payment, billing_repo=billing_repo, event_bus=event_bus,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            payment=payment,
+            billing_repo=billing_repo,
+            event_bus=event_bus,
         )
         result = await ops.delete_organization(AsyncMock(), org_id, _make_user())
         assert result is True
@@ -552,9 +560,12 @@ class TestDeleteExternalCleanupFailures:
         webhook_admin.delete_organization = fail_webhook
 
         ops = _make_operations(
-            org_repo=org_repo, user_org_repo=user_org_repo,
-            identity=identity, payment=payment,
-            webhook_admin=webhook_admin, billing_repo=billing_repo,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            identity=identity,
+            payment=payment,
+            webhook_admin=webhook_admin,
+            billing_repo=billing_repo,
             event_bus=event_bus,
         )
         result = await ops.delete_organization(AsyncMock(), org_id, _make_user())

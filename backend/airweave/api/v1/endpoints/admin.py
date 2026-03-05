@@ -11,7 +11,7 @@ from enum import Enum
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import Body, Depends, HTTPException, Query
+from fastapi import Body, Depends, HTTPException, Path, Query
 from pydantic import ConfigDict
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1364,6 +1364,43 @@ async def admin_search_collection_as_user(
         sparse_embedder=sparse_embedder,
         destination=destination.value,
     )
+
+
+@router.get("/collections/{readable_id}/user-principals")
+async def admin_get_user_principals(
+    readable_id: str = Path(..., description="The readable ID of the collection"),
+    user_principal: str = Query(..., description="Username to resolve principals for"),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> List[str]:
+    """Admin-only: Get the resolved access principals for a user in a collection.
+
+    Returns all principals (user + group memberships) that would be used for
+    access control filtering when the user searches the collection.
+    """
+    from airweave.platform.access_control.broker import access_broker
+
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    collection = await crud.collection.get_by_readable_id(
+        db,
+        readable_id=readable_id,
+        ctx=ctx,
+    )
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    access_context = await access_broker.resolve_access_context_for_collection(
+        db=db,
+        user_principal=user_principal,
+        readable_collection_id=readable_id,
+        organization_id=collection.organization_id,
+    )
+
+    if access_context is None:
+        return []
+
+    return list(access_context.all_principals)
 
 
 @router.get("/source-connections/{source_connection_id}/cursor")

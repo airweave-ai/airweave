@@ -29,11 +29,10 @@ class TestOrganizationEventTypeRegistration:
     def test_values_accepted_by_event_type_union(self):
         """Each org event value must be assignable to the EventType union."""
         for member in OrganizationEventType:
-            assert isinstance(member, EventType.__args__), (
-                f"{member} is not a valid EventType"
-            )
+            assert isinstance(member, EventType.__args__), f"{member} is not a valid EventType"
 
     def test_has_expected_members(self):
         expected = {"CREATED", "DELETED", "MEMBER_ADDED", "MEMBER_REMOVED"}
         actual = {m.name for m in OrganizationEventType}
-        assert expected == actual, f"Missing or extra members: {expected.symmetric_difference(actual)}"
+        diff = expected.symmetric_difference(actual)
+        assert expected == actual, f"Missing or extra members: {diff}"

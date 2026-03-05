@@ -15,10 +15,10 @@ from airweave.domains.usage.types import ActionType
 from airweave.schemas.billing_period import BillingPeriodStatus
 from airweave.schemas.organization_billing import BillingPlan
 
-
 # ---------------------------------------------------------------------------
 # Helper: seed a checker with billing + period + usage
 # ---------------------------------------------------------------------------
+
 
 def _seeded_checker(
     plan=BillingPlan.PRO,
@@ -49,6 +49,7 @@ def _seeded_checker(
 # is_allowed — no billing (legacy org exemption)
 # ---------------------------------------------------------------------------
 
+
 class TestIsAllowedNoBilling:
     @pytest.mark.asyncio
     async def test_allows_when_no_billing_record(self, db):
@@ -64,6 +65,7 @@ class TestIsAllowedNoBilling:
 # ---------------------------------------------------------------------------
 # is_allowed — billing status restrictions
 # ---------------------------------------------------------------------------
+
 
 class TestBillingStatusRestrictions:
     @pytest.mark.asyncio
@@ -124,6 +126,7 @@ class TestBillingStatusRestrictions:
 # is_allowed — entity limits
 # ---------------------------------------------------------------------------
 
+
 class TestEntityLimits:
     @pytest.mark.asyncio
     async def test_allows_entities_under_limit(self, db):
@@ -149,6 +152,7 @@ class TestEntityLimits:
 # is_allowed — query limits
 # ---------------------------------------------------------------------------
 
+
 class TestQueryLimits:
     @pytest.mark.asyncio
     async def test_allows_queries_under_limit(self, db):
@@ -172,6 +176,7 @@ class TestQueryLimits:
 # ---------------------------------------------------------------------------
 # is_allowed — source connection limits (dynamic counting)
 # ---------------------------------------------------------------------------
+
 
 class TestSourceConnectionLimits:
     @pytest.mark.asyncio
@@ -197,6 +202,7 @@ class TestSourceConnectionLimits:
 # is_allowed — team member limits (dynamic counting)
 # ---------------------------------------------------------------------------
 
+
 class TestTeamMemberLimits:
     @pytest.mark.asyncio
     async def test_allows_under_limit(self, db):
@@ -221,6 +227,7 @@ class TestTeamMemberLimits:
 # AlwaysAllowLimitChecker
 # ---------------------------------------------------------------------------
 
+
 class TestAlwaysAllowChecker:
     @pytest.mark.asyncio
     async def test_always_allows(self, db):
@@ -234,6 +241,7 @@ class TestAlwaysAllowChecker:
 # ---------------------------------------------------------------------------
 # Developer plan limits
 # ---------------------------------------------------------------------------
+
 
 class TestDeveloperPlan:
     @pytest.mark.asyncio
@@ -269,6 +277,7 @@ class TestDeveloperPlan:
 # Team plan limits
 # ---------------------------------------------------------------------------
 
+
 class TestTeamPlan:
     @pytest.mark.asyncio
     async def test_team_entity_limit(self, db):
@@ -289,7 +298,7 @@ class TestTeamPlan:
 
 
 class TestBillingRecordFallback:
-    """When no billing period covers 'now', limits fall back to organization_billing.billing_plan."""
+    """When no current period, fall back to organization_billing.billing_plan."""
 
     @pytest.mark.asyncio
     async def test_enterprise_limits_without_current_period(self, db):

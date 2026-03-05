@@ -17,16 +17,14 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from airweave.api.context import ApiContext
+from airweave.adapters.cache.fake import FakeContextCache
+from airweave.adapters.rate_limiter.fake import FakeRateLimiter
 from airweave.api.context_resolver import (
     AuthResult,
     ContextResolver,
     _extract_client_ip,
     _extract_headers,
 )
-from airweave.adapters.cache.fake import FakeContextCache
-from airweave.adapters.rate_limiter.fake import FakeRateLimiter
-from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
 from airweave.schemas.organization import Organization
 
@@ -46,7 +44,11 @@ def _make_resolver():
 def _make_org(org_id=ORG_ID, billing=None):
     now = datetime.now(timezone.utc)
     return Organization(
-        id=org_id, name="Test Org", created_at=now, modified_at=now, billing=billing,
+        id=org_id,
+        name="Test Org",
+        created_at=now,
+        modified_at=now,
+        billing=billing,
     )
 
 

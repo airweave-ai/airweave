@@ -21,14 +21,12 @@ from airweave.core.protocols.identity import (
     IdentityProviderUnavailableError,
 )
 from airweave.core.protocols.payment import (
-    PaymentGatewayProtocol,
     PaymentProviderError,
     PaymentProviderInvalidRequestError,
     PaymentProviderNotFoundError,
     PaymentProviderRateLimitError,
     PaymentProviderUnavailableError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Identity exception hierarchy
@@ -82,7 +80,7 @@ class TestIdentityExceptions:
 
     def test_message_attribute(self, case: ExceptionCase):
         exc = case.cls(case.message)
-        assert exc.message == case.message
+        assert exc.message == case.message  # type: ignore[attr-defined]
 
     def test_str_contains_message(self, case: ExceptionCase):
         exc = case.cls(case.message)
@@ -110,10 +108,26 @@ class TestIdentityRateLimitRetryAfter:
 
 PAYMENT_CASES = [
     ExceptionCase(name="base", cls=PaymentProviderError, base=Exception),
-    ExceptionCase(name="rate_limit", cls=PaymentProviderRateLimitError, base=PaymentProviderError),
-    ExceptionCase(name="unavailable", cls=PaymentProviderUnavailableError, base=PaymentProviderError),
-    ExceptionCase(name="not_found", cls=PaymentProviderNotFoundError, base=PaymentProviderError),
-    ExceptionCase(name="invalid_request", cls=PaymentProviderInvalidRequestError, base=PaymentProviderError),
+    ExceptionCase(
+        name="rate_limit",
+        cls=PaymentProviderRateLimitError,
+        base=PaymentProviderError,
+    ),
+    ExceptionCase(
+        name="unavailable",
+        cls=PaymentProviderUnavailableError,
+        base=PaymentProviderError,
+    ),
+    ExceptionCase(
+        name="not_found",
+        cls=PaymentProviderNotFoundError,
+        base=PaymentProviderError,
+    ),
+    ExceptionCase(
+        name="invalid_request",
+        cls=PaymentProviderInvalidRequestError,
+        base=PaymentProviderError,
+    ),
 ]
 
 
@@ -124,7 +138,7 @@ class TestPaymentExceptions:
 
     def test_message_attribute(self, case: ExceptionCase):
         exc = case.cls(case.message)
-        assert exc.message == case.message
+        assert exc.message == case.message  # type: ignore[attr-defined]
 
     def test_str_contains_message(self, case: ExceptionCase):
         exc = case.cls(case.message)

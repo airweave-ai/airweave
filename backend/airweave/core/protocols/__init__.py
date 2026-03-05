@@ -43,6 +43,7 @@ __all__ = [
     "EndpointVerifier",
     "EventBus",
     "EventHandler",
+    "EventSubscriber",
     "HealthProbe",
     "HealthServiceProtocol",
     "HttpMetrics",
