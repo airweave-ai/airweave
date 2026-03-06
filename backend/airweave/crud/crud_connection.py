@@ -61,14 +61,19 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
             Optional[Connection]: The connection with the given ID.
 
         """
-        query = select(self.model).where(self.model.id == id)
+        query = select(self.model).where(
+            self.model.id == id,
+            or_(
+                self.model.organization_id == ctx.organization.id,
+                self.model.organization_id.is_(None),
+            ),
+        )
         result = await db.execute(query)
         db_obj = result.unique().scalar_one_or_none()
 
         if not db_obj:
             raise NotFoundException(f"Connection with ID {id} not found")
 
-        # If it's not a native connection, validate user permissions
         if not self._is_native_connection(db_obj):
             await self._validate_organization_access(ctx, db_obj.organization_id)
 
@@ -237,14 +242,19 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
             NotFoundException: If the connection is not found
             PermissionException: If the user doesn't have access to the connection
         """
-        query = select(self.model).where(self.model.readable_id == readable_id)
+        query = select(self.model).where(
+            self.model.readable_id == readable_id,
+            or_(
+                self.model.organization_id == ctx.organization.id,
+                self.model.organization_id.is_(None),
+            ),
+        )
         result = await db.execute(query)
         db_obj = result.unique().scalar_one_or_none()
 
         if not db_obj:
             return None
 
-        # If it's not a native connection, validate user permissions
         if not self._is_native_connection(db_obj):
             await self._validate_organization_access(ctx, db_obj.organization_id)
 
@@ -256,6 +266,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         *,
         id: UUID,
         ctx: BaseContext,
+        organization_id: Optional[UUID] = None,
         uow: Optional[UnitOfWork] = None,
     ) -> Optional[Connection]:
         """Delete a connection, with special handling for native connections.
@@ -267,6 +278,7 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
             db (AsyncSession): The database session.
             id (UUID): The UUID of the connection to delete.
             ctx (BaseContext): The current authentication context.
+            organization_id (Optional[UUID]): Unused, kept for superclass compat.
             uow (Optional[UnitOfWork]): The unit of work to use for the transaction.
 
         Returns:
@@ -278,20 +290,24 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
             PermissionException: If attempting to delete a native connection or if the user
                 does not have permission to delete the connection.
         """
-        query = select(self.model).where(self.model.id == id)
+        query = select(self.model).where(
+            self.model.id == id,
+            or_(
+                self.model.organization_id == ctx.organization.id,
+                self.model.organization_id.is_(None),
+            ),
+        )
         result = await db.execute(query)
         db_obj = result.unique().scalar_one_or_none()
 
         if not db_obj:
             raise NotFoundException(f"Connection with ID {id} not found")
 
-        # Prevent deletion of native connections
         if self._is_native_connection(db_obj):
             raise PermissionException(
                 "Native connections cannot be deleted as they are system-level resources"
             )
 
-        # For regular connections, validate user permissions
         await self._validate_organization_access(ctx, db_obj.organization_id)
 
         await db.delete(db_obj)

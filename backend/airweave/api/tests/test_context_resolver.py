@@ -4,7 +4,7 @@ The resolver's main ``resolve()`` method touches the DB via crud,
 so it requires integration tests. These tests focus on the pure logic
 that can be tested without a database:
 - Organization ID resolution from AuthResult
-- Billing plan extraction from ApiContext
+- Organization access validation
 - Client IP extraction
 - Header extraction
 """
@@ -101,7 +101,7 @@ class TestResolveOrganizationId:
     def test_no_org_raises_400(self):
         resolver = _make_resolver()
         auth = AuthResult(method=AuthMethod.AUTH0, user=_make_user_with_orgs([]))
-        # user has no primary_organization_id (empty orgs list)
+        assert auth.user is not None
         auth.user.primary_organization_id = None
         with pytest.raises(HTTPException) as exc_info:
             resolver._resolve_organization_id(None, auth)
@@ -232,3 +232,67 @@ class TestAuthResult:
         b = AuthResult()
         a.metadata["x"] = 1
         assert "x" not in b.metadata
+
+
+# ---------------------------------------------------------------------------
+# _validate_organization_access
+# ---------------------------------------------------------------------------
+
+
+class TestValidateOrganizationAccess:
+    """Verify tenant isolation in _validate_organization_access."""
+
+    @pytest.mark.asyncio
+    async def test_auth0_null_user_raises_401(self):
+        """Auth0 auth with user not found in DB must not silently succeed."""
+        resolver = _make_resolver()
+        auth = AuthResult(method=AuthMethod.AUTH0, user=None)
+        with pytest.raises(HTTPException) as exc_info:
+            await resolver._validate_organization_access(
+                db=MagicMock(), organization_id=str(ORG_ID), auth=auth, x_api_key=None
+            )
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_system_null_user_raises_401(self):
+        """System auth with user not found in DB must not silently succeed."""
+        resolver = _make_resolver()
+        auth = AuthResult(method=AuthMethod.SYSTEM, user=None)
+        with pytest.raises(HTTPException) as exc_info:
+            await resolver._validate_organization_access(
+                db=MagicMock(), organization_id=str(ORG_ID), auth=auth, x_api_key=None
+            )
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_auth0_user_with_matching_org_succeeds(self):
+        resolver = _make_resolver()
+        user = _make_user_with_orgs([ORG_ID])
+        auth = AuthResult(method=AuthMethod.AUTH0, user=user)
+        await resolver._validate_organization_access(
+            db=MagicMock(), organization_id=str(ORG_ID), auth=auth, x_api_key=None
+        )
+
+    @pytest.mark.asyncio
+    async def test_auth0_user_with_wrong_org_raises_403(self):
+        resolver = _make_resolver()
+        other_org = uuid4()
+        user = _make_user_with_orgs([other_org])
+        auth = AuthResult(method=AuthMethod.AUTH0, user=user)
+        with pytest.raises(HTTPException) as exc_info:
+            await resolver._validate_organization_access(
+                db=MagicMock(), organization_id=str(ORG_ID), auth=auth, x_api_key=None
+            )
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_auth0_null_user_with_org_header_raises_401(self):
+        """Attacker scenario: valid token, no DB user, arbitrary org header."""
+        resolver = _make_resolver()
+        target_org = uuid4()
+        auth = AuthResult(method=AuthMethod.AUTH0, user=None)
+        with pytest.raises(HTTPException) as exc_info:
+            await resolver._validate_organization_access(
+                db=MagicMock(), organization_id=str(target_org), auth=auth, x_api_key=None
+            )
+        assert exc_info.value.status_code == 401
