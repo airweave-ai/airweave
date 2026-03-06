@@ -58,6 +58,5 @@ class AgenticSearchPlan(BaseModel):
         "returns ONLY chunks containing the query terms — precise but will silently "
         "exclude chunks that match filters but lack the query words. 'hybrid': combines "
         "both (chunk can match via either) — good default but keyword still influences "
-        "results. ALWAYS use 'semantic' when filtering by original_entity_id or "
-        "chunk_index to get all chunks of a document.",
+        "results.",
     )

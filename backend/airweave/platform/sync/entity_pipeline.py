@@ -14,7 +14,6 @@ Lifecycle:
 import time
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List
-from uuid import UUID
 
 from airweave.core.events.sync import EntityBatchProcessedEvent, TypeActionCounts
 from airweave.core.shared_models import AirweaveFieldFlag

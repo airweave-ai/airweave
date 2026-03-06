@@ -17,7 +17,7 @@ from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.events.sync import QueryProcessedEvent
-from airweave.core.protocols import EventBus, MetricsService, PubSub
+from airweave.core.protocols import EventBus, PubSub
 from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
@@ -47,7 +47,6 @@ async def agentic_search(
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
     event_bus: EventBus = Inject(EventBus),
-    metrics_service: MetricsService = Inject(MetricsService),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> AgenticSearchResponse:
@@ -66,7 +65,7 @@ async def agentic_search(
 
     try:
         emitter = AgenticSearchLoggingEmitter(ctx)
-        agent = AgenticSearchAgent(services, ctx, emitter, metrics=metrics_service.agentic_search)
+        agent = AgenticSearchAgent(services, ctx, emitter)
 
         response = await agent.run(readable_id, request, is_streaming=False)
 
@@ -85,7 +84,6 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
     event_bus: EventBus = Inject(EventBus),
-    metrics_service: MetricsService = Inject(MetricsService),
     pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
@@ -132,9 +130,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
             services = await AgenticSearchServices.create(
                 ctx, readable_id, dense_embedder=dense_embedder, sparse_embedder=sparse_embedder
             )
-            agent = AgenticSearchAgent(
-                services, ctx, emitter, metrics=metrics_service.agentic_search
-            )
+            agent = AgenticSearchAgent(services, ctx, emitter)
             agent_reached = True
             await agent.run(readable_id, request, is_streaming=True)
         except Exception as e:
@@ -244,7 +240,6 @@ async def admin_stream_agentic_search(  # noqa: C901 - streaming orchestration i
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
     event_bus: EventBus = Inject(EventBus),
-    metrics_service: MetricsService = Inject(MetricsService),
     pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
@@ -288,9 +283,7 @@ async def admin_stream_agentic_search(  # noqa: C901 - streaming orchestration i
                 sparse_embedder=sparse_embedder,
                 model_override=request.model,
             )
-            agent = AgenticSearchAgent(
-                services, ctx, emitter, metrics=metrics_service.agentic_search
-            )
+            agent = AgenticSearchAgent(services, ctx, emitter)
             agent_reached = True
             await agent.run(readable_id, request, is_streaming=True)
         except Exception as e:

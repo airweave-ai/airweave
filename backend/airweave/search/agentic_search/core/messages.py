@@ -22,7 +22,6 @@ from airweave.search.agentic_search.schemas.filter import (
     AgenticSearchFilterGroup,
     format_filter_groups_md,
 )
-from airweave.search.agentic_search.schemas.request import AgenticSearchMode
 
 # Path to context markdown files
 CONTEXT_DIR = Path(__file__).parent.parent / "context"
@@ -68,33 +67,15 @@ def load_system_prompt(collection_metadata: AgenticSearchCollectionMetadata) -> 
 def build_initial_user_message(
     user_query: str,
     user_filter: list[AgenticSearchFilterGroup],
-    mode: AgenticSearchMode,
 ) -> dict:
     """Build the first user message that starts the conversation."""
     filter_md = format_filter_groups_md(user_filter)
 
-    if mode == AgenticSearchMode.FAST:
-        content = f"""## Search Request
+    content = f"""## Search Request
 
 **Query:** {user_query}
 **User filter:** {filter_md}
-**Mode:** direct
-
-**IMPORTANT — Direct mode rules:**
-You have exactly ONE search. After seeing the results, you MUST call `submit_answer` \
-immediately. You will not be able to search again.
-
-Design a single broad semantic search (no filters, generous limit) that maximizes your \
-chance of finding the answer in one shot. Use query variations to cover different \
-phrasings and terminology."""
-    else:
-        content = f"""## Search Request
-
-**Query:** {user_query}
-**User filter:** {filter_md}
-**Mode:** agentic
-
-Please search the collection to answer this query. Start with a broad semantic search."""
+"""
 
     return {"role": "user", "content": content}
 

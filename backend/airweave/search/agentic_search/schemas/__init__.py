@@ -3,7 +3,6 @@
 This module exports all Pydantic schemas for the agentic search module.
 """
 
-from .answer import AgenticSearchAnswer
 from .collection_metadata import (
     AgenticSearchCollectionMetadata,
     AgenticSearchEntityTypeMetadata,
@@ -40,13 +39,9 @@ from .search_result import (
     AgenticSearchResult,
     AgenticSearchResults,
     AgenticSearchSystemMetadata,
-    ResultBrief,
-    ResultBriefEntry,
 )
 
 __all__ = [
-    # Answer
-    "AgenticSearchAnswer",
     # Collection metadata
     "AgenticSearchCollectionMetadata",
     "AgenticSearchEntityTypeMetadata",
@@ -81,8 +76,6 @@ __all__ = [
     # Retrieval strategy
     "AgenticSearchRetrievalStrategy",
     # Search result
-    "ResultBrief",
-    "ResultBriefEntry",
     "AgenticSearchAccessControl",
     "AgenticSearchBreadcrumb",
     "AgenticSearchResult",
