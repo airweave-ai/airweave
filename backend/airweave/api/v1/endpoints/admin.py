@@ -616,9 +616,18 @@ async def add_self_to_organization(
                     f"{org_data['auth0_org_id']}"
                 )
             else:
-                ctx.logger.warning(f"Auth0 role '{role}' not found, skipping role assignment")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Auth0 role '{role}' not found — cannot assign role",
+                )
+    except HTTPException:
+        raise
     except Exception as e:
-        ctx.logger.warning(f"Failed to add admin to Auth0 organization: {e}")
+        ctx.logger.error(f"Failed to add admin to Auth0 organization: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to complete Auth0 operation: {e}",
+        )
 
     membership_changed = await _update_or_create_membership(db, ctx, organization_id, role)
 
