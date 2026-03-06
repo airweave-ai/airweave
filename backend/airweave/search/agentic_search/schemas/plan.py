@@ -52,11 +52,5 @@ class AgenticSearchPlan(BaseModel):
     offset: int = Field(..., ge=0, description="Number of results to skip (for pagination).")
     retrieval_strategy: AgenticSearchRetrievalStrategy = Field(
         ...,
-        description="The retrieval strategy. 'semantic': returns conceptually similar "
-        "chunks even without exact term matches — best for exploration and filter-based "
-        "retrieval (e.g., by original_entity_id, chunk_index, breadcrumbs). 'keyword': "
-        "returns ONLY chunks containing the query terms — precise but will silently "
-        "exclude chunks that match filters but lack the query words. 'hybrid': combines "
-        "both (chunk can match via either) — good default but keyword still influences "
-        "results.",
+        description="The retrieval strategy: 'semantic', 'keyword', or 'hybrid'.",
     )

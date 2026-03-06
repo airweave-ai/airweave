@@ -74,25 +74,8 @@ by system IDs or JSON structure. For exact matching, keyword search uses the ful
 
 ### How Search Works
 
-- **Keyword Search**: Matches against ALL entity fields (full JSON payload). Best for exact terms,
-  specific field values, technical terms, IDs, proper nouns.
-- **Semantic Search**: Matches against `textual_representation` only. Best for meaning-based
-  queries, conceptually related content, natural language questions.
-- **Hybrid Search**: Combines keyword filtering with semantic relevance.
-
-### Filter Operators
-
-For each filter condition, specify:
-- `field`: The field name to filter on
-- `operator`: One of `equals`, `not_equals`, `contains`, `greater_than`, `less_than`,
-  `greater_than_or_equal`, `less_than_or_equal`, `in`, `not_in`
-- `value`: The value to compare against (string, number, or list for `in`/`not_in`)
-
-### Important Fields for Deep Exploration
-
-- `airweave_system_metadata.source_name`: Filter to specific sources (e.g., "notion", "slack")
-- `airweave_system_metadata.entity_type`: Filter to specific entity types (e.g., "NotionPageEntity")
-- `breadcrumbs.entity_id`, `breadcrumbs.name`, `breadcrumbs.entity_type`: Filter by location hierarchy
-- `airweave_system_metadata.original_entity_id`: Get ALL chunks from the same original entity for full context
-- `airweave_system_metadata.chunk_index`: Navigate within a document (get surrounding chunks)
-- `created_at`, `updated_at`: Filter by time ranges
+- **Keyword search** matches against ALL entity fields (full JSON payload), including
+  source-specific fields. Use for exact terms, IDs, proper nouns.
+- **Semantic search** matches against `textual_representation` only. Use for meaning-based
+  queries and conceptually related content.
+- **Hybrid search** combines both.

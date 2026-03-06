@@ -16,12 +16,6 @@ class AgenticSearchState(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    def merge_search_results(self, results: list[AgenticSearchResult]) -> None:
-        """Merge results, deduplicating by entity_id across all iterations."""
-        for r in results:
-            if r.entity_id not in self.results:
-                self.results[r.entity_id] = r
-
     def mark_as_relevant(self, entity_ids: list[str]) -> tuple[list[str], list[str], list[str]]:
         """Mark entity IDs as relevant.
 

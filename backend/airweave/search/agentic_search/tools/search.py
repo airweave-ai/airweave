@@ -36,8 +36,11 @@ from airweave.search.agentic_search.schemas.search_result import (
 from airweave.search.agentic_search.schemas.state import AgenticSearchState
 from airweave.search.agentic_search.services import AgenticSearchServices
 
-# Max share of context window a single tool result should occupy
-MAX_TOOL_RESULT_CONTEXT_SHARE = 0.3
+# Reserve tokens for LLM response (reasoning + tool calls)
+RESPONSE_RESERVE_TOKENS = 4096
+
+# Minimum budget so we always show at least a few results
+MIN_RESULT_BUDGET_TOKENS = 2048
 
 # ── Tool definition (sent to the LLM) ────────────────────────────────
 
@@ -78,7 +81,9 @@ async def handle_search(
         collection_id=collection_id,
     )
     duration_ms = int((time.monotonic() - start) * 1000)
-    state.merge_search_results(results)
+    for r in results:
+        if r.entity_id not in state.results:
+            state.results[r.entity_id] = r
     state.results_by_tool_call_id[tc.id] = results
     await emitter.emit(
         AgenticSearchingEvent(
@@ -87,7 +92,8 @@ async def handle_search(
             duration_ms=duration_ms,
         )
     )
-    return format_results_for_context(results, context_window_tokens)
+    available_tokens = _estimate_available_tokens(state.messages, context_window_tokens)
+    return format_results_for_context(results, available_tokens)
 
 
 # ── Execution ─────────────────────────────────────────────────────────
@@ -140,17 +146,34 @@ async def execute_search(
     return search_results.results
 
 
+# ── Context budget ─────────────────────────────────────────────────────
+
+
+def _estimate_available_tokens(
+    messages: list[dict],
+    context_window_tokens: int,
+) -> int:
+    """Estimate how many tokens are available for new results.
+
+    Sums character lengths of all messages, converts to token estimate,
+    subtracts from context window with a reserve for the LLM response.
+    """
+    used_chars = sum(len(m.get("content", "") or "") for m in messages)
+    used_tokens = used_chars // CHARS_PER_TOKEN
+    available = context_window_tokens - used_tokens - RESPONSE_RESERVE_TOKENS
+    return max(available, MIN_RESULT_BUDGET_TOKENS)
+
+
 # ── Result formatting (truncation for context window) ─────────────────
 
 
 def format_results_for_context(
     results: list[AgenticSearchResult],
-    context_window_tokens: int,
+    available_tokens: int,
 ) -> str:
-    """Format search results as markdown, truncating to fit the context budget.
+    """Format search results as markdown, fitting within the available token budget.
 
     Each result is included in full or not at all (never partially truncated).
-    Budget: MAX_TOOL_RESULT_CONTEXT_SHARE (30%) of the context window.
 
     Returns:
         Formatted markdown string. May contain fewer results than provided
@@ -159,7 +182,7 @@ def format_results_for_context(
     if not results:
         return "No results found."
 
-    max_chars = int(context_window_tokens * MAX_TOOL_RESULT_CONTEXT_SHARE * CHARS_PER_TOKEN)
+    max_chars = available_tokens * CHARS_PER_TOKEN
 
     parts: list[str] = []
     chars_used = 0
