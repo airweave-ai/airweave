@@ -1,0 +1,154 @@
+---
+title: "Servicenow"
+description: "Servicenow integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Servicenow logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Servicenow</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Servicenow through Airweave's unified search layer.
+
+## Configuration
+
+ServiceNow source connector.
+
+Syncs Incidents, Knowledge Base Articles, Change Requests, Problem Records,
+and Service Catalog Items from a ServiceNow instance using the Table API
+with Basic Auth (instance URL, username, password).
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/servicenow.py"
+>
+  Explore the Servicenow connector implementation
+</Card>
+
+### Authentication
+
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="ServiceNowIncidentEntity">
+
+Schema for ServiceNow Incident.
+
+Table: incident
+
+| Field | Type | Description |
+|-------|------|-------------|
+| sys_id | str | Unique system ID of the incident. |
+| number | str | Human-readable incident number (e.g. INC0010001). |
+| short_description | Optional[str] | Short description of the incident. |
+| description | Optional[str] | Full description of the incident. |
+| state | Optional[str] | Incident state (e.g. New, In Progress, Resolved). |
+| priority | Optional[str] | Priority level. |
+| category | Optional[str] | Category of the incident. |
+| assigned_to_name | Optional[str] | Name of the assignee. |
+| caller_id_name | Optional[str] | Name of the caller/requester. |
+| created_at | Optional[datetime] | When the incident was created. |
+| updated_at | Optional[datetime] | When the incident was last updated. |
+| web_url_value | Optional[str] | URL to view the incident in ServiceNow. |
+
+</Accordion>
+<Accordion title="ServiceNowKnowledgeArticleEntity">
+
+Schema for ServiceNow Knowledge Base Article.
+
+Table: kb_knowledge
+
+| Field | Type | Description |
+|-------|------|-------------|
+| sys_id | str | Unique system ID of the article. |
+| number | str | Article number (e.g. KB0010001). |
+| short_description | Optional[str] | Short description or title of the article. |
+| text | Optional[str] | Full text content of the article. |
+| author_name | Optional[str] | Name of the author. |
+| kb_knowledge_base_name | Optional[str] | Knowledge base name. |
+| category_name | Optional[str] | Category of the article. |
+| workflow_state | Optional[str] | Workflow state (e.g. published, draft). |
+| created_at | Optional[datetime] | When the article was created. |
+| updated_at | Optional[datetime] | When the article was last updated. |
+| web_url_value | Optional[str] | URL to view the article in ServiceNow. |
+
+</Accordion>
+<Accordion title="ServiceNowChangeRequestEntity">
+
+Schema for ServiceNow Change Request.
+
+Table: change_request
+
+| Field | Type | Description |
+|-------|------|-------------|
+| sys_id | str | Unique system ID of the change request. |
+| number | str | Change request number (e.g. CHG0010001). |
+| short_description | Optional[str] | Short description of the change. |
+| description | Optional[str] | Full description of the change. |
+| state | Optional[str] | Change state (e.g. New, Assess, Authorize, Scheduled). |
+| phase | Optional[str] | Change phase. |
+| priority | Optional[str] | Priority level. |
+| type | Optional[str] | Type of change (normal, standard, emergency). |
+| assigned_to_name | Optional[str] | Name of the assignee. |
+| requested_by_name | Optional[str] | Name of the requester. |
+| created_at | Optional[datetime] | When the change was created. |
+| updated_at | Optional[datetime] | When the change was last updated. |
+| web_url_value | Optional[str] | URL to view the change request in ServiceNow. |
+
+</Accordion>
+<Accordion title="ServiceNowProblemEntity">
+
+Schema for ServiceNow Problem Record.
+
+Table: problem
+
+| Field | Type | Description |
+|-------|------|-------------|
+| sys_id | str | Unique system ID of the problem. |
+| number | str | Problem number (e.g. PRB0010001). |
+| short_description | Optional[str] | Short description of the problem. |
+| description | Optional[str] | Full description of the problem. |
+| state | Optional[str] | Problem state. |
+| priority | Optional[str] | Priority level. |
+| category | Optional[str] | Category of the problem. |
+| assigned_to_name | Optional[str] | Name of the assignee. |
+| created_at | Optional[datetime] | When the problem was created. |
+| updated_at | Optional[datetime] | When the problem was last updated. |
+| web_url_value | Optional[str] | URL to view the problem in ServiceNow. |
+
+</Accordion>
+<Accordion title="ServiceNowCatalogItemEntity">
+
+Schema for ServiceNow Service Catalog Item.
+
+Table: sc_cat_item
+
+| Field | Type | Description |
+|-------|------|-------------|
+| sys_id | str | Unique system ID of the catalog item. |
+| name | str | Name of the catalog item. |
+| short_description | Optional[str] | Short description of the catalog item. |
+| description | Optional[str] | Full description. |
+| category_name | Optional[str] | Category name. |
+| price | Optional[str] | Price if applicable. |
+| active | Optional[bool] | Whether the item is active. |
+| created_at | Optional[datetime] | When the item was created. |
+| updated_at | Optional[datetime] | When the item was last updated. |
+| web_url_value | Optional[str] | URL to view the catalog item in ServiceNow. |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

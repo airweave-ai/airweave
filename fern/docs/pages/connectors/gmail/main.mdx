@@ -48,54 +48,7 @@ This connector uses **OAuth 2.0 with custom credentials**. You need to provide y
 
 ### Configuration Options
 
-The following configuration options are available for this connector:
-
-<Card
-  title="Configuration Parameters"
-  className="config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
->
-
-Gmail configuration schema.
-<ParamField
-  path="after_date"
-  type="Optional[str]"
-  required={true}
->
-  Sync emails after this date (format: YYYY/MM/DD or YYYY-MM-DD).
-</ParamField>
-<ParamField
-  path="included_labels"
-  type="list[str]"
-  required={false}
-  default="[]"
->
-  Labels to include (e.g., 'inbox', 'sent', 'important'). Defaults to inbox and sent.
-</ParamField>
-<ParamField
-  path="excluded_labels"
-  type="list[str]"
-  required={false}
-  default="[]"
->
-  Labels to exclude (e.g., 'spam', 'trash', 'promotions', 'social'). Defaults to spam and trash.
-</ParamField>
-<ParamField
-  path="excluded_categories"
-  type="list[str]"
-  required={false}
-  default="[]"
->
-  Gmail categories to exclude (e.g., 'promotions', 'social', 'updates', 'forums').
-</ParamField>
-<ParamField
-  path="gmail_query"
-  type="Optional[str]"
-  required={true}
->
-  Advanced. Custom Gmail query string (overrides all other filters if provided).
-</ParamField>
-</Card>
+This connector does not have any additional configuration options.
 
 ## Data Models
 
