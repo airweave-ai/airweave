@@ -48,6 +48,12 @@ from .box import (
     BoxFolderEntity,
     BoxUserEntity,
 )
+from .calendly import (
+    CalendlyEventInviteeEntity,
+    CalendlyEventTypeEntity,
+    CalendlyScheduledEventEntity,
+    CalendlyUserEntity,
+)
 from .clickup import (
     ClickUpCommentEntity,
     ClickUpFileEntity,
@@ -372,6 +378,12 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         BoxFileEntity,
         BoxFolderEntity,
         BoxUserEntity,
+    ],
+    "calendly": [
+        CalendlyEventInviteeEntity,
+        CalendlyEventTypeEntity,
+        CalendlyScheduledEventEntity,
+        CalendlyUserEntity,
     ],
     "clickup": [
         ClickUpCommentEntity,

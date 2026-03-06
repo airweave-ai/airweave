@@ -92,6 +92,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
     # Only include mappings where names differ between Airweave and Pipedream
     SLUG_NAME_MAPPING = {
         "apollo": "apollo_io",  # Pipedream app name_slug is apollo_io
+        "calendly": "calendly_v2",  # Pipedream app name_slug is calendly_v2
         "outlook_mail": "outlook",
         "outlook_calendar": "outlook",
         "slack": "slack_v2",  # Pipedream uses slack_v2 for their newer Slack app

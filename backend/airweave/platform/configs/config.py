@@ -1,6 +1,6 @@
 """Configuration classes for platform components."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import Field, field_validator
 
@@ -58,7 +58,7 @@ class BitbucketConfig(SourceConfig):
 
     @field_validator("file_extensions", mode="before")
     @classmethod
-    def parse_file_extensions(cls, value):
+    def parse_file_extensions(cls, value: Any) -> Any:
         """Convert string input to list if needed."""
         if isinstance(value, str):
             if not value.strip():
@@ -251,7 +251,7 @@ class GmailConfig(SourceConfig):
 
     @field_validator("included_labels", "excluded_labels", "excluded_categories", mode="before")
     @classmethod
-    def parse_list_fields(cls, value):
+    def parse_list_fields(cls, value: Any) -> Any:
         """Convert comma-separated string to list if needed."""
         if isinstance(value, str):
             if not value.strip():
@@ -261,7 +261,7 @@ class GmailConfig(SourceConfig):
 
     @field_validator("after_date")
     @classmethod
-    def validate_date_format(cls, value):
+    def validate_date_format(cls, value: Optional[str]) -> Optional[str]:
         """Validate date format and convert to YYYY/MM/DD."""
         if not value:
             return value
@@ -306,7 +306,7 @@ class GoogleDriveConfig(SourceConfig):
 
     @field_validator("include_patterns", mode="before")
     @classmethod
-    def _parse_include_patterns(cls, value):
+    def _parse_include_patterns(cls, value: Any) -> Any:
         if isinstance(value, str):
             return [p.strip() for p in value.split(",") if p.strip()]
         return value
@@ -442,7 +442,7 @@ class OutlookMailConfig(SourceConfig):
 
     @field_validator("included_folders", "excluded_folders", mode="before")
     @classmethod
-    def parse_list_fields(cls, value):
+    def parse_list_fields(cls, value: Any) -> Any:
         """Convert comma-separated string to list if needed."""
         if isinstance(value, str):
             if not value.strip():
@@ -452,7 +452,7 @@ class OutlookMailConfig(SourceConfig):
 
     @field_validator("after_date")
     @classmethod
-    def validate_date_format(cls, value):
+    def validate_date_format(cls, value: Optional[str]) -> Optional[str]:
         """Validate date format and convert to YYYY/MM/DD."""
         if not value:
             return value
@@ -498,7 +498,7 @@ class CTTIConfig(SourceConfig):
 
     @field_validator("limit", mode="before")
     @classmethod
-    def parse_limit(cls, value):
+    def parse_limit(cls, value: Any) -> Any:
         """Convert string input to integer if needed."""
         if isinstance(value, str):
             if not value.strip():
@@ -511,7 +511,7 @@ class CTTIConfig(SourceConfig):
 
     @field_validator("skip", mode="before")
     @classmethod
-    def parse_skip(cls, value):
+    def parse_skip(cls, value: Any) -> Any:
         """Convert string input to integer if needed."""
         if isinstance(value, str):
             if not value.strip():
@@ -641,7 +641,7 @@ class SalesforceConfig(SourceConfig):
 
     @field_validator("instance_url", mode="before")
     @classmethod
-    def strip_https_prefix(cls, value):
+    def strip_https_prefix(cls, value: Any) -> Any:
         """Remove https:// or http:// prefix if present."""
         if isinstance(value, str):
             if value.startswith("https://"):
@@ -792,7 +792,7 @@ class StubConfig(SourceConfig):
         mode="before",
     )
     @classmethod
-    def parse_weight(cls, value):
+    def parse_weight(cls, value: Any) -> Any:
         """Convert string input to integer if needed."""
         if isinstance(value, str):
             if not value.strip():
@@ -976,3 +976,9 @@ class SnapshotConfig(BaseConfig):
         if not v or not v.strip():
             raise ValueError("Path is required")
         return v.strip().rstrip("/")
+
+
+class CalendlyConfig(SourceConfig):
+    """Calendly configuration schema."""
+
+    pass
