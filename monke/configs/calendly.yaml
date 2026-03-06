@@ -38,7 +38,7 @@ deletion:
   verify_remaining_entities: true
   verify_complete_deletion: true
 
-entity_count: 3 # Number of event types to create
+entity_count: 2 # Number of event types to create (max 2 for rate limits)
 
 collection:
   name: Calendly Test Collection

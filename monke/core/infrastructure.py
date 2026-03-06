@@ -51,26 +51,20 @@ def teardown_test_infrastructure(context: TestContext) -> None:
     # Delete source connection if exists
     if context.source_connection_id:
         try:
-            response = http_utils.http_delete(
-                f"/source-connections/{context.source_connection_id}"
-            )
+            response = http_utils.http_delete(f"/source-connections/{context.source_connection_id}")
             if response.status_code in [200, 204]:
                 logger.info("✅ Deleted source connection")
             elif response.status_code == 404:
                 logger.info("ℹ️  Source connection already deleted")
             else:
-                logger.error(
-                    f"❌ Failed to delete source connection: {response.status_code}"
-                )
+                logger.error(f"❌ Failed to delete source connection: {response.status_code}")
         except Exception as e:
             logger.error(f"❌ Failed to delete source connection: {e}")
 
     # Delete collection if exists
     if context.collection_readable_id:
         try:
-            response = http_utils.http_delete(
-                f"/collections/{context.collection_readable_id}"
-            )
+            response = http_utils.http_delete(f"/collections/{context.collection_readable_id}")
             if response.status_code in [200, 204]:
                 logger.info("✅ Deleted test collection")
             elif response.status_code == 404:
@@ -81,9 +75,7 @@ def teardown_test_infrastructure(context: TestContext) -> None:
             logger.error(f"❌ Failed to delete collection: {e}")
 
 
-def _build_connection_payload(
-    config: TestConfig, context: TestContext
-) -> Dict[str, Any]:
+def _build_connection_payload(config: TestConfig, context: TestContext) -> Dict[str, Any]:
     """Build the payload for creating a source connection.
 
     Args:
@@ -108,7 +100,7 @@ def _build_connection_payload(
         "short_name": config.connector.type,
         "readable_collection_id": context.collection_readable_id,
         "config": config.connector.config_fields,
-        "schedule": None,  # Disable automatic schedules for tests
+        "schedule": {"cron": None},  # Disable automatic schedules for tests
     }
 
     # Handle authentication based on mode

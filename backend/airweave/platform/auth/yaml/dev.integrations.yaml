@@ -43,7 +43,7 @@ integrations:
     scope: "root_readwrite"
 
   calendly:
-    oauth_type: "with_refresh"
+    oauth_type: "with_rotating_refresh"
     url: "https://auth.calendly.com/oauth/authorize"
     backend_url: "https://auth.calendly.com/oauth/token"
     grant_type: "authorization_code"

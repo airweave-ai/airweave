@@ -549,18 +549,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                 decrypted_credential,
                 source_connection_data.config_fields,
             )
-            if oauth2_response.refresh_token:
-                from airweave.platform.auth.oauth2_service import (
-                    persist_refresh_token_after_refresh,
-                )
-
-                await persist_refresh_token_after_refresh(
-                    db, connection_id, oauth2_response.refresh_token, ctx
-                )
             updated_credentials = decrypted_credential.copy()
             updated_credentials["access_token"] = oauth2_response.access_token
-            if oauth2_response.refresh_token:
-                updated_credentials["refresh_token"] = oauth2_response.refresh_token
             return auth_config_class.model_validate(updated_credentials)
 
         return source_credentials

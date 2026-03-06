@@ -391,6 +391,7 @@ class OAuth2Service:
                 ctx.logger, integration_config, None, decrypted_credential
             )
 
+            # Prepare request parameters
             headers, payload = OAuth2Service._prepare_token_request(
                 ctx.logger, integration_config, refresh_token, client_id, client_secret
             )
@@ -698,14 +699,22 @@ class OAuth2Service:
         """
         oauth2_token_response = OAuth2TokenResponse(**response.json())
 
-        oauth_type = getattr(integration_config, "oauth_type", None)
-        if oauth_type == "with_rotating_refresh" and oauth2_token_response.refresh_token:
+        # Check if this is a rotating refresh token OAuth
+        if (
+            hasattr(integration_config, "oauth_type")
+            and integration_config.oauth_type == "with_rotating_refresh"
+        ):
+            # Get connection and its credential
             connection = await crud.connection.get(db=db, id=connection_id, ctx=ctx)
             integration_credential = await crud.integration_credential.get(
                 db=db, id=connection.integration_credential_id, ctx=ctx
             )
+
+            # Update the credentials with the new refresh token
             current_credentials = credentials.decrypt(integration_credential.encrypted_credentials)
             current_credentials["refresh_token"] = oauth2_token_response.refresh_token
+
+            # Encrypt and update the credentials
             encrypted_credentials = credentials.encrypt(current_credentials)
             await crud.integration_credential.update(
                 db=db,
@@ -1002,40 +1011,9 @@ class OAuth2Service:
         return connection
 
 
-async def persist_refresh_token_after_refresh(
-    db: AsyncSession,
-    connection_id: UUID,
-    new_refresh_token: str,
-    ctx: ApiContext,
-) -> None:
-    """Persist a new refresh token to the credential after an OAuth2 refresh.
-
-    Call this from refresh callers when the token response includes a new
-    refresh_token (e.g. Calendly, Google). The OAuth2 service only persists
-    for with_rotating_refresh; this covers with_refresh providers that rotate.
-    """
-    connection = await crud.connection.get(db=db, id=connection_id, ctx=ctx)
-    if not connection:
-        return
-    credential = await crud.integration_credential.get(
-        db=db, id=connection.integration_credential_id, ctx=ctx
-    )
-    if not credential:
-        return
-    current = credentials.decrypt(credential.encrypted_credentials)
-    current["refresh_token"] = new_refresh_token
-    encrypted = credentials.encrypt(current)
-    await crud.integration_credential.update(
-        db=db,
-        db_obj=credential,
-        obj_in={"encrypted_credentials": encrypted},
-        ctx=ctx,
-    )
-
-
 oauth2_service = OAuth2Service()
 
-__all__ = ["oauth2_service", "OAuth2Service", "persist_refresh_token_after_refresh"]
+__all__ = ["oauth2_service", "OAuth2Service"]
 
 # Import OAuth1 service at bottom to avoid circular dependency
 from airweave.platform.auth.oauth1_service import oauth1_service  # noqa: E402, F401

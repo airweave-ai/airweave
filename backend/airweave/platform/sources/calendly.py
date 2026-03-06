@@ -1,5 +1,7 @@
 """Calendly source implementation for syncing event types, scheduled events, and invitees."""
 
+import asyncio
+import time
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -34,7 +36,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.OAUTH_TOKEN,
         AuthenticationMethod.AUTH_PROVIDER,
     ],
-    oauth_type=OAuthType.WITH_REFRESH,
+    oauth_type=OAuthType.WITH_ROTATING_REFRESH,
     auth_config_class=None,
     config_class=CalendlyConfig,
     labels=["Productivity", "Calendar"],
@@ -51,6 +53,9 @@ class CalendlySource(BaseSource):
 
     BASE_URL = "https://api.calendly.com"
 
+    # Calendly: 50 requests per user per minute; use 2s to stay well under (30 req/min)
+    MIN_REQUEST_INTERVAL_SECONDS = 2.0
+
     @classmethod
     async def create(
         cls, access_token: str, config: Optional[Dict[str, Any]] = None
@@ -66,6 +71,8 @@ class CalendlySource(BaseSource):
         """
         instance = cls()
         instance.access_token = access_token
+        instance._last_request_time = 0.0
+        instance._rate_limit_lock = asyncio.Lock()
 
         # Store config values as instance attributes
         if config:
@@ -73,6 +80,22 @@ class CalendlySource(BaseSource):
             pass
 
         return instance
+
+    async def _wait_for_rate_limit(self) -> None:
+        """Enforce minimum interval between API requests (50 req/min)."""
+        if not hasattr(self, "_rate_limit_lock"):
+            self._rate_limit_lock = asyncio.Lock()
+            self._last_request_time = 0.0
+        async with self._rate_limit_lock:
+            now = time.monotonic()
+            elapsed = now - self._last_request_time
+            if elapsed < self.MIN_REQUEST_INTERVAL_SECONDS:
+                sleep_time = self.MIN_REQUEST_INTERVAL_SECONDS - elapsed
+                self.logger.debug(
+                    f"Calendly rate limit pacing: waiting {sleep_time:.2f}s before next request"
+                )
+                await asyncio.sleep(sleep_time)
+            self._last_request_time = time.monotonic()
 
     @retry(
         stop=stop_after_attempt(5),
@@ -97,6 +120,8 @@ class CalendlySource(BaseSource):
             url: API endpoint URL
             params: Optional query parameters
         """
+        await self._wait_for_rate_limit()
+
         # Get a valid token (will refresh if needed)
         access_token = await self.get_access_token()
         if not access_token:
@@ -271,11 +296,12 @@ class CalendlySource(BaseSource):
                         f"No resource data in detail response for event type {event_type_uri}"
                     )
             except Exception as e:
+                list_name = resource.get("name") or "(no name in list)"
                 self.logger.warning(
                     f"Failed to fetch full details for event type {event_type_uri}: {e}, "
-                    "using list data"
+                    f"using list data (list name: {list_name[:80]!r})"
                 )
-                # Continue with partial data from list
+                # Continue with partial data from list; name/description from list are used below
 
             # Skip inactive event types (they were deactivated, not deleted)
             # Calendly doesn't support deletion, only deactivation

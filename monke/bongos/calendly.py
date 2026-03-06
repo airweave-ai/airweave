@@ -40,7 +40,8 @@ class CalendlyBongo(BaseBongo):
         super().__init__(credentials)
         self._credentials = credentials  # Store for token refresh
         self.access_token: str = credentials["access_token"]
-        self.entity_count: int = int(kwargs.get("entity_count", 3))
+        # Cap at 2 event types to stay under rate limits during testing
+        self.entity_count: int = min(2, int(kwargs.get("entity_count", 2)))
         self.openai_model: str = kwargs.get("openai_model", "gpt-4.1-mini")
         self.max_concurrency: int = int(kwargs.get("max_concurrency", 1))
         # Use rate_limit_delay_ms from config if provided, otherwise default to 500ms
@@ -108,8 +109,12 @@ class CalendlyBongo(BaseBongo):
             if retry_after is not None:
                 try:
                     wait_s = max(1.0, min(120.0, float(retry_after)))
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as e:
+                    self.logger.debug(
+                        "Failed to parse Calendly Retry-After header %r; using default backoff",
+                        retry_after,
+                        exc_info=e,
+                    )
             else:
                 reset_header = headers.get("X-RateLimit-Reset") or headers.get(
                     "x-ratelimit-reset"
@@ -123,8 +128,12 @@ class CalendlyBongo(BaseBongo):
                         else:
                             wait_s = min(300.0, reset_val)
                         wait_s = max(1.0, wait_s)
-                    except (ValueError, TypeError):
-                        pass
+                    except (ValueError, TypeError) as e:
+                        self.logger.debug(
+                            "Failed to parse Calendly rate-limit reset header %r; using default backoff",
+                            reset_header,
+                            exc_info=e,
+                        )
                 else:
                     wait_s = min(30.0, wait_s)
             self.logger.warning(

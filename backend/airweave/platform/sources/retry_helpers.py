@@ -5,7 +5,6 @@ and Airweave's internal rate limiting (via AirweaveHttpClient).
 """
 
 import logging
-import time
 from typing import Callable
 
 import httpx
@@ -132,46 +131,28 @@ def wait_rate_limit_with_backoff(retry_state) -> float:
     """
     exception = retry_state.outcome.exception()
 
-    # For 429 rate limits, try to respect provider / Airweave headers
+    # For 429 rate limits, check Retry-After header
     if isinstance(exception, httpx.HTTPStatusError) and exception.response.status_code == 429:
-        headers = exception.response.headers
-
-        # 1) Prefer standard Retry-After header (seconds to wait)
-        retry_after = headers.get("Retry-After")
+        retry_after = exception.response.headers.get("Retry-After")
         if retry_after:
             try:
+                # Retry-After is in seconds (float)
                 wait_seconds = float(retry_after)
-                # Ensure a minimum wait to avoid burning retries too quickly
+
+                # CRITICAL: Add minimum wait of 1.0s to prevent rapid-fire retries
+                # When Retry-After is < 1s (e.g., 0.3s), retries happen too fast and
+                # burn through all attempts before the window actually expires.
+                # This ensures we always wait long enough for the sliding window to clear.
                 wait_seconds = max(wait_seconds, 1.0)
-                # Cap at 2 minutes to avoid very long sleeps in workers
+
+                # Cap at 120 seconds to avoid indefinite waits
                 return min(wait_seconds, 120.0)
             except (ValueError, TypeError):
                 pass
 
-        # 2) Fall back to X-RateLimit-Reset style headers if present.
-        # Many providers (including Calendly-style APIs) expose either a unix
-        # timestamp for reset or a relative number of seconds.
-        reset_header = headers.get("X-RateLimit-Reset") or headers.get("x-ratelimit-reset")
-        if reset_header:
-            try:
-                reset_value = float(reset_header)
-                now = time.time()
-                # If the reset looks like an absolute unix timestamp in the future,
-                # wait until that time; otherwise treat it as a relative offset.
-                if reset_value > now:
-                    wait_seconds = reset_value - now
-                else:
-                    wait_seconds = reset_value
-
-                wait_seconds = max(wait_seconds, 1.0)
-                # Allow a bit more headroom here since some provider windows are longer.
-                return min(wait_seconds, 300.0)
-            except (ValueError, TypeError):
-                pass
-
-        # 3) No usable headers - use exponential backoff.
-        # This shouldn't happen with AirweaveHttpClient (it always sets Retry-After),
-        # but can happen with real API 429s from third-party providers.
+        # No Retry-After header or invalid - use exponential backoff
+        # This shouldn't happen with AirweaveHttpClient (always sets header)
+        # but might happen with real API 429s that don't include header
         return wait_exponential(multiplier=1, min=2, max=30)(retry_state)
 
     # For timeouts and other retryable errors, use exponential backoff

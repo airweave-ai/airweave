@@ -632,18 +632,17 @@ class OAuth2Service(OAuth2ServiceProtocol):
         """Handle the token response and update refresh token if needed."""
         oauth2_token_response = OAuth2TokenResponse(**response.json())
 
-        if (
-            integration_config.oauth_type == "with_rotating_refresh"
-            and oauth2_token_response.refresh_token
-        ):
+        if integration_config.oauth_type == "with_rotating_refresh":
             connection = await self.conn_repo.get(db=db, id=connection_id, ctx=ctx)
             integration_credential = await self.cred_repo.get(
                 db=db, id=connection.integration_credential_id, ctx=ctx
             )
+
             current_credentials = self.encryptor.decrypt(
                 integration_credential.encrypted_credentials
             )
             current_credentials["refresh_token"] = oauth2_token_response.refresh_token
+
             encrypted_credentials = self.encryptor.encrypt(current_credentials)
             await self.cred_repo.update(
                 db=db,
