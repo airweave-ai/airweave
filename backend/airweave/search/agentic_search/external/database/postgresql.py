@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.models.entity_count import EntityCount as EntityCountModel
-from airweave.models.entity_definition import EntityDefinition as EntityDefinitionModel
 from airweave.search.agentic_search.schemas import (
     AgenticSearchCollection,
     AgenticSearchEntityCount,
@@ -100,30 +99,22 @@ class PostgreSQLAgenticSearchDatabase:
     async def get_entity_definitions_of_source(
         self, source: AgenticSearchSource
     ) -> list[AgenticSearchEntityDefinition]:
-        """Get entity definitions for a source."""
-        if not source.output_entity_definitions:
-            raise ValueError(f"Source '{source.short_name}' has no output entity definitions")
+        """Get entity definitions for a source from the in-memory registry."""
+        # [code blue] todo: remove container import
+        from airweave.core.container import container as app_container
 
-        result = await self._session.execute(
-            select(EntityDefinitionModel).where(
-                EntityDefinitionModel.name.in_(source.output_entity_definitions)
-            )
-        )
-        models = result.scalars().all()
+        entries = app_container.entity_definition_registry.list_for_source(source.short_name)
 
-        if not models:
-            raise ValueError(
-                f"No entity definitions found for source '{source.short_name}' "
-                f"(expected names: {source.output_entity_definitions})"
-            )
+        if not entries:
+            raise ValueError(f"No entity definitions found for source '{source.short_name}'")
 
         return [
             AgenticSearchEntityDefinition(
-                id=m.id,
-                name=m.name,
-                entity_schema=m.entity_schema or {},
+                short_name=entry.short_name,
+                name=entry.name,
+                entity_schema=entry.entity_schema or {},
             )
-            for m in models
+            for entry in entries
         ]
 
     async def get_entity_type_count_of_source_connection(
@@ -133,13 +124,12 @@ class PostgreSQLAgenticSearchDatabase:
     ) -> AgenticSearchEntityCount:
         """Get entity count for a source connection and entity definition."""
         if not source_connection.sync_id:
-            # No sync yet, return zero count
             return AgenticSearchEntityCount(count=0)
 
         result = await self._session.execute(
             select(EntityCountModel).where(
                 EntityCountModel.sync_id == source_connection.sync_id,
-                EntityCountModel.entity_definition_id == entity_definition.id,
+                EntityCountModel.entity_definition_short_name == entity_definition.short_name,
             )
         )
         model = result.scalar_one_or_none()
@@ -147,5 +137,4 @@ class PostgreSQLAgenticSearchDatabase:
         if model:
             return AgenticSearchEntityCount(count=model.count)
 
-        # Return zero count if not found
         return AgenticSearchEntityCount(count=0)

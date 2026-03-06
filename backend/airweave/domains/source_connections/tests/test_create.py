@@ -17,6 +17,7 @@ from airweave.domains.connections.fakes.repository import FakeConnectionReposito
 from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
 from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
 from airweave.domains.oauth.types import OAuthBrowserInitiationResult
+from airweave.domains.auth_provider.fake import FakeAuthProviderService
 from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
@@ -93,6 +94,7 @@ def _service(entry) -> SourceConnectionCreationService:
         credential_encryptor=MagicMock(),
         temporal_workflow_service=FakeTemporalWorkflowService(),
         event_bus=AsyncMock(),
+        auth_provider_service=FakeAuthProviderService(),
     )
 
 
@@ -565,7 +567,7 @@ async def test_create_with_oauth_token_builds_full_payload_and_delegates():
 
     kwargs = svc._create_authenticated_connection.await_args.kwargs
     assert kwargs["credential_payload"]["access_token"] == "tok"
-    assert kwargs["credential_payload"]["refresh_token"] == "rtok"
+    assert "refresh_token" not in kwargs["credential_payload"]
     assert kwargs["credential_payload"]["expires_at"] == expires.isoformat()
     assert kwargs["auth_method"] == AuthenticationMethod.OAUTH_TOKEN
 

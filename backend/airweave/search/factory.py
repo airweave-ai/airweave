@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import airweave.core.container as _container_module
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
@@ -15,11 +16,6 @@ from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEm
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.sync.token_manager import TokenManager
-from airweave.platform.utils.source_factory_utils import (
-    get_auth_configuration,
-    process_credentials_for_source,
-)
 from airweave.schemas.search import RetrievalStrategy, SearchDefaults, SearchRequest
 from airweave.search.context import SearchContext
 from airweave.search.emitter import EventEmitter
@@ -869,93 +865,25 @@ class SearchFactory:
         if not getattr(source_class, "federated_search", False):
             return None
 
-        # From here, source IS federated - any error should fail the search
+        if not source_connection.connection_id:
+            ctx.logger.warning(
+                f"Skipping federated source {source_connection.short_name} "
+                f"(id: {source_connection.id}): no connection_id"
+            )
+            return None
+
         ctx.logger.info(
             f"Found federated source: {source_connection.short_name} (id: {source_connection.id})"
         )
 
         try:
-            # Step 2: Build source_connection_data dict
-            source_connection_data = {
-                "source_model": source_model,
-                "source_class": source_class,
-                "short_name": source_connection.short_name,
-                "config_fields": source_connection.config_fields,
-                "readable_auth_provider_id": getattr(
-                    source_connection, "readable_auth_provider_id", None
-                ),
-                "auth_provider_config": getattr(source_connection, "auth_provider_config", None),
-                "connection_id": getattr(source_connection, "connection_id", None),
-                "integration_credential_id": None,  # Loaded below
-                "auth_config_class": None,  # Not used for federated search
-            }
-
-            # Load integration_credential_id from connection if exists
-            if source_connection_data["connection_id"]:
-                connection = await crud.connection.get(
-                    db, source_connection_data["connection_id"], ctx
-                )
-                if connection:
-                    source_connection_data["integration_credential_id"] = (
-                        connection.integration_credential_id
-                    )
-
-            # Step 3: Get complete auth configuration (shared utility)
-            auth_config = await get_auth_configuration(
+            if _container_module.container is None:
+                raise RuntimeError("Container not initialized")
+            source_instance = await _container_module.container.source_lifecycle_service.create(
                 db=db,
-                source_connection_data=source_connection_data,
-                ctx=ctx,
-                logger=ctx.logger,
-                access_token=None,  # Search never uses direct injection
-            )
-
-            # Step 4: Process credentials for source consumption (shared utility)
-            source_credentials = await process_credentials_for_source(
-                raw_credentials=auth_config["credentials"],
-                source_connection_data=source_connection_data,
-                logger=ctx.logger,
-            )
-
-            # Step 5: Create source instance
-            source_instance = await source_class.create(
-                source_credentials, config=source_connection_data["config_fields"]
-            )
-
-            # Step 6: Set logger
-            if hasattr(source_instance, "set_logger"):
-                source_instance.set_logger(ctx.logger)
-
-            # Step 7: Set HTTP client factory for proxy mode
-            if auth_config.get("http_client_factory"):
-                ctx.logger.info(f"Proxy mode active for {source_connection.short_name}")
-                source_instance.set_http_client_factory(auth_config["http_client_factory"])
-
-            # Step 8: Wrap HTTP client with AirweaveHttpClient for rate limiting
-            # This ensures federated sources respect rate limits just like sync sources
-            from airweave.platform.utils.source_factory_utils import (
-                wrap_source_with_airweave_client,
-            )
-
-            wrap_source_with_airweave_client(
-                source=source_instance,
-                source_short_name=source_connection.short_name,
                 source_connection_id=source_connection.id,
                 ctx=ctx,
-                logger=ctx.logger,
-            )
-
-            # Store source connection ID on instance for error tracking
-            source_instance._source_connection_id = str(source_connection.id)
-
-            # Step 9: Setup token manager for OAuth sources that support refresh
-            self._maybe_setup_token_manager(
-                source_instance,
-                source_model,
-                db,
-                source_connection,
-                source_connection_data,
-                auth_config,
-                ctx,
+                access_token=None,
             )
 
             ctx.logger.info(
@@ -974,84 +902,6 @@ class SearchFactory:
                 f"This source is configured for your collection but cannot be searched. "
                 f"Error: {str(e)}"
             ) from e
-
-    def _maybe_setup_token_manager(
-        self,
-        source_instance: BaseSource,
-        source_model,
-        db: AsyncSession,
-        source_connection,
-        source_connection_data: dict,
-        auth_config: dict,
-        ctx: ApiContext,
-    ) -> None:
-        """Setup token manager if source requires it, skip for proxy mode."""
-        from airweave.platform.auth_providers.auth_result import AuthProviderMode
-        from airweave.schemas.source_connection import OAuthType
-
-        auth_mode = auth_config.get("auth_mode")
-        is_proxy_mode = auth_mode == AuthProviderMode.PROXY
-
-        if is_proxy_mode:
-            ctx.logger.info(
-                f"⏭️ Skipping token manager for {source_connection.short_name} - "
-                f"proxy mode (proxy client manages tokens internally)"
-            )
-            return
-
-        if not source_model.oauth_type:
-            return
-
-        # Only create token manager for sources with refresh capability
-        if source_model.oauth_type not in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
-            ctx.logger.debug(
-                f"⏭️ Skipping token manager for {source_connection.short_name} - "
-                f"oauth_type={source_model.oauth_type} does not support token refresh"
-            )
-            return
-
-        self._setup_token_manager(
-            source_instance,
-            db,
-            source_connection,
-            source_connection_data.get("integration_credential_id"),
-            auth_config["credentials"],
-            ctx,
-            auth_provider_instance=auth_config.get("auth_provider_instance"),
-        )
-
-    def _setup_token_manager(
-        self,
-        source_instance: BaseSource,
-        db: AsyncSession,
-        source_connection,
-        integration_credential_id: Optional[UUID],
-        decrypted_credential: dict,
-        ctx: ApiContext,
-        auth_provider_instance=None,
-    ):
-        """Setup token manager for OAuth sources with auth provider support."""
-        minimal_connection = type(
-            "MinimalConnection",
-            (),
-            {
-                "id": source_connection.connection_id,
-                "integration_credential_id": integration_credential_id,
-                "config_fields": source_connection.config_fields,
-            },
-        )()
-
-        token_manager = TokenManager(
-            db=db,
-            source_short_name=source_connection.short_name,
-            source_connection=minimal_connection,
-            ctx=ctx,
-            initial_credentials=decrypted_credential,
-            is_direct_injection=False,
-            logger_instance=ctx.logger,
-            auth_provider_instance=auth_provider_instance,
-        )
-        source_instance.set_token_manager(token_manager)
 
 
 factory = SearchFactory()

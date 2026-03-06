@@ -31,11 +31,11 @@ class EntityActionResolver:
     what operation is needed for each entity.
     """
 
-    def __init__(self, entity_map: Dict[type, UUID]):
+    def __init__(self, entity_map: Dict[type, str]):
         """Initialize the action resolver.
 
         Args:
-            entity_map: Mapping of entity class to entity_definition_id
+            entity_map: Mapping of entity class to entity_definition_short_name
         """
         self.entity_map = entity_map
 
@@ -94,14 +94,14 @@ class EntityActionResolver:
 
         return batch
 
-    def resolve_entity_definition_id(self, entity: BaseEntity) -> Optional[UUID]:
-        """Resolve entity definition ID with polymorphic fallback.
+    def resolve_entity_definition_short_name(self, entity: BaseEntity) -> Optional[str]:
+        """Resolve entity definition short_name with polymorphic fallback.
 
         Args:
-            entity: Entity to resolve definition ID for
+            entity: Entity to resolve definition short_name for
 
         Returns:
-            Entity definition UUID, or None if not found
+            Entity definition short_name, or None if not found
         """
         entity_class = entity.__class__
 
@@ -144,7 +144,7 @@ class EntityActionResolver:
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
-    ) -> List[Tuple[str, UUID]]:
+    ) -> List[Tuple[str, str]]:
         """Build entity requests for database lookup.
 
         Args:
@@ -152,7 +152,7 @@ class EntityActionResolver:
             sync_context: Sync context for logging
 
         Returns:
-            List of (entity_id, entity_definition_id) tuples
+            List of (entity_id, entity_definition_short_name) tuples
 
         Raises:
             SyncFailureError: If entity type not found in entity_map
@@ -160,29 +160,29 @@ class EntityActionResolver:
         entity_requests = []
 
         for entity in entities:
-            entity_definition_id = self.resolve_entity_definition_id(entity)
-            if entity_definition_id is None:
+            short_name = self.resolve_entity_definition_short_name(entity)
+            if short_name is None:
                 sync_context.logger.error(
                     f"Entity type {entity.__class__.__name__} not found in entity_map"
                 )
                 raise SyncFailureError(f"Entity type {entity.__class__.__name__} not in entity_map")
-            entity_requests.append((entity.entity_id, entity_definition_id))
+            entity_requests.append((entity.entity_id, short_name))
 
         return entity_requests
 
     async def _fetch_existing_entities(
         self,
-        entity_requests: List[Tuple[str, UUID]],
+        entity_requests: List[Tuple[str, str]],
         sync_context: "SyncContext",
-    ) -> Dict[Tuple[str, UUID], models.Entity]:
+    ) -> Dict[Tuple[str, str], models.Entity]:
         """Bulk fetch existing entity records from database.
 
         Args:
-            entity_requests: List of (entity_id, entity_definition_id) tuples
+            entity_requests: List of (entity_id, entity_definition_short_name) tuples
             sync_context: Sync context with logger
 
         Returns:
-            Dict mapping (entity_id, entity_definition_id) -> Entity model
+            Dict mapping (entity_id, entity_definition_short_name) -> Entity model
 
         Raises:
             SyncFailureError: If database lookup fails
@@ -220,7 +220,7 @@ class EntityActionResolver:
         self,
         non_delete_entities: List[BaseEntity],
         delete_entities: List[BaseEntity],
-        existing_map: Dict[Tuple[str, UUID], models.Entity],
+        existing_map: Dict[Tuple[str, str], models.Entity],
         sync_context: "SyncContext",
     ) -> EntityActionBatch:
         """Create action objects for all entities.
@@ -268,7 +268,7 @@ class EntityActionResolver:
     def _resolve_non_delete_action(
         self,
         entity: BaseEntity,
-        existing_map: Dict[Tuple[str, UUID], models.Entity],
+        existing_map: Dict[Tuple[str, str], models.Entity],
         sync_context: "SyncContext",
     ) -> EntityInsertAction | EntityUpdateAction | EntityKeepAction:
         """Resolve a non-delete entity to its action type.
@@ -284,7 +284,6 @@ class EntityActionResolver:
         Raises:
             SyncFailureError: If entity has no hash or type not in entity_map
         """
-        # Validate hash is set
         if not entity.airweave_system_metadata or not entity.airweave_system_metadata.hash:
             raise SyncFailureError(
                 f"PROGRAMMING ERROR: Entity {entity.__class__.__name__}"
@@ -294,40 +293,34 @@ class EntityActionResolver:
 
         entity_hash = entity.airweave_system_metadata.hash
 
-        # Get entity_definition_id
-        entity_definition_id = self.resolve_entity_definition_id(entity)
-        if entity_definition_id is None:
+        short_name = self.resolve_entity_definition_short_name(entity)
+        if short_name is None:
             raise SyncFailureError(f"Entity type {entity.__class__.__name__} not in entity_map")
 
-        # Lookup existing DB record
-        db_key = (entity.entity_id, entity_definition_id)
+        db_key = (entity.entity_id, short_name)
         db_row = existing_map.get(db_key)
 
-        # Determine action based on DB state and hash
         if db_row is None:
-            # New entity - INSERT
             return EntityInsertAction(
                 entity=entity,
-                entity_definition_id=entity_definition_id,
+                entity_definition_short_name=short_name,
             )
         elif db_row.hash != entity_hash:
-            # Hash changed - UPDATE
             return EntityUpdateAction(
                 entity=entity,
-                entity_definition_id=entity_definition_id,
+                entity_definition_short_name=short_name,
                 db_id=db_row.id,
             )
         else:
-            # Hash unchanged - KEEP
             return EntityKeepAction(
                 entity=entity,
-                entity_definition_id=entity_definition_id,
+                entity_definition_short_name=short_name,
             )
 
     def _create_delete_action(
         self,
         entity: BaseEntity,
-        existing_map: Dict[Tuple[str, UUID], models.Entity],
+        existing_map: Dict[Tuple[str, str], models.Entity],
         sync_context: "SyncContext",
     ) -> EntityDeleteAction:
         """Create a delete action for a DeletionEntity.
@@ -343,17 +336,16 @@ class EntityActionResolver:
         Raises:
             SyncFailureError: If entity type not in entity_map
         """
-        entity_definition_id = self.resolve_entity_definition_id(entity)
-        if entity_definition_id is None:
+        short_name = self.resolve_entity_definition_short_name(entity)
+        if short_name is None:
             raise SyncFailureError(f"Entity type {entity.__class__.__name__} not in entity_map")
 
-        # Check if entity exists in DB
-        db_key = (entity.entity_id, entity_definition_id)
+        db_key = (entity.entity_id, short_name)
         db_row = existing_map.get(db_key)
 
         return EntityDeleteAction(
             entity=entity,
-            entity_definition_id=entity_definition_id,
+            entity_definition_short_name=short_name,
             db_id=db_row.id if db_row else None,
         )
 
@@ -380,13 +372,13 @@ class EntityActionResolver:
             if isinstance(entity, DeletionEntity):
                 deletes.append(self._create_delete_action(entity, {}, sync_context))
             else:
-                entity_definition_id = self.resolve_entity_definition_id(entity)
-                if not entity_definition_id:
+                short_name = self.resolve_entity_definition_short_name(entity)
+                if not short_name:
                     raise SyncFailureError(
                         f"Entity type {entity.__class__.__name__} not in entity_map"
                     )
                 inserts.append(
-                    EntityInsertAction(entity=entity, entity_definition_id=entity_definition_id)
+                    EntityInsertAction(entity=entity, entity_definition_short_name=short_name)
                 )
 
         return EntityActionBatch(

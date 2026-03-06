@@ -63,6 +63,7 @@ async def client(test_container):
             response = await client.get("/webhooks/subscriptions")
             assert response.status_code == 200
     """
+    from airweave.core import container as container_mod
     from airweave.main import app
 
     fake_ctx = _make_fake_context()
@@ -70,8 +71,14 @@ async def client(test_container):
     app.dependency_overrides[get_container] = lambda: test_container
     app.dependency_overrides[get_context] = lambda: fake_ctx
 
+    # Inject() reads from the module-level global; set it so DI-injected
+    # protocol parameters resolve correctly in tests.
+    prev_container = container_mod.container
+    container_mod.container = test_container
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
     app.dependency_overrides.clear()
+    container_mod.container = prev_container

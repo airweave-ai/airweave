@@ -124,7 +124,6 @@ class SearchQuery(OrganizationBase, UserMixin):
         Index("ix_search_queries_api_key_created", "api_key_id", "created_at"),
         Index("ix_search_queries_is_streaming", "is_streaming"),
         Index("ix_search_queries_retrieval_strategy", "retrieval_strategy"),
-        Index("ix_search_queries_query_text", "query_text"),  # For text analysis
         Index("ix_search_queries_duration", "duration_ms"),
         Index("ix_search_queries_results_count", "results_count"),
     )

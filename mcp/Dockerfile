@@ -1,5 +1,4 @@
-# Multi-stage build for Airweave MCP Search Server
-FROM node:20-alpine AS builder
+FROM node:24.14.0-alpine@sha256:7fddd9ddeae8196abf4a3ef2de34e11f7b1a722119f91f28ddf1e99dcafdf114 AS builder
 
 WORKDIR /app
 
@@ -16,8 +15,7 @@ COPY src/ ./src/
 # Build TypeScript
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine
+FROM node:24.14.0-alpine@sha256:7fddd9ddeae8196abf4a3ef2de34e11f7b1a722119f91f28ddf1e99dcafdf114
 
 WORKDIR /app
 
@@ -25,7 +23,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # Copy built files from builder
@@ -44,4 +42,3 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Run the HTTP server
 CMD ["node", "build/index-http.js"]
-

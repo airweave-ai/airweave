@@ -15,10 +15,10 @@ from airweave.domains.usage.types import ActionType
 from airweave.schemas.billing_period import BillingPeriodStatus
 from airweave.schemas.organization_billing import BillingPlan
 
-
 # ---------------------------------------------------------------------------
 # Helper: seed a checker with billing + period + usage
 # ---------------------------------------------------------------------------
+
 
 def _seeded_checker(
     plan=BillingPlan.PRO,
@@ -49,6 +49,7 @@ def _seeded_checker(
 # is_allowed — no billing (legacy org exemption)
 # ---------------------------------------------------------------------------
 
+
 class TestIsAllowedNoBilling:
     @pytest.mark.asyncio
     async def test_allows_when_no_billing_record(self, db):
@@ -64,6 +65,7 @@ class TestIsAllowedNoBilling:
 # ---------------------------------------------------------------------------
 # is_allowed — billing status restrictions
 # ---------------------------------------------------------------------------
+
 
 class TestBillingStatusRestrictions:
     @pytest.mark.asyncio
@@ -124,6 +126,7 @@ class TestBillingStatusRestrictions:
 # is_allowed — entity limits
 # ---------------------------------------------------------------------------
 
+
 class TestEntityLimits:
     @pytest.mark.asyncio
     async def test_allows_entities_under_limit(self, db):
@@ -149,6 +152,7 @@ class TestEntityLimits:
 # is_allowed — query limits
 # ---------------------------------------------------------------------------
 
+
 class TestQueryLimits:
     @pytest.mark.asyncio
     async def test_allows_queries_under_limit(self, db):
@@ -172,6 +176,7 @@ class TestQueryLimits:
 # ---------------------------------------------------------------------------
 # is_allowed — source connection limits (dynamic counting)
 # ---------------------------------------------------------------------------
+
 
 class TestSourceConnectionLimits:
     @pytest.mark.asyncio
@@ -197,6 +202,7 @@ class TestSourceConnectionLimits:
 # is_allowed — team member limits (dynamic counting)
 # ---------------------------------------------------------------------------
 
+
 class TestTeamMemberLimits:
     @pytest.mark.asyncio
     async def test_allows_under_limit(self, db):
@@ -221,6 +227,7 @@ class TestTeamMemberLimits:
 # AlwaysAllowLimitChecker
 # ---------------------------------------------------------------------------
 
+
 class TestAlwaysAllowChecker:
     @pytest.mark.asyncio
     async def test_always_allows(self, db):
@@ -234,6 +241,7 @@ class TestAlwaysAllowChecker:
 # ---------------------------------------------------------------------------
 # Developer plan limits
 # ---------------------------------------------------------------------------
+
 
 class TestDeveloperPlan:
     @pytest.mark.asyncio
@@ -269,6 +277,7 @@ class TestDeveloperPlan:
 # Team plan limits
 # ---------------------------------------------------------------------------
 
+
 class TestTeamPlan:
     @pytest.mark.asyncio
     async def test_team_entity_limit(self, db):
@@ -281,3 +290,86 @@ class TestTeamPlan:
         with pytest.raises(UsageLimitExceededError) as exc_info:
             await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.ENTITIES)
         assert exc_info.value.limit == 1000000
+
+
+# ---------------------------------------------------------------------------
+# is_allowed — billing record fallback when no current period
+# ---------------------------------------------------------------------------
+
+
+class TestBillingRecordFallback:
+    """When no current period, fall back to organization_billing.billing_plan."""
+
+    @pytest.mark.asyncio
+    async def test_enterprise_limits_without_current_period(self, db):
+        """Enterprise org with stale period should get enterprise limits, not developer."""
+        checker, usage_repo, billing_repo, period_repo, sc_repo, user_org_repo = _make_checker()
+        billing = _make_billing_model(billing_plan=BillingPlan.ENTERPRISE.value)
+        billing_repo.seed(DEFAULT_ORG_ID, billing)
+        sc_repo.set_org_count(DEFAULT_ORG_ID, 50)
+
+        assert await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.SOURCE_CONNECTIONS) is True
+
+    @pytest.mark.asyncio
+    async def test_pro_limits_without_current_period_with_subscription(self, db):
+        """Pro org with subscription but no period gets pro limits."""
+        checker, usage_repo, billing_repo, period_repo, sc_repo, user_org_repo = _make_checker()
+        billing = _make_billing_model(
+            billing_plan=BillingPlan.PRO.value,
+            stripe_subscription_id="sub_test",
+        )
+        billing_repo.seed(DEFAULT_ORG_ID, billing)
+        sc_repo.set_org_count(DEFAULT_ORG_ID, 49)
+
+        assert await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.SOURCE_CONNECTIONS) is True
+
+    @pytest.mark.asyncio
+    async def test_pro_limit_exceeded_without_current_period_with_subscription(self, db):
+        """Pro org with subscription but no period still enforces pro limits."""
+        checker, usage_repo, billing_repo, period_repo, sc_repo, user_org_repo = _make_checker()
+        billing = _make_billing_model(
+            billing_plan=BillingPlan.PRO.value,
+            stripe_subscription_id="sub_test",
+        )
+        billing_repo.seed(DEFAULT_ORG_ID, billing)
+        sc_repo.set_org_count(DEFAULT_ORG_ID, 50)
+
+        with pytest.raises(UsageLimitExceededError) as exc_info:
+            await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.SOURCE_CONNECTIONS)
+        assert exc_info.value.limit == 50
+
+    @pytest.mark.asyncio
+    async def test_pro_plan_no_subscription_gets_developer_limits(self, db):
+        """Pro billing_plan but no stripe_subscription_id falls back to developer."""
+        checker, usage_repo, billing_repo, period_repo, sc_repo, user_org_repo = _make_checker()
+        billing = _make_billing_model(
+            billing_plan=BillingPlan.PRO.value,
+            stripe_subscription_id=None,
+        )
+        billing_repo.seed(DEFAULT_ORG_ID, billing)
+        sc_repo.set_org_count(DEFAULT_ORG_ID, 10)
+
+        with pytest.raises(UsageLimitExceededError) as exc_info:
+            await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.SOURCE_CONNECTIONS)
+        assert exc_info.value.limit == 10
+
+    @pytest.mark.asyncio
+    async def test_team_plan_no_subscription_gets_developer_limits(self, db):
+        """Team billing_plan but no subscription falls back to developer."""
+        checker, usage_repo, billing_repo, period_repo, sc_repo, user_org_repo = _make_checker()
+        billing = _make_billing_model(
+            billing_plan=BillingPlan.TEAM.value,
+            stripe_subscription_id=None,
+        )
+        billing_repo.seed(DEFAULT_ORG_ID, billing)
+        sc_repo.set_org_count(DEFAULT_ORG_ID, 10)
+
+        with pytest.raises(UsageLimitExceededError) as exc_info:
+            await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.SOURCE_CONNECTIONS)
+        assert exc_info.value.limit == 10
+
+    @pytest.mark.asyncio
+    async def test_developer_fallback_without_billing_record(self, db):
+        """No billing record at all should still fall back to developer limits."""
+        checker, *_ = _make_checker()
+        assert await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.ENTITIES) is True

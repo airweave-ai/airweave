@@ -10,6 +10,56 @@ from typing import Any, Dict, Optional, Protocol, runtime_checkable
 
 from airweave.schemas.organization_billing import BillingPlan
 
+# ---------------------------------------------------------------------------
+# Abstract exceptions — domain code catches these, adapters raise them
+# ---------------------------------------------------------------------------
+
+
+class PaymentProviderError(Exception):
+    """Base for all payment provider failures."""
+
+    def __init__(self, message: str = "Payment provider error"):
+        """Initialize PaymentProviderError."""
+        self.message = message
+        super().__init__(message)
+
+
+class PaymentProviderRateLimitError(PaymentProviderError):
+    """Provider is throttling requests (retryable)."""
+
+    def __init__(self, message: str = "Payment provider rate limit exceeded"):
+        """Initialize PaymentProviderRateLimitError."""
+        super().__init__(message)
+
+
+class PaymentProviderUnavailableError(PaymentProviderError):
+    """Provider is down or unreachable (retryable)."""
+
+    def __init__(self, message: str = "Payment provider unavailable"):
+        """Initialize PaymentProviderUnavailableError."""
+        super().__init__(message)
+
+
+class PaymentProviderNotFoundError(PaymentProviderError):
+    """Resource doesn't exist in the payment provider (customer, subscription, etc.)."""
+
+    def __init__(self, message: str = "Payment provider resource not found"):
+        """Initialize PaymentProviderNotFoundError."""
+        super().__init__(message)
+
+
+class PaymentProviderInvalidRequestError(PaymentProviderError):
+    """Request was malformed or invalid (not retryable)."""
+
+    def __init__(self, message: str = "Payment provider invalid request"):
+        """Initialize PaymentProviderInvalidRequestError."""
+        super().__init__(message)
+
+
+# ---------------------------------------------------------------------------
+# Protocol
+# ---------------------------------------------------------------------------
+
 
 @runtime_checkable
 class PaymentGatewayProtocol(Protocol):
@@ -17,6 +67,8 @@ class PaymentGatewayProtocol(Protocol):
 
     Abstracts all payment provider interactions (customer management,
     subscriptions, checkout, portal, webhooks, coupons, balance).
+
+    All async methods may raise subclasses of ``PaymentProviderError``.
     """
 
     # -------------------------------------------------------------------------

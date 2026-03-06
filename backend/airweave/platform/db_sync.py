@@ -12,8 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.models.entity_definition import EntityType
-from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.sources._base import BaseSource
 
@@ -252,80 +250,22 @@ def _validate_entity_class_fields(cls: Type, name: str, module_name: str) -> Non
                 )
 
 
-def _get_entity_schema_with_direct_fields_only(cls: Type) -> dict:
-    """Get the JSON schema for an entity class including only direct fields and breadcrumbs.
-
-    Args:
-        cls: The entity class
-
-    Returns:
-        dict: JSON schema with only direct fields and breadcrumbs
-    """
-    # Get the full schema
-    full_schema = cls.model_json_schema()
-
-    # Get direct annotations (fields defined directly in this class)
-    direct_annotations = getattr(cls, "__annotations__", {})
-
-    # Fields to always include
-    always_include = {"breadcrumbs"}
-
-    # Fields to always exclude (system metadata and internal fields)
-    always_exclude = {
-        "airweave_system_metadata",  # System tracking, not business data
-        "textual_representation",  # Generated during pipeline, not source field
-        "entity_id",  # Set by source connector, not business data
-    }
-
-    # Build the filtered schema
-    filtered_schema = {
-        "type": "object",
-        "title": full_schema.get("title", cls.__name__),
-        "description": full_schema.get("description", ""),
-        "properties": {},
-        "required": [],
-    }
-
-    # Add properties that are either direct fields or in always_include
-    if "properties" in full_schema:
-        for field_name, field_schema in full_schema["properties"].items():
-            # Skip excluded fields
-            if field_name in always_exclude:
-                continue
-
-            # Include if it's a direct field or in always_include
-            if field_name in direct_annotations or field_name in always_include:
-                filtered_schema["properties"][field_name] = field_schema
-
-                # Add to required if it was required in the original schema
-                if "required" in full_schema and field_name in full_schema["required"]:
-                    filtered_schema["required"].append(field_name)
-
-    # If there are definitions in the schema (for nested models), include them
-    if "$defs" in full_schema:
-        filtered_schema["$defs"] = full_schema["$defs"]
-
-    return filtered_schema
-
-
 # NOTE: Embedding models sync removed - embeddings now handled by
 # DenseEmbedder and SparseEmbedder in platform/embedders/, not decorator-based models
 
 
-async def _sync_entity_definitions(db: AsyncSession) -> Dict[str, dict]:
-    """Sync entity definitions with the database based on chunk classes.
+def _build_entity_module_map() -> Dict[str, dict]:
+    """Validate entity classes and build the module-entity map for _sync_sources.
 
-    Args:
-        db (AsyncSession): Database session
+    Entity definitions live exclusively in the in-memory EntityDefinitionRegistry.
+    This function only validates field descriptions and builds the map that
+    _sync_sources needs for output_entity_definitions.
 
     Returns:
         Dict[str, dict]: Mapping of module names to their entity details:
-            - entity_ids: list[str] - UUIDs of entity definitions for this module
-            - entity_classes: list[str] - Full class names of the entities in this module
+            - entity_classes: list[str] - Full class names
+            - entity_names: list[str] - PascalCase class names
     """
-    sync_logger.info("Syncing entity definitions to database.")
-
-    # Get all Python files in the entities directory that aren't base or init files
     entity_files = [
         f
         for f in os.listdir(PLATFORM_DIR / "entities")
@@ -334,31 +274,24 @@ async def _sync_entity_definitions(db: AsyncSession) -> Dict[str, dict]:
 
     from airweave.platform.entities._base import BaseEntity
 
-    entity_definitions = []
-    entity_registry = {}  # Track all entities system-wide
-    module_registry = {}  # Track entities by module
+    entity_registry: Dict[str, dict] = {}
+    module_registry: Dict[str, dict] = {}
 
     for entity_file in entity_files:
-        module_name = entity_file[:-3]  # Remove .py extension
-        # Initialize module entry if not exists
+        module_name = entity_file[:-3]
         if module_name not in module_registry:
             module_registry[module_name] = {
                 "entity_classes": [],
                 "entity_names": [],
             }
 
-        # Import the module to get its chunk classes
         full_module_name = f"airweave.platform.entities.{module_name}"
         module = importlib.import_module(full_module_name)
 
-        # Find all chunk classes (subclasses of BaseEntity) in the module
         for name, cls in inspect.getmembers(module, inspect.isclass):
-            # Check if it's a subclass of BaseEntity (or any class from _base.py)
-            # AND the class is actually defined in this module (not imported)
             if (
                 issubclass(cls, BaseEntity)
-                and cls.__module__
-                != "airweave.platform.entities._base"  # Exclude all classes from _base.py
+                and cls.__module__ != "airweave.platform.entities._base"
                 and cls.__module__ == full_module_name
             ):
                 if name in entity_registry:
@@ -367,51 +300,22 @@ async def _sync_entity_definitions(db: AsyncSession) -> Dict[str, dict]:
                         f"Already registered from {entity_registry[name]['module']}"
                     )
 
-                # Validate that all fields in the class use Pydantic Field with descriptions
                 _validate_entity_class_fields(cls, name, module_name)
 
-                # Register the entity
                 entity_registry[name] = {
                     "class_name": f"{cls.__module__}.{cls.__name__}",
                     "module": module_name,
                 }
 
-                # Add to module registry
                 module_registry[module_name]["entity_classes"].append(
                     f"{cls.__module__}.{cls.__name__}"
                 )
                 module_registry[module_name]["entity_names"].append(name)
 
-                # Create entity definition with filtered schema
-                entity_def = schemas.EntityDefinitionCreate(
-                    name=name,
-                    description=cls.__doc__ or f"Data from {name}",
-                    type=EntityType.JSON,
-                    entity_schema=_get_entity_schema_with_direct_fields_only(
-                        cls
-                    ),  # Get filtered schema
-                    module_name=module_name,
-                    class_name=cls.__name__,
-                )
-                entity_definitions.append(entity_def)
-
-    # Sync entities
-    await crud.entity_definition.sync(db, entity_definitions, unique_field="name")
-
-    # Get all entities to build the mapping
-    all_entities = await crud.entity_definition.get_all(db)
-
-    # Create a mapping of entity names to their IDs
-    entity_id_map = {e.name: str(e.id) for e in all_entities}
-
-    # Add entity IDs to the module registry
-    for module_name, module_info in module_registry.items():
-        entity_ids = [
-            entity_id_map[name] for name in module_info["entity_names"] if name in entity_id_map
-        ]
-        module_registry[module_name]["entity_ids"] = entity_ids
-
-    sync_logger.info(f"Synced {len(entity_definitions)} entity definitions to database.")
+    sync_logger.info(
+        f"Validated {len(entity_registry)} entity definitions across "
+        f"{len(module_registry)} modules."
+    )
     return module_registry
 
 
@@ -522,37 +426,6 @@ async def _sync_destinations(db: AsyncSession, destinations: list[Type[BaseDesti
     sync_logger.info(f"Synced {len(destination_definitions)} destinations to database.")
 
 
-async def _sync_auth_providers(
-    db: AsyncSession, auth_providers: list[Type[BaseAuthProvider]]
-) -> None:
-    """Sync auth providers with the database.
-
-    Args:
-        db (AsyncSession): Database session
-        auth_providers (list[Type[BaseAuthProvider]]): List of auth provider classes
-    """
-    sync_logger.info("Syncing auth providers to database.")
-
-    auth_provider_definitions = []
-    for auth_provider_class in auth_providers:
-        auth_config_cls = getattr(auth_provider_class, "auth_config_class", None)
-        config_cls = getattr(auth_provider_class, "config_class", None)
-        auth_provider_def = schemas.AuthProviderCreate(
-            name=auth_provider_class.provider_name,
-            short_name=auth_provider_class.short_name,
-            class_name=auth_provider_class.__name__,
-            description=auth_provider_class.__doc__,
-            auth_config_class=getattr(auth_config_cls, "__name__", None)
-            if auth_config_cls
-            else None,
-            config_class=getattr(config_cls, "__name__", None) if config_cls else None,
-        )
-        auth_provider_definitions.append(auth_provider_def)
-
-    await crud.auth_provider.sync(db, auth_provider_definitions)
-    sync_logger.info(f"Synced {len(auth_provider_definitions)} auth providers to database.")
-
-
 # NOTE: Transformer sync functions removed - chunking now handled by
 # CodeChunker and SemanticChunker in entity_pipeline.py, not decorator-based transformers
 
@@ -579,13 +452,11 @@ async def sync_platform_components(db: AsyncSession) -> None:
             f"{len(c['auth_providers'])} auth providers."
         )
 
-        # First sync entities to get their IDs
-        module_entity_map = await _sync_entity_definitions(db)
+        module_entity_map = _build_entity_module_map()
 
         # Sync platform components
         await _sync_sources(db, components["sources"], module_entity_map)
         await _sync_destinations(db, components["destinations"])
-        await _sync_auth_providers(db, components["auth_providers"])
 
         sync_logger.info("Platform components sync completed successfully.")
     except ImportError as e:

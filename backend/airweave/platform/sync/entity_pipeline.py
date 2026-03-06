@@ -218,22 +218,22 @@ class EntityPipeline:
         sync_context: SyncContext,
     ) -> None:
         """Update entity tracker with successful operations."""
-        inserts_by_def: Dict[UUID, int] = defaultdict(int)
-        updates_by_def: Dict[UUID, int] = defaultdict(int)
-        deletes_by_def: Dict[UUID, int] = defaultdict(int)
-        entity_names: Dict[UUID, str] = {}
+        inserts_by_def: Dict[str, int] = defaultdict(int)
+        updates_by_def: Dict[str, int] = defaultdict(int)
+        deletes_by_def: Dict[str, int] = defaultdict(int)
+        entity_names: Dict[str, str] = {}
 
         for action in batch.inserts:
-            inserts_by_def[action.entity_definition_id] += 1
-            entity_names[action.entity_definition_id] = action.entity_type
+            inserts_by_def[action.entity_definition_short_name] += 1
+            entity_names[action.entity_definition_short_name] = action.entity_type
 
         for action in batch.updates:
-            updates_by_def[action.entity_definition_id] += 1
-            entity_names[action.entity_definition_id] = action.entity_type
+            updates_by_def[action.entity_definition_short_name] += 1
+            entity_names[action.entity_definition_short_name] = action.entity_type
 
         for action in batch.deletes:
-            deletes_by_def[action.entity_definition_id] += 1
-            entity_names[action.entity_definition_id] = action.entity_type
+            deletes_by_def[action.entity_definition_short_name] += 1
+            entity_names[action.entity_definition_short_name] = action.entity_type
 
         await self._tracker.record_batch_results(
             inserts_by_def=inserts_by_def,
@@ -308,7 +308,7 @@ class EntityPipeline:
     # Orphan Identification
     # -------------------------------------------------------------------------
 
-    async def _identify_orphans(self, sync_context: SyncContext) -> Dict[UUID, List[str]]:
+    async def _identify_orphans(self, sync_context: SyncContext) -> Dict[str, List[str]]:
         """Identify orphaned entity IDs (in DB but not encountered), grouped by definition."""
         from airweave import crud
         from airweave.db.session import get_db_context
@@ -318,10 +318,10 @@ class EntityPipeline:
         async with get_db_context() as db:
             stored_entities = await crud.entity.get_by_sync_id(db=db, sync_id=sync_context.sync.id)
 
-        orphans_by_definition: Dict[UUID, List[str]] = defaultdict(list)
+        orphans_by_definition: Dict[str, List[str]] = defaultdict(list)
         for entity in stored_entities:
             if entity.entity_id not in encountered_ids:
-                orphans_by_definition[entity.entity_definition_id].append(entity.entity_id)
+                orphans_by_definition[entity.entity_definition_short_name].append(entity.entity_id)
 
         total_orphans = sum(len(ids) for ids in orphans_by_definition.values())
         if total_orphans:

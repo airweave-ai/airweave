@@ -32,6 +32,7 @@ from .herb import (
 )
 from .hubspot import HubspotSource
 from .incremental_stub import IncrementalStubSource
+from .intercom import IntercomSource
 from .jira import JiraSource
 from .linear import LinearSource
 from .monday import MondaySource
@@ -41,6 +42,7 @@ from .onenote import OneNoteSource
 from .outlook_calendar import OutlookCalendarSource
 from .outlook_mail import OutlookMailSource
 from .pipedrive import PipedriveSource
+from .powerpoint import PowerPointSource
 from .salesforce import SalesforceSource
 from .servicenow import ServiceNowSource
 from .sharepoint import SharePointSource
@@ -91,6 +93,7 @@ ALL_SOURCES: list[type] = [
     GoogleSlidesSource,
     HubspotSource,
     IncrementalStubSource,
+    IntercomSource,
     JiraSource,
     LinearSource,
     MondaySource,
@@ -100,6 +103,7 @@ ALL_SOURCES: list[type] = [
     OutlookCalendarSource,
     OutlookMailSource,
     PipedriveSource,
+    PowerPointSource,
     SalesforceSource,
     ServiceNowSource,
     SharePointSource,

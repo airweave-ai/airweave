@@ -21,6 +21,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: mypy
+        name: mypy
+        entry: bash -c 'cd backend && poetry run mypy --config-file pyproject.toml "${@#backend/}"' --
+        language: system
+        files: ^backend/airweave/.*\.py$
+        types: [python]
+
+  - repo: local
+    hooks:
       - id: import-linter
         name: import-linter
         entry: bash -c 'cd backend && poetry run lint-imports'

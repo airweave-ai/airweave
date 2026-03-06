@@ -443,7 +443,7 @@ class OAuth2Service:
     async def _get_integration_config(
         logger: ContextualLogger,
         integration_short_name: str,
-    ) -> schemas.Source | schemas.Destination | schemas.EmbeddingModel:
+    ) -> schemas.Source | schemas.Destination:
         """Get and validate integration configuration exists.
 
         Args:
@@ -453,7 +453,7 @@ class OAuth2Service:
 
         Returns:
         -------
-            schemas.Source | schemas.Destination | schemas.EmbeddingModel: The integration
+            schemas.Source | schemas.Destination: The integration
                 configuration.
 
         Raises:
@@ -471,7 +471,7 @@ class OAuth2Service:
     @staticmethod
     async def _get_client_credentials(
         logger: ContextualLogger,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: schemas.Source | schemas.Destination,
         auth_fields: Optional[dict] = None,
         decrypted_credential: Optional[dict] = None,
     ) -> tuple[str, str]:
@@ -511,7 +511,7 @@ class OAuth2Service:
     @staticmethod
     def _prepare_token_request(
         logger: ContextualLogger,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: schemas.Source | schemas.Destination,
         refresh_token: str,
         client_id: str,
         client_secret: str,
@@ -521,7 +521,7 @@ class OAuth2Service:
         Args:
         ----
             logger (ContextualLogger): The logger to use.
-            integration_config (schemas.Source | schemas.Destination | schemas.EmbeddingModel):
+            integration_config (schemas.Source | schemas.Destination):
                 The integration configuration.
             refresh_token (str): The refresh token.
             client_id (str): The client ID.
@@ -677,7 +677,7 @@ class OAuth2Service:
     async def _handle_token_response(
         db: AsyncSession,
         response: httpx.Response,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: schemas.Source | schemas.Destination,
         ctx: ApiContext,
         connection_id: UUID,
     ) -> OAuth2TokenResponse:
@@ -688,7 +688,7 @@ class OAuth2Service:
             db (AsyncSession): The database session.
             logger (ContextualLogger): The logger to use.
             response (httpx.Response): The response from the token refresh request.
-            integration_config (schemas.Source | schemas.Destination | schemas.EmbeddingModel):
+            integration_config (schemas.Source | schemas.Destination):
                 The integration configuration.
             ctx (ApiContext): The API context.
             connection_id (UUID): The ID of the connection to update.
@@ -860,7 +860,7 @@ class OAuth2Service:
         client_id: str,
         client_secret: str,
         backend_url: str,
-        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        integration_config: schemas.Source | schemas.Destination,
         code_verifier: Optional[str] = None,
     ) -> OAuth2TokenResponse:
         """Core method to exchange an authorization code for tokens.

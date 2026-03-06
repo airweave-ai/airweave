@@ -20,3 +20,12 @@ class AuthProviderRegistryEntry(BaseRegistryEntry):
     # Mappings (Airweave names → provider-specific names)
     field_name_mapping: dict[str, str]
     slug_name_mapping: dict[str, str]
+
+
+class AuthProviderMetadata(BaseRegistryEntry):
+    """Public auth provider metadata returned by API endpoints."""
+
+    auth_config_class: str
+    config_class: str
+    auth_fields: Fields | None = None
+    config_fields: Fields | None = None

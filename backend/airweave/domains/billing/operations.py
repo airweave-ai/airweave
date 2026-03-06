@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.core.context import BaseContext
+from airweave.core.logging import logger
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.exceptions import BillingStateError
@@ -106,28 +107,27 @@ class BillingOperations(BillingOperationsProtocol):
 
         Handles both paid and free (developer) plans.
         """
-        # SECURITY: Only self-serve plans allowed via user input; enterprise requires sales
-        SELF_SERVE_PLANS = ["developer", "pro", "team"]
-
-        selected_plan = BillingPlan.PRO
+        # SECURITY: Only self-serve plans allowed via user input; enterprise requires sales.
+        # The billing record always starts as DEVELOPER. The real plan is set by
+        # the customer.subscription.created webhook after Stripe Checkout completes.
+        # org_metadata still stores the user's plan *intent* so the frontend knows
+        # which checkout to redirect to.
         if organization.org_metadata:
             onboarding = organization.org_metadata.get("onboarding", {})
             plan_from_metadata = onboarding.get(
                 "subscriptionPlan"
             ) or organization.org_metadata.get("plan")
-            if plan_from_metadata:
-                plan_lower = plan_from_metadata.lower()
-                if plan_lower == "enterprise":
-                    ctx.logger.warning(
-                        f"Blocked enterprise plan self-provisioning attempt for org "
-                        f"{organization.id}. This may indicate abuse."
-                    )
-                    raise BillingStateError(
-                        "Enterprise plan is only available via sales. "
-                        "Please contact support or select a different plan."
-                    )
-                elif plan_lower in SELF_SERVE_PLANS:
-                    selected_plan = BillingPlan(plan_lower)
+            if plan_from_metadata and plan_from_metadata.lower() == "enterprise":
+                ctx.logger.warning(
+                    f"Blocked enterprise plan self-provisioning attempt for org "
+                    f"{organization.id}. This may indicate abuse."
+                )
+                raise BillingStateError(
+                    "Enterprise plan is only available via sales. "
+                    "Please contact support or select a different plan."
+                )
+
+        selected_plan = BillingPlan.DEVELOPER
 
         existing = await self._billing_repo.get_by_org_id(db, organization_id=organization.id)
         if existing:
@@ -197,19 +197,28 @@ class BillingOperations(BillingOperationsProtocol):
     ) -> schemas.BillingPeriod:
         """Create a new billing period with usage record.
 
-        Automatically completes any overlapping active periods before creating
-        the new one. Creates the period and its usage record in a single
-        UnitOfWork transaction.
+        Resolves all overlapping active periods in the range before creating
+        the new one: earlier periods are truncated/completed, later periods
+        that start inside the new range are also completed.
+
+        Creates the period and its usage record in a single UnitOfWork
+        transaction.
         """
-        check_time = period_start - timedelta(seconds=1)
-        current = await self._period_repo.get_current_period_at(
-            db, organization_id=organization_id, at=check_time
+        overlapping = await self._period_repo.get_active_periods_in_range(
+            db,
+            organization_id=organization_id,
+            range_start=period_start - timedelta(seconds=1),
+            range_end=period_end,
         )
 
-        if current and current.status in [BillingPeriodStatus.ACTIVE, BillingPeriodStatus.GRACE]:
-            db_period = await self._period_repo.get(db, id=current.id, ctx=ctx)
-            if db_period:
+        async with UnitOfWork(db) as uow:
+            for existing in overlapping:
+                db_period = await self._period_repo.get(db, id=existing.id, ctx=ctx)
+                if not db_period:
+                    continue
+
                 if db_period.period_start < period_start:
+                    # Period starts before ours — truncate it at our start
                     await self._period_repo.update(
                         db,
                         db_obj=db_period,
@@ -218,22 +227,39 @@ class BillingOperations(BillingOperationsProtocol):
                             "period_end": period_start,
                         },
                         ctx=ctx,
+                        uow=uow,
                     )
                     if not previous_period_id:
                         previous_period_id = db_period.id
+                    logger.info(
+                        f"Completed earlier period {db_period.id} (truncated end to {period_start})"
+                    )
+                else:
+                    # Period starts at or after ours — it's a forward overlap,
+                    # complete it so the new period takes precedence
+                    await self._period_repo.update(
+                        db,
+                        db_obj=db_period,
+                        obj_in={"status": BillingPeriodStatus.COMPLETED},
+                        ctx=ctx,
+                        uow=uow,
+                    )
+                    logger.info(
+                        f"Completed forward-overlapping period {db_period.id} "
+                        f"(started {db_period.period_start})"
+                    )
 
-        period_create = BillingPeriodCreate(
-            organization_id=organization_id,
-            period_start=period_start,
-            period_end=period_end,
-            plan=plan,
-            status=status,
-            created_from=transition,
-            stripe_subscription_id=stripe_subscription_id,
-            previous_period_id=previous_period_id,
-        )
+            period_create = BillingPeriodCreate(
+                organization_id=organization_id,
+                period_start=period_start,
+                period_end=period_end,
+                plan=plan,
+                status=status,
+                created_from=transition,
+                stripe_subscription_id=stripe_subscription_id,
+                previous_period_id=previous_period_id,
+            )
 
-        async with UnitOfWork(db) as uow:
             period = await self._period_repo.create(db, obj_in=period_create, ctx=ctx, uow=uow)
             await db.flush()
             period_id = period.id

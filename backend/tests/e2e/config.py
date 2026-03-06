@@ -68,6 +68,14 @@ class TestSettings(BaseSettings):
         default=None, description="Composio account ID for Asana"
     )
 
+    # Slack Composio configuration (federated search tests)
+    TEST_COMPOSIO_SLACK_AUTH_CONFIG_ID: Optional[str] = Field(
+        default=None, description="Composio auth config ID for Slack"
+    )
+    TEST_COMPOSIO_SLACK_ACCOUNT_ID: Optional[str] = Field(
+        default=None, description="Composio account ID for Slack"
+    )
+
     # Gmail Composio configuration
     TEST_COMPOSIO_GMAIL_AUTH_CONFIG_ID: Optional[str] = Field(
         default=None, description="Composio auth config ID for Gmail"

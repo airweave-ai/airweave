@@ -46,12 +46,18 @@ def _make_fake_context() -> ApiContext:
 @pytest_asyncio.fixture
 async def client(test_container):
     """Async HTTP client with faked DI container and auth context."""
+    from airweave.core import container as container_mod
     from airweave.main import app
 
     fake_ctx = _make_fake_context()
 
     app.dependency_overrides[get_container] = lambda: test_container
     app.dependency_overrides[get_context] = lambda: fake_ctx
+
+    # Inject() reads from the module-level global; set it so DI-injected
+    # protocol parameters resolve correctly in tests.
+    prev_container = container_mod.container
+    container_mod.container = test_container
 
     app.state.http_metrics = test_container.metrics.http
 
@@ -60,3 +66,4 @@ async def client(test_container):
         yield ac
 
     app.dependency_overrides.clear()
+    container_mod.container = prev_container

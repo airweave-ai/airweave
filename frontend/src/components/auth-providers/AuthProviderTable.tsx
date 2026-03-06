@@ -204,8 +204,8 @@ export const AuthProviderTable = () => {
 
                         return (
                             <AuthProviderButton
-                                key={provider.id}
-                                id={provider.id}
+                                key={provider.short_name}
+                                id={provider.short_name}
                                 name={provider.name}
                                 shortName={provider.short_name}
                                 isConnected={!!connection}

@@ -40,7 +40,7 @@ class AgenticSearchSource(BaseModel):
 class AgenticSearchEntityDefinition(BaseModel):
     """Minimal entity definition info needed by agentic_search."""
 
-    id: UUID = Field(..., description="Entity definition UUID")
+    short_name: str = Field(..., description="Entity definition short_name from registry")
     name: str = Field(..., description="Entity type name (e.g., 'SlackMessage', 'GitHubIssue')")
     entity_schema: dict = Field(..., description="JSON schema with field names and descriptions")
 

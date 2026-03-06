@@ -6,12 +6,9 @@ from airweave.platform.auth.schemas import OAuth2AuthUrl, OAuth2TokenResponse
 from .admin import OrganizationMetrics
 from .api_key import APIKey, APIKeyCreate, APIKeyInDBBase, APIKeyUpdate
 from .auth_provider import (
-    AuthProvider,
     AuthProviderConnection,
     AuthProviderConnectionCreate,
     AuthProviderConnectionUpdate,
-    AuthProviderCreate,
-    AuthProviderUpdate,
 )
 from .billing_period import (
     BillingPeriod,
@@ -31,26 +28,13 @@ from .connection import Connection, ConnectionCreate, ConnectionInDBBase, Connec
 from .destination import (
     Destination,
     DestinationCreate,
-    DestinationInDBBase,
     DestinationUpdate,
-    DestinationWithAuthenticationFields,
-)
-from .embedding_model import (
-    EmbeddingModel,
-    EmbeddingModelCreate,
-    EmbeddingModelInDBBase,
-    EmbeddingModelUpdate,
-    EmbeddingModelWithAuthenticationFields,
 )
 from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
 from .entity_count import EntityCount as EntityCountSchema
+from .entity_definition import EntityDefinition, EntityDefinitionCreate, EntityDefinitionUpdate
 from .entity_count import EntityCountCreate, EntityCountUpdate, EntityCountWithDefinition
-from .entity_definition import (
-    EntityDefinition,
-    EntityDefinitionCreate,
-    EntityDefinitionUpdate,
-    EntityType,
-)
+
 from .errors import (
     ConflictErrorResponse,
     NotFoundErrorResponse,
@@ -156,7 +140,6 @@ from .sync_job import (
     SyncJobInDBBase,
     SyncJobUpdate,
 )
-from .transformer import Transformer, TransformerCreate, TransformerUpdate
 from .usage import (
     SingleActionCheckResponse,
     Usage,

@@ -6,8 +6,6 @@ Handles destination creation with:
 - Entity definition map loading
 """
 
-import asyncio
-import importlib
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -50,18 +48,15 @@ class DestinationsContextBuilder:
         Returns:
             Tuple of (destinations, entity_map).
         """
-        # Build in parallel: destinations and entity map
-        destinations, entity_map = await asyncio.gather(
-            cls._create_destinations(
-                db=db,
-                sync=sync,
-                collection=collection,
-                ctx=ctx,
-                logger=logger,
-                execution_config=execution_config,
-            ),
-            cls._get_entity_definition_map(db=db),
+        destinations = await cls._create_destinations(
+            db=db,
+            sync=sync,
+            collection=collection,
+            ctx=ctx,
+            logger=logger,
+            execution_config=execution_config,
         )
+        entity_map = cls._get_entity_definition_map()
 
         return destinations, entity_map
 
@@ -303,18 +298,15 @@ class DestinationsContextBuilder:
     # -------------------------------------------------------------------------
 
     @classmethod
-    async def _get_entity_definition_map(cls, db: AsyncSession) -> Dict[type[BaseEntity], UUID]:
-        """Get entity definition map (entity class -> entity_definition_id)."""
-        entity_definitions = await crud.entity_definition.get_all(db)
+    def _get_entity_definition_map(cls) -> Dict[type[BaseEntity], str]:
+        """Get entity definition map (entity class -> entity_definition_short_name)."""
+        # [code blue] todo: remove container import
+        from airweave.core.container import container as app_container
 
-        entity_definition_map = {}
-        for entity_definition in entity_definitions:
-            full_module_name = f"airweave.platform.entities.{entity_definition.module_name}"
-            module = importlib.import_module(full_module_name)
-            entity_class = getattr(module, entity_definition.class_name)
-            entity_definition_map[entity_class] = entity_definition.id
-
-        return entity_definition_map
+        return {
+            entry.entity_class_ref: entry.short_name
+            for entry in app_container.entity_definition_registry.list_all()
+        }
 
     # -------------------------------------------------------------------------
     # Private: Helpers

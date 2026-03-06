@@ -54,10 +54,8 @@ class SyncJob(OrganizationBase, UserMixin):
     )
 
     __table_args__ = (
-        # Index for filtering by status (used in cleanup queries)
+        Index("idx_sync_job_sync_id", "sync_id"),
         Index("idx_sync_job_status", "status"),
-        # Composite index for finding stuck jobs by status and last modification time
         Index("idx_sync_job_status_modified_at", "status", "modified_at"),
-        # Index for finding long-running jobs by status and start time
         Index("idx_sync_job_status_started_at", "status", "started_at"),
     )

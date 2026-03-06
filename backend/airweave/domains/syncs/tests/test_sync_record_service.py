@@ -12,8 +12,6 @@ import pytest
 from fastapi import HTTPException
 
 from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
-from airweave.core.shared_models import FeatureFlag
-from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.syncs.sync_record_service import SyncRecordService
 
 ORG_ID = uuid4()
@@ -52,6 +50,8 @@ def _mock_sync_job_model(sync_id: UUID = SYNC_ID, status: str = "PENDING") -> Ma
 
 @dataclass
 class TriggerCase:
+    """Parameters for a single trigger_sync_run scenario."""
+
     name: str
     active_jobs: list
     sync_exists: bool = True
@@ -82,7 +82,8 @@ TRIGGER_CASES = [
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("case", TRIGGER_CASES, ids=lambda c: c.name)
-async def test_trigger_sync_run(case: TriggerCase):
+async def test_trigger_sync_run(case: TriggerCase) -> None:
+    """Verify trigger_sync_run behaviour for each scenario."""
     sync_repo = AsyncMock()
     sync_job_repo = AsyncMock()
     connection_repo = AsyncMock()
@@ -141,52 +142,9 @@ async def test_trigger_sync_run(case: TriggerCase):
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class ResolveDestCase:
-    name: str
-    has_s3_feature: bool
-    s3_connection_id: UUID | None
-    expected_dest_ids: list[UUID]
-    expect_db_execute: bool
-    expect_info_log: bool
-    expect_warning_log: bool
-
-
-S3_CONNECTION_ID = uuid4()
-
-RESOLVE_DEST_CASES = [
-    ResolveDestCase(
-        name="feature_off_returns_native_only",
-        has_s3_feature=False,
-        s3_connection_id=None,
-        expected_dest_ids=[NATIVE_VESPA_UUID],
-        expect_db_execute=False,
-        expect_info_log=False,
-        expect_warning_log=False,
-    ),
-    ResolveDestCase(
-        name="feature_on_with_s3_connection",
-        has_s3_feature=True,
-        s3_connection_id=S3_CONNECTION_ID,
-        expected_dest_ids=[NATIVE_VESPA_UUID, S3_CONNECTION_ID],
-        expect_db_execute=True,
-        expect_info_log=True,
-        expect_warning_log=False,
-    ),
-    ResolveDestCase(
-        name="feature_on_without_s3_connection",
-        has_s3_feature=True,
-        s3_connection_id=None,
-        expected_dest_ids=[NATIVE_VESPA_UUID],
-        expect_db_execute=True,
-        expect_info_log=False,
-        expect_warning_log=True,
-    ),
-]
-
-
 @pytest.mark.asyncio
-async def test_create_sync_flushes_sync_and_sync_job_and_refreshes_sync_job_before_validation():
+async def test_create_sync_flushes_and_refreshes_job_before_validation() -> None:
+    """Verify create_sync flushes twice and refreshes the job before validation."""
     sync_repo = AsyncMock()
     sync_job_repo = AsyncMock()
     connection_repo = AsyncMock()
@@ -230,7 +188,8 @@ async def test_create_sync_flushes_sync_and_sync_job_and_refreshes_sync_job_befo
 
 
 @pytest.mark.asyncio
-async def test_create_sync_flushes_sync_even_without_immediate_job():
+async def test_create_sync_flushes_sync_even_without_immediate_job() -> None:
+    """Verify create_sync flushes once and skips job when run_immediately=False."""
     sync_repo = AsyncMock()
     sync_job_repo = AsyncMock()
     connection_repo = AsyncMock()
@@ -268,45 +227,16 @@ async def test_create_sync_flushes_sync_even_without_immediate_job():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("case", RESOLVE_DEST_CASES, ids=lambda c: c.name)
-async def test_resolve_destination_ids(case: ResolveDestCase):
-    sync_repo = AsyncMock()
-    sync_job_repo = AsyncMock()
-    connection_repo = AsyncMock()
-    if case.s3_connection_id:
-        s3_connection = MagicMock()
-        s3_connection.id = case.s3_connection_id
-        connection_repo.get_s3_destination_for_org = AsyncMock(return_value=s3_connection)
-    else:
-        connection_repo.get_s3_destination_for_org = AsyncMock(return_value=None)
+async def test_resolve_destination_ids_returns_native_only() -> None:
+    """Verify resolve_destination_ids returns only native Vespa UUID."""
     svc = SyncRecordService(
-        sync_repo=sync_repo,
-        sync_job_repo=sync_job_repo,
-        connection_repo=connection_repo,
+        sync_repo=AsyncMock(),
+        sync_job_repo=AsyncMock(),
+        connection_repo=AsyncMock(),
     )
-
     db = AsyncMock()
-
     ctx = _mock_ctx()
-    ctx.has_feature = MagicMock(
-        side_effect=lambda feature: feature == FeatureFlag.S3_DESTINATION and case.has_s3_feature
-    )
 
     destination_ids = await svc.resolve_destination_ids(db, ctx)
 
-    assert destination_ids == case.expected_dest_ids
-
-    if case.expect_db_execute:
-        connection_repo.get_s3_destination_for_org.assert_called_once_with(db, ctx)
-    else:
-        connection_repo.get_s3_destination_for_org.assert_not_called()
-
-    if case.expect_info_log:
-        ctx.logger.info.assert_called_once()
-    else:
-        ctx.logger.info.assert_not_called()
-
-    if case.expect_warning_log:
-        ctx.logger.warning.assert_called_once()
-    else:
-        ctx.logger.warning.assert_not_called()
+    assert destination_ids == [NATIVE_VESPA_UUID]

@@ -146,7 +146,7 @@ async for entity in stream.get_entities():
 **Routing Logic**:
 ```python
 # Route map: (producer_node_id, entity_type_id) -> consumer_node_id
-route_map[(producer, entity_definition_id)] = consumer_node_id
+route_map[(producer, entity_definition_short_name)] = consumer_node_id
 
 # Special case: routes to destination return None (stops routing)
 if all_edges_go_to_destinations:
@@ -175,7 +175,7 @@ if all_edges_go_to_destinations:
 **Purpose**: Centralized entity state tracking (dedup + progress + encounter tracking)
 
 **Responsibilities**:
-- **Deduplication**: Tracks `(entity_id, entity_definition_id)` to prevent reprocessing
+- **Deduplication**: Tracks `(entity_id, entity_definition_short_name)` to prevent reprocessing
 - **Encounter Counting**: Maintains count of entities by type for stats
 - **Progress Stats**: Thread-safe counters for inserted/updated/deleted/kept/skipped
 

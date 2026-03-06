@@ -344,12 +344,6 @@ class SliteConfig(SourceConfig):
     )
 
 
-class IntercomConfig(SourceConfig):
-    """Intercom configuration schema."""
-
-    pass
-
-
 class JiraConfig(SourceConfig):
     """Jira configuration schema."""
 
@@ -474,6 +468,12 @@ class OneNoteConfig(SourceConfig):
 
 class WordConfig(SourceConfig):
     """Microsoft Word configuration schema."""
+
+    pass
+
+
+class PowerPointConfig(SourceConfig):
+    """Microsoft PowerPoint configuration schema."""
 
     pass
 
@@ -882,6 +882,16 @@ class FreshdeskConfig(SourceConfig):
         title="Freshdesk Domain",
         description=("Your Freshdesk domain only (e.g., 'mycompany' for mycompany.freshdesk.com)"),
         json_schema_extra={"required_for_auth": True},
+    )
+
+
+class IntercomConfig(SourceConfig):
+    """Intercom configuration schema."""
+
+    exclude_closed_conversations: Optional[bool] = Field(
+        default=False,
+        title="Exclude Closed Conversations",
+        description="Skip closed conversations during sync (recommended for faster syncing)",
     )
 
 

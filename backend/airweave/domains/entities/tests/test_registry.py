@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from unittest.mock import patch
 
 import pytest
+from pydantic import BaseModel
 
 from airweave.domains.entities.registry import EntityDefinitionRegistry, _to_snake_case
 
@@ -20,8 +21,8 @@ _PATCH_ENTITIES = "airweave.domains.entities.registry.ENTITIES_BY_SOURCE"
 
 
 def _make_entity_cls(class_name: str, doc: str | None = None) -> type:
-    """Build a minimal stub entity class."""
-    return type(class_name, (), {"__doc__": doc or f"Stub {class_name}"})
+    """Build a minimal stub entity class (Pydantic-compatible for model_json_schema)."""
+    return type(class_name, (BaseModel,), {"__doc__": doc or f"Stub {class_name}"})
 
 
 def _build_registry(entities_by_source: dict):
@@ -183,3 +184,15 @@ def test_entity_class_ref_stored():
     cls = _make_entity_cls("AsanaTaskEntity")
     registry = _build_registry({"asana": [cls]})
     assert registry.get("asana_task_entity").entity_class_ref is cls
+
+
+def test_entity_type_always_json():
+    registry = _build_registry({"asana": [_make_entity_cls("AsanaTaskEntity")]})
+    assert registry.get("asana_task_entity").entity_type == "json"
+
+
+def test_entity_schema_is_dict():
+    registry = _build_registry({"asana": [_make_entity_cls("AsanaTaskEntity")]})
+    schema = registry.get("asana_task_entity").entity_schema
+    assert isinstance(schema, dict)
+    assert schema["type"] == "object"

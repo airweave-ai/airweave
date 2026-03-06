@@ -24,6 +24,10 @@ fi
 EMBEDDING_DIM="${EMBEDDING_DIMENSIONS:-1536}"
 echo "Using EMBEDDING_DIMENSIONS=${EMBEDDING_DIM}"
 
+VERSION="${VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}"
+VERSION="${VERSION#v}"
+echo "Using VERSION=${VERSION}"
+
 echo ""
 echo "Waiting for config server to be ready..."
 until curl -s "${CONFIG_SERVER}/state/v1/health" | grep -q '"up"'; do
@@ -39,12 +43,13 @@ cp -r "${APP_DIR}" "${BUILD_DIR}"
 
 # Replace {{EMBEDDING_DIM}} placeholder in all schema files
 find "${BUILD_DIR}/schemas" -name "*.sd" -exec sed -i '' "s/{{EMBEDDING_DIM}}/${EMBEDDING_DIM}/g" {} \;
+sed -i '' "s/{{VERSION}}/${VERSION}/g" "${BUILD_DIR}/services.xml"
 
 echo ""
 echo "Creating application package zip..."
 cd "${BUILD_DIR}"
 rm -f ../app.zip
-zip -r ../app.zip . -x ".*"
+zip -r ../app.zip . -x ".*" "*/.*"
 cd ..
 
 echo ""

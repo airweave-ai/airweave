@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AirweaveClient } from "../api/airweave-client.js";
 import { AirweaveConfig } from "../api/types.js";
 import { formatSearchResponse, formatErrorResponse } from "../utils/error-handling.js";
+import { searchDuration, searchTotal } from "../metrics/prometheus.js";
 
 export function createSearchTool(
     toolName: string,
@@ -63,13 +64,18 @@ export function createSearchTool(
         description: `Enhanced search within the Airweave collection '${collection}' with advanced filtering and ranking options.\n\n**Parameters:**\n${parameterDescriptions}\n\n${naturalLanguageExamples}`,
         schema: searchSchema,
         handler: async (params: Record<string, unknown>) => {
+            const end = searchDuration.startTimer();
             try {
                 const validatedParams = fullSchema.parse(params);
                 const { response_type } = validatedParams;
 
                 const searchResponse = await airweaveClient.search(validatedParams);
+                end({ status: 'success' });
+                searchTotal.inc({ status: 'success' });
                 return formatSearchResponse(searchResponse, response_type, collection);
             } catch (error) {
+                end({ status: 'error' });
+                searchTotal.inc({ status: 'error' });
                 console.error("Error in search tool:", error);
 
                 if (error instanceof z.ZodError) {

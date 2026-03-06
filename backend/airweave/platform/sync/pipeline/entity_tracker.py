@@ -73,18 +73,16 @@ class EntityTracker:
         self.stats = SyncStats()
 
         # Entity encounter tracking (for dedup + orphan detection)
-        # The set tracks IDs, stats.entities_encountered tracks counts
         self._encountered_by_type: Dict[str, Set[str]] = defaultdict(set)
 
-        # Entity count tracking
-        self._counts_by_definition: Dict[UUID, int] = {}
-        self._definition_metadata: Dict[UUID, Dict] = {}
+        # Entity count tracking keyed by entity_definition_short_name
+        self._counts_by_definition: Dict[str, int] = {}
+        self._definition_metadata: Dict[str, Dict] = {}
 
-        # Initialize with database counts if provided
         if initial_counts:
             for count in initial_counts:
-                self._counts_by_definition[count.entity_definition_id] = count.count
-                self._definition_metadata[count.entity_definition_id] = {
+                self._counts_by_definition[count.entity_definition_short_name] = count.count
+                self._definition_metadata[count.entity_definition_short_name] = {
                     "name": count.entity_definition_name,
                     "type": count.entity_definition_type,
                     "description": count.entity_definition_description,
@@ -93,7 +91,6 @@ class EntityTracker:
                     f"📚 Loaded initial count for {count.entity_definition_name}: {count.count}"
                 )
 
-        # Concurrency control
         self._lock = asyncio.Lock()
 
     # -------------------------------------------------------------------------
@@ -168,21 +165,21 @@ class EntityTracker:
 
     async def record_inserts(
         self,
-        entity_definition_id: UUID,
+        entity_definition_short_name: str,
         count: int = 1,
         entity_name: Optional[str] = None,
         entity_type: Optional[str] = None,
     ) -> None:
         """Record successful insert(s)."""
         async with self._lock:
-            self._ensure_definition(entity_definition_id, entity_name, entity_type)
-            self._counts_by_definition[entity_definition_id] += count
+            self._ensure_definition(entity_definition_short_name, entity_name, entity_type)
+            self._counts_by_definition[entity_definition_short_name] += count
             self.stats.inserted += count
             self.stats.total_operations += count
 
     async def record_updates(
         self,
-        entity_definition_id: UUID,
+        entity_definition_short_name: str,
         count: int = 1,
     ) -> None:
         """Record successful update(s)."""
@@ -192,14 +189,14 @@ class EntityTracker:
 
     async def record_deletes(
         self,
-        entity_definition_id: UUID,
+        entity_definition_short_name: str,
         count: int = 1,
     ) -> None:
         """Record successful delete(s)."""
         async with self._lock:
-            if entity_definition_id in self._counts_by_definition:
-                self._counts_by_definition[entity_definition_id] = max(
-                    0, self._counts_by_definition[entity_definition_id] - count
+            if entity_definition_short_name in self._counts_by_definition:
+                self._counts_by_definition[entity_definition_short_name] = max(
+                    0, self._counts_by_definition[entity_definition_short_name] - count
                 )
             self.stats.deleted += count
             self.stats.total_operations += count
@@ -218,12 +215,12 @@ class EntityTracker:
 
     async def record_batch_results(
         self,
-        inserts_by_def: Dict[UUID, int],
-        updates_by_def: Dict[UUID, int],
-        deletes_by_def: Dict[UUID, int],
+        inserts_by_def: Dict[str, int],
+        updates_by_def: Dict[str, int],
+        deletes_by_def: Dict[str, int],
         keeps_count: int = 0,
         skipped_count: int = 0,
-        entity_names: Optional[Dict[UUID, str]] = None,
+        entity_names: Optional[Dict[str, str]] = None,
     ) -> None:
         """Record results for an entire batch at once (more efficient)."""
         async with self._lock:
@@ -264,28 +261,30 @@ class EntityTracker:
 
     def _ensure_definition(
         self,
-        entity_definition_id: UUID,
+        entity_definition_short_name: str,
         name: Optional[str] = None,
         entity_type: Optional[str] = None,
     ) -> None:
         """Ensure definition exists in tracking."""
-        if entity_definition_id not in self._counts_by_definition:
-            self._counts_by_definition[entity_definition_id] = 0
-            self.logger.debug(f"🆕 New entity definition encountered: {entity_definition_id}")
+        if entity_definition_short_name not in self._counts_by_definition:
+            self._counts_by_definition[entity_definition_short_name] = 0
+            self.logger.debug(
+                f"🆕 New entity definition encountered: {entity_definition_short_name}"
+            )
 
-        if name and entity_definition_id not in self._definition_metadata:
-            self._definition_metadata[entity_definition_id] = {
+        if name and entity_definition_short_name not in self._definition_metadata:
+            self._definition_metadata[entity_definition_short_name] = {
                 "name": name,
                 "type": entity_type or "unknown",
             }
-            self.logger.debug(f"📝 Registered metadata for {entity_definition_id}: {name}")
+            self.logger.debug(f"📝 Registered metadata for {entity_definition_short_name}: {name}")
 
     # -------------------------------------------------------------------------
     # State Access
     # -------------------------------------------------------------------------
 
-    def get_counts_by_definition(self) -> Dict[UUID, int]:
-        """Get raw counts by entity definition ID."""
+    def get_counts_by_definition(self) -> Dict[str, int]:
+        """Get raw counts by entity definition short_name."""
         return dict(self._counts_by_definition)
 
     def get_named_counts(self) -> Dict[str, int]:

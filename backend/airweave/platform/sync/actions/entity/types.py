@@ -1,7 +1,7 @@
 """Entity-specific action types for entity sync pipeline.
 
 Extends generic action types with entity-specific fields like
-entity_definition_id, db_id, chunk_entities, and existing_map.
+entity_definition_short_name, db_id, chunk_entities, and existing_map.
 """
 
 from dataclasses import dataclass, field
@@ -23,7 +23,7 @@ class EntityInsertAction:
     """Entity should be inserted (new entity, not in database)."""
 
     entity: "BaseEntity"
-    entity_definition_id: UUID
+    entity_definition_short_name: str
     chunk_entities: List["BaseEntity"] = field(default_factory=list)
 
     @property
@@ -42,7 +42,7 @@ class EntityUpdateAction:
     """Entity should be updated (hash changed from stored value)."""
 
     entity: "BaseEntity"
-    entity_definition_id: UUID
+    entity_definition_short_name: str
     db_id: UUID  # Existing database record ID
     chunk_entities: List["BaseEntity"] = field(default_factory=list)
 
@@ -62,7 +62,7 @@ class EntityDeleteAction:
     """Entity should be deleted (DeletionEntity from source)."""
 
     entity: "BaseEntity"
-    entity_definition_id: UUID
+    entity_definition_short_name: str
     db_id: Optional[UUID] = None  # May not exist in DB if never synced
 
     @property
@@ -81,7 +81,7 @@ class EntityKeepAction:
     """Entity is unchanged (hash matches stored value)."""
 
     entity: "BaseEntity"
-    entity_definition_id: UUID
+    entity_definition_short_name: str
 
     @property
     def entity_id(self) -> str:
@@ -108,8 +108,8 @@ class EntityActionBatch:
     deletes: List[EntityDeleteAction] = field(default_factory=list)
     keeps: List[EntityKeepAction] = field(default_factory=list)
 
-    # Map of (entity_id, entity_definition_id) -> DB entity for lookups
-    existing_map: Dict[Tuple[str, UUID], "models.Entity"] = field(default_factory=dict)
+    # Map of (entity_id, entity_definition_short_name) -> DB entity for lookups
+    existing_map: Dict[Tuple[str, str], "models.Entity"] = field(default_factory=dict)
 
     @property
     def has_mutations(self) -> bool:

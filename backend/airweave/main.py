@@ -21,6 +21,7 @@ from airweave.api.middleware import (
     analytics_middleware,
     exception_logging_middleware,
     http_metrics_middleware,
+    invalid_input_exception_handler,
     invalid_state_exception_handler,
     log_requests,
     not_found_exception_handler,
@@ -36,6 +37,7 @@ from airweave.api.v1.api import api_router
 from airweave.core.config import settings
 from airweave.core.exceptions import (
     AirweaveException,
+    InvalidInputError,
     InvalidStateError,
     NotFoundException,
     PermissionException,
@@ -156,6 +158,7 @@ app.exception_handler(PermissionException)(permission_exception_handler)
 app.exception_handler(NotFoundException)(not_found_exception_handler)
 app.exception_handler(RateLimitExceededException)(rate_limit_exception_handler)
 app.exception_handler(InvalidStateError)(invalid_state_exception_handler)
+app.exception_handler(InvalidInputError)(invalid_input_exception_handler)
 
 # Register custom Airweave exception handlers
 app.exception_handler(AirweaveException)(airweave_exception_handler)
@@ -173,9 +176,10 @@ CORS_ORIGINS = [
 ]
 
 if settings.ADDITIONAL_CORS_ORIGINS:
-    additional_origins = settings.ADDITIONAL_CORS_ORIGINS.split(",")
+    origins = settings.ADDITIONAL_CORS_ORIGINS
+    additional_origins = origins.split(",") if isinstance(origins, str) else origins
     if settings.ENVIRONMENT == "local":
-        CORS_ORIGINS.append("*")  # Allow all origins in local environment
+        CORS_ORIGINS.append("*")
     else:
         CORS_ORIGINS.extend(additional_origins)
 

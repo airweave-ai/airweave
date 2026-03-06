@@ -41,10 +41,9 @@ export const AuthProviderDialog: React.FC<AuthProviderDialogProps> = ({
         // Set initial view data based on mode
         if (authProvider) {
             const initialData: Record<string, any> = {
-                authProviderId: authProvider.id,
+                authProviderId: authProvider.short_name,
                 authProviderName: authProvider.name,
                 authProviderShortName: authProvider.short_name,
-                authProviderAuthType: authProvider.auth_type,
                 dialogId: `auth-provider-${authProvider.short_name}`
             };
 
