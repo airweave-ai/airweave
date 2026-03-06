@@ -194,11 +194,12 @@ class UsageLimitChecker(UsageLimitCheckerProtocol):
             if plan:
                 return infer_usage_limit(plan)
 
-        # No current period (e.g. webhook outage) — fall back to the
-        # plan stored on the billing record so paid orgs aren't silently
-        # downgraded to developer limits.
+        # No current period — only trust the billing record's plan if the
+        # org actually has a Stripe subscription (i.e. they paid).  Without
+        # a subscription the billing_plan may reflect an onboarding intent
+        # that was never completed via checkout.
         billing = await self._billing_repo.get_by_org_id(db, organization_id=org_id)
-        if billing and billing.billing_plan:
+        if billing and billing.billing_plan and billing.stripe_subscription_id:
             plan = _parse_plan(billing.billing_plan)
             if plan:
                 return infer_usage_limit(plan)

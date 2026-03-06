@@ -68,6 +68,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             "invoice.payment_failed": self._handle_payment_failed,
             "invoice.upcoming": self._handle_invoice_upcoming,
             "checkout.session.completed": self._handle_checkout_completed,
+            "checkout.session.expired": self._handle_checkout_expired,
             "payment_intent.succeeded": self._handle_payment_intent_succeeded,
         }
 
@@ -792,6 +793,27 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             await self._finalize_yearly_prepay(db, session, ctx, log)
 
         # For subscription mode, the subscription.created webhook will handle setup
+
+    async def _handle_checkout_expired(
+        self,
+        db: AsyncSession,
+        event: stripe.Event,
+        ctx: BaseContext | None,
+        log: ContextualLogger,
+    ) -> None:
+        """Handle abandoned/expired checkout sessions.
+
+        No DB mutation needed — billing record starts as developer (Part 2),
+        so an expired checkout simply means the org stays on developer.
+        This handler exists for observability.
+        """
+        session = event.data.object
+        org_id = session.metadata.get("organization_id") if hasattr(session, "metadata") else None
+        plan = session.metadata.get("plan") if hasattr(session, "metadata") else None
+        log.info(
+            f"Checkout session expired for org {org_id} (intended plan: {plan}). "
+            f"Org remains on developer plan."
+        )
 
     async def _handle_payment_intent_succeeded(
         self,

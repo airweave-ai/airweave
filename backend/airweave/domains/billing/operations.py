@@ -107,28 +107,27 @@ class BillingOperations(BillingOperationsProtocol):
 
         Handles both paid and free (developer) plans.
         """
-        # SECURITY: Only self-serve plans allowed via user input; enterprise requires sales
-        SELF_SERVE_PLANS = ["developer", "pro", "team"]
-
-        selected_plan = BillingPlan.PRO
+        # SECURITY: Only self-serve plans allowed via user input; enterprise requires sales.
+        # The billing record always starts as DEVELOPER. The real plan is set by
+        # the customer.subscription.created webhook after Stripe Checkout completes.
+        # org_metadata still stores the user's plan *intent* so the frontend knows
+        # which checkout to redirect to.
         if organization.org_metadata:
             onboarding = organization.org_metadata.get("onboarding", {})
             plan_from_metadata = onboarding.get(
                 "subscriptionPlan"
             ) or organization.org_metadata.get("plan")
-            if plan_from_metadata:
-                plan_lower = plan_from_metadata.lower()
-                if plan_lower == "enterprise":
-                    ctx.logger.warning(
-                        f"Blocked enterprise plan self-provisioning attempt for org "
-                        f"{organization.id}. This may indicate abuse."
-                    )
-                    raise BillingStateError(
-                        "Enterprise plan is only available via sales. "
-                        "Please contact support or select a different plan."
-                    )
-                elif plan_lower in SELF_SERVE_PLANS:
-                    selected_plan = BillingPlan(plan_lower)
+            if plan_from_metadata and plan_from_metadata.lower() == "enterprise":
+                ctx.logger.warning(
+                    f"Blocked enterprise plan self-provisioning attempt for org "
+                    f"{organization.id}. This may indicate abuse."
+                )
+                raise BillingStateError(
+                    "Enterprise plan is only available via sales. "
+                    "Please contact support or select a different plan."
+                )
+
+        selected_plan = BillingPlan.DEVELOPER
 
         existing = await self._billing_repo.get_by_org_id(db, organization_id=organization.id)
         if existing:
