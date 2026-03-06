@@ -495,6 +495,22 @@ def fake_organization_service():
 
 
 @pytest.fixture
+def fake_email_service():
+    """Fake EmailService that records calls."""
+    from airweave.adapters.email.fake import FakeEmailService
+
+    return FakeEmailService()
+
+
+@pytest.fixture
+def fake_user_service():
+    """Fake UserService that records calls."""
+    from airweave.domains.users.fakes.service import FakeUserService
+
+    return FakeUserService()
+
+
+@pytest.fixture
 def fake_oauth_flow_service():
     """Fake OAuthFlowService."""
     from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
@@ -571,6 +587,8 @@ def test_container(
     fake_usage_ledger,
     fake_identity_provider,
     fake_organization_service,
+    fake_email_service,
+    fake_user_service,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -634,4 +652,6 @@ def test_container(
         usage_ledger=fake_usage_ledger,
         identity_provider=fake_identity_provider,
         organization_service=fake_organization_service,
+        email_service=fake_email_service,
+        user_service=fake_user_service,
     )
