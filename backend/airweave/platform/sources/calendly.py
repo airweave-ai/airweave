@@ -6,6 +6,7 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
+from airweave.core.logging import logger as default_logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.config import CalendlyConfig
 from airweave.platform.decorators import source
@@ -18,6 +19,7 @@ from airweave.platform.entities.calendly import (
 )
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import (
+    log_retry_attempt,
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
@@ -76,6 +78,7 @@ class CalendlySource(BaseSource):
         stop=stop_after_attempt(5),
         retry=retry_if_rate_limit_or_timeout,
         wait=wait_rate_limit_with_backoff,
+        before_sleep=log_retry_attempt(default_logger, "Calendly"),
         reraise=True,
     )
     async def _get_with_auth(
@@ -130,7 +133,10 @@ class CalendlySource(BaseSource):
                     self.logger.error("No token manager available to refresh expired token")
                     response.raise_for_status()
 
-            # Raise for other HTTP errors
+            # Log 429 so retries are visible; tenacity will retry after backoff
+            if response.status_code == 429:
+                self.logger.warning("Calendly API rate limit (429); retrying after backoff")
+            # Raise for other HTTP errors (including 429 so tenacity retries)
             response.raise_for_status()
             return response.json()
 

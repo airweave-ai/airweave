@@ -76,6 +76,62 @@ class CalendlyBongo(BaseBongo):
             await asyncio.sleep(self.rate_limit_delay - elapsed)
         self.last_request_time = time.time()
 
+    async def _request_with_429_retry(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        url: str,
+        max_attempts: int = 5,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """Perform HTTP request with retry on 429 (rate limit).
+
+        Waits using Retry-After or X-RateLimit-Reset when present,
+        otherwise exponential backoff. Returns the response after
+        non-429 or after max_attempts (caller should raise_for_status as needed).
+        """
+        attempt = 0
+        while True:
+            attempt += 1
+            await self._rate_limit()
+            resp = await client.request(method.upper(), url, **kwargs)
+            if resp.status_code != 429:
+                return resp
+            if attempt >= max_attempts:
+                self.logger.warning(
+                    f"Calendly API 429 after {max_attempts} attempts; returning last response"
+                )
+                return resp
+            wait_s = 2.0 * (2 ** (attempt - 1))
+            headers = resp.headers
+            retry_after = headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    wait_s = max(1.0, min(120.0, float(retry_after)))
+                except (ValueError, TypeError):
+                    pass
+            else:
+                reset_header = headers.get("X-RateLimit-Reset") or headers.get(
+                    "x-ratelimit-reset"
+                )
+                if reset_header is not None:
+                    try:
+                        reset_val = float(reset_header)
+                        now = time.time()
+                        if reset_val > now:
+                            wait_s = min(300.0, reset_val - now)
+                        else:
+                            wait_s = min(300.0, reset_val)
+                        wait_s = max(1.0, wait_s)
+                    except (ValueError, TypeError):
+                        pass
+                else:
+                    wait_s = min(30.0, wait_s)
+            self.logger.warning(
+                f"Calendly API rate limit (429); retrying in {wait_s:.1f}s (attempt {attempt}/{max_attempts})"
+            )
+            await asyncio.sleep(wait_s)
+
     async def _refresh_token(self):
         """Refresh the access token from Composio."""
         try:
@@ -109,10 +165,8 @@ class CalendlyBongo(BaseBongo):
             return
 
         async with httpx.AsyncClient() as client:
-            await self._rate_limit()
-            resp = await client.get(
-                f"{self.API_BASE}/users/me",
-                headers=self._headers(),
+            resp = await self._request_with_429_retry(
+                client, "get", f"{self.API_BASE}/users/me", headers=self._headers()
             )
 
             # Handle 401 by refreshing token and retrying
@@ -121,10 +175,8 @@ class CalendlyBongo(BaseBongo):
                     "⚠️ Got 401 when fetching user info, refreshing token..."
                 )
                 await self._refresh_token()
-                await self._rate_limit()
-                resp = await client.get(
-                    f"{self.API_BASE}/users/me",
-                    headers=self._headers(),
+                resp = await self._request_with_429_retry(
+                    client, "get", f"{self.API_BASE}/users/me", headers=self._headers()
                 )
 
             resp.raise_for_status()
@@ -239,7 +291,9 @@ class CalendlyBongo(BaseBongo):
                             f"Request body (sanitized): name={name}, duration={duration_minutes}, has_org={bool(self._organization_uri)}, has_user={bool(self._user_uri)}"
                         )
 
-                        resp = await client.post(
+                        resp = await self._request_with_429_retry(
+                            client,
+                            "post",
                             url,
                             headers=self._headers(),
                             json=request_body,
@@ -251,8 +305,9 @@ class CalendlyBongo(BaseBongo):
                                 "⚠️ Got 401 when creating event type, refreshing token..."
                             )
                             await self._refresh_token()
-                            await self._rate_limit()
-                            resp = await client.post(
+                            resp = await self._request_with_429_retry(
+                                client,
+                                "post",
                                 url,
                                 headers=self._headers(),
                                 json=request_body,
@@ -476,15 +531,18 @@ class CalendlyBongo(BaseBongo):
                     )
 
                     # Update event type
-                    resp = await client.put(
+                    put_json = {
+                        "name": name,
+                        "duration": duration_minutes,
+                        "description_plain": description,
+                        "active": True,
+                    }
+                    resp = await self._request_with_429_retry(
+                        client,
+                        "put",
                         event_type_uri,
                         headers=self._headers(),
-                        json={
-                            "name": name,
-                            "duration": duration_minutes,
-                            "description_plain": description,
-                            "active": True,
-                        },
+                        json=put_json,
                     )
 
                     # Handle 401 by refreshing token and retrying
@@ -493,16 +551,12 @@ class CalendlyBongo(BaseBongo):
                             "⚠️ Got 401 when updating event type, refreshing token..."
                         )
                         await self._refresh_token()
-                        await self._rate_limit()
-                        resp = await client.put(
+                        resp = await self._request_with_429_retry(
+                            client,
+                            "put",
                             event_type_uri,
                             headers=self._headers(),
-                            json={
-                                "name": name,
-                                "duration": duration_minutes,
-                                "description_plain": description,
-                                "active": True,
-                            },
+                            json=put_json,
                         )
 
                     resp.raise_for_status()
@@ -566,9 +620,10 @@ class CalendlyBongo(BaseBongo):
                 deletion_succeeded = False
 
                 try:
-                    await self._rate_limit()
                     # Calendly uses DELETE method for event types
-                    resp = await client.delete(
+                    resp = await self._request_with_429_retry(
+                        client,
+                        "delete",
                         event_type_uri,
                         headers=self._headers(),
                     )
@@ -579,8 +634,9 @@ class CalendlyBongo(BaseBongo):
                             "⚠️ Got 401 when deleting event type, refreshing token..."
                         )
                         await self._refresh_token()
-                        await self._rate_limit()
-                        resp = await client.delete(
+                        resp = await self._request_with_429_retry(
+                            client,
+                            "delete",
                             event_type_uri,
                             headers=self._headers(),
                         )
@@ -593,10 +649,12 @@ class CalendlyBongo(BaseBongo):
                         )
                     elif resp.status_code == 404:
                         # 404 means the entity doesn't exist - verify by trying to fetch it
-                        await self._rate_limit()
                         try:
-                            verify_resp = await client.get(
-                                event_type_uri, headers=self._headers()
+                            verify_resp = await self._request_with_429_retry(
+                                client,
+                                "get",
+                                event_type_uri,
+                                headers=self._headers(),
                             )
                             if verify_resp.status_code == 200:
                                 # Entity still exists - deletion failed but API returned 404
@@ -605,8 +663,9 @@ class CalendlyBongo(BaseBongo):
                                     f"⚠️ Deletion returned 404 but entity {entity_id} still exists. "
                                     f"Attempting to deactivate instead..."
                                 )
-                                await self._rate_limit()
-                                deactivate_resp = await client.put(
+                                deactivate_resp = await self._request_with_429_retry(
+                                    client,
+                                    "put",
                                     event_type_uri,
                                     headers=self._headers(),
                                     json={"active": False},
@@ -647,9 +706,10 @@ class CalendlyBongo(BaseBongo):
                             f"status {resp.status_code}, error: {error_text}. "
                             f"Attempting to deactivate instead..."
                         )
-                        await self._rate_limit()
                         try:
-                            deactivate_resp = await client.put(
+                            deactivate_resp = await self._request_with_429_retry(
+                                client,
+                                "put",
                                 event_type_uri,
                                 headers=self._headers(),
                                 json={"active": False},
@@ -675,16 +735,20 @@ class CalendlyBongo(BaseBongo):
                     if e.response.status_code == 404:
                         # Try to verify if entity exists
                         try:
-                            await self._rate_limit()
-                            verify_resp = await client.get(
-                                event_type_uri, headers=self._headers()
+                            verify_resp = await self._request_with_429_retry(
+                                client,
+                                "get",
+                                event_type_uri,
+                                headers=self._headers(),
                             )
                             # Handle 401 in verification
                             if verify_resp.status_code == 401:
                                 await self._refresh_token()
-                                await self._rate_limit()
-                                verify_resp = await client.get(
-                                    event_type_uri, headers=self._headers()
+                                verify_resp = await self._request_with_429_retry(
+                                    client,
+                                    "get",
+                                    event_type_uri,
+                                    headers=self._headers(),
                                 )
 
                             if verify_resp.status_code == 200:
@@ -693,8 +757,9 @@ class CalendlyBongo(BaseBongo):
                                     f"⚠️ Deletion returned 404 but entity {entity_id} exists. "
                                     f"Attempting to deactivate..."
                                 )
-                                await self._rate_limit()
-                                deactivate_resp = await client.put(
+                                deactivate_resp = await self._request_with_429_retry(
+                                    client,
+                                    "put",
                                     event_type_uri,
                                     headers=self._headers(),
                                     json={"active": False},
@@ -702,8 +767,9 @@ class CalendlyBongo(BaseBongo):
                                 # Handle 401 in deactivation
                                 if deactivate_resp.status_code == 401:
                                     await self._refresh_token()
-                                    await self._rate_limit()
-                                    deactivate_resp = await client.put(
+                                    deactivate_resp = await self._request_with_429_retry(
+                                        client,
+                                        "put",
                                         event_type_uri,
                                         headers=self._headers(),
                                         json={"active": False},
@@ -734,8 +800,9 @@ class CalendlyBongo(BaseBongo):
                             f"{e.response.status_code}. Attempting to deactivate..."
                         )
                         try:
-                            await self._rate_limit()
-                            deactivate_resp = await client.put(
+                            deactivate_resp = await self._request_with_429_retry(
+                                client,
+                                "put",
                                 event_type_uri,
                                 headers=self._headers(),
                                 json={"active": False},
@@ -743,8 +810,9 @@ class CalendlyBongo(BaseBongo):
                             # Handle 401 in deactivation
                             if deactivate_resp.status_code == 401:
                                 await self._refresh_token()
-                                await self._rate_limit()
-                                deactivate_resp = await client.put(
+                                deactivate_resp = await self._request_with_429_retry(
+                                    client,
+                                    "put",
                                     event_type_uri,
                                     headers=self._headers(),
                                     json={"active": False},
@@ -770,8 +838,9 @@ class CalendlyBongo(BaseBongo):
                     )
                     # Try deactivation as last resort
                     try:
-                        await self._rate_limit()
-                        deactivate_resp = await client.put(
+                        deactivate_resp = await self._request_with_429_retry(
+                            client,
+                            "put",
                             event_type_uri,
                             headers=self._headers(),
                             json={"active": False},
