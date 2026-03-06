@@ -401,7 +401,15 @@ class EntityPipeline:
                 entity.airweave_system_metadata = AirweaveSystemMetadata()
 
             is_snapshot = sync_context.source_short_name == "snapshot"
-            if not (is_snapshot and entity.airweave_system_metadata.source_name):
+            if is_snapshot:
+                existing = entity.airweave_system_metadata.source_name
+                if not existing or existing == "snapshot":
+                    # Derive original source from entity module path, e.g.
+                    # "airweave.platform.entities.herb_documents" → "herb_documents"
+                    entity.airweave_system_metadata.source_name = type(entity).__module__.rsplit(
+                        ".", 1
+                    )[-1]
+            else:
                 entity.airweave_system_metadata.source_name = sync_context.source_short_name
             entity.airweave_system_metadata.entity_type = entity.__class__.__name__
             entity.airweave_system_metadata.sync_id = sync_context.sync.id

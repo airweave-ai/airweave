@@ -15,6 +15,7 @@ from airweave.core.logging import logger as _default_logger
 from airweave.core.protocols import CircuitBreaker
 from airweave.search.agentic_search.external.llm.interface import AgenticSearchLLMInterface
 from airweave.search.agentic_search.external.llm.registry import LLMModelSpec
+from airweave.search.agentic_search.external.llm.tool_response import LLMToolResponse
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -139,6 +140,83 @@ class FallbackChainLLM(AgenticSearchLLMInterface):
             available = list(self._providers)
 
         return await self._try_providers(available, prompt, schema, system_prompt)
+
+    async def create_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        system_prompt: str,
+    ) -> LLMToolResponse:
+        """Send a tool-calling conversation, falling through the provider chain.
+
+        Same circuit breaker and fallback logic as structured_output.
+        """
+        self._total_calls += 1
+
+        available: list[AgenticSearchLLMInterface] = []
+        tripped: list[AgenticSearchLLMInterface] = []
+
+        for provider in self._providers:
+            key = provider.model_spec.api_model_name
+            if await self._circuit_breaker.is_available(key):
+                available.append(provider)
+            else:
+                self._logger.debug(f"[FallbackChainLLM] Skipping {key} (circuit breaker tripped)")
+                tripped.append(provider)
+
+        if not available:
+            self._logger.warning(
+                "[FallbackChainLLM] All providers tripped — trying all as last resort"
+            )
+            available = list(self._providers)
+
+        return await self._try_providers_tools(available, messages, tools, system_prompt)
+
+    async def _try_providers_tools(
+        self,
+        providers: list[AgenticSearchLLMInterface],
+        messages: list[dict],
+        tools: list[dict],
+        system_prompt: str,
+    ) -> LLMToolResponse:
+        """Try providers in order for tool calls, recording success/failure."""
+        errors: list[tuple[str, Exception]] = []
+
+        for i, provider in enumerate(providers):
+            provider_name = provider.model_spec.api_model_name
+            try:
+                result = await provider.create_with_tools(messages, tools, system_prompt)
+
+                self._calls_per_provider[provider_name] += 1
+                if provider_name != self._primary_name:
+                    self._fallback_count += 1
+
+                await self._circuit_breaker.record_success(provider_name)
+
+                if i > 0:
+                    self._logger.info(
+                        f"[FallbackChainLLM] Provider #{i + 1} ({provider_name}) succeeded "
+                        f"after {i} failed provider(s)."
+                    )
+                return result
+
+            except RuntimeError as e:
+                await self._circuit_breaker.record_failure(provider_name)
+                errors.append((provider_name, e))
+
+                if i < len(providers) - 1:
+                    next_name = providers[i + 1].model_spec.api_model_name
+                    self._logger.warning(
+                        f"[FallbackChainLLM] Provider {provider_name} failed: {e}. "
+                        f"Trying next: {next_name}..."
+                    )
+                else:
+                    self._logger.error(
+                        f"[FallbackChainLLM] Last provider {provider_name} also failed: {e}"
+                    )
+
+        error_summary = "; ".join(f"{name}: {err}" for name, err in errors)
+        raise RuntimeError(f"All {len(providers)} LLM providers failed. {error_summary}")
 
     async def _try_providers(
         self,

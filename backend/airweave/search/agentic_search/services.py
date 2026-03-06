@@ -11,6 +11,7 @@ from airweave.core.config import settings
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.search.agentic_search.config import (
     DatabaseImpl,
+    LLMModel,
     LLMProvider,
     TokenizerType,
     VectorDBProvider,
@@ -92,6 +93,7 @@ class AgenticSearchServices:
         *,
         dense_embedder: DenseEmbedderProtocol,
         sparse_embedder: SparseEmbedderProtocol,
+        model_override: str | None = None,
     ) -> AgenticSearchServices:
         """Create services from config.
 
@@ -103,6 +105,9 @@ class AgenticSearchServices:
             readable_id: Collection readable ID.
             dense_embedder: Dense embedder for semantic search.
             sparse_embedder: Sparse embedder for keyword search.
+            model_override: Optional model override in "provider/model" format
+                (e.g. "anthropic/claude-sonnet-4.5"). When set, creates a fresh
+                LLM instance instead of using the shared singleton.
 
         Returns:
             AgenticSearchServices instance with all dependencies wired.
@@ -110,7 +115,11 @@ class AgenticSearchServices:
         db = await cls._create_db(ctx)
 
         tokenizer = cls._create_tokenizer()
-        llm = cls._create_llm(tokenizer)
+
+        if model_override:
+            llm = cls._create_llm_from_override(model_override, tokenizer)
+        else:
+            llm = cls._create_llm(tokenizer)
 
         vector_db = await cls._create_vector_db(ctx)
 
@@ -118,11 +127,15 @@ class AgenticSearchServices:
         llm_spec = llm.model_spec
         tokenizer_spec = tokenizer.model_spec
 
-        chain_desc = " → ".join(f"{p.value}/{m.value}" for p, m in config.LLM_FALLBACK_CHAIN)
+        if model_override:
+            llm_desc = f"override: {model_override}"
+        else:
+            chain_desc = " → ".join(f"{p.value}/{m.value}" for p, m in config.LLM_FALLBACK_CHAIN)
+            llm_desc = f"chain: {chain_desc}"
         ctx.logger.debug(
             f"[AgenticSearchServices] Initialized:\n"
             f"  - Database: {config.DATABASE_IMPL.value}\n"
-            f"  - LLM chain: {chain_desc}\n"
+            f"  - LLM: {llm_desc}\n"
             f"  - Primary LLM: {llm_spec.api_model_name}\n"
             f"  - Tokenizer: {config.TOKENIZER_TYPE.value} / "
             f"{tokenizer_spec.encoding_name}\n"
@@ -327,6 +340,50 @@ class AgenticSearchServices:
 
         _shared_llm = result
         return result
+
+    @staticmethod
+    def _create_llm_from_override(
+        model_override: str,
+        tokenizer: AgenticSearchTokenizerInterface,
+    ) -> AgenticSearchLLMInterface:
+        """Create a fresh (non-singleton) LLM from a 'provider/model' string.
+
+        This bypasses the shared singleton so each override gets its own instance.
+
+        Args:
+            model_override: String in "provider/model" format,
+                e.g. "anthropic/claude-sonnet-4.5".
+            tokenizer: Shared tokenizer.
+
+        Returns:
+            LLM interface implementation.
+
+        Raises:
+            ValueError: If the format is invalid or the provider/model is unknown.
+        """
+        parts = model_override.split("/", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise ValueError(
+                f"Invalid model override format: '{model_override}'. "
+                f"Expected 'provider/model', e.g. 'anthropic/claude-sonnet-4.5'"
+            )
+
+        provider_str, model_str = parts
+
+        try:
+            provider = LLMProvider(provider_str)
+        except ValueError:
+            available = [p.value for p in LLMProvider]
+            raise ValueError(f"Unknown LLM provider: '{provider_str}'. Available: {available}")
+
+        try:
+            model = LLMModel(model_str)
+        except ValueError:
+            available = [m.value for m in LLMModel]
+            raise ValueError(f"Unknown LLM model: '{model_str}'. Available: {available}")
+
+        model_spec = get_llm_model_spec(provider, model)
+        return AgenticSearchServices._create_single_provider(provider, model_spec, tokenizer)
 
     @staticmethod
     async def _create_vector_db(ctx: ApiContext) -> AgenticSearchVectorDBInterface:

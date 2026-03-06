@@ -160,6 +160,31 @@ class AgenticSearchCollectionMetadataBuilder:
             "A cloud-based CRM application for managing sales processes, marketing "
             "activities, and customer support."
         ),
+        # HERB benchmark sources
+        "herb_code_review": (
+            "GitHub pull requests and code reviews from the HERB benchmark dataset, "
+            "including PR summaries, review comments, and merge status."
+        ),
+        "herb_documents": (
+            "Internal documents (PRDs, vision docs, system designs, market research reports) "
+            "from the HERB benchmark dataset."
+        ),
+        "herb_meetings": (
+            "Meeting transcripts and chat logs from the HERB benchmark dataset, "
+            "including participant names and dialogue."
+        ),
+        "herb_messaging": (
+            "Slack messages from the HERB benchmark dataset, including channel context "
+            "and sender information."
+        ),
+        "herb_people": (
+            "Employee and customer records from the HERB benchmark dataset, "
+            "including roles, locations, and organizational data."
+        ),
+        "herb_resources": (
+            "Shared URLs and bookmarks from the HERB benchmark dataset, "
+            "including descriptions and links."
+        ),
         # Internal sources (used for testing and development)
         "stub": (
             "An internal test data source that generates deterministic synthetic entities "

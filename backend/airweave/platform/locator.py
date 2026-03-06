@@ -36,7 +36,15 @@ class ResourceLocator:
         Returns:
             Type[BaseSource]: Source class
         """
-        module = importlib.import_module(f"{PLATFORM_PATH}.sources.{source.short_name}")
+        try:
+            module = importlib.import_module(f"{PLATFORM_PATH}.sources.{source.short_name}")
+        except ModuleNotFoundError:
+            # Support subfolder sources: short_name "herb_code_review" resolves to
+            # sources.herb.code_review when sources/herb_code_review.py doesn't exist.
+            prefix, sep, rest = source.short_name.partition("_")
+            if not sep:
+                raise
+            module = importlib.import_module(f"{PLATFORM_PATH}.sources.{prefix}.{rest}")
         # TODO: replace with typed registry lookup
         return getattr(module, source.class_name)  # type: ignore[no-any-return]
 

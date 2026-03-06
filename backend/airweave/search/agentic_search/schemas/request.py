@@ -58,3 +58,19 @@ class AgenticSearchRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("Query cannot be empty")
         return v
+
+
+class InternalAgenticSearchRequest(AgenticSearchRequest):
+    """Internal agentic search request with model override.
+
+    Used by the admin endpoint to allow per-request model selection for evals.
+    """
+
+    model: Optional[str] = Field(
+        default=None,
+        description=(
+            "LLM model override. Format: 'provider/model' "
+            "e.g. 'anthropic/claude-sonnet-4.5'. "
+            "When not set, uses the default model from config."
+        ),
+    )

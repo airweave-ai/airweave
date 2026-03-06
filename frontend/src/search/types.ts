@@ -306,7 +306,6 @@ export interface PartialStreamUpdate {
 export type AgenticSearchModeType = "fast" | "thinking";
 
 export interface AgenticSearchPlanData {
-    reasoning: string;
     query: {
         primary: string;
         variations: string[];
@@ -315,12 +314,6 @@ export interface AgenticSearchPlanData {
     limit: number;
     offset: number;
     retrieval_strategy: "semantic" | "keyword" | "hybrid";
-}
-
-export interface AgenticSearchEvaluationData {
-    reasoning: string;
-    should_continue: boolean;
-    answer_found: boolean;
 }
 
 export interface AgenticSearchCitationData {
@@ -334,13 +327,10 @@ export interface AgenticSearchAnswerData {
 
 // Agentic SSE events
 
-export interface AgenticPlanningEvent extends BaseEvent {
-    type: 'planning';
+export interface AgenticThinkingEvent extends BaseEvent {
+    type: 'thinking';
     iteration: number;
-    plan: AgenticSearchPlanData;
-    is_consolidation: boolean;
-    history_shown: number;
-    history_total: number;
+    text: string;
 }
 
 export interface AgenticSearchingEvent extends BaseEvent {
@@ -348,16 +338,6 @@ export interface AgenticSearchingEvent extends BaseEvent {
     iteration: number;
     result_count: number;
     duration_ms: number;
-}
-
-export interface AgenticEvaluatingEvent extends BaseEvent {
-    type: 'evaluating';
-    iteration: number;
-    evaluation: AgenticSearchEvaluationData;
-    results_shown: number;
-    results_total: number;
-    history_shown: number;
-    history_total: number;
 }
 
 export interface AgenticDoneEvent extends BaseEvent {
@@ -374,8 +354,7 @@ export interface AgenticErrorEvent extends BaseEvent {
 }
 
 export type AgenticSearchEvent =
-    | AgenticPlanningEvent
+    | AgenticThinkingEvent
     | AgenticSearchingEvent
-    | AgenticEvaluatingEvent
     | AgenticDoneEvent
     | AgenticErrorEvent;
