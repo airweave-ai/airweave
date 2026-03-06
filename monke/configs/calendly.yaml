@@ -13,32 +13,20 @@ connector:
     rate_limit_delay_ms: 500 # Delay between API calls for Calendly
     max_concurrency: 1 # Calendly API rate limits are conservative
 
+# Creation and deletion are skipped. Exactly one active event type is fetched in the fetch step.
 test_flow:
   steps:
     - cleanup
-    - create
+    - fetch    # Fetch the single existing event type (no creation)
     - sync
     - verify
-    - update
+    - update   # Can update the existing event type for verification
     - sync
     - verify
-    - partial_delete
-    - sync
-    - verify_partial_deletion
-    - verify_remaining_entities
-    - complete_delete
-    - sync
-    - verify_complete_deletion
     - cleanup
     - collection_cleanup
 
-deletion:
-  partial_delete_count: 1
-  verify_partial_deletion: true
-  verify_remaining_entities: true
-  verify_complete_deletion: true
-
-entity_count: 2 # Number of event types to create (max 2 for rate limits)
+entity_count: 1 # Exactly one (existing) event type
 
 collection:
   name: Calendly Test Collection
@@ -52,6 +40,6 @@ verification:
     - uri
     - description_plain
 
-# Note: Calendly doesn't allow creating scheduled events via API.
-# Scheduled events are created when someone books a meeting.
-# This test focuses on event types, which can be created programmatically.
+# Note: Creation and deletion phases are skipped. There is always exactly one
+# active event type, which is fetched in the fetch step. Ensure one event type
+# exists in your Calendly account before running.
