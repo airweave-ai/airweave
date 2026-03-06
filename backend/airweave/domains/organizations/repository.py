@@ -7,7 +7,7 @@ concerns here so operations/services never write raw SQL.
 from typing import Any, Optional
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -164,6 +164,20 @@ class UserOrganizationRepository(UserOrganizationRepositoryProtocol):
         """Return organizations with roles for a user via delegated CRUD."""
         return await crud.organization.get_user_organizations_with_roles(db, user_id=user_id)
 
+    async def get_user_memberships_with_auth0_ids(
+        self, db: AsyncSession, *, user_id: UUID
+    ) -> list[tuple[UserOrganization, str | None]]:
+        """Return ``(UserOrganization, auth0_org_id)`` for all of a user's memberships."""
+        from airweave.models.organization import Organization as OrgModel
+
+        stmt = (
+            select(UserOrganization, OrgModel.auth0_org_id)
+            .join(OrgModel, UserOrganization.organization_id == OrgModel.id)
+            .where(UserOrganization.user_id == user_id)
+        )
+        rows = await db.execute(stmt)
+        return [(uo, auth0_id) for uo, auth0_id in rows.all()]
+
     async def create(
         self,
         db: AsyncSession,
@@ -183,6 +197,21 @@ class UserOrganizationRepository(UserOrganizationRepositoryProtocol):
         db.add(user_org)
         await db.flush()
         return user_org
+
+    async def update_role(
+        self, db: AsyncSession, *, user_id: UUID, organization_id: UUID, role: str
+    ) -> bool:
+        """Update the role for a user-organization membership."""
+        stmt = (
+            update(UserOrganization)
+            .where(
+                UserOrganization.user_id == user_id,
+                UserOrganization.organization_id == organization_id,
+            )
+            .values(role=role)
+        )
+        result = await db.execute(stmt)
+        return result.rowcount > 0  # type: ignore[attr-defined, no-any-return]
 
     async def delete_membership(
         self, db: AsyncSession, *, user_id: UUID, organization_id: UUID

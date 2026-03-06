@@ -75,17 +75,43 @@ class ProvisioningOperations:
             return await self._create_user_without_org(db, user_data)
 
     async def sync_user_organizations(self, db: AsyncSession, user: User) -> User:
-        """Sync a user's identity provider organizations with local DB."""
+        """Sync a user's identity provider organizations with local DB.
+
+        Auth0 is the source of truth:
+        1. Add memberships that exist in Auth0 but not locally.
+        2. Remove local memberships whose org's auth0_org_id is NOT in Auth0.
+        3. Update roles if Auth0 role differs from local role.
+        """
         try:
             auth0_orgs = await self._identity.get_user_organizations(user.auth0_id)
-            if not auth0_orgs:
-                logger.info(f"User {user.email} has no identity provider orgs")
-                return user
+            auth0_org_ids = {org["id"] for org in auth0_orgs} if auth0_orgs else set()
 
-            logger.info(f"Syncing {len(auth0_orgs)} orgs for user {user.email}")
+            logger.info(
+                f"Syncing orgs for user {user.email}: {len(auth0_org_ids)} in identity provider"
+            )
+
             async with UnitOfWork(db) as uow:
-                for auth0_org in auth0_orgs:
+                # Pass 1: Add/update memberships from Auth0
+                for auth0_org in auth0_orgs or []:
                     await self._sync_single_organization(db, user, auth0_org)
+
+                # Pass 2: Remove stale local memberships not in Auth0
+                local_memberships = await self._user_org_repo.get_user_memberships_with_auth0_ids(
+                    db, user_id=user.id
+                )
+                for membership, local_auth0_org_id in local_memberships:
+                    if local_auth0_org_id and local_auth0_org_id not in auth0_org_ids:
+                        await self._user_org_repo.delete_membership(
+                            db,
+                            user_id=user.id,
+                            organization_id=membership.organization_id,
+                        )
+                        logger.info(
+                            f"Removed stale membership for user {user.email} "
+                            f"in org {membership.organization_id} "
+                            f"(auth0_org {local_auth0_org_id} not in identity provider)"
+                        )
+
                 await uow.commit()
 
             return await self._user_repo.refresh(db, user=user)
@@ -101,7 +127,7 @@ class ProvisioningOperations:
     async def _sync_single_organization(
         self, db: AsyncSession, user: User, auth0_org: dict
     ) -> None:
-        """Sync one identity provider org → local DB."""
+        """Sync one identity provider org → local DB (add or update role)."""
         local_org = await self._org_repo.get_by_auth0_id(db, auth0_org_id=auth0_org["id"])
 
         if not local_org:
@@ -113,27 +139,38 @@ class ProvisioningOperations:
             )
             logger.info(f"Created local org for identity org: {auth0_org['id']}")
 
+        member_roles = await self._identity.get_member_roles(
+            org_id=auth0_org["id"], user_id=user.auth0_id
+        )
+        auth0_role = logic.determine_user_role(member_roles)
+
         existing = await self._user_org_repo.get_membership(
             db, org_id=local_org.id, user_id=user.id
         )
         if existing:
+            if existing.role != auth0_role:
+                await self._user_org_repo.update_role(
+                    db,
+                    user_id=user.id,
+                    organization_id=local_org.id,
+                    role=auth0_role,
+                )
+                logger.info(
+                    f"Updated role for user {user.id} in org {local_org.id}: "
+                    f"{existing.role} → {auth0_role}"
+                )
             return
 
         is_primary = await self._user_org_repo.count_user_orgs(db, user_id=user.id) == 0
-
-        member_roles = await self._identity.get_member_roles(
-            org_id=auth0_org["id"], user_id=user.auth0_id
-        )
-        user_role = logic.determine_user_role(member_roles)
 
         await self._user_org_repo.create(
             db,
             user_id=user.id,
             organization_id=local_org.id,
-            role=user_role,
+            role=auth0_role,
             is_primary=is_primary,
         )
-        logger.info(f"Created membership for user {user.id} in org {local_org.id} as {user_role}")
+        logger.info(f"Created membership for user {user.id} in org {local_org.id} as {auth0_role}")
 
     async def _create_user_with_new_org(self, db: AsyncSession, user_data: dict) -> User:
         user_create = schemas.UserCreate(**user_data)

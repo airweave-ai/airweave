@@ -108,6 +108,10 @@ class FakeIdentityProvider(IdentityProvider):
         self._check_fail()
         return [{"name": "member"}]
 
+    async def set_member_roles(self, org_id: str, user_id: str, role_ids: list[str]) -> None:
+        self._calls.append(("set_member_roles", org_id, user_id, ",".join(role_ids)))
+        self._check_fail()
+
     async def invite_user(self, org_id: str, email: str, role: str, inviter: Any) -> dict:
         self._calls.append(("invite_user", org_id, email, role))
         self._check_fail()

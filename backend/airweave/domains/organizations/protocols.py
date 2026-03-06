@@ -124,6 +124,12 @@ class UserOrganizationRepositoryProtocol(Protocol):
         """Return organizations with roles for a user."""
         ...
 
+    async def get_user_memberships_with_auth0_ids(
+        self, db: AsyncSession, *, user_id: UUID
+    ) -> list[tuple[UserOrganization, str | None]]:
+        """Return ``(UserOrganization, auth0_org_id)`` for a user's memberships."""
+        ...
+
     async def create(
         self,
         db: AsyncSession,
@@ -134,6 +140,12 @@ class UserOrganizationRepositoryProtocol(Protocol):
         is_primary: bool = False,
     ) -> UserOrganization:
         """Create a user-organization membership."""
+        ...
+
+    async def update_role(
+        self, db: AsyncSession, *, user_id: UUID, organization_id: UUID, role: str
+    ) -> bool:
+        """Update the role for a user-organization membership."""
         ...
 
     async def delete_membership(
@@ -207,6 +219,16 @@ class OrganizationServiceProtocol(Protocol):
         remover_user: User,
     ) -> bool:
         """Remove a member from an organization."""
+        ...
+
+    async def change_member_role(
+        self,
+        db: AsyncSession,
+        organization_id: UUID,
+        user_id: UUID,
+        new_role: str,
+    ) -> bool:
+        """Change a member's role (Auth0 first, then local DB)."""
         ...
 
     async def leave_organization(

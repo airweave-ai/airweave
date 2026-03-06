@@ -309,8 +309,12 @@ def _get_sort_column(sort_by: str, subqueries: dict):
 async def _update_or_create_membership(
     db: AsyncSession, ctx: ApiContext, organization_id: UUID, role: str
 ) -> bool:
-    """Update existing membership or create new one. Returns True if membership changed."""
-    # Check if user is already a member
+    """Update existing membership or create new one. Returns True if membership changed.
+
+    NOTE: This is a DB-only helper for admin endpoints. Auth0 sync is handled
+    by the caller (add_self_to_organization). For non-admin flows, use the
+    OrganizationService methods which enforce Auth0-first ordering.
+    """
     existing_user_org = None
     for user_org in ctx.user.user_organizations:
         if user_org.organization.id == organization_id:
@@ -589,9 +593,7 @@ async def add_self_to_organization(
         "org_metadata": org.org_metadata,
     }
 
-    membership_changed = await _update_or_create_membership(db, ctx, organization_id, role)
-
-    # Also add to Auth0 if available
+    # Auth0 first (source of truth), then DB
     try:
         if org_data["auth0_org_id"] and ctx.user.auth0_id and auth0_management_client:
             await auth0_management_client.add_user_to_organization(
@@ -601,7 +603,8 @@ async def add_self_to_organization(
             ctx.logger.info(f"Added admin {ctx.user.email} to Auth0 org {org_data['auth0_org_id']}")
     except Exception as e:
         ctx.logger.warning(f"Failed to add admin to Auth0 organization: {e}")
-        # Don't fail the request if Auth0 fails
+
+    membership_changed = await _update_or_create_membership(db, ctx, organization_id, role)
 
     if membership_changed and ctx.user and ctx.user.email:
         await container_mod.container.context_cache.invalidate_user(ctx.user.email)

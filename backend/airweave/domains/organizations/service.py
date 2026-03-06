@@ -102,11 +102,13 @@ class OrganizationService(OrganizationServiceProtocol):
         user_id: UUID,
         remover_user: User,
     ) -> bool:
-        """Remove a member — local first, then identity provider.
+        """Remove a member — Auth0 first (source of truth), then local DB.
 
-        Local-first is safer: our DB is source of truth. If the identity
-        provider call fails afterwards, the user is out of our DB (correct)
-        but still in Auth0 (minor inconsistency, auto-syncs on next login).
+        Auth0-first prevents "user resurrection": if Auth0 removal succeeds,
+        the user won't be re-synced on next login even if the DB delete fails.
+        404 from Auth0 is treated as already-removed (idempotent).
+        If the DB delete fails after Auth0 succeeds, we compensate by
+        re-adding the user to Auth0.
         """
         from airweave.models.user import User as UserModel
 
@@ -119,21 +121,35 @@ class OrganizationService(OrganizationServiceProtocol):
         org = await self._get_org(db, organization_id)
         user_schema = schemas.User.model_validate(user_to_remove)
 
-        # Step 1: Local delete in UoW
-        async with UnitOfWork(db) as uow:
-            await self._user_org_repo.delete_membership(
-                db, user_id=user_id, organization_id=organization_id
-            )
-            await uow.commit()
-
-        # Step 2: Identity provider cleanup (best-effort, after local commit)
+        # Step 1: Identity provider removal (source of truth, fail-fast)
         if org.auth0_org_id and user_schema.auth0_id:
-            try:
-                await self._identity.remove_user_from_organization(
-                    org.auth0_org_id, user_schema.auth0_id
+            await self._identity.remove_user_from_organization(
+                org.auth0_org_id, user_schema.auth0_id
+            )
+
+        # Step 2: Local delete in UoW
+        try:
+            async with UnitOfWork(db) as uow:
+                await self._user_org_repo.delete_membership(
+                    db, user_id=user_id, organization_id=organization_id
                 )
-            except Exception as e:
-                logger.warning(f"Failed to remove user from identity provider: {e}")
+                await uow.commit()
+        except Exception:
+            if org.auth0_org_id and user_schema.auth0_id:
+                try:
+                    await self._identity.add_user_to_organization(
+                        org.auth0_org_id, user_schema.auth0_id
+                    )
+                    logger.info(
+                        f"Compensated: re-added {user_schema.email} to Auth0 org after DB failure"
+                    )
+                except Exception as comp_err:
+                    logger.critical(
+                        f"COMPENSATION FAILED: user {user_schema.email} removed from "
+                        f"Auth0 org {org.auth0_org_id} but DB delete failed and "
+                        f"re-add also failed: {comp_err}"
+                    )
+            raise
 
         # Step 3: Event
         await self._event_bus.publish(
@@ -145,6 +161,75 @@ class OrganizationService(OrganizationServiceProtocol):
         )
 
         logger.info(f"Removed user {user_schema.email} from org {org.name}")
+        return True
+
+    async def change_member_role(
+        self,
+        db: AsyncSession,
+        organization_id: UUID,
+        user_id: UUID,
+        new_role: str,
+    ) -> bool:
+        """Change a member's role — Auth0 first (source of truth), then local DB.
+
+        If the DB update fails after Auth0 succeeds, we compensate by
+        restoring the old Auth0 role.
+        """
+        from airweave.models.user import User as UserModel
+
+        user_q = select(UserModel).where(UserModel.id == user_id)
+        user_result = await db.execute(user_q)
+        target_user = user_result.scalar_one_or_none()
+        if not target_user:
+            raise ValueError("User not found")
+
+        org = await self._get_org(db, organization_id)
+        membership = await self._user_org_repo.get_membership(
+            db, org_id=organization_id, user_id=user_id
+        )
+        if not membership:
+            raise ValueError("User is not a member of this organization")
+
+        old_role = membership.role
+        if old_role == new_role:
+            return True
+
+        # Step 1: Update Auth0 roles (source of truth)
+        if org.auth0_org_id and target_user.auth0_id:
+            all_roles = await self._identity.get_roles()
+            role_id = next((r["id"] for r in all_roles if r["name"] == new_role), None)
+            if role_id:
+                await self._identity.set_member_roles(
+                    org.auth0_org_id, target_user.auth0_id, [role_id]
+                )
+
+        # Step 2: Update local DB
+        try:
+            async with UnitOfWork(db) as uow:
+                await self._user_org_repo.update_role(
+                    db, user_id=user_id, organization_id=organization_id, role=new_role
+                )
+                await uow.commit()
+        except Exception:
+            if org.auth0_org_id and target_user.auth0_id:
+                try:
+                    all_roles = await self._identity.get_roles()
+                    old_role_id = next((r["id"] for r in all_roles if r["name"] == old_role), None)
+                    if old_role_id:
+                        await self._identity.set_member_roles(
+                            org.auth0_org_id, target_user.auth0_id, [old_role_id]
+                        )
+                except Exception as comp_err:
+                    logger.critical(
+                        f"COMPENSATION FAILED: role for {target_user.email} changed to "
+                        f"{new_role} in Auth0 but DB update failed and rollback also "
+                        f"failed: {comp_err}"
+                    )
+            raise
+
+        logger.info(
+            f"Changed role for {target_user.email} in org {org.name}: {old_role} → {new_role}"
+        )
         return True
 
     async def leave_organization(

@@ -46,6 +46,10 @@ class NullIdentityProvider(IdentityProvider):
         """Return empty list (no-op)."""
         return []
 
+    async def set_member_roles(self, org_id: str, user_id: str, role_ids: list[str]) -> None:
+        """Do nothing (no-op)."""
+        pass
+
     async def invite_user(self, org_id: str, email: str, role: str, inviter: Any) -> dict:
         """Return stub invitation (no-op)."""
         return {"id": "null", "created_at": None}

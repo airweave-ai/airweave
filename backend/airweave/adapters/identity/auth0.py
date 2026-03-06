@@ -193,10 +193,16 @@ class Auth0ManagementClient:
             raise
 
     async def delete_organization(self, org_id: str) -> None:
-        """Delete an Auth0 organization."""
+        """Delete an Auth0 organization. 404 is treated as already-deleted."""
         try:
             await self._make_request("DELETE", f"/organizations/{org_id}")
             logger.info(f"Successfully deleted Auth0 organization: {org_id}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.info(f"Auth0 organization {org_id} already deleted (404)")
+                return
+            logger.error(f"Failed to delete Auth0 organization: {e}")
+            raise
         except Exception as e:
             logger.error(f"Failed to delete Auth0 organization: {e}")
             raise
@@ -221,12 +227,18 @@ class Auth0ManagementClient:
             raise
 
     async def remove_user_from_organization(self, org_id: str, user_id: str) -> None:
-        """Remove user from Auth0 organization."""
+        """Remove user from Auth0 organization. 404 is treated as already-removed."""
         try:
             await self._make_request(
                 "DELETE", f"/organizations/{org_id}/members", json_data={"members": [user_id]}
             )
             logger.info(f"Successfully removed user {user_id} from Auth0 organization {org_id}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.info(f"Auth0 member {user_id} already removed from org {org_id} (404)")
+                return
+            logger.error(f"Failed to remove user from Auth0 organization: {e}")
+            raise
         except Exception as e:
             logger.error(f"Failed to remove user from Auth0 organization: {e}")
             raise
@@ -293,7 +305,7 @@ class Auth0ManagementClient:
         )
 
     async def delete_invitation(self, org_id: str, invitation_id: str) -> None:
-        """Delete a pending invitation."""
+        """Delete a pending invitation. 404 is treated as already-deleted."""
         try:
             await self._make_request(
                 "DELETE",
@@ -303,6 +315,14 @@ class Auth0ManagementClient:
             logger.info(
                 f"Successfully deleted invitation {invitation_id} from organization {org_id}"
             )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.info(
+                    f"Auth0 invitation {invitation_id} already deleted from org {org_id} (404)"
+                )
+                return
+            logger.error(f"Failed to delete invitation from Auth0: {e}")
+            raise
         except Exception as e:
             logger.error(f"Failed to delete invitation from Auth0: {e}")
             raise
@@ -310,6 +330,31 @@ class Auth0ManagementClient:
     async def get_organization_member_roles(self, org_id: str, user_id: str) -> List[Dict]:
         """Get roles for a specific member of an organization."""
         return await self._make_request("GET", f"/organizations/{org_id}/members/{user_id}/roles")  # type: ignore[return-value]
+
+    async def set_organization_member_roles(
+        self, org_id: str, user_id: str, role_ids: List[str]
+    ) -> None:
+        """Replace the roles for a member of an organization."""
+        try:
+            await self._make_request(
+                "DELETE",
+                f"/organizations/{org_id}/members/{user_id}/roles",
+                json_data={"roles": role_ids},
+            )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code != 404:
+                logger.error(f"Failed to clear old roles for user {user_id} in org {org_id}: {e}")
+                raise
+        try:
+            await self._make_request(
+                "POST",
+                f"/organizations/{org_id}/members/{user_id}/roles",
+                json_data={"roles": role_ids},
+            )
+            logger.info(f"Set roles {role_ids} for user {user_id} in org {org_id}")
+        except Exception as e:
+            logger.error(f"Failed to set roles for user {user_id} in org {org_id}: {e}")
+            raise
 
     # -- Connections --
 
@@ -389,11 +434,14 @@ class Auth0IdentityProvider(IdentityProvider):
             raise self._map_error(e) from e
 
     async def delete_organization(self, org_id: str) -> None:
-        """Delete organization via Auth0 Management API."""
+        """Delete organization via Auth0 Management API. Idempotent (404 = success)."""
         try:
             await self._client.delete_organization(org_id)
         except Exception as e:
-            raise self._map_error(e) from e
+            mapped = self._map_error(e)
+            if isinstance(mapped, IdentityProviderNotFoundError):
+                return
+            raise mapped from e
 
     # --- Organization setup ---
 
@@ -421,11 +469,14 @@ class Auth0IdentityProvider(IdentityProvider):
             raise self._map_error(e) from e
 
     async def remove_user_from_organization(self, org_id: str, user_id: str) -> None:
-        """Remove a user from an organization in Auth0."""
+        """Remove a user from an organization in Auth0. Idempotent (404 = success)."""
         try:
             await self._client.remove_user_from_organization(org_id, user_id)
         except Exception as e:
-            raise self._map_error(e) from e
+            mapped = self._map_error(e)
+            if isinstance(mapped, IdentityProviderNotFoundError):
+                return
+            raise mapped from e
 
     async def get_user_organizations(self, user_id: str) -> list[dict]:
         """Return organizations the user belongs to in Auth0."""
@@ -438,6 +489,13 @@ class Auth0IdentityProvider(IdentityProvider):
         """Return roles for a member of an organization in Auth0."""
         try:
             return await self._client.get_organization_member_roles(org_id, user_id)
+        except Exception as e:
+            raise self._map_error(e) from e
+
+    async def set_member_roles(self, org_id: str, user_id: str, role_ids: list[str]) -> None:
+        """Replace the roles for a member of an organization in Auth0."""
+        try:
+            await self._client.set_organization_member_roles(org_id, user_id, role_ids)
         except Exception as e:
             raise self._map_error(e) from e
 
@@ -460,11 +518,14 @@ class Auth0IdentityProvider(IdentityProvider):
             raise self._map_error(e) from e
 
     async def delete_invitation(self, org_id: str, invitation_id: str) -> None:
-        """Delete a pending invitation in Auth0."""
+        """Delete a pending invitation in Auth0. Idempotent (404 = success)."""
         try:
             await self._client.delete_invitation(org_id, invitation_id)
         except Exception as e:
-            raise self._map_error(e) from e
+            mapped = self._map_error(e)
+            if isinstance(mapped, IdentityProviderNotFoundError):
+                return
+            raise mapped from e
 
     # --- System lookups ---
 

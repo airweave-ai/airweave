@@ -116,6 +116,10 @@ class IdentityProvider(Protocol):
         """Return the roles assigned to a specific member of an organization."""
         ...
 
+    async def set_member_roles(self, org_id: str, user_id: str, role_ids: list[str]) -> None:
+        """Replace the roles for a member of an organization."""
+        ...
+
     # --- Invitations ---
 
     async def invite_user(self, org_id: str, email: str, role: str, inviter: Any) -> dict:

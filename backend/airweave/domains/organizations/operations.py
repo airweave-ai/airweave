@@ -258,12 +258,18 @@ class OrganizationLifecycleOperations:
         organization_id: UUID,
         deleting_user: User,
     ) -> bool:
-        """Delete org: local commit first, external cleanup best-effort after.
+        """Delete org: external providers first (source of truth), then local DB.
 
         1. Fetch org + billing data (while rows still exist)
-        2. Single UoW: delete memberships + delete org (CASCADE)
-        3. After commit: identity, payment, webhook cleanup (best-effort)
-        4. Publish domain event
+        2. Auth0 delete (fail-fast, 404 = already gone)
+        3. Stripe cancel subscription (fail-fast)
+        4. Single UoW: delete memberships + delete org (CASCADE)
+        5. Webhook cleanup (best-effort after commit)
+        6. Publish domain event
+
+        If the DB commit fails after Auth0/Stripe cleanup, we log CRITICAL
+        but do NOT compensate: the Auth0 org is gone (correct) and orphaned
+        DB rows will be invisible to users since Auth0 gates access.
         """
         org = await self._org_repo.get_by_id(
             db, organization_id=organization_id, skip_access_validation=True
@@ -279,18 +285,52 @@ class OrganizationLifecycleOperations:
 
         logger.info(f"Deleting organization {org_name} ({organization_id})")
 
-        async with UnitOfWork(db) as uow:
-            affected_emails = await self._user_org_repo.delete_all_for_org(
-                db, organization_id=organization_id
+        # Step 1: External provider cleanup (source of truth, fail-fast)
+        if org_auth0_id:
+            await self._identity.delete_organization(org_auth0_id)
+
+        if stripe_sub_id:
+            try:
+                await self._payment.cancel_subscription(
+                    subscription_id=stripe_sub_id, at_period_end=False
+                )
+            except Exception:
+                logger.error(
+                    f"Failed to cancel subscription {stripe_sub_id} for {organization_id} — "
+                    "continuing with delete; orphaned subscription requires manual cleanup",
+                    exc_info=True,
+                )
+
+        # Step 2: Local DB delete
+        try:
+            async with UnitOfWork(db) as uow:
+                affected_emails = await self._user_org_repo.delete_all_for_org(
+                    db, organization_id=organization_id
+                )
+                await self._org_repo.delete(db, organization_id=organization_id)
+                await uow.commit()
+        except Exception:
+            logger.critical(
+                f"DB delete failed for org {org_name} ({organization_id}) after "
+                f"Auth0 org {org_auth0_id} was already deleted — orphaned DB rows "
+                "require manual cleanup",
+                exc_info=True,
             )
-            await self._org_repo.delete(db, organization_id=organization_id)
-            await uow.commit()
+            raise
 
         await self._cache.invalidate_organization(organization_id)
         for email in affected_emails:
             await self._cache.invalidate_user(email)
 
-        await self._cleanup_external_resources(org_auth0_id, stripe_sub_id, organization_id)
+        # Step 3: Webhook cleanup (best-effort, non-critical)
+        try:
+            await self._webhook_admin.delete_organization(organization_id)
+        except Exception:
+            logger.error(
+                f"Failed to delete webhook org {organization_id} — "
+                "orphaned resource requires manual cleanup",
+                exc_info=True,
+            )
 
         await self._event_bus.publish(
             OrganizationLifecycleEvent.deleted(
@@ -302,41 +342,3 @@ class OrganizationLifecycleOperations:
 
         logger.info(f"Deleted organization: {org_name}")
         return True
-
-    async def _cleanup_external_resources(
-        self,
-        auth0_org_id: str | None,
-        stripe_sub_id: str | None,
-        organization_id: UUID,
-    ) -> None:
-        """Best-effort external cleanup after local delete is committed."""
-        if auth0_org_id:
-            try:
-                await self._identity.delete_organization(auth0_org_id)
-            except Exception:
-                logger.error(
-                    f"Failed to delete identity org {auth0_org_id} for {organization_id} — "
-                    "orphaned resource requires manual cleanup",
-                    exc_info=True,
-                )
-
-        if stripe_sub_id:
-            try:
-                await self._payment.cancel_subscription(
-                    subscription_id=stripe_sub_id, at_period_end=False
-                )
-            except Exception:
-                logger.error(
-                    f"Failed to cancel subscription {stripe_sub_id} for {organization_id} — "
-                    "orphaned resource requires manual cleanup",
-                    exc_info=True,
-                )
-
-        try:
-            await self._webhook_admin.delete_organization(organization_id)
-        except Exception:
-            logger.error(
-                f"Failed to delete webhook org {organization_id} — "
-                "orphaned resource requires manual cleanup",
-                exc_info=True,
-            )

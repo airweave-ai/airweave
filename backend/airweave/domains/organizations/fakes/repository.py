@@ -164,6 +164,22 @@ class FakeUserOrganizationRepository:
         self._calls.append(("get_user_memberships_with_orgs", user_id))
         return []
 
+    async def get_user_memberships_with_auth0_ids(
+        self, db: AsyncSession, *, user_id: UUID
+    ) -> list[tuple]:
+        self._calls.append(("get_user_memberships_with_auth0_ids", user_id))
+        results = []
+        for m in self._memberships:
+            if m["user_id"] == user_id:
+                from airweave.models.user_organization import UserOrganization
+
+                uo = UserOrganization()
+                uo.user_id = m["user_id"]
+                uo.organization_id = m["org_id"]
+                uo.role = m.get("role", "member")
+                results.append((uo, m.get("auth0_org_id")))
+        return results
+
     async def create(
         self,
         db: AsyncSession,
@@ -183,6 +199,16 @@ class FakeUserOrganizationRepository:
         uo.role = role
         uo.is_primary = is_primary
         return uo
+
+    async def update_role(
+        self, db: AsyncSession, *, user_id: UUID, organization_id: UUID, role: str
+    ) -> bool:
+        self._calls.append(("update_role", user_id, organization_id, role))
+        for m in self._memberships:
+            if m["user_id"] == user_id and m["org_id"] == organization_id:
+                m["role"] = role
+                return True
+        return False
 
     async def delete_membership(
         self, db: AsyncSession, *, user_id: UUID, organization_id: UUID
