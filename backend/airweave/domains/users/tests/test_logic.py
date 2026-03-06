@@ -6,7 +6,7 @@ Tests every edge case and boundary condition.
 
 import pytest
 
-from airweave.domains.users.logic import (
+from airweave.domains.users.types import (
     CreateOrUpdateResult,
     has_auth0_id_conflict,
     is_email_authorized,

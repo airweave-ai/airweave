@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.domains.users.logic import CreateOrUpdateResult
+from airweave.domains.users.types import CreateOrUpdateResult
 from airweave.models.user import User
 
 # ---------------------------------------------------------------------------

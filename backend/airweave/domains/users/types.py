@@ -1,4 +1,4 @@
-"""Pure business logic for the users domain.
+"""Pure types and logic for the users domain.
 
 Every function here is deterministic and performs zero I/O.
 Test with direct calls — no fixtures needed.

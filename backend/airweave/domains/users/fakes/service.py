@@ -7,8 +7,8 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.domains.users.logic import CreateOrUpdateResult
 from airweave.domains.users.protocols import UserServiceProtocol
+from airweave.domains.users.types import CreateOrUpdateResult
 
 
 class FakeUserService(UserServiceProtocol):

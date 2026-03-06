@@ -15,8 +15,8 @@ from airweave.api.auth import auth0
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
-from airweave.domains.users.logic import is_email_authorized
 from airweave.domains.users.protocols import UserServiceProtocol
+from airweave.domains.users.types import is_email_authorized
 from airweave.schemas import OrganizationWithRole, User
 
 router = TrailingSlashRouter()

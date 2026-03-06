@@ -21,9 +21,8 @@ from airweave.domains.organizations.protocols import (
     OrganizationServiceProtocol,
     UserOrganizationRepositoryProtocol,
 )
-from airweave.domains.users import logic
-from airweave.domains.users.logic import CreateOrUpdateResult
 from airweave.domains.users.protocols import UserRepositoryProtocol, UserServiceProtocol
+from airweave.domains.users.types import CreateOrUpdateResult, has_auth0_id_conflict
 
 
 class UserService(UserServiceProtocol):
@@ -99,7 +98,7 @@ class UserService(UserServiceProtocol):
         """Handle existing user: check for Auth0 ID conflict, then sync orgs."""
         incoming_auth0_id = auth0_user.id if auth0_user else user_data.auth0_id
 
-        if logic.has_auth0_id_conflict(existing_user.auth0_id, incoming_auth0_id):
+        if has_auth0_id_conflict(existing_user.auth0_id, incoming_auth0_id):
             logger.warning(
                 f"Auth0 ID conflict for user {user_data.email}: "
                 f"existing={existing_user.auth0_id}, incoming={incoming_auth0_id}"

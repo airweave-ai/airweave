@@ -262,7 +262,7 @@ class TestCreateOrUpdateFallback:
         svc = _make_service(user_repo=user_repo, org_service=org_service)
         db = AsyncMock()
 
-        from airweave.domains.users.logic import CreateOrUpdateResult
+        from airweave.domains.users.types import CreateOrUpdateResult
 
         svc._fallback_create = AsyncMock(
             return_value=CreateOrUpdateResult(
@@ -360,3 +360,88 @@ class TestTrackAnalytics:
             id=uuid4(), email="u@test.com", full_name="Test", auth0_id="auth0|x"
         )
         svc._track_analytics(user_stub)
+
+    def test_swallows_exception_from_business_events(self):
+        from unittest.mock import patch
+
+        svc = _make_service()
+        user_stub = SimpleNamespace(
+            id=uuid4(), email="u@test.com", full_name="Test", auth0_id="auth0|x"
+        )
+        with patch(
+            "airweave.domains.users.service.business_events.track_user_created",
+            side_effect=RuntimeError("PostHog unreachable"),
+        ):
+            svc._track_analytics(user_stub)
+
+
+# ===========================================================================
+# _send_welcome_from_schema — best-effort, swallows errors
+# ===========================================================================
+
+
+class TestSendWelcomeFromSchema:
+    @pytest.mark.asyncio
+    async def test_swallows_exception(self):
+        email = FakeEmailService(should_raise=RuntimeError("SMTP down"))
+        svc = _make_service(email_service=email)
+
+        user_schema = schemas.User.model_validate(_UserStub(email="u@test.com", full_name="User"))
+        await svc._send_welcome_from_schema(user_schema)
+
+    @pytest.mark.asyncio
+    async def test_sends_via_email_service(self):
+        email = FakeEmailService()
+        svc = _make_service(email_service=email)
+
+        user_schema = schemas.User.model_validate(_UserStub(email="u@test.com", full_name="User"))
+        await svc._send_welcome_from_schema(user_schema)
+
+        email.assert_called("send_welcome")
+        call = email.get_calls("send_welcome")[0]
+        assert call[1] == "u@test.com"
+        assert call[2] == "User"
+
+
+# ===========================================================================
+# _fallback_create — CRUD path when Auth0 integration is unavailable
+# ===========================================================================
+
+
+class TestFallbackCreate:
+    @pytest.mark.asyncio
+    async def test_creates_user_and_api_key_via_crud(self):
+        from unittest.mock import patch, MagicMock
+
+        fake_user = _UserStub(email="fallback@test.com", full_name="Fallback")
+        fake_org = SimpleNamespace(id=uuid4(), name="Test Org")
+
+        mock_uow = AsyncMock()
+        mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+        mock_uow.__aexit__ = AsyncMock(return_value=False)
+
+        svc = _make_service()
+        db = AsyncMock()
+
+        with (
+            patch(
+                "airweave.domains.users.service.UnitOfWork",
+                return_value=mock_uow,
+            ),
+            patch(
+                "airweave.domains.users.service.crud.user.create_with_organization",
+                new_callable=AsyncMock,
+                return_value=(fake_user, fake_org),
+            ) as mock_create,
+            patch(
+                "airweave.domains.users.service.crud.api_key.create",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ) as mock_api_key,
+        ):
+            result = await svc._fallback_create(db, _make_user_create(email="fallback@test.com"))
+
+        assert result.is_new is True
+        assert result.user.email == "fallback@test.com"
+        mock_create.assert_awaited_once()
+        mock_api_key.assert_awaited_once()
