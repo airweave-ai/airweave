@@ -5,7 +5,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, Save } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Loader2, Save, TriangleAlert } from 'lucide-react';
 import { apiClient } from "@/lib/api";
 import { toast } from 'sonner';
 import { useOrganizationStore } from '@/lib/stores/organizations';
@@ -35,6 +43,8 @@ export const OrganizationSettings = ({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   const { removeOrganization, organizations } = useOrganizationStore();
   const navigate = useNavigate();
@@ -79,55 +89,30 @@ export const OrganizationSettings = ({
     }
   };
 
-  const handleDeleteOrganization = async () => {
+  const handleDeleteOrganization = () => {
     if (!currentOrganization) return;
 
-    // Safety check: Verify user is owner
     if (currentOrganization.role !== 'owner') {
       toast.error('Only organization owners can delete the organization');
       return;
     }
 
-    // Check if this is the last organization
     if (organizations.length === 1) {
       toast.error('Cannot delete your only organization. You must have at least one organization.');
       return;
     }
 
-    // Extra warning if this is the primary organization
-    const warningMessage = currentOrganization.is_primary
-      ? `⚠️ WARNING: You are about to delete your PRIMARY organization "${currentOrganization.name}".\n\n` +
-        'This will permanently delete:\n' +
-        '• All collections and data\n' +
-        '• All source connections\n' +
-        '• All API keys\n' +
-        '• All organization settings\n\n' +
-        'This action CANNOT be undone.\n\n' +
-        'Type the organization name to confirm:'
-      : `Are you sure you want to delete "${currentOrganization.name}"?\n\n` +
-        'This will permanently delete:\n' +
-        '• All collections and data\n' +
-        '• All source connections\n' +
-        '• All API keys\n' +
-        '• All organization settings\n\n' +
-        'This action CANNOT be undone.\n\n' +
-        'Type the organization name to confirm:';
+    setDeleteConfirmation('');
+    setShowDeleteDialog(true);
+  };
 
-    // Require typing the organization name for confirmation
-    const userInput = window.prompt(warningMessage);
-
-    if (!userInput) {
-      // User cancelled
-      return;
-    }
-
-    if (userInput.trim() !== currentOrganization.name) {
-      toast.error('Organization name does not match. Deletion cancelled.');
-      return;
-    }
+  const confirmDeleteOrganization = async () => {
+    if (!currentOrganization) return;
+    if (deleteConfirmation.trim() !== currentOrganization.name) return;
 
     try {
       setIsLoading(true);
+      setShowDeleteDialog(false);
 
       const response = await apiClient.delete(`/organizations/${currentOrganization.id}`);
 
@@ -138,18 +123,13 @@ export const OrganizationSettings = ({
 
       toast.success('Organization deleted successfully');
 
-      // Remove the organization from the store, which will automatically switch to the next best org
       removeOrganization(currentOrganization.id);
 
-      // Check if there are any remaining organizations
       const remainingOrgs = organizations.filter(org => org.id !== currentOrganization.id);
 
       if (remainingOrgs.length === 0) {
-        // No organizations left, redirect to no-organization page
         navigate('/no-organization');
       } else {
-        // There are other organizations, navigate to dashboard which will show the new current org
-        // Use window.location.href to ensure a full page reload and proper state initialization
         window.location.href = '/';
       }
 
@@ -271,6 +251,71 @@ export const OrganizationSettings = ({
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <TriangleAlert className="h-5 w-5" />
+              Delete organization
+            </DialogTitle>
+            <DialogDescription className="pt-2 space-y-3">
+              {currentOrganization.is_primary && (
+                <span className="block text-amber-500 font-medium text-sm">
+                  This is your primary organization.
+                </span>
+              )}
+              <span className="block">
+                This will permanently delete <span className="font-medium text-foreground">{currentOrganization.name}</span> and all of its data, including collections, source connections, API keys, and settings.
+              </span>
+              <span className="block font-medium text-foreground text-sm">
+                This action cannot be undone.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 pt-1">
+            <Label htmlFor="delete-confirm" className="text-sm text-muted-foreground">
+              Type <span className="font-mono text-foreground select-all">{currentOrganization.name}</span> to confirm
+            </Label>
+            <Input
+              id="delete-confirm"
+              value={deleteConfirmation}
+              onChange={(e) => setDeleteConfirmation(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && deleteConfirmation.trim() === currentOrganization.name) {
+                  confirmDeleteOrganization();
+                }
+              }}
+              placeholder={currentOrganization.name}
+              autoFocus
+              autoComplete="off"
+              className="h-9 border-border focus:outline-none focus:ring-0 focus:ring-offset-0 focus:shadow-none focus:border-border"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDeleteDialog(false)}
+              className="h-8"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={confirmDeleteOrganization}
+              disabled={deleteConfirmation.trim() !== currentOrganization.name}
+              className="h-8"
+            >
+              Delete organization
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
