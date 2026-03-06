@@ -385,6 +385,25 @@ class CodaAuthConfig(APIKeyAuthConfig):
     )
 
 
+class CreatioAuthConfig(AuthConfig):
+    """Creatio authentication credentials schema using client credentials grant.
+
+    Uses client_id and client_secret to obtain an access token via OAuth 2.0
+    client credentials flow against the Creatio Identity Service.
+    """
+
+    client_id: str = Field(
+        title="Client ID",
+        description="OAuth client ID from the Creatio Identity Service application",
+        min_length=10,
+    )
+    client_secret: str = Field(
+        title="Client Secret",
+        description="OAuth client secret from the Creatio Identity Service application",
+        min_length=10,
+    )
+
+
 class ConfluenceAuthConfig(OAuth2WithRefreshAuthConfig):
     """Confluence authentication credentials schema."""
 
