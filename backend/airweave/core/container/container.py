@@ -16,6 +16,7 @@ from typing import Any, Optional
 from airweave.core.protocols import (
     CircuitBreaker,
     ContextCache,
+    EmailService,
     EndpointVerifier,
     EventBus,
     HealthServiceProtocol,
@@ -82,6 +83,7 @@ from airweave.domains.temporal.protocols import (
     TemporalWorkflowServiceProtocol,
 )
 from airweave.domains.usage.protocols import UsageLedgerProtocol, UsageLimitCheckerProtocol
+from airweave.domains.users.protocols import UserServiceProtocol
 
 
 @dataclass(frozen=True)
@@ -191,8 +193,14 @@ class Container:
     # Identity provider (Auth0 / Null / Fake)
     identity_provider: IdentityProvider
 
+    # Email service (Resend / Null / Fake)
+    email_service: EmailService
+
     # Organization domain service (lifecycle + membership + provisioning)
     organization_service: OrganizationServiceProtocol
+
+    # User domain service (create-or-update + org queries)
+    user_service: UserServiceProtocol
 
     # Embedder registries (static reference data, built once at startup)
     dense_embedder_registry: DenseEmbedderRegistryProtocol

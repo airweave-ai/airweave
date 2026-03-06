@@ -8,6 +8,7 @@ infrastructure protocols only.
 from airweave.core.health.protocols import HealthProbe, HealthServiceProtocol
 from airweave.core.protocols.cache import ContextCache
 from airweave.core.protocols.circuit_breaker import CircuitBreaker
+from airweave.core.protocols.email import EmailService
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandler, EventSubscriber
 from airweave.core.protocols.identity import IdentityProvider
@@ -40,6 +41,7 @@ __all__ = [
     "DbPool",
     "DbPoolMetrics",
     "DomainEvent",
+    "EmailService",
     "EndpointVerifier",
     "EventBus",
     "EventHandler",

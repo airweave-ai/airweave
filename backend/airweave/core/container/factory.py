@@ -237,6 +237,20 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # Email service
+    # -----------------------------------------------------------------
+    email_service = _create_email_service(settings)
+
+    # -----------------------------------------------------------------
+    # User domain service
+    # -----------------------------------------------------------------
+    user_service = _create_user_service(
+        org_service=org_service,
+        user_org_repo=user_org_repo,
+        email_service=email_service,
+    )
+
+    # -----------------------------------------------------------------
     # Sync domain services
     # Repos come from source_deps; services are built here.
     # -----------------------------------------------------------------
@@ -440,6 +454,8 @@ def create_container(settings: Settings) -> Container:
         usage_ledger=usage_ledger,
         identity_provider=identity_provider,
         organization_service=org_service,
+        user_service=user_service,
+        email_service=email_service,
     )
 
 
@@ -955,6 +971,36 @@ def _create_organization_service(
         identity_provider=identity_provider,
         event_bus=event_bus,
     )
+
+
+def _create_user_service(  # type: ignore[no-untyped-def]
+    *,
+    org_service,
+    user_org_repo,
+    email_service,
+):
+    """Build the user service with org service + repo + email dependencies."""
+    from airweave.domains.users.repository import UserRepository
+    from airweave.domains.users.service import UserService
+
+    return UserService(
+        user_repo=UserRepository(),
+        org_service=org_service,
+        user_org_repo=user_org_repo,
+        email_service=email_service,
+    )
+
+
+def _create_email_service(settings):  # type: ignore[no-untyped-def]
+    """Create email service: Resend if configured, otherwise null (no-op)."""
+    if settings.RESEND_API_KEY and settings.RESEND_FROM_EMAIL:
+        from airweave.adapters.email.resend import ResendEmailService
+
+        return ResendEmailService()
+
+    from airweave.adapters.email.null import NullEmailService
+
+    return NullEmailService()
 
 
 def _create_rate_limiter(settings: Settings):
