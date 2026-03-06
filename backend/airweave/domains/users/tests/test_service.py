@@ -16,7 +16,6 @@ from airweave.domains.organizations.fakes.service import FakeOrganizationService
 from airweave.domains.users.fakes.repository import FakeUserRepository
 from airweave.domains.users.service import UserService
 
-
 # ---------------------------------------------------------------------------
 # Stubs
 # ---------------------------------------------------------------------------
