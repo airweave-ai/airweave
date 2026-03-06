@@ -108,7 +108,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         # 1. Load source connection data
         source_connection_data = await self._load_source_connection_data(
-            db, source_connection_id, ctx, logger
+            db, source_connection_id, ctx
         )
 
         # 2. Get auth configuration (credentials + proxy setup)
@@ -202,7 +202,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         db: AsyncSession,
         source_connection_id: UUID,
         ctx: ApiContext,
-        logger: ContextualLogger,
     ) -> SourceConnectionData:
         """Load source connection, connection, and resolve source class from registry."""
         source_connection = await self._sc_repo.get(db, source_connection_id, ctx)

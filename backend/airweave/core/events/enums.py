@@ -56,6 +56,15 @@ class SourceConnectionEventType(str, Enum):
     DELETED = "source_connection.deleted"
 
 
+class OrganizationEventType(str, Enum):
+    """Organization lifecycle event types."""
+
+    CREATED = "organization.created"
+    DELETED = "organization.deleted"
+    MEMBER_ADDED = "organization.member_added"
+    MEMBER_REMOVED = "organization.member_removed"
+
+
 # Union of all known event types.
 # DomainEvent.event_type is typed to this, ensuring only known values are used.
 EventType = (
@@ -65,6 +74,7 @@ EventType = (
     | AccessControlEventType
     | CollectionEventType
     | SourceConnectionEventType
+    | OrganizationEventType
 )
 
 # Ordered tuple of every event-type enum class.
@@ -76,4 +86,5 @@ ALL_EVENT_TYPE_ENUMS: tuple[type[Enum], ...] = (
     AccessControlEventType,
     CollectionEventType,
     SourceConnectionEventType,
+    OrganizationEventType,
 )

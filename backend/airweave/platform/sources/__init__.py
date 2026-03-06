@@ -25,6 +25,7 @@ from .google_drive import GoogleDriveSource
 from .google_slides import GoogleSlidesSource
 from .hubspot import HubspotSource
 from .incremental_stub import IncrementalStubSource
+from .intercom import IntercomSource
 from .jira import JiraSource
 from .linear import LinearSource
 from .monday import MondaySource
@@ -80,6 +81,7 @@ ALL_SOURCES: list[type] = [
     GoogleSlidesSource,
     HubspotSource,
     IncrementalStubSource,
+    IntercomSource,
     JiraSource,
     LinearSource,
     MondaySource,

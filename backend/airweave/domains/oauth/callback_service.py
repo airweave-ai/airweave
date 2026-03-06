@@ -30,7 +30,7 @@ from airweave.domains.oauth.protocols import (
     OAuthSourceRepositoryProtocol,
 )
 from airweave.domains.oauth.types import OAuth1TokenResponse
-from airweave.domains.organizations.repository import OrganizationRepositoryProtocol
+from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,

@@ -1,10 +1,11 @@
 """Source context builder for sync operations.
 
-Handles all source creation complexity:
-- Source connection data loading
-- Credentials and OAuth configuration
+Handles sync-specific orchestration on top of SourceLifecycleService:
+- Resolves source_connection from sync
+- Snapshot guard
 - File downloader setup
-- HTTP client wrapping (rate limiting)
+- Cursor creation
+- ARF replay mode
 """
 
 from typing import Any, Optional
@@ -22,13 +23,11 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.contexts.source import SourceContext
-from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.cursor import SyncCursor
 
 
-# [code blue] replace with SourceLifecycleService.create()
 class SourceContextBuilder:
     """Builds source context with all required configuration."""
 
@@ -69,31 +68,49 @@ class SourceContextBuilder:
                 execution_config=execution_config,
             )
 
-        # 1. Load source connection data
-        source_connection_data = await cls._get_source_connection_data(db, sync, ctx)
+        # 1. Load source connection from sync
+        source_connection_obj = await crud.source_connection.get_by_sync_id(
+            db, sync_id=sync.id, ctx=ctx
+        )
+        if not source_connection_obj:
+            raise NotFoundException(
+                f"Source connection record not found for sync {sync.id}. "
+                f"This typically occurs when a source connection is deleted while a "
+                f"scheduled workflow is queued. The workflow should self-destruct and "
+                f"clean up orphaned schedules."
+            )
 
-        # 2. Create source instance
-        source = await cls._create_source_instance(
+        # 2. Guard: snapshot sources that completed have their short_name updated
+        # to the original source (e.g., "github"). Detect this by checking if the
+        # stored config validates as a SnapshotConfig.
+        cls._validate_not_completed_snapshot(source_connection_obj)
+
+        # 3. Create source instance
+        if app_container is None:
+            raise RuntimeError("Container not initialized")
+
+        source = await app_container.source_lifecycle_service.create(
             db=db,
-            source_connection_data=source_connection_data,
+            source_connection_id=UUID(str(source_connection_obj.id)),
             ctx=ctx,
-            logger=logger,
             access_token=access_token,
-            sync_job=sync_job,
         )
 
-        # 3. Create cursor
+        # Setup file downloader for file-based sources
+        cls._setup_file_downloader(source, sync_job, logger)
+
+        # 4. Create cursor
         cursor = await cls._create_cursor(
             db=db,
             sync=sync,
-            source_class=source_connection_data["source_class"],
+            source_class=type(source),
             ctx=ctx,
             logger=logger,
             force_full_sync=force_full_sync,
             execution_config=execution_config,
         )
 
-        # 4. Set cursor on source
+        # 5. Set cursor on source
         source.set_cursor(cursor)
 
         return SourceContext(source=source, cursor=cursor)
@@ -183,33 +200,20 @@ class SourceContextBuilder:
         Returns:
             User-facing SourceConnection UUID (not internal Connection ID).
         """
-        source_connection_data = await cls._get_source_connection_data(db, sync, ctx)
-        return source_connection_data["source_connection_id"]
-
-    # -------------------------------------------------------------------------
-    # Private: Source Connection Data
-    # -------------------------------------------------------------------------
-
-    @classmethod
-    async def _get_source_connection_data(
-        cls, db: AsyncSession, sync: schemas.Sync, ctx: ApiContext
-    ) -> dict:
-        """Get source connection and model data."""
-        # 1. Get SourceConnection first (has most of our data)
         source_connection_obj = await crud.source_connection.get_by_sync_id(
             db, sync_id=sync.id, ctx=ctx
         )
         if not source_connection_obj:
-            raise NotFoundException(
-                f"Source connection record not found for sync {sync.id}. "
-                f"This typically occurs when a source connection is deleted while a "
-                f"scheduled workflow is queued. The workflow should self-destruct and "
-                f"clean up orphaned schedules."
-            )
+            raise NotFoundException(f"Source connection record not found for sync {sync.id}")
+        return UUID(str(source_connection_obj.id))
 
-        # 2. Guard: snapshot sources that completed have their short_name updated
-        # to the original source (e.g., "github"). Detect this by checking if the
-        # stored config validates as a SnapshotConfig.
+    # -------------------------------------------------------------------------
+    # Private helpers
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_not_completed_snapshot(source_connection_obj) -> None:
+        """Guard: completed snapshots that had their short_name restored cannot re-sync."""
         if source_connection_obj.short_name != "snapshot":
             from pydantic import ValidationError
 
@@ -228,95 +232,6 @@ class SourceContextBuilder:
                 )
             except ValidationError:
                 pass  # Not a snapshot config, proceed normally
-
-        # 3. Get Connection only to access integration_credential_id
-        connection = await crud.connection.get(db, source_connection_obj.connection_id, ctx)
-        if not connection:
-            raise NotFoundException("Connection not found")
-
-        # 4. Get Source model using short_name from SourceConnection
-        source_model = await crud.source.get_by_short_name(db, source_connection_obj.short_name)
-        if not source_model:
-            raise NotFoundException(f"Source not found: {source_connection_obj.short_name}")
-
-        # Get all fields from the RIGHT places:
-        config_fields = source_connection_obj.config_fields or {}  # From SourceConnection
-
-        # Pre-fetch to avoid lazy loading - convert to pure Python types
-        auth_config_class = source_model.auth_config_class
-        # Convert SQLAlchemy values to clean Python types to avoid lazy loading
-        source_connection_id = UUID(str(source_connection_obj.id))  # From SourceConnection
-        short_name = str(source_connection_obj.short_name)  # From SourceConnection
-        connection_id = UUID(str(connection.id))
-
-        # Check if this connection uses an auth provider
-        readable_auth_provider_id = getattr(
-            source_connection_obj, "readable_auth_provider_id", None
-        )
-
-        # For auth provider connections, integration_credential_id will be None
-        # For regular connections, integration_credential_id must be set
-        if not readable_auth_provider_id and not connection.integration_credential_id:
-            raise NotFoundException(f"Connection {connection_id} has no integration credential")
-
-        integration_credential_id = (
-            UUID(str(connection.integration_credential_id))
-            if connection.integration_credential_id
-            else None
-        )
-
-        source_class = resource_locator.get_source(source_model)
-
-        # Pre-fetch oauth_type to avoid lazy loading issues
-        oauth_type = str(source_model.oauth_type) if source_model.oauth_type else None
-
-        return {
-            "source_connection_obj": source_connection_obj,  # The main entity
-            "connection": connection,  # Just for credential access
-            "source_model": source_model,
-            "source_class": source_class,
-            "config_fields": config_fields,  # From SourceConnection
-            "short_name": short_name,  # From SourceConnection
-            "source_connection_id": source_connection_id,  # Pre-fetched to avoid lazy loading
-            "auth_config_class": auth_config_class,
-            "connection_id": connection_id,
-            "integration_credential_id": integration_credential_id,  # From Connection
-            "oauth_type": oauth_type,  # Pre-fetched to avoid lazy loading
-            "readable_auth_provider_id": getattr(
-                source_connection_obj, "readable_auth_provider_id", None
-            ),
-            "auth_provider_config": getattr(source_connection_obj, "auth_provider_config", None),
-        }
-
-    # -------------------------------------------------------------------------
-    # Private: Source Instance Creation
-    # -------------------------------------------------------------------------
-
-    @classmethod
-    async def _create_source_instance(
-        cls,
-        db: AsyncSession,
-        source_connection_data: dict,
-        ctx: ApiContext,
-        logger: ContextualLogger,
-        access_token: Optional[str] = None,
-        sync_job: Optional[Any] = None,
-    ) -> BaseSource:
-        """Create and configure the source instance."""
-        if app_container is None:
-            raise RuntimeError("Container not initialized")
-
-        source = await app_container.source_lifecycle_service.create(
-            db=db,
-            source_connection_id=source_connection_data["source_connection_id"],
-            ctx=ctx,
-            access_token=access_token,
-        )
-
-        # Setup file downloader for file-based sources
-        cls._setup_file_downloader(source, sync_job, logger)
-
-        return source
 
     @classmethod
     def _setup_file_downloader(

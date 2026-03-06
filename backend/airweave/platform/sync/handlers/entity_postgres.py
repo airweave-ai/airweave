@@ -31,7 +31,7 @@ class EntityPostgresHandler(EntityActionHandler):
 
     Stores entity records with:
     - entity_id: Unique identifier from source
-    - entity_definition_id: Type classification
+    - entity_definition_short_name: Type classification
     - hash: Content hash for change detection
     - sync_id, sync_job_id: Sync tracking
 
@@ -179,13 +179,12 @@ class EntityPostgresHandler(EntityActionHandler):
                     sync_job_id=sync_context.sync_job.id,
                     sync_id=sync_context.sync.id,
                     entity_id=action.entity_id,
-                    entity_definition_id=action.entity_definition_id,
+                    entity_definition_short_name=action.entity_definition_short_name,
                     hash=action.entity.airweave_system_metadata.hash,
                 )
             )
 
-        # Sort to avoid deadlocks
-        create_objs.sort(key=lambda o: (o.entity_definition_id.int, o.entity_id))
+        create_objs.sort(key=lambda o: (o.entity_definition_short_name, o.entity_id))
 
         sample_ids = [o.entity_id for o in create_objs[:5]]
         sync_context.logger.debug(
@@ -196,7 +195,7 @@ class EntityPostgresHandler(EntityActionHandler):
     async def _do_updates(
         self,
         actions: List[EntityUpdateAction],
-        existing_map: Dict[Tuple[str, UUID], Any],
+        existing_map: Dict[Tuple[str, str], Any],
         sync_context: "SyncContext",
         db: AsyncSession,
     ) -> None:
@@ -206,7 +205,7 @@ class EntityPostgresHandler(EntityActionHandler):
             if not action.entity.airweave_system_metadata.hash:
                 raise SyncFailureError(f"Entity {action.entity_id} missing hash")
 
-            key = (action.entity_id, action.entity_definition_id)
+            key = (action.entity_id, action.entity_definition_short_name)
             if key not in existing_map:
                 raise SyncFailureError(f"UPDATE entity {action.entity_id} not in existing_map")
 
@@ -222,14 +221,14 @@ class EntityPostgresHandler(EntityActionHandler):
     async def _do_deletes(
         self,
         actions: List[EntityDeleteAction],
-        existing_map: Dict[Tuple[str, UUID], Any],
+        existing_map: Dict[Tuple[str, str], Any],
         sync_context: "SyncContext",
         db: AsyncSession,
     ) -> None:
         """Execute DELETE operations."""
         db_ids = []
         for action in actions:
-            key = (action.entity_id, action.entity_definition_id)
+            key = (action.entity_id, action.entity_definition_short_name)
             if key in existing_map:
                 db_ids.append(existing_map[key].id)
             else:
@@ -279,9 +278,9 @@ class EntityPostgresHandler(EntityActionHandler):
         actions: List[EntityUpdateAction] | List[EntityDeleteAction],
         sync_context: "SyncContext",
         db: AsyncSession,
-    ) -> Dict[Tuple[str, UUID], Any]:
+    ) -> Dict[Tuple[str, str], Any]:
         """Fetch existing DB records for update/delete actions."""
-        entity_requests = [(a.entity_id, a.entity_definition_id) for a in actions]
+        entity_requests = [(a.entity_id, a.entity_definition_short_name) for a in actions]
         return await crud.entity.bulk_get_by_entity_sync_and_definition(
             db=db, sync_id=sync_context.sync.id, entity_requests=entity_requests
         )

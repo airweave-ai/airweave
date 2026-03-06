@@ -5,13 +5,19 @@ from typing import Callable, Dict, Union
 
 from airweave.adapters.analytics.protocols import AnalyticsTrackerProtocol
 from airweave.core.events.collection import CollectionLifecycleEvent
+from airweave.core.events.organization import OrganizationLifecycleEvent
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.protocols.event_bus import EventSubscriber
 
 logger = logging.getLogger(__name__)
 
-_Event = Union[CollectionLifecycleEvent, SourceConnectionLifecycleEvent, SyncLifecycleEvent]
+_Event = Union[
+    CollectionLifecycleEvent,
+    OrganizationLifecycleEvent,
+    SourceConnectionLifecycleEvent,
+    SyncLifecycleEvent,
+]
 
 
 class AnalyticsEventSubscriber(EventSubscriber):
@@ -24,6 +30,7 @@ class AnalyticsEventSubscriber(EventSubscriber):
 
     EVENT_PATTERNS = [
         "collection.*",
+        "organization.*",
         "source_connection.*",
         "sync.*",
     ]
@@ -41,6 +48,8 @@ class AnalyticsEventSubscriber(EventSubscriber):
             "sync.completed": self._handle_sync_completed,
             "sync.failed": self._handle_sync_failed,
             "sync.cancelled": self._handle_sync_cancelled,
+            "organization.created": self._handle_org_created,
+            "organization.deleted": self._handle_org_deleted,
         }
 
     async def handle(self, event: _Event) -> None:
@@ -182,6 +191,47 @@ class AnalyticsEventSubscriber(EventSubscriber):
                 "sync_job_id": str(event.sync_job_id),
                 "source_type": event.source_type,
                 "source_connection_id": str(event.source_connection_id),
+            },
+            groups={"organization": str(event.organization_id)},
+        )
+
+    # ------------------------------------------------------------------
+    # Organization events
+    # ------------------------------------------------------------------
+
+    def _handle_org_created(self, event: OrganizationLifecycleEvent) -> None:
+        org_id_str = str(event.organization_id)
+
+        self._tracker.group_identify(
+            group_type="organization",
+            group_key=org_id_str,
+            properties={
+                "organization_name": event.organization_name,
+                "organization_plan": event.plan or "developer",
+                "organization_created_at": event.timestamp.isoformat(),
+                "organization_source": "signup",
+            },
+        )
+        self._tracker.track(
+            event_name="organization_created",
+            distinct_id=event.owner_email or org_id_str,
+            properties={
+                "organization_id": org_id_str,
+                "plan": event.plan or "developer",
+                "source": "signup",
+                "organization_name": event.organization_name,
+            },
+            groups={"organization": org_id_str},
+        )
+
+    def _handle_org_deleted(self, event: OrganizationLifecycleEvent) -> None:
+        self._tracker.track(
+            event_name="organization_deleted",
+            distinct_id=str(event.organization_id),
+            properties={
+                "organization_id": str(event.organization_id),
+                "organization_name": event.organization_name,
+                "affected_users": len(event.affected_user_emails),
             },
             groups={"organization": str(event.organization_id)},
         )

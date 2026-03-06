@@ -18,21 +18,14 @@ class ConnectionRepository(ConnectionRepositoryProtocol):
     """Delegates to the crud.connection singleton."""
 
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+        """Get a connection by ID."""
         return await crud.connection.get(db, id, ctx)
 
     async def get_by_readable_id(
         self, db: AsyncSession, readable_id: str, ctx: ApiContext
     ) -> Optional[Connection]:
+        """Get a connection by human-readable ID."""
         return await crud.connection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
-
-    async def get_s3_destination_for_org(
-        self, db: AsyncSession, ctx: ApiContext
-    ) -> Optional[Connection]:
-        connections = await crud.connection.get_all_by_short_name(db, short_name="s3", ctx=ctx)
-        for connection in connections:
-            if connection.integration_type == IntegrationType.DESTINATION:
-                return connection
-        return None
 
     async def create(
         self,
@@ -42,11 +35,13 @@ class ConnectionRepository(ConnectionRepositoryProtocol):
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Connection:
+        """Create a connection."""
         return await crud.connection.create(db, obj_in=obj_in, ctx=ctx, uow=uow)
 
     async def get_by_integration_type(
         self, db: AsyncSession, *, integration_type: IntegrationType, ctx: ApiContext
     ) -> list[Connection]:
+        """Get connections filtered by integration type."""
         return await crud.connection.get_by_integration_type(
             db, integration_type=integration_type, ctx=ctx
         )
@@ -60,7 +55,9 @@ class ConnectionRepository(ConnectionRepositoryProtocol):
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Connection:
+        """Update a connection."""
         return await crud.connection.update(db, db_obj=db_obj, obj_in=obj_in, ctx=ctx, uow=uow)
 
     async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+        """Delete a connection by ID."""
         return await crud.connection.remove(db, id=id, ctx=ctx)

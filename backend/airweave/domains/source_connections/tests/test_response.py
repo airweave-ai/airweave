@@ -154,9 +154,9 @@ def _make_entity_count(name: str = "document", count: int = 100) -> EntityCountW
     """Build a minimal EntityCountWithDefinition."""
     return EntityCountWithDefinition(
         count=count,
-        entity_definition_id=uuid4(),
+        entity_definition_short_name=f"{name}_entity",
         entity_definition_name=name,
-        entity_definition_type="default",
+        entity_definition_type="json",
         entity_definition_description=None,
         modified_at=NOW,
     )

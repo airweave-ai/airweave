@@ -9,7 +9,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from airweave.models._base import OrganizationBase
 
 if TYPE_CHECKING:
-    from airweave.models.entity_definition import EntityDefinition
     from airweave.models.sync import Sync
     from airweave.models.sync_job import SyncJob
 
@@ -33,12 +32,10 @@ class Entity(OrganizationBase):
         ForeignKey("sync.id", ondelete="CASCADE", name="fk_entity_sync_id"), nullable=False
     )
     entity_id: Mapped[str] = mapped_column(String, nullable=False)
-    entity_definition_id: Mapped[Optional[UUID]] = mapped_column(
-        ForeignKey(
-            "entity_definition.id", ondelete="CASCADE", name="fk_entity_entity_definition_id"
-        ),
+    entity_definition_short_name: Mapped[Optional[str]] = mapped_column(
+        String,
         nullable=True,
-        comment="Entity definition this entity belongs to",
+        comment="Entity definition short_name from the registry (e.g. asana_task_entity)",
     )
     hash: Mapped[str] = mapped_column(String, nullable=False)
 
@@ -55,25 +52,21 @@ class Entity(OrganizationBase):
         lazy="noload",
     )
 
-    entity_definition: Mapped[Optional["EntityDefinition"]] = relationship(
-        "EntityDefinition",
-        lazy="noload",
-    )
-
     __table_args__ = (
         UniqueConstraint(
             "sync_id",
             "entity_id",
-            "entity_definition_id",
-            name="uq_sync_id_entity_id_entity_definition_id",
+            "entity_definition_short_name",
+            name="uq_sync_id_entity_id_entity_def_short_name",
         ),
-        # Performance indexes based on common query patterns
         Index("idx_entity_sync_id", "sync_id"),
         Index("idx_entity_sync_job_id", "sync_job_id"),
         Index("idx_entity_entity_id", "entity_id"),
-        Index("idx_entity_entity_definition_id", "entity_definition_id"),
-        # Composite index for the most common lookup pattern
+        Index("idx_entity_entity_def_short_name", "entity_definition_short_name"),
         Index("idx_entity_entity_id_sync_id", "entity_id", "sync_id"),
-        # Composite index for entity counts aggregation
-        Index("idx_entity_sync_id_entity_def_id", "sync_id", "entity_definition_id"),
+        Index(
+            "idx_entity_sync_id_entity_def_short_name",
+            "sync_id",
+            "entity_definition_short_name",
+        ),
     )

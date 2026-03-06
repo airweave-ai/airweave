@@ -3,9 +3,6 @@
  * Must match backend FeatureFlag enum exactly.
  */
 export const FeatureFlags = {
-  // Storage & Infrastructure
-  S3_DESTINATION: 's3_destination',
-
   // Search & Query
   ADVANCED_SEARCH: 'advanced_search',
 

@@ -154,6 +154,11 @@ from .hubspot import (
     HubspotDealEntity,
     HubspotTicketEntity,
 )
+from .intercom import (
+    IntercomConversationEntity,
+    IntercomConversationMessageEntity,
+    IntercomTicketEntity,
+)
 from .jira import (
     JiraIssueEntity,
     JiraProjectEntity,
@@ -298,6 +303,7 @@ from .teams import (
     TeamsTeamEntity,
     TeamsUserEntity,
 )
+from .timed import TimedContainerEntity, TimedEntity
 from .todoist import (
     TodoistCommentEntity,
     TodoistProjectEntity,
@@ -483,6 +489,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         HubspotDealEntity,
         HubspotTicketEntity,
     ],
+    "intercom": [
+        IntercomConversationEntity,
+        IntercomConversationMessageEntity,
+        IntercomTicketEntity,
+    ],
     "jira": [
         JiraIssueEntity,
         JiraProjectEntity,
@@ -622,6 +633,10 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         TeamsMessageEntity,
         TeamsTeamEntity,
         TeamsUserEntity,
+    ],
+    "timed": [
+        TimedContainerEntity,
+        TimedEntity,
     ],
     "todoist": [
         TodoistCommentEntity,

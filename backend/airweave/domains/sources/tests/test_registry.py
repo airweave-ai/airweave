@@ -94,6 +94,8 @@ def _make_entity_entry(short_name: str, module_name: str) -> EntityDefinitionEnt
         class_name=short_name.title(),
         entity_class_ref=type(short_name, (), {}),
         module_name=module_name,
+        entity_type="json",
+        entity_schema={},
     )
 
 

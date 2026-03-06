@@ -1,0 +1,1 @@
+"""Identity provider adapters."""

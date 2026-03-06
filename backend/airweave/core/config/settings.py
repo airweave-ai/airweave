@@ -170,10 +170,6 @@ class Settings(BaseSettings):
     # Docling OCR fallback service (None = disabled)
     DOCLING_BASE_URL: Optional[str] = None
 
-    # AWS S3 Destination credentials (for local testing)
-    AWS_S3_DESTINATION_ACCESS_KEY_ID: Optional[str] = None
-    AWS_S3_DESTINATION_SECRET_ACCESS_KEY: Optional[str] = None
-
     # Temporal configuration
     TEMPORAL_HOST: str = "localhost"
     TEMPORAL_PORT: int = 7233
@@ -235,7 +231,7 @@ class Settings(BaseSettings):
     # for custom domains in custom deployments
     API_FULL_URL: Optional[str] = None
     APP_FULL_URL: Optional[str] = None
-    ADDITIONAL_CORS_ORIGINS: Optional[str] = None  # Separated by commas or semicolons
+    ADDITIONAL_CORS_ORIGINS: Optional[list[str]] = None
 
     # Svix (webhooks) configuration
     SVIX_URL: str = "http://localhost:8071"
@@ -304,8 +300,7 @@ class Settings(BaseSettings):
         if ";" in v:
             return [origin.strip() for origin in v.split(";") if origin.strip()]
 
-        # Default Pydantic behavior will handle comma separation
-        return v
+        return [origin.strip() for origin in v.split(",") if origin.strip()]
 
     @field_validator(
         "AUTH0_DOMAIN",
@@ -396,7 +391,7 @@ class Settings(BaseSettings):
         return v
 
     @field_validator("SQLALCHEMY_ASYNC_DATABASE_URI", mode="before")
-    def assemble_db_connection(cls, v: Optional[str], info: ValidationInfo) -> PostgresDsn:
+    def assemble_db_connection(cls, v: Optional[str], info: ValidationInfo) -> PostgresDsn:  # type: ignore[return-value]
         """Build the SQLAlchemy database URI.
 
         Args:
@@ -410,10 +405,8 @@ class Settings(BaseSettings):
 
         """
         if isinstance(v, str):
-            return v
+            return v  # type: ignore[return-value]
 
-        # Connect to local PostgreSQL server during local development
-        # This allows developers to debug without Docker
         host = info.data.get("POSTGRES_HOST", "localhost")
         port = info.data.get("POSTGRES_PORT", 5432)
 

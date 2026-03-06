@@ -1,30 +1,29 @@
 """API endpoints for entity definitions and relations."""
 
-from typing import List
-
-from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from airweave import crud, schemas
-from airweave.api import deps
-from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
+from airweave.domains.entities.types import EntityDefinitionMetadata
 
 router = TrailingSlashRouter()
 
 
-@router.get("/definitions/by-source/", response_model=List[schemas.EntityDefinition])
+@router.get("/definitions/by-source/", response_model=list[EntityDefinitionMetadata])
 async def get_entity_definitions_by_source_short_name(
     source_short_name: str,
-    db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
-) -> List[schemas.EntityDefinition]:
+    registry: EntityDefinitionRegistryProtocol = Inject(EntityDefinitionRegistryProtocol),
+) -> list[EntityDefinitionMetadata]:
     """Get all entity definitions for a given source."""
-    entity_definitions = await crud.entity_definition.get_multi_by_source_short_name(
-        db, source_short_name=source_short_name
-    )
-    entity_definition_schemas = [
-        schemas.EntityDefinition.model_validate(entity_definition)
-        for entity_definition in entity_definitions
+    entries = registry.list_for_source(source_short_name)
+    return [
+        EntityDefinitionMetadata(
+            short_name=entry.short_name,
+            name=entry.name,
+            description=entry.description,
+            class_name=entry.class_name,
+            module_name=entry.module_name,
+            entity_type=entry.entity_type,
+            entity_schema=entry.entity_schema,
+        )
+        for entry in entries
     ]
-    return entity_definition_schemas

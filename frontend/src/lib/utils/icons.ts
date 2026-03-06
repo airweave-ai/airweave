@@ -27,38 +27,6 @@ export function getAppIconUrl(shortName: string, theme?: string): string {
   }
 }
 
-export function getDestinationIconUrl(shortName: string): string {
-  return new URL(`/src/components/icons/destinations/${shortName}.png`, import.meta.url).href;
-}
-
-export function getTransformerIconUrl(shortName: string, theme?: string): string {
-  try {
-    // Map known transformers to their icon filenames
-    const iconMap: { [key: string]: string } = {
-      'openai': 'openai.svg',
-      'chonkie': 'chonkie.png',
-      'chunker': 'chunker.svg',
-      'mistralai': 'mistralai.png',
-      'firecrawl': 'firecrawl.png',
-      // Add other mappings as needed
-    };
-    if (shortName == 'openai' && theme == 'dark') {
-      return new URL(`/src/components/icons/transformers/openai-light.svg`, import.meta.url).href;
-    }
-
-    // Use the mapping if available, otherwise fall back to default
-    if (iconMap[shortName]) {
-      return new URL(`/src/components/icons/transformers/${iconMap[shortName]}`, import.meta.url).href;
-    }
-
-    // Default icon as fallback
-    return new URL('/src/components/icons/transformers/default-transformer.svg', import.meta.url).href;
-  } catch (e) {
-    console.log(`Error loading transformer icon: ${e}`);
-    return new URL('/src/components/icons/transformers/default-transformer.svg', import.meta.url).href;
-  }
-}
-
 export function getAuthProviderIconUrl(shortName: string, theme?: string): string {
   // Special cases for providers with specific file formats
   const specialCases: { [key: string]: string } = {

@@ -176,9 +176,10 @@ CORS_ORIGINS = [
 ]
 
 if settings.ADDITIONAL_CORS_ORIGINS:
-    additional_origins = settings.ADDITIONAL_CORS_ORIGINS.split(",")
+    origins = settings.ADDITIONAL_CORS_ORIGINS
+    additional_origins = origins.split(",") if isinstance(origins, str) else origins
     if settings.ENVIRONMENT == "local":
-        CORS_ORIGINS.append("*")  # Allow all origins in local environment
+        CORS_ORIGINS.append("*")
     else:
         CORS_ORIGINS.extend(additional_origins)
 

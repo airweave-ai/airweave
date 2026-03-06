@@ -369,10 +369,6 @@ class CRUDOrganization:
         if not isinstance(obj_in, dict):
             obj_in = obj_in.model_dump(exclude_unset=True)
 
-        # Organizations track user modifications
-        if ctx.has_user_context:
-            obj_in["modified_by_email"] = ctx.tracking_email
-
         for field, value in obj_in.items():
             setattr(db_obj, field, value)
 

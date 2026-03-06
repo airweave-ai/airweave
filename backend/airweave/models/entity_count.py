@@ -3,18 +3,20 @@
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Index, Integer, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
 
 if TYPE_CHECKING:
-    from airweave.models.entity_definition import EntityDefinition
     from airweave.models.sync import Sync
 
 
 class EntityCount(Base):
-    """Entity count model."""
+    """Entity count model.
+
+    Maintained by a PostgreSQL trigger on the entity table.
+    """
 
     __tablename__ = "entity_count"
 
@@ -22,11 +24,10 @@ class EntityCount(Base):
         ForeignKey("sync.id", ondelete="CASCADE", name="fk_entity_count_sync_id"),
         nullable=False,
     )
-    entity_definition_id: Mapped[UUID] = mapped_column(
-        ForeignKey(
-            "entity_definition.id", ondelete="CASCADE", name="fk_entity_count_entity_def_id"
-        ),
+    entity_definition_short_name: Mapped[str] = mapped_column(
+        String,
         nullable=False,
+        comment="Registry short_name (e.g. asana_task_entity)",
     )
     count: Mapped[int] = mapped_column(
         Integer,
@@ -34,23 +35,17 @@ class EntityCount(Base):
         default=0,
     )
 
-    # Relationships
     sync: Mapped["Sync"] = relationship(
         "Sync",
-        lazy="noload",
-    )
-
-    entity_definition: Mapped["EntityDefinition"] = relationship(
-        "EntityDefinition",
         lazy="noload",
     )
 
     __table_args__ = (
         UniqueConstraint(
             "sync_id",
-            "entity_definition_id",
-            name="uq_sync_entity_definition",
+            "entity_definition_short_name",
+            name="uq_sync_entity_def_short_name",
         ),
         Index("idx_entity_count_sync_id", "sync_id"),
-        Index("idx_entity_count_entity_def_id", "entity_definition_id"),
+        Index("idx_entity_count_entity_def_short_name", "entity_definition_short_name"),
     )

@@ -15,8 +15,8 @@ alwaysApply: false
 - **Sync Service**: Orchestrates data synchronization between sources and destinations
 - **DAG Service**: Manages directed acyclic graphs for data transformations
 - **OAuth2 Service**: Handles authentication for integrations
-- **Auth0 Service**: Manages user authentication, roles, and organization memberships
-- **Stripe Service**: Handles subscription management and billing operations
+- **Identity Provider** (protocol): Abstracts user authentication, roles, and organization memberships (Auth0, Null, Fake adapters)
+- **Payment Gateway** (protocol): Abstracts subscription management and billing operations (Stripe adapter)
 - **Resend Service**: Manages transactional email delivery and templates
 - **PostHog Service**: Manages product analytics and user event tracking
 
@@ -62,7 +62,8 @@ If necessary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sy
 - Python 3.11+, FastAPI, SQLAlchemy async ORM
 - Black (100 char), isort, Ruff with Google docstrings including arg and return type annotation
 - Models → `models/`, Pydantic schemas → `schemas/`
-- Domain logic → `platform/` modules by function
+- Domain modules → `domains/` (protocols, service, repository, operations, fakes, subscribers)
+- Platform connectors → `platform/` modules by function (sources, destinations, transformers, entities)
 - Sync handlers → `platform/sync/`
 
 ### Code Principles

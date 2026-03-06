@@ -377,11 +377,11 @@ async def test_load_source_connection_data(case: LoadSCDataCase):
     if case.expect_error:
         with pytest.raises(case.expect_error, match=case.error_match):
             await service._load_source_connection_data(
-                db=MagicMock(), source_connection_id=sc.id, ctx=ctx, logger=ctx.logger
+                db=MagicMock(), source_connection_id=sc.id, ctx=ctx
             )
     else:
         data = await service._load_source_connection_data(
-            db=MagicMock(), source_connection_id=sc.id, ctx=ctx, logger=ctx.logger
+            db=MagicMock(), source_connection_id=sc.id, ctx=ctx
         )
         assert isinstance(data, SourceConnectionData)
         assert data.short_name == case.short_name

@@ -246,6 +246,49 @@ async def source_connection_medium(
 
 
 @pytest_asyncio.fixture(scope="function")
+async def source_connection_slack_federated(
+    api_client: httpx.AsyncClient,
+    collection: Dict,
+    composio_auth_provider: Dict,
+    config,
+) -> AsyncGenerator[Dict, None]:
+    """Create a Slack federated source connection via Composio.
+
+    Slack uses federated search (no sync) — searches the Slack API at query time.
+    """
+    if not config.TEST_COMPOSIO_SLACK_AUTH_CONFIG_ID or not config.TEST_COMPOSIO_SLACK_ACCOUNT_ID:
+        pytest.skip("Slack Composio configuration not available")
+
+    connection_data = {
+        "name": f"Slack Federated {uuid.uuid4().hex[:8]}",
+        "short_name": "slack",
+        "readable_collection_id": collection["readable_id"],
+        "authentication": {
+            "provider_readable_id": composio_auth_provider["readable_id"],
+            "provider_config": {
+                "auth_config_id": config.TEST_COMPOSIO_SLACK_AUTH_CONFIG_ID,
+                "account_id": config.TEST_COMPOSIO_SLACK_ACCOUNT_ID,
+            },
+        },
+        "sync_immediately": False,
+    }
+
+    response = await api_client.post("/source-connections", json=connection_data)
+
+    if response.status_code != 200:
+        pytest.fail(f"Failed to create Slack connection: {response.text}")
+
+    connection = response.json()
+
+    yield connection
+
+    try:
+        await api_client.delete(f"/source-connections/{connection['id']}")
+    except:
+        pass
+
+
+@pytest_asyncio.fixture(scope="function")
 async def timed_source_connection_fast(
     api_client: httpx.AsyncClient,
     collection: Dict,

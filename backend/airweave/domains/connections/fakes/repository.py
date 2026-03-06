@@ -16,38 +16,30 @@ class FakeConnectionRepository:
     """In-memory fake for ConnectionRepositoryProtocol."""
 
     def __init__(self) -> None:
+        """Initialize empty in-memory stores."""
         self._store: dict[UUID, Connection] = {}
         self._readable_store: dict[str, Connection] = {}
         self._calls: list[tuple] = []
 
     def seed(self, id: UUID, obj: Connection) -> None:
+        """Pre-populate a connection by ID."""
         self._store[id] = obj
 
     def seed_readable(self, readable_id: str, obj: Connection) -> None:
+        """Pre-populate a connection by readable ID."""
         self._readable_store[readable_id] = obj
 
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+        """Get a connection by ID."""
         self._calls.append(("get", db, id, ctx))
         return self._store.get(id)
 
     async def get_by_readable_id(
         self, db: AsyncSession, readable_id: str, ctx: ApiContext
     ) -> Optional[Connection]:
+        """Get a connection by human-readable ID."""
         self._calls.append(("get_by_readable_id", db, readable_id, ctx))
         return self._readable_store.get(readable_id)
-
-    async def get_s3_destination_for_org(
-        self, db: AsyncSession, ctx: ApiContext
-    ) -> Optional[Connection]:
-        self._calls.append(("get_s3_destination_for_org", db, ctx))
-        for connection in self._store.values():
-            if (
-                connection.organization_id == ctx.organization.id
-                and connection.short_name == "s3"
-                and str(connection.integration_type).upper().endswith("DESTINATION")
-            ):
-                return connection
-        return None
 
     async def create(
         self,
@@ -57,6 +49,7 @@ class FakeConnectionRepository:
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Connection:
+        """Create a connection in the in-memory store."""
         self._calls.append(("create", db, obj_in, ctx, uow))
         connection = Connection(
             id=uuid4(),
@@ -69,7 +62,7 @@ class FakeConnectionRepository:
             status=obj_in.status,
             short_name=obj_in.short_name,
         )
-        self._store[connection.id] = connection
+        self._store[connection.id] = connection  # type: ignore[index]
         if connection.readable_id:
             self._readable_store[connection.readable_id] = connection
         return connection
@@ -77,6 +70,7 @@ class FakeConnectionRepository:
     async def get_by_integration_type(
         self, db: AsyncSession, *, integration_type: IntegrationType, ctx: ApiContext
     ) -> list[Connection]:
+        """Get connections filtered by integration type."""
         self._calls.append(("get_by_integration_type", db, integration_type, ctx))
         return [
             conn
@@ -94,16 +88,18 @@ class FakeConnectionRepository:
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Connection:
+        """Update a connection in the in-memory store."""
         self._calls.append(("update", db, db_obj, obj_in, ctx, uow))
         updates = obj_in if isinstance(obj_in, dict) else obj_in.model_dump(exclude_unset=True)
         for key, value in updates.items():
             setattr(db_obj, key, value)
-        self._store[db_obj.id] = db_obj
+        self._store[db_obj.id] = db_obj  # type: ignore[index]
         if db_obj.readable_id:
             self._readable_store[db_obj.readable_id] = db_obj
         return db_obj
 
     async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+        """Delete a connection by ID."""
         self._calls.append(("remove", db, id, ctx))
         connection = self._store.pop(id, None)
         if connection and connection.readable_id in self._readable_store:

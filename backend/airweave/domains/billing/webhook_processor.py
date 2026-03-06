@@ -21,6 +21,7 @@ from airweave.domains.billing.protocols import BillingWebhookProtocol
 from airweave.domains.billing.repository import (
     BillingPeriodRepositoryProtocol,
     OrganizationBillingRepositoryProtocol,
+    WebhookEventRepositoryProtocol,
 )
 from airweave.domains.billing.types import (
     ChangeType,
@@ -47,6 +48,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         period_repo: BillingPeriodRepositoryProtocol,
         billing_ops: BillingOperationsProtocol,
         org_repo: OrganizationRepositoryProtocol,
+        webhook_event_repo: WebhookEventRepositoryProtocol | None = None,
     ) -> None:
         """Initialize with all required dependencies."""
         self._payment_gateway = payment_gateway
@@ -54,6 +56,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         self._period_repo = period_repo
         self._billing_ops = billing_ops
         self._org_repo = org_repo
+        self._webhook_event_repo = webhook_event_repo
 
         # Event handler mapping
         self.handlers = {
@@ -65,6 +68,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             "invoice.payment_failed": self._handle_payment_failed,
             "invoice.upcoming": self._handle_invoice_upcoming,
             "checkout.session.completed": self._handle_checkout_completed,
+            "checkout.session.expired": self._handle_checkout_expired,
             "payment_intent.succeeded": self._handle_payment_intent_succeeded,
         }
 
@@ -245,7 +249,16 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         await self._process_event(db, event)
 
     async def _process_event(self, db: AsyncSession, event: Any) -> None:
-        """Process a verified Stripe webhook event."""
+        """Process a verified Stripe webhook event.
+
+        Idempotent: skips events that have already been successfully processed
+        (tracked via WebhookEventRepository).
+        """
+        if self._webhook_event_repo:
+            if await self._webhook_event_repo.is_processed(db, stripe_event_id=event.id):
+                logger.info(f"Skipping already-processed webhook event {event.id} ({event.type})")
+                return
+
         ctx, log = await self._resolve_event_context(db, event)
 
         handler = self.handlers.get(event.type)
@@ -253,6 +266,12 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
             try:
                 log.info(f"Processing webhook event: {event.type}")
                 await handler(db, event, ctx, log)
+
+                if self._webhook_event_repo:
+                    await self._webhook_event_repo.mark_processed(
+                        db, stripe_event_id=event.id, event_type=event.type
+                    )
+                    await db.commit()
             except Exception as e:
                 log.error(f"Error handling {event.type}: {e}", exc_info=True)
                 raise
@@ -418,20 +437,26 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
                     log.error("Stripe update failed - skipping database update to prevent mismatch")
                     return
 
+        # Extract billing attributes before the commit boundary
+        # (create_billing_period commits via UoW, expiring ORM state).
+        billing_plan = billing.billing_plan
+        has_yearly_prepay = billing.has_yearly_prepay
+        yearly_prepay_expires_at = billing.yearly_prepay_expires_at
+
         # Determine if we should create a new period
         final_plan_for_period = inferred.plan
         if is_renewal and inferred.changed and inferred.should_clear_pending:
             if not stripe_update_successful:
-                final_plan_for_period = billing.billing_plan
+                final_plan_for_period = billing_plan
 
-        change_type = compare_plans(billing.billing_plan, final_plan_for_period)
+        change_type = compare_plans(billing_plan, final_plan_for_period)
         if self._should_create_new_period(
             "renewal" if is_renewal else "immediate_change",
-            final_plan_for_period != billing.billing_plan,
+            final_plan_for_period != billing_plan,
             change_type,
         ):
             transition = self._determine_period_transition(
-                billing.billing_plan,
+                billing_plan,
                 final_plan_for_period,
                 is_first_period=False,
             )
@@ -469,7 +494,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         final_plan = inferred.plan
         if is_renewal and inferred.changed and inferred.should_clear_pending:
             if not stripe_update_successful:
-                final_plan = billing.billing_plan
+                final_plan = billing_plan
                 log.warning(f"Keeping plan as {final_plan} due to Stripe update failure")
 
         updates = OrganizationBillingUpdate(
@@ -495,8 +520,8 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
 
         # Yearly prepay expiry handling
         try:
-            if billing.has_yearly_prepay:
-                expiry = billing.yearly_prepay_expires_at
+            if has_yearly_prepay:
+                expiry = yearly_prepay_expires_at
                 current_renewal_time = datetime.utcfromtimestamp(subscription.current_period_start)
 
                 if expiry and current_renewal_time >= expiry:
@@ -513,11 +538,11 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         except Exception as e:
             log.error(f"Error checking yearly prepay expiry: {e}")
 
-        # Refresh the billing object so that lazily-loaded attributes (e.g.
-        # organization_id) are available in the async context.  Earlier DB
-        # commits (create_billing_period) may have expired the ORM state,
-        # causing a MissingGreenlet error on subsequent attribute access.
-        await db.refresh(billing)
+        # Re-fetch billing after commit boundary (create_billing_period
+        # commits via UoW, expiring the original ORM object).
+        billing = await self._billing_repo.get_by_stripe_subscription_id(
+            db, stripe_subscription_id=subscription.id
+        )
         await self._billing_repo.update(db, db_obj=billing, obj_in=updates, ctx=ctx)
 
         log.info(f"Subscription updated for org {org_id}")
@@ -769,6 +794,27 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
 
         # For subscription mode, the subscription.created webhook will handle setup
 
+    async def _handle_checkout_expired(
+        self,
+        db: AsyncSession,
+        event: stripe.Event,
+        ctx: BaseContext | None,
+        log: ContextualLogger,
+    ) -> None:
+        """Handle abandoned/expired checkout sessions.
+
+        No DB mutation needed — billing record starts as developer (Part 2),
+        so an expired checkout simply means the org stays on developer.
+        This handler exists for observability.
+        """
+        session = event.data.object
+        org_id = session.metadata.get("organization_id") if hasattr(session, "metadata") else None
+        plan = session.metadata.get("plan") if hasattr(session, "metadata") else None
+        log.info(
+            f"Checkout session expired for org {org_id} (intended plan: {plan}). "
+            f"Org remains on developer plan."
+        )
+
     async def _handle_payment_intent_succeeded(
         self,
         db: AsyncSession,
@@ -807,6 +853,21 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
                 return
 
             organization_id = UUID(org_id_str)
+
+            # Layer 3: Idempotency — skip if this payment intent was already finalized
+            billing_check = await self._billing_repo.get_by_org_id(
+                db, organization_id=organization_id
+            )
+            if (
+                billing_check
+                and billing_check.has_yearly_prepay
+                and billing_check.yearly_prepay_payment_intent_id == str(payment_intent_id)
+            ):
+                log.info(
+                    f"Yearly prepay already finalized for org {organization_id} "
+                    f"(payment_intent {payment_intent_id}), skipping"
+                )
+                return
 
             # Credit customer's balance by the captured amount
             billing = await self._billing_repo.get_by_org_id(db, organization_id=organization_id)

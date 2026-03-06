@@ -20,6 +20,7 @@ from airweave.domains.billing.fakes.operations import FakeBillingOperations
 from airweave.domains.billing.fakes.repository import (
     FakeBillingPeriodRepository,
     FakeOrganizationBillingRepository,
+    FakeWebhookEventRepository,
 )
 from airweave.domains.billing.service import BillingService
 from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
@@ -60,9 +61,7 @@ def _make_ctx(
     )
 
 
-def _make_billing_model(
-    org_id: UUID = DEFAULT_ORG_ID, **overrides: Any
-) -> OrganizationBilling:
+def _make_billing_model(org_id: UUID = DEFAULT_ORG_ID, **overrides: Any) -> OrganizationBilling:
     """Return an OrganizationBilling ORM model with sensible defaults."""
     now = datetime.now(timezone.utc)
     defaults = dict(
@@ -98,9 +97,7 @@ def _make_billing_model(
     return OrganizationBilling(**defaults)
 
 
-def _make_period_model(
-    org_id: UUID = DEFAULT_ORG_ID, **overrides: Any
-) -> BillingPeriod:
+def _make_period_model(org_id: UUID = DEFAULT_ORG_ID, **overrides: Any) -> BillingPeriod:
     """Return a BillingPeriod ORM model with sensible defaults."""
     now = datetime.now(timezone.utc)
     defaults = dict(
@@ -177,6 +174,7 @@ def _make_webhook_processor(
     period_repo: Optional[FakeBillingPeriodRepository] = None,
     billing_ops: Optional[FakeBillingOperations] = None,
     org_repo: Optional[FakeOrganizationRepository] = None,
+    webhook_event_repo: Optional[FakeWebhookEventRepository] = None,
 ) -> tuple[
     BillingWebhookProcessor,
     FakePaymentGateway,
@@ -184,6 +182,7 @@ def _make_webhook_processor(
     FakeBillingPeriodRepository,
     FakeBillingOperations,
     FakeOrganizationRepository,
+    FakeWebhookEventRepository,
 ]:
     """Build a BillingWebhookProcessor wired to fakes. Returns (processor, *fakes)."""
     gw = payment_gateway or FakePaymentGateway()
@@ -191,14 +190,16 @@ def _make_webhook_processor(
     pr = period_repo or FakeBillingPeriodRepository()
     bo = billing_ops or FakeBillingOperations()
     org = org_repo or FakeOrganizationRepository()
+    wer = webhook_event_repo or FakeWebhookEventRepository()
     proc = BillingWebhookProcessor(
         payment_gateway=gw,
         billing_repo=br,
         period_repo=pr,
         billing_ops=bo,
         org_repo=org,
+        webhook_event_repo=wer,
     )
-    return proc, gw, br, pr, bo, org
+    return proc, gw, br, pr, bo, org, wer
 
 
 def _make_stripe_event(

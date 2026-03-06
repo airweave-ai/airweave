@@ -7,12 +7,10 @@ from fastapi import HTTPException
 from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import airweave.core.container as _container_module
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
-from airweave.core.container import (
-    container as app_container,
-)  # [code blue] todo: remove container import
 from airweave.core.protocols.pubsub import PubSub
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.destinations._base import BaseDestination
@@ -867,15 +865,21 @@ class SearchFactory:
         if not getattr(source_class, "federated_search", False):
             return None
 
-        # From here, source IS federated - any error should fail the search
+        if not source_connection.connection_id:
+            ctx.logger.warning(
+                f"Skipping federated source {source_connection.short_name} "
+                f"(id: {source_connection.id}): no connection_id"
+            )
+            return None
+
         ctx.logger.info(
             f"Found federated source: {source_connection.short_name} (id: {source_connection.id})"
         )
 
         try:
-            if app_container is None:
+            if _container_module.container is None:
                 raise RuntimeError("Container not initialized")
-            source_instance = await app_container.source_lifecycle_service.create(
+            source_instance = await _container_module.container.source_lifecycle_service.create(
                 db=db,
                 source_connection_id=source_connection.id,
                 ctx=ctx,

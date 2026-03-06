@@ -1,6 +1,7 @@
 """Entity definition registry — in-memory registry built once at startup."""
 
 import re
+from typing import Type
 
 from airweave.core.logging import logger
 from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
@@ -15,6 +16,46 @@ registry_logger = logger.with_prefix("EntityDefinitionRegistry: ").with_context(
 def _to_snake_case(name: str) -> str:
     """Convert PascalCase class name to snake_case (e.g. AsanaTaskEntity -> asana_task_entity)."""
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name).lower()
+
+
+def _get_entity_schema_with_direct_fields_only(cls: Type) -> dict:
+    """Get the JSON schema for an entity class including only direct fields and breadcrumbs.
+
+    Filters the full Pydantic model_json_schema() to only include fields that
+    are directly defined on this class (not inherited), plus always-include fields,
+    minus system/internal fields.
+    """
+    full_schema = cls.model_json_schema()
+    direct_annotations = getattr(cls, "__annotations__", {})
+
+    always_include = {"breadcrumbs"}
+    always_exclude = {
+        "airweave_system_metadata",
+        "textual_representation",
+        "entity_id",
+    }
+
+    filtered_schema = {
+        "type": "object",
+        "title": full_schema.get("title", cls.__name__),
+        "description": full_schema.get("description", ""),
+        "properties": {},
+        "required": [],
+    }
+
+    if "properties" in full_schema:
+        for field_name, field_schema in full_schema["properties"].items():
+            if field_name in always_exclude:
+                continue
+            if field_name in direct_annotations or field_name in always_include:
+                filtered_schema["properties"][field_name] = field_schema
+                if "required" in full_schema and field_name in full_schema["required"]:
+                    filtered_schema["required"].append(field_name)
+
+    if "$defs" in full_schema:
+        filtered_schema["$defs"] = full_schema["$defs"]
+
+    return filtered_schema
 
 
 class EntityDefinitionRegistry(EntityDefinitionRegistryProtocol):
@@ -76,6 +117,8 @@ class EntityDefinitionRegistry(EntityDefinitionRegistryProtocol):
                     class_name=class_name,
                     entity_class_ref=entity_cls,
                     module_name=module_name,
+                    entity_type="json",
+                    entity_schema=_get_entity_schema_with_direct_fields_only(entity_cls),
                 )
 
                 self._entries[short_name] = entry

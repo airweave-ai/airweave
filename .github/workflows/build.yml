@@ -136,6 +136,7 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      artifact-metadata: write
       security-events: write
 
     steps:
@@ -221,3 +222,25 @@ jobs:
           name: sbom-${{ matrix.component }}
           path: sbom-${{ matrix.component }}.json
           retention-days: 90
+
+  # Package Vespa application and attach to the GitHub Release
+  package-vespa:
+    needs: scan-and-attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Package Vespa application
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp -r vespa/app vespa/build
+          sed -i "s/{{VERSION}}/${VERSION}/g" vespa/build/services.xml
+          cd vespa/build && zip -r ../../vespa-app.zip . -x ".*" "*/.*"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          files: vespa-app.zip
