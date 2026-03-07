@@ -1,8 +1,6 @@
 """Sync execution service — runs a sync via SyncFactory + SyncOrchestrator.
 
-Called exclusively from RunSyncActivity (Temporal worker). All other sync
-management (create, schedule, delete, list jobs) has moved to the domain
-layer (domains/syncs/).
+Called exclusively from RunSyncActivity (Temporal worker).
 """
 
 from typing import Optional
@@ -11,18 +9,22 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.shared_models import SyncJobStatus
-from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.syncs.protocols import SyncJobServiceProtocol, SyncServiceProtocol
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.factory import SyncFactory
 
 
-class SyncService:
+class SyncService(SyncServiceProtocol):
     """Runs a sync via SyncFactory + SyncOrchestrator.
 
     Stateless — the only production caller is RunSyncActivity.
     """
+
+    def __init__(self, sync_job_service: SyncJobServiceProtocol) -> None:
+        """Initialize with injected sync job service."""
+        self._sync_job_service = sync_job_service
 
     async def run(
         self,
@@ -71,7 +73,7 @@ class SyncService:
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")
-            await sync_job_service.update_status(
+            await self._sync_job_service.update_status(
                 sync_job_id=sync_job.id,
                 status=SyncJobStatus.FAILED,
                 ctx=ctx,
@@ -81,6 +83,3 @@ class SyncService:
             raise e
 
         return await orchestrator.run()
-
-
-sync_service = SyncService()

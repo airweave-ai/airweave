@@ -90,6 +90,7 @@ from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
+from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
@@ -447,6 +448,7 @@ def create_container(settings: Settings) -> Container:
         payment_gateway=billing_services["payment_gateway"],
         sync_record_service=sync_deps["sync_record_service"],
         sync_job_service=sync_deps["sync_job_service"],
+        sync_service=sync_deps["sync_service"],
         sync_lifecycle=sync_deps["sync_lifecycle"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
@@ -825,6 +827,7 @@ def _create_sync_services(
     entity_count_repo = EntityCountRepository()
 
     sync_job_service = SyncJobService(sync_job_repo=sync_job_repo)
+    sync_service = SyncService(sync_job_service=sync_job_service)
     temporal_workflow_service = TemporalWorkflowService()
 
     sync_record_service = SyncRecordService(
@@ -866,6 +869,7 @@ def _create_sync_services(
     return {
         "sync_record_service": sync_record_service,
         "sync_job_service": sync_job_service,
+        "sync_service": sync_service,
         "sync_lifecycle": sync_lifecycle,
         "temporal_workflow_service": temporal_workflow_service,
         "temporal_schedule_service": temporal_schedule_service,

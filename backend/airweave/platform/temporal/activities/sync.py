@@ -27,7 +27,7 @@ from airweave.core.context import BaseContext
 from airweave.core.protocols import EventBus
 from airweave.core.redis_client import redis_client
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
-from airweave.domains.syncs.protocols import SyncJobServiceProtocol
+from airweave.domains.syncs.protocols import SyncJobServiceProtocol, SyncServiceProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 
 # =============================================================================
@@ -41,6 +41,7 @@ class RunSyncActivity:
 
     Dependencies:
         event_bus: Publish sync lifecycle events (RUNNING, COMPLETED, FAILED, CANCELLED)
+        sync_service: Build orchestrator and run sync
         sync_job_service: Update sync job status
 
     Inputs:
@@ -54,6 +55,7 @@ class RunSyncActivity:
     event_bus: EventBus
     dense_embedder: DenseEmbedderProtocol
     sparse_embedder: SparseEmbedderProtocol
+    sync_service: SyncServiceProtocol
     sync_job_service: SyncJobServiceProtocol
 
     @activity.defn(name="run_sync_activity")
@@ -396,11 +398,9 @@ class RunSyncActivity:
         """Run the actual sync service."""
         from airweave import crud
         from airweave.core.exceptions import NotFoundException
-        from airweave.core.sync_service import sync_service
         from airweave.db.session import get_db_context
         from airweave.platform.sync.config import SyncConfig
 
-        # Refetch sync_job from DB to get sync_config
         execution_config = None
         try:
             async with get_db_context() as db:
@@ -414,7 +414,7 @@ class RunSyncActivity:
             ctx.logger.warning(f"Failed to load execution config from DB: {e}")
 
         try:
-            return await sync_service.run(
+            return await self.sync_service.run(
                 sync=sync,
                 sync_job=sync_job,
                 collection=collection,

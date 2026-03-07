@@ -1,7 +1,9 @@
 """Protocols for the syncs domain."""
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import List, Optional, Protocol, Tuple
+from typing import TYPE_CHECKING, List, Optional, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +21,10 @@ from airweave.platform.sync.pipeline.entity_tracker import SyncStats
 from airweave.schemas.source_connection import ScheduleConfig, SourceConnectionJob
 from airweave.schemas.sync import SyncCreate, SyncUpdate
 from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
+
+if TYPE_CHECKING:
+    from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+    from airweave.platform.sync.config import SyncConfig
 
 
 class SyncJobRepositoryProtocol(Protocol):
@@ -164,6 +170,26 @@ class SyncJobServiceProtocol(Protocol):
         failed_at: Optional[datetime] = None,
     ) -> None:
         """Update sync job status with provided details."""
+        ...
+
+
+class SyncServiceProtocol(Protocol):
+    """Sync execution: build orchestrator and run."""
+
+    async def run(
+        self,
+        sync: schemas.Sync,
+        sync_job: schemas.SyncJob,
+        collection: schemas.CollectionRecord,
+        source_connection: schemas.Connection,
+        ctx: ApiContext,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
+        access_token: Optional[str] = None,
+        force_full_sync: bool = False,
+        execution_config: Optional[SyncConfig] = None,
+    ) -> schemas.Sync:
+        """Run a sync via SyncFactory + SyncOrchestrator."""
         ...
 
 
