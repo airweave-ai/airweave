@@ -336,6 +336,12 @@ from .zoho_crm import (
     ZohoCRMQuoteEntity,
     ZohoCRMSalesOrderEntity,
 )
+from .zoom import (
+    ZoomMeetingEntity,
+    ZoomMeetingParticipantEntity,
+    ZoomRecordingEntity,
+    ZoomTranscriptEntity,
+)
 
 ENTITIES_BY_SOURCE: dict[str, list[type]] = {
     "apollo": [
@@ -660,6 +666,12 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
     ],
     "powerpoint": [
         PowerPointPresentationEntity,
+    ],
+    "zoom": [
+        ZoomMeetingEntity,
+        ZoomMeetingParticipantEntity,
+        ZoomRecordingEntity,
+        ZoomTranscriptEntity,
     ],
     "zendesk": [
         ZendeskAttachmentEntity,

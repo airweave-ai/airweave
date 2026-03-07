@@ -359,7 +359,18 @@ integrations:
     backend_url_template: true
 
   coda:
-    # Coda API v1 uses Personal API Token (DIRECT auth). OAuth via Packs can be added later.
+
+  zoom:
+    oauth_type: "with_refresh"
+    url: "https://zoom.us/oauth/authorize"
+    backend_url: "https://zoom.us/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "placeholder_client_id"
+    client_secret: "placeholder_client_secret"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "header"
+    scope: "user:read meeting:read:admin meeting:delete cloud_recording:read:admin"
+
 
   clickup:
     oauth_type: "access_only"
