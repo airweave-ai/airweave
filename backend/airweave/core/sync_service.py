@@ -76,6 +76,7 @@ class SyncService:
 
         # Schedule in Temporal if cron schedule provided (unless skipped)
         if sync_in.cron_schedule and not skip_temporal_schedule:
+            # [code blue] todo: inject via constructor once SyncService is refactored
             from airweave.core import container as container_mod
 
             await container_mod.container.temporal_schedule_service.create_or_update_schedule(
@@ -306,6 +307,7 @@ class SyncService:
             )
 
             # Update Temporal schedule
+            # [code blue] todo: inject via constructor once SyncService is refactored
             from airweave.core import container as container_mod
 
             schedule_svc = container_mod.container.temporal_schedule_service
@@ -342,6 +344,7 @@ class SyncService:
             ctx: API context
         """
         # Clean up Temporal schedules
+        # [code blue] todo: inject via constructor once SyncService is refactored
         from airweave.core import container as container_mod
 
         await container_mod.container.temporal_schedule_service.delete_all_schedules_for_sync(

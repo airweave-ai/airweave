@@ -153,6 +153,7 @@ def delete_temporal_schedules_after_sync_delete(mapper, connection, target):
         ]
 
         async def _cleanup():
+            # [code blue] todo: replace ORM listener with EventBus subscriber
             from airweave.core import container as container_mod
 
             schedule_svc = container_mod.container.temporal_schedule_service

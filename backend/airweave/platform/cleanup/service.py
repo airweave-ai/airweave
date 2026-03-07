@@ -89,6 +89,7 @@ class CleanupService:
 
     async def _cleanup_schedules(self, sync_id: UUID, ctx: "ApiContext") -> None:
         """Delete all Temporal schedules for a sync."""
+        # [code blue] todo: inject TemporalScheduleServiceProtocol via constructor
         from airweave.core import container as container_mod
 
         schedule_svc = container_mod.container.temporal_schedule_service
