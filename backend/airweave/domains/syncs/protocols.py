@@ -1,9 +1,7 @@
 """Protocols for the syncs domain."""
 
-from __future__ import annotations
-
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional, Protocol, Tuple
+from typing import List, Optional, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,19 +10,17 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.syncs.types import SyncProvisionResult
 from airweave.models.sync import Sync
 from airweave.models.sync_cursor import SyncCursor
 from airweave.models.sync_job import SyncJob
+from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.pipeline.entity_tracker import SyncStats
 from airweave.schemas.source_connection import ScheduleConfig, SourceConnectionJob
 from airweave.schemas.sync import SyncCreate, SyncUpdate
 from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
-
-if TYPE_CHECKING:
-    from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
-    from airweave.platform.sync.config import SyncConfig
 
 
 class SyncJobRepositoryProtocol(Protocol):
