@@ -42,6 +42,7 @@ from airweave.domains.billing.repository import (
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.organizations.logic import generate_org_name
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
+from airweave.domains.syncs.protocols import SyncJobServiceProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.domains.usage.repository import UsageRepository
 from airweave.models.organization import Organization
@@ -1696,6 +1697,7 @@ async def admin_cancel_sync_job(
     temporal_workflow_service: TemporalWorkflowServiceProtocol = Inject(
         TemporalWorkflowServiceProtocol
     ),
+    sync_job_service: SyncJobServiceProtocol = Inject(SyncJobServiceProtocol),
 ) -> schemas.SyncJob:
     """Admin-only: Cancel any sync job regardless of organization.
 
@@ -1707,6 +1709,7 @@ async def admin_cancel_sync_job(
         db: Database session
         ctx: API context
         temporal_workflow_service: Injected Temporal workflow service
+        sync_job_service: Injected sync job service
 
     Returns:
         The updated sync job
@@ -1718,7 +1721,6 @@ async def admin_cancel_sync_job(
 
     from airweave.core.datetime_utils import utc_now_naive
     from airweave.core.shared_models import SyncJobStatus
-    from airweave.core.sync_job_service import sync_job_service
     from airweave.models.sync_job import SyncJob
 
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
@@ -1794,6 +1796,7 @@ async def admin_cancel_sync_by_id(
     temporal_workflow_service: TemporalWorkflowServiceProtocol = Inject(
         TemporalWorkflowServiceProtocol
     ),
+    sync_job_service: SyncJobServiceProtocol = Inject(SyncJobServiceProtocol),
 ) -> dict:
     """Admin-only: Cancel all pending/running jobs for a sync.
 
@@ -1802,6 +1805,7 @@ async def admin_cancel_sync_by_id(
         db: Database session
         ctx: API context
         temporal_workflow_service: Injected Temporal workflow service
+        sync_job_service: Injected sync job service
 
     Returns:
         Dict with cancelled job IDs and results
@@ -1813,7 +1817,6 @@ async def admin_cancel_sync_by_id(
 
     from airweave.core.datetime_utils import utc_now_naive
     from airweave.core.shared_models import SyncJobStatus
-    from airweave.core.sync_job_service import sync_job_service
     from airweave.models.sync import Sync
     from airweave.models.sync_job import SyncJob
 
