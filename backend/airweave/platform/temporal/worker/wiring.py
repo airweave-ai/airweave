@@ -32,6 +32,7 @@ def create_activities() -> list:
     event_bus = container.event_bus
     dense_embedder = container.dense_embedder
     sparse_embedder = container.sparse_embedder
+    email_service = container.email_service
     sync_service = container.sync_service
     sync_job_service = container.sync_job_service
     temporal_workflow_service = container.temporal_workflow_service
@@ -63,7 +64,9 @@ def create_activities() -> list:
             temporal_schedule_service=temporal_schedule_service,
         ).run,
         # Notifications
-        CheckAndNotifyExpiringKeysActivity().run,
+        CheckAndNotifyExpiringKeysActivity(
+            email_service=email_service,
+        ).run,
     ]
 
 
