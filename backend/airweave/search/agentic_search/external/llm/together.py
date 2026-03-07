@@ -1,0 +1,184 @@
+"""Together AI LLM implementation for agentic search.
+
+Uses the Together Python SDK (OpenAI-compatible) with support for Kimi K2.5
+and other models hosted on Together's inference platform.
+
+Key differences from other OpenAI-compatible providers:
+- response_format uses {"type": "json_schema", "schema": ...} (no nested
+  json_schema wrapper or strict flag)
+- Thinking mode enabled via reasoning={"enabled": True} with temperature=1.0
+- Reasoning content returned in message.reasoning field
+"""
+
+import json
+import time
+from typing import Any, TypeVar
+
+from pydantic import BaseModel
+from together import AsyncTogether
+
+from airweave.core.config import settings
+from airweave.search.agentic_search.external.llm.base import BaseLLM
+from airweave.search.agentic_search.external.llm.registry import LLMModelSpec
+from airweave.search.agentic_search.external.llm.tool_response import LLMToolCall, LLMToolResponse
+from airweave.search.agentic_search.external.tokenizer import AgenticSearchTokenizerInterface
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class TogetherLLM(BaseLLM):
+    """Together AI LLM provider for agentic search."""
+
+    def __init__(
+        self,
+        model_spec: LLMModelSpec,
+        tokenizer: AgenticSearchTokenizerInterface,
+        max_retries: int | None = None,
+    ) -> None:
+        """Initialize the Together AI LLM client with API key validation."""
+        super().__init__(model_spec, tokenizer, max_retries=max_retries)
+
+        api_key = settings.TOGETHER_API_KEY
+        if not api_key:
+            raise ValueError(
+                "TOGETHER_API_KEY not configured. Set it in your environment or .env file."
+            )
+
+        try:
+            self._client = AsyncTogether(api_key=api_key, timeout=self.DEFAULT_TIMEOUT)
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize Together client: {e}") from e
+
+        # Thinking mode: reasoning param_name="reasoning" with param_value=True
+        self._thinking_enabled = (
+            model_spec.reasoning.param_name == "reasoning"
+            and model_spec.reasoning.param_value is True
+        )
+
+        self._logger.debug(
+            f"[TogetherLLM] Initialized with model={model_spec.api_model_name}, "
+            f"context_window={model_spec.context_window}, "
+            f"max_output_tokens={model_spec.max_output_tokens}, "
+            f"thinking={'enabled' if self._thinking_enabled else 'disabled'}"
+        )
+
+    def _prepare_schema(self, schema_json: dict[str, Any]) -> dict[str, Any]:
+        return self._normalize_strict_schema(schema_json)
+
+    def _build_reasoning_kwargs(self) -> dict[str, Any]:
+        """Build reasoning kwargs for Together AI models.
+
+        Models like GLM-5, Qwen3.5, and MiniMax M2.5 think by default,
+        so we must explicitly pass reasoning={"enabled": False} to disable it.
+        """
+        if self._model_spec.reasoning.param_name == "reasoning":
+            return {"reasoning": {"enabled": bool(self._model_spec.reasoning.param_value)}}
+        return {}
+
+    async def _call_api(
+        self,
+        prompt: str,
+        schema: type[T],
+        schema_json: dict[str, Any],
+        system_prompt: str,
+    ) -> T:
+        api_start = time.monotonic()
+        response = await self._client.chat.completions.create(
+            model=self._model_spec.api_model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=1.0 if self._thinking_enabled else 0.6,
+            response_format={
+                "type": "json_schema",
+                "schema": schema_json,
+            },
+            max_tokens=self._model_spec.max_output_tokens,
+            **self._build_reasoning_kwargs(),
+        )
+        api_time = time.monotonic() - api_start
+
+        content = response.choices[0].message.content
+        if not content:
+            raise TimeoutError("Together AI returned empty response content (retryable)")
+
+        if response.usage:
+            self._logger.debug(
+                f"[TogetherLLM] API call completed in {api_time:.2f}s, "
+                f"tokens: prompt={response.usage.prompt_tokens}, "
+                f"completion={response.usage.completion_tokens}, "
+                f"total={response.usage.total_tokens}"
+            )
+
+        return self._parse_json_response(content, schema, "Together")
+
+    async def _call_api_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        system_prompt: str,
+    ) -> LLMToolResponse:
+        """Together AI tool calling (OpenAI-compatible format)."""
+        api_messages = [{"role": "system", "content": system_prompt}, *messages]
+
+        api_start = time.monotonic()
+        response = await self._client.chat.completions.create(
+            model=self._model_spec.api_model_name,
+            messages=api_messages,
+            tools=tools,
+            tool_choice="required",
+            temperature=1.0 if self._thinking_enabled else 0.6,
+            max_tokens=self._model_spec.max_output_tokens,
+            **self._build_reasoning_kwargs(),
+        )
+        api_time = time.monotonic() - api_start
+
+        choice = response.choices[0]
+        message = choice.message
+
+        text = message.content if message.content else None
+        thinking = getattr(message, "reasoning", None) or None
+
+        tool_calls: list[LLMToolCall] = []
+        if message.tool_calls:
+            for tc in message.tool_calls:
+                arguments = tc.function.arguments
+                if isinstance(arguments, str):
+                    arguments = json.loads(arguments)
+                tool_calls.append(
+                    LLMToolCall(
+                        id=tc.id,
+                        name=tc.function.name,
+                        arguments=arguments,
+                    )
+                )
+
+        stop_reason = choice.finish_reason or "stop"
+
+        usage = {}
+        if response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+            self._logger.debug(
+                f"[TogetherLLM] Tool call completed in {api_time:.2f}s, "
+                f"tokens: prompt={response.usage.prompt_tokens}, "
+                f"completion={response.usage.completion_tokens}"
+            )
+
+        return LLMToolResponse(
+            text=text,
+            thinking=thinking,
+            tool_calls=tool_calls,
+            stop_reason=stop_reason,
+            usage=usage,
+        )
+
+    async def close(self) -> None:
+        """Close the Together async client and release resources."""
+        if self._client:
+            await self._client.close()
+            self._logger.debug("[TogetherLLM] Client closed")

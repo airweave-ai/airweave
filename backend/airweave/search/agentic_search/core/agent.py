@@ -27,7 +27,7 @@ from airweave.search.agentic_search.core.messages import (
     load_system_prompt,
 )
 from airweave.search.agentic_search.emitter import AgenticSearchEmitter
-from airweave.search.agentic_search.external.llm.tool_response import LLMToolResponse
+from airweave.search.agentic_search.external.llm.tool_response import LLMToolCall, LLMToolResponse
 from airweave.search.agentic_search.schemas import (
     AgenticSearchRequest,
     AgenticSearchResponse,
@@ -40,6 +40,7 @@ from airweave.search.agentic_search.schemas.events import (
 from airweave.search.agentic_search.schemas.state import AgenticSearchState
 from airweave.search.agentic_search.services import AgenticSearchServices
 from airweave.search.agentic_search.tools import (
+    FINISH_TOOL,
     MARK_AS_RELEVANT_TOOL,
     READ_PREVIOUS_RESULTS_TOOL,
     SEARCH_TOOL,
@@ -107,7 +108,7 @@ class AgenticSearchAgent:
                 user_filter=request.filter,
             )
         )
-        tools = [SEARCH_TOOL, READ_PREVIOUS_RESULTS_TOOL, MARK_AS_RELEVANT_TOOL]
+        tools = [SEARCH_TOOL, READ_PREVIOUS_RESULTS_TOOL, MARK_AS_RELEVANT_TOOL, FINISH_TOOL]
 
         self.ctx.logger.debug(
             f"[AgenticSearch] Starting agent loop for query: {request.query!r} "
@@ -155,32 +156,21 @@ class AgenticSearchAgent:
                 )
                 break
 
-            # Execute each tool call and append result message
-            has_new_search = False
-            new_search_tool_call_ids: set[str] = set()
-            for tc in response.tool_calls:
-                try:
-                    content = await handle_tool_call(
-                        tc=tc,
-                        state=state,
-                        services=self.services,
-                        emitter=self.emitter,
-                        collection_id=self._collection_id,
-                        user_filter=self._user_filter,
-                        context_window_tokens=self._context_window_tokens,
-                    )
-                except Exception as e:
-                    content = f"Tool call failed: {e}"
+            # Execute all tool calls
+            has_finish, new_search_tool_call_ids = await self._execute_tool_calls(
+                response.tool_calls, state
+            )
 
-                msg = build_tool_result_message(tc.id, content)
-                msg["_tool_name"] = tc.name
-                state.messages.append(msg)
-                if tc.name == "search":
-                    has_new_search = True
-                    new_search_tool_call_ids.add(tc.id)
+            # Agent called finish — break after processing all tool calls
+            if has_finish:
+                self.ctx.logger.debug(
+                    f"[AgenticSearch] Agent called finish after {state.iteration} iterations, "
+                    f"{len(state.marked_entity_ids)} results marked"
+                )
+                break
 
             # Summarize old search results only when new ones just arrived
-            if has_new_search:
+            if new_search_tool_call_ids:
                 state.messages = summarize_old_search_results(
                     state.messages,
                     state.results_by_tool_call_id,
@@ -209,6 +199,46 @@ class AgenticSearchAgent:
         resp = AgenticSearchResponse(results=results)
         await self.emitter.emit(AgenticSearchDoneEvent(response=resp))
         return resp
+
+    # ── Tool execution ───────────────────────────────────────────────
+
+    async def _execute_tool_calls(
+        self,
+        tool_calls: list[LLMToolCall],
+        state: AgenticSearchState,
+    ) -> tuple[bool, set[str]]:
+        """Execute tool calls and append result messages to state.
+
+        Returns (has_finish, new_search_tool_call_ids).
+        """
+        has_finish = False
+        new_search_tool_call_ids: set[str] = set()
+
+        for tc in tool_calls:
+            if tc.name == "finish":
+                has_finish = True
+
+            try:
+                content = await handle_tool_call(
+                    tc=tc,
+                    state=state,
+                    services=self.services,
+                    emitter=self.emitter,
+                    collection_id=self._collection_id,
+                    user_filter=self._user_filter,
+                    context_window_tokens=self._context_window_tokens,
+                )
+            except Exception as e:
+                content = f"Tool call failed: {e}"
+
+            msg = build_tool_result_message(tc.id, content)
+            msg["_tool_name"] = tc.name
+            state.messages.append(msg)
+
+            if tc.name == "search":
+                new_search_tool_call_ids.add(tc.id)
+
+        return has_finish, new_search_tool_call_ids
 
     # ── Reranking ─────────────────────────────────────────────────────
 

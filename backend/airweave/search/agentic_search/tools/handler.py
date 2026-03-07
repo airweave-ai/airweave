@@ -38,4 +38,6 @@ async def handle_tool_call(
         return await handle_read_previous_results(tc=tc, state=state)
     if tc.name == "mark_as_relevant":
         return await handle_mark_as_relevant(tc=tc, state=state)
+    if tc.name == "finish":
+        return "Finishing search."
     raise ValueError(f"Unknown tool: {tc.name}")

@@ -21,6 +21,7 @@ class LLMProvider(str, Enum):
     CEREBRAS = "cerebras"
     GROQ = "groq"
     ANTHROPIC = "anthropic"
+    TOGETHER = "together"
 
 
 class LLMModel(str, Enum):
@@ -33,8 +34,12 @@ class LLMModel(str, Enum):
 
     GPT_OSS_120B = "gpt-oss-120b"
     ZAI_GLM_4_7 = "zai-glm-4.7"
+    ZAI_GLM_5 = "zai-glm-5"
     CLAUDE_SONNET_4_5 = "claude-sonnet-4.5"
     CLAUDE_SONNET_4_6 = "claude-sonnet-4.6"
+    KIMI_K2_5 = "kimi-k2.5"
+    QWEN_3_5 = "qwen-3.5"
+    MINIMAX_M2_5 = "minimax-m2.5"
 
 
 # --- Tokenizer ---
@@ -79,7 +84,11 @@ class AgenticSearchConfig:
     # provider. For example, to use GPT_OSS_120B on Cerebras instead of GLM:
     #   (LLMProvider.CEREBRAS, LLMModel.GPT_OSS_120B),
     LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = [
-        (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_6),
+        # (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_6),
+        (LLMProvider.TOGETHER, LLMModel.ZAI_GLM_5),
+        # (LLMProvider.TOGETHER, LLMModel.QWEN_3_5),
+        # (LLMProvider.TOGETHER, LLMModel.MINIMAX_M2_5),
+        # (LLMProvider.TOGETHER, LLMModel.KIMI_K2_5),
     ]
 
     # Tokenizer

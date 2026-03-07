@@ -151,6 +151,56 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             reasoning=ReasoningConfig(param_name="_noop", param_value=True),
         ),
     },
+    LLMProvider.TOGETHER: {
+        LLMModel.KIMI_K2_5: LLMModelSpec(
+            api_model_name="moonshotai/Kimi-K2.5",
+            context_window=256_000,
+            max_output_tokens=64_000,
+            # Kimi K2.5 uses a custom tokenizer, but tiktoken o200k_harmony
+            # is a reasonable approximation for token budget estimation.
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            # Together AI Build Tier 3 ($100): 3,000 RPM, 2M TPM for LLMs.
+            rate_limit_rpm=3_000,
+            rate_limit_tpm=2_000_000,
+            # Kimi K2.5 thinking mode: reasoning={"enabled": True} with temp=1.0.
+            # The provider passes this as a kwarg to the API call.
+            reasoning=ReasoningConfig(param_name="reasoning", param_value=True),
+        ),
+        LLMModel.ZAI_GLM_5: LLMModelSpec(
+            api_model_name="zai-org/GLM-5",
+            context_window=200_000,
+            max_output_tokens=128_000,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=3_000,
+            rate_limit_tpm=2_000_000,
+            # GLM-5 thinks by default. Disable with reasoning={"enabled": False}.
+            reasoning=ReasoningConfig(param_name="reasoning", param_value=False),
+        ),
+        LLMModel.QWEN_3_5: LLMModelSpec(
+            api_model_name="Qwen/Qwen3.5-397B-A17B",
+            context_window=256_000,
+            max_output_tokens=81_920,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=3_000,
+            rate_limit_tpm=2_000_000,
+            # Qwen3.5 thinks by default. Disable with reasoning={"enabled": False}.
+            reasoning=ReasoningConfig(param_name="reasoning", param_value=False),
+        ),
+        LLMModel.MINIMAX_M2_5: LLMModelSpec(
+            api_model_name="MiniMaxAI/MiniMax-M2.5",
+            context_window=192_000,
+            max_output_tokens=64_000,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=3_000,
+            rate_limit_tpm=2_000_000,
+            # MiniMax M2.5 thinks by default. Disable with reasoning={"enabled": False}.
+            reasoning=ReasoningConfig(param_name="reasoning", param_value=False),
+        ),
+    },
 }
 
 
@@ -160,6 +210,7 @@ PROVIDER_API_KEY_SETTINGS: dict[LLMProvider, str] = {
     LLMProvider.CEREBRAS: "CEREBRAS_API_KEY",
     LLMProvider.GROQ: "GROQ_API_KEY",
     LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
+    LLMProvider.TOGETHER: "TOGETHER_API_KEY",
 }
 
 

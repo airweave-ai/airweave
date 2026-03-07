@@ -269,6 +269,11 @@ class AgenticSearchServices:
 
             return AnthropicLLM(model_spec=model_spec, tokenizer=tokenizer)
 
+        if provider == LLMProvider.TOGETHER:
+            from airweave.search.agentic_search.external.llm.together import TogetherLLM
+
+            return TogetherLLM(model_spec=model_spec, tokenizer=tokenizer)
+
         raise ValueError(f"Unknown LLM provider: {provider}")
 
     @staticmethod
