@@ -19,16 +19,21 @@ from airweave.search.agentic_search.schemas.search_result import AgenticSearchRe
 def summarize_old_search_results(
     messages: list[dict],
     results_by_tool_call_id: dict[str, list[AgenticSearchResult]],
+    skip_tool_call_ids: set[str] | None = None,
 ) -> list[dict]:
     """Replace search tool result messages with compact metadata summaries.
 
     Only summarizes tool results tagged with _tool_name="search".
+    Skips tool call IDs in skip_tool_call_ids (the current iteration's results).
     Other tool results (e.g. read_previous_results) are kept intact.
     """
+    skip = skip_tool_call_ids or set()
     search_indices = [
         i
         for i, m in enumerate(messages)
-        if m.get("role") == "tool" and m.get("_tool_name") == "search"
+        if m.get("role") == "tool"
+        and m.get("_tool_name") == "search"
+        and m.get("tool_call_id", "") not in skip
     ]
     if not search_indices:
         return messages

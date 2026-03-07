@@ -11,11 +11,15 @@ The conversation IS the history — no separate state/history objects needed.
 """
 
 from airweave.api.context import ApiContext
-from airweave.core.logging import logger
 from airweave.search.agentic_search.builders import (
     AgenticSearchCollectionMetadataBuilder,
 )
 from airweave.search.agentic_search.core.context_manager import summarize_old_search_results
+from airweave.search.agentic_search.core.debug import (
+    dump_conversation,
+    log_agent_response,
+    log_token_breakdown,
+)
 from airweave.search.agentic_search.core.messages import (
     build_assistant_message,
     build_initial_user_message,
@@ -105,7 +109,29 @@ class AgenticSearchAgent:
         )
         tools = [SEARCH_TOOL, READ_PREVIOUS_RESULTS_TOOL, MARK_AS_RELEVANT_TOOL]
 
+        self.ctx.logger.debug(
+            f"[AgenticSearch] Starting agent loop for query: {request.query!r} "
+            f"on collection: {collection_readable_id}"
+        )
+
         while True:
+            # Debug: dump conversation and log token breakdown
+            dump_conversation(
+                state.iteration,
+                system_prompt,
+                state.messages,
+                tools,
+                self.ctx.logger,
+            )
+            log_token_breakdown(
+                state.iteration,
+                system_prompt,
+                state.messages,
+                tools,
+                self.services.tokenizer,
+                self.ctx.logger,
+            )
+
             # Call LLM with tools
             response = await self.services.llm.create_with_tools(
                 messages=state.messages,
@@ -113,22 +139,25 @@ class AgenticSearchAgent:
                 system_prompt=system_prompt,
             )
 
+            # Debug: log thinking + tool calls (search plans)
+            log_agent_response(state.iteration, response, self.ctx.logger)
+
             # Emit thinking event (extended thinking + regular text)
             await self._emit_thinking(response, state)
-
-            # Summarize search results the LLM just saw (keep context lean)
-            state.messages = summarize_old_search_results(
-                state.messages,
-                state.results_by_tool_call_id,
-            )
 
             # Append assistant message (reasoning + tool calls)
             state.messages.append(build_assistant_message(response.text, response.tool_calls))
 
             if not response.tool_calls:
+                self.ctx.logger.debug(
+                    f"[AgenticSearch] Agent stopped after {state.iteration} iterations, "
+                    f"{len(state.marked_entity_ids)} results marked"
+                )
                 break
 
             # Execute each tool call and append result message
+            has_new_search = False
+            new_search_tool_call_ids: set[str] = set()
             for tc in response.tool_calls:
                 try:
                     content = await handle_tool_call(
@@ -146,6 +175,17 @@ class AgenticSearchAgent:
                 msg = build_tool_result_message(tc.id, content)
                 msg["_tool_name"] = tc.name
                 state.messages.append(msg)
+                if tc.name == "search":
+                    has_new_search = True
+                    new_search_tool_call_ids.add(tc.id)
+
+            # Summarize old search results only when new ones just arrived
+            if has_new_search:
+                state.messages = summarize_old_search_results(
+                    state.messages,
+                    state.results_by_tool_call_id,
+                    skip_tool_call_ids=new_search_tool_call_ids,
+                )
 
             state.iteration += 1
 
@@ -154,12 +194,18 @@ class AgenticSearchAgent:
 
         # Rerank using Cohere (if available and multiple results)
         if self.services.reranker and len(results) > 1:
+            self.ctx.logger.debug(f"[AgenticSearch] Reranking {len(results)} results with Cohere")
             results = await self._rerank_results(results, request.query)
+        elif not self.services.reranker:
+            self.ctx.logger.debug("[AgenticSearch] Reranker not configured, skipping")
+        else:
+            self.ctx.logger.debug(f"[AgenticSearch] Skipping rerank ({len(results)} result(s))")
 
         # Truncate results to user-requested limit
         if request.limit is not None and len(results) > request.limit:
             results = results[: request.limit]
 
+        self.ctx.logger.debug(f"[AgenticSearch] Done — returning {len(results)} results")
         resp = AgenticSearchResponse(results=results)
         await self.emitter.emit(AgenticSearchDoneEvent(response=resp))
         return resp
@@ -195,7 +241,9 @@ class AgenticSearchAgent:
                 )
             return reordered
         except Exception:
-            logger.warning("Reranking failed, returning results in original order", exc_info=True)
+            self.ctx.logger.warning(
+                "Reranking failed, returning results in original order", exc_info=True
+            )
             return results
 
     # ── Event emission ────────────────────────────────────────────────

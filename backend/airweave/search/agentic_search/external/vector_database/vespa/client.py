@@ -141,8 +141,9 @@ class VespaVectorDB:
         self._logger.debug(
             f"[VespaVectorDB] Compiled query: YQL={len(yql)} chars, params={len(params)} keys"
         )
-        self._logger.debug(f"[VespaVectorDB] YQL:\n{yql}")
-        self._logger.debug(f"[VespaVectorDB] Params (no embeddings): {display_params}")
+        # Full YQL + params available in conversation_dump.json via debug tooling
+        # self._logger.debug(f"[VespaVectorDB] YQL:\n{yql}")
+        # self._logger.debug(f"[VespaVectorDB] Params (no embeddings): {display_params}")
 
         return AgenticSearchCompiledQuery(
             vector_db="vespa",
@@ -416,8 +417,8 @@ class VespaVectorDB:
             relevance = hit.get("relevance", 0.0)
 
             # Log debug info for first few hits
-            if i < 5:
-                self._log_hit_debug(i, fields, relevance)
+            # if i < 5:
+            # self._log_hit_debug(i, fields, relevance)
 
             # Validate required fields
             entity_id = fields.get("entity_id")
