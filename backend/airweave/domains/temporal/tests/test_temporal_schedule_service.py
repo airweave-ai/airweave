@@ -134,7 +134,9 @@ class CheckExistsCase:
 CHECK_EXISTS_CASES = [
     CheckExistsCase(name="exists_running"),
     CheckExistsCase(name="exists_paused", paused=True, expected_running=False),
-    CheckExistsCase(name="not_found", describe_raises=True, expected_exists=False, expected_running=False),
+    CheckExistsCase(
+        name="not_found", describe_raises=True, expected_exists=False, expected_running=False,
+    ),
 ]
 
 
@@ -257,8 +259,12 @@ class UpdateScheduleCase:
 
 UPDATE_SCHEDULE_CASES = [
     UpdateScheduleCase(name="valid_daily", cron="0 0 * * *"),
-    UpdateScheduleCase(name="valid_minute_interval", cron="*/5 * * * *", expected_sync_type="incremental"),
-    UpdateScheduleCase(name="valid_specific_minute", cron="15 * * * *", expected_sync_type="incremental"),
+    UpdateScheduleCase(
+        name="valid_minute_interval", cron="*/5 * * * *", expected_sync_type="incremental",
+    ),
+    UpdateScheduleCase(
+        name="valid_specific_minute", cron="15 * * * *", expected_sync_type="incremental",
+    ),
     UpdateScheduleCase(name="invalid_cron", cron="bad", is_valid=False),
 ]
 
@@ -351,7 +357,11 @@ async def test_gather_schedule_data(case: GatherCase):
 
     sync_repo.get = AsyncMock(return_value=_mock_sync_model())
     sc_repo.get_by_sync_id = AsyncMock(
-        return_value=_mock_source_connection(connection_id=case.connection_id) if case.sc_exists else None
+        return_value=(
+            _mock_source_connection(connection_id=case.connection_id)
+            if case.sc_exists
+            else None
+        ),
     )
     collection_repo.get_by_readable_id = AsyncMock(
         return_value=_mock_collection() if case.collection_exists else None
@@ -370,22 +380,21 @@ async def test_gather_schedule_data(case: GatherCase):
     db = AsyncMock()
     ctx = _mock_ctx()
 
+    def _mock_validate(val):
+        return MagicMock(model_dump=MagicMock(return_value=val))
+
     if case.expect_error:
         with pytest.raises(ValueError):
-            with patch("airweave.domains.temporal.schedule_service.schemas") as mock_schemas:
-                mock_schemas.Sync.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={}))
-                mock_schemas.CollectionRecord.model_validate.return_value = MagicMock(
-                    model_dump=MagicMock(return_value={})
-                )
-                mock_schemas.Connection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={}))
+            with patch("airweave.domains.temporal.schedule_service.schemas") as ms:
+                ms.Sync.model_validate.return_value = _mock_validate({})
+                ms.CollectionRecord.model_validate.return_value = _mock_validate({})
+                ms.Connection.model_validate.return_value = _mock_validate({})
                 await svc._gather_schedule_data(SYNC_ID, db, ctx)
     else:
-        with patch("airweave.domains.temporal.schedule_service.schemas") as mock_schemas:
-            mock_schemas.Sync.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "s"}))
-            mock_schemas.CollectionRecord.model_validate.return_value = MagicMock(
-                model_dump=MagicMock(return_value={"id": "c"})
-            )
-            mock_schemas.Connection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "cn"}))
+        with patch("airweave.domains.temporal.schedule_service.schemas") as ms:
+            ms.Sync.model_validate.return_value = _mock_validate({"id": "s"})
+            ms.CollectionRecord.model_validate.return_value = _mock_validate({"id": "c"})
+            ms.Connection.model_validate.return_value = _mock_validate({"id": "cn"})
             s, c, cn = await svc._gather_schedule_data(SYNC_ID, db, ctx)
             assert s == {"id": "s"}
             assert c == {"id": "c"}
@@ -393,7 +402,7 @@ async def test_gather_schedule_data(case: GatherCase):
 
 
 @pytest.mark.asyncio
-async def test_gather_schedule_data_uses_provisioning_context_when_source_connection_not_linked_yet():
+async def test_gather_schedule_data_provisioning_fallback():
     sync_repo = AsyncMock()
     sc_repo = AsyncMock()
     collection_repo = AsyncMock()
@@ -414,10 +423,13 @@ async def test_gather_schedule_data_uses_provisioning_context_when_source_connec
     db = AsyncMock()
     ctx = _mock_ctx()
 
-    with patch("airweave.domains.temporal.schedule_service.schemas") as mock_schemas:
-        mock_schemas.Sync.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "s"}))
-        mock_schemas.CollectionRecord.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "c"}))
-        mock_schemas.Connection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "cn"}))
+    def _mock_validate(val):
+        return MagicMock(model_dump=MagicMock(return_value=val))
+
+    with patch("airweave.domains.temporal.schedule_service.schemas") as ms:
+        ms.Sync.model_validate.return_value = _mock_validate({"id": "s"})
+        ms.CollectionRecord.model_validate.return_value = _mock_validate({"id": "c"})
+        ms.Connection.model_validate.return_value = _mock_validate({"id": "cn"})
         s, c, cn = await svc._gather_schedule_data(
             SYNC_ID,
             db,
