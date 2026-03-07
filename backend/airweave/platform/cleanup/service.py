@@ -89,12 +89,13 @@ class CleanupService:
 
     async def _cleanup_schedules(self, sync_id: UUID, ctx: "ApiContext") -> None:
         """Delete all Temporal schedules for a sync."""
-        from airweave.platform.temporal.schedule_service import temporal_schedule_service
+        from airweave.core import container as container_mod
 
+        schedule_svc = container_mod.container.temporal_schedule_service
         for prefix in ("sync", "minute-sync", "daily-cleanup"):
             schedule_id = f"{prefix}-{sync_id}"
             try:
-                await temporal_schedule_service.delete_schedule_handle(schedule_id)
+                await schedule_svc.delete_schedule_handle(schedule_id)
             except Exception as e:
                 ctx.logger.debug(f"Schedule {schedule_id} not deleted: {e}")
 

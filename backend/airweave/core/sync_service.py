@@ -18,7 +18,6 @@ from airweave.models.sync import Sync
 from airweave.models.sync_job import SyncJob
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.factory import SyncFactory
-from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
 
 class SyncService:
@@ -77,7 +76,9 @@ class SyncService:
 
         # Schedule in Temporal if cron schedule provided (unless skipped)
         if sync_in.cron_schedule and not skip_temporal_schedule:
-            await temporal_schedule_service.create_or_update_schedule(
+            from airweave.core import container as container_mod
+
+            await container_mod.container.temporal_schedule_service.create_or_update_schedule(
                 sync_id=sync.id,
                 cron_schedule=sync_in.cron_schedule,
                 db=db,
@@ -305,15 +306,19 @@ class SyncService:
             )
 
             # Update Temporal schedule
+            from airweave.core import container as container_mod
+
+            schedule_svc = container_mod.container.temporal_schedule_service
             if cron_schedule:
-                await temporal_schedule_service.create_or_update_schedule(
+                await schedule_svc.create_or_update_schedule(
                     sync_id=sync_id,
                     cron_schedule=cron_schedule,
                     db=uow.session,
                     ctx=ctx,
+                    uow=uow,
                 )
             else:
-                await temporal_schedule_service.delete_schedule(
+                await schedule_svc.delete_all_schedules_for_sync(
                     sync_id=sync_id,
                     db=uow.session,
                     ctx=ctx,
@@ -337,7 +342,9 @@ class SyncService:
             ctx: API context
         """
         # Clean up Temporal schedules
-        await temporal_schedule_service.delete_all_schedules_for_sync(
+        from airweave.core import container as container_mod
+
+        await container_mod.container.temporal_schedule_service.delete_all_schedules_for_sync(
             sync_id=sync_id,
             db=db,
             ctx=ctx,

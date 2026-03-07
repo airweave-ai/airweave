@@ -27,6 +27,7 @@ from airweave.core.context import BaseContext
 from airweave.core.protocols import EventBus
 from airweave.core.redis_client import redis_client
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 
 # =============================================================================
 # Run Sync Activity
@@ -735,12 +736,15 @@ class CreateSyncJobActivity:
 class CleanupStuckSyncJobsActivity:
     """Clean up sync jobs stuck in transitional states.
 
-    Dependencies: None (uses internal services)
+    Dependencies:
+        temporal_workflow_service: Cancel stuck workflows via Temporal
 
     Detects and cancels:
     - CANCELLING/PENDING jobs stuck for > 3 minutes
     - RUNNING jobs stuck for > 10 minutes with no entity updates
     """
+
+    temporal_workflow_service: "TemporalWorkflowServiceProtocol"
 
     @activity.defn(name="cleanup_stuck_sync_jobs_activity")
     async def run(self) -> None:
@@ -900,7 +904,6 @@ class CleanupStuckSyncJobsActivity:
         from airweave.core.context import BaseContext
         from airweave.core.shared_models import SyncJobStatus
         from airweave.core.sync_job_service import sync_job_service
-        from airweave.core.temporal_service import temporal_service
 
         job_id = str(job.id)
         sync_id = str(job.sync_id)
@@ -927,7 +930,9 @@ class CleanupStuckSyncJobsActivity:
         )
 
         try:
-            cancel_success = await temporal_service.cancel_sync_job_workflow(job_id, ctx)
+            cancel_success = await self.temporal_workflow_service.cancel_sync_job_workflow(
+                job_id, ctx
+            )
 
             if cancel_success:
                 logger.info(f"Successfully requested Temporal cancellation for job {job_id}")
