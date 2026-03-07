@@ -27,6 +27,7 @@ from airweave.core.context import BaseContext
 from airweave.core.protocols import EventBus
 from airweave.core.redis_client import redis_client
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.syncs.protocols import SyncJobServiceProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 
 # =============================================================================
@@ -40,6 +41,7 @@ class RunSyncActivity:
 
     Dependencies:
         event_bus: Publish sync lifecycle events (RUNNING, COMPLETED, FAILED, CANCELLED)
+        sync_job_service: Update sync job status
 
     Inputs:
         sync_dict, sync_job_dict, collection_dict, connection_dict, ctx_dict
@@ -52,6 +54,7 @@ class RunSyncActivity:
     event_bus: EventBus
     dense_embedder: DenseEmbedderProtocol
     sparse_embedder: SparseEmbedderProtocol
+    sync_job_service: SyncJobServiceProtocol
 
     @activity.defn(name="run_sync_activity")
     async def run(  # noqa: C901
@@ -446,13 +449,11 @@ class RunSyncActivity:
         """Handle activity cancellation."""
         from airweave.core.datetime_utils import utc_now_naive
         from airweave.core.shared_models import SyncJobStatus
-        from airweave.core.sync_job_service import sync_job_service
 
         ctx.logger.info(f"\n\n[ACTIVITY] Sync activity cancelled for job {sync_job.id}\n\n")
 
-        # Update job status to CANCELLED
         try:
-            await sync_job_service.update_status(
+            await self.sync_job_service.update_status(
                 sync_job_id=sync_job.id,
                 status=SyncJobStatus.CANCELLED,
                 ctx=ctx,
@@ -498,10 +499,13 @@ class RunSyncActivity:
 class MarkSyncJobCancelledActivity:
     """Mark a sync job as CANCELLED.
 
-    Dependencies: None (uses internal services)
+    Dependencies:
+        sync_job_service: Update sync job status
 
     Used when workflow cancels before activity starts.
     """
+
+    sync_job_service: SyncJobServiceProtocol
 
     @activity.defn(name="mark_sync_job_cancelled_activity")
     async def run(
@@ -522,7 +526,6 @@ class MarkSyncJobCancelledActivity:
         from airweave import schemas
         from airweave.core.context import BaseContext
         from airweave.core.shared_models import SyncJobStatus
-        from airweave.core.sync_job_service import sync_job_service
 
         organization = schemas.Organization(**ctx_dict["organization"])
 
@@ -541,7 +544,7 @@ class MarkSyncJobCancelledActivity:
         )
 
         try:
-            await sync_job_service.update_status(
+            await self.sync_job_service.update_status(
                 sync_job_id=UUID(sync_job_id),
                 status=SyncJobStatus.CANCELLED,
                 ctx=ctx,
@@ -738,6 +741,7 @@ class CleanupStuckSyncJobsActivity:
 
     Dependencies:
         temporal_workflow_service: Cancel stuck workflows via Temporal
+        sync_job_service: Update sync job status
 
     Detects and cancels:
     - CANCELLING/PENDING jobs stuck for > 3 minutes
@@ -745,6 +749,7 @@ class CleanupStuckSyncJobsActivity:
     """
 
     temporal_workflow_service: "TemporalWorkflowServiceProtocol"
+    sync_job_service: SyncJobServiceProtocol
 
     @activity.defn(name="cleanup_stuck_sync_jobs_activity")
     async def run(self) -> None:
@@ -903,7 +908,6 @@ class CleanupStuckSyncJobsActivity:
         from airweave import schemas
         from airweave.core.context import BaseContext
         from airweave.core.shared_models import SyncJobStatus
-        from airweave.core.sync_job_service import sync_job_service
 
         job_id = str(job.id)
         sync_id = str(job.sync_id)
@@ -938,7 +942,7 @@ class CleanupStuckSyncJobsActivity:
                 logger.info(f"Successfully requested Temporal cancellation for job {job_id}")
                 await asyncio.sleep(2)
 
-            await sync_job_service.update_status(
+            await self.sync_job_service.update_status(
                 sync_job_id=UUID(job_id),
                 status=SyncJobStatus.CANCELLED,
                 ctx=ctx,

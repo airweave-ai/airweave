@@ -32,6 +32,7 @@ def create_activities() -> list:
     event_bus = container.event_bus
     dense_embedder = container.dense_embedder
     sparse_embedder = container.sparse_embedder
+    sync_job_service = container.sync_job_service
     temporal_workflow_service = container.temporal_workflow_service
     temporal_schedule_service = container.temporal_schedule_service
 
@@ -42,11 +43,15 @@ def create_activities() -> list:
             event_bus=event_bus,
             dense_embedder=dense_embedder,
             sparse_embedder=sparse_embedder,
+            sync_job_service=sync_job_service,
         ).run,
         CreateSyncJobActivity(event_bus=event_bus).run,
-        MarkSyncJobCancelledActivity().run,
+        MarkSyncJobCancelledActivity(
+            sync_job_service=sync_job_service,
+        ).run,
         CleanupStuckSyncJobsActivity(
             temporal_workflow_service=temporal_workflow_service,
+            sync_job_service=sync_job_service,
         ).run,
         # Cleanup
         SelfDestructOrphanedSyncActivity(
