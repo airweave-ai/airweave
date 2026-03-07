@@ -1086,6 +1086,7 @@ async def resync_with_execution_config(
         ctx: API context
         execution_config: Optional nested SyncConfig
         tags: Optional list of tags for filtering
+        temporal_workflow_service: Injected Temporal workflow service
 
     Returns:
         The created sync job
@@ -1703,6 +1704,7 @@ async def admin_cancel_sync_job(
         job_id: The ID of the sync job to cancel
         db: Database session
         ctx: API context
+        temporal_workflow_service: Injected Temporal workflow service
 
     Returns:
         The updated sync job
@@ -1797,6 +1799,7 @@ async def admin_cancel_sync_by_id(
         sync_id: The sync ID whose jobs should be cancelled
         db: Database session
         ctx: API context
+        temporal_workflow_service: Injected Temporal workflow service
 
     Returns:
         Dict with cancelled job IDs and results
