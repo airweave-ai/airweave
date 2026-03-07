@@ -21,6 +21,7 @@ from airweave.domains.temporal.schedule_service import TemporalScheduleService
 def _rpc_error(msg: str, status: RPCStatusCode) -> RPCError:
     return RPCError(msg, status, b"")
 
+
 ORG_ID = uuid4()
 SYNC_ID = uuid4()
 SC_ID = uuid4()
@@ -135,7 +136,10 @@ CHECK_EXISTS_CASES = [
     CheckExistsCase(name="exists_running"),
     CheckExistsCase(name="exists_paused", paused=True, expected_running=False),
     CheckExistsCase(
-        name="not_found", describe_raises=True, expected_exists=False, expected_running=False,
+        name="not_found",
+        describe_raises=True,
+        expected_exists=False,
+        expected_running=False,
     ),
 ]
 
@@ -260,10 +264,14 @@ class UpdateScheduleCase:
 UPDATE_SCHEDULE_CASES = [
     UpdateScheduleCase(name="valid_daily", cron="0 0 * * *"),
     UpdateScheduleCase(
-        name="valid_minute_interval", cron="*/5 * * * *", expected_sync_type="incremental",
+        name="valid_minute_interval",
+        cron="*/5 * * * *",
+        expected_sync_type="incremental",
     ),
     UpdateScheduleCase(
-        name="valid_specific_minute", cron="15 * * * *", expected_sync_type="incremental",
+        name="valid_specific_minute",
+        cron="15 * * * *",
+        expected_sync_type="incremental",
     ),
     UpdateScheduleCase(name="invalid_cron", cron="bad", is_valid=False),
 ]
@@ -358,9 +366,7 @@ async def test_gather_schedule_data(case: GatherCase):
     sync_repo.get = AsyncMock(return_value=_mock_sync_model())
     sc_repo.get_by_sync_id = AsyncMock(
         return_value=(
-            _mock_source_connection(connection_id=case.connection_id)
-            if case.sc_exists
-            else None
+            _mock_source_connection(connection_id=case.connection_id) if case.sc_exists else None
         ),
     )
     collection_repo.get_by_readable_id = AsyncMock(
@@ -476,16 +482,22 @@ async def test_create_or_update_schedule(case: CreateOrUpdateCase):
     sync_repo = AsyncMock()
     svc = _build_svc(sync_repo=sync_repo)
 
-    sync_model = _mock_sync_model(
-        temporal_schedule_id="existing-sched" if case.has_existing_schedule else None
-    ) if case.sync_exists else None
+    sync_model = (
+        _mock_sync_model(
+            temporal_schedule_id="existing-sched" if case.has_existing_schedule else None
+        )
+        if case.sync_exists
+        else None
+    )
     sync_repo.get_without_connections = AsyncMock(return_value=sync_model)
 
-    svc._check_schedule_exists = AsyncMock(return_value={
-        "exists": case.existing_schedule_found,
-        "running": case.existing_schedule_found,
-        "schedule_info": None,
-    })
+    svc._check_schedule_exists = AsyncMock(
+        return_value={
+            "exists": case.existing_schedule_found,
+            "running": case.existing_schedule_found,
+            "schedule_info": None,
+        }
+    )
     svc._update_schedule = AsyncMock()
     svc._gather_schedule_data = AsyncMock(return_value=({}, {}, {}))
     svc._create_schedule = AsyncMock(return_value="new-sched-id")
@@ -565,9 +577,7 @@ async def test_get_client_caches():
     svc = _build_svc()
     mock_client = MagicMock()
 
-    with patch(
-        "airweave.domains.temporal.schedule_service.temporal_client"
-    ) as mock_tc:
+    with patch("airweave.domains.temporal.schedule_service.temporal_client") as mock_tc:
         mock_tc.get_client = AsyncMock(return_value=mock_client)
 
         c1 = await svc._get_client()
