@@ -2,7 +2,7 @@
 
 Provides the universal context type that all specialized contexts inherit from.
 CRUD layer and services type-hint against BaseContext. Specialized contexts
-(ApiContext, SyncContext, CleanupContext, SystemContext) extend it with
+(ApiContext, SyncContext, SystemContext) extend it with
 domain-specific fields.
 """
 

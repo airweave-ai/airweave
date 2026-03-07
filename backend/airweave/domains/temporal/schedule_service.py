@@ -401,3 +401,93 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
                 await self._delete_schedule_by_id(schedule_id, sync_id, db, ctx)
             except Exception as e:
                 logger.info(f"Schedule {schedule_id} not deleted (may not exist): {e}")
+
+    async def delete_schedule_handle(self, schedule_id: str) -> None:
+        """Delete a Temporal schedule by ID without touching the DB.
+
+        Ignores not-found errors. Used by activities and ORM listeners
+        where the DB record is already gone.
+        """
+        try:
+            client = await self._get_client()
+            handle = client.get_schedule_handle(schedule_id)
+            await handle.delete()
+            logger.info(f"Deleted schedule handle {schedule_id}")
+        except RPCError as e:
+            if e.status == RPCStatusCode.NOT_FOUND:
+                logger.debug(f"Schedule {schedule_id} not found (already deleted)")
+            else:
+                raise
+        except Exception as e:
+            logger.info(f"Schedule handle {schedule_id} not deleted: {e}")
+
+    async def ensure_system_schedules(self) -> None:
+        """Create system-level singleton schedules if they don't already exist.
+
+        Covers the stuck-job cleanup schedule and the API key expiration
+        notification schedule. Called once during API server startup.
+        """
+        from airweave.platform.temporal.workflows import CleanupStuckSyncJobsWorkflow
+        from airweave.platform.temporal.workflows.api_key_notifications import (
+            APIKeyExpirationCheckWorkflow,
+        )
+
+        client = await self._get_client()
+
+        await self._ensure_singleton_schedule(
+            client=client,
+            schedule_id="cleanup-stuck-sync-jobs",
+            workflow_cls=CleanupStuckSyncJobsWorkflow,
+            workflow_id="cleanup-workflow",
+            interval=timedelta(seconds=150),
+            note="Periodic cleanup of stuck sync jobs",
+        )
+
+        await self._ensure_singleton_schedule(
+            client=client,
+            schedule_id="api-key-expiration-notifications",
+            workflow_cls=APIKeyExpirationCheckWorkflow,
+            workflow_id="api-key-notification-workflow",
+            interval=timedelta(days=1),
+            note="API key expiration notifications (runs every day)",
+        )
+
+    async def _ensure_singleton_schedule(
+        self,
+        client: Client,
+        schedule_id: str,
+        workflow_cls: type,
+        workflow_id: str,
+        interval: timedelta,
+        note: str,
+    ) -> None:
+        """Create a singleton schedule if it doesn't already exist."""
+        from temporalio.client import ScheduleIntervalSpec
+
+        try:
+            handle = client.get_schedule_handle(schedule_id)
+            await handle.describe()
+            logger.info(f"System schedule {schedule_id} already exists")
+            return
+        except RPCError as e:
+            if e.status != RPCStatusCode.NOT_FOUND:
+                raise
+        except Exception:
+            pass
+
+        logger.info(f"Creating system schedule {schedule_id}")
+        await client.create_schedule(
+            schedule_id,
+            Schedule(
+                action=ScheduleActionStartWorkflow(
+                    workflow_cls.run,
+                    id=workflow_id,
+                    task_queue=settings.TEMPORAL_TASK_QUEUE,
+                ),
+                spec=ScheduleSpec(
+                    intervals=[ScheduleIntervalSpec(every=interval)],
+                ),
+                state=ScheduleState(note=note, paused=False),
+            ),
+        )
+        logger.info(f"Created system schedule {schedule_id}")
