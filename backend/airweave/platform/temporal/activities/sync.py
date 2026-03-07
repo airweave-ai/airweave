@@ -26,8 +26,16 @@ from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.core.protocols import EventBus
 from airweave.core.redis_client import redis_client
+from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
-from airweave.domains.syncs.protocols import SyncJobServiceProtocol, SyncServiceProtocol
+from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
+from airweave.domains.syncs.protocols import (
+    SyncJobRepositoryProtocol,
+    SyncJobServiceProtocol,
+    SyncRepositoryProtocol,
+    SyncServiceProtocol,
+)
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 
 # =============================================================================
@@ -567,12 +575,22 @@ class CreateSyncJobActivity:
     """Create a new sync job record.
 
     Dependencies:
-        event_bus: Publish PENDING event when job is created
+        event_bus: Publish PENDING event when job is created.
+        sync_repo: Verify sync still exists.
+        sync_job_repo: Create jobs and check for running jobs.
+        sc_repo: Look up source connection for lifecycle events.
+        conn_repo: Look up connection for lifecycle events.
+        collection_repo: Look up collection for lifecycle events.
 
     Returns sync job dict or {"_orphaned": True} if sync was deleted.
     """
 
-    event_bus: "EventBus"
+    event_bus: EventBus
+    sync_repo: SyncRepositoryProtocol
+    sync_job_repo: SyncJobRepositoryProtocol
+    sc_repo: SourceConnectionRepositoryProtocol
+    conn_repo: ConnectionRepositoryProtocol
+    collection_repo: CollectionRepositoryProtocol
 
     @activity.defn(name="create_sync_job_activity")
     async def run(
@@ -594,10 +612,7 @@ class CreateSyncJobActivity:
         Raises:
             Exception: If a sync job is already running and force_full_sync is False
         """
-        from airweave import crud, schemas
-        from airweave.core.context import BaseContext
         from airweave.core.exceptions import NotFoundException
-        from airweave.core.shared_models import SyncJobStatus
         from airweave.db.session import get_db_context
 
         organization = schemas.Organization(**ctx_dict["organization"])
@@ -608,9 +623,12 @@ class CreateSyncJobActivity:
         ctx.logger.info(f"Creating sync job for sync {sync_id} (force_full_sync={force_full_sync})")
 
         async with get_db_context() as db:
-            # Check if the sync still exists
             try:
-                _ = await crud.sync.get(db=db, id=UUID(sync_id), ctx=ctx, with_connections=False)
+                _ = await self.sync_repo.get_without_connections(
+                    db=db,
+                    id=UUID(sync_id),
+                    ctx=ctx,
+                )
             except NotFoundException as e:
                 ctx.logger.info(
                     f"🧹 Could not verify sync {sync_id} exists: {e}. "
@@ -618,22 +636,15 @@ class CreateSyncJobActivity:
                 )
                 return {"_orphaned": True, "sync_id": sync_id, "reason": f"Sync lookup error: {e}"}
 
-            # Check for running jobs
-            running_jobs = await crud.sync_job.get_all_by_sync_id(
+            running_jobs = await self.sync_job_repo.get_active_for_sync(
                 db=db,
                 sync_id=UUID(sync_id),
-                status=[
-                    SyncJobStatus.PENDING.value,
-                    SyncJobStatus.RUNNING.value,
-                    SyncJobStatus.CANCELLING.value,
-                ],
+                ctx=ctx,
             )
 
             if running_jobs:
                 if force_full_sync:
-                    await self._wait_for_running_jobs(
-                        db, sync_id, ctx, running_jobs, SyncJobStatus, crud
-                    )
+                    await self._wait_for_running_jobs(db, sync_id, ctx, running_jobs)
                 else:
                     ctx.logger.warning(
                         f"Sync {sync_id} already has {len(running_jobs)} running jobs. "
@@ -644,9 +655,8 @@ class CreateSyncJobActivity:
                         f"Skipping this scheduled run to avoid conflicts."
                     )
 
-            # Create the new sync job
             sync_job_in = schemas.SyncJobCreate(sync_id=UUID(sync_id))
-            sync_job = await crud.sync_job.create(db=db, obj_in=sync_job_in, ctx=ctx)
+            sync_job = await self.sync_job_repo.create(db=db, obj_in=sync_job_in, ctx=ctx)
             sync_job_id = sync_job.id
 
             await db.commit()
@@ -654,13 +664,12 @@ class CreateSyncJobActivity:
 
             ctx.logger.info(f"Created sync job {sync_job_id} for sync {sync_id}")
 
-            # Publish PENDING lifecycle event
-            await self._publish_pending_event(db, sync_id, organization, sync_job, crud, ctx)
+            await self._publish_pending_event(db, sync_id, organization, sync_job, ctx)
 
             sync_job_schema = schemas.SyncJob.model_validate(sync_job)
             return sync_job_schema.model_dump(mode="json")
 
-    async def _wait_for_running_jobs(self, db, sync_id, ctx, running_jobs, SyncJobStatus, crud):
+    async def _wait_for_running_jobs(self, db, sync_id, ctx, running_jobs):
         """Wait for running jobs to complete before daily cleanup."""
         from airweave.db.session import get_db_context
 
@@ -670,7 +679,7 @@ class CreateSyncJobActivity:
             f"Waiting for them to complete before starting cleanup..."
         )
 
-        max_wait_time = 60 * 60  # 1 hour max wait
+        max_wait_time = 60 * 60
         wait_interval = 30
         total_waited = 0
 
@@ -680,14 +689,10 @@ class CreateSyncJobActivity:
             total_waited += wait_interval
 
             async with get_db_context() as check_db:
-                still_running = await crud.sync_job.get_all_by_sync_id(
+                still_running = await self.sync_job_repo.get_active_for_sync(
                     db=check_db,
                     sync_id=UUID(sync_id),
-                    status=[
-                        SyncJobStatus.PENDING.value,
-                        SyncJobStatus.RUNNING.value,
-                        SyncJobStatus.CANCELLING.value,
-                    ],
+                    ctx=ctx,
                 )
 
                 if not still_running:
@@ -702,17 +707,27 @@ class CreateSyncJobActivity:
         )
         raise Exception(f"Timeout waiting for running jobs to complete after {max_wait_time}s")
 
-    async def _publish_pending_event(self, db, sync_id, organization, sync_job, crud, ctx):
+    async def _publish_pending_event(self, db, sync_id, organization, sync_job, ctx):
         """Publish PENDING lifecycle event."""
         from airweave.core.events.sync import SyncLifecycleEvent
 
         try:
-            source_conn = await crud.source_connection.get_by_sync_id(
-                db=db, sync_id=UUID(sync_id), ctx=ctx
+            source_conn = await self.sc_repo.get_by_sync_id(
+                db=db,
+                sync_id=UUID(sync_id),
+                ctx=ctx,
             )
             if source_conn:
-                connection = await crud.connection.get(db=db, id=source_conn.connection_id, ctx=ctx)
-                collection = await crud.collection.get(db=db, id=source_conn.collection_id, ctx=ctx)
+                connection = await self.conn_repo.get(
+                    db=db,
+                    id=source_conn.connection_id,
+                    ctx=ctx,
+                )
+                collection = await self.collection_repo.get(
+                    db=db,
+                    id=source_conn.collection_id,
+                    ctx=ctx,
+                )
                 if connection and collection:
                     await self.event_bus.publish(
                         SyncLifecycleEvent.pending(

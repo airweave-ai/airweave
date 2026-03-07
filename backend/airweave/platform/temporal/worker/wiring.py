@@ -35,6 +35,11 @@ def create_activities() -> list:
     email_service = container.email_service
     sync_service = container.sync_service
     sync_job_service = container.sync_job_service
+    sync_repo = container.sync_repo
+    sync_job_repo = container.sync_job_repo
+    sc_repo = container.sc_repo
+    conn_repo = container.conn_repo
+    collection_repo = container.collection_repo
     temporal_workflow_service = container.temporal_workflow_service
     temporal_schedule_service = container.temporal_schedule_service
 
@@ -48,7 +53,14 @@ def create_activities() -> list:
             sync_service=sync_service,
             sync_job_service=sync_job_service,
         ).run,
-        CreateSyncJobActivity(event_bus=event_bus).run,
+        CreateSyncJobActivity(
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+            sc_repo=sc_repo,
+            conn_repo=conn_repo,
+            collection_repo=collection_repo,
+        ).run,
         MarkSyncJobCancelledActivity(
             sync_job_service=sync_job_service,
         ).run,
