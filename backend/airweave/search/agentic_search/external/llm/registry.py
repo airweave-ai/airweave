@@ -184,7 +184,7 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
         LLMModel.ZAI_GLM_5: LLMModelSpec(
             api_model_name="zai-org/GLM-5",
             context_window=200_000,
-            max_output_tokens=128_000,
+            max_output_tokens=64_000,
             required_tokenizer_type=TokenizerType.TIKTOKEN,
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             rate_limit_rpm=3_000,
@@ -194,7 +194,7 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
         LLMModel.ZAI_GLM_5_THINKING: LLMModelSpec(
             api_model_name="zai-org/GLM-5",
             context_window=200_000,
-            max_output_tokens=128_000,
+            max_output_tokens=64_000,
             required_tokenizer_type=TokenizerType.TIKTOKEN,
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             rate_limit_rpm=3_000,
