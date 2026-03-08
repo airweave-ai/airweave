@@ -20,8 +20,8 @@ from .events import (
     AgenticSearchDoneEvent,
     AgenticSearchErrorEvent,
     AgenticSearchEvent,
-    AgenticSearchingEvent,
     AgenticSearchThinkingEvent,
+    AgenticSearchToolCallEvent,
 )
 from .filter import (
     AgenticSearchFilterCondition,
@@ -58,8 +58,8 @@ __all__ = [
     "AgenticSearchDoneEvent",
     "AgenticSearchErrorEvent",
     "AgenticSearchEvent",
-    "AgenticSearchingEvent",
     "AgenticSearchThinkingEvent",
+    "AgenticSearchToolCallEvent",
     # Filter
     "AgenticSearchFilterCondition",
     "AgenticSearchFilterGroup",

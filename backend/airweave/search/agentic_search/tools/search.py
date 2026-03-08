@@ -7,7 +7,6 @@ The search tool allows the agent to query the vector database.
 - format_results_for_context: format results as markdown for the LLM context
 """
 
-import time
 from typing import Any
 
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
@@ -20,7 +19,6 @@ from airweave.search.agentic_search.external.llm.tool_response import LLMToolCal
 from airweave.search.agentic_search.external.vector_database.interface import (
     AgenticSearchVectorDBInterface,
 )
-from airweave.search.agentic_search.schemas.events import AgenticSearchingEvent
 from airweave.search.agentic_search.schemas.filter import AgenticSearchFilterGroup
 from airweave.search.agentic_search.schemas.plan import AgenticSearchPlan
 from airweave.search.agentic_search.schemas.query_embeddings import (
@@ -71,7 +69,6 @@ async def handle_search(
     context_window_tokens: int,
 ) -> str:
     """Execute the search tool, merge results into state, return formatted content."""
-    start = time.monotonic()
     results = await execute_search(
         arguments=tc.arguments,
         user_filter=user_filter,
@@ -80,18 +77,10 @@ async def handle_search(
         vector_db=services.vector_db,
         collection_id=collection_id,
     )
-    duration_ms = int((time.monotonic() - start) * 1000)
     for r in results:
         if r.entity_id not in state.results:
             state.results[r.entity_id] = r
     state.results_by_tool_call_id[tc.id] = results
-    await emitter.emit(
-        AgenticSearchingEvent(
-            iteration=state.iteration,
-            result_count=len(results),
-            duration_ms=duration_ms,
-        )
-    )
     available_tokens = _estimate_available_tokens(state.messages, context_window_tokens)
     return format_results_for_context(results, available_tokens)
 

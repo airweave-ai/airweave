@@ -105,7 +105,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     )
     ctx.logger.info(
         f"[AgenticSearchStream] Request body: query={request.query!r}, "
-        f"mode={request.mode}, filter={request.filter}"
+        f"filter={request.filter}"
     )
 
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
@@ -264,7 +264,7 @@ async def admin_stream_agentic_search(  # noqa: C901 - streaming orchestration i
     )
     ctx.logger.info(
         f"[AdminAgenticSearchStream] Request body: query={request.query!r}, "
-        f"mode={request.mode}, filter={request.filter}{model_desc}"
+        f"filter={request.filter}{model_desc}"
     )
 
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)

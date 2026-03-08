@@ -10,6 +10,8 @@ Conversation + tool-calling architecture:
 The conversation IS the history — no separate state/history objects needed.
 """
 
+import time
+
 from airweave.api.context import ApiContext
 from airweave.search.agentic_search.builders import (
     AgenticSearchCollectionMetadataBuilder,
@@ -36,6 +38,7 @@ from airweave.search.agentic_search.schemas.events import (
     AgenticSearchDoneEvent,
     AgenticSearchErrorEvent,
     AgenticSearchThinkingEvent,
+    AgenticSearchToolCallEvent,
 )
 from airweave.search.agentic_search.schemas.state import AgenticSearchState
 from airweave.search.agentic_search.services import AgenticSearchServices
@@ -44,6 +47,7 @@ from airweave.search.agentic_search.tools import (
     MARK_AS_RELEVANT_TOOL,
     READ_PREVIOUS_RESULTS_TOOL,
     SEARCH_TOOL,
+    UNMARK_TOOL,
     handle_tool_call,
 )
 
@@ -91,6 +95,7 @@ class AgenticSearchAgent:
         readable top-to-bottom in one place.
         """
         state = AgenticSearchState()
+        no_tool_call_nudges = 0
 
         # Build collection metadata
         metadata_builder = AgenticSearchCollectionMetadataBuilder(self.services.db)
@@ -108,7 +113,7 @@ class AgenticSearchAgent:
                 user_filter=request.filter,
             )
         )
-        tools = [SEARCH_TOOL, READ_PREVIOUS_RESULTS_TOOL, MARK_AS_RELEVANT_TOOL, FINISH_TOOL]
+        tools = [SEARCH_TOOL, READ_PREVIOUS_RESULTS_TOOL, MARK_AS_RELEVANT_TOOL, UNMARK_TOOL, FINISH_TOOL]
 
         self.ctx.logger.debug(
             f"[AgenticSearch] Starting agent loop for query: {request.query!r} "
@@ -143,20 +148,39 @@ class AgenticSearchAgent:
             # Debug: log thinking + tool calls (search plans)
             log_agent_response(state.iteration, response, self.ctx.logger)
 
-            # Emit thinking event (extended thinking + regular text)
+            # Emit thinking event with LLM usage stats
             await self._emit_thinking(response, state)
 
             # Append assistant message (reasoning + tool calls)
             state.messages.append(build_assistant_message(response.text, response.tool_calls))
 
             if not response.tool_calls:
+                no_tool_call_nudges += 1
+                if no_tool_call_nudges >= 3:
+                    self.ctx.logger.debug(
+                        f"[AgenticSearch] Agent refused to use tools after "
+                        f"{no_tool_call_nudges} nudges, forcing finish"
+                    )
+                    break
                 self.ctx.logger.debug(
-                    f"[AgenticSearch] Agent stopped after {state.iteration} iterations, "
-                    f"{len(state.marked_entity_ids)} results marked"
+                    f"[AgenticSearch] No tool calls at iteration {state.iteration}, "
+                    f"nudging agent to use tools ({no_tool_call_nudges}/3)"
                 )
-                break
+                state.messages.append({
+                    "role": "user",
+                    "content": (
+                        "You must use tools to interact. "
+                        "Call `search` to find results, `mark_as_relevant` to mark them, "
+                        "or `finish` to end. Do not respond with plain text."
+                    ),
+                })
+                state.iteration += 1
+                continue
 
-            # Execute all tool calls
+            # Agent used tools — reset nudge counter
+            no_tool_call_nudges = 0
+
+            # Execute all tool calls (emits tool_call events)
             has_finish, new_search_tool_call_ids = await self._execute_tool_calls(
                 response.tool_calls, state
             )
@@ -207,17 +231,14 @@ class AgenticSearchAgent:
         tool_calls: list[LLMToolCall],
         state: AgenticSearchState,
     ) -> tuple[bool, set[str]]:
-        """Execute tool calls and append result messages to state.
+        """Execute tool calls, emit tool_call events, append result messages.
 
-        Returns (has_finish, new_search_tool_call_ids).
+        Returns (should_finish, new_search_tool_call_ids).
         """
-        has_finish = False
         new_search_tool_call_ids: set[str] = set()
 
         for tc in tool_calls:
-            if tc.name == "finish":
-                has_finish = True
-
+            start = time.monotonic()
             try:
                 content = await handle_tool_call(
                     tc=tc,
@@ -228,8 +249,23 @@ class AgenticSearchAgent:
                     user_filter=self._user_filter,
                     context_window_tokens=self._context_window_tokens,
                 )
+                summary = self._build_tool_summary(tc, state)
             except Exception as e:
                 content = f"Tool call failed: {e}"
+                summary = {"error": str(e)}
+            duration_ms = int((time.monotonic() - start) * 1000)
+
+            # Emit tool_call event
+            await self.emitter.emit(
+                AgenticSearchToolCallEvent(
+                    iteration=state.iteration,
+                    tool_call_id=tc.id,
+                    tool_name=tc.name,
+                    arguments=tc.arguments,
+                    result_summary=summary,
+                    duration_ms=duration_ms,
+                )
+            )
 
             msg = build_tool_result_message(tc.id, content)
             msg["_tool_name"] = tc.name
@@ -238,7 +274,34 @@ class AgenticSearchAgent:
             if tc.name == "search":
                 new_search_tool_call_ids.add(tc.id)
 
-        return has_finish, new_search_tool_call_ids
+        return state.should_finish, new_search_tool_call_ids
+
+    def _build_tool_summary(self, tc: LLMToolCall, state: AgenticSearchState) -> dict:
+        """Build a compact summary dict for the tool_call event."""
+        if tc.name == "search":
+            results = state.results_by_tool_call_id.get(tc.id, [])
+            all_ids = set(state.results.keys())
+            new_ids = {r.entity_id for r in results}
+            return {
+                "result_count": len(results),
+                "new_results": len(new_ids - (all_ids - new_ids)),
+                "total_results_seen": len(all_ids),
+            }
+        if tc.name == "mark_as_relevant":
+            return {
+                "total_marked": len(state.marked_entity_ids),
+            }
+        if tc.name == "unmark":
+            return {
+                "total_marked": len(state.marked_entity_ids),
+            }
+        if tc.name == "read_previous_results":
+            entity_ids = tc.arguments.get("entity_ids", [])
+            found = sum(1 for eid in entity_ids if eid in state.results)
+            return {"found": found, "not_found": len(entity_ids) - found}
+        if tc.name == "finish":
+            return {"total_marked": len(state.marked_entity_ids)}
+        return {}
 
     # ── Reranking ─────────────────────────────────────────────────────
 
@@ -283,16 +346,24 @@ class AgenticSearchAgent:
         response: LLMToolResponse,
         state: AgenticSearchState,
     ) -> None:
-        """Emit a thinking event combining extended thinking and regular text."""
+        """Emit a thinking event with reasoning text and LLM usage stats."""
         parts = []
         if response.thinking:
             parts.append(response.thinking)
         if response.text:
             parts.append(response.text)
-        if parts:
-            await self.emitter.emit(
-                AgenticSearchThinkingEvent(
-                    iteration=state.iteration,
-                    text="\n\n".join(parts),
-                )
+
+        text = "\n\n".join(parts) if parts else ""
+
+        await self.emitter.emit(
+            AgenticSearchThinkingEvent(
+                iteration=state.iteration,
+                text=text,
+                prompt_tokens=response.usage.get("prompt_tokens", 0),
+                completion_tokens=response.usage.get("completion_tokens", 0),
+                tool_calls_count=len(response.tool_calls),
+                stop_reason=response.stop_reason,
+                total_results_seen=len(state.results),
+                total_results_marked=len(state.marked_entity_ids),
             )
+        )

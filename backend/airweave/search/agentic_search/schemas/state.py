@@ -13,6 +13,8 @@ class AgenticSearchState(BaseModel):
     results_by_tool_call_id: dict[str, list[AgenticSearchResult]] = Field(default_factory=dict)
     marked_entity_ids: set[str] = Field(default_factory=set)
     iteration: int = 0
+    awaiting_finish_confirmation: bool = False
+    should_finish: bool = False
 
     model_config = {"arbitrary_types_allowed": True}
 

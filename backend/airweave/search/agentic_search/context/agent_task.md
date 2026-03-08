@@ -52,10 +52,20 @@ relevant results — don't wait until the end. You can call it multiple times; r
 accumulate. Only marked results are returned to the user. Before marking, note in your
 reasoning why these results are relevant — this helps you track what you've already found.
 
+### `unmark`
+
+Remove previously marked results that you realize are not relevant. Pass specific
+entity IDs, or `["all"]` to clear everything. Use this when the finish review shows
+results that are not relevant to the query — unmarking wrong results is better than
+returning them.
+
 ### `finish`
 
-Call this when you are done searching. This ends the loop and returns your marked results to
-the user. You can call this together with `mark_as_relevant` in the same response.
+Call this when you are done searching. It shows a review of all the results
+you have marked, so you can verify what will be returned to the user. Call
+finish again to confirm. If you search, mark, or unmark between calls,
+a fresh review will be shown. You can call `mark_as_relevant` and `finish`
+in the same response.
 
 ### `read_previous_results`
 
@@ -85,9 +95,11 @@ Not all queries need the same approach:
 
 - **Answer-style** ("What is X?", "Why did Y happen?") — the user wants a specific piece of
   information. A single highly relevant result may be enough. Mark it and stop.
-- **List/find/show** ("Show me all tasks for project X", "Find every mention of Y") —
-  completeness matters. Finding 5 out of 50 is a bad result. Keep searching until you have
-  reason to believe you've found everything.
+- **Find/list/show** ("Show me all tasks for project X", "Find every mention of Y") —
+  completeness matters. Mark every entity that contains information relevant to
+  answering the query, not just the one that gives you the answer. Finding 5 out
+  of 50 is a bad result. Keep searching until you have reason to believe you've
+  found everything.
 - **Multi-hop** — the answer can't be found in one search. The query needs to be broken into
   steps, with results from one step informing the next (e.g., "What did the person who fixed
   bug #123 work on last week?" requires finding who fixed it, then searching their work).

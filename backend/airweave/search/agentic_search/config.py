@@ -35,11 +35,16 @@ class LLMModel(str, Enum):
     GPT_OSS_120B = "gpt-oss-120b"
     ZAI_GLM_4_7 = "zai-glm-4.7"
     ZAI_GLM_5 = "zai-glm-5"
+    ZAI_GLM_5_THINKING = "zai-glm-5-thinking"
     CLAUDE_SONNET_4_5 = "claude-sonnet-4.5"
     CLAUDE_SONNET_4_6 = "claude-sonnet-4.6"
+    CLAUDE_SONNET_4_6_THINKING = "claude-sonnet-4.6-thinking"
     KIMI_K2_5 = "kimi-k2.5"
+    KIMI_K2_5_THINKING = "kimi-k2.5-thinking"
     QWEN_3_5 = "qwen-3.5"
+    QWEN_3_5_THINKING = "qwen-3.5-thinking"
     MINIMAX_M2_5 = "minimax-m2.5"
+    MINIMAX_M2_5_THINKING = "minimax-m2.5-thinking"
 
 
 # --- Tokenizer ---

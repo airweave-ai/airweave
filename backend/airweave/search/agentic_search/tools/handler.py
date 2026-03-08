@@ -4,11 +4,13 @@ from airweave.search.agentic_search.emitter import AgenticSearchEmitter
 from airweave.search.agentic_search.external.llm.tool_response import LLMToolCall
 from airweave.search.agentic_search.schemas.state import AgenticSearchState
 from airweave.search.agentic_search.services import AgenticSearchServices
+from airweave.search.agentic_search.tools.finish import handle_finish
 from airweave.search.agentic_search.tools.mark_as_relevant import handle_mark_as_relevant
 from airweave.search.agentic_search.tools.read_previous_results import (
     handle_read_previous_results,
 )
 from airweave.search.agentic_search.tools.search import handle_search
+from airweave.search.agentic_search.tools.unmark import handle_unmark
 
 
 async def handle_tool_call(
@@ -24,6 +26,10 @@ async def handle_tool_call(
 
     Returns the formatted content string for the tool result message.
     """
+    # Reset finish confirmation flag for any non-finish tool
+    if tc.name != "finish":
+        state.awaiting_finish_confirmation = False
+
     if tc.name == "search":
         return await handle_search(
             tc=tc,
@@ -38,6 +44,11 @@ async def handle_tool_call(
         return await handle_read_previous_results(tc=tc, state=state)
     if tc.name == "mark_as_relevant":
         return await handle_mark_as_relevant(tc=tc, state=state)
+    if tc.name == "unmark":
+        return await handle_unmark(tc=tc, state=state)
     if tc.name == "finish":
-        return "Finishing search."
+        content, should_end = handle_finish(state, state.messages, context_window_tokens)
+        if should_end:
+            state.should_finish = True
+        return content
     raise ValueError(f"Unknown tool: {tc.name}")
