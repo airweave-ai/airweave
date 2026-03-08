@@ -43,9 +43,10 @@ from airweave.search.agentic_search.schemas.events import (
 from airweave.search.agentic_search.schemas.state import AgenticSearchState
 from airweave.search.agentic_search.services import AgenticSearchServices
 from airweave.search.agentic_search.tools import (
-    FINISH_TOOL,
     MARK_AS_RELEVANT_TOOL,
     READ_PREVIOUS_RESULTS_TOOL,
+    RETURN_RESULTS_TOOL,
+    REVIEW_MARKED_RESULTS_TOOL,
     SEARCH_TOOL,
     UNMARK_TOOL,
     handle_tool_call,
@@ -113,7 +114,7 @@ class AgenticSearchAgent:
                 user_filter=request.filter,
             )
         )
-        tools = [SEARCH_TOOL, READ_PREVIOUS_RESULTS_TOOL, MARK_AS_RELEVANT_TOOL, UNMARK_TOOL, FINISH_TOOL]
+        tools = [SEARCH_TOOL, READ_PREVIOUS_RESULTS_TOOL, MARK_AS_RELEVANT_TOOL, UNMARK_TOOL, REVIEW_MARKED_RESULTS_TOOL, RETURN_RESULTS_TOOL]
 
         self.ctx.logger.debug(
             f"[AgenticSearch] Starting agent loop for query: {request.query!r} "
@@ -171,7 +172,7 @@ class AgenticSearchAgent:
                     "content": (
                         "You must use tools to interact. "
                         "Call `search` to find results, `mark_as_relevant` to mark them, "
-                        "or `finish` to end. Do not respond with plain text."
+                        "or `return_results_to_user` to end. Do not respond with plain text."
                     ),
                 })
                 state.iteration += 1
@@ -188,7 +189,7 @@ class AgenticSearchAgent:
             # Agent called finish — break after processing all tool calls
             if has_finish:
                 self.ctx.logger.debug(
-                    f"[AgenticSearch] Agent called finish after {state.iteration} iterations, "
+                    f"[AgenticSearch] Agent returned results after {state.iteration} iterations, "
                     f"{len(state.marked_entity_ids)} results marked"
                 )
                 break
@@ -299,7 +300,7 @@ class AgenticSearchAgent:
             entity_ids = tc.arguments.get("entity_ids", [])
             found = sum(1 for eid in entity_ids if eid in state.results)
             return {"found": found, "not_found": len(entity_ids) - found}
-        if tc.name == "finish":
+        if tc.name in ("review_marked_results", "return_results_to_user"):
             return {"total_marked": len(state.marked_entity_ids)}
         return {}
 
@@ -361,6 +362,8 @@ class AgenticSearchAgent:
                 text=text,
                 prompt_tokens=response.usage.get("prompt_tokens", 0),
                 completion_tokens=response.usage.get("completion_tokens", 0),
+                cache_creation_input_tokens=response.usage.get("cache_creation_input_tokens", 0),
+                cache_read_input_tokens=response.usage.get("cache_read_input_tokens", 0),
                 tool_calls_count=len(response.tool_calls),
                 stop_reason=response.stop_reason,
                 total_results_seen=len(state.results),

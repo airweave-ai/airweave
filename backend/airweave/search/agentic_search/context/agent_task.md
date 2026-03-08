@@ -55,17 +55,21 @@ reasoning why these results are relevant — this helps you track what you've al
 ### `unmark`
 
 Remove previously marked results that you realize are not relevant. Pass specific
-entity IDs, or `["all"]` to clear everything. Use this when the finish review shows
-results that are not relevant to the query — unmarking wrong results is better than
-returning them.
+entity IDs, or `["all"]` to clear everything. Use this when you realize marked results
+don't actually satisfy the query.
 
-### `finish`
+### `review_marked_results`
 
-Call this when you are done searching. It shows a review of all the results
-you have marked, so you can verify what will be returned to the user. Call
-finish again to confirm. If you search, mark, or unmark between calls,
-a fresh review will be shown. You can call `mark_as_relevant` and `finish`
-in the same response.
+Review what you have marked so far. Shows all marked results with their full content so you
+can verify they are correct before returning. This does not end the search — you can continue
+searching, marking, or unmarking after reviewing. Use this before returning when you want to
+double-check your work.
+
+### `return_results_to_user`
+
+Return the marked results to the user and end the search. This is final — the search loop
+ends immediately. You can call `mark_as_relevant` and `return_results_to_user` in the same
+response.
 
 ### `read_previous_results`
 
@@ -106,8 +110,8 @@ Not all queries need the same approach:
 
 ### When and how to stop
 
-**To finish, call the `finish` tool.** That is the only way to end the loop.
-You can call `finish` together with `mark_as_relevant` in the same response.
+**To end the search, call `return_results_to_user`.** That is the only way to end the loop.
+You can call `mark_as_relevant` and `return_results_to_user` in the same response.
 
 Stop when any of these apply:
 
@@ -118,4 +122,4 @@ Stop when any of these apply:
   No new leads to follow. Note: slightly different semantic queries over the same data
   won't surface new results — vary your filters or approach, not just your wording.
 - **Nothing relevant exists**: After varied searches across different sources and strategies,
-  nothing relevant has surfaced. This is a valid outcome — mark nothing and stop.
+  nothing relevant has surfaced. This is a valid outcome — mark nothing and return.

@@ -141,11 +141,25 @@ class AnthropicLLM(BaseLLM):
         anthropic_tools = self._convert_tool_defs(tools)
         anthropic_messages = _convert_messages_to_anthropic(messages)
 
+        # Enable prompt caching: system prompt and tools are stable across
+        # iterations, so we mark them as cacheable. Cache reads cost 0.1x
+        # base input price (90% savings). The 5-min TTL refreshes on every
+        # hit, which is perfect for our multi-iteration agent loop.
+        cached_system = [
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        if anthropic_tools:
+            anthropic_tools[-1]["cache_control"] = {"type": "ephemeral"}
+
         # Build API kwargs
         kwargs: dict[str, Any] = {
             "model": self._model_spec.api_model_name,
             "max_tokens": self._model_spec.max_output_tokens,
-            "system": system_prompt,
+            "system": cached_system,
             "messages": anthropic_messages,
             "tools": anthropic_tools,
         }
@@ -174,14 +188,19 @@ class AnthropicLLM(BaseLLM):
 
         usage = {}
         if response.usage:
+            cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+            cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
             usage = {
                 "prompt_tokens": response.usage.input_tokens,
                 "completion_tokens": response.usage.output_tokens,
+                "cache_creation_input_tokens": cache_creation,
+                "cache_read_input_tokens": cache_read,
             }
             self._logger.debug(
                 f"[AnthropicLLM] Tool call in {api_time:.2f}s, "
                 f"tokens: in={response.usage.input_tokens}, "
-                f"out={response.usage.output_tokens}"
+                f"out={response.usage.output_tokens}, "
+                f"cache_create={cache_creation}, cache_read={cache_read}"
             )
 
         return LLMToolResponse(

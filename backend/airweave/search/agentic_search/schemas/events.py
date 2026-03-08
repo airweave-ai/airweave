@@ -31,6 +31,8 @@ class AgenticSearchThinkingEvent(BaseModel):
     # LLM usage (populated from the LLM response)
     prompt_tokens: int = Field(0, description="Prompt tokens used by this LLM call.")
     completion_tokens: int = Field(0, description="Completion tokens used by this LLM call.")
+    cache_creation_input_tokens: int = Field(0, description="Tokens written to prompt cache.")
+    cache_read_input_tokens: int = Field(0, description="Tokens read from prompt cache.")
     tool_calls_count: int = Field(0, description="Number of tool calls in this iteration.")
     stop_reason: str = Field("", description="Why the model stopped (tool_use, end_turn, etc).")
     # Cumulative state

@@ -1,7 +1,8 @@
-"""Finish tool: definition and handler for the agentic search agent.
+"""Review and return tools for the agentic search agent.
 
-Allows the agent to explicitly signal it is done searching, with a
-review step that shows marked results before confirming.
+Two separate tools:
+- review_marked_results: Shows what's currently marked. Optional, non-terminal.
+- return_results_to_user: Ends the loop immediately. Final.
 """
 
 from typing import Any
@@ -13,19 +14,34 @@ from airweave.search.agentic_search.tools.search import (
     format_results_for_context,
 )
 
-# ── Tool definition (sent to the LLM) ────────────────────────────────
+# ── Tool definitions (sent to the LLM) ───────────────────────────────
 
-FINISH_TOOL: dict[str, Any] = {
+REVIEW_MARKED_RESULTS_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
-        "name": "finish",
+        "name": "review_marked_results",
         "description": (
-            "Call this tool when you are done searching. "
-            "Shows a review of your marked results. "
-            "Call again to confirm and return the results to the user. "
-            "If you do anything else between calls (search, mark, etc.), "
-            "you will need to review again. "
-            "You can call mark_as_relevant and finish in the same response."
+            "Review what you have marked so far. Shows all marked results with "
+            "their full content so you can verify correctness before returning. "
+            "Does not end the search — you can continue searching, marking, or "
+            "unmarking after reviewing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+}
+
+RETURN_RESULTS_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "return_results_to_user",
+        "description": (
+            "Return the marked results to the user and end the search. "
+            "This is final — the search loop ends immediately. "
+            "You can call mark_as_relevant and return_results_to_user "
+            "in the same response."
         ),
         "parameters": {
             "type": "object",
@@ -35,24 +51,26 @@ FINISH_TOOL: dict[str, Any] = {
 }
 
 
-# ── Handler ───────────────────────────────────────────────────────────
+# ── Handlers ─────────────────────────────────────────────────────────
 
 
-def handle_finish(
+def handle_review_marked_results(
     state: AgenticSearchState,
     messages: list[dict],
     context_window_tokens: int,
-) -> tuple[str, bool]:
-    """Handle a finish tool call.
+) -> str:
+    """Handle a review_marked_results tool call. Returns review text."""
+    return _build_review(state, messages, context_window_tokens)
 
-    Returns (content, should_end).
-    """
-    if state.awaiting_finish_confirmation:
-        return ("Finishing search.", True)
 
-    state.awaiting_finish_confirmation = True
-    review = _build_review(state, messages, context_window_tokens)
-    return (review, False)
+def handle_return_results(state: AgenticSearchState) -> str:
+    """Handle a return_results_to_user tool call. Sets should_finish and returns confirmation."""
+    state.should_finish = True
+    count = len(state.marked_entity_ids)
+    if count > 0:
+        return f"Returning {count} marked results to the user."
+    else:
+        return "Returning with no results. Nothing will be shown to the user."
 
 
 def _build_review(
@@ -70,17 +88,17 @@ def _build_review(
         available = _estimate_available_tokens(messages, context_window_tokens)
         formatted = format_results_for_context(results, available)
         return (
-            f"## Finish review: {len(results)} results marked\n\n"
+            f"## Review: {len(results)} results marked\n\n"
             f"The following results will be returned to the user:\n\n"
             f"{formatted}\n\n"
-            f"Call finish again to return these results, or continue searching."
+            f"Call return_results_to_user to return these, or continue searching."
         )
     else:
         seen = len(state.results)
         return (
-            f"## Finish review: 0 results marked\n\n"
+            f"## Review: 0 results marked\n\n"
             f"You have seen {seen} results but marked none as relevant.\n"
             f"Nothing will be returned to the user.\n\n"
-            f"Call finish again to confirm, or continue searching and "
+            f"Call return_results_to_user to confirm, or continue searching and "
             f"mark relevant results."
         )
