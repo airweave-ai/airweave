@@ -24,6 +24,7 @@ from airweave.domains.oauth.fakes.repository import (
     FakeOAuthInitSessionRepository,
     FakeOAuthSourceRepository,
 )
+from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
@@ -32,9 +33,8 @@ from airweave.models.connection_init_session import ConnectionInitSession, Conne
 from airweave.models.organization import Organization
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.auth.schemas import OAuth2TokenResponse
-from airweave.domains.oauth.types import OAuth1TokenResponse
-from airweave.schemas.source_connection import AuthenticationMethod
 from airweave.schemas.organization import Organization as OrganizationSchema
+from airweave.schemas.source_connection import AuthenticationMethod
 
 NOW = datetime.now(timezone.utc)
 ORG_ID = uuid4()
