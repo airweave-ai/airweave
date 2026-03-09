@@ -12,7 +12,6 @@ Authentication uses OAuth 2.0 client_credentials grant to exchange
 client_id and client_secret for an access token via the Creatio Identity Service.
 """
 
-from datetime import datetime
 import enum
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -36,9 +35,7 @@ from airweave.schemas.source_connection import AuthenticationMethod
 
 
 class CreatioEntity(enum.Enum):
-    """
-    Enum containing the resource endpoints and their
-    appropriate BaseEntity implementation.
+    """Enum containing the resource endpoints and their appropriate BaseEntity implementation.
 
     This is used to map the resource endpoint response
     in generate_entities.
@@ -53,6 +50,7 @@ class CreatioEntity(enum.Enum):
     ORDER = ("Order", CreatioOrderEntity)
 
     def __init__(self, odata_name: str, type: BaseEntity):
+        """Initialize a CreatioEntity enum member."""
         self.odata_name = odata_name
         self.type = type
 
@@ -75,7 +73,7 @@ class CreatioSource(BaseSource):
 
     ODATA_PAGE_SIZE = 100  # OData $top per request
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Creatio source."""
         super().__init__()
         self.client_id: Optional[str] = None
@@ -110,7 +108,9 @@ class CreatioSource(BaseSource):
         if config.get("identity_service_url"):
             instance.identity_service_url = config["identity_service_url"]
         else:
-            instance.identity_service_url = cls._identity_service_url_from_instance(instance_url=instance.instance_url)
+            instance.identity_service_url = cls._identity_service_url_from_instance(
+                instance_url=instance.instance_url
+            )
 
         # Exchange client credentials for access token
         instance.access_token = await instance._get_access_token()
@@ -125,17 +125,16 @@ class CreatioSource(BaseSource):
 
     @staticmethod
     def _identity_service_url_from_instance(*, instance_url: str) -> str:
-        """
-        Derive the Identity Service base URL from the instance URL.
-        Creatio Identity Service lives at ``{instance}-is.creatio.com`` in the cloud case
+        """Derive the Identity Service base URL from the instance URL.
+
+        Creatio Identity Service lives at ``{instance}-is.creatio.com`` in the cloud case.
         """
         return instance_url.replace(".creatio.com", "-is.creatio.com", 1)
 
     def _get_headers(self) -> Dict[str, str]:
-        """
-        Get HTTP headers.
-        'ForceUseSession': 'true' is recommended from
-        https://academy.creatio.com/docs/8.x/dev/development-on-creatio-platform/integrations-and-api/data-services/odata/basics/references/odata-odata-4
+        """Get HTTP headers.
+
+        'ForceUseSession': 'true' is recommended from Creatio OData 4 docs.
         """
         return {
             "Authorization": f"Bearer {self.access_token}",
@@ -175,10 +174,10 @@ class CreatioSource(BaseSource):
                 )
 
             data = response.json()
-            return data["access_token"]
+            return str(data["access_token"])
 
     @retry(stop=stop_after_attempt(3))
-    async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> dict:
+    async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Dict[str, Any]:
         """GET request with Bearer token, retrying up to 3 times.
 
         Args:
@@ -203,7 +202,8 @@ class CreatioSource(BaseSource):
             raise ValueError("Token expired, retrying with fresh token")
 
         response.raise_for_status()
-        return response.json()
+        result: Dict[str, Any] = response.json()
+        return result
 
     async def _paginate_odata(
         self, client: httpx.AsyncClient, entity: CreatioEntity
@@ -217,7 +217,6 @@ class CreatioSource(BaseSource):
         Yields:
             Individual record dicts from the OData response
         """
-
         skip = 0
 
         def _build_url(skip: int) -> str:
@@ -225,7 +224,7 @@ class CreatioSource(BaseSource):
                 f"https://{self.instance_url}/0/odata/{entity.odata_name}"
                 f"?$top={self.ODATA_PAGE_SIZE}&$skip={skip}"
             )
-        url = _build_url(skip)
+        url: Optional[str] = _build_url(skip)
 
         while url:
             self.logger.debug(f"Doing URL request: {url}")
@@ -262,7 +261,7 @@ class CreatioSource(BaseSource):
         self.logger.info(f"Finished fetching Creatio {creatio_entity.odata_name} entities")
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        """Generate all Creatio entities. You can add more through CreatioEntity
+        """Generate all Creatio entities. You can add more through CreatioEntity.
 
         Yields:
             Any CreatioEntity instance
@@ -294,6 +293,9 @@ class CreatioSource(BaseSource):
                 await self._get_with_auth(client, url)
                 self.logger.info("Creatio validation succeeded")
                 return True
-        except Exception as e:
-            self.logger.error(f"Creatio validation failed: {e}")
+        except httpx.HTTPError as e:
+            self.logger.error(f"Creatio validation failed: HTTP error: {e}")
+            return False
+        except ValueError as e:
+            self.logger.error(f"Creatio validation failed: configuration/token error: {e}")
             return False

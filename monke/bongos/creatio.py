@@ -572,6 +572,8 @@ class CreatioBongo(BaseBongo):
                         await self._rate_limit()
                         await self._delete_entity(client, headers, odata_name, entity["creatio_id"])
                     except Exception:
+                        # Best-effort cleanup: entity may already be deleted or
+                        # locked by Creatio business processes; safe to ignore.
                         pass
 
         self._orders = []
