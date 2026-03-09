@@ -565,7 +565,7 @@ class OAuthCallbackService:
         try:
             await self._source_lifecycle.validate(
                 source.short_name,
-                {"access_token": access_token},
+                access_token,
             )
         except (SourceNotFoundError, SourceCreationError, SourceValidationError) as e:
             raise HTTPException(status_code=400, detail=f"Token validation failed: {e}") from e
