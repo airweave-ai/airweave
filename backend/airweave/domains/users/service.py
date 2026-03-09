@@ -22,7 +22,7 @@ from airweave.domains.organizations.protocols import (
     UserOrganizationRepositoryProtocol,
 )
 from airweave.domains.users.protocols import UserRepositoryProtocol, UserServiceProtocol
-from airweave.domains.users.types import CreateOrUpdateResult, has_auth0_id_conflict
+from airweave.domains.users.types import CreateOrUpdateResult
 
 
 class UserService(UserServiceProtocol):
@@ -54,10 +54,9 @@ class UserService(UserServiceProtocol):
     ) -> CreateOrUpdateResult:
         """Create or update a user with Auth0 organization sync.
 
-        Handles welcome email and analytics for new users internally.
-
-        Raises:
-            ValueError: On Auth0 ID conflict (HTTP 409 at endpoint level).
+        Email is the source of truth — if the auth0_id changed (e.g.
+        account linking), it gets updated silently.  Handles welcome
+        email and analytics for new users.
         """
         from airweave.core.exceptions import NotFoundException
 
@@ -95,18 +94,22 @@ class UserService(UserServiceProtocol):
         user_data: schemas.UserCreate,
         auth0_user: Any,
     ) -> CreateOrUpdateResult:
-        """Handle existing user: check for Auth0 ID conflict, then sync orgs."""
+        """Handle existing user: update auth0_id if changed, then sync orgs.
+
+        Email is the source of truth for identity.  Auth0 account linking
+        guarantees a stable ``sub``, so we simply store whatever Auth0 sends.
+        """
         incoming_auth0_id = auth0_user.id if auth0_user else user_data.auth0_id
 
-        if has_auth0_id_conflict(existing_user.auth0_id, incoming_auth0_id):
-            logger.warning(
-                f"Auth0 ID conflict for user {user_data.email}: "
-                f"existing={existing_user.auth0_id}, incoming={incoming_auth0_id}"
+        if incoming_auth0_id and existing_user.auth0_id != incoming_auth0_id:
+            logger.info(
+                f"Updating auth0_id for user {user_data.email}: "
+                f"{existing_user.auth0_id} → {incoming_auth0_id}"
             )
-            raise ValueError(
-                "A user with this email already exists but with a different "
-                "Auth0 ID. This typically happens when you use a different authentication "
-                "method to sign up for Airweave. Please contact support for assistance."
+            existing_user = await self._user_repo.update_user_no_auth(
+                db,
+                id=existing_user.id,
+                obj_in=schemas.UserUpdate(auth0_id=incoming_auth0_id),
             )
 
         try:

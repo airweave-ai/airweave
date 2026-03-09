@@ -61,15 +61,5 @@ async def create_or_update_user(
             detail="You are not authorized to create this user.",
         )
 
-    try:
-        result = await user_service.create_or_update(db, user_data, auth0_user)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "auth0_id_conflict",
-                "message": str(e),
-            },
-        ) from e
-
+    result = await user_service.create_or_update(db, user_data, auth0_user)
     return result.user
