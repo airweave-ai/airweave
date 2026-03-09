@@ -182,4 +182,7 @@ class ComposioBroker(BaseAuthBroker):
             }
             creds = {k: v for k, v in creds.items() if k in allowed}
 
+        if "token" not in creds and "access_token" in creds:
+            creds["token"] = creds["access_token"]
+
         return creds
