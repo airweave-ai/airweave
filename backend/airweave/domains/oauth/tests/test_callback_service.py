@@ -359,7 +359,9 @@ class TestCompleteOAuth2Callback:
                 return _SourceOk()
 
         registry = MagicMock()
-        registry.get.return_value = SimpleNamespace(source_class_ref=_SourceClass, short_name="github")
+        registry.get.return_value = SimpleNamespace(
+            source_class_ref=_SourceClass, short_name="github",
+        )
 
         svc = _service(
             init_session_repo=init_repo,
@@ -479,7 +481,9 @@ class TestCompleteOAuth1Callback:
         )
 
         oauth_flow = FakeOAuthFlowService()
-        oauth_flow.seed_oauth1_response(OAuth1TokenResponse(oauth_token="at", oauth_token_secret="as"))
+        oauth_flow.seed_oauth1_response(
+            OAuth1TokenResponse(oauth_token="at", oauth_token_secret="as"),
+        )
         svc = _service(
             init_session_repo=init_repo,
             organization_repo=org_repo,
@@ -649,9 +653,9 @@ class TestCompleteOAuth2Connection:
         )
         source_repo.seed("salesforce", source)
 
-        session = _init_session(short_name="salesforce")
+        _session = _init_session(short_name="salesforce")  # noqa: F841
 
-        token = SimpleNamespace(
+        _token = SimpleNamespace(  # noqa: F841
             model_dump=lambda: {
                 "access_token": "tok",
                 "instance_url": "https://my.salesforce.com",
@@ -809,7 +813,9 @@ class TestCompleteConnectionCommon:
         svc._collection_repo.get_by_readable_id = AsyncMock(
             return_value=SimpleNamespace(id=uuid4(), readable_id="col-abc")
         )
-        svc._sc_repo.update = AsyncMock(return_value=SimpleNamespace(id=uuid4(), connection_id=uuid4()))
+        svc._sc_repo.update = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4(), connection_id=uuid4()),
+        )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._source_registry.get = MagicMock(
             return_value=SimpleNamespace(source_class_ref=SimpleNamespace(federated_search=True))
@@ -869,13 +875,17 @@ class TestCompleteConnectionCommon:
         svc._collection_repo.get_by_readable_id = AsyncMock(
             return_value=SimpleNamespace(id=uuid4(), readable_id="col-abc")
         )
-        svc._sc_repo.update = AsyncMock(return_value=SimpleNamespace(id=uuid4(), connection_id=conn_id))
+        svc._sc_repo.update = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4(), connection_id=conn_id),
+        )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._source_registry.get = MagicMock(
             return_value=SimpleNamespace(source_class_ref=SimpleNamespace(federated_search=False))
         )
         svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
-        svc._sync_lifecycle.provision_sync = AsyncMock(return_value=SimpleNamespace(sync_id=uuid4()))
+        svc._sync_lifecycle.provision_sync = AsyncMock(
+            return_value=SimpleNamespace(sync_id=uuid4()),
+        )
 
         from airweave.domains.oauth import callback_service as callback_module
 

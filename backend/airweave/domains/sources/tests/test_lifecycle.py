@@ -8,17 +8,17 @@ constructor) are patched when needed.
 from dataclasses import dataclass, field
 from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
 from airweave.core.exceptions import NotFoundException
 from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
+from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
 from airweave.domains.oauth.fakes.oauth2_service import FakeOAuth2Service
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
-from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
 from airweave.domains.sources.exceptions import (
     SourceCreationError,
     SourceNotFoundError,
@@ -30,7 +30,6 @@ from airweave.domains.sources.tests.conftest import _make_ctx, _make_entry
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
 from airweave.platform.configs._base import Fields
-
 
 # ---------------------------------------------------------------------------
 # Stub source classes
@@ -962,14 +961,25 @@ class AuthProviderInstanceCase:
 
 AUTH_PROVIDER_INSTANCE_TABLE = [
     AuthProviderInstanceCase(id="happy-path"),
-    AuthProviderInstanceCase(id="conn-not-found", conn_found=False,
-                             expect_error=NotFoundException, error_match="readable_id"),
-    AuthProviderInstanceCase(id="no-cred-on-conn", has_cred_id=False,
-                             expect_error=NotFoundException, error_match="no integration credential"),
-    AuthProviderInstanceCase(id="cred-not-found", cred_found=False,
-                             expect_error=NotFoundException, error_match="credential not found"),
-    AuthProviderInstanceCase(id="not-in-ap-registry", in_ap_registry=False,
-                             expect_error=NotFoundException, error_match="not found in registry"),
+    AuthProviderInstanceCase(
+        id="conn-not-found", conn_found=False,
+        expect_error=NotFoundException, error_match="readable_id",
+    ),
+    AuthProviderInstanceCase(
+        id="no-cred-on-conn", has_cred_id=False,
+        expect_error=NotFoundException,
+        error_match="no integration credential",
+    ),
+    AuthProviderInstanceCase(
+        id="cred-not-found", cred_found=False,
+        expect_error=NotFoundException,
+        error_match="credential not found",
+    ),
+    AuthProviderInstanceCase(
+        id="not-in-ap-registry", in_ap_registry=False,
+        expect_error=NotFoundException,
+        error_match="not found in registry",
+    ),
 ]
 
 
