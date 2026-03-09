@@ -242,25 +242,40 @@ class ValidateCase:
 
 VALIDATE_TABLE = [
     ValidateCase(id="happy-string-creds", short_name="github"),
-    ValidateCase(id="happy-dict-creds", short_name="github",
-                 credentials={"access_token": "tok", "refresh_token": "ref"}),
-    ValidateCase(id="happy-with-config", short_name="github",
-                 config={"repo": "owner/repo"}),
-    ValidateCase(id="not-in-registry", short_name="nonexistent", seed=False,
-                 expect_error=SourceNotFoundError,
-                 error_substring="nonexistent"),
-    ValidateCase(id="create-raises", short_name="bad_source",
-                 source_class=_StubSourceCreateRaises,
-                 expect_error=SourceCreationError,
-                 error_substring="bad credentials format"),
-    ValidateCase(id="validate-raises", short_name="unreachable",
-                 source_class=_StubSourceValidateRaises,
-                 expect_error=SourceValidationError,
-                 error_substring="validation raised"),
-    ValidateCase(id="validate-returns-false", short_name="invalid_creds",
-                 source_class=_StubSourceValidateFalse,
-                 expect_error=SourceValidationError,
-                 error_substring="validate() returned False"),
+    ValidateCase(
+        id="happy-dict-creds",
+        short_name="github",
+        credentials={"access_token": "tok", "refresh_token": "ref"},
+    ),
+    ValidateCase(id="happy-with-config", short_name="github", config={"repo": "owner/repo"}),
+    ValidateCase(
+        id="not-in-registry",
+        short_name="nonexistent",
+        seed=False,
+        expect_error=SourceNotFoundError,
+        error_substring="nonexistent",
+    ),
+    ValidateCase(
+        id="create-raises",
+        short_name="bad_source",
+        source_class=_StubSourceCreateRaises,
+        expect_error=SourceCreationError,
+        error_substring="bad credentials format",
+    ),
+    ValidateCase(
+        id="validate-raises",
+        short_name="unreachable",
+        source_class=_StubSourceValidateRaises,
+        expect_error=SourceValidationError,
+        error_substring="validation raised",
+    ),
+    ValidateCase(
+        id="validate-returns-false",
+        short_name="invalid_creds",
+        source_class=_StubSourceValidateFalse,
+        expect_error=SourceValidationError,
+        error_substring="validate() returned False",
+    ),
 ]
 
 
@@ -361,16 +376,32 @@ class LoadSCDataCase:
 
 LOAD_SC_DATA_TABLE = [
     LoadSCDataCase(id="happy-path"),
-    LoadSCDataCase(id="sc-not-found", sc_exists=False,
-                   expect_error=NotFoundException, error_match="not found"),
-    LoadSCDataCase(id="not-in-registry", source_in_registry=False,
-                   expect_error=SourceNotFoundError, error_match="github"),
-    LoadSCDataCase(id="conn-not-found", conn_exists=False,
-                   expect_error=NotFoundException, error_match="Connection not found"),
-    LoadSCDataCase(id="no-cred-no-auth-provider", has_cred_id=False,
-                   expect_error=NotFoundException, error_match="no integration credential"),
-    LoadSCDataCase(id="auth-provider-skips-cred-check",
-                   has_cred_id=False, readable_auth_provider_id="pipedream-123"),
+    LoadSCDataCase(
+        id="sc-not-found", sc_exists=False, expect_error=NotFoundException, error_match="not found"
+    ),
+    LoadSCDataCase(
+        id="not-in-registry",
+        source_in_registry=False,
+        expect_error=SourceNotFoundError,
+        error_match="github",
+    ),
+    LoadSCDataCase(
+        id="conn-not-found",
+        conn_exists=False,
+        expect_error=NotFoundException,
+        error_match="Connection not found",
+    ),
+    LoadSCDataCase(
+        id="no-cred-no-auth-provider",
+        has_cred_id=False,
+        expect_error=NotFoundException,
+        error_match="no integration credential",
+    ),
+    LoadSCDataCase(
+        id="auth-provider-skips-cred-check",
+        has_cred_id=False,
+        readable_auth_provider_id="pipedream-123",
+    ),
     LoadSCDataCase(id="preserves-config", config_fields={"repo": "o/r", "branch": "main"}),
 ]
 
@@ -436,18 +467,26 @@ class AuthConfigRoutingCase:
 
 
 AUTH_CONFIG_ROUTING_TABLE = [
-    AuthConfigRoutingCase(id="direct-token", access_token="tok-123",
-                          expected_route="direct"),
-    AuthConfigRoutingCase(id="direct-token-beats-auth-provider",
-                          access_token="tok", readable_auth_provider_id="pd-1",
-                          auth_provider_config={"k": "v"}, expected_route="direct"),
-    AuthConfigRoutingCase(id="auth-provider", readable_auth_provider_id="pd-1",
-                          auth_provider_config={"k": "v"},
-                          expected_route="auth_provider"),
+    AuthConfigRoutingCase(id="direct-token", access_token="tok-123", expected_route="direct"),
+    AuthConfigRoutingCase(
+        id="direct-token-beats-auth-provider",
+        access_token="tok",
+        readable_auth_provider_id="pd-1",
+        auth_provider_config={"k": "v"},
+        expected_route="direct",
+    ),
+    AuthConfigRoutingCase(
+        id="auth-provider",
+        readable_auth_provider_id="pd-1",
+        auth_provider_config={"k": "v"},
+        expected_route="auth_provider",
+    ),
     AuthConfigRoutingCase(id="database-fallthrough", expected_route="database"),
-    AuthConfigRoutingCase(id="auth-provider-id-but-no-config",
-                          readable_auth_provider_id="pd-1",
-                          expected_route="database"),
+    AuthConfigRoutingCase(
+        id="auth-provider-id-but-no-config",
+        readable_auth_provider_id="pd-1",
+        expected_route="database",
+    ),
 ]
 
 
@@ -463,34 +502,47 @@ async def test_get_auth_configuration_routing(case: AuthConfigRoutingCase):
 
     if case.expected_route == "direct":
         result = await service._get_auth_configuration(
-            db=MagicMock(), source_connection_data=data, ctx=ctx,
-            logger=ctx.logger, access_token=case.access_token,
+            db=MagicMock(),
+            source_connection_data=data,
+            ctx=ctx,
+            logger=ctx.logger,
+            access_token=case.access_token,
         )
         assert isinstance(result, AuthConfig)
         assert result.credentials == case.access_token
         assert result.auth_mode == AuthProviderMode.DIRECT
     elif case.expected_route == "auth_provider":
-        with patch.object(service, "_get_auth_provider_configuration",
-                          new_callable=AsyncMock) as mock_ap:
+        with patch.object(
+            service, "_get_auth_provider_configuration", new_callable=AsyncMock
+        ) as mock_ap:
             mock_ap.return_value = AuthConfig(
-                credentials="ap", auth_mode=AuthProviderMode.DIRECT,
-                http_client_factory=None, auth_provider_instance=None,
+                credentials="ap",
+                auth_mode=AuthProviderMode.DIRECT,
+                http_client_factory=None,
+                auth_provider_instance=None,
             )
             result = await service._get_auth_configuration(
-                db=MagicMock(), source_connection_data=data, ctx=ctx,
-                logger=ctx.logger, access_token=case.access_token,
+                db=MagicMock(),
+                source_connection_data=data,
+                ctx=ctx,
+                logger=ctx.logger,
+                access_token=case.access_token,
             )
             mock_ap.assert_called_once()
     else:
-        with patch.object(service, "_get_database_credentials",
-                          new_callable=AsyncMock) as mock_db:
+        with patch.object(service, "_get_database_credentials", new_callable=AsyncMock) as mock_db:
             mock_db.return_value = AuthConfig(
-                credentials="db", auth_mode=AuthProviderMode.DIRECT,
-                http_client_factory=None, auth_provider_instance=None,
+                credentials="db",
+                auth_mode=AuthProviderMode.DIRECT,
+                http_client_factory=None,
+                auth_provider_instance=None,
             )
             result = await service._get_auth_configuration(
-                db=MagicMock(), source_connection_data=data, ctx=ctx,
-                logger=ctx.logger, access_token=case.access_token,
+                db=MagicMock(),
+                source_connection_data=data,
+                ctx=ctx,
+                logger=ctx.logger,
+                access_token=case.access_token,
             )
             mock_db.assert_called_once()
 
@@ -512,10 +564,18 @@ class DBCredCase:
 
 DB_CRED_TABLE = [
     DBCredCase(id="happy-no-auth-config"),
-    DBCredCase(id="no-cred-id", has_cred_id=False,
-               expect_error=NotFoundException, error_match="no integration credential"),
-    DBCredCase(id="cred-not-found", cred_found=False,
-               expect_error=NotFoundException, error_match="credential not found"),
+    DBCredCase(
+        id="no-cred-id",
+        has_cred_id=False,
+        expect_error=NotFoundException,
+        error_match="no integration credential",
+    ),
+    DBCredCase(
+        id="cred-not-found",
+        cred_found=False,
+        expect_error=NotFoundException,
+        error_match="credential not found",
+    ),
     DBCredCase(id="with-auth-config-delegates", auth_config_class="StripeAuthConfig"),
 ]
 
@@ -542,8 +602,9 @@ async def test_get_database_credentials(case: DBCredCase):
     elif case.auth_config_class:
         with (
             patch("airweave.domains.sources.lifecycle.credentials") as mock_creds,
-            patch.object(service, "_handle_auth_config_credentials",
-                         new_callable=AsyncMock) as mock_handle,
+            patch.object(
+                service, "_handle_auth_config_credentials", new_callable=AsyncMock
+            ) as mock_handle,
         ):
             mock_creds.decrypt.return_value = {"api_key": "sk"}
             mock_handle.return_value = {"api_key": "sk"}
@@ -579,13 +640,18 @@ class HandleAuthConfigCase:
 
 
 HANDLE_AUTH_CONFIG_TABLE = [
-    HandleAuthConfigCase(id="no-auth-config-ref-passthrough",
-                         has_auth_config_ref=False, expect_raw_passthrough=True),
-    HandleAuthConfigCase(id="no-refresh-token-returns-validated",
-                         has_auth_config_ref=True, has_refresh_token=False),
-    HandleAuthConfigCase(id="with-refresh-token-refreshes",
-                         has_auth_config_ref=True, has_refresh_token=True,
-                         refresh_token_value="ref-tok"),
+    HandleAuthConfigCase(
+        id="no-auth-config-ref-passthrough", has_auth_config_ref=False, expect_raw_passthrough=True
+    ),
+    HandleAuthConfigCase(
+        id="no-refresh-token-returns-validated", has_auth_config_ref=True, has_refresh_token=False
+    ),
+    HandleAuthConfigCase(
+        id="with-refresh-token-refreshes",
+        has_auth_config_ref=True,
+        has_refresh_token=True,
+        refresh_token_value="ref-tok",
+    ),
 ]
 
 
@@ -613,8 +679,11 @@ async def test_handle_auth_config_credentials(case: HandleAuthConfigCase):
     data = _sc_data(short_name="src", auth_config_class="Cfg")
 
     result = await service._handle_auth_config_credentials(
-        db=MagicMock(), source_connection_data=data,
-        decrypted_credential=decrypted, ctx=_make_ctx(), connection_id=uuid4(),
+        db=MagicMock(),
+        source_connection_data=data,
+        decrypted_credential=decrypted,
+        ctx=_make_ctx(),
+        connection_id=uuid4(),
     )
 
     if case.expect_raw_passthrough:
@@ -646,9 +715,11 @@ async def test_handle_auth_config_oauth2_error_propagates():
 
     with pytest.raises(RuntimeError, match="token server down"):
         await service._handle_auth_config_credentials(
-            db=MagicMock(), source_connection_data=data,
+            db=MagicMock(),
+            source_connection_data=data,
             decrypted_credential={"access_token": "x", "refresh_token": "ref"},
-            ctx=_make_ctx(), connection_id=uuid4(),
+            ctx=_make_ctx(),
+            connection_id=uuid4(),
         )
 
 
@@ -668,19 +739,39 @@ class ProcessCredsCase:
 
 
 PROCESS_CREDS_TABLE = [
-    ProcessCredsCase(id="passthrough-no-oauth-no-config",
-                     raw_credentials="plain-token", expected="plain-token"),
-    ProcessCredsCase(id="oauth-extract-access-token", oauth_type="with_refresh",
-                     raw_credentials={"access_token": "tok", "refresh_token": "r"},
-                     expected="tok"),
-    ProcessCredsCase(id="oauth-string-passthrough", oauth_type="access_only",
-                     raw_credentials="already-string", expected="already-string"),
-    ProcessCredsCase(id="oauth-unexpected-format-passthrough", oauth_type="access_only",
-                     raw_credentials=12345, expected=12345),
-    ProcessCredsCase(id="auth-config-dict-conversion", has_auth_config_ref=True,
-                     raw_credentials={"api_key": "sk"}, expected="VALIDATED"),
-    ProcessCredsCase(id="auth-config-conversion-error", has_auth_config_ref=True,
-                     raw_credentials={"bad": "x"}, expect_error=ValueError),
+    ProcessCredsCase(
+        id="passthrough-no-oauth-no-config", raw_credentials="plain-token", expected="plain-token"
+    ),
+    ProcessCredsCase(
+        id="oauth-extract-access-token",
+        oauth_type="with_refresh",
+        raw_credentials={"access_token": "tok", "refresh_token": "r"},
+        expected="tok",
+    ),
+    ProcessCredsCase(
+        id="oauth-string-passthrough",
+        oauth_type="access_only",
+        raw_credentials="already-string",
+        expected="already-string",
+    ),
+    ProcessCredsCase(
+        id="oauth-unexpected-format-passthrough",
+        oauth_type="access_only",
+        raw_credentials=12345,
+        expected=12345,
+    ),
+    ProcessCredsCase(
+        id="auth-config-dict-conversion",
+        has_auth_config_ref=True,
+        raw_credentials={"api_key": "sk"},
+        expected="VALIDATED",
+    ),
+    ProcessCredsCase(
+        id="auth-config-conversion-error",
+        has_auth_config_ref=True,
+        raw_credentials={"bad": "x"},
+        expect_error=ValueError,
+    ),
 ]
 
 
@@ -700,19 +791,24 @@ def test_process_credentials_for_source(case: ProcessCredsCase):
 
     service = _make_service(source_entries=[entry])
     ctx = _make_ctx()
-    data = _sc_data(short_name="src", oauth_type=case.oauth_type,
-                    auth_config_class="TestAuthConfig" if case.has_auth_config_ref else None)
+    data = _sc_data(
+        short_name="src",
+        oauth_type=case.oauth_type,
+        auth_config_class="TestAuthConfig" if case.has_auth_config_ref else None,
+    )
 
     if case.expect_error:
         with pytest.raises(case.expect_error):
             service._process_credentials_for_source(
                 raw_credentials=case.raw_credentials,
-                source_connection_data=data, logger=ctx.logger,
+                source_connection_data=data,
+                logger=ctx.logger,
             )
     else:
         result = service._process_credentials_for_source(
             raw_credentials=case.raw_credentials,
-            source_connection_data=data, logger=ctx.logger,
+            source_connection_data=data,
+            logger=ctx.logger,
         )
         assert result == case.expected
 
@@ -736,10 +832,10 @@ TOKEN_MANAGER_TABLE = [
     TokenManagerCase(id="skip-proxy-mode", auth_mode=AuthProviderMode.PROXY),
     TokenManagerCase(id="skip-no-oauth-type", oauth_type=None),
     TokenManagerCase(id="skip-access-only-oauth", oauth_type="access_only"),
-    TokenManagerCase(id="happy-with-refresh", oauth_type="with_refresh",
-                     expect_tm_set=True),
-    TokenManagerCase(id="happy-rotating-refresh", oauth_type="with_rotating_refresh",
-                     expect_tm_set=True),
+    TokenManagerCase(id="happy-with-refresh", oauth_type="with_refresh", expect_tm_set=True),
+    TokenManagerCase(
+        id="happy-rotating-refresh", oauth_type="with_rotating_refresh", expect_tm_set=True
+    ),
 ]
 
 
@@ -760,16 +856,26 @@ async def test_configure_token_manager(case: TokenManagerCase):
         with patch("airweave.domains.sources.lifecycle.TokenManager") as mock_tm:
             mock_tm.return_value = MagicMock()
             await SourceLifecycleService._configure_token_manager(
-                db=MagicMock(), source=source, source_connection_data=data,
-                source_credentials="tok", ctx=ctx, logger=ctx.logger,
-                access_token=case.access_token, auth_config=auth_config,
+                db=MagicMock(),
+                source=source,
+                source_connection_data=data,
+                source_credentials="tok",
+                ctx=ctx,
+                logger=ctx.logger,
+                access_token=case.access_token,
+                auth_config=auth_config,
             )
         source.set_token_manager.assert_called_once()
     else:
         await SourceLifecycleService._configure_token_manager(
-            db=MagicMock(), source=source, source_connection_data=data,
-            source_credentials="tok", ctx=ctx, logger=ctx.logger,
-            access_token=case.access_token, auth_config=auth_config,
+            db=MagicMock(),
+            source=source,
+            source_connection_data=data,
+            source_credentials="tok",
+            ctx=ctx,
+            logger=ctx.logger,
+            access_token=case.access_token,
+            auth_config=auth_config,
         )
         assert source._token_manager is None
 
@@ -796,8 +902,10 @@ class TestConfigureHttpClientFactory:
         source = MagicMock()
         factory = MagicMock()
         ac = AuthConfig(
-            credentials="x", http_client_factory=factory,
-            auth_provider_instance=None, auth_mode=AuthProviderMode.DIRECT,
+            credentials="x",
+            http_client_factory=factory,
+            auth_provider_instance=None,
+            auth_mode=AuthProviderMode.DIRECT,
         )
         SourceLifecycleService._configure_http_client_factory(source, ac)
         source.set_http_client_factory.assert_called_once_with(factory)
@@ -805,8 +913,10 @@ class TestConfigureHttpClientFactory:
     def test_noop_when_none(self):
         source = MagicMock()
         ac = AuthConfig(
-            credentials="x", http_client_factory=None,
-            auth_provider_instance=None, auth_mode=AuthProviderMode.DIRECT,
+            credentials="x",
+            http_client_factory=None,
+            auth_provider_instance=None,
+            auth_mode=AuthProviderMode.DIRECT,
         )
         SourceLifecycleService._configure_http_client_factory(source, ac)
         source.set_http_client_factory.assert_not_called()
@@ -851,8 +961,11 @@ def test_wrap_source_with_airweave_client(case: WrapClientCase):
     ctx = _make_ctx()
 
     SourceLifecycleService._wrap_source_with_airweave_client(
-        source=source, source_short_name="src",
-        source_connection_id=uuid4(), ctx=ctx, logger=ctx.logger,
+        source=source,
+        source_short_name="src",
+        source_connection_id=uuid4(),
+        ctx=ctx,
+        logger=ctx.logger,
     )
 
     assert source._http_client_factory is not None
@@ -874,14 +987,30 @@ class MergeConfigCase:
 
 
 MERGE_CONFIG_TABLE = [
-    MergeConfigCase(id="new-key-added", existing={},
-                    provider={"k": "v"}, expected_key="k", expected_value="v"),
-    MergeConfigCase(id="user-value-preserved", existing={"k": "user"},
-                    provider={"k": "provider"}, expected_key="k", expected_value="user"),
-    MergeConfigCase(id="none-value-overwritten", existing={"k": None},
-                    provider={"k": "provider"}, expected_key="k", expected_value="provider"),
-    MergeConfigCase(id="null-config-fields", existing=None,
-                    provider={"k": "v"}, expected_key="k", expected_value="v"),
+    MergeConfigCase(
+        id="new-key-added", existing={}, provider={"k": "v"}, expected_key="k", expected_value="v"
+    ),
+    MergeConfigCase(
+        id="user-value-preserved",
+        existing={"k": "user"},
+        provider={"k": "provider"},
+        expected_key="k",
+        expected_value="user",
+    ),
+    MergeConfigCase(
+        id="none-value-overwritten",
+        existing={"k": None},
+        provider={"k": "provider"},
+        expected_key="k",
+        expected_value="provider",
+    ),
+    MergeConfigCase(
+        id="null-config-fields",
+        existing=None,
+        provider={"k": "v"},
+        expected_key="k",
+        expected_value="v",
+    ),
 ]
 
 
@@ -912,11 +1041,17 @@ CONFIG_MAPPING_TABLE = [
     ConfigMappingCase(id="no-short-name", short_name=None),
     ConfigMappingCase(id="not-in-registry", short_name="unknown"),
     ConfigMappingCase(id="no-config-ref", short_name="src", in_registry=True),
-    ConfigMappingCase(id="config-no-auth-fields", short_name="src",
-                      in_registry=True, has_config_ref=True),
-    ConfigMappingCase(id="with-auth-field", short_name="src",
-                      in_registry=True, has_config_ref=True, has_auth_field=True,
-                      expected={"org": "org_slug"}),
+    ConfigMappingCase(
+        id="config-no-auth-fields", short_name="src", in_registry=True, has_config_ref=True
+    ),
+    ConfigMappingCase(
+        id="with-auth-field",
+        short_name="src",
+        in_registry=True,
+        has_config_ref=True,
+        has_auth_field=True,
+        expected={"org": "org_slug"},
+    ),
 ]
 
 
@@ -962,21 +1097,26 @@ class AuthProviderInstanceCase:
 AUTH_PROVIDER_INSTANCE_TABLE = [
     AuthProviderInstanceCase(id="happy-path"),
     AuthProviderInstanceCase(
-        id="conn-not-found", conn_found=False,
-        expect_error=NotFoundException, error_match="readable_id",
+        id="conn-not-found",
+        conn_found=False,
+        expect_error=NotFoundException,
+        error_match="readable_id",
     ),
     AuthProviderInstanceCase(
-        id="no-cred-on-conn", has_cred_id=False,
+        id="no-cred-on-conn",
+        has_cred_id=False,
         expect_error=NotFoundException,
         error_match="no integration credential",
     ),
     AuthProviderInstanceCase(
-        id="cred-not-found", cred_found=False,
+        id="cred-not-found",
+        cred_found=False,
         expect_error=NotFoundException,
         error_match="credential not found",
     ),
     AuthProviderInstanceCase(
-        id="not-in-ap-registry", in_ap_registry=False,
+        id="not-in-ap-registry",
+        in_ap_registry=False,
         expect_error=NotFoundException,
         error_match="not found in registry",
     ),
@@ -1006,11 +1146,13 @@ async def test_create_auth_provider_instance(case: AuthProviderInstanceCase):
 
     ap_entries = []
     if case.in_ap_registry:
-        ap_entries.append(_make_auth_provider_entry(
-            short_name=conn.short_name, provider_class_ref=_StubProvider))
+        ap_entries.append(
+            _make_auth_provider_entry(short_name=conn.short_name, provider_class_ref=_StubProvider)
+        )
 
-    service = _make_service(conn_repo=conn_repo, cred_repo=cred_repo,
-                            auth_provider_entries=ap_entries)
+    service = _make_service(
+        conn_repo=conn_repo, cred_repo=cred_repo, auth_provider_entries=ap_entries
+    )
     ctx = _make_ctx()
 
     if case.expect_error:
@@ -1018,15 +1160,21 @@ async def test_create_auth_provider_instance(case: AuthProviderInstanceCase):
             mock_creds.decrypt.return_value = {"token": "d"}
             with pytest.raises(case.expect_error, match=case.error_match):
                 await service._create_auth_provider_instance(
-                    db=MagicMock(), readable_auth_provider_id="pd-1",
-                    auth_provider_config={}, ctx=ctx, logger=ctx.logger,
+                    db=MagicMock(),
+                    readable_auth_provider_id="pd-1",
+                    auth_provider_config={},
+                    ctx=ctx,
+                    logger=ctx.logger,
                 )
     else:
         with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
             mock_creds.decrypt.return_value = {"token": "d"}
             result = await service._create_auth_provider_instance(
-                db=MagicMock(), readable_auth_provider_id="pd-1",
-                auth_provider_config={"env": "prd"}, ctx=ctx, logger=ctx.logger,
+                db=MagicMock(),
+                readable_auth_provider_id="pd-1",
+                auth_provider_config={"env": "prd"},
+                ctx=ctx,
+                logger=ctx.logger,
             )
         assert result is mock_provider_instance
         _StubProvider.create.assert_called_once()
@@ -1066,15 +1214,18 @@ async def test_create(case: CreateCase):
     cred_repo = FakeIntegrationCredentialRepository()
     cred_repo.seed(conn.integration_credential_id, cred)
 
-    service = _make_service(source_entries=[entry], sc_repo=sc_repo,
-                            conn_repo=conn_repo, cred_repo=cred_repo)
+    service = _make_service(
+        source_entries=[entry], sc_repo=sc_repo, conn_repo=conn_repo, cred_repo=cred_repo
+    )
     ctx = _make_ctx()
 
     with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
         mock_creds.decrypt.return_value = {"access_token": "tok"}
 
         source = await service.create(
-            db=MagicMock(), source_connection_id=sc.id, ctx=ctx,
+            db=MagicMock(),
+            source_connection_id=sc.id,
+            ctx=ctx,
             access_token=case.access_token,
         )
 

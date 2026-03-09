@@ -303,9 +303,7 @@ class TestCompleteOAuth2Callback:
         )
 
         lifecycle = AsyncMock()
-        lifecycle.validate = AsyncMock(
-            side_effect=SourceCreationError("github", "provider error")
-        )
+        lifecycle.validate = AsyncMock(side_effect=SourceCreationError("github", "provider error"))
 
         svc = _service(
             init_session_repo=init_repo,
@@ -360,7 +358,8 @@ class TestCompleteOAuth2Callback:
 
         registry = MagicMock()
         registry.get.return_value = SimpleNamespace(
-            source_class_ref=_SourceClass, short_name="github",
+            source_class_ref=_SourceClass,
+            short_name="github",
         )
 
         svc = _service(
@@ -940,9 +939,7 @@ class TestCompleteConnectionCommon:
 
 class TestFinalizeCallback:
     async def test_no_sync_id_just_returns_response(self):
-        response = MagicMock(
-            id=uuid4(), short_name="github", readable_collection_id="col-abc"
-        )
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
         builder.build_response = AsyncMock(return_value=response)
         event_bus = AsyncMock()
@@ -957,9 +954,7 @@ class TestFinalizeCallback:
         builder.build_response.assert_awaited_once()
 
     async def test_triggers_workflow_when_pending_job_exists(self):
-        response = MagicMock(
-            id=uuid4(), short_name="github", readable_collection_id="col-abc"
-        )
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
         builder.build_response = AsyncMock(return_value=response)
 
@@ -1059,9 +1054,7 @@ class TestFinalizeCallback:
         temporal_svc.run_source_connection_workflow.assert_awaited_once()
 
     async def test_no_pending_jobs_skips_workflow(self):
-        response = MagicMock(
-            id=uuid4(), short_name="github", readable_collection_id="col-abc"
-        )
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
         builder.build_response = AsyncMock(return_value=response)
 
@@ -1094,9 +1087,7 @@ class TestFinalizeCallback:
         temporal_svc.run_source_connection_workflow.assert_not_awaited()
 
     async def test_running_job_skips_workflow(self):
-        response = MagicMock(
-            id=uuid4(), short_name="github", readable_collection_id="col-abc"
-        )
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
         builder.build_response = AsyncMock(return_value=response)
 
