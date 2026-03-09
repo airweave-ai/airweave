@@ -187,29 +187,35 @@ class TestCreateOrUpdateExistingUser:
 
 
 # ===========================================================================
-# create_or_update — Auth0 ID conflict
+# create_or_update — auth0_id update (email is source of truth)
 # ===========================================================================
 
 
-class TestCreateOrUpdateAuth0Conflict:
+class TestCreateOrUpdateAuth0IdUpdate:
     @pytest.mark.asyncio
-    async def test_raises_value_error_on_conflict(self):
+    async def test_updates_auth0_id_on_mismatch(self):
         existing = _UserStub(email="user@test.com", auth0_id="auth0|old_id")
         user_repo = FakeUserRepository()
         user_repo.seed("user@test.com", existing)
 
-        svc = _make_service(user_repo=user_repo)
+        org_service = FakeOrganizationService()
+        org_service.sync_user_organizations = AsyncMock(return_value=existing)
+
+        svc = _make_service(user_repo=user_repo, org_service=org_service)
         db = AsyncMock()
 
-        with pytest.raises(ValueError, match="different Auth0 ID"):
-            await svc.create_or_update(
-                db,
-                _make_user_create(email="user@test.com"),
-                _Auth0UserStub(user_id="auth0|new_id", email="user@test.com"),
-            )
+        result = await svc.create_or_update(
+            db,
+            _make_user_create(email="user@test.com"),
+            _Auth0UserStub(user_id="auth0|new_id", email="user@test.com"),
+        )
+
+        assert result.is_new is False
+        assert existing.auth0_id == "auth0|new_id"
+        assert user_repo.call_count("update_user_no_auth") == 1
 
     @pytest.mark.asyncio
-    async def test_no_conflict_when_existing_auth0_id_is_none(self):
+    async def test_sets_auth0_id_when_none(self):
         existing = _UserStub(email="user@test.com", auth0_id=None)
         user_repo = FakeUserRepository()
         user_repo.seed("user@test.com", existing)
@@ -226,9 +232,10 @@ class TestCreateOrUpdateAuth0Conflict:
             _Auth0UserStub(user_id="auth0|new_id", email="user@test.com"),
         )
         assert result.is_new is False
+        assert existing.auth0_id == "auth0|new_id"
 
     @pytest.mark.asyncio
-    async def test_no_conflict_when_ids_match(self):
+    async def test_no_update_when_ids_match(self):
         existing = _UserStub(email="user@test.com", auth0_id="auth0|same")
         user_repo = FakeUserRepository()
         user_repo.seed("user@test.com", existing)
@@ -245,6 +252,7 @@ class TestCreateOrUpdateAuth0Conflict:
             _Auth0UserStub(user_id="auth0|same", email="user@test.com"),
         )
         assert result.is_new is False
+        assert user_repo.call_count("update_user_no_auth") == 0
 
 
 # ===========================================================================
