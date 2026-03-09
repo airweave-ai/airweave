@@ -135,12 +135,10 @@ class GitHubSource(BaseSource):
 
         instance.personal_access_token = token
 
-        if not config or "repo_name" not in config:
-            raise ValueError("Repository name must be specified in source configuration")
-
-        instance.repo_name = config["repo_name"]
-        instance.branch = config.get("branch", None)
-        instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
+        if config and "repo_name" in config:
+            instance.repo_name = config["repo_name"]
+            instance.branch = config.get("branch", None)
+            instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
 
         return instance
 
