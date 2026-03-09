@@ -151,29 +151,26 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
     return sourceDetails?.auth_methods?.includes('direct');
   };
 
-  // Determine available auth methods based on source
+  // Determine available auth methods based on source, preserving backend ordering
   const getAvailableAuthMethods = (): AuthMode[] => {
     if (!sourceDetails || !sourceDetails.auth_methods) return [];
 
     const methods: AuthMode[] = [];
 
-    // Check for direct auth (API keys, passwords, config)
-    if (sourceDetails.auth_methods.includes('direct')) {
-      methods.push('direct_auth');
-    }
-
-    // Check for OAuth browser flow
-    if (sourceDetails.auth_methods.includes('oauth_browser') ||
-      sourceDetails.auth_methods.includes('oauth_token')) {
-      methods.push('oauth2');
-    }
-
-    // Add external provider if any are connected and source supports it
-    if (authProviderConnections.length > 0 &&
-      sourceDetails.auth_methods.includes('auth_provider') &&
-      sourceDetails.supported_auth_providers &&
-      sourceDetails.supported_auth_providers.length > 0) {
-      methods.push('external_provider');
+    for (const method of sourceDetails.auth_methods) {
+      if (method === 'direct' && !methods.includes('direct_auth')) {
+        methods.push('direct_auth');
+      } else if ((method === 'oauth_browser' || method === 'oauth_token') && !methods.includes('oauth2')) {
+        methods.push('oauth2');
+      } else if (
+        method === 'auth_provider' &&
+        !methods.includes('external_provider') &&
+        authProviderConnections.length > 0 &&
+        sourceDetails.supported_auth_providers &&
+        sourceDetails.supported_auth_providers.length > 0
+      ) {
+        methods.push('external_provider');
+      }
     }
 
     return methods;
@@ -224,25 +221,16 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
     fetchSourceDetails();
   }, [selectedSource]);
 
-  // Set default auth mode based on available methods
-  // This runs after source details and auth providers are loaded
+  // Set default auth mode to the first available method (respects backend ordering)
   useEffect(() => {
     if (!sourceDetails || !sourceDetails.auth_methods || authMode) return;
 
-    // Determine default auth mode based on available methods
-    if (sourceDetails.auth_methods.includes('direct')) {
-      // Prefer direct auth if available
-      setAuthMode('direct_auth');
-    } else if (sourceDetails.auth_methods.includes('oauth_browser')) {
-      // Then OAuth
-      setAuthMode('oauth2');
-      // Auto-enable custom credentials for sources that require BYOC
-      if (sourceDetails.requires_byoc) {
+    const available = getAvailableAuthMethods();
+    if (available.length > 0) {
+      setAuthMode(available[0]);
+      if (available[0] === 'oauth2' && sourceDetails.requires_byoc) {
         setUseOwnCredentials(true);
       }
-    } else if (authProviderConnections.length > 0 && sourceDetails.auth_methods.includes('auth_provider')) {
-      // Auth provider only if providers are connected
-      setAuthMode('external_provider');
     }
   }, [sourceDetails, authProviderConnections, authMode, setAuthMode]);
 
