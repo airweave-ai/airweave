@@ -181,7 +181,6 @@ class OAuthCallbackService:
         await self._validate_oauth2_token_or_raise(
             source=source,
             access_token=token_response.access_token,
-            ctx=ctx,
         )
 
         source_conn = await self._complete_oauth2_connection(
@@ -548,7 +547,6 @@ class OAuthCallbackService:
         *,
         source: Source | None,
         access_token: str,
-        ctx: ApiContext,
     ) -> None:
         """Validate OAuth2 token using source implementation; fail callback if invalid."""
         if not source:
@@ -556,14 +554,9 @@ class OAuthCallbackService:
 
         try:
             source_cls = self._source_registry.get(source.short_name).source_class_ref
-
-            source_instance = await source_cls.create(access_token=access_token, config=None)
-            source_instance.set_logger(ctx.logger)
-
-            if hasattr(source_instance, "validate"):
-                is_valid = await source_instance.validate()
-                if not is_valid:
-                    raise HTTPException(status_code=400, detail="OAuth token is invalid")
+            is_valid = await source_cls.validate_token(access_token)
+            if not is_valid:
+                raise HTTPException(status_code=400, detail="OAuth token is invalid")
         except HTTPException:
             raise
         except Exception as e:

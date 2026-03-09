@@ -95,50 +95,42 @@ class GitHubSource(BaseSource):
             raise ValueError(error_msg)
 
     @classmethod
+    async def validate_token(cls, token: str) -> bool:
+        """Validate a GitHub token by calling the /user endpoint."""
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{cls.BASE_URL}/user",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            return resp.status_code == 200
+
+    @classmethod
     async def create(
         cls,
-        credentials: Any = None,
-        *,
-        access_token: Optional[str] = None,
+        credentials: GitHubAuthConfig,
         config: Optional[Dict[str, Any]] = None,
     ) -> "GitHubSource":
         """Create a new source instance with authentication.
 
-        Supports multiple credential formats:
-        - ``GitHubAuthConfig`` (DIRECT / PAT path via lifecycle)
-        - ``str`` token (auth-provider or injected token)
-        - ``dict`` with ``personal_access_token`` or ``access_token`` key
-        - ``access_token`` keyword (OAuth callback validation)
-
         Args:
-            credentials: Auth credentials in any supported format.
-            access_token: OAuth access token (used by callback validation path).
-            config: Optional source configuration parameters.
+            credentials: GitHubAuthConfig with either personal_access_token or access_token.
+            config: Source configuration (must include ``repo_name``).
 
         Returns:
             Configured GitHub source instance.
         """
         instance = cls()
+        instance.personal_access_token = credentials.token
 
-        token: Optional[str] = None
-        if isinstance(credentials, GitHubAuthConfig):
-            token = credentials.personal_access_token
-        elif isinstance(credentials, str):
-            token = credentials
-        elif isinstance(credentials, dict):
-            token = credentials.get("personal_access_token") or credentials.get("access_token")
-        elif access_token:
-            token = access_token
+        if not config or "repo_name" not in config:
+            raise ValueError("Repository name must be specified in source configuration")
 
-        if not token:
-            raise ValueError("GitHub authentication token is required")
-
-        instance.personal_access_token = token
-
-        if config and "repo_name" in config:
-            instance.repo_name = config["repo_name"]
-            instance.branch = config.get("branch", None)
-            instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
+        instance.repo_name = config["repo_name"]
+        instance.branch = config.get("branch", None)
+        instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
 
         return instance
 

@@ -260,6 +260,15 @@ class BaseSource:
         """
         pass
 
+    @classmethod
+    async def validate_token(cls, token: str) -> bool:
+        """Validate that a token is usable, without creating a full source instance.
+
+        Called during OAuth callback to verify the exchanged token.
+        Override in subclasses that need active validation (e.g. API ping).
+        """
+        return True
+
     @abstractmethod
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for the source."""

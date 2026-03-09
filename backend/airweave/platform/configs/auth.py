@@ -458,33 +458,44 @@ class ElasticsearchAuthConfig(AuthConfig):
 class GitHubAuthConfig(AuthConfig):
     """GitHub authentication credentials schema.
 
-    Accepts both PAT (personal_access_token) and OAuth (access_token) formats.
-    When created via OAuth browser flow, the stored credential dict has an
-    ``access_token`` key which the model_validator maps transparently.
+    Supports two mutually exclusive credential formats:
+    - ``personal_access_token``: PAT entered via Direct Credentials flow
+    - ``access_token``: OAuth app token from the browser OAuth flow
+
+    The ``token`` property returns whichever is set.
     """
 
-    personal_access_token: str = Field(
+    personal_access_token: Optional[str] = Field(
+        default=None,
         title="Personal Access Token",
         description="GitHub PAT with read rights (code, contents, metadata) to the repository",
-        min_length=4,
+    )
+    access_token: Optional[str] = Field(
+        default=None,
+        title="Access Token",
+        description="OAuth access token (set automatically by the OAuth browser flow)",
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_oauth_token(cls, data: Any) -> Any:
-        """Map OAuth ``access_token`` to ``personal_access_token`` when present."""
-        if isinstance(data, dict):
-            if "access_token" in data and "personal_access_token" not in data:
-                data["personal_access_token"] = data["access_token"]
-        return data
+    @model_validator(mode="after")
+    def _require_one_token(self) -> Self:
+        """Ensure exactly one of personal_access_token or access_token is provided."""
+        has_pat = bool(self.personal_access_token and self.personal_access_token.strip())
+        has_oauth = bool(self.access_token and self.access_token.strip())
+        if not has_pat and not has_oauth:
+            raise ValueError("Either personal_access_token or access_token is required")
+        if has_pat and has_oauth:
+            raise ValueError("Provide personal_access_token or access_token, not both")
+        return self
 
-    @field_validator("personal_access_token")
+    @field_validator("personal_access_token", "access_token", mode="before")
     @classmethod
-    def validate_personal_access_token(cls, v: str) -> str:
-        """Validate GitHub personal access token format."""
-        if not v or not v.strip():
-            raise ValueError("Personal access token is required")
+    def _validate_token_format(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+        """Validate GitHub token format (shared by both fields)."""
+        if v is None:
+            return v
         v = v.strip()
+        if not v:
+            return None
         # ghp_ = classic PAT, github_pat_ = fine-grained PAT,
         # gho_ = OAuth app token, 40-char hex = legacy token
         if not (
@@ -494,10 +505,15 @@ class GitHubAuthConfig(AuthConfig):
             or (len(v) == 40 and all(c in "0123456789abcdef" for c in v.lower()))
         ):
             raise ValueError(
-                "Invalid token format. Expected format: "
+                "Invalid token format. Expected: "
                 "ghp_... or github_pat_... or gho_... or 40-character hex"
             )
         return v
+
+    @property
+    def token(self) -> str:
+        """Return the active token regardless of which field holds it."""
+        return self.personal_access_token or self.access_token  # type: ignore[return-value]
 
 
 class GmailAuthConfig(OAuth2BYOCAuthConfig):
