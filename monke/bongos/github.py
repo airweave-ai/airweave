@@ -23,22 +23,16 @@ class GitHubBongo(BaseBongo):
         """Initialize the GitHub bongo.
 
         Args:
-            credentials: GitHub credentials with personal_access_token
+            credentials: GitHub credentials with token
             **kwargs: Additional configuration including repo_name (required), entity_count, file_types
         """
         super().__init__(credentials)
-        # GitHub authentication - support both direct and Composio auth
-        self.personal_access_token = (
-            credentials.get("personal_access_token")  # Direct auth
-            or credentials.get("access_token")  # Composio OAuth
-            or credentials.get("token")  # Alternative token field
-        )
-
-        if not self.personal_access_token:
+        self.token = credentials.get("token")
+        if not self.token:
             available_fields = list(credentials.keys())
             raise ValueError(
-                f"Missing GitHub authentication. Expected 'personal_access_token' (direct) or "
-                f"'access_token' (Composio). Available fields: {available_fields}"
+                f"Missing GitHub authentication. Expected 'token'. "
+                f"Available fields: {available_fields}"
             )
 
         # repo_name is now in config_fields (kwargs) after migration
@@ -270,7 +264,7 @@ class GitHubBongo(BaseBongo):
                 response = await client.get(
                     f"https://api.github.com/repos/{self.repo_name}/contents/",
                     headers={
-                        "Authorization": f"token {self.personal_access_token}",
+                        "Authorization": f"token {self.token}",
                         "Accept": "application/vnd.github.v3+json",
                     },
                     params={"ref": self.branch},
@@ -314,7 +308,7 @@ class GitHubBongo(BaseBongo):
                                     "DELETE",
                                     f"https://api.github.com/repos/{self.repo_name}/contents/{file_info['path']}",
                                     headers={
-                                        "Authorization": f"token {self.personal_access_token}",
+                                        "Authorization": f"token {self.token}",
                                         "Accept": "application/vnd.github.v3+json",
                                         "Content-Type": "application/json",
                                     },
@@ -364,7 +358,7 @@ class GitHubBongo(BaseBongo):
 
         self.logger.info(f"🔍 Creating file: {filename}")
         self.logger.info(f"   Repository: {self.repo_name}")
-        self.logger.info(f"   Token: {self.personal_access_token[:8]}...")
+        self.logger.info(f"   Token: {self.token[:8]}...")
 
         async with httpx.AsyncClient() as client:
             # First check if file exists to get current SHA
@@ -373,7 +367,7 @@ class GitHubBongo(BaseBongo):
                 check_response = await client.get(
                     f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                     headers={
-                        "Authorization": f"token {self.personal_access_token}",
+                        "Authorization": f"token {self.token}",
                         "Accept": "application/vnd.github.v3+json",
                     },
                     params={"ref": self.branch},
@@ -420,7 +414,7 @@ class GitHubBongo(BaseBongo):
             response = await client.put(
                 f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                 headers={
-                    "Authorization": f"token {self.personal_access_token}",
+                    "Authorization": f"token {self.token}",
                     "Accept": "application/vnd.github.v3+json",
                     "Content-Type": "application/json",
                 },
@@ -455,7 +449,7 @@ class GitHubBongo(BaseBongo):
                 response = await client.put(
                     f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                     headers={
-                        "Authorization": f"token {self.personal_access_token}",
+                        "Authorization": f"token {self.token}",
                         "Accept": "application/vnd.github.v3+json",
                         "Content-Type": "application/json",
                     },
@@ -508,7 +502,7 @@ class GitHubBongo(BaseBongo):
             response = await client.get(
                 f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                 headers={
-                    "Authorization": f"token {self.personal_access_token}",
+                    "Authorization": f"token {self.token}",
                     "Accept": "application/vnd.github.v3+json",
                 },
                 params={"ref": self.branch},
@@ -533,7 +527,7 @@ class GitHubBongo(BaseBongo):
                 "DELETE",
                 f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                 headers={
-                    "Authorization": f"token {self.personal_access_token}",
+                    "Authorization": f"token {self.token}",
                     "Accept": "application/vnd.github.v3+json",
                     "Content-Type": "application/json",
                 },
@@ -558,7 +552,7 @@ class GitHubBongo(BaseBongo):
                 response = await client.get(
                     f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                     headers={
-                        "Authorization": f"token {self.personal_access_token}",
+                        "Authorization": f"token {self.token}",
                         "Accept": "application/vnd.github.v3+json",
                     },
                     params={"ref": self.branch},
@@ -589,7 +583,7 @@ class GitHubBongo(BaseBongo):
                 response = await client.get(
                     f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                     headers={
-                        "Authorization": f"token {self.personal_access_token}",
+                        "Authorization": f"token {self.token}",
                         "Accept": "application/vnd.github.v3+json",
                     },
                     params={"ref": self.branch},
@@ -604,7 +598,7 @@ class GitHubBongo(BaseBongo):
                         "DELETE",
                         f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                         headers={
-                            "Authorization": f"token {self.personal_access_token}",
+                            "Authorization": f"token {self.token}",
                             "Accept": "application/vnd.github.v3+json",
                             "Content-Type": "application/json",
                         },
