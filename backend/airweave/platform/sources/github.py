@@ -110,7 +110,7 @@ class GitHubSource(BaseSource):
             Configured GitHub source instance.
         """
         instance = cls()
-        instance.personal_access_token = credentials.token
+        instance.token = credentials.token
 
         if config and "repo_name" in config:
             instance.repo_name = config["repo_name"]
@@ -139,7 +139,7 @@ class GitHubSource(BaseSource):
             JSON response
         """
         headers = {
-            "Authorization": f"token {self.personal_access_token}",
+            "Authorization": f"token {self.token}",
             "Accept": "application/vnd.github.v3+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
@@ -172,7 +172,7 @@ class GitHubSource(BaseSource):
         while True:
             params["page"] = page
             headers = {
-                "Authorization": f"token {self.personal_access_token}",
+                "Authorization": f"token {self.token}",
                 "Accept": "application/vnd.github.v3+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             }
@@ -908,12 +908,12 @@ class GitHubSource(BaseSource):
 
     async def validate(self) -> bool:
         """Verify GitHub PAT and repo/branch access with lightweight pings."""
-        if not getattr(self, "personal_access_token", None):
-            self.logger.error("GitHub validation failed: missing personal_access_token.")
+        if not getattr(self, "token", None):
+            self.logger.error("GitHub validation failed: missing token.")
             return False
 
         headers = {
-            "Authorization": f"token {self.personal_access_token}",
+            "Authorization": f"token {self.token}",
             "Accept": "application/vnd.github.v3+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
