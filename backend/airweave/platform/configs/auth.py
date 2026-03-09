@@ -456,13 +456,27 @@ class ElasticsearchAuthConfig(AuthConfig):
 
 
 class GitHubAuthConfig(AuthConfig):
-    """GitHub authentication credentials schema."""
+    """GitHub authentication credentials schema.
+
+    Accepts both PAT (personal_access_token) and OAuth (access_token) formats.
+    When created via OAuth browser flow, the stored credential dict has an
+    ``access_token`` key which the model_validator maps transparently.
+    """
 
     personal_access_token: str = Field(
         title="Personal Access Token",
         description="GitHub PAT with read rights (code, contents, metadata) to the repository",
         min_length=4,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_oauth_token(cls, data: Any) -> Any:
+        """Map OAuth ``access_token`` to ``personal_access_token`` when present."""
+        if isinstance(data, dict):
+            if "access_token" in data and "personal_access_token" not in data:
+                data["personal_access_token"] = data["access_token"]
+        return data
 
     @field_validator("personal_access_token")
     @classmethod
@@ -471,8 +485,8 @@ class GitHubAuthConfig(AuthConfig):
         if not v or not v.strip():
             raise ValueError("Personal access token is required")
         v = v.strip()
-        # GitHub classic tokens start with ghp_, fine-grained tokens start with github_pat_
-        # Also allow legacy tokens (40 char hex)
+        # ghp_ = classic PAT, github_pat_ = fine-grained PAT,
+        # gho_ = OAuth app token, 40-char hex = legacy token
         if not (
             v.startswith("ghp_")
             or v.startswith("github_pat_")

@@ -31,14 +31,18 @@ from airweave.platform.utils.file_extensions import (
     get_language_for_extension,
     is_text_file,
 )
-from airweave.schemas.source_connection import AuthenticationMethod
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="GitHub",
     short_name="github",
-    auth_methods=[AuthenticationMethod.DIRECT, AuthenticationMethod.AUTH_PROVIDER],
-    oauth_type=None,
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.DIRECT,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.ACCESS_ONLY,
     auth_config_class=GitHubAuthConfig,
     config_class=GitHubConfig,
     labels=["Code"],
@@ -92,29 +96,50 @@ class GitHubSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, credentials: GitHubAuthConfig, config: Optional[Dict[str, Any]] = None
+        cls,
+        credentials: Any = None,
+        *,
+        access_token: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
     ) -> "GitHubSource":
         """Create a new source instance with authentication.
 
+        Supports multiple credential formats:
+        - ``GitHubAuthConfig`` (DIRECT / PAT path via lifecycle)
+        - ``str`` token (auth-provider or injected token)
+        - ``dict`` with ``personal_access_token`` or ``access_token`` key
+        - ``access_token`` keyword (OAuth callback validation)
+
         Args:
-            credentials: GitHubAuthConfig instance containing authentication details
-            config: Optional source configuration parameters
+            credentials: Auth credentials in any supported format.
+            access_token: OAuth access token (used by callback validation path).
+            config: Optional source configuration parameters.
 
         Returns:
-            Configured GitHub source instance
+            Configured GitHub source instance.
         """
         instance = cls()
 
-        instance.personal_access_token = credentials.personal_access_token
+        token: Optional[str] = None
+        if isinstance(credentials, GitHubAuthConfig):
+            token = credentials.personal_access_token
+        elif isinstance(credentials, str):
+            token = credentials
+        elif isinstance(credentials, dict):
+            token = credentials.get("personal_access_token") or credentials.get("access_token")
+        elif access_token:
+            token = access_token
 
-        # Repository name is always read from config (source configuration)
+        if not token:
+            raise ValueError("GitHub authentication token is required")
+
+        instance.personal_access_token = token
+
         if not config or "repo_name" not in config:
             raise ValueError("Repository name must be specified in source configuration")
 
         instance.repo_name = config["repo_name"]
-
         instance.branch = config.get("branch", None)
-
         instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
 
         return instance

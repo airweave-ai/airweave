@@ -74,6 +74,17 @@ integrations:
       token_access_type: "offline"
 
   github:
+    oauth_type: "access_only"
+    url: "https://github.com/login/oauth/authorize"
+    backend_url: "https://github.com/login/oauth/access_token"
+    grant_type: "authorization_code"
+    client_id: "Ov23li1erGjcd7Zhju1L"
+    client_secret: "149d080e175ddb08c17023d1922e8b55384615ff"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "repo read:user"
+    additional_frontend_params:
+      accept: "json"
 
   gitlab:
     oauth_type: "with_refresh"
