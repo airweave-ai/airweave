@@ -277,7 +277,12 @@ class ContextResolver:
         auth: AuthResult,
         x_api_key: Optional[str],
     ) -> None:
-        if auth.user and auth.method in (AuthMethod.AUTH0, AuthMethod.SYSTEM):
+        if auth.method in (AuthMethod.AUTH0, AuthMethod.SYSTEM):
+            if not auth.user:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Authentication succeeded but user account was not found",
+                )
             user_org_ids = [str(org.organization.id) for org in auth.user.user_organizations]
             if organization_id not in user_org_ids:
                 raise HTTPException(
@@ -292,6 +297,12 @@ class ContextResolver:
                     status_code=403,
                     detail=f"API key does not have access to organization {organization_id}",
                 )
+
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail="Unable to validate organization access",
+            )
 
     # ------------------------------------------------------------------
     # Context building

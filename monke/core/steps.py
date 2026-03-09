@@ -569,6 +569,10 @@ class UpdateStep(TestStep):
         updated_entities = await bongo.update_entities()
         self.logger.info(f"✅ Updated {len(updated_entities)} test entities")
         self.context.updated_entities = updated_entities
+        # So partial_delete cancels the current (e.g. post-reschedule) entities, not stale UIDs.
+        for i, u in enumerate(updated_entities):
+            if i < len(self.context.created_entities):
+                self.context.created_entities[i] = u
 
 
 class PartialDeleteStep(TestStep):

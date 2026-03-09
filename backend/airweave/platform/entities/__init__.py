@@ -48,6 +48,12 @@ from .box import (
     BoxFolderEntity,
     BoxUserEntity,
 )
+from .calcom import (
+    CalBookingDeletionEntity,
+    CalBookingEntity,
+    CalEventTypeEntity,
+    CalScheduleEntity,
+)
 from .calendly import (
     CalendlyEventInviteeEntity,
     CalendlyEventTypeEntity,
@@ -683,5 +689,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ZohoCRMProductEntity,
         ZohoCRMQuoteEntity,
         ZohoCRMSalesOrderEntity,
+    ],
+    "calcom": [
+        CalBookingEntity,
+        CalBookingDeletionEntity,
+        CalEventTypeEntity,
+        CalScheduleEntity,
     ],
 }

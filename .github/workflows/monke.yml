@@ -293,6 +293,9 @@ jobs:
           MONKE_SLAB_API_TOKEN: ${{ secrets.MONKE_SLAB_API_TOKEN }}
           MONKE_SLAB_HOST: ${{ secrets.MONKE_SLAB_HOST }}
 
+          MONKE_CALCOM_API_KEY: ${{ secrets.MONKE_CALCOM_API_KEY }}
+          MONKE_CALCOM_EVENT_TYPE_ID: ${{ secrets.MONKE_CALCOM_EVENT_TYPE_ID }}
+
           # All SaaS app credentials (Composio configs, API tokens, etc.)
           # will be fetched from Azure Key Vault at runtime
         run: |

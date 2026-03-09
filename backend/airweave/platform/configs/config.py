@@ -901,6 +901,40 @@ class ServiceNowConfig(SourceConfig):
     pass
 
 
+class CalComConfig(SourceConfig):
+    """Cal.com configuration schema.
+
+    Supports self-hosted Cal.com instances by allowing a custom host/base URL.
+    """
+
+    host: str = Field(
+        default="https://api.cal.com",
+        title="Host",
+        description=(
+            "Base URL for your Cal.com instance. Use the default for cal.com cloud "
+            "(https://api.cal.com). For self-hosted instances, set this to your API host "
+            "(e.g. https://cal.example.com or https://cal.example.com/api if exposed there)."
+        ),
+    )
+
+    @field_validator("host", mode="before")
+    @classmethod
+    def normalize_host(cls, v: str) -> str:
+        """Normalize host to a valid base URL (add scheme, strip trailing slash)."""
+        if v is None:
+            return "https://api.cal.com"
+        if not isinstance(v, str):
+            raise ValueError("host must be a string")
+        value = v.strip()
+        if not value:
+            return "https://api.cal.com"
+        # Allow providing host without scheme (e.g. cal.example.com)
+        if not value.startswith(("http://", "https://")):
+            value = f"https://{value}"
+        # Remove trailing slash for consistent URL joining
+        return value.rstrip("/")
+
+
 # AUTH PROVIDER CONFIGURATION CLASSES
 # These are for configuring auth provider behavior
 

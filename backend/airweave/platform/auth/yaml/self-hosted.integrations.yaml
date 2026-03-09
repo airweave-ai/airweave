@@ -43,6 +43,9 @@ integrations:
     client_credential_location: "body"
     scope: "root_readwrite"
 
+  calcom:
+    # Cal.com uses API key (DIRECT auth). OAuth can be added here if needed later.
+
   calendly:
     oauth_type: "with_rotating_refresh"
     url: "https://auth.calendly.com/oauth/authorize"

@@ -61,6 +61,13 @@ class FakeOrganizationService(OrganizationServiceProtocol):
         self._calls.append(("remove_member", str(user_id)))
         return True
 
+    async def change_member_role(
+        self, db: AsyncSession, organization_id: UUID, user_id: UUID, new_role: str
+    ) -> bool:
+        """Record and return success."""
+        self._calls.append(("change_member_role", str(user_id), new_role))
+        return True
+
     async def leave_organization(
         self, db: AsyncSession, organization_id: UUID, leaving_user: User
     ) -> bool:
