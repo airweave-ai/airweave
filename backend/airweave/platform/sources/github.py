@@ -104,7 +104,7 @@ class GitHubSource(BaseSource):
 
         Args:
             credentials: GitHubAuthConfig with a validated token.
-            config: Source configuration. When provided, must include ``repo_name``.
+            config: Source configuration (must include ``repo_name``).
 
         Returns:
             Configured GitHub source instance.
