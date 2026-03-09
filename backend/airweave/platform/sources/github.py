@@ -116,7 +116,7 @@ class GitHubSource(BaseSource):
         """Create a new source instance with authentication.
 
         Args:
-            credentials: GitHubAuthConfig with either personal_access_token or access_token.
+            credentials: GitHubAuthConfig with a validated token.
             config: Source configuration (must include ``repo_name``).
 
         Returns:
