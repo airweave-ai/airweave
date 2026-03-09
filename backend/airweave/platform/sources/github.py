@@ -95,19 +95,6 @@ class GitHubSource(BaseSource):
             raise ValueError(error_msg)
 
     @classmethod
-    async def validate_token(cls, token: str) -> bool:
-        """Validate a GitHub token by calling the /user endpoint."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{cls.BASE_URL}/user",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github+json",
-                },
-            )
-            return resp.status_code == 200
-
-    @classmethod
     async def create(
         cls,
         credentials: GitHubAuthConfig,
@@ -117,7 +104,7 @@ class GitHubSource(BaseSource):
 
         Args:
             credentials: GitHubAuthConfig with a validated token.
-            config: Source configuration (must include ``repo_name``).
+            config: Source configuration. When provided, must include ``repo_name``.
 
         Returns:
             Configured GitHub source instance.
@@ -125,12 +112,10 @@ class GitHubSource(BaseSource):
         instance = cls()
         instance.personal_access_token = credentials.token
 
-        if not config or "repo_name" not in config:
-            raise ValueError("Repository name must be specified in source configuration")
-
-        instance.repo_name = config["repo_name"]
-        instance.branch = config.get("branch", None)
-        instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
+        if config and "repo_name" in config:
+            instance.repo_name = config["repo_name"]
+            instance.branch = config.get("branch", None)
+            instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
 
         return instance
 
