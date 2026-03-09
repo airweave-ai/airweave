@@ -313,6 +313,34 @@ async def test_validate_validation_error_attributes():
     assert exc_info.value.reason == "validate() returned False"
 
 
+@pytest.mark.asyncio
+async def test_validate_converts_dict_credentials_via_auth_config_ref():
+    """When auth_config_ref is set, validate() should model_validate dict credentials."""
+    from pydantic import BaseModel
+
+    class _StubAuthConfig(BaseModel):
+        token: str
+
+    class _StubSourceWithAuth:
+        @classmethod
+        async def create(cls, credentials, config=None):
+            assert isinstance(credentials, _StubAuthConfig), (
+                f"Expected _StubAuthConfig, got {type(credentials)}"
+            )
+            instance = cls()
+            instance._credentials = credentials
+            return instance
+
+        async def validate(self):
+            return True
+
+    entry = _entry_with_class("auth_src", _StubSourceWithAuth)
+    object.__setattr__(entry, "auth_config_ref", _StubAuthConfig)
+    service = _make_service(source_entries=[entry])
+
+    await service.validate("auth_src", {"token": "test-tok"})
+
+
 # ===========================================================================
 # _load_source_connection_data() — table-driven
 # ===========================================================================
