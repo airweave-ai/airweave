@@ -274,6 +274,10 @@ def _convert_messages_to_anthropic(messages: list[dict]) -> list[dict]:
     Anthropic format:
     - assistant with tool_use: {"role": "assistant", "content": [blocks]}
     - tool result: {"role": "user", "content": [tool_result_blocks]}
+
+    Also merges consecutive user messages (e.g., tool results followed by
+    injected progress/system messages) since Anthropic rejects consecutive
+    same-role messages.
     """
     result: list[dict] = []
 
@@ -283,7 +287,12 @@ def _convert_messages_to_anthropic(messages: list[dict]) -> list[dict]:
         role = msg.get("role", "")
 
         if role == "user":
-            result.append({"role": "user", "content": msg.get("content", "")})
+            content = msg.get("content", "")
+            # Merge into previous user message if consecutive
+            if result and result[-1]["role"] == "user":
+                _merge_user_content(result[-1], content)
+            else:
+                result.append({"role": "user", "content": content})
 
         elif role == "assistant":
             blocks = _build_assistant_blocks(msg)
@@ -292,11 +301,32 @@ def _convert_messages_to_anthropic(messages: list[dict]) -> list[dict]:
 
         elif role == "tool":
             blocks, i = _batch_tool_results(messages, i)
-            result.append({"role": "user", "content": blocks})
+            # Merge into previous user message if consecutive
+            if result and result[-1]["role"] == "user":
+                _merge_user_content(result[-1], blocks)
+            else:
+                result.append({"role": "user", "content": blocks})
 
         i += 1
 
     return result
+
+
+def _merge_user_content(existing_msg: dict, new_content: str | list[dict]) -> None:
+    """Merge new content into an existing user message.
+
+    Handles both string content and list-of-blocks content, normalizing
+    to list format when mixing types.
+    """
+    prev = existing_msg["content"]
+
+    # Normalize both to lists
+    if isinstance(prev, str):
+        prev = [{"type": "text", "text": prev}]
+    if isinstance(new_content, str):
+        new_content = [{"type": "text", "text": new_content}]
+
+    existing_msg["content"] = prev + new_content
 
 
 def _build_assistant_blocks(msg: dict) -> list[dict]:

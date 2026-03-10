@@ -207,6 +207,46 @@ class VespaVectorDB:
         # Convert hits to results
         return self._convert_hits_to_results(hits)
 
+    async def count(
+        self,
+        filter_groups: list,
+        collection_id: str,
+    ) -> int:
+        """Count entities matching filters without retrieving content.
+
+        Builds a filter-only YQL query with hits=0 and reads totalCount
+        from the response. No embeddings or ranking needed.
+        """
+        # Build WHERE clause
+        where_parts = [
+            f"airweave_system_metadata_collection_id contains '{collection_id}'",
+        ]
+
+        filter_yql = self._filter_translator.translate(filter_groups)
+        if filter_yql:
+            where_parts.append(f"({filter_yql})")
+
+        all_schemas = ", ".join(ALL_VESPA_SCHEMAS)
+        yql = f"select * from sources {all_schemas} where {' AND '.join(where_parts)}"
+
+        query_params = {"yql": yql, "hits": 0}
+
+        try:
+            response = await asyncio.to_thread(self._app.query, body=query_params)
+        except Exception as e:
+            self._logger.error(f"[VespaVectorDB] Count query failed: {e}")
+            raise RuntimeError(f"Vespa count query failed: {e}") from e
+
+        if not response.is_successful():
+            error_msg = getattr(response, "json", {}).get("error", str(response))
+            raise RuntimeError(f"Vespa count query error: {error_msg}")
+
+        raw_json = response.json if hasattr(response, "json") else {}
+        total_count = raw_json.get("root", {}).get("fields", {}).get("totalCount", 0)
+
+        self._logger.debug(f"[VespaVectorDB] Count query: {total_count} matches")
+        return total_count
+
     async def close(self) -> None:
         """Close the Vespa connection.
 

@@ -11,7 +11,7 @@ Events:
 - error: An error occurred during search
 """
 
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -36,7 +36,9 @@ class AgenticSearchThinkingEvent(BaseModel):
     tool_calls_count: int = Field(0, description="Number of tool calls in this iteration.")
     stop_reason: str = Field("", description="Why the model stopped (tool_use, end_turn, etc).")
     # Cumulative state
-    total_results_seen: int = Field(0, description="Cumulative unique results across all iterations.")
+    total_results_seen: int = Field(
+        0, description="Cumulative unique results across all iterations."
+    )
     total_results_marked: int = Field(0, description="Total results marked as relevant so far.")
 
 
@@ -54,7 +56,9 @@ class AgenticSearchToolCallEvent(BaseModel):
         ...,
         description="Tool name: search, mark_as_relevant, read_previous_results, finish.",
     )
-    arguments: dict = Field(default_factory=dict, description="Raw LLM arguments for the tool call.")
+    arguments: dict = Field(
+        default_factory=dict, description="Raw LLM arguments for the tool call."
+    )
     result_summary: dict = Field(
         default_factory=dict,
         description="Structured summary of the tool result (compact, no full content).",
@@ -65,11 +69,26 @@ class AgenticSearchToolCallEvent(BaseModel):
 class AgenticSearchDoneEvent(BaseModel):
     """Emitted when the search is complete.
 
-    Contains the full response with results.
+    Contains the full response with results, plus all entity IDs the agent
+    saw during the search (for eval: compare seen vs marked vs ground truth).
     """
 
     type: Literal["done"] = "done"
     response: AgenticSearchResponse = Field(..., description="The complete search response.")
+    all_seen_entity_ids: list[str] = Field(
+        default_factory=list,
+        description="All unique entity IDs the agent saw across all iterations.",
+    )
+    all_marked_entity_ids: list[str] = Field(
+        default_factory=list,
+        description="All entity IDs the agent marked as relevant.",
+    )
+    # Agent behavior signals (for eval diagnostics)
+    max_iterations_hit: bool = Field(False, description="Whether the agent hit the iteration cap.")
+    total_llm_retries: int = Field(0, description="Total LLM retry attempts across all iterations.")
+    stagnation_nudges_sent: int = Field(
+        0, description="Number of stagnation nudge messages injected."
+    )
 
 
 class AgenticSearchErrorEvent(BaseModel):

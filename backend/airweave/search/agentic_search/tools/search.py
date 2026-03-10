@@ -82,7 +82,14 @@ async def handle_search(
             state.results[r.entity_id] = r
     state.results_by_tool_call_id[tc.id] = results
     available_tokens = _estimate_available_tokens(state.messages, context_window_tokens)
-    return format_results_for_context(results, available_tokens)
+    requested_limit = tc.arguments.get("limit", 10)
+    requested_offset = tc.arguments.get("offset", 0)
+    return format_results_for_context(
+        results,
+        available_tokens,
+        requested_limit=requested_limit,
+        requested_offset=requested_offset,
+    )
 
 
 # ── Execution ─────────────────────────────────────────────────────────
@@ -159,6 +166,8 @@ def _estimate_available_tokens(
 def format_results_for_context(
     results: list[AgenticSearchResult],
     available_tokens: int,
+    requested_limit: int | None = None,
+    requested_offset: int = 0,
 ) -> str:
     """Format search results as markdown, fitting within the available token budget.
 
@@ -196,4 +205,14 @@ def format_results_for_context(
     else:
         footer = ""
 
-    return header + "\n\n---\n\n".join(parts) + footer
+    # Warn the agent when results hit the requested limit (more likely exist)
+    pagination_warning = ""
+    if requested_limit is not None and len(results) >= requested_limit:
+        next_offset = requested_offset + requested_limit
+        pagination_warning = (
+            f"\n\n**Results hit the limit of {requested_limit}.** "
+            f"More results likely exist. Search again with the same query "
+            f"and filters but set offset={next_offset} to see the next page."
+        )
+
+    return header + "\n\n---\n\n".join(parts) + footer + pagination_warning

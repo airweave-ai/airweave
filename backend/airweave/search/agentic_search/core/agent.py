@@ -10,12 +10,15 @@ Conversation + tool-calling architecture:
 The conversation IS the history — no separate state/history objects needed.
 """
 
+import asyncio
 import time
+from collections.abc import Iterable
 
 from airweave.api.context import ApiContext
 from airweave.search.agentic_search.builders import (
     AgenticSearchCollectionMetadataBuilder,
 )
+from airweave.search.agentic_search.config import config as agentic_config
 from airweave.search.agentic_search.core.context_manager import summarize_old_search_results
 from airweave.search.agentic_search.core.debug import (
     dump_conversation,
@@ -40,9 +43,11 @@ from airweave.search.agentic_search.schemas.events import (
     AgenticSearchThinkingEvent,
     AgenticSearchToolCallEvent,
 )
+from airweave.search.agentic_search.schemas.search_result import AgenticSearchResult
 from airweave.search.agentic_search.schemas.state import AgenticSearchState
 from airweave.search.agentic_search.services import AgenticSearchServices
 from airweave.search.agentic_search.tools import (
+    COUNT_TOOL,
     MARK_AS_RELEVANT_TOOL,
     READ_PREVIOUS_RESULTS_TOOL,
     RETURN_RESULTS_TOOL,
@@ -84,7 +89,7 @@ class AgenticSearchAgent:
             await self.emitter.emit(AgenticSearchErrorEvent(message=str(e)))
             raise
 
-    async def _run(
+    async def _run(  # noqa: C901
         self,
         collection_readable_id: str,
         request: AgenticSearchRequest,
@@ -97,6 +102,10 @@ class AgenticSearchAgent:
         """
         state = AgenticSearchState()
         no_tool_call_nudges = 0
+        iterations_since_last_mark = 0
+        total_llm_retries = 0
+        stagnation_nudges_sent = 0
+        hit_max_iterations = False
 
         # Build collection metadata
         metadata_builder = AgenticSearchCollectionMetadataBuilder(self.services.db)
@@ -114,7 +123,15 @@ class AgenticSearchAgent:
                 user_filter=request.filter,
             )
         )
-        tools = [SEARCH_TOOL, READ_PREVIOUS_RESULTS_TOOL, MARK_AS_RELEVANT_TOOL, UNMARK_TOOL, REVIEW_MARKED_RESULTS_TOOL, RETURN_RESULTS_TOOL]
+        tools = [
+            SEARCH_TOOL,
+            COUNT_TOOL,
+            READ_PREVIOUS_RESULTS_TOOL,
+            MARK_AS_RELEVANT_TOOL,
+            UNMARK_TOOL,
+            REVIEW_MARKED_RESULTS_TOOL,
+            RETURN_RESULTS_TOOL,
+        ]
 
         self.ctx.logger.debug(
             f"[AgenticSearch] Starting agent loop for query: {request.query!r} "
@@ -122,6 +139,23 @@ class AgenticSearchAgent:
         )
 
         while True:
+            # Guard: cap iterations to prevent runaway loops
+            max_iter = agentic_config.MAX_ITERATIONS
+            if state.iteration >= max_iter:
+                hit_max_iterations = True
+                self.ctx.logger.warning(
+                    f"[AgenticSearch] Hit max iterations ({max_iter}) "
+                    f"for query: {request.query!r}. "
+                    f"Returning {len(state.marked_entity_ids)} marked results."
+                )
+                await self.emitter.emit(
+                    AgenticSearchErrorEvent(
+                        message=f"Search stopped: reached maximum {max_iter} "
+                        f"iterations. Returning {len(state.marked_entity_ids)} results."
+                    )
+                )
+                break
+
             # Debug: dump conversation and log token breakdown
             dump_conversation(
                 state.iteration,
@@ -139,12 +173,45 @@ class AgenticSearchAgent:
                 self.ctx.logger,
             )
 
-            # Call LLM with tools
-            response = await self.services.llm.create_with_tools(
-                messages=state.messages,
-                tools=tools,
-                system_prompt=system_prompt,
-            )
+            # Call LLM with tools (with conversation-level retry)
+            llm_failed = False
+            response = None
+            retry_delay = agentic_config.AGENT_LLM_RETRY_DELAY
+            for attempt in range(agentic_config.AGENT_LLM_MAX_RETRIES + 1):
+                try:
+                    response = await self.services.llm.create_with_tools(
+                        messages=state.messages,
+                        tools=tools,
+                        system_prompt=system_prompt,
+                    )
+                    break
+                except Exception as e:
+                    if attempt < agentic_config.AGENT_LLM_MAX_RETRIES and self._is_retryable(e):
+                        total_llm_retries += 1
+                        self.ctx.logger.warning(
+                            f"[AgenticSearch] LLM call failed at iteration "
+                            f"{state.iteration} (attempt {attempt + 1}/"
+                            f"{agentic_config.AGENT_LLM_MAX_RETRIES + 1}), "
+                            f"retrying in {retry_delay:.0f}s: {e}"
+                        )
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        self.ctx.logger.error(
+                            f"[AgenticSearch] LLM call failed at iteration "
+                            f"{state.iteration} after {attempt + 1} attempt(s): {e}"
+                        )
+                        await self.emitter.emit(
+                            AgenticSearchErrorEvent(
+                                message=f"LLM call failed after {attempt + 1} attempts. "
+                                f"Returning {len(state.marked_entity_ids)} partial results."
+                            )
+                        )
+                        llm_failed = True
+                        break
+
+            if llm_failed or response is None:
+                break
 
             # Debug: log thinking + tool calls (search plans)
             log_agent_response(state.iteration, response, self.ctx.logger)
@@ -167,24 +234,35 @@ class AgenticSearchAgent:
                     f"[AgenticSearch] No tool calls at iteration {state.iteration}, "
                     f"nudging agent to use tools ({no_tool_call_nudges}/3)"
                 )
-                state.messages.append({
-                    "role": "user",
-                    "content": (
-                        "You must use tools to interact. "
-                        "Call `search` to find results, `mark_as_relevant` to mark them, "
-                        "or `return_results_to_user` to end. Do not respond with plain text."
-                    ),
-                })
+                state.messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "You must use tools to interact. "
+                            "Call `search` to find results, `mark_as_relevant` to mark them, "
+                            "or `return_results_to_user` to end. Do not respond with plain text."
+                        ),
+                    }
+                )
                 state.iteration += 1
                 continue
 
             # Agent used tools — reset nudge counter
             no_tool_call_nudges = 0
 
+            # Track marks before tool execution for stagnation detection
+            marks_before = len(state.marked_entity_ids)
+
             # Execute all tool calls (emits tool_call events)
             has_finish, new_search_tool_call_ids = await self._execute_tool_calls(
                 response.tool_calls, state
             )
+
+            # Stagnation detection: track iterations without new marks
+            if len(state.marked_entity_ids) > marks_before:
+                iterations_since_last_mark = 0
+            else:
+                iterations_since_last_mark += 1
 
             # Agent called finish — break after processing all tool calls
             if has_finish:
@@ -201,6 +279,39 @@ class AgenticSearchAgent:
                     state.results_by_tool_call_id,
                     skip_tool_call_ids=new_search_tool_call_ids,
                 )
+
+            # Soft warning when approaching iteration limit
+            remaining = max_iter - state.iteration - 1
+            if remaining == max_iter // 4:
+                state.messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"[System] You have {remaining} iterations remaining out of "
+                            f"{max_iter}. Mark any remaining relevant results and prepare "
+                            f"to call return_results_to_user."
+                        ),
+                    }
+                )
+
+            # Stagnation nudge
+            stagnation_threshold = agentic_config.STAGNATION_THRESHOLD
+            if iterations_since_last_mark >= stagnation_threshold:
+                stagnation_nudges_sent += 1
+                state.messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"[System] You haven't marked any new results in "
+                            f"{iterations_since_last_mark} iterations. "
+                            "If you've exhausted the search space, call return_results_to_user. "
+                            "If not, try a fundamentally different search strategy."
+                        ),
+                    }
+                )
+
+            # Progress tracker
+            state.messages.append(self._build_progress_message(state, max_iter))
 
             state.iteration += 1
 
@@ -222,7 +333,22 @@ class AgenticSearchAgent:
 
         self.ctx.logger.debug(f"[AgenticSearch] Done — returning {len(results)} results")
         resp = AgenticSearchResponse(results=results)
-        await self.emitter.emit(AgenticSearchDoneEvent(response=resp))
+        # Deduplicate seen/marked IDs to original entity IDs (strip __chunk_ suffix)
+        seen_original_ids = self._to_original_entity_ids(state.results.values())
+        marked_original_ids = self._to_original_entity_ids(
+            state.results[eid] for eid in state.marked_entity_ids if eid in state.results
+        )
+
+        await self.emitter.emit(
+            AgenticSearchDoneEvent(
+                response=resp,
+                all_seen_entity_ids=seen_original_ids,
+                all_marked_entity_ids=marked_original_ids,
+                max_iterations_hit=hit_max_iterations,
+                total_llm_retries=total_llm_retries,
+                stagnation_nudges_sent=stagnation_nudges_sent,
+            )
+        )
         return resp
 
     # ── Tool execution ───────────────────────────────────────────────
@@ -303,6 +429,49 @@ class AgenticSearchAgent:
         if tc.name in ("review_marked_results", "return_results_to_user"):
             return {"total_marked": len(state.marked_entity_ids)}
         return {}
+
+    @staticmethod
+    def _is_retryable(error: Exception) -> bool:
+        """Check if an LLM error is retryable at the conversation level."""
+        error_str = str(error).lower()
+        fatal_indicators = [
+            "401",
+            "403",
+            "404",
+            "authentication",
+            "authorization",
+            "invalid api key",
+            "model not found",
+        ]
+        return not any(ind in error_str for ind in fatal_indicators)
+
+    def _build_progress_message(self, state: AgenticSearchState, max_iterations: int) -> dict:
+        """Build a brief progress status message for the agent."""
+        remaining = max_iterations - state.iteration - 1
+        return {
+            "role": "user",
+            "content": (
+                f"[Progress] Iteration {state.iteration + 1}/{max_iterations} complete "
+                f"({remaining} remaining). "
+                f"Results seen: {len(state.results)} | "
+                f"Marked: {len(state.marked_entity_ids)}"
+            ),
+        }
+
+    @staticmethod
+    def _to_original_entity_ids(results: Iterable[AgenticSearchResult]) -> list[str]:
+        """Deduplicate results to unique original entity IDs."""
+        seen: set[str] = set()
+        ids: list[str] = []
+        for r in results:
+            orig = getattr(r, "airweave_system_metadata", None)
+            orig_id = orig.original_entity_id if orig else None
+            # Fallback: strip __chunk_ suffix
+            use_id = orig_id or r.entity_id.split("__chunk_")[0]
+            if use_id and use_id not in seen:
+                seen.add(use_id)
+                ids.append(use_id)
+        return ids
 
     # ── Reranking ─────────────────────────────────────────────────────
 
