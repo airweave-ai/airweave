@@ -28,7 +28,7 @@ Minimal, non-intrusive validation that guides without blocking. No success messa
 #### Source-Specific Validators
 
 **GitHub**
-- **`githubTokenValidation`**: Validates format (ghp_, github_pat_, or 40-char hex)
+- **`githubTokenValidation`**: Validates format (ghp_, github_pat_, gho_, or 40-char hex)
 - **`repoNameValidation`**: Enforces owner/repo format (e.g., "airweave-ai/airweave")
 
 **Stripe**
@@ -91,7 +91,7 @@ The `getAuthFieldValidation(fieldType: string, sourceShortName?: string)` functi
 - **API Keys & Tokens**
   - `api_key` → Generic API key validation (placeholder detection)
   - `token`, `access_token` → API key validation
-  - `personal_access_token` → GitHub token validation
+  - `personal_access_token`, `token` → GitHub token validation
 
 - **URLs**
   - `url`, `endpoint`, `base_url`, `cluster_url`, `uri` → URL validation (requires http:// or https://)

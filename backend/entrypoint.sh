@@ -53,4 +53,4 @@ cd /app && poetry run alembic upgrade heads
 
 # Start application
 echo "Starting application..."
-poetry run uvicorn airweave.main:app --host 0.0.0.0 --port 8001 --reload
+poetry run uvicorn airweave.main:app --host 0.0.0.0 --port 8001 --reload --reload-exclude 'local_storage' --reload-exclude 'backend/local_storage'

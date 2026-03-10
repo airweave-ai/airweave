@@ -726,6 +726,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
         """
         headers = {
             "Content-Type": integration_config.content_type,
+            "Accept": "application/json",
         }
 
         payload = {

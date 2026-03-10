@@ -456,23 +456,37 @@ class ElasticsearchAuthConfig(AuthConfig):
 
 
 class GitHubAuthConfig(AuthConfig):
-    """GitHub authentication credentials schema."""
+    """GitHub authentication credentials schema.
 
-    personal_access_token: str = Field(
+    Accepts credentials from either the Direct (PAT) or OAuth browser flow.
+    A ``model_validator(before)`` normalises ``personal_access_token`` and
+    ``access_token`` inputs into the single ``token`` field.
+    """
+
+    token: str = Field(
         title="Personal Access Token",
         description="GitHub PAT with read rights (code, contents, metadata) to the repository",
-        min_length=4,
     )
 
-    @field_validator("personal_access_token")
+    @model_validator(mode="before")
     @classmethod
-    def validate_personal_access_token(cls, v: str) -> str:
-        """Validate GitHub personal access token format."""
-        if not v or not v.strip():
-            raise ValueError("Personal access token is required")
+    def _normalise_token(cls, data: Any) -> Any:
+        """Map legacy / OAuth credential keys into the canonical ``token`` field."""
+        if isinstance(data, dict) and "token" not in data:
+            t = data.pop("personal_access_token", None) or data.pop("access_token", None)
+            if t:
+                data["token"] = t
+        return data
+
+    @field_validator("token", mode="before")
+    @classmethod
+    def _validate_token_format(cls, v: str) -> str:
+        """Validate GitHub token format."""
         v = v.strip()
-        # GitHub classic tokens start with ghp_, fine-grained tokens start with github_pat_
-        # Also allow legacy tokens (40 char hex)
+        if not v:
+            raise ValueError("Token must not be empty")
+        # ghp_ = classic PAT, github_pat_ = fine-grained PAT,
+        # gho_ = OAuth app token, 40-char hex = legacy token
         if not (
             v.startswith("ghp_")
             or v.startswith("github_pat_")
@@ -480,7 +494,7 @@ class GitHubAuthConfig(AuthConfig):
             or (len(v) == 40 and all(c in "0123456789abcdef" for c in v.lower()))
         ):
             raise ValueError(
-                "Invalid token format. Expected format: "
+                "Invalid token format. Expected: "
                 "ghp_... or github_pat_... or gho_... or 40-character hex"
             )
         return v

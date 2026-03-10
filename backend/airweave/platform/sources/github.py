@@ -31,14 +31,18 @@ from airweave.platform.utils.file_extensions import (
     get_language_for_extension,
     is_text_file,
 )
-from airweave.schemas.source_connection import AuthenticationMethod
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="GitHub",
     short_name="github",
-    auth_methods=[AuthenticationMethod.DIRECT, AuthenticationMethod.AUTH_PROVIDER],
-    oauth_type=None,
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.DIRECT,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.ACCESS_ONLY,
     auth_config_class=GitHubAuthConfig,
     config_class=GitHubConfig,
     labels=["Code"],
@@ -92,30 +96,26 @@ class GitHubSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, credentials: GitHubAuthConfig, config: Optional[Dict[str, Any]] = None
+        cls,
+        credentials: GitHubAuthConfig,
+        config: Optional[Dict[str, Any]] = None,
     ) -> "GitHubSource":
         """Create a new source instance with authentication.
 
         Args:
-            credentials: GitHubAuthConfig instance containing authentication details
-            config: Optional source configuration parameters
+            credentials: GitHubAuthConfig with a validated token.
+            config: Source configuration (must include ``repo_name``).
 
         Returns:
-            Configured GitHub source instance
+            Configured GitHub source instance.
         """
         instance = cls()
+        instance.token = credentials.token
 
-        instance.personal_access_token = credentials.personal_access_token
-
-        # Repository name is always read from config (source configuration)
-        if not config or "repo_name" not in config:
-            raise ValueError("Repository name must be specified in source configuration")
-
-        instance.repo_name = config["repo_name"]
-
-        instance.branch = config.get("branch", None)
-
-        instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
+        if config and "repo_name" in config:
+            instance.repo_name = config["repo_name"]
+            instance.branch = config.get("branch", None)
+            instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
 
         return instance
 
@@ -139,7 +139,7 @@ class GitHubSource(BaseSource):
             JSON response
         """
         headers = {
-            "Authorization": f"token {self.personal_access_token}",
+            "Authorization": f"token {self.token}",
             "Accept": "application/vnd.github.v3+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
@@ -172,7 +172,7 @@ class GitHubSource(BaseSource):
         while True:
             params["page"] = page
             headers = {
-                "Authorization": f"token {self.personal_access_token}",
+                "Authorization": f"token {self.token}",
                 "Accept": "application/vnd.github.v3+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             }
@@ -908,12 +908,12 @@ class GitHubSource(BaseSource):
 
     async def validate(self) -> bool:
         """Verify GitHub PAT and repo/branch access with lightweight pings."""
-        if not getattr(self, "personal_access_token", None):
-            self.logger.error("GitHub validation failed: missing personal_access_token.")
+        if not getattr(self, "token", None):
+            self.logger.error("GitHub validation failed: missing token.")
             return False
 
         headers = {
-            "Authorization": f"token {self.personal_access_token}",
+            "Authorization": f"token {self.token}",
             "Accept": "application/vnd.github.v3+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }

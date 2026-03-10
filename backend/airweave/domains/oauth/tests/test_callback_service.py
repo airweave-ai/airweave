@@ -24,6 +24,7 @@ from airweave.domains.oauth.fakes.repository import (
     FakeOAuthInitSessionRepository,
     FakeOAuthSourceRepository,
 )
+from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
@@ -32,9 +33,8 @@ from airweave.models.connection_init_session import ConnectionInitSession, Conne
 from airweave.models.organization import Organization
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.auth.schemas import OAuth2TokenResponse
-from airweave.domains.oauth.types import OAuth1TokenResponse
-from airweave.schemas.source_connection import AuthenticationMethod
 from airweave.schemas.organization import Organization as OrganizationSchema
+from airweave.schemas.source_connection import AuthenticationMethod
 
 NOW = datetime.now(timezone.utc)
 ORG_ID = uuid4()
@@ -115,6 +115,7 @@ def _service(
     oauth_flow_service=None,
     response_builder=None,
     source_registry=None,
+    source_lifecycle=None,
     sync_lifecycle=None,
     sync_record_service=None,
     temporal_workflow_service=None,
@@ -125,6 +126,7 @@ def _service(
         init_session_repo=init_session_repo or FakeOAuthInitSessionRepository(),
         response_builder=response_builder or AsyncMock(),
         source_registry=source_registry or MagicMock(),
+        source_lifecycle=source_lifecycle or AsyncMock(),
         sync_lifecycle=sync_lifecycle or AsyncMock(),
         sync_record_service=sync_record_service or AsyncMock(),
         temporal_workflow_service=temporal_workflow_service or AsyncMock(),
@@ -229,6 +231,8 @@ class TestCompleteOAuth2Callback:
         assert "shell" in exc.value.detail.lower()
 
     async def test_invalid_oauth2_token_fails_fast_with_400(self):
+        from airweave.domains.sources.exceptions import SourceValidationError
+
         init_repo = FakeOAuthInitSessionRepository()
         session = _init_session()
         init_repo.seed_by_state("state-abc", session)
@@ -252,20 +256,10 @@ class TestCompleteOAuth2Callback:
             OAuth2TokenResponse(access_token="bad-token", token_type="bearer")
         )
 
-        class _InvalidSource:
-            def set_logger(self, _logger):
-                return None
-
-            async def validate(self):
-                return False
-
-        class _SourceClass:
-            @staticmethod
-            async def create(access_token, config):  # noqa: ARG004
-                return _InvalidSource()
-
-        registry = MagicMock()
-        registry.get.return_value = SimpleNamespace(source_class_ref=_SourceClass, short_name="github")
+        lifecycle = AsyncMock()
+        lifecycle.validate = AsyncMock(
+            side_effect=SourceValidationError("github", "validate() returned False")
+        )
 
         svc = _service(
             init_session_repo=init_repo,
@@ -273,16 +267,18 @@ class TestCompleteOAuth2Callback:
             sc_repo=sc_repo,
             source_repo=source_repo,
             oauth_flow_service=oauth_flow,
-            source_registry=registry,
+            source_lifecycle=lifecycle,
         )
         with pytest.raises(HTTPException) as exc:
             await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
 
         assert exc.value.status_code == 400
-        assert "token" in exc.value.detail.lower()
+        assert "token validation failed" in exc.value.detail.lower()
         assert all(call[0] != "mark_completed" for call in init_repo._calls)
 
     async def test_validation_exception_fails_fast_with_400(self):
+        from airweave.domains.sources.exceptions import SourceCreationError
+
         init_repo = FakeOAuthInitSessionRepository()
         session = _init_session()
         init_repo.seed_by_state("state-abc", session)
@@ -306,20 +302,8 @@ class TestCompleteOAuth2Callback:
             OAuth2TokenResponse(access_token="token", token_type="bearer")
         )
 
-        class _BrokenSource:
-            def set_logger(self, _logger):
-                return None
-
-            async def validate(self):
-                raise RuntimeError("provider error")
-
-        class _SourceClass:
-            @staticmethod
-            async def create(access_token, config):  # noqa: ARG004
-                return _BrokenSource()
-
-        registry = MagicMock()
-        registry.get.return_value = SimpleNamespace(source_class_ref=_SourceClass, short_name="github")
+        lifecycle = AsyncMock()
+        lifecycle.validate = AsyncMock(side_effect=SourceCreationError("github", "provider error"))
 
         svc = _service(
             init_session_repo=init_repo,
@@ -327,13 +311,13 @@ class TestCompleteOAuth2Callback:
             sc_repo=sc_repo,
             source_repo=source_repo,
             oauth_flow_service=oauth_flow,
-            source_registry=registry,
+            source_lifecycle=lifecycle,
         )
         with pytest.raises(HTTPException) as exc:
             await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
 
         assert exc.value.status_code == 400
-        assert "validation failed" in exc.value.detail.lower()
+        assert "token validation failed" in exc.value.detail.lower()
         assert all(call[0] != "mark_completed" for call in init_repo._calls)
 
     async def test_happy_path_delegates_and_finalizes(self):
@@ -373,7 +357,10 @@ class TestCompleteOAuth2Callback:
                 return _SourceOk()
 
         registry = MagicMock()
-        registry.get.return_value = SimpleNamespace(source_class_ref=_SourceClass, short_name="github")
+        registry.get.return_value = SimpleNamespace(
+            source_class_ref=_SourceClass,
+            short_name="github",
+        )
 
         svc = _service(
             init_session_repo=init_repo,
@@ -493,7 +480,9 @@ class TestCompleteOAuth1Callback:
         )
 
         oauth_flow = FakeOAuthFlowService()
-        oauth_flow.seed_oauth1_response(OAuth1TokenResponse(oauth_token="at", oauth_token_secret="as"))
+        oauth_flow.seed_oauth1_response(
+            OAuth1TokenResponse(oauth_token="at", oauth_token_secret="as"),
+        )
         svc = _service(
             init_session_repo=init_repo,
             organization_repo=org_repo,
@@ -663,9 +652,9 @@ class TestCompleteOAuth2Connection:
         )
         source_repo.seed("salesforce", source)
 
-        session = _init_session(short_name="salesforce")
+        _session = _init_session(short_name="salesforce")  # noqa: F841
 
-        token = SimpleNamespace(
+        _token = SimpleNamespace(  # noqa: F841
             model_dump=lambda: {
                 "access_token": "tok",
                 "instance_url": "https://my.salesforce.com",
@@ -823,7 +812,9 @@ class TestCompleteConnectionCommon:
         svc._collection_repo.get_by_readable_id = AsyncMock(
             return_value=SimpleNamespace(id=uuid4(), readable_id="col-abc")
         )
-        svc._sc_repo.update = AsyncMock(return_value=SimpleNamespace(id=uuid4(), connection_id=uuid4()))
+        svc._sc_repo.update = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4(), connection_id=uuid4()),
+        )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._source_registry.get = MagicMock(
             return_value=SimpleNamespace(source_class_ref=SimpleNamespace(federated_search=True))
@@ -883,13 +874,17 @@ class TestCompleteConnectionCommon:
         svc._collection_repo.get_by_readable_id = AsyncMock(
             return_value=SimpleNamespace(id=uuid4(), readable_id="col-abc")
         )
-        svc._sc_repo.update = AsyncMock(return_value=SimpleNamespace(id=uuid4(), connection_id=conn_id))
+        svc._sc_repo.update = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4(), connection_id=conn_id),
+        )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._source_registry.get = MagicMock(
             return_value=SimpleNamespace(source_class_ref=SimpleNamespace(federated_search=False))
         )
         svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
-        svc._sync_lifecycle.provision_sync = AsyncMock(return_value=SimpleNamespace(sync_id=uuid4()))
+        svc._sync_lifecycle.provision_sync = AsyncMock(
+            return_value=SimpleNamespace(sync_id=uuid4()),
+        )
 
         from airweave.domains.oauth import callback_service as callback_module
 
@@ -944,9 +939,7 @@ class TestCompleteConnectionCommon:
 
 class TestFinalizeCallback:
     async def test_no_sync_id_just_returns_response(self):
-        response = MagicMock(
-            id=uuid4(), short_name="github", readable_collection_id="col-abc"
-        )
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
         builder.build_response = AsyncMock(return_value=response)
         event_bus = AsyncMock()
@@ -961,9 +954,7 @@ class TestFinalizeCallback:
         builder.build_response.assert_awaited_once()
 
     async def test_triggers_workflow_when_pending_job_exists(self):
-        response = MagicMock(
-            id=uuid4(), short_name="github", readable_collection_id="col-abc"
-        )
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
         builder.build_response = AsyncMock(return_value=response)
 
@@ -1063,9 +1054,7 @@ class TestFinalizeCallback:
         temporal_svc.run_source_connection_workflow.assert_awaited_once()
 
     async def test_no_pending_jobs_skips_workflow(self):
-        response = MagicMock(
-            id=uuid4(), short_name="github", readable_collection_id="col-abc"
-        )
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
         builder.build_response = AsyncMock(return_value=response)
 
@@ -1098,9 +1087,7 @@ class TestFinalizeCallback:
         temporal_svc.run_source_connection_workflow.assert_not_awaited()
 
     async def test_running_job_skips_workflow(self):
-        response = MagicMock(
-            id=uuid4(), short_name="github", readable_collection_id="col-abc"
-        )
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
         builder.build_response = AsyncMock(return_value=response)
 
@@ -1351,7 +1338,7 @@ class TestFinalizeCallback:
 class TestTokenValidation:
     async def test_validate_token_returns_early_when_source_missing(self):
         svc = _service()
-        await svc._validate_oauth2_token_or_raise(source=None, access_token="x", ctx=_ctx())
+        await svc._validate_oauth2_token_or_raise(source=None, access_token="x")
 
 
 # ---------------------------------------------------------------------------

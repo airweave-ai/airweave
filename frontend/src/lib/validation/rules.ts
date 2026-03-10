@@ -669,12 +669,13 @@ export const githubTokenValidation: FieldValidation<string> = {
     // Check for valid GitHub token formats
     const isClassicToken = trimmed.startsWith('ghp_');
     const isFineGrainedToken = trimmed.startsWith('github_pat_');
+    const isOAuthToken = trimmed.startsWith('gho_');
     const isLegacyToken = trimmed.length === 40 && /^[0-9a-fA-F]+$/.test(trimmed);
 
-    if (!isClassicToken && !isFineGrainedToken && !isLegacyToken) {
+    if (!isClassicToken && !isFineGrainedToken && !isOAuthToken && !isLegacyToken) {
       return {
         isValid: false,
-        hint: 'GitHub token should start with "ghp_" (classic) or "github_pat_" (fine-grained)',
+        hint: 'GitHub token should start with "ghp_" (classic), "github_pat_" (fine-grained), or "gho_" (OAuth)',
         severity: 'warning'
       };
     }

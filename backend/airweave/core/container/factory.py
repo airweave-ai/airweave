@@ -383,6 +383,7 @@ def create_container(settings: Settings) -> Container:
         init_session_repo=init_session_repo,
         response_builder=sync_deps["response_builder"],
         source_registry=source_deps["source_registry"],
+        source_lifecycle=source_deps["source_lifecycle_service"],
         sync_lifecycle=sync_deps["sync_lifecycle"],
         sync_record_service=sync_deps["sync_record_service"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],

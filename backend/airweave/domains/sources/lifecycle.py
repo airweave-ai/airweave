@@ -180,6 +180,14 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         source_class = entry.source_class_ref
 
+        if entry.auth_config_ref:
+            if isinstance(credentials, str):
+                credentials = entry.auth_config_ref.model_validate(
+                    {"access_token": credentials},
+                )
+            elif isinstance(credentials, dict):
+                credentials = entry.auth_config_ref.model_validate(credentials)
+
         try:
             source = await source_class.create(credentials, config=config)
         except Exception as exc:
