@@ -1018,3 +1018,33 @@ class SnapshotConfig(BaseConfig):
         if not v or not v.strip():
             raise ValueError("Path is required")
         return v.strip().rstrip("/")
+
+
+class SharePointOnlineConfig(SourceConfig):
+    """SharePoint Online configuration schema.
+
+    Configures which SharePoint sites to sync and ACL behavior.
+    """
+
+    site_url: str = RequiredTemplateConfig(
+        title="SharePoint Site URL",
+        description=(
+            "URL of the SharePoint site to sync "
+            "(e.g., 'https://contoso.sharepoint.com/sites/Marketing'). "
+            "Leave empty to sync all accessible sites."
+        ),
+        default="",
+        json_schema_extra={"required_for_auth": True},
+    )
+
+    include_personal_sites: bool = Field(
+        default=False,
+        title="Include Personal Sites",
+        description="Whether to include OneDrive personal sites in sync.",
+    )
+
+    include_pages: bool = Field(
+        default=True,
+        title="Include Site Pages",
+        description="Whether to sync SharePoint site pages.",
+    )

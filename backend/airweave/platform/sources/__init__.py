@@ -40,6 +40,7 @@ from .salesforce import SalesforceSource
 from .servicenow import ServiceNowSource
 from .sharepoint import SharePointSource
 from .sharepoint2019v2.source import SharePoint2019V2Source
+from .sharepoint_online.source import SharePointOnlineSource
 from .shopify import ShopifySource
 from .slab import SlabSource
 from .slack import SlackSource
@@ -97,6 +98,7 @@ ALL_SOURCES: list[type] = [
     ServiceNowSource,
     SharePointSource,
     SharePoint2019V2Source,
+    SharePointOnlineSource,
     ShopifySource,
     SlabSource,
     SliteSource,
