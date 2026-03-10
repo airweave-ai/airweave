@@ -186,8 +186,13 @@ class OrganizationLifecycleOperations:
             )
 
             await db.flush()
-            await db.refresh(local_org)
 
+            # Snapshot scalar attributes into the Pydantic schema immediately
+            # after flush.  Do NOT call db.refresh(local_org) here: the
+            # Organization.user_organizations relationship uses
+            # cascade="all, delete-orphan" + lazy="noload", so a refresh
+            # loads an empty collection and SQLAlchemy deletes the just-created
+            # UserOrganization as an "orphan".
             organization = schemas.Organization(
                 id=local_org.id,  # type: ignore[arg-type]
                 name=local_org.name,
