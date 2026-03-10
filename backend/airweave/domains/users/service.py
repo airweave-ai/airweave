@@ -112,6 +112,11 @@ class UserService(UserServiceProtocol):
                 obj_in=schemas.UserUpdate(auth0_id=incoming_auth0_id),
             )
 
+        # Snapshot while the ORM object is still attached and attributes are loaded.
+        # After sync_user_organizations the session may expire/detach the object,
+        # making attribute access raise MissingGreenlet in async context.
+        user_snapshot = schemas.User.model_validate(existing_user)
+
         try:
             updated_user = await self._org_service.sync_user_organizations(db, existing_user)
             logger.info(f"Synced Auth0 organizations for existing user: {user_data.email}")
@@ -120,9 +125,7 @@ class UserService(UserServiceProtocol):
             )
         except Exception as e:
             logger.warning(f"Failed to sync Auth0 organizations for user {user_data.email}: {e}")
-            return CreateOrUpdateResult(
-                user=schemas.User.model_validate(existing_user), is_new=False
-            )
+            return CreateOrUpdateResult(user=user_snapshot, is_new=False)
 
     async def _provision_new_user(
         self,
