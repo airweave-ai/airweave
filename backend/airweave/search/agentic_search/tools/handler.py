@@ -4,15 +4,15 @@ from airweave.search.agentic_search.emitter import AgenticSearchEmitter
 from airweave.search.agentic_search.external.llm.tool_response import LLMToolCall
 from airweave.search.agentic_search.schemas.state import AgenticSearchState
 from airweave.search.agentic_search.services import AgenticSearchServices
+from airweave.search.agentic_search.tools.add_to_results import handle_add_to_results
 from airweave.search.agentic_search.tools.count import handle_count
 from airweave.search.agentic_search.tools.finish import (
     handle_return_results,
-    handle_review_marked_results,
+    handle_review_results,
 )
-from airweave.search.agentic_search.tools.mark_as_relevant import handle_mark_as_relevant
 from airweave.search.agentic_search.tools.read import handle_read
+from airweave.search.agentic_search.tools.remove_from_results import handle_remove_from_results
 from airweave.search.agentic_search.tools.search import handle_search
-from airweave.search.agentic_search.tools.unmark import handle_unmark
 
 
 async def handle_tool_call(
@@ -54,12 +54,12 @@ async def handle_tool_call(
             user_filter=user_filter,
             context_window_tokens=context_window_tokens,
         )
-    if tc.name == "mark_as_relevant":
-        return await handle_mark_as_relevant(tc=tc, state=state)
-    if tc.name == "unmark":
-        return await handle_unmark(tc=tc, state=state)
-    if tc.name == "review_marked_results":
-        return handle_review_marked_results(state, state.messages, context_window_tokens)
+    if tc.name == "add_to_results":
+        return await handle_add_to_results(tc=tc, state=state)
+    if tc.name == "remove_from_results":
+        return await handle_remove_from_results(tc=tc, state=state)
+    if tc.name == "review_results":
+        return handle_review_results(state, state.messages, context_window_tokens)
     if tc.name == "return_results_to_user":
         return handle_return_results(state)
     raise ValueError(f"Unknown tool: {tc.name}")

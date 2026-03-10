@@ -26,7 +26,7 @@ READ_TOOL: dict[str, Any] = {
         "description": (
             "Read the full content of search results by entity ID. "
             "Returns the complete text content with surrounding chunks for context. "
-            "Use this after searching to examine results in detail before marking."
+            "Use this after searching to examine results in detail before collecting."
         ),
         "parameters": {
             "type": "object",
@@ -173,7 +173,7 @@ async def handle_read(
     id_list = ", ".join(f"`{eid}`" for eid in all_read_ids[:20])
     triage_nudge = (
         f"\n\n**Entities read:** [{id_list}]\n"
-        f"Mark relevant results now (`mark_as_relevant`) "
+        f"Add matching results to your result set now (`add_to_results`) "
         f"— their content will be summarized after your next search."
     )
 

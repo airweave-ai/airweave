@@ -47,13 +47,13 @@ from airweave.search.agentic_search.schemas.search_result import AgenticSearchRe
 from airweave.search.agentic_search.schemas.state import AgenticSearchState
 from airweave.search.agentic_search.services import AgenticSearchServices
 from airweave.search.agentic_search.tools import (
+    ADD_TO_RESULTS_TOOL,
     COUNT_TOOL,
-    MARK_AS_RELEVANT_TOOL,
     READ_TOOL,
+    REMOVE_FROM_RESULTS_TOOL,
     RETURN_RESULTS_TOOL,
-    REVIEW_MARKED_RESULTS_TOOL,
+    REVIEW_RESULTS_TOOL,
     SEARCH_TOOL,
-    UNMARK_TOOL,
     handle_tool_call,
 )
 
@@ -102,7 +102,7 @@ class AgenticSearchAgent:
         """
         state = AgenticSearchState()
         no_tool_call_nudges = 0
-        iterations_since_last_mark = 0
+        iterations_since_last_collect = 0
         total_llm_retries = 0
         stagnation_nudges_sent = 0
         hit_max_iterations = False
@@ -127,9 +127,9 @@ class AgenticSearchAgent:
             SEARCH_TOOL,
             COUNT_TOOL,
             READ_TOOL,
-            MARK_AS_RELEVANT_TOOL,
-            UNMARK_TOOL,
-            REVIEW_MARKED_RESULTS_TOOL,
+            ADD_TO_RESULTS_TOOL,
+            REMOVE_FROM_RESULTS_TOOL,
+            REVIEW_RESULTS_TOOL,
             RETURN_RESULTS_TOOL,
         ]
 
@@ -150,7 +150,7 @@ class AgenticSearchAgent:
                 self.ctx.logger.warning(
                     f"[AgenticSearch] Hit max iterations ({max_iter}) "
                     f"for query: {request.query!r}. "
-                    f"Returning {len(state.marked_entity_ids)} marked results."
+                    f"Returning {len(state.result_entity_ids)} collected results."
                 )
                 break
 
@@ -209,7 +209,7 @@ class AgenticSearchAgent:
                                 result_summary={
                                     "error": error_detail,
                                     "attempts": attempt + 1,
-                                    "partial_results": len(state.marked_entity_ids),
+                                    "partial_results": len(state.result_entity_ids),
                                 },
                                 duration_ms=0,
                             )
@@ -247,7 +247,7 @@ class AgenticSearchAgent:
                         "content": (
                             "You must use tools to interact. "
                             "Call `search` to find results, `read` to examine them, "
-                            "`mark_as_relevant` to mark them, "
+                            "`add_to_results` to collect them, "
                             "or `return_results_to_user` to end. Do not respond with plain text."
                         ),
                     }
@@ -258,25 +258,25 @@ class AgenticSearchAgent:
             # Agent used tools — reset nudge counter
             no_tool_call_nudges = 0
 
-            # Track marks before tool execution for stagnation detection
-            marks_before = len(state.marked_entity_ids)
+            # Track collected count before tool execution for stagnation detection
+            collected_before = len(state.result_entity_ids)
 
             # Execute all tool calls (emits tool_call events)
             has_finish, new_search_tool_call_ids, new_read_tool_call_ids = (
                 await self._execute_tool_calls(response.tool_calls, state)
             )
 
-            # Stagnation detection: track iterations without new marks
-            if len(state.marked_entity_ids) > marks_before:
-                iterations_since_last_mark = 0
+            # Stagnation detection: track iterations without new collections
+            if len(state.result_entity_ids) > collected_before:
+                iterations_since_last_collect = 0
             else:
-                iterations_since_last_mark += 1
+                iterations_since_last_collect += 1
 
             # Agent called finish — break after processing all tool calls
             if has_finish:
                 self.ctx.logger.debug(
                     f"[AgenticSearch] Agent returned results after {state.iteration} iterations, "
-                    f"{len(state.marked_entity_ids)} results marked"
+                    f"{len(state.result_entity_ids)} results collected"
                 )
                 break
 
@@ -303,8 +303,9 @@ class AgenticSearchAgent:
                         "role": "user",
                         "content": (
                             f"[System] You have {remaining} iterations remaining out of "
-                            f"{max_iter}. Start wrapping up: mark any relevant results you "
-                            f"have seen and prepare to call return_results_to_user soon."
+                            f"{max_iter}. Start wrapping up: add any promising results "
+                            f"you've seen to your result set and prepare to call "
+                            f"return_results_to_user soon."
                         ),
                     }
                 )
@@ -314,8 +315,8 @@ class AgenticSearchAgent:
                         "role": "user",
                         "content": (
                             "[System] URGENT: You have only 2 iterations left. "
-                            "You MUST call mark_as_relevant for any remaining relevant "
-                            "results NOW, then call return_results_to_user. "
+                            "Add any remaining matching results to your result set NOW "
+                            "with `add_to_results`, then call return_results_to_user. "
                             "Do NOT start new searches."
                         ),
                     }
@@ -326,23 +327,24 @@ class AgenticSearchAgent:
                         "role": "user",
                         "content": (
                             "[System] FINAL ITERATION. Call return_results_to_user now. "
-                            "Any unmarked results will be lost."
+                            "Any uncollected results will be lost."
                         ),
                     }
                 )
 
             # Stagnation nudge
             stagnation_threshold = agentic_config.STAGNATION_THRESHOLD
-            if iterations_since_last_mark >= stagnation_threshold:
+            if iterations_since_last_collect >= stagnation_threshold:
                 stagnation_nudges_sent += 1
                 state.messages.append(
                     {
                         "role": "user",
                         "content": (
-                            f"[System] You haven't marked any new results in "
-                            f"{iterations_since_last_mark} iterations. "
-                            "If you've exhausted the search space, call return_results_to_user. "
-                            "If not, try a fundamentally different search strategy."
+                            f"[System] You haven't added new results in "
+                            f"{iterations_since_last_collect} iterations. "
+                            "Go back and re-read results you may have skipped — "
+                            "you may be being too selective. If you've truly covered "
+                            "the search space, call return_results_to_user."
                         ),
                     }
                 )
@@ -352,8 +354,8 @@ class AgenticSearchAgent:
 
             state.iteration += 1
 
-        # Only return results the agent explicitly marked as relevant
-        results = [state.results[eid] for eid in state.marked_entity_ids if eid in state.results]
+        # Only return results the agent explicitly collected
+        results = [state.results[eid] for eid in state.result_entity_ids if eid in state.results]
 
         # Rerank using Cohere (if available and multiple results)
         if self.services.reranker and len(results) > 1:
@@ -370,17 +372,23 @@ class AgenticSearchAgent:
 
         self.ctx.logger.debug(f"[AgenticSearch] Done — returning {len(results)} results")
         resp = AgenticSearchResponse(results=results)
-        # Deduplicate seen/marked IDs to original entity IDs (strip __chunk_ suffix)
+        # Deduplicate seen/read/collected IDs to original entity IDs (strip __chunk_ suffix)
         seen_original_ids = self._to_original_entity_ids(state.results.values())
-        marked_original_ids = self._to_original_entity_ids(
-            state.results[eid] for eid in state.marked_entity_ids if eid in state.results
+        # Read IDs: all entities explicitly read via the read tool
+        all_read_results = [
+            r for results in state.reads_by_tool_call_id.values() for r in results
+        ]
+        read_original_ids = self._to_original_entity_ids(all_read_results)
+        collected_original_ids = self._to_original_entity_ids(
+            state.results[eid] for eid in state.result_entity_ids if eid in state.results
         )
 
         await self.emitter.emit(
             AgenticSearchDoneEvent(
                 response=resp,
                 all_seen_entity_ids=seen_original_ids,
-                all_marked_entity_ids=marked_original_ids,
+                all_read_entity_ids=read_original_ids,
+                all_collected_entity_ids=collected_original_ids,
                 max_iterations_hit=hit_max_iterations,
                 total_llm_retries=total_llm_retries,
                 stagnation_nudges_sent=stagnation_nudges_sent,
@@ -454,20 +462,20 @@ class AgenticSearchAgent:
                 "new_results": len(new_ids - (all_ids - new_ids)),
                 "total_results_seen": len(all_ids),
             }
-        if tc.name == "mark_as_relevant":
+        if tc.name == "add_to_results":
             return {
-                "total_marked": len(state.marked_entity_ids),
+                "total_collected": len(state.result_entity_ids),
             }
-        if tc.name == "unmark":
+        if tc.name == "remove_from_results":
             return {
-                "total_marked": len(state.marked_entity_ids),
+                "total_collected": len(state.result_entity_ids),
             }
         if tc.name == "read":
             entity_ids = tc.arguments.get("entity_ids", [])
             found = sum(1 for eid in entity_ids if eid in state.results)
             return {"found": found, "not_found": len(entity_ids) - found}
-        if tc.name in ("review_marked_results", "return_results_to_user"):
-            return {"total_marked": len(state.marked_entity_ids)}
+        if tc.name in ("review_results", "return_results_to_user"):
+            return {"total_collected": len(state.result_entity_ids)}
         return {}
 
     @staticmethod
@@ -500,7 +508,7 @@ class AgenticSearchAgent:
                 f"[Progress] Iteration {state.iteration + 1}/{max_iterations} complete "
                 f"({remaining} remaining). "
                 f"Results seen: {len(state.results)} | "
-                f"Marked: {len(state.marked_entity_ids)}"
+                f"Collected: {len(state.result_entity_ids)}"
             ),
         }
 
@@ -582,6 +590,6 @@ class AgenticSearchAgent:
                 tool_calls_count=len(response.tool_calls),
                 stop_reason=response.stop_reason,
                 total_results_seen=len(state.results),
-                total_results_marked=len(state.marked_entity_ids),
+                total_results_collected=len(state.result_entity_ids),
             )
         )

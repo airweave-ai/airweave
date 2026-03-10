@@ -39,7 +39,7 @@ class AgenticSearchThinkingEvent(BaseModel):
     total_results_seen: int = Field(
         0, description="Cumulative unique results across all iterations."
     )
-    total_results_marked: int = Field(0, description="Total results marked as relevant so far.")
+    total_results_collected: int = Field(0, description="Total results collected so far.")
 
 
 class AgenticSearchToolCallEvent(BaseModel):
@@ -54,7 +54,7 @@ class AgenticSearchToolCallEvent(BaseModel):
     tool_call_id: str = Field(..., description="The tool call ID from the LLM.")
     tool_name: str = Field(
         ...,
-        description="Tool name: search, read, mark_as_relevant, finish.",
+        description="Tool name: search, read, add_to_results, remove_from_results, review_results, return_results_to_user.",
     )
     arguments: dict = Field(
         default_factory=dict, description="Raw LLM arguments for the tool call."
@@ -70,7 +70,7 @@ class AgenticSearchDoneEvent(BaseModel):
     """Emitted when the search is complete.
 
     Contains the full response with results, plus all entity IDs the agent
-    saw during the search (for eval: compare seen vs marked vs ground truth).
+    saw during the search (for eval: compare seen vs collected vs ground truth).
     """
 
     type: Literal["done"] = "done"
@@ -79,9 +79,13 @@ class AgenticSearchDoneEvent(BaseModel):
         default_factory=list,
         description="All unique entity IDs the agent saw across all iterations.",
     )
-    all_marked_entity_ids: list[str] = Field(
+    all_read_entity_ids: list[str] = Field(
         default_factory=list,
-        description="All entity IDs the agent marked as relevant.",
+        description="All unique entity IDs the agent explicitly read via the read tool.",
+    )
+    all_collected_entity_ids: list[str] = Field(
+        default_factory=list,
+        description="All entity IDs the agent collected into the result set.",
     )
     # Agent behavior signals (for eval diagnostics)
     max_iterations_hit: bool = Field(False, description="Whether the agent hit the iteration cap.")
