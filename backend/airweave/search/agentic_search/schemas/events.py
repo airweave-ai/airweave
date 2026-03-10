@@ -54,7 +54,7 @@ class AgenticSearchToolCallEvent(BaseModel):
     tool_call_id: str = Field(..., description="The tool call ID from the LLM.")
     tool_name: str = Field(
         ...,
-        description="Tool name: search, mark_as_relevant, read_previous_results, finish.",
+        description="Tool name: search, read, mark_as_relevant, finish.",
     )
     arguments: dict = Field(
         default_factory=dict, description="Raw LLM arguments for the tool call."

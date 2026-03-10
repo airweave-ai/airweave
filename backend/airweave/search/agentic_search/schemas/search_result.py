@@ -121,6 +121,35 @@ class AgenticSearchResult(BaseModel):
             f"  Original entity: {meta.original_entity_id} (chunk {meta.chunk_index})"
         )
 
+    def to_snippet_summary_md(self) -> str:
+        """Compact summary with content snippet (~100 tokens) for search results."""
+        path = " > ".join(bc.to_md() for bc in self.breadcrumbs) if self.breadcrumbs else "(root)"
+        meta = self.airweave_system_metadata
+        created = self.created_at.isoformat() if self.created_at else "unknown"
+        updated = self.updated_at.isoformat() if self.updated_at else "unknown"
+
+        # 400-char content snippet (~100 tokens — enough to judge relevance)
+        content = self.textual_representation.strip()
+        total_chars = len(content)
+        truncated = total_chars > 400
+        snippet = (content[:397] + "...") if truncated else content
+
+        # Chunk info (only show if chunked)
+        chunk_info = ""
+        if meta.chunk_index > 0:
+            chunk_info = f" | Chunk {meta.chunk_index}"
+
+        # Show how much of the content is visible
+        size_info = f" [{400}/{total_chars} chars]" if truncated else ""
+
+        return (
+            f"- **{self.name}** (id: `{self.entity_id}`, score: {self.relevance_score:.4f})\n"
+            f"  {meta.source_name} ({meta.entity_type}){chunk_info} | "
+            f"Created: {created} | Updated: {updated}\n"
+            f"  Path: {path}\n"
+            f"  > {snippet}{size_info}"
+        )
+
     def to_md(self) -> str:
         """Render the search result as markdown for LLM context."""
         lines = [

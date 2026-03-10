@@ -10,9 +10,7 @@ from airweave.search.agentic_search.tools.finish import (
     handle_review_marked_results,
 )
 from airweave.search.agentic_search.tools.mark_as_relevant import handle_mark_as_relevant
-from airweave.search.agentic_search.tools.read_previous_results import (
-    handle_read_previous_results,
-)
+from airweave.search.agentic_search.tools.read import handle_read
 from airweave.search.agentic_search.tools.search import handle_search
 from airweave.search.agentic_search.tools.unmark import handle_unmark
 
@@ -47,8 +45,15 @@ async def handle_tool_call(
             collection_id=collection_id,
             user_filter=user_filter,
         )
-    if tc.name == "read_previous_results":
-        return await handle_read_previous_results(tc=tc, state=state)
+    if tc.name == "read":
+        return await handle_read(
+            tc=tc,
+            state=state,
+            services=services,
+            collection_id=collection_id,
+            user_filter=user_filter,
+            context_window_tokens=context_window_tokens,
+        )
     if tc.name == "mark_as_relevant":
         return await handle_mark_as_relevant(tc=tc, state=state)
     if tc.name == "unmark":

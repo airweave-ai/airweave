@@ -12,7 +12,9 @@ marking for the end — if the search is interrupted, marked results are still r
 
 ### `search`
 
-Search the vector database. Returns matching entities with their full content.
+Search the vector database. Returns **compact summaries** (name, source, snippet) — not full
+content. Use these summaries to decide which results to read in detail. Start with broad
+searches (limit=100-150) to maximize coverage, then narrow down.
 
 **Query**: A primary query (used for both keyword and semantic search) plus optional variations
 (semantic only). Variations are useful for synonyms, paraphrases, or rephrasing the query from
@@ -47,16 +49,10 @@ is how to use them to navigate:
   entities from a specific time period.
 
 **Limit and offset**: Control result count and pagination.
-- Use a limit of around 50 for list queries where you expect many results. Avoid very high
-  limits (100+) as they use excessive context space.
-- If results returned **equal** the limit, more results likely exist. Paginate by repeating
-  the same search with `offset` incremented by the limit (e.g., limit=50, offset=0, then
-  offset=50, then offset=100, etc.). Continue until a search returns fewer results than the
-  limit.
-- If results returned are **fewer** than the limit, the search space is exhausted for those
-  filters — retrying won't find more.
-- For list/find-all queries, always paginate through the full result set rather than stopping
-  after the first page.
+- Start with high limits (100-150) for initial searches to scan the space broadly.
+- If results returned **equal** the limit, more results likely exist. Use offset to paginate.
+- Prefer trying diverse queries over deep pagination on a single query — different phrasings
+  and strategies often surface results that pagination misses.
 
 ### `count`
 
@@ -67,6 +63,16 @@ narrow filter returns anything before committing to a full search.
 
 Note: basic entity counts per source and type are already in the collection metadata above.
 Use `count` when you need filtered counts that the metadata doesn't cover.
+
+### `read`
+
+Read the full content of search results by entity ID. Returns complete text with surrounding
+chunks for context on chunked documents. **After reading, immediately mark any relevant
+results** — their content will be summarized after your next search.
+
+Use this after searching to examine results that look relevant based on their summaries.
+The read output shows chunk labels (e.g., "Chunk 8 <- search match") so you can see exactly
+which chunks matched your search and what context surrounds them.
 
 ### `mark_as_relevant`
 
@@ -94,13 +100,18 @@ Return the marked results to the user and end the search. This is final — the 
 ends immediately. You can call `mark_as_relevant` and `return_results_to_user` in the same
 response.
 
-### `read_previous_results`
-
-Retrieve the full content of previously seen results by entity ID. Search results from older
-iterations are summarized to save context space — use this tool only when you need to
-re-examine content that has already been summarized away.
-
 ## How to search
+
+**Search broadly, read selectively, mark immediately.**
+
+1. **Search** with broad queries and high limits (100-150) to scan the space
+2. **Read** results that look relevant based on summaries
+3. **Mark** relevant results right after reading — don't wait
+4. **Repeat** with different queries, filters, strategies
+
+Your search results are summaries — enough to identify what's worth reading.
+Your read results show full content — that's where you evaluate relevance.
+Mark after every read. Content gets summarized in later iterations.
 
 **Never assume — react to what you find.** You have zero prior knowledge about what's in the
 collection. Every decision should be based on actual results, not expectations.
@@ -112,17 +123,17 @@ sources (e.g., an Asana task mentions a Notion doc — search for that doc).
 **Adapt your vocabulary.** If results use different terminology than the query, adopt their
 language in the next search. The data may call them "incidents" when the user said "bugs".
 
-**Think out loud about what you find.** Old search results are summarized to save context, but
-your reasoning text is preserved. Note why a result was relevant or what trail it suggests —
-you'll need this context in later iterations.
+**Think out loud about what you find.** Old search and read results are summarized to save
+context, but your reasoning text is preserved. Note why a result was relevant or what trail
+it suggests — you'll need this context in later iterations.
 
 ### Marking strategy
 
 - **Mark early**: Mark results as soon as you see they are relevant. Do not wait until you
   have seen everything.
+- **Mark after reading**: Read results to see full content, then immediately mark the relevant
+  ones. Don't chain multiple reads without marking in between.
 - **Mark broadly**: If a result clearly contains information relevant to the query, mark it.
-- **Mark as you go**: Results from earlier iterations get summarized to save context. If you
-  wait too long to decide, you lose the content and have to re-retrieve it.
 - **But verify specificity**: Before marking, check that the result matches the *specific*
   entities asked about in the query. If the query asks about a specific person, role, or
   event, only mark results that mention that exact person, role, or event — not results about
@@ -142,8 +153,7 @@ Not all queries need the same approach:
   - Try multiple query phrasings and synonyms
   - Try all relevant retrieval strategies (semantic, keyword, hybrid)
   - Use filters to explore different sources, entity types, and time ranges
-  - Use higher limits (around 50) to see more results per search
-  - Paginate through large result sets (use offset when results hit the limit)
+  - Start with high limits (100-150) to see more results per search
   - Use `count` to understand the scale before searching
   - Follow leads from breadcrumbs to explore related hierarchies
 - **Multi-hop** — the answer can't be found in one search. The query needs to be broken into

@@ -84,7 +84,7 @@ async def handle_search(
     available_tokens = _estimate_available_tokens(state.messages, context_window_tokens)
     requested_limit = tc.arguments.get("limit", 10)
     requested_offset = tc.arguments.get("offset", 0)
-    return format_results_for_context(
+    return format_search_summaries(
         results,
         available_tokens,
         requested_limit=requested_limit,
@@ -216,3 +216,49 @@ def format_results_for_context(
         )
 
     return header + "\n\n---\n\n".join(parts) + footer + pagination_warning
+
+
+def format_search_summaries(
+    results: list[AgenticSearchResult],
+    available_tokens: int,
+    requested_limit: int | None = None,
+    requested_offset: int = 0,
+) -> str:
+    """Format search results as compact summaries for the LLM.
+
+    Uses to_snippet_summary_md() for each result (~100 tokens each),
+    appends triage nudge reminding the agent to read then mark.
+    """
+    if not results:
+        return "No results found."
+
+    max_chars = available_tokens * CHARS_PER_TOKEN
+    parts: list[str] = []
+    chars_used = 0
+    results_shown = 0
+
+    for result in results:
+        summary = result.to_snippet_summary_md()
+        if chars_used + len(summary) > max_chars and parts:
+            break
+        parts.append(summary)
+        chars_used += len(summary)
+        results_shown += 1
+
+    total = len(results)
+    header = f"**{results_shown} of {total} results** (summaries — use `read` for full content):\n\n"
+
+    footer = ""
+    if results_shown < total:
+        footer = f"\n\n*(Showing top {results_shown} of {total})*"
+
+    # Pagination warning
+    pagination_warning = ""
+    if requested_limit is not None and len(results) >= requested_limit:
+        next_offset = requested_offset + requested_limit
+        pagination_warning = (
+            f"\n\n**Results hit the limit of {requested_limit}.** "
+            f"More results likely exist. Use offset={next_offset} to see the next page."
+        )
+
+    return header + "\n".join(parts) + footer + pagination_warning

@@ -105,10 +105,11 @@ class AgenticSearchConfig:
     VECTOR_DB_PROVIDER = VectorDBProvider.VESPA
 
     # Agent loop
-    MAX_ITERATIONS = 20
+    MAX_ITERATIONS = 25  # more room for search+read+mark cycles
     AGENT_LLM_MAX_RETRIES = 3
     AGENT_LLM_RETRY_DELAY = 2.0  # seconds, initial delay for exponential backoff
-    STAGNATION_THRESHOLD = 5  # iterations without new marks before nudging
+    STAGNATION_THRESHOLD = 4  # iterations without new marks before nudging
+    READ_SURROUNDING_CHUNKS = 2  # ±N chunks around matched chunk in read tool
 
 
 config = AgenticSearchConfig()

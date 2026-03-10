@@ -11,6 +11,7 @@ class AgenticSearchState(BaseModel):
     messages: list[dict] = Field(default_factory=list)
     results: dict[str, AgenticSearchResult] = Field(default_factory=dict)
     results_by_tool_call_id: dict[str, list[AgenticSearchResult]] = Field(default_factory=dict)
+    reads_by_tool_call_id: dict[str, list[AgenticSearchResult]] = Field(default_factory=dict)
     marked_entity_ids: set[str] = Field(default_factory=set)
     iteration: int = 0
     should_finish: bool = False
