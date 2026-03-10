@@ -1,4 +1,4 @@
-FROM python:3.11.14-slim@sha256:c8271b1f627d0068857dce5b53e14a9558603b527e46f1f901722f935b786a39
+FROM python:3.13.12-slim@sha256:8bc60ca09afaa8ea0d6d1220bde073bacfedd66a4bf8129cbdc8ef0e16c8a952
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     unixodbc-dev \
     exiftool \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir poetry==1.8.4
+    && pip install --no-cache-dir "poetry==2.3.2"
 
 # Add Poetry to PATH
 ENV PATH="/root/.local/bin:$PATH"

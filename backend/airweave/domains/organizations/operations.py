@@ -76,6 +76,7 @@ class OrganizationLifecycleOperations:
         """
         auth0_org_id: str | None = None
         stripe_customer_id: str | None = None
+        owner_email = owner_user.email
 
         try:
             auth0_org_id = await self._provision_identity_org(org_data.name, owner_user)
@@ -94,13 +95,13 @@ class OrganizationLifecycleOperations:
             await self._compensate_create(auth0_org_id, stripe_customer_id)
             raise
 
-        await self._cache.invalidate_user(owner_user.email)
+        await self._cache.invalidate_user(owner_email)
 
         await self._event_bus.publish(
             OrganizationLifecycleEvent.created(
                 organization_id=organization.id,
                 organization_name=organization.name,
-                owner_email=owner_user.email,
+                owner_email=owner_email,
             )
         )
         return organization
@@ -186,8 +187,13 @@ class OrganizationLifecycleOperations:
             )
 
             await db.flush()
-            await db.refresh(local_org)
 
+            # Snapshot scalar attributes into the Pydantic schema immediately
+            # after flush.  Do NOT call db.refresh(local_org) here: the
+            # Organization.user_organizations relationship uses
+            # cascade="all, delete-orphan" + lazy="noload", so a refresh
+            # loads an empty collection and SQLAlchemy deletes the just-created
+            # UserOrganization as an "orphan".
             organization = schemas.Organization(
                 id=local_org.id,  # type: ignore[arg-type]
                 name=local_org.name,

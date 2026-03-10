@@ -83,3 +83,19 @@ class TemporalScheduleServiceProtocol(Protocol):
     ) -> None:
         """Delete all schedules associated with a sync."""
         ...
+
+    async def delete_schedule_handle(self, schedule_id: str) -> None:
+        """Delete a Temporal schedule by ID without touching the DB.
+
+        Ignores not-found errors. Used by activities and ORM listeners
+        where the DB record is already gone.
+        """
+        ...
+
+    async def ensure_system_schedules(self) -> None:
+        """Create system-level singleton schedules if they don't already exist.
+
+        Covers the stuck-job cleanup schedule and the API key expiration
+        notification schedule. Called once during API server startup.
+        """
+        ...

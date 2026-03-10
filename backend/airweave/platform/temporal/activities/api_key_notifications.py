@@ -12,78 +12,73 @@ from airweave import crud
 from airweave.core.config import settings
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import logger
+from airweave.core.protocols.email import EmailService
 from airweave.db.session import get_db_context
-from airweave.email.services import send_email_via_resend
 from airweave.email.templates import get_api_key_expiration_email
 from airweave.models.api_key import APIKey
-
-
-async def _send_expiration_notification(
-    api_key: APIKey,
-    threshold_name: str,
-    days_until_exp: int,
-) -> bool:
-    """Send expiration notification email for a single API key.
-
-    Args:
-        api_key: The API key object
-        threshold_name: Type of notification (14_days, 3_days, expired)
-        days_until_exp: Days until expiration
-
-    Returns:
-        True if notification sent successfully, False otherwise
-    """
-    # Skip if no creator email (API key auth created keys)
-    if not api_key.created_by_email:
-        return False
-
-    # Generate email content
-    settings_url = (
-        f"{settings.APP_FULL_URL}/organization/settings?tab=api-keys"
-        if settings.APP_FULL_URL
-        else "https://app.airweave.ai/organization/settings?tab=api-keys"
-    )
-
-    api_key_preview = api_key.id.hex[:4]  # First 4 chars of UUID
-
-    subject, html_body = get_api_key_expiration_email(
-        days_until_expiration=days_until_exp,
-        api_key_preview=api_key_preview,
-        settings_url=settings_url,
-    )
-
-    # Send email
-    success = await send_email_via_resend(
-        to_email=api_key.created_by_email,
-        subject=subject,
-        html_body=html_body,
-        from_email="info@airweave.ai",
-    )
-
-    if success:
-        # Audit log: Notification sent (flows to Azure LAW)
-        audit_logger = logger.with_context(event_type="api_key_expiration_notification_sent")
-        audit_logger.info(
-            f"API key expiration notification sent: {threshold_name} for key {api_key_preview} "
-            f"to {api_key.created_by_email} (org={api_key.organization_id}, "
-            f"days_until_expiration={days_until_exp}, "
-            f"expires={api_key.expiration_date.isoformat()})"
-        )
-
-    return success
 
 
 @dataclass
 class CheckAndNotifyExpiringKeysActivity:
     """Check for expiring API keys and send notification emails.
 
-    Dependencies: None (uses internal email service)
-
-    This activity:
-    1. Queries the database for keys expiring in 14 days, 3 days, or already expired
-    2. Sends appropriate notification emails to the key creators
-    3. Returns counts of notifications sent by type
+    Dependencies:
+        email_service: EmailService protocol for sending notifications.
     """
+
+    email_service: EmailService
+
+    async def _send_expiration_notification(
+        self,
+        api_key: APIKey,
+        threshold_name: str,
+        days_until_exp: int,
+    ) -> bool:
+        """Send expiration notification email for a single API key.
+
+        Args:
+            api_key: The API key object.
+            threshold_name: Type of notification (14_days, 3_days, expired).
+            days_until_exp: Days until expiration.
+
+        Returns:
+            True if notification sent successfully, False otherwise.
+        """
+        if not api_key.created_by_email:
+            return False
+
+        settings_url = (
+            f"{settings.APP_FULL_URL}/organization/settings?tab=api-keys"
+            if settings.APP_FULL_URL
+            else "https://app.airweave.ai/organization/settings?tab=api-keys"
+        )
+
+        api_key_preview = api_key.id.hex[:4]
+
+        subject, html_body = get_api_key_expiration_email(
+            days_until_expiration=days_until_exp,
+            api_key_preview=api_key_preview,
+            settings_url=settings_url,
+        )
+
+        success = await self.email_service.send(
+            to_email=api_key.created_by_email,
+            subject=subject,
+            html_body=html_body,
+            from_email="info@airweave.ai",
+        )
+
+        if success:
+            audit_logger = logger.with_context(event_type="api_key_expiration_notification_sent")
+            audit_logger.info(
+                f"API key expiration notification sent: {threshold_name} "
+                f"for key {api_key_preview} to {api_key.created_by_email} "
+                f"(org={api_key.organization_id}, "
+                f"days_until_expiration={days_until_exp}, "
+                f"expires={api_key.expiration_date.isoformat()})"
+            )
+
+        return success
 
     @activity.defn(name="check_and_notify_expiring_keys_activity")
     async def run(self) -> dict[str, int]:
@@ -102,7 +97,6 @@ class CheckAndNotifyExpiringKeysActivity:
             "errors": 0,
         }
 
-        # Define notification thresholds
         thresholds = [
             ("14_days", now + timedelta(days=14), now + timedelta(days=15)),
             ("3_days", now + timedelta(days=3), now + timedelta(days=4)),
@@ -127,7 +121,7 @@ class CheckAndNotifyExpiringKeysActivity:
                         try:
                             days_until_exp = (api_key.expiration_date - now).days
 
-                            success = await _send_expiration_notification(
+                            success = await self._send_expiration_notification(
                                 api_key=api_key,
                                 threshold_name=threshold_name,
                                 days_until_exp=days_until_exp,

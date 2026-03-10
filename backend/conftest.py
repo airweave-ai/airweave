@@ -370,6 +370,14 @@ def fake_sync_job_service():
 
 
 @pytest.fixture
+def fake_sync_service():
+    """Fake SyncService."""
+    from airweave.domains.syncs.fakes.sync_service import FakeSyncService
+
+    return FakeSyncService()
+
+
+@pytest.fixture
 def fake_sync_lifecycle():
     """Fake SyncLifecycleService."""
     from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
@@ -573,6 +581,7 @@ def test_container(
     fake_sync_job_repo,
     fake_sync_record_service,
     fake_sync_job_service,
+    fake_sync_service,
     fake_sync_lifecycle,
     fake_billing_service,
     fake_billing_webhook,
@@ -640,6 +649,7 @@ def test_container(
         sync_job_repo=fake_sync_job_repo,
         sync_record_service=fake_sync_record_service,
         sync_job_service=fake_sync_job_service,
+        sync_service=fake_sync_service,
         sync_lifecycle=fake_sync_lifecycle,
         billing_service=fake_billing_service,
         billing_webhook=fake_billing_webhook,

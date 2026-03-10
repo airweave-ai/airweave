@@ -153,15 +153,20 @@ def delete_temporal_schedules_after_sync_delete(mapper, connection, target):
         ]
 
         async def _cleanup():
-            # Import here to avoid circular import during module initialization
-            from airweave.platform.temporal.schedule_service import (
-                temporal_schedule_service,
-            )
+            # [code blue] todo: replace ORM listener with EventBus subscriber
+            from airweave.core import container as container_mod
 
+            schedule_svc = container_mod.container.temporal_schedule_service
             for sid in schedule_ids:
-                await temporal_schedule_service.delete_schedule_handle(sid)
+                await schedule_svc.delete_schedule_handle(sid)
 
-        asyncio.get_event_loop().create_task(_cleanup())
+        # Try to get or create event loop
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_cleanup())
+        except RuntimeError:
+            # No running loop, create one
+            asyncio.run(_cleanup())
     except Exception as e:
         logger.info(
             f"Could not schedule Temporal cleanup for sync {getattr(target, 'id', None)}: {e}"

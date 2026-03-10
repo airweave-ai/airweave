@@ -88,27 +88,14 @@ async def lifespan(app: FastAPI):
         # Reconcile embedding config against DB deployment metadata
         await validate_embedding_config(db)
 
-    # Initialize cleanup schedule for stuck sync jobs
+    # Initialize system-level Temporal schedules (cleanup, API key notifications)
     try:
-        from airweave.platform.temporal.schedule_service import temporal_schedule_service
-
-        logger.info("Initializing cleanup schedule for stuck sync jobs...")
-        await temporal_schedule_service.create_cleanup_schedule()
-        logger.info("Cleanup schedule initialized successfully")
+        logger.info("Initializing system Temporal schedules...")
+        await container_mod.container.temporal_schedule_service.ensure_system_schedules()
+        logger.info("System Temporal schedules initialized successfully")
     except Exception as e:
         logger.warning(
-            f"Failed to initialize cleanup schedule (Temporal may not be available): {e}"
-        )
-
-    # Initialize API key expiration notification schedule
-    try:
-        logger.info("Initializing API key expiration notification schedule...")
-        await temporal_schedule_service.create_api_key_notification_schedule()
-        logger.info("API key notification schedule initialized successfully")
-    except Exception as e:
-        logger.warning(
-            f"Failed to initialize API key notification schedule "
-            f"(Temporal may not be available): {e}"
+            f"Failed to initialize system schedules (Temporal may not be available): {e}"
         )
 
     # Start metrics sidecar + DB pool sampler; wire app.state.http_metrics

@@ -100,6 +100,7 @@ cd airweave
 <img src="frontend/src/components/icons/apps/stripe.svg" alt="Stripe" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/trello.svg" alt="Trello" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/zendesk.svg" alt="Zendesk" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/zoom.svg" alt="Zoom" width="40" height="40" style="margin: 6px;" />
 </p>
 
 <!-- END_APP_GRID -->

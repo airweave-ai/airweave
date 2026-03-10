@@ -23,6 +23,8 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+
+# [code blue] todo: inject context_cache via Inject() instead of container access
 from airweave.core import container as container_mod
 from airweave.core.context import SystemContext
 from airweave.core.exceptions import InvalidStateError, NotFoundException
@@ -30,7 +32,6 @@ from airweave.core.protocols import PubSub
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.shared_models import AuthMethod
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
-from airweave.core.temporal_service import temporal_service
 from airweave.crud.crud_organization_billing import organization_billing
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.operations import BillingOperations
@@ -41,6 +42,8 @@ from airweave.domains.billing.repository import (
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.organizations.logic import generate_org_name
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
+from airweave.domains.syncs.protocols import SyncJobServiceProtocol
+from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.domains.usage.repository import UsageRepository
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
@@ -1056,6 +1059,9 @@ async def resync_with_execution_config(
             ["production"],
         ],
     ),
+    temporal_workflow_service: TemporalWorkflowServiceProtocol = Inject(
+        TemporalWorkflowServiceProtocol
+    ),
 ) -> schemas.SyncJob:
     """Admin-only: Trigger a sync with custom execution config and optional tags via Temporal.
 
@@ -1083,6 +1089,7 @@ async def resync_with_execution_config(
         ctx: API context
         execution_config: Optional nested SyncConfig
         tags: Optional list of tags for filtering
+        temporal_workflow_service: Injected Temporal workflow service
 
     Returns:
         The created sync job
@@ -1240,7 +1247,7 @@ async def resync_with_execution_config(
         f"Dispatching sync job {sync_job_schema.id} to Temporal "
         f"(sync org: {sync_organization_id}, admin org: {ctx.organization.id})"
     )
-    await temporal_service.run_source_connection_workflow(
+    await temporal_workflow_service.run_source_connection_workflow(
         sync=sync_schema,
         sync_job=sync_job_schema,
         collection=collection_schema,
@@ -1687,6 +1694,10 @@ async def admin_cancel_sync_job(
     job_id: UUID,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    temporal_workflow_service: TemporalWorkflowServiceProtocol = Inject(
+        TemporalWorkflowServiceProtocol
+    ),
+    sync_job_service: SyncJobServiceProtocol = Inject(SyncJobServiceProtocol),
 ) -> schemas.SyncJob:
     """Admin-only: Cancel any sync job regardless of organization.
 
@@ -1697,6 +1708,8 @@ async def admin_cancel_sync_job(
         job_id: The ID of the sync job to cancel
         db: Database session
         ctx: API context
+        temporal_workflow_service: Injected Temporal workflow service
+        sync_job_service: Injected sync job service
 
     Returns:
         The updated sync job
@@ -1708,8 +1721,6 @@ async def admin_cancel_sync_job(
 
     from airweave.core.datetime_utils import utc_now_naive
     from airweave.core.shared_models import SyncJobStatus
-    from airweave.core.sync_job_service import sync_job_service
-    from airweave.core.temporal_service import temporal_service
     from airweave.models.sync_job import SyncJob
 
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
@@ -1742,7 +1753,7 @@ async def admin_cancel_sync_job(
     )
 
     # Fire-and-forget cancellation request to Temporal
-    cancel_result = await temporal_service.cancel_sync_job_workflow(str(job_id), ctx)
+    cancel_result = await temporal_workflow_service.cancel_sync_job_workflow(str(job_id), ctx)
 
     if not cancel_result["success"]:
         # Actual Temporal connectivity/availability error - revert status
@@ -1782,6 +1793,10 @@ async def admin_cancel_sync_by_id(
     sync_id: UUID,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    temporal_workflow_service: TemporalWorkflowServiceProtocol = Inject(
+        TemporalWorkflowServiceProtocol
+    ),
+    sync_job_service: SyncJobServiceProtocol = Inject(SyncJobServiceProtocol),
 ) -> dict:
     """Admin-only: Cancel all pending/running jobs for a sync.
 
@@ -1789,6 +1804,8 @@ async def admin_cancel_sync_by_id(
         sync_id: The sync ID whose jobs should be cancelled
         db: Database session
         ctx: API context
+        temporal_workflow_service: Injected Temporal workflow service
+        sync_job_service: Injected sync job service
 
     Returns:
         Dict with cancelled job IDs and results
@@ -1800,8 +1817,6 @@ async def admin_cancel_sync_by_id(
 
     from airweave.core.datetime_utils import utc_now_naive
     from airweave.core.shared_models import SyncJobStatus
-    from airweave.core.sync_job_service import sync_job_service
-    from airweave.core.temporal_service import temporal_service
     from airweave.models.sync import Sync
     from airweave.models.sync_job import SyncJob
 
@@ -1847,7 +1862,9 @@ async def admin_cancel_sync_by_id(
             )
 
             # Request cancellation from Temporal
-            cancel_result = await temporal_service.cancel_sync_job_workflow(str(job_id), ctx)
+            cancel_result = await temporal_workflow_service.cancel_sync_job_workflow(
+                str(job_id), ctx
+            )
 
             if not cancel_result["success"]:
                 # Temporal error - revert status

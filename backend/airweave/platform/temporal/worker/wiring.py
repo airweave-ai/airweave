@@ -32,6 +32,16 @@ def create_activities() -> list:
     event_bus = container.event_bus
     dense_embedder = container.dense_embedder
     sparse_embedder = container.sparse_embedder
+    email_service = container.email_service
+    sync_service = container.sync_service
+    sync_job_service = container.sync_job_service
+    sync_repo = container.sync_repo
+    sync_job_repo = container.sync_job_repo
+    sc_repo = container.sc_repo
+    conn_repo = container.conn_repo
+    collection_repo = container.collection_repo
+    temporal_workflow_service = container.temporal_workflow_service
+    temporal_schedule_service = container.temporal_schedule_service
 
     logger.debug("Wiring activities with container dependencies")
 
@@ -40,15 +50,35 @@ def create_activities() -> list:
             event_bus=event_bus,
             dense_embedder=dense_embedder,
             sparse_embedder=sparse_embedder,
+            sync_service=sync_service,
+            sync_job_service=sync_job_service,
         ).run,
-        CreateSyncJobActivity(event_bus=event_bus).run,
-        MarkSyncJobCancelledActivity().run,
-        CleanupStuckSyncJobsActivity().run,
+        CreateSyncJobActivity(
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+            sc_repo=sc_repo,
+            conn_repo=conn_repo,
+            collection_repo=collection_repo,
+        ).run,
+        MarkSyncJobCancelledActivity(
+            sync_job_service=sync_job_service,
+        ).run,
+        CleanupStuckSyncJobsActivity(
+            temporal_workflow_service=temporal_workflow_service,
+            sync_job_service=sync_job_service,
+        ).run,
         # Cleanup
-        SelfDestructOrphanedSyncActivity().run,
-        CleanupSyncDataActivity().run,
+        SelfDestructOrphanedSyncActivity(
+            temporal_schedule_service=temporal_schedule_service,
+        ).run,
+        CleanupSyncDataActivity(
+            temporal_schedule_service=temporal_schedule_service,
+        ).run,
         # Notifications
-        CheckAndNotifyExpiringKeysActivity().run,
+        CheckAndNotifyExpiringKeysActivity(
+            email_service=email_service,
+        ).run,
     ]
 
 

@@ -63,7 +63,7 @@ class TestSubscribeSyncJob:
             mock_mod.CancelledError = asyncio.CancelledError
             mock_loop = MagicMock()
             mock_loop.time.side_effect = lambda: next(times, 31.0)
-            mock_mod.get_event_loop.return_value = mock_loop
+            mock_mod.get_running_loop.return_value = mock_loop
 
             response = await client.get(f"/sync/job/{uuid4()}/subscribe")
 
@@ -144,7 +144,7 @@ class TestSubscribeEntityState:
             mock_mod.CancelledError = asyncio.CancelledError
             mock_loop = MagicMock()
             mock_loop.time.side_effect = lambda: next(times, 31.0)
-            mock_mod.get_event_loop.return_value = mock_loop
+            mock_mod.get_running_loop.return_value = mock_loop
 
             response = await client.get(f"/sync/job/{uuid4()}/subscribe-state")
 
