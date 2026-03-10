@@ -82,32 +82,33 @@ class ProvisioningOperations:
         2. Remove local memberships whose org's auth0_org_id is NOT in Auth0.
         3. Update roles if Auth0 role differs from local role.
         """
+        user_email = user.email
+        user_auth0_id = user.auth0_id
+        user_id = user.id
         try:
-            auth0_orgs = await self._identity.get_user_organizations(user.auth0_id)
+            auth0_orgs = await self._identity.get_user_organizations(user_auth0_id)
             auth0_org_ids = {org["id"] for org in auth0_orgs} if auth0_orgs else set()
 
             logger.info(
-                f"Syncing orgs for user {user.email}: {len(auth0_org_ids)} in identity provider"
+                f"Syncing orgs for user {user_email}: {len(auth0_org_ids)} in identity provider"
             )
 
             async with UnitOfWork(db) as uow:
-                # Pass 1: Add/update memberships from Auth0
                 for auth0_org in auth0_orgs or []:
                     await self._sync_single_organization(db, user, auth0_org)
 
-                # Pass 2: Remove stale local memberships not in Auth0
                 local_memberships = await self._user_org_repo.get_user_memberships_with_auth0_ids(
-                    db, user_id=user.id
+                    db, user_id=user_id
                 )
                 for membership, local_auth0_org_id in local_memberships:
                     if local_auth0_org_id and local_auth0_org_id not in auth0_org_ids:
                         await self._user_org_repo.delete_membership(
                             db,
-                            user_id=user.id,
+                            user_id=user_id,
                             organization_id=membership.organization_id,
                         )
                         logger.info(
-                            f"Removed stale membership for user {user.email} "
+                            f"Removed stale membership for user {user_email} "
                             f"in org {membership.organization_id} "
                             f"(auth0_org {local_auth0_org_id} not in identity provider)"
                         )
@@ -117,7 +118,7 @@ class ProvisioningOperations:
             return await self._user_repo.refresh(db, user=user)
 
         except Exception as e:
-            logger.error(f"Failed to sync orgs for {user.email}: {e}")
+            logger.error(f"Failed to sync orgs for {user_email}: {e}")
             return user
 
     # ------------------------------------------------------------------
