@@ -646,14 +646,15 @@ class CreateSyncJobActivity:
                 if force_full_sync:
                     await self._wait_for_running_jobs(db, sync_id, ctx, running_jobs)
                 else:
-                    ctx.logger.warning(
-                        f"Sync {sync_id} already has {len(running_jobs)} running jobs. "
-                        f"Skipping new job creation."
+                    ctx.logger.info(
+                        f"Sync {sync_id} already has {len(running_jobs)} running "
+                        f"job(s). Skipping scheduled run."
                     )
-                    raise Exception(
-                        f"Sync {sync_id} already has a running job. "
-                        f"Skipping this scheduled run to avoid conflicts."
-                    )
+                    return {
+                        "_skipped": True,
+                        "sync_id": sync_id,
+                        "reason": f"Already has {len(running_jobs)} running job(s)",
+                    }
 
             sync_job_in = schemas.SyncJobCreate(sync_id=UUID(sync_id))
             sync_job = await self.sync_job_repo.create(db=db, obj_in=sync_job_in, ctx=ctx)

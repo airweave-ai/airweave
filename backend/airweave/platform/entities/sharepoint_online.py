@@ -100,7 +100,9 @@ class SharePointOnlineFileEntity(FileEntity):
     item_id: str = AirweaveField(..., description="Graph drive item ID")
     drive_id: str = AirweaveField(..., description="Parent drive ID")
     site_id: str = AirweaveField(..., description="Parent site ID")
-    file_name: str = AirweaveField(..., description="File name with extension", embeddable=True)
+    file_name: str = AirweaveField(
+        ..., description="File name with extension", is_name=True, embeddable=True
+    )
     web_url: str = AirweaveField(..., description="File web URL")
     download_url: Optional[str] = AirweaveField(None, description="Direct download URL")
     parent_path: Optional[str] = AirweaveField(None, description="Parent folder path")
@@ -143,7 +145,7 @@ class SharePointOnlineFileDeletionEntity(DeletionEntity):
     deletes_entity_class = SharePointOnlineFileEntity
 
     drive_id: str = AirweaveField(..., description="Drive ID of the deleted file")
-    item_id: str = AirweaveField(..., description="Item ID of the deleted file")
+    item_id: str = AirweaveField(..., description="Item ID of the deleted file", is_name=True)
     spo_entity_id: str = AirweaveField(
         ...,
         description="Entity ID of the deleted file",
@@ -158,7 +160,7 @@ class SharePointOnlineItemDeletionEntity(DeletionEntity):
 
     site_id: str = AirweaveField(..., description="Site ID of the deleted item")
     list_id: str = AirweaveField(..., description="List ID of the deleted item")
-    item_id: str = AirweaveField(..., description="Item ID of the deleted item")
+    item_id: str = AirweaveField(..., description="Item ID of the deleted item", is_name=True)
     spo_entity_id: str = AirweaveField(
         ...,
         description="Entity ID of the deleted item",

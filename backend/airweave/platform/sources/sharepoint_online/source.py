@@ -129,17 +129,26 @@ class SharePointOnlineSource(BaseSource):
     # -- File Download --
 
     async def _download_and_save_file(self, entity, client, drive_id: str, item_id: str):
+        """Download file content and save via file_downloader."""
         graph_client = self._create_graph_client()
         try:
-            download_url = await graph_client.get_file_content_url(client, drive_id, item_id)
+            download_url = await graph_client.get_file_content_url(
+                client,
+                drive_id,
+                item_id,
+            )
             if download_url:
-                await self.file_downloader.download_from_url(
-                    entity=entity,
-                    url=download_url,
-                    filename_with_extension=entity.file_name,
-                    logger=self.logger,
-                    access_token_provider=self.get_access_token,
+                entity.url = download_url
+            elif not entity.url or "graph.microsoft.com" not in entity.url:
+                entity.url = (
+                    f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/content"
                 )
+            await self.file_downloader.download_from_url(
+                entity,
+                self.http_client,
+                self.get_access_token,
+                self.logger,
+            )
             return entity
         except FileSkippedException:
             raise
