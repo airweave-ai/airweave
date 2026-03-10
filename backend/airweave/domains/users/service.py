@@ -120,9 +120,17 @@ class UserService(UserServiceProtocol):
             )
         except Exception as e:
             logger.warning(f"Failed to sync Auth0 organizations for user {user_data.email}: {e}")
-            return CreateOrUpdateResult(
-                user=schemas.User.model_validate(existing_user), is_new=False
-            )
+            # Re-fetch the user to get a clean ORM object with all relationships
+            # loaded, since the sync may have left the session in a dirty state.
+            try:
+                fresh_user = await self._user_repo.get_by_email(db, email=user_data.email)
+                return CreateOrUpdateResult(
+                    user=schemas.User.model_validate(fresh_user), is_new=False
+                )
+            except Exception:
+                return CreateOrUpdateResult(
+                    user=schemas.User.model_validate(existing_user), is_new=False
+                )
 
     async def _provision_new_user(
         self,
