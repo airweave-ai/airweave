@@ -132,45 +132,26 @@ class CalendlySource(BaseSource):
             "Content-Type": "application/json",
         }
 
-        try:
-            response = await client.get(url, headers=headers, params=params)
+        response = await client.get(url, headers=headers, params=params)
 
-            # Handle 401 Unauthorized - token might have expired
-            if response.status_code == 401:
-                self.logger.warning(f"Received 401 Unauthorized for {url}, refreshing token...")
+        if response.status_code == 401:
+            if self.token_manager:
+                try:
+                    # Force refresh the token
+                    new_token = await self.token_manager.refresh_on_unauthorized()
+                    headers = {"Authorization": f"Bearer {new_token}"}
 
-                # If we have a token manager, try to refresh
-                if self.token_manager:
-                    try:
-                        # Force refresh the token
-                        new_token = await self.token_manager.refresh_on_unauthorized()
-                        headers = {"Authorization": f"Bearer {new_token}"}
+                    response = await client.get(url, headers=headers, params=params)
 
-                        # Retry the request with the new token
-                        self.logger.debug(f"Retrying request with refreshed token: {url}")
-                        response = await client.get(url, headers=headers, params=params)
-
-                    except TokenRefreshError as e:
-                        self.logger.error(f"Failed to refresh token: {str(e)}")
-                        response.raise_for_status()
-                else:
-                    # No token manager, can't refresh
-                    self.logger.error("No token manager available to refresh expired token")
+                except TokenRefreshError:
                     response.raise_for_status()
+            else:
+                # No token manager, can't refresh
+                self.logger.error("No token manager available to refresh expired token")
+                response.raise_for_status()
 
-            # Log 429 so retries are visible; tenacity will retry after backoff
-            if response.status_code == 429:
-                self.logger.warning("Calendly API rate limit (429); retrying after backoff")
-            # Raise for other HTTP errors (including 429 so tenacity retries)
-            response.raise_for_status()
-            return response.json()
-
-        except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP error from Calendly API: {e.response.status_code} for {url}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error accessing Calendly API: {url}, {str(e)}")
-            raise
+        response.raise_for_status()
+        return response.json()
 
     async def _get_paginated(
         self,
