@@ -9,6 +9,7 @@ from airweave.platform.entities.zoom import (
     ZoomMeetingEntity,
     ZoomMeetingParticipantEntity,
     ZoomRecordingEntity,
+    ZoomTranscriptEntity,
 )
 from airweave.platform.sources.zoom import ZoomSource
 
@@ -253,3 +254,167 @@ async def test_generate_entities_calls_get_current_user_once():
     assert mock_user.await_count == 1
     assert all(uid == "test-user-id" for _, uid in user_ids_seen)
     assert len(user_ids_seen) == 3
+
+
+# ---------------------------------------------------------------------------
+# Cursor behaviour
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_entities_updates_cursor_first_run():
+    """First run with no cursor data should update last_synced_at based on entities."""
+    source = await ZoomSource.create("token", None)
+
+    async def fake_meeting_entities(client, user_id):
+        yield ZoomMeetingEntity(
+            breadcrumbs=[],
+            name="M1",
+            created_at=_UTC,
+            updated_at=_UTC,
+            meeting_id="m1",
+            topic="M1",
+            start_time=_UTC,
+        )
+
+    async def fake_past_meeting_entities(client, user_id):
+        yield ZoomMeetingEntity(
+            breadcrumbs=[],
+            name="Past",
+            created_at=_UTC,
+            updated_at=_UTC,
+            meeting_id="m2",
+            topic="Past",
+            uuid="u2",
+            start_time=_UTC,
+        )
+
+    async def fake_recording_entities(client, user_id):
+        yield ZoomRecordingEntity(
+            breadcrumbs=[],
+            name="R1",
+            created_at=_UTC,
+            updated_at=_UTC,
+            recording_id="r1",
+            recording_name="R1",
+            meeting_id="m2",
+            meeting_topic="Past",
+            recording_start=_UTC,
+        )
+        yield ZoomTranscriptEntity(
+            breadcrumbs=[],
+            name="T1",
+            created_at=_UTC,
+            updated_at=_UTC,
+            transcript_id="t1",
+            transcript_name="T1",
+            meeting_id="m2",
+            meeting_topic="Past",
+            recording_start=_UTC,
+        )
+
+    async def empty_participants(*args, **kwargs):
+        if False:
+            yield  # pragma: no cover
+
+    cursor = MagicMock()
+    cursor.data = {}
+    source.set_cursor(cursor)
+
+    with patch.object(source, "_get_current_user", new_callable=AsyncMock) as mock_user:
+        mock_user.return_value = {"id": "user-1", "email": "u@example.com"}
+        with patch.object(
+            source, "_generate_meeting_entities", fake_meeting_entities
+        ), patch.object(
+            source, "_generate_past_meeting_entities", fake_past_meeting_entities
+        ), patch.object(
+            source, "_generate_participant_entities", empty_participants
+        ), patch.object(
+            source, "_generate_recording_entities", fake_recording_entities
+        ), patch.object(source, "http_client") as mock_http:
+            mock_client = MagicMock()
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            # Drain generator
+            async for _ in source.generate_entities():
+                pass
+
+    # last_synced_at should be updated once with an ISO timestamp
+    assert cursor.update.call_count == 1
+    kwargs = cursor.update.call_args.kwargs
+    assert "last_synced_at" in kwargs
+    assert isinstance(kwargs["last_synced_at"], str)
+    # Should be a non-empty ISO 8601 string
+    assert kwargs["last_synced_at"]
+
+
+@pytest.mark.asyncio
+async def test_generate_entities_respects_last_synced_at_cursor():
+    """With a last_synced_at cursor, only newer entities should be yielded."""
+    source = await ZoomSource.create("token", None)
+
+    old_ts = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    new_ts = datetime(2024, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
+
+    async def fake_meeting_entities(client, user_id):
+        # Old meeting should be skipped
+        yield ZoomMeetingEntity(
+            breadcrumbs=[],
+            name="Old",
+            created_at=old_ts,
+            updated_at=old_ts,
+            meeting_id="old",
+            topic="Old",
+            start_time=old_ts,
+        )
+        # New meeting should be yielded
+        yield ZoomMeetingEntity(
+            breadcrumbs=[],
+            name="New",
+            created_at=new_ts,
+            updated_at=new_ts,
+            meeting_id="new",
+            topic="New",
+            start_time=new_ts,
+        )
+
+    async def fake_past_meeting_entities(client, user_id):
+        return
+        yield  # pragma: no cover
+
+    async def fake_recording_entities(client, user_id):
+        return
+        yield  # pragma: no cover
+
+    cursor = MagicMock()
+    cursor.data = {"last_synced_at": old_ts.isoformat()}
+    source.set_cursor(cursor)
+
+    async def empty_participants(*args, **kwargs):
+        if False:
+            yield  # pragma: no cover
+
+    with patch.object(source, "_get_current_user", new_callable=AsyncMock) as mock_user:
+        mock_user.return_value = {"id": "user-1", "email": "u@example.com"}
+        with patch.object(
+            source, "_generate_meeting_entities", fake_meeting_entities
+        ), patch.object(
+            source, "_generate_past_meeting_entities", fake_past_meeting_entities
+        ), patch.object(
+            source, "_generate_participant_entities", empty_participants
+        ), patch.object(
+            source, "_generate_recording_entities", fake_recording_entities
+        ), patch.object(source, "http_client") as mock_http:
+            mock_client = MagicMock()
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            entities = []
+            async for e in source.generate_entities():
+                entities.append(e)
+
+    # Only the new meeting should be yielded
+    assert len(entities) == 1
+    assert isinstance(entities[0], ZoomMeetingEntity)
+    assert entities[0].meeting_id == "new"
