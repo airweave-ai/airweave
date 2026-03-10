@@ -8,7 +8,6 @@ import pytest
 
 from airweave.domains.users.types import (
     CreateOrUpdateResult,
-    has_auth0_id_conflict,
     is_email_authorized,
 )
 
@@ -33,37 +32,6 @@ class TestIsEmailAuthorized:
     def test_one_empty(self):
         assert is_email_authorized("user@test.com", "") is False
         assert is_email_authorized("", "user@test.com") is False
-
-
-# ---------------------------------------------------------------------------
-# has_auth0_id_conflict
-# ---------------------------------------------------------------------------
-
-
-class TestHasAuth0IdConflict:
-    def test_different_ids_is_conflict(self):
-        assert has_auth0_id_conflict("auth0|abc", "auth0|xyz") is True
-
-    def test_same_ids_no_conflict(self):
-        assert has_auth0_id_conflict("auth0|abc", "auth0|abc") is False
-
-    def test_existing_none_no_conflict(self):
-        assert has_auth0_id_conflict(None, "auth0|xyz") is False
-
-    def test_incoming_none_no_conflict(self):
-        assert has_auth0_id_conflict("auth0|abc", None) is False
-
-    def test_both_none_no_conflict(self):
-        assert has_auth0_id_conflict(None, None) is False
-
-    def test_existing_empty_no_conflict(self):
-        assert has_auth0_id_conflict("", "auth0|xyz") is False
-
-    def test_incoming_empty_no_conflict(self):
-        assert has_auth0_id_conflict("auth0|abc", "") is False
-
-    def test_both_empty_no_conflict(self):
-        assert has_auth0_id_conflict("", "") is False
 
 
 # ---------------------------------------------------------------------------

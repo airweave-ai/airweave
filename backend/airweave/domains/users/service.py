@@ -106,10 +106,6 @@ class UserService(UserServiceProtocol):
         # provider (Google, GitHub, etc.) has verified it. The Auth0 Post-Login
         # Action additionally gates account linking on email_verified=true.
         if incoming_auth0_id and existing_user.auth0_id != incoming_auth0_id:
-            logger.info(
-                f"Updating auth0_id for user {user_data.email}: "
-                f"{existing_user.auth0_id} → {incoming_auth0_id}"
-            )
             existing_user = await self._user_repo.update_user_no_auth(
                 db,
                 id=existing_user.id,

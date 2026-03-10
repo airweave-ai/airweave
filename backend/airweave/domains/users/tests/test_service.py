@@ -274,9 +274,7 @@ class TestCreateOrUpdateFallback:
 
         svc._fallback_create = AsyncMock(
             return_value=CreateOrUpdateResult(
-                user=schemas.User.model_validate(
-                    _UserStub(email="new@test.com")
-                ),
+                user=schemas.User.model_validate(_UserStub(email="new@test.com")),
                 is_new=True,
             )
         )
@@ -419,7 +417,7 @@ class TestSendWelcomeFromSchema:
 class TestFallbackCreate:
     @pytest.mark.asyncio
     async def test_creates_user_and_api_key_via_crud(self):
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         fake_user = _UserStub(email="fallback@test.com", full_name="Fallback")
         fake_org = SimpleNamespace(id=uuid4(), name="Test Org")
