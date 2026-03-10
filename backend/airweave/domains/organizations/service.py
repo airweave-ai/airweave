@@ -119,13 +119,13 @@ class OrganizationService(OrganizationServiceProtocol):
             raise ValueError("User not found")
 
         org = await self._get_org(db, organization_id)
+        org_name = org.name
+        org_auth0_id = org.auth0_org_id
         user_schema = schemas.User.model_validate(user_to_remove)
 
         # Step 1: Identity provider removal (source of truth, fail-fast)
-        if org.auth0_org_id and user_schema.auth0_id:
-            await self._identity.remove_user_from_organization(
-                org.auth0_org_id, user_schema.auth0_id
-            )
+        if org_auth0_id and user_schema.auth0_id:
+            await self._identity.remove_user_from_organization(org_auth0_id, user_schema.auth0_id)
 
         # Step 2: Local delete in UoW
         try:
@@ -135,10 +135,10 @@ class OrganizationService(OrganizationServiceProtocol):
                 )
                 await uow.commit()
         except Exception:
-            if org.auth0_org_id and user_schema.auth0_id:
+            if org_auth0_id and user_schema.auth0_id:
                 try:
                     await self._identity.add_user_to_organization(
-                        org.auth0_org_id, user_schema.auth0_id
+                        org_auth0_id, user_schema.auth0_id
                     )
                     logger.info(
                         f"Compensated: re-added {user_schema.email} to Auth0 org after DB failure"
@@ -146,7 +146,7 @@ class OrganizationService(OrganizationServiceProtocol):
                 except Exception as comp_err:
                     logger.critical(
                         f"COMPENSATION FAILED: user {user_schema.email} removed from "
-                        f"Auth0 org {org.auth0_org_id} but DB delete failed and "
+                        f"Auth0 org {org_auth0_id} but DB delete failed and "
                         f"re-add also failed: {comp_err}"
                     )
             raise
@@ -155,12 +155,12 @@ class OrganizationService(OrganizationServiceProtocol):
         await self._event_bus.publish(
             OrganizationLifecycleEvent.member_removed(
                 organization_id=organization_id,
-                organization_name=org.name,
+                organization_name=org_name,
                 affected_user_emails=[user_schema.email],
             )
         )
 
-        logger.info(f"Removed user {user_schema.email} from org {org.name}")
+        logger.info(f"Removed user {user_schema.email} from org {org_name}")
         return True
 
     async def change_member_role(
@@ -184,6 +184,11 @@ class OrganizationService(OrganizationServiceProtocol):
             raise ValueError("User not found")
 
         org = await self._get_org(db, organization_id)
+        target_email = target_user.email
+        target_auth0_id = target_user.auth0_id
+        org_name = org.name
+        org_auth0_id = org.auth0_org_id
+
         membership = await self._user_org_repo.get_membership(
             db, org_id=organization_id, user_id=user_id
         )
@@ -195,13 +200,11 @@ class OrganizationService(OrganizationServiceProtocol):
             return True
 
         # Step 1: Update Auth0 roles (source of truth)
-        if org.auth0_org_id and target_user.auth0_id:
+        if org_auth0_id and target_auth0_id:
             all_roles = await self._identity.get_roles()
             role_id = next((r["id"] for r in all_roles if r["name"] == new_role), None)
             if role_id:
-                await self._identity.set_member_roles(
-                    org.auth0_org_id, target_user.auth0_id, [role_id]
-                )
+                await self._identity.set_member_roles(org_auth0_id, target_auth0_id, [role_id])
 
         # Step 2: Update local DB
         try:
@@ -211,25 +214,23 @@ class OrganizationService(OrganizationServiceProtocol):
                 )
                 await uow.commit()
         except Exception:
-            if org.auth0_org_id and target_user.auth0_id:
+            if org_auth0_id and target_auth0_id:
                 try:
                     all_roles = await self._identity.get_roles()
                     old_role_id = next((r["id"] for r in all_roles if r["name"] == old_role), None)
                     if old_role_id:
                         await self._identity.set_member_roles(
-                            org.auth0_org_id, target_user.auth0_id, [old_role_id]
+                            org_auth0_id, target_auth0_id, [old_role_id]
                         )
                 except Exception as comp_err:
                     logger.critical(
-                        f"COMPENSATION FAILED: role for {target_user.email} changed to "
+                        f"COMPENSATION FAILED: role for {target_email} changed to "
                         f"{new_role} in Auth0 but DB update failed and rollback also "
                         f"failed: {comp_err}"
                     )
             raise
 
-        logger.info(
-            f"Changed role for {target_user.email} in org {org.name}: {old_role} → {new_role}"
-        )
+        logger.info(f"Changed role for {target_email} in org {org_name}: {old_role} → {new_role}")
         return True
 
     async def leave_organization(
