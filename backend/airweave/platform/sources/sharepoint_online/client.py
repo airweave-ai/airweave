@@ -171,21 +171,67 @@ class GraphClient:
         folders_to_process = [folder_id]
         processed_folders: set = set()
 
+        self.logger.info(f"BFS start: drive={drive_id}, root_folder={folder_id}")
+
         while folders_to_process:
             current_folder = folders_to_process.pop(0)
             if current_folder in processed_folders:
+                self.logger.debug(f"BFS skip (already processed): {current_folder}")
                 continue
             processed_folders.add(current_folder)
 
             url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{current_folder}/children"
+            self.logger.info(
+                f"BFS processing folder={current_folder} | "
+                f"queue={len(folders_to_process)} remaining | "
+                f"processed={len(processed_folders)}"
+            )
 
+            item_count = 0
+            folder_count = 0
             async for item in self.get_paginated(client, url):
-                yield item
+                item_count += 1
+                item_name = item.get("name", "?")
+                is_folder = bool(item.get("folder"))
 
-                if item.get("folder"):
+                if is_folder:
+                    folder_count += 1
                     child_id = item.get("id")
                     if child_id and child_id not in processed_folders:
                         folders_to_process.append(child_id)
+                        self.logger.info(
+                            f"BFS enqueue folder: {item_name} (id={child_id}) | "
+                            f"queue now={len(folders_to_process)}"
+                        )
+
+                yield item
+
+            self.logger.info(
+                f"BFS folder done: {current_folder} | "
+                f"items={item_count}, subfolders={folder_count} | "
+                f"queue={len(folders_to_process)} remaining"
+            )
+
+    # -- Drive Children (Browse Tree) --
+
+    async def get_drive_children(
+        self,
+        client: httpx.AsyncClient,
+        drive_id: str,
+        folder_id: str = "root",
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Yield immediate children of a drive folder (non-recursive).
+
+        Used by the browse tree for lazy-loaded folder expansion.
+
+        Args:
+            client: httpx AsyncClient instance.
+            drive_id: Drive ID.
+            folder_id: Folder item ID, or "root" for drive root.
+        """
+        url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{folder_id}/children"
+        async for item in self.get_paginated(client, url):
+            yield item
 
     # -- Delta Query (Incremental Sync) --
 
@@ -343,6 +389,32 @@ class GraphClient:
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"SP group {group_id} users not available: {e}")
             return []
+
+    # -- User Resolution --
+
+    async def resolve_user_ids(
+        self,
+        client: httpx.AsyncClient,
+        user_ids: List[str],
+    ) -> Dict[str, str]:
+        """Resolve Entra user object IDs to email addresses.
+
+        Returns a mapping of user_id -> email (lowercase).
+        IDs that cannot be resolved are omitted from the result.
+        """
+        result: Dict[str, str] = {}
+        for uid in user_ids:
+            try:
+                url = f"{GRAPH_BASE_URL}/users/{uid}"
+                data = await self.get(client, url, {"$select": "userPrincipalName,mail"})
+                email = data.get("mail") or data.get("userPrincipalName", "")
+                if email and "@" in email:
+                    result[uid] = email.lower()
+                else:
+                    self.logger.warning(f"User {uid} has no resolvable email")
+            except Exception as e:
+                self.logger.warning(f"Could not resolve user {uid}: {e}")
+        return result
 
     # -- File Download --
 
