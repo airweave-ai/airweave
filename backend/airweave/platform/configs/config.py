@@ -990,3 +990,22 @@ class HerbConfig(SourceConfig):
         description="Path to the HERB /data directory (e.g. '/tmp/HERB/data')",
         min_length=1,
     )
+
+
+class EnronConfig(SourceConfig):
+    """Configuration for the Enron email corpus source.
+
+    Points to the root of an extracted CMU Enron maildir dataset (or a
+    pre-filtered subset built by ``evals/scripts/build_enron_subset.py``).
+    Expected structure: {maildir_path}/{user}/{folder}/{message_file}
+    """
+
+    maildir_path: str = Field(
+        ...,
+        title="Enron Maildir Path",
+        description=(
+            "Path to the root maildir directory of the Enron corpus or a "
+            "pre-filtered subset (e.g. '/tmp/enron_subset')"
+        ),
+        min_length=1,
+    )

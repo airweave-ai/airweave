@@ -12,6 +12,7 @@ from .confluence import ConfluenceSource
 from .ctti import CTTISource
 from .document360 import Document360Source
 from .dropbox import DropboxSource
+from .enron import EnronSource
 from .file_stub import FileStubSource
 from .fireflies import FirefliesSource
 from .freshdesk import FreshdeskSource
@@ -75,6 +76,7 @@ ALL_SOURCES: list[type] = [
     CTTISource,
     Document360Source,
     DropboxSource,
+    EnronSource,
     FileStubSource,
     FirefliesSource,
     FreshdeskSource,
