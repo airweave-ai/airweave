@@ -35,7 +35,10 @@ from airweave.domains.auth_provider.protocols import (
     AuthProviderServiceProtocol,
 )
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
-from airweave.domains.browse_tree.protocols import BrowseTreeServiceProtocol
+from airweave.domains.browse_tree.protocols import (
+    BrowseTreeServiceProtocol,
+    NodeSelectionRepositoryProtocol,
+)
 from airweave.domains.collections.protocols import (
     CollectionRepositoryProtocol,
     CollectionServiceProtocol,
@@ -148,6 +151,7 @@ class Container:
 
     # Browse tree service — metadata tree browsing and node selection
     browse_tree_service: BrowseTreeServiceProtocol
+    selection_repo: NodeSelectionRepositoryProtocol
 
     # Repository protocols (thin wrappers around crud singletons)
     sc_repo: SourceConnectionRepositoryProtocol

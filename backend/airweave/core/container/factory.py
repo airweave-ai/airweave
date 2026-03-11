@@ -403,14 +403,16 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     # Browse tree service
     # -----------------------------------------------------------------
+    node_selection_repo = NodeSelectionRepository()
     browse_tree_service = BrowseTreeService(
-        selection_repo=NodeSelectionRepository(),
+        selection_repo=node_selection_repo,
         sc_repo=source_deps["sc_repo"],
         source_lifecycle=source_deps["source_lifecycle_service"],
         sync_repo=source_deps["sync_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
         collection_repo=source_deps["collection_repo"],
         conn_repo=source_deps["conn_repo"],
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
     )
 
     # -----------------------------------------------------------------
@@ -424,6 +426,7 @@ def create_container(settings: Settings) -> Container:
         billing_webhook=billing_services["billing_webhook"],
         collection_service=collection_service,
         browse_tree_service=browse_tree_service,
+        selection_repo=node_selection_repo,
         health=health,
         event_bus=event_bus,
         pubsub=pubsub,

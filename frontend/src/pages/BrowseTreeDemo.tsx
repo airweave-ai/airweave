@@ -23,8 +23,6 @@ import {
   XCircle,
   Clock,
   Play,
-  Shield,
-  RefreshCw,
   User,
 } from "lucide-react";
 
@@ -272,12 +270,6 @@ export default function BrowseTreeDemo() {
   const [treeLoaded, setTreeLoaded] = useState(false);
   const [visibleCounts, setVisibleCounts] = useState<Map<string, number>>(new Map());
 
-  // ACL sync state
-  const [aclSyncing, setAclSyncing] = useState(false);
-  const [aclSyncDone, setAclSyncDone] = useState(false);
-  const [aclSyncError, setAclSyncError] = useState("");
-  const aclPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   // Step 2: Select & Sync
   const [syncing, setSyncing] = useState(false);
   const [syncJobId, setSyncJobId] = useState("");
@@ -316,58 +308,8 @@ export default function BrowseTreeDemo() {
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
-      if (aclPollRef.current) clearInterval(aclPollRef.current);
     };
   }, []);
-
-  // ---------------------------------------------------------------------------
-  // ACL Sync
-  // ---------------------------------------------------------------------------
-
-  const handleAclSync = useCallback(async () => {
-    if (!scId) return;
-    setAclSyncing(true);
-    setAclSyncDone(false);
-    setAclSyncError("");
-
-    try {
-      const resp = await apiClient.post(`/admin/source-connections/${scId}/sync-acl`);
-      if (resp.ok) {
-        const data = await resp.json();
-        // Poll sync job for ACL completion
-        const jobId = data.sync_job_id;
-        if (jobId) {
-          aclPollRef.current = setInterval(async () => {
-            const jobResp = await apiClient.get(`/source-connections/${scId}/jobs`);
-            if (jobResp.ok) {
-              const jobs: SyncJob[] = await jobResp.json();
-              const aclJob = jobs.find((j) => j.id === jobId);
-              if (aclJob && ["completed", "failed", "cancelled"].includes(aclJob.status.toLowerCase())) {
-                if (aclPollRef.current) clearInterval(aclPollRef.current);
-                setAclSyncing(false);
-                if (aclJob.status.toLowerCase() === "completed") {
-                  setAclSyncDone(true);
-                } else {
-                  setAclSyncError(`ACL sync ${aclJob.status.toLowerCase()}`);
-                }
-              }
-            }
-          }, 3000);
-        } else {
-          // No job ID — may have completed synchronously
-          setAclSyncing(false);
-          setAclSyncDone(true);
-        }
-      } else {
-        const errText = await resp.text();
-        setAclSyncError(errText);
-        setAclSyncing(false);
-      }
-    } catch (err) {
-      setAclSyncError(String(err));
-      setAclSyncing(false);
-    }
-  }, [scId]);
 
   // ---------------------------------------------------------------------------
   // Step 1: Load tree (lazy-loaded from source API)
@@ -390,7 +332,7 @@ export default function BrowseTreeDemo() {
 
         const qs = new URLSearchParams(params).toString();
         const resp = await apiClient.get(
-          `/admin/source-connections/${scId}/browse-tree${qs ? `?${qs}` : ""}`
+          `/source-connections/${scId}/browse-tree${qs ? `?${qs}` : ""}`
         );
 
         if (resp.ok) {
@@ -424,9 +366,19 @@ export default function BrowseTreeDemo() {
     autoLoadTriggered.current = true;
 
     (async () => {
-      // Auto-trigger ACL sync if arriving from creation flow
-      if (isFromCreationFlow) {
-        handleAclSync();
+      // Load existing selections first
+      try {
+        const selResp = await apiClient.get(
+          `/source-connections/${scId}/browse-tree/selections`
+        );
+        if (selResp.ok) {
+          const selections = await selResp.json();
+          if (selections.length > 0) {
+            setSelectedNodeIds(new Set(selections.map((s: any) => s.source_node_id)));
+          }
+        }
+      } catch {
+        // ignore — just means no prior selections
       }
 
       // Load root
@@ -437,7 +389,6 @@ export default function BrowseTreeDemo() {
       for (const node of rootNodes) {
         if (node.has_children) {
           expandIds.add(node.source_node_id);
-          // Fire child load (don't await — let them run in parallel)
           loadTree(node.source_node_id);
         }
       }
@@ -445,7 +396,7 @@ export default function BrowseTreeDemo() {
         setExpandedNodes((prev) => new Set([...prev, ...expandIds]));
       }
     })();
-  }, [scId, loadTree, isFromCreationFlow, handleAclSync]);
+  }, [scId, loadTree]);
 
   const handleExpand = useCallback(
     (sourceNodeId: string) => {
@@ -537,7 +488,7 @@ export default function BrowseTreeDemo() {
 
     try {
       const resp = await apiClient.post(
-        `/admin/source-connections/${scId}/browse-tree/select`,
+        `/source-connections/${scId}/browse-tree/select`,
         {
           source_node_ids: Array.from(selectedNodeIds),
         }
@@ -688,41 +639,6 @@ export default function BrowseTreeDemo() {
       <StepIndicator currentStep={step} />
 
       {/* ============================================================ */}
-      {/* ACL Sync Status Banner */}
-      {/* ============================================================ */}
-      {(aclSyncing || aclSyncDone || aclSyncError) && (
-        <div
-          className={cn(
-            "w-full rounded-lg border p-3 mb-4 flex items-center gap-3",
-            aclSyncDone
-              ? isDark ? "border-green-800 bg-green-900/20" : "border-green-200 bg-green-50"
-              : aclSyncError
-                ? isDark ? "border-red-800 bg-red-900/20" : "border-red-200 bg-red-50"
-                : isDark ? "border-gray-800 bg-gray-800/50" : "border-gray-200 bg-gray-50"
-          )}
-        >
-          {aclSyncing ? (
-            <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-          ) : aclSyncDone ? (
-            <CheckCircle2 className="w-4 h-4 text-green-500" />
-          ) : (
-            <XCircle className="w-4 h-4 text-red-500" />
-          )}
-          <div className="flex-1">
-            <span className="text-sm font-medium">
-              {aclSyncing ? "Syncing ACL data..." : aclSyncDone ? "ACL sync complete" : `ACL sync error: ${aclSyncError}`}
-            </span>
-          </div>
-          {!aclSyncing && (
-            <Button variant="ghost" size="sm" onClick={handleAclSync}>
-              <RefreshCw className="w-3.5 h-3.5 mr-1" />
-              Re-sync ACL
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* ============================================================ */}
       {/* STEP 1: Browse Tree */}
       {/* ============================================================ */}
       {step === 1 && (
@@ -789,16 +705,6 @@ export default function BrowseTreeDemo() {
                   Load Tree
                 </Button>
               </div>
-            </div>
-          )}
-
-          {/* Manual ACL sync button (for non-creation-flow) */}
-          {!isFromCreationFlow && scId && !aclSyncing && !aclSyncDone && (
-            <div className="mb-4">
-              <Button variant="outline" size="sm" onClick={handleAclSync}>
-                <Shield className="w-3.5 h-3.5 mr-1" />
-                Sync ACL
-              </Button>
             </div>
           )}
 

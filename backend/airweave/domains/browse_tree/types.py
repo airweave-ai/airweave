@@ -26,13 +26,6 @@ class BrowseTreeResponse(BaseModel):
     total: int
 
 
-class AclSyncResponse(BaseModel):
-    """Response after triggering an ACL-only sync."""
-
-    sync_job_id: UUID
-    message: str = "ACL sync started"
-
-
 class NodeSelectionData(BaseModel):
     """Typed representation of a node selection loaded for targeted sync."""
 

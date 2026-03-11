@@ -8,14 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
-from airweave.core.temporal_service import temporal_service
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.browse_tree.protocols import (
     BrowseTreeServiceProtocol,
     NodeSelectionRepositoryProtocol,
 )
 from airweave.domains.browse_tree.types import (
-    AclSyncResponse,
     BrowseNode,
     BrowseTreeResponse,
     NodeSelectionCreate,
@@ -26,6 +24,7 @@ from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.sources.protocols import SourceLifecycleServiceProtocol
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncRepositoryProtocol
+from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.platform.sync.config import SyncConfig
 from airweave.schemas.sync_job import SyncJobCreate, SyncJobStatus
 
@@ -46,6 +45,7 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
         sync_job_repo: SyncJobRepositoryProtocol,
         collection_repo: CollectionRepositoryProtocol,
         conn_repo: ConnectionRepositoryProtocol,
+        temporal_workflow_service: Optional[TemporalWorkflowServiceProtocol] = None,
     ) -> None:
         self._selection_repo = selection_repo
         self._sc_repo = sc_repo
@@ -54,27 +54,7 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
         self._sync_job_repo = sync_job_repo
         self._collection_repo = collection_repo
         self._conn_repo = conn_repo
-
-    async def trigger_acl_sync(
-        self,
-        db: AsyncSession,
-        source_connection_id: UUID,
-        ctx: ApiContext,
-    ) -> AclSyncResponse:
-        """Trigger an ACL-only sync on a source connection.
-
-        Creates a sync job with SyncConfig.acl_only() and dispatches to Temporal.
-        Skips entity processing entirely, only runs the access control pipeline
-        to populate access_control_membership rows.
-        """
-        sync_job_id = await self._dispatch_sync(
-            db,
-            source_connection_id,
-            SyncConfig.acl_only(),
-            "acl_only",
-            ctx,
-        )
-        return AclSyncResponse(sync_job_id=sync_job_id)
+        self._temporal_service = temporal_workflow_service
 
     async def _dispatch_sync(
         self,
@@ -141,7 +121,7 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
         ctx.logger.info(
             f"Dispatching {sync_type} sync job {sync_job_schema.id} for SC {source_connection_id}"
         )
-        await temporal_service.run_source_connection_workflow(
+        await self._temporal_service.run_source_connection_workflow(
             sync=sync_schema,
             sync_job=sync_job_schema,
             collection=collection_schema,

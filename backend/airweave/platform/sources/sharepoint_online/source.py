@@ -248,15 +248,12 @@ class SharePointOnlineSource(BaseSource):
 
                 async for drive in graph_client.get_drives(client, site_id):
                     drive_id = drive.get("id", "")
-                    quota = drive.get("quota", {})
-                    item_count = quota.get("total", 0)
                     nodes.append(
                         BrowseNode(
                             source_node_id=f"drive:{site_id}|{drive_id}",
                             node_type="drive",
                             title=drive.get("name", drive_id),
                             description=drive.get("description"),
-                            item_count=item_count if item_count else None,
                             has_children=True,
                             node_metadata={
                                 "site_id": site_id,

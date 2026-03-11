@@ -1,6 +1,6 @@
 """Browse tree API endpoints for lazy-loaded source browsing and node selection."""
 
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Depends, Path, Query
@@ -11,41 +11,47 @@ from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.db.session import get_db
-from airweave.domains.browse_tree.protocols import BrowseTreeServiceProtocol
+from airweave.domains.browse_tree.protocols import (
+    BrowseTreeServiceProtocol,
+    NodeSelectionRepositoryProtocol,
+)
 from airweave.domains.browse_tree.types import (
-    AclSyncResponse,
     BrowseTreeResponse,
+    NodeSelectionData,
     NodeSelectionRequest,
     NodeSelectionResponse,
 )
 
-# Admin router — mounted under /admin/source-connections
-admin_router = TrailingSlashRouter()
+router = TrailingSlashRouter()
 
 
-@admin_router.post(
-    "/{source_connection_id}/sync-acl",
-    response_model=AclSyncResponse,
+@router.get(
+    "/{source_connection_id}/browse-tree/selections",
+    response_model=List[NodeSelectionData],
 )
-async def trigger_acl_sync(
+async def get_selections(
     *,
     db: AsyncSession = Depends(get_db),
     source_connection_id: UUID = Path(..., description="Source connection ID"),
     ctx: ApiContext = Depends(deps.get_context),
-    browse_tree_service: BrowseTreeServiceProtocol = Inject(BrowseTreeServiceProtocol),
-) -> AclSyncResponse:
-    """Trigger an ACL-only sync on a source connection.
-
-    Syncs group memberships and access control data without processing entities.
-    """
-    return await browse_tree_service.trigger_acl_sync(
-        db=db,
-        source_connection_id=source_connection_id,
-        ctx=ctx,
+    selection_repo: NodeSelectionRepositoryProtocol = Inject(NodeSelectionRepositoryProtocol),
+) -> List[NodeSelectionData]:
+    """Get existing node selections for a source connection."""
+    rows = await selection_repo.get_by_source_connection(
+        db, source_connection_id, ctx.organization.id
     )
+    return [
+        NodeSelectionData(
+            source_node_id=r.source_node_id,
+            node_type=r.node_type,
+            node_title=r.node_title,
+            node_metadata=r.node_metadata,
+        )
+        for r in rows
+    ]
 
 
-@admin_router.get(
+@router.get(
     "/{source_connection_id}/browse-tree",
     response_model=BrowseTreeResponse,
 )
@@ -66,7 +72,7 @@ async def get_browse_tree(
     )
 
 
-@admin_router.post(
+@router.post(
     "/{source_connection_id}/browse-tree/select",
     response_model=NodeSelectionResponse,
 )

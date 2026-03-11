@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.domains.browse_tree.types import (
-    AclSyncResponse,
     BrowseTreeResponse,
     NodeSelectionCreate,
     NodeSelectionResponse,
@@ -44,15 +43,6 @@ class NodeSelectionRepositoryProtocol(Protocol):
 
 class BrowseTreeServiceProtocol(Protocol):
     """Business logic for browse tree operations."""
-
-    async def trigger_acl_sync(
-        self,
-        db: AsyncSession,
-        source_connection_id: UUID,
-        ctx: ApiContext,
-    ) -> AclSyncResponse:
-        """Trigger an ACL-only sync on a source connection."""
-        ...
 
     async def get_tree(
         self,

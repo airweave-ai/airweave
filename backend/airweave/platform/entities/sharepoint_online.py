@@ -104,7 +104,9 @@ class SharePointOnlineFileEntity(FileEntity):
         ..., description="File name with extension", is_name=True, embeddable=True
     )
     web_url: str = AirweaveField(..., description="File web URL")
-    download_url: Optional[str] = AirweaveField(None, description="Direct download URL")
+    download_url: Optional[str] = AirweaveField(
+        None, description="Direct download URL", unhashable=True
+    )
     parent_path: Optional[str] = AirweaveField(None, description="Parent folder path")
     created_by: Optional[str] = AirweaveField(None, description="Created by user email/name")
     last_modified_by: Optional[str] = AirweaveField(
