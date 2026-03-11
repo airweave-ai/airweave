@@ -135,6 +135,7 @@ async def build_file_entity(
         size=size,
         file_type=file_ext,
         mime_type=mime_type,
+        name=file_name,
         spo_entity_id=spo_entity_id,
         item_id=item_id,
         drive_id=drive_id,
