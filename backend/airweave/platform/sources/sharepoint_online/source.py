@@ -252,19 +252,27 @@ class SharePointOnlineSource(BaseSource):
                 yield entity
 
     async def _discover_sites(self, client, graph_client: GraphClient) -> List[Dict[str, Any]]:
-        """Discover sites to sync based on config."""
+        """Discover sites to sync based on config.
+
+        Supports:
+          - Single URL: "https://tenant.sharepoint.com/sites/MySite"
+          - Comma-separated: "https://tenant.sharepoint.com/sites/A, .../sites/B"
+          - Empty string: discover all accessible sites
+        """
         sites = []
 
         if self._site_url:
-            parsed = urlparse(self._site_url)
-            hostname = parsed.netloc
-            site_path = parsed.path.lstrip("/")
-            try:
-                site = await graph_client.get_site_by_url(client, hostname, site_path)
-                sites.append(site)
-            except Exception as e:
-                self.logger.error(f"Could not resolve site URL {self._site_url}: {e}")
-                raise
+            urls = [u.strip() for u in self._site_url.split(",") if u.strip()]
+            for url in urls:
+                parsed = urlparse(url)
+                hostname = parsed.netloc
+                site_path = parsed.path.lstrip("/")
+                try:
+                    site = await graph_client.get_site_by_url(client, hostname, site_path)
+                    sites.append(site)
+                except Exception as e:
+                    self.logger.error(f"Could not resolve site URL {url}: {e}")
+                    raise
         else:
             async for site in graph_client.search_sites(client, "*"):
                 if not self._include_personal_sites and site.get("isPersonalSite", False):

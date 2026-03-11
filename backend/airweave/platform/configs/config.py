@@ -1029,9 +1029,10 @@ class SharePointOnlineConfig(SourceConfig):
     site_url: str = RequiredTemplateConfig(
         title="SharePoint Site URL",
         description=(
-            "URL of the SharePoint site to sync "
-            "(e.g., 'https://contoso.sharepoint.com/sites/Marketing'). "
-            "Leave empty to sync all accessible sites."
+            "URL of the SharePoint site(s) to sync. Supports a single URL "
+            "(e.g., 'https://contoso.sharepoint.com/sites/Marketing'), "
+            "comma-separated URLs for multiple sites, or leave empty to "
+            "sync all accessible sites."
         ),
         default="",
         json_schema_extra={"required_for_auth": True},
