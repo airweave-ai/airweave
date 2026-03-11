@@ -280,24 +280,42 @@ class GraphClient:
                 return
             raise
 
-    # -- Site Groups --
+    # -- Site Groups (SP REST API — requires SharePoint-scoped token) --
+
+    async def _sp_headers(self, sp_token_provider: Optional[Callable] = None) -> Dict[str, str]:
+        """Build headers for SP REST API calls using a SharePoint-scoped token."""
+        if sp_token_provider:
+            token = await sp_token_provider()
+        else:
+            token = await self._get_token()
+        return {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json;odata=verbose",
+        }
 
     async def get_site_groups(
         self,
         client: httpx.AsyncClient,
         site_url: str,
+        sp_token_provider: Optional[Callable] = None,
     ) -> List[Dict[str, Any]]:
-        """Get SharePoint site groups via the SP REST API."""
+        """Get SharePoint site groups via the SP REST API.
+
+        Args:
+            client: httpx AsyncClient.
+            site_url: Full site URL (e.g. https://tenant.sharepoint.com/sites/MySite).
+            sp_token_provider: Async callable returning a SharePoint-scoped token.
+                If None, falls back to the Graph token (will likely 401).
+        """
         url = f"{site_url}/_api/web/sitegroups"
-        headers = await self._headers()
-        headers["Accept"] = "application/json;odata=verbose"
+        headers = await self._sp_headers(sp_token_provider)
         try:
             response = await client.get(url, headers=headers, timeout=30.0)
             response.raise_for_status()
             data = response.json()
             return data.get("d", {}).get("results", [])
         except httpx.HTTPStatusError as e:
-            self.logger.debug(f"SP site groups not available: {e}")
+            self.logger.warning(f"SP site groups not available: {e}")
             return []
 
     async def get_site_group_users(
@@ -305,18 +323,25 @@ class GraphClient:
         client: httpx.AsyncClient,
         site_url: str,
         group_id: int,
+        sp_token_provider: Optional[Callable] = None,
     ) -> List[Dict[str, Any]]:
-        """Get users in a SharePoint site group via SP REST API."""
+        """Get users in a SharePoint site group via SP REST API.
+
+        Args:
+            client: httpx AsyncClient.
+            site_url: Full site URL.
+            group_id: SP site group ID (integer).
+            sp_token_provider: Async callable returning a SharePoint-scoped token.
+        """
         url = f"{site_url}/_api/web/sitegroups/getbyid({group_id})/users"
-        headers = await self._headers()
-        headers["Accept"] = "application/json;odata=verbose"
+        headers = await self._sp_headers(sp_token_provider)
         try:
             response = await client.get(url, headers=headers, timeout=30.0)
             response.raise_for_status()
             data = response.json()
             return data.get("d", {}).get("results", [])
         except httpx.HTTPStatusError as e:
-            self.logger.debug(f"SP group {group_id} users not available: {e}")
+            self.logger.warning(f"SP group {group_id} users not available: {e}")
             return []
 
     # -- File Download --

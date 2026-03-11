@@ -12,7 +12,8 @@ Entity hierarchy:
 Access graph generation:
 - Extracts permissions from drive items via Graph API
 - Expands Entra ID groups via /groups/{id}/members
-- Maps to canonical principal format: user:{email}, group:entra:{id}
+- Expands SP site groups via SharePoint REST API (requires SP-scoped token)
+- Maps to canonical principal format: user:{email}, group:entra:{id}, group:sp:{name}
 
 Incremental sync:
 - Uses Graph delta queries (/drives/{id}/root/delta)
@@ -21,7 +22,7 @@ Incremental sync:
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
 from airweave.platform.access_control.schemas import MembershipTuple
@@ -117,6 +118,36 @@ class SharePointOnlineSource(BaseSource):
             access_token_provider=self.get_access_token,
             logger=self.logger,
         )
+
+    def _derive_sp_resource_scope(self) -> Optional[str]:
+        """Derive the SharePoint resource scope from the site URL.
+
+        E.g. https://neenacorp.sharepoint.com/sites/JAman
+             -> https://neenacorp.sharepoint.com/.default
+        """
+        if not self._site_url:
+            return None
+        parsed = urlparse(self._site_url)
+        if not parsed.netloc:
+            return None
+        return f"https://{parsed.netloc}/.default"
+
+    def _make_sp_token_provider(self) -> Optional[Callable]:
+        """Create an async callable that returns a SharePoint-scoped token.
+
+        Returns None if the site URL is not set or no token manager is available.
+        """
+        sp_scope = self._derive_sp_resource_scope()
+        if not sp_scope:
+            return None
+
+        async def _provider() -> str:
+            token = await self.get_token_for_resource(sp_scope)
+            if not token:
+                raise RuntimeError(f"Could not obtain SharePoint token for scope {sp_scope}")
+            return token
+
+        return _provider
 
     def _track_entity_groups(self, entity: BaseEntity) -> None:
         """Track Entra ID and SP site groups found in entity permissions."""
@@ -491,6 +522,7 @@ class SharePointOnlineSource(BaseSource):
 
         group_expander = self._create_group_expander()
         graph_client = self._create_graph_client()
+        sp_token_provider = self._make_sp_token_provider()
 
         async with self.http_client() as client:
             # Phase 1: Expand Entra ID groups
@@ -503,49 +535,57 @@ class SharePointOnlineSource(BaseSource):
                     yield membership
                     membership_count += 1
 
-            # Phase 2: Expand SP site groups via REST API
+            # Phase 2: Expand SP site groups via REST API (requires SP-scoped token)
             sp_group_names = list(self._item_level_sp_groups)
             if sp_group_names and self._site_url:
                 self.logger.info(f"Expanding {len(sp_group_names)} SP site groups")
-                try:
-                    sp_groups = await graph_client.get_site_groups(
-                        client,
-                        self._site_url,
+                if not sp_token_provider:
+                    self.logger.warning(
+                        "Cannot expand SP site groups: no SP token provider "
+                        "(site_url may be missing or token manager unavailable)"
                     )
-                    sp_name_to_id = {}
-                    for g in sp_groups:
-                        title = g.get("Title", "")
-                        normalized = f"sp:{title.replace(' ', '_').lower()}"
-                        sp_name_to_id[normalized] = g.get("Id")
-
-                    for sp_name in sp_group_names:
-                        sp_id = sp_name_to_id.get(sp_name)
-                        if not sp_id:
-                            self.logger.debug(f"SP group '{sp_name}' not found in site groups")
-                            continue
-
-                        users = await graph_client.get_site_group_users(
+                else:
+                    try:
+                        sp_groups = await graph_client.get_site_groups(
                             client,
                             self._site_url,
-                            sp_id,
+                            sp_token_provider=sp_token_provider,
                         )
-                        for user in users:
-                            email = user.get("Email", "")
-                            login = user.get("LoginName", "")
-                            if not email and login:
-                                if "|" in login:
-                                    email = login.split("|")[-1]
-                            if email:
-                                membership = MembershipTuple(
-                                    member_id=email.lower(),
-                                    member_type="user",
-                                    group_id=sp_name,
-                                    group_name=user.get("Title", sp_name),
-                                )
-                                yield membership
-                                membership_count += 1
-                except Exception as e:
-                    self.logger.warning(f"SP site group expansion failed: {e}")
+                        sp_name_to_id = {}
+                        for g in sp_groups:
+                            title = g.get("Title", "")
+                            normalized = f"sp:{title.replace(' ', '_').lower()}"
+                            sp_name_to_id[normalized] = g.get("Id")
+
+                        for sp_name in sp_group_names:
+                            sp_id = sp_name_to_id.get(sp_name)
+                            if not sp_id:
+                                self.logger.debug(f"SP group '{sp_name}' not found in site groups")
+                                continue
+
+                            users = await graph_client.get_site_group_users(
+                                client,
+                                self._site_url,
+                                sp_id,
+                                sp_token_provider=sp_token_provider,
+                            )
+                            for user in users:
+                                email = user.get("Email", "")
+                                login = user.get("LoginName", "")
+                                if not email and login:
+                                    if "|" in login:
+                                        email = login.split("|")[-1]
+                                if email:
+                                    membership = MembershipTuple(
+                                        member_id=email.lower(),
+                                        member_type="user",
+                                        group_id=sp_name,
+                                        group_name=user.get("Title", sp_name),
+                                    )
+                                    yield membership
+                                    membership_count += 1
+                    except Exception as e:
+                        self.logger.warning(f"SP site group expansion failed: {e}")
 
         group_expander.log_stats()
         self.logger.info(f"Access control extraction complete: {membership_count} memberships")

@@ -2,8 +2,9 @@
 
 import asyncio
 import time
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -88,6 +89,10 @@ class TokenManager:
         # token was issued hours/days ago and has since expired
         self._last_refresh_time = 0
         self._refresh_lock = asyncio.Lock()
+
+        # Cache for tokens obtained for alternative resource scopes
+        # (e.g. SharePoint REST API token vs Graph API token)
+        self._resource_tokens: Dict[str, str] = {}
 
         # For sources without refresh tokens, we can't refresh
         self._can_refresh = self._determine_refresh_capability()
@@ -228,6 +233,89 @@ class TokenManager:
                     f"Failed to refresh token for {self.source_short_name} after 401: {str(e)}"
                 )
                 raise TokenRefreshError(f"Token refresh failed after 401: {str(e)}") from e
+
+    async def get_token_for_resource(self, resource_scope: str) -> str:
+        """Get a token for a different resource scope using the stored refresh token.
+
+        Used for cross-resource access, e.g. obtaining a SharePoint REST API token
+        when the primary token is scoped to Microsoft Graph.
+
+        Args:
+            resource_scope: The target scope, e.g. "https://tenant.sharepoint.com/.default"
+
+        Returns:
+            An access token scoped to the requested resource.
+
+        Raises:
+            TokenRefreshError: If the token exchange fails.
+        """
+        cache_key = resource_scope.lower()
+        if cache_key in self._resource_tokens:
+            return self._resource_tokens[cache_key]
+
+        if not self._has_refresh_token:
+            raise TokenRefreshError(
+                f"Cannot get token for resource {resource_scope}: no refresh token available"
+            )
+
+        try:
+            from airweave.db.session import get_db_context
+            from airweave.platform.auth.settings import integration_settings
+
+            async with get_db_context() as refresh_db:
+                credential = await crud.integration_credential.get(
+                    refresh_db, self.integration_credential_id, self.ctx
+                )
+                if not credential:
+                    raise TokenRefreshError("Integration credential not found")
+
+                decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
+                refresh_token = decrypted_credential.get("refresh_token")
+                if not refresh_token:
+                    raise TokenRefreshError("No refresh token for resource token exchange")
+
+            config = await integration_settings.get_by_short_name(self.source_short_name)
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    config.backend_url,
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh_token,
+                        "client_id": config.client_id,
+                        "client_secret": config.client_secret,
+                        "scope": resource_scope,
+                    },
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            token = data.get("access_token")
+            if not token:
+                raise TokenRefreshError(
+                    f"No access_token in response for resource scope {resource_scope}"
+                )
+
+            self._resource_tokens[cache_key] = token
+            self.logger.info(
+                f"Obtained token for resource scope {resource_scope} "
+                f"(source: {self.source_short_name})"
+            )
+            return token
+
+        except TokenRefreshError:
+            raise
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                f"Resource token exchange failed ({e.response.status_code}): "
+                f"{e.response.text[:300]}"
+            )
+            raise TokenRefreshError(
+                f"Resource token exchange failed: {e.response.status_code}"
+            ) from e
+        except Exception as e:
+            raise TokenRefreshError(f"Resource token exchange failed: {str(e)}") from e
 
     async def _refresh_token(self) -> str:
         """Internal method to perform the actual token refresh.

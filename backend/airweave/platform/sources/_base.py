@@ -243,6 +243,22 @@ class BaseSource:
             return await self._token_manager.refresh_on_unauthorized()
         return None
 
+    async def get_token_for_resource(self, resource_scope: str) -> Optional[str]:
+        """Get a token for a different resource scope via the token manager.
+
+        Used for cross-resource access, e.g. SharePoint REST API when the
+        primary token is scoped to Microsoft Graph.
+
+        Args:
+            resource_scope: The target scope, e.g. "https://tenant.sharepoint.com/.default"
+
+        Returns:
+            An access token scoped to the requested resource, or None if unavailable.
+        """
+        if not self._token_manager:
+            return None
+        return await self._token_manager.get_token_for_resource(resource_scope)
+
     @classmethod
     @abstractmethod
     async def create(
