@@ -44,6 +44,7 @@ from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
+from airweave.domains.arf.service import ArfService
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.auth_provider.service import AuthProviderService
 from airweave.domains.browse_tree.repository import NodeSelectionRepository
@@ -425,11 +426,23 @@ def create_container(settings: Settings) -> Container:
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
     )
 
+    # ARF domain service (raw entity capture / replay)
+    # -----------------------------------------------------------------
+    from airweave.platform.storage.factory import get_storage_backend
+
+    arf_service = ArfService(storage=get_storage_backend())
+
+    from airweave.core.admin_sync_service import AdminSyncService
+
+    admin_sync_service = AdminSyncService(arf_service=arf_service)
+
     # -----------------------------------------------------------------
     # Usage billing listener
     # -----------------------------------------------------------------
 
     return Container(
+        admin_sync_service=admin_sync_service,
+        arf_service=arf_service,
         context_cache=context_cache,
         rate_limiter=rate_limiter,
         billing_service=billing_services["billing_service"],

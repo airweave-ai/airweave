@@ -566,8 +566,16 @@ def fake_selection_repo():
     return MagicMock()
 
 
+def fake_arf_service():
+    """Fake ArfService for testing ARF consumers."""
+    from airweave.domains.arf.fakes.service import FakeArfService
+
+    return FakeArfService()
+
+
 @pytest.fixture
 def test_container(
+    fake_arf_service,
     fake_context_cache,
     fake_rate_limiter,
     fake_health_service,
@@ -634,9 +642,14 @@ def test_container(
     For partial overrides, use container.replace():
         real_bus_container = test_container.replace(event_bus=InMemoryEventBus())
     """
+    from airweave.core.admin_sync_service import AdminSyncService
     from airweave.core.container import Container
 
+    fake_admin_sync_service = AdminSyncService(arf_service=fake_arf_service)
+
     return Container(
+        admin_sync_service=fake_admin_sync_service,
+        arf_service=fake_arf_service,
         context_cache=fake_context_cache,
         rate_limiter=fake_rate_limiter,
         health=fake_health_service,

@@ -24,7 +24,7 @@ from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 
-# [code blue] todo: inject context_cache via Inject() instead of container access
+# [code blue] todo: inject these via Inject() once admin endpoints are refactored
 from airweave.core import container as container_mod
 from airweave.core.context import SystemContext
 from airweave.core.exceptions import InvalidStateError, NotFoundException
@@ -1626,9 +1626,9 @@ async def admin_list_all_syncs(
     Raises:
         HTTPException: If not admin or invalid parameters
     """
-    from airweave.core.admin_sync_service import admin_sync_service
-
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    admin_sync_service = container_mod.container.admin_sync_service
 
     # Parse sync_ids if provided
     parsed_sync_ids: Optional[List[UUID]] = None

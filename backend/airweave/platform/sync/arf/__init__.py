@@ -1,24 +1,29 @@
-"""ARF (Airweave Raw Format) module for entity storage and replay.
+"""ARF backward-compat shim.
 
-Stores raw entities during sync for:
-- Audit trail of what was synced
-- Replay with different configurations
-- Debugging sync issues
-
-Storage structure:
-    raw/{sync_id}/
-    ├── manifest.json           # Sync metadata
-    ├── entities/
-    │   └── {entity_id}.json    # One file per entity
-    └── files/
-        └── {entity_id}_{name}.{ext}  # File attachments
+# [code blue] can be deleted once all imports are migrated to domains.arf
 """
 
-from .schema import SyncManifest
-from .service import ArfService, arf_service
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from airweave.domains.arf.service import ArfService
+    from airweave.domains.arf.types import SyncManifest
 
 __all__ = [
     "ArfService",
     "SyncManifest",
-    "arf_service",
 ]
+
+
+def __getattr__(name: str):
+    if name == "ArfService":
+        from airweave.domains.arf.service import ArfService
+
+        return ArfService
+
+    if name == "SyncManifest":
+        from airweave.domains.arf.types import SyncManifest
+
+        return SyncManifest
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

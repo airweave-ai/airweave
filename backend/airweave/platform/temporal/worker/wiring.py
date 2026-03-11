@@ -42,6 +42,7 @@ def create_activities() -> list:
     collection_repo = container.collection_repo
     temporal_workflow_service = container.temporal_workflow_service
     temporal_schedule_service = container.temporal_schedule_service
+    arf_service = container.arf_service
 
     logger.debug("Wiring activities with container dependencies")
 
@@ -75,6 +76,7 @@ def create_activities() -> list:
         ).run,
         CleanupSyncDataActivity(
             temporal_schedule_service=temporal_schedule_service,
+            arf_service=arf_service,
         ).run,
         # Notifications
         CheckAndNotifyExpiringKeysActivity(

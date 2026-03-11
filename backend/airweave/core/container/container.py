@@ -13,6 +13,7 @@ Design principles:
 from dataclasses import dataclass, replace
 from typing import Any, Optional
 
+from airweave.core.admin_sync_service import AdminSyncService
 from airweave.core.protocols import (
     CircuitBreaker,
     ContextCache,
@@ -30,6 +31,7 @@ from airweave.core.protocols import (
 )
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
+from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.auth_provider.protocols import (
     AuthProviderRegistryProtocol,
     AuthProviderServiceProtocol,
@@ -223,6 +225,13 @@ class Container:
 
     # Connect domain service (session-based frontend integration flows)
     connect_service: ConnectServiceProtocol
+
+    # ARF domain — raw entity capture / replay service
+    arf_service: ArfServiceProtocol
+
+    # Admin sync service — bulk sync listing / counting for admin endpoints
+    # [code blue] replace with protocol once admin domain is extracted
+    admin_sync_service: AdminSyncService
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured
