@@ -81,7 +81,7 @@ class EntraGroupExpander:
         url = f"{GRAPH_BASE_URL}/groups/{group_id}/members"
         params: Optional[Dict[str, str]] = {
             "$top": "200",
-            "$select": "id,displayName,mail,userPrincipalName,@odata.type",
+            "$select": "id,displayName,mail,userPrincipalName",
         }
 
         try:

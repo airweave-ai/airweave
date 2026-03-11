@@ -144,10 +144,10 @@ class SharePointOnlineSource(BaseSource):
                     f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/content"
                 )
             await self.file_downloader.download_from_url(
-                entity,
-                self.http_client,
-                self.get_access_token,
-                self.logger,
+                entity=entity,
+                http_client_factory=self.http_client,
+                access_token_provider=self.get_access_token,
+                logger=self.logger,
             )
             return entity
         except FileSkippedException:
