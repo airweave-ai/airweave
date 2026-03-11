@@ -102,6 +102,7 @@ class SharePointOnlineSource(BaseSource):
         instance._include_pages = config.get("include_pages", True)
 
         instance._item_level_entra_groups: set = set()
+        instance._item_level_sp_groups: set = set()
 
         return instance
 
@@ -117,14 +118,16 @@ class SharePointOnlineSource(BaseSource):
             logger=self.logger,
         )
 
-    def _track_entity_entra_groups(self, entity: BaseEntity) -> None:
-        """Track Entra ID groups found in entity permissions."""
+    def _track_entity_groups(self, entity: BaseEntity) -> None:
+        """Track Entra ID and SP site groups found in entity permissions."""
         if not hasattr(entity, "access") or entity.access is None:
             return
         for viewer in entity.access.viewers or []:
             if viewer.startswith("group:entra:"):
                 group_id = viewer[len("group:") :]
                 self._item_level_entra_groups.add(group_id)
+            elif viewer.startswith("group:sp:"):
+                self._item_level_sp_groups.add(viewer[len("group:") :])
 
     # -- File Download --
 
@@ -201,6 +204,12 @@ class SharePointOnlineSource(BaseSource):
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all SharePoint entities using full or incremental sync."""
+        cursor_data = self.cursor.data if self.cursor else {}
+        for g in cursor_data.get("tracked_entra_groups", []):
+            self._item_level_entra_groups.add(g)
+        for g in cursor_data.get("tracked_sp_groups", []):
+            self._item_level_sp_groups.add(g)
+
         is_full, reason = self._should_do_full_sync()
         self.logger.info(f"Sync strategy: {'FULL' if is_full else 'INCREMENTAL'} ({reason})")
 
@@ -299,7 +308,7 @@ class SharePointOnlineSource(BaseSource):
                                         drive_breadcrumbs,
                                         permissions,
                                     )
-                                    self._track_entity_entra_groups(file_entity)
+                                    self._track_entity_groups(file_entity)
                                     pending_files.append(
                                         PendingFileDownload(
                                             entity=file_entity,
@@ -373,6 +382,8 @@ class SharePointOnlineSource(BaseSource):
                 self.cursor.update(
                     full_sync_required=False,
                     total_entities_synced=entity_count,
+                    tracked_entra_groups=list(self._item_level_entra_groups),
+                    tracked_sp_groups=list(self._item_level_sp_groups),
                 )
 
             self.logger.info(f"Full sync complete: {entity_count} entities")
@@ -433,7 +444,7 @@ class SharePointOnlineSource(BaseSource):
                                 "",
                                 [],
                             )
-                            self._track_entity_entra_groups(file_entity)
+                            self._track_entity_groups(file_entity)
                             file_entity = await self._download_and_save_file(
                                 file_entity,
                                 client,
@@ -471,28 +482,70 @@ class SharePointOnlineSource(BaseSource):
 
     # -- Access Control Memberships --
 
-    async def generate_access_control_memberships(
+    async def generate_access_control_memberships(  # noqa: C901
         self,
     ) -> AsyncGenerator[MembershipTuple, None]:
-        """Expand Entra ID groups found in item permissions into user memberships."""
+        """Expand Entra ID groups and SP site groups into user memberships."""
         self.logger.info("Starting access control membership extraction")
         membership_count = 0
 
         group_expander = self._create_group_expander()
+        graph_client = self._create_graph_client()
 
         async with self.http_client() as client:
+            # Phase 1: Expand Entra ID groups
             entra_group_ids = list(self._item_level_entra_groups)
             self.logger.info(f"Expanding {len(entra_group_ids)} Entra ID groups")
 
             for group_ref in entra_group_ids:
-                if ":" in group_ref:
-                    group_id = group_ref.split(":", 1)[1]
-                else:
-                    group_id = group_ref
-
+                group_id = group_ref.split(":", 1)[1] if ":" in group_ref else group_ref
                 async for membership in group_expander.expand_group(client, group_id):
                     yield membership
                     membership_count += 1
+
+            # Phase 2: Expand SP site groups via REST API
+            sp_group_names = list(self._item_level_sp_groups)
+            if sp_group_names and self._site_url:
+                self.logger.info(f"Expanding {len(sp_group_names)} SP site groups")
+                try:
+                    sp_groups = await graph_client.get_site_groups(
+                        client,
+                        self._site_url,
+                    )
+                    sp_name_to_id = {}
+                    for g in sp_groups:
+                        title = g.get("Title", "")
+                        normalized = f"sp:{title.replace(' ', '_').lower()}"
+                        sp_name_to_id[normalized] = g.get("Id")
+
+                    for sp_name in sp_group_names:
+                        sp_id = sp_name_to_id.get(sp_name)
+                        if not sp_id:
+                            self.logger.debug(f"SP group '{sp_name}' not found in site groups")
+                            continue
+
+                        users = await graph_client.get_site_group_users(
+                            client,
+                            self._site_url,
+                            sp_id,
+                        )
+                        for user in users:
+                            email = user.get("Email", "")
+                            login = user.get("LoginName", "")
+                            if not email and login:
+                                if "|" in login:
+                                    email = login.split("|")[-1]
+                            if email:
+                                membership = MembershipTuple(
+                                    member_id=email.lower(),
+                                    member_type="user",
+                                    group_id=sp_name,
+                                    group_name=user.get("Title", sp_name),
+                                )
+                                yield membership
+                                membership_count += 1
+                except Exception as e:
+                    self.logger.warning(f"SP site group expansion failed: {e}")
 
         group_expander.log_stats()
         self.logger.info(f"Access control extraction complete: {membership_count} memberships")

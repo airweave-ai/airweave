@@ -287,12 +287,37 @@ class GraphClient:
         client: httpx.AsyncClient,
         site_url: str,
     ) -> List[Dict[str, Any]]:
-        """Get SharePoint site groups.
+        """Get SharePoint site groups via the SP REST API."""
+        url = f"{site_url}/_api/web/sitegroups"
+        headers = await self._headers()
+        headers["Accept"] = "application/json;odata=verbose"
+        try:
+            response = await client.get(url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("d", {}).get("results", [])
+        except httpx.HTTPStatusError as e:
+            self.logger.debug(f"SP site groups not available: {e}")
+            return []
 
-        Graph doesn't expose SP groups directly — this is a placeholder
-        for future SP REST API integration through the Graph proxy.
-        """
-        return []
+    async def get_site_group_users(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+        group_id: int,
+    ) -> List[Dict[str, Any]]:
+        """Get users in a SharePoint site group via SP REST API."""
+        url = f"{site_url}/_api/web/sitegroups/getbyid({group_id})/users"
+        headers = await self._headers()
+        headers["Accept"] = "application/json;odata=verbose"
+        try:
+            response = await client.get(url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("d", {}).get("results", [])
+        except httpx.HTTPStatusError as e:
+            self.logger.debug(f"SP group {group_id} users not available: {e}")
+            return []
 
     # -- File Download --
 
