@@ -37,6 +37,7 @@ class EntraGroupExpander:
         self._get_token = access_token_provider
         self.logger = logger
         self._group_cache: Dict[str, List[MembershipTuple]] = {}
+        self._expanding: set = set()
         self._stats = {
             "cache_hits": 0,
             "cache_misses": 0,
@@ -74,6 +75,11 @@ class EntraGroupExpander:
                 yield membership
             return
 
+        if cache_key in self._expanding:
+            self.logger.debug(f"Circular group reference detected: {group_id}, skipping")
+            return
+
+        self._expanding.add(cache_key)
         self._stats["cache_misses"] += 1
         collected: List[MembershipTuple] = []
         membership_group_id = format_entra_group_id(group_id)
@@ -148,6 +154,7 @@ class EntraGroupExpander:
                 self.logger.error(f"Error expanding group {group_id}: {e}")
                 raise
 
+        self._expanding.discard(cache_key)
         self._group_cache[cache_key] = collected
         self.logger.debug(
             f"Expanded group {group_display_name or group_id}: {len(collected)} memberships"
