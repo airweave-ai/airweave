@@ -35,6 +35,7 @@ from airweave.domains.auth_provider.protocols import (
     AuthProviderServiceProtocol,
 )
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
+from airweave.domains.browse_tree.protocols import BrowseTreeServiceProtocol
 from airweave.domains.collections.protocols import (
     CollectionRepositoryProtocol,
     CollectionServiceProtocol,
@@ -144,6 +145,9 @@ class Container:
 
     # Collection service — domain service for collection lifecycle
     collection_service: CollectionServiceProtocol
+
+    # Browse tree service — metadata tree browsing and node selection
+    browse_tree_service: BrowseTreeServiceProtocol
 
     # Repository protocols (thin wrappers around crud singletons)
     sc_repo: SourceConnectionRepositoryProtocol

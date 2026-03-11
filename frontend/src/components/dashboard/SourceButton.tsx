@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Plus } from "lucide-react";
 import { getAppIconUrl } from "@/lib/utils/icons";
 import { useTheme } from "@/lib/theme-provider";
@@ -15,6 +16,7 @@ interface SourceButtonProps {
   id: string;
   name: string;
   shortName: string;
+  supportsBrowseTree?: boolean;
   onClick?: () => void;
   disabled?: boolean;
   usageCheckDetails?: {
@@ -23,7 +25,7 @@ interface SourceButtonProps {
   };
 }
 
-export const SourceButton = ({ id, name, shortName, onClick, disabled, usageCheckDetails }: SourceButtonProps) => {
+export const SourceButton = ({ id, name, shortName, supportsBrowseTree, onClick, disabled, usageCheckDetails }: SourceButtonProps) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
@@ -124,6 +126,11 @@ export const SourceButton = ({ id, name, shortName, onClick, disabled, usageChec
             "text-xs sm:text-sm font-medium truncate",
             disabled && "text-muted-foreground"
           )}>{name}</span>
+          {supportsBrowseTree && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0 border-blue-300 text-blue-500 dark:border-blue-700 dark:text-blue-400">
+              Browse
+            </Badge>
+          )}
         </div>
         <Button
           size="icon"

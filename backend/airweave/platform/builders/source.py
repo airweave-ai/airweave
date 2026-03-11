@@ -8,9 +8,10 @@ Handles sync-specific orchestration on top of SourceLifecycleService:
 - ARF replay mode
 """
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -21,6 +22,8 @@ from airweave.core.container import (
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.models.node_selection import NodeSelection
 from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.contexts.source import SourceContext
 from airweave.platform.sources._base import BaseSource
@@ -112,6 +115,14 @@ class SourceContextBuilder:
 
         # 5. Set cursor on source
         source.set_cursor(cursor)
+
+        # 5. Load node selections if they exist for this source connection
+        node_selections = await cls._load_node_selections(
+            db, UUID(str(source_connection_obj.id)), ctx
+        )
+        if node_selections:
+            source.set_node_selections(node_selections)
+            logger.info(f"Loaded {len(node_selections)} node selections for targeted sync")
 
         return SourceContext(source=source, cursor=cursor)
 
@@ -301,3 +312,33 @@ class SourceContextBuilder:
             cursor_schema=cursor_schema,
             cursor_data=cursor_data,
         )
+
+    # -------------------------------------------------------------------------
+    # Private: Node Selection Loading
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    async def _load_node_selections(
+        cls,
+        db: AsyncSession,
+        source_connection_id: UUID,
+        ctx: ApiContext,
+    ) -> List[NodeSelectionData]:
+        """Load node selections for a source connection (for targeted sync)."""
+        result = await db.execute(
+            sa_select(NodeSelection).where(
+                NodeSelection.source_connection_id == source_connection_id,
+                NodeSelection.organization_id == ctx.organization.id,
+            )
+        )
+        rows = result.scalars().all()
+
+        return [
+            NodeSelectionData(
+                source_node_id=row.source_node_id,
+                node_type=row.node_type,
+                node_title=row.node_title,
+                node_metadata=row.node_metadata,
+            )
+            for row in rows
+        ]

@@ -51,6 +51,7 @@ class BaseSource:
     federated_search: ClassVar[bool] = False
     supports_temporal_relevance: ClassVar[bool] = True
     supports_access_control: ClassVar[bool] = False
+    supports_browse_tree: ClassVar[bool] = False
     cursor_class: ClassVar[Optional[type]] = None
     rate_limit_level: ClassVar[Optional[RateLimitLevel]] = None
 
@@ -321,6 +322,41 @@ class BaseSource:
     async def validate(self) -> bool:
         """Validate that this source is reachable and credentials are usable."""
         raise NotImplementedError
+
+    async def get_browse_children(
+        self,
+        parent_node_id: Optional[str] = None,
+    ) -> list:
+        """Get child nodes for browse tree display. Override in sources that support browsing.
+
+        Args:
+            parent_node_id: Parent node ID. None = root level.
+
+        Returns:
+            List of BrowseNode objects (source-agnostic tree nodes).
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support browse tree")
+
+    def parse_browse_node_id(self, node_id: str) -> tuple:
+        """Parse an encoded browse node ID into (node_type, metadata_dict).
+
+        The source owns the node ID encoding (created in get_browse_children),
+        so it is the single place that knows how to decode them.
+
+        Args:
+            node_id: Encoded node ID string (e.g., "site:url", "list:url|guid").
+
+        Returns:
+            Tuple of (node_type: str, metadata: dict).
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support browse tree")
+
+    def set_node_selections(self, selections: list) -> None:
+        """Set node selections for targeted sync.
+
+        Override in sources that support targeted sync via node selections.
+        """
+        pass
 
     async def search(self, query: str, limit: int) -> AsyncGenerator[BaseEntity, None]:
         """Search the source for entities matching the query.

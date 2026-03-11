@@ -73,6 +73,8 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
     existingCollectionId,
     closeModal,
     reset,
+    supportsBrowseTree,
+    setSupportsBrowseTree,
     isAddingToExistingCollection
   } = useCollectionCreationStore();
 
@@ -194,6 +196,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
         if (response.ok) {
           const source = await response.json();
           setSourceDetails(source);
+          setSupportsBrowseTree(!!source.supports_browse_tree);
 
           // Initialize auth fields for config-based auth
           if (source.auth_fields?.fields) {
@@ -396,7 +399,8 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
         // For direct auth, sync immediately since we have credentials
         // For OAuth, don't sync until after authorization is complete
         // For external provider, sync immediately since we're using existing auth
-        sync_immediately: authMode === 'direct_auth' || authMode === 'external_provider',
+        // For browse-tree sources, don't sync immediately — user selects nodes first
+        sync_immediately: (authMode === 'direct_auth' || authMode === 'external_provider') && !supportsBrowseTree,
         // Set redirect URL for OAuth flows
         redirect_url: getDefaultRedirectUrl(),
       };
@@ -453,8 +457,13 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
           // Close the modal
           closeModal();
 
-          // Navigate to collection detail with success params
-          navigate(`/collections/${targetCollectionId}?status=success&source_connection_id=${result.id}`);
+          if (supportsBrowseTree) {
+            // Browse-tree source: redirect to browse tree page for node selection
+            navigate(`/collections/${targetCollectionId}/browse-tree?sc=${result.id}`);
+          } else {
+            // Navigate to collection detail with success params
+            navigate(`/collections/${targetCollectionId}?status=success&source_connection_id=${result.id}`);
+          }
 
           // Reset store state after navigation
           setTimeout(() => {

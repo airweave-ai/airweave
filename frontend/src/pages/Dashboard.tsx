@@ -39,6 +39,7 @@ interface Source {
   short_name: string;
   labels?: string[];
   auth_type?: string;
+  supports_browse_tree?: boolean;
 }
 
 // Source Connection definition
@@ -223,6 +224,7 @@ const Dashboard = () => {
                       id={source.short_name}
                       name={source.name}
                       shortName={source.short_name}
+                      supportsBrowseTree={source.supports_browse_tree}
                       onClick={() => handleSourceClick(source)}
                       disabled={!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage}
                       usageCheckDetails={usageCheckDetails}
