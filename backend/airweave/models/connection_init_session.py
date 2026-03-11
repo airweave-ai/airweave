@@ -51,7 +51,7 @@ class ConnectionInitSession(OrganizationBase):
         String, nullable=False, default=ConnectionInitStatus.PENDING
     )
 
-    # Expiration for security; default TTL ~30 minutes can be applied at creation
+    # Expiration for security; default TTL ~5 minutes can be applied at creation
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     # Set when finalized (optional)
@@ -73,6 +73,6 @@ class ConnectionInitSession(OrganizationBase):
     __table_args__ = (Index("idx_connection_init_session_expires_at", "expires_at"),)
 
     @staticmethod
-    def default_expires_at(minutes: int = 30) -> datetime:
+    def default_expires_at(minutes: int = 5) -> datetime:
         """Return a UTC expiry timestamp ``minutes`` from now."""
         return datetime.now(timezone.utc) + timedelta(minutes=minutes)
