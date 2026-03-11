@@ -1026,7 +1026,8 @@ class SharePointOnlineConfig(SourceConfig):
     Configures which SharePoint sites to sync and ACL behavior.
     """
 
-    site_url: str = RequiredTemplateConfig(
+    site_url: str = Field(
+        default="",
         title="SharePoint Site URL",
         description=(
             "URL of the SharePoint site(s) to sync. Supports a single URL "
@@ -1034,8 +1035,6 @@ class SharePointOnlineConfig(SourceConfig):
             "comma-separated URLs for multiple sites, or leave empty to "
             "sync all accessible sites."
         ),
-        default="",
-        json_schema_extra={"required_for_auth": True},
     )
 
     include_personal_sites: bool = Field(
