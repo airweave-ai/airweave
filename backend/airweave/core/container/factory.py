@@ -30,6 +30,7 @@ from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
 from airweave.adapters.pubsub.redis import RedisPubSub
+from airweave.adapters.source_rate_limiter.redis import RedisSourceRateLimiter
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.config import Settings
@@ -86,6 +87,8 @@ from airweave.domains.source_connections.repository import SourceConnectionRepos
 from airweave.domains.source_connections.response import ResponseBuilder
 from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.source_connections.update import SourceConnectionUpdateService
+from airweave.domains.source_rate_limits.repository import SourceRateLimitRepository
+from airweave.domains.source_rate_limits.service import SourceRateLimitService
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
@@ -168,12 +171,17 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     user_org_repo = UserOrganizationRepository()
 
+    # -----------------------------------------------------------------
+    # Source rate limiter (Redis-backed, used by AirweaveHttpClient)
+    # -----------------------------------------------------------------
+    source_rate_limiter = _create_source_rate_limiter(settings)
+
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
     # registry so it can compute supported_auth_providers per source.
     # Both services share the same source_registry instance.
     # -----------------------------------------------------------------
-    source_deps = _create_source_services(settings)
+    source_deps = _create_source_services(settings, source_rate_limiter=source_rate_limiter)
 
     # -----------------------------------------------------------------
     # Usage domain — checker (read) + ledger (write), both singletons
@@ -399,12 +407,15 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
-    # Usage billing listener
+    # Source rate limit configuration service
     # -----------------------------------------------------------------
+    source_rate_limit_repo = SourceRateLimitRepository()
+    source_rate_limit_service = SourceRateLimitService(repo=source_rate_limit_repo)
 
     return Container(
         context_cache=context_cache,
         rate_limiter=rate_limiter,
+        source_rate_limiter=source_rate_limiter,
         billing_service=billing_services["billing_service"],
         billing_webhook=billing_services["billing_webhook"],
         collection_service=collection_service,
@@ -434,6 +445,7 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         redirect_session_repo=source_deps["redirect_session_repo"],
         source_connection_service=source_connection_service,
+        source_rate_limit_service=source_rate_limit_service,
         oauth_flow_service=oauth_flow_svc,
         oauth_callback_service=oauth_callback_svc,
         init_session_repo=init_session_repo,
@@ -666,7 +678,7 @@ def _create_sparse_embedder(registry: SparseEmbedderRegistry) -> SparseEmbedderP
     return DomainFastEmbedSparseEmbedder(model=spec.api_model_name)
 
 
-def _create_source_services(settings: Settings) -> dict:
+def _create_source_services(settings: Settings, source_rate_limiter=None) -> dict:
     """Create source services, registries, repository adapters, and lifecycle service.
 
     Build order matters:
@@ -716,6 +728,7 @@ def _create_source_services(settings: Settings) -> dict:
         conn_repo=conn_repo,
         cred_repo=cred_repo,
         oauth2_service=oauth2_svc,
+        source_rate_limiter=source_rate_limiter,
     )
 
     return {
@@ -1019,3 +1032,13 @@ def _create_rate_limiter(settings: Settings):
     from airweave.adapters.rate_limiter.redis import RedisRateLimiter
 
     return RedisRateLimiter(redis_client=redis_client.client)
+
+
+def _create_source_rate_limiter(settings: Settings):
+    """Create source rate limiter: Redis in production, Null for local dev."""
+    if settings.LOCAL_DEVELOPMENT:
+        from airweave.adapters.source_rate_limiter.null import NullSourceRateLimiter
+
+        return NullSourceRateLimiter()
+
+    return RedisSourceRateLimiter(redis_client=redis_client.client)

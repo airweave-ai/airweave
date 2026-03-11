@@ -16,6 +16,9 @@ from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
+from airweave.core.protocols.source_rate_limiter import (
+    SourceRateLimiter as SourceRateLimiterProtocol,
+)
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -63,6 +66,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         conn_repo: ConnectionRepositoryProtocol,
         cred_repo: IntegrationCredentialRepositoryProtocol,
         oauth2_service: OAuth2ServiceProtocol,
+        source_rate_limiter: SourceRateLimiterProtocol,
     ) -> None:
         """Initialize with all required dependencies.
 
@@ -73,6 +77,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             conn_repo: Connection repository (wraps crud.connection).
             cred_repo: Integration credential repository (wraps crud.integration_credential).
             oauth2_service: OAuth2 token refresh service.
+            source_rate_limiter: Distributed rate limiter for external API calls.
         """
         self._source_registry = source_registry
         self._auth_provider_registry = auth_provider_registry
@@ -80,6 +85,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         self._conn_repo = conn_repo
         self._cred_repo = cred_repo
         self._oauth2_service = oauth2_service
+        self._source_rate_limiter = source_rate_limiter
 
     # ------------------------------------------------------------------
     # Public API
@@ -712,8 +718,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     # Private: rate limiting wrapper
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _wrap_source_with_airweave_client(
+        self,
         source: BaseSource,
         source_short_name: str,
         source_connection_id: UUID,
@@ -730,6 +736,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         """
         feature_enabled = ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING)
         original_factory = source._http_client_factory
+        rate_limiter = self._source_rate_limiter
 
         def airweave_client_factory(**kwargs):
             if original_factory:
@@ -741,6 +748,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                 wrapped_client=base_client,
                 org_id=ctx.organization.id,
                 source_short_name=source_short_name,
+                source_rate_limiter=rate_limiter,
                 source_connection_id=source_connection_id,
                 feature_flag_enabled=feature_enabled,
                 logger=logger,

@@ -14,7 +14,9 @@ import httpx
 
 from airweave.core.exceptions import SourceRateLimitExceededException
 from airweave.core.logging import ContextualLogger
-from airweave.core.source_rate_limiter_service import source_rate_limiter
+from airweave.core.protocols.source_rate_limiter import (
+    SourceRateLimiter as SourceRateLimiterProtocol,
+)
 
 if TYPE_CHECKING:
     from airweave.platform.http_client.pipedream_proxy import PipedreamProxyClient
@@ -42,6 +44,7 @@ class AirweaveHttpClient:
         wrapped_client: Union[httpx.AsyncClient, PipedreamProxyClient],
         org_id: UUID,
         source_short_name: str,
+        source_rate_limiter: SourceRateLimiterProtocol,
         source_connection_id: Optional[UUID] = None,
         feature_flag_enabled: bool = True,
         logger: Optional[ContextualLogger] = None,
@@ -52,6 +55,7 @@ class AirweaveHttpClient:
             wrapped_client: The client to wrap (httpx.AsyncClient or PipedreamProxyClient)
             org_id: Organization ID for rate limiting
             source_short_name: Source identifier (e.g., "google_drive", "notion")
+            source_rate_limiter: Injected rate limiter (Redis, Null, or Fake)
             source_connection_id: Source connection ID (used for connection-level sources)
             feature_flag_enabled: Whether SOURCE_RATE_LIMITING feature is enabled
             logger: Contextual logger with sync/search metadata (required)
@@ -59,6 +63,7 @@ class AirweaveHttpClient:
         self._client = wrapped_client
         self._org_id = org_id
         self._source_short_name = source_short_name
+        self._source_rate_limiter = source_rate_limiter
         self._source_connection_id = source_connection_id
         self._feature_flag_enabled = feature_flag_enabled
         self._logger = logger
@@ -90,7 +95,7 @@ class AirweaveHttpClient:
                     self._logger.debug(
                         "[AirweaveHttpClient] Using Pipedream proxy - checking proxy limit first"
                     )
-                await source_rate_limiter.check_pipedream_proxy_limit(self._org_id)
+                await self._source_rate_limiter.check_pipedream_proxy_limit(self._org_id)
             else:
                 if self._logger:
                     self._logger.debug(
@@ -98,7 +103,7 @@ class AirweaveHttpClient:
                     )
 
             # Step 2: Check source-specific limit
-            await source_rate_limiter.check_and_increment(
+            await self._source_rate_limiter.check_and_increment(
                 org_id=self._org_id,
                 source_short_name=self._source_short_name,
                 source_connection_id=self._source_connection_id,

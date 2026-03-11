@@ -519,6 +519,22 @@ def fake_user_service():
 
 
 @pytest.fixture
+def fake_source_rate_limit_service():
+    """Fake SourceRateLimitService for testing endpoint DI."""
+    from airweave.domains.source_rate_limits.fakes.service import FakeSourceRateLimitService
+
+    return FakeSourceRateLimitService()
+
+
+@pytest.fixture
+def fake_source_rate_limiter():
+    """Fake SourceRateLimiter (adapter) that records calls and never rejects."""
+    from airweave.adapters.source_rate_limiter.fake import FakeSourceRateLimiter
+
+    return FakeSourceRateLimiter()
+
+
+@pytest.fixture
 def fake_oauth_flow_service():
     """Fake OAuthFlowService."""
     from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
@@ -546,6 +562,7 @@ def fake_init_session_repo():
 def test_container(
     fake_context_cache,
     fake_rate_limiter,
+    fake_source_rate_limiter,
     fake_health_service,
     fake_event_bus,
     fake_pubsub,
@@ -572,6 +589,7 @@ def test_container(
     fake_oauth_callback_service,
     fake_init_session_repo,
     fake_source_connection_service,
+    fake_source_rate_limit_service,
     fake_source_lifecycle_service,
     fake_response_builder,
     fake_temporal_workflow_service,
@@ -612,6 +630,7 @@ def test_container(
     return Container(
         context_cache=fake_context_cache,
         rate_limiter=fake_rate_limiter,
+        source_rate_limiter=fake_source_rate_limiter,
         health=fake_health_service,
         event_bus=fake_event_bus,
         pubsub=fake_pubsub,
@@ -640,6 +659,7 @@ def test_container(
         oauth_callback_service=fake_oauth_callback_service,
         init_session_repo=fake_init_session_repo,
         source_connection_service=fake_source_connection_service,
+        source_rate_limit_service=fake_source_rate_limit_service,
         source_lifecycle_service=fake_source_lifecycle_service,
         response_builder=fake_response_builder,
         temporal_workflow_service=fake_temporal_workflow_service,
