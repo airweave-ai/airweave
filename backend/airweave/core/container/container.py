@@ -24,6 +24,7 @@ from airweave.core.protocols import (
     OcrProvider,
     PubSub,
     RateLimiter,
+    SourceRateLimiter,
     WebhookAdmin,
     WebhookPublisher,
     WebhookServiceProtocol,
@@ -65,6 +66,7 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
     SourceConnectionServiceProtocol,
 )
+from airweave.domains.source_rate_limits.protocols import SourceRateLimitServiceProtocol
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
@@ -111,6 +113,9 @@ class Container:
 
     # Rate limiter (Redis-backed sliding window, Null for local dev)
     rate_limiter: RateLimiter
+
+    # Source rate limiter (external API quota enforcement, Redis / Null / Fake)
+    source_rate_limiter: SourceRateLimiter
 
     # Health service — readiness check facade
     health: HealthServiceProtocol
@@ -162,6 +167,9 @@ class Container:
 
     # Source connection service — domain service for source connections
     source_connection_service: SourceConnectionServiceProtocol
+
+    # Source rate limit configuration service
+    source_rate_limit_service: SourceRateLimitServiceProtocol
 
     # Source lifecycle — creates/validates configured source instances
     source_lifecycle_service: SourceLifecycleServiceProtocol
