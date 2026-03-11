@@ -51,15 +51,17 @@ class SyncFactory:
     async def create_orchestrator(
         cls,
         db: AsyncSession,
+        # nuke these fucks
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
         collection: schemas.CollectionRecord,
         connection: schemas.Connection,
         ctx: BaseContext,
+        # [code blue] todo: inject
         dense_embedder: DenseEmbedderProtocol,
         sparse_embedder: SparseEmbedderProtocol,
-        access_token: Optional[str] = None,
-        max_workers: int = None,
+        access_token: Optional[str] = None,  # drop it, check logs
+        max_workers: int = None,  # should not be param, northstar: system calls and exception.
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
     ) -> SyncOrchestrator:
@@ -152,6 +154,7 @@ class SyncFactory:
 
         action_resolver = EntityActionResolver(entity_map=sync_context.entity_map)
 
+        # ideally if all deps are stateless, the entity pipeline should just get these things injected
         entity_pipeline = EntityPipeline(
             entity_tracker=runtime.entity_tracker,
             event_bus=container_mod.container.event_bus,

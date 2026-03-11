@@ -91,6 +91,7 @@ class EntityDispatcherBuilder:
         if not destinations:
             return
 
+        # why d we need destnation handlers?
         if enabled:
             handlers.append(DestinationHandler(destinations=destinations))
             if logger:

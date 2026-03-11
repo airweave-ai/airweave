@@ -24,6 +24,7 @@ from airweave.platform.sync.processors import (
     ChunkEmbedProcessor,
     ContentProcessor,
     RawProcessor,
+    # kill that shit
     TextOnlyProcessor,
 )
 
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
     from airweave.platform.contexts.runtime import SyncRuntime
     from airweave.platform.entities import BaseEntity
 
+
+# this will also be removed when we get rid of the concept of destinations.
 
 # Singleton processors - stateless, reusable
 # ChunkEmbedProcessor generates both dense and sparse embeddings for all vector DBs

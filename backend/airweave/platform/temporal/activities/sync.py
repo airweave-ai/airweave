@@ -7,6 +7,8 @@ Each class declares its dependencies in __init__, making them:
 - Wired at worker startup via container
 """
 
+# Split this file into 4  activities: run_sync, create_sync_job, cleanup_stuck_sync_jobs, self_destruct_orphaned_sync
+
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +27,7 @@ from temporalio import activity
 from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.core.protocols import EventBus
-from airweave.core.redis_client import redis_client
+from airweave.core.redis_client import redis_client  # todo: protocolize
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
