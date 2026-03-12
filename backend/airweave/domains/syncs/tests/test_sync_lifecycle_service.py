@@ -17,7 +17,6 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod, SyncJobStatus, SyncStatus
-from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.source_connections.fakes.repository import (
@@ -25,7 +24,6 @@ from airweave.domains.source_connections.fakes.repository import (
 )
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
 from airweave.domains.sources.types import SourceRegistryEntry
-from airweave.platform.configs._base import Fields
 from airweave.domains.syncs.fakes.sync_cursor_repository import FakeSyncCursorRepository
 from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
 from airweave.domains.syncs.fakes.sync_job_service import FakeSyncJobService
@@ -39,6 +37,7 @@ from airweave.models.connection import Connection  # spec only
 from airweave.models.source_connection import SourceConnection  # spec only
 from airweave.models.sync_cursor import SyncCursor  # spec only
 from airweave.models.sync_job import SyncJob  # spec only
+from airweave.platform.configs._base import Fields
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import ScheduleConfig
 
@@ -294,6 +293,7 @@ async def test_run_errors(case: RunCase):
         sc_repo.seed(case.sc.id, case.sc)
     if case.collection:
         collection_repo.seed(case.collection.id, case.collection)
+        collection_repo.seed_readable(case.collection.readable_id, case.collection)
     if case.connection:
         connection_repo.seed(case.connection.id, case.connection)
     if case.cursor:
@@ -321,7 +321,6 @@ async def test_run_errors(case: RunCase):
 @pytest.mark.asyncio
 async def test_run_force_full_sync_happy_path():
     """Test run() with force_full_sync=True and valid cursor data."""
-
     sc_repo = FakeSourceConnectionRepository()
     collection_repo = FakeCollectionRepository()
     connection_repo = FakeConnectionRepository()
@@ -385,7 +384,6 @@ async def test_run_force_full_sync_happy_path():
 @pytest.mark.asyncio
 async def test_run_happy_path():
     """Test run() happy path: triggers workflow and publishes event."""
-
     sc_repo = FakeSourceConnectionRepository()
     collection_repo = FakeCollectionRepository()
     connection_repo = FakeConnectionRepository()
@@ -604,7 +602,6 @@ async def test_cancel_job_errors(case: CancelCase):
 @pytest.mark.asyncio
 async def test_cancel_job_happy_path():
     """Successful cancel: workflow found, job transitions to CANCELLING."""
-
     sc_repo = FakeSourceConnectionRepository()
     sync_job_repo = FakeSyncJobRepository()
     sync_job_service = FakeSyncJobService()
