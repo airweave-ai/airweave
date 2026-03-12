@@ -722,6 +722,7 @@ def _create_source_services(settings: Settings) -> dict:
         cred_repo=OAuthCredentialRepository(),
         encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
         source_repo=source_repo,
+        source_registry=source_registry,
     )
 
     source_service = SourceService(

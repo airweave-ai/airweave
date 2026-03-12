@@ -7,7 +7,6 @@ from .billing_period import BillingPeriod
 from .collection import Collection
 from .connection import Connection
 from .connection_init_session import ConnectionInitSession
-from .destination import Destination
 from .entity import Entity
 from .entity_count import EntityCount
 from .entity_definition import EntityDefinition
@@ -42,7 +41,6 @@ __all__ = [
     "EntityCount",
     "Connection",
     "ConnectionInitSession",
-    "Destination",
     "EntityDefinition",
     "EntityRelation",
     "FeatureFlag",

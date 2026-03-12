@@ -7,12 +7,12 @@ from typing import Any, Dict, Optional
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import airweave.core.container as _container_module  # TODO(code-blue): inject via constructor
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.logging import logger
-from airweave.platform.auth.oauth2_service import oauth2_service
 
 
 class TokenManager:
@@ -353,18 +353,15 @@ class TokenManager:
         )
 
         try:
-            # Get the runtime auth fields required by the source
-            from airweave.core.auth_provider_service import auth_provider_service
-
-            auth_fields = await auth_provider_service.get_runtime_auth_fields_for_source(
-                self.db, self.source_short_name
-            )
+            if _container_module.container is None:
+                raise RuntimeError("Container not initialized")
+            entry = _container_module.container.source_registry.get(self.source_short_name)
 
             # Get fresh credentials from auth provider instance
             fresh_credentials = await self.auth_provider_instance.get_creds_for_source(
                 source_short_name=self.source_short_name,
-                source_auth_config_fields=auth_fields.all_fields,
-                optional_fields=auth_fields.optional_fields,
+                source_auth_config_fields=entry.runtime_auth_all_fields,
+                optional_fields=entry.runtime_auth_optional_fields,
             )
 
             # Extract access token
@@ -437,14 +434,15 @@ class TokenManager:
 
                 decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
 
-                # Use the oauth2_service to refresh the token
-                oauth2_response = await oauth2_service.refresh_access_token(
-                    db=refresh_db,
-                    integration_short_name=self.source_short_name,
-                    ctx=self.ctx,
-                    connection_id=self.connection_id,
-                    decrypted_credential=decrypted_credential,
-                    config_fields=self.config_fields,
+                oauth2_response = (
+                    await _container_module.container.oauth2_service.refresh_access_token(
+                        db=refresh_db,
+                        integration_short_name=self.source_short_name,
+                        ctx=self.ctx,
+                        connection_id=self.connection_id,
+                        decrypted_credential=decrypted_credential,
+                        config_fields=self.config_fields,
+                    )
                 )
 
                 return oauth2_response.access_token

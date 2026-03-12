@@ -6,10 +6,8 @@ from .crud_billing_period import billing_period
 from .crud_collection import collection
 from .crud_connection import connection
 from .crud_connection_init_session import connection_init_session
-from .crud_destination import destination
 from .crud_entity import entity
 from .crud_entity_count import entity_count
-
 from .crud_integration_credential import integration_credential
 from .crud_organization import organization
 from .crud_organization_billing import organization_billing
@@ -32,7 +30,6 @@ __all__ = [
     "collection",
     "connection_init_session",
     "connection",
-    "destination",
     "entity",
     "entity_count",
     "integration_credential",

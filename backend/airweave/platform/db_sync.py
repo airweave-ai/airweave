@@ -1,4 +1,4 @@
-"""Module for syncing embedding models, sources, destinations, and auth providers."""
+"""Module for syncing sources to the database and validating entity definitions."""
 
 import importlib
 import inspect
@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.sources._base import BaseSource
 
 # Compute platform directory from this file's location (works regardless of cwd)
@@ -50,10 +49,10 @@ def _validate_source_template_config(source_class: Type[BaseSource]) -> None:
         ValueError: If template variables don't match auth-required config fields
     """
     short_name = source_class.short_name
-    config_class_name = source_class.config_class
+    config_class = source_class.config_class
 
     # Skip if no config class
-    if not config_class_name:
+    if not config_class:
         return
 
     # Load integration settings to check for templates
@@ -84,10 +83,6 @@ def _validate_source_template_config(source_class: Type[BaseSource]) -> None:
             )
             return
 
-        # Load config class and get template config fields
-        from airweave.platform.locator import resource_locator
-
-        config_class = resource_locator.get_config(config_class_name)
         template_config_fields = set(config_class.get_template_config_fields())
 
         # Validate: every template variable must have a matching RequiredTemplateConfig
@@ -98,7 +93,7 @@ def _validate_source_template_config(source_class: Type[BaseSource]) -> None:
                 f"  YAML template variables: {sorted(all_template_vars)}\n"
                 f"  Config template fields: {sorted(template_config_fields)}\n"
                 f"  Missing in config class: {sorted(missing_in_config)}\n\n"
-                f"Fix: Add to {config_class_name}:\n"
+                f"Fix: Add to {config_class.__name__}:\n"
                 + "\n".join(
                     [
                         f"    {var}: str = RequiredTemplateConfig("
@@ -144,14 +139,6 @@ def _process_module_classes(module, components: Dict[str, list[Type | Callable]]
     for _, cls in inspect.getmembers(module, inspect.isclass):
         if getattr(cls, "is_source", False):
             components["sources"].append(cls)
-        elif getattr(cls, "is_destination", False):
-            components["destinations"].append(cls)
-        elif getattr(cls, "is_auth_provider", False):
-            components["auth_providers"].append(cls)
-
-
-# NOTE: Transformers were removed - chunking now happens in entity_pipeline.py
-# using CodeChunker and SemanticChunker, not decorator-based transformers
 
 
 def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
@@ -166,8 +153,6 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
     """
     components = {
         "sources": [],
-        "destinations": [],
-        "auth_providers": [],
     }
 
     base_package = "airweave.platform"
@@ -194,8 +179,7 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
                 error_msg = (
                     f"Failed to import {full_module_name}: {e}\n"
                     f"This is likely due to missing dependencies required by this module.\n"
-                    f"If this module contains transformers, sources, destinations, "
-                    f"or auth providers, they will not be registered."
+                    f"If this module contains sources, they will not be registered."
                 )
                 sync_logger.error(error_msg)
                 # Re-raise the exception to fail the sync process
@@ -248,10 +232,6 @@ def _validate_entity_class_fields(cls: Type, name: str, module_name: str) -> Non
                     f"without a Pydantic Field description. All entity fields must use "
                     f"Field with a description parameter."
                 )
-
-
-# NOTE: Embedding models sync removed - embeddings now handled by
-# DenseEmbedder and SparseEmbedder in platform/embedders/, not decorator-based models
 
 
 def _build_entity_module_map() -> Dict[str, dict]:
@@ -332,20 +312,8 @@ async def _sync_sources(
     """
     sync_logger.info("Syncing sources to database.")
 
-    # Filter out internal sources if ENABLE_INTERNAL_SOURCES is False.
-    # Uses the `internal=True` flag from the @source decorator as the single source of truth.
-    filtered_sources = sources
-    if not settings.ENABLE_INTERNAL_SOURCES:
-        filtered_sources = [s for s in sources if not s.is_internal()]
-        skipped_count = len(sources) - len(filtered_sources)
-        if skipped_count > 0:
-            sync_logger.info(
-                f"Skipping {skipped_count} internal source(s) "
-                "(set ENABLE_INTERNAL_SOURCES=true to enable)"
-            )
-
     source_definitions = []
-    for source_class in filtered_sources:
+    for source_class in sources:
         # Get the source's short name (e.g., "slack" for SlackSource)
         source_module_name = source_class.short_name
 
@@ -401,35 +369,6 @@ async def _sync_sources(
     sync_logger.info(f"Synced {len(source_definitions)} sources to database.")
 
 
-async def _sync_destinations(db: AsyncSession, destinations: list[Type[BaseDestination]]) -> None:
-    """Sync destinations with the database.
-
-    Args:
-        db (AsyncSession): Database session
-        destinations (list[Type[BaseDestination]]): List of destination classes
-    """
-    sync_logger.info("Syncing destinations to database.")
-
-    destination_definitions = []
-    for dest_class in destinations:
-        dest_def = schemas.DestinationCreate(
-            name=dest_class.destination_name,
-            description=dest_class.__doc__,
-            short_name=dest_class.short_name,
-            class_name=dest_class.__name__,
-            auth_config_class=getattr(dest_class.auth_config_class, "__name__", None),
-            labels=getattr(dest_class, "labels", []),
-        )
-        destination_definitions.append(dest_def)
-
-    await crud.destination.sync(db, destination_definitions)
-    sync_logger.info(f"Synced {len(destination_definitions)} destinations to database.")
-
-
-# NOTE: Transformer sync functions removed - chunking now handled by
-# CodeChunker and SemanticChunker in entity_pipeline.py, not decorator-based transformers
-
-
 async def sync_platform_components(db: AsyncSession) -> None:
     """Sync all platform components with the database.
 
@@ -446,17 +385,11 @@ async def sync_platform_components(db: AsyncSession) -> None:
         components = _get_decorated_classes()
         c = components
 
-        # Log component counts to help diagnose issues
-        sync_logger.info(
-            f"Found {len(c['sources'])} sources, {len(c['destinations'])} destinations, "
-            f"{len(c['auth_providers'])} auth providers."
-        )
+        sync_logger.info(f"Found {len(c['sources'])} sources.")
 
         module_entity_map = _build_entity_module_map()
 
-        # Sync platform components
         await _sync_sources(db, components["sources"], module_entity_map)
-        await _sync_destinations(db, components["destinations"])
 
         sync_logger.info("Platform components sync completed successfully.")
     except ImportError as e:
