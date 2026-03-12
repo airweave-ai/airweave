@@ -16,12 +16,16 @@ jobs:
         component:
           - name: backend
             context: ./backend
+            file: ./backend/Dockerfile
           - name: frontend
             context: ./frontend
+            file: ./frontend/Dockerfile
           - name: mcp
             context: ./mcp
+            file: ./mcp/Dockerfile
           - name: connect
-            context: ./connect
+            context: .
+            file: ./connect/Dockerfile
         platform:
           - runner: ubuntu-latest
             arch: linux/amd64
@@ -63,6 +67,7 @@ jobs:
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ${{ matrix.component.context }}
+          file: ${{ matrix.component.file }}
           push: true
           platforms: ${{ matrix.platform.arch }}
           tags: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component.name }}:${{ steps.meta.outputs.version }}-${{ matrix.platform.suffix }}
@@ -131,7 +136,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        component: [backend, frontend, mcp]
+        component: [backend, frontend, mcp, connect]
 
     permissions:
       contents: write
