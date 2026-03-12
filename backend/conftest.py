@@ -386,6 +386,22 @@ def fake_sync_lifecycle():
 
 
 @pytest.fixture
+def fake_sync_factory():
+    """Fake SyncFactory."""
+    from airweave.domains.sync_pipeline.fakes.factory import FakeSyncFactory
+
+    return FakeSyncFactory()
+
+
+@pytest.fixture
+def fake_entity_repo():
+    """Fake EntityRepository."""
+    from airweave.domains.sync_pipeline.fakes.entity_repository import FakeEntityRepository
+
+    return FakeEntityRepository()
+
+
+@pytest.fixture
 def fake_billing_webhook():
     """Fake BillingWebhookProcessor."""
     from airweave.adapters.payment.fake import FakePaymentGateway
@@ -644,6 +660,8 @@ def test_container(
     fake_connect_service,
     fake_browse_tree_service,
     fake_selection_repo,
+    fake_sync_factory,
+    fake_entity_repo,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -720,4 +738,6 @@ def test_container(
         organization_service=fake_organization_service,
         email_service=fake_email_service,
         user_service=fake_user_service,
+        sync_factory=fake_sync_factory,
+        entity_repo=fake_entity_repo,
     )

@@ -53,7 +53,10 @@ from airweave.domains.embedders.protocols import (
     SparseEmbedderProtocol,
     SparseEmbedderRegistryProtocol,
 )
-from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
+from airweave.domains.entities.protocols import (
+    EntityDefinitionRegistryProtocol,
+    EntityRepositoryProtocol,
+)
 from airweave.domains.oauth.protocols import (
     OAuth1ServiceProtocol,
     OAuth2ServiceProtocol,
@@ -77,6 +80,7 @@ from airweave.domains.sources.protocols import (
     SourceServiceProtocol,
 )
 from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
+from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
 from airweave.domains.syncs.protocols import (
     SyncCursorRepositoryProtocol,
     SyncJobRepositoryProtocol,
@@ -188,6 +192,10 @@ class Container:
     sync_job_service: SyncJobServiceProtocol
     sync_service: SyncServiceProtocol
     sync_lifecycle: SyncLifecycleServiceProtocol
+    sync_factory: SyncFactoryProtocol
+
+    # Entity repository (used by sync pipeline)
+    entity_repo: EntityRepositoryProtocol
 
     # Temporal domain
     temporal_workflow_service: TemporalWorkflowServiceProtocol
