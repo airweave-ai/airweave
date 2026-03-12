@@ -150,9 +150,11 @@ class GitHubConfig(SourceConfig):
 
     repo_name: str = Field(
         title="Repository Name",
-        description="Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')",
+        description=(
+            "Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave') "
+            "or full GitHub URL (e.g., 'https://github.com/airweave-ai/airweave')"
+        ),
         min_length=3,
-        pattern=r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$",
     )
     branch: str = Field(
         default="",
@@ -170,6 +172,18 @@ class GitHubConfig(SourceConfig):
             "Enables searching over PR descriptions, discussions, and code review feedback."
         ),
     )
+
+    @field_validator("repo_name", mode="before")
+    @classmethod
+    def normalize_repo_name(cls, v: str) -> str:
+        """Strip GitHub URL prefix if provided, normalizing to owner/repo format."""
+        if isinstance(v, str):
+            v = v.strip().rstrip("/")
+            for prefix in ("https://github.com/", "http://github.com/"):
+                if v.lower().startswith(prefix):
+                    v = v[len(prefix) :]
+                    break
+        return v
 
     @field_validator("repo_name")
     @classmethod
