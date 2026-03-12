@@ -1,0 +1,174 @@
+name: Connect E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "connect/**"
+      - "backend/airweave/api/v1/endpoints/connect.py"
+      - "backend/airweave/schemas/connect_session.py"
+      - "backend/airweave/api/deps.py"
+      - ".github/workflows/connect-e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "connect/**"
+      - "backend/airweave/api/v1/endpoints/connect.py"
+      - "backend/airweave/schemas/connect_session.py"
+      - "backend/airweave/api/deps.py"
+      - ".github/workflows/connect-e2e.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: connect-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Build backend image
+        run: docker build -t test-backend:latest ./backend
+
+      - name: Build connect image
+        run: docker build -t test-connect:latest -f connect/Dockerfile .
+
+      - name: Export images
+        run: |
+          docker save test-backend:latest | gzip > /tmp/test-backend-image.tar.gz
+          docker save test-connect:latest | gzip > /tmp/test-connect-image.tar.gz
+
+      - name: Upload images
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: test-images
+          path: |
+            /tmp/test-backend-image.tar.gz
+            /tmp/test-connect-image.tar.gz
+          retention-days: 1
+
+  e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: dev
+
+    env:
+      BACKEND_IMAGE: test-backend:latest
+      CONNECT_IMAGE: test-connect:latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "./connect/package-lock.json"
+
+      - name: Install Playwright
+        working-directory: ./connect
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Download images
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: test-images
+          path: /tmp
+
+      - name: Load images
+        run: |
+          docker load < /tmp/test-backend-image.tar.gz
+          docker load < /tmp/test-connect-image.tar.gz
+          docker images test-backend
+          docker images test-connect
+
+      - name: Pre-pull infrastructure images
+        run: |
+          docker pull postgres:16 &
+          docker pull redis:7-alpine &
+          docker pull qdrant/qdrant:latest &
+          docker pull temporalio/auto-setup:1.24.2 &
+          docker pull temporalio/ui:2.26.2 &
+          docker pull vespaengine/vespa:8 &
+          docker pull alpine:3.19 &
+          wait
+
+      - name: Start services
+        env:
+          NONINTERACTIVE: "1"
+          SKIP_LOCAL_EMBEDDINGS: "1"
+          SKIP_FRONTEND: "1"
+          AUTH0_ENABLED: "false"
+          DEV_MODE: "true"
+          ENABLE_INTERNAL_SOURCES: "true"
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          cp .env.example .env
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" >> .env
+          echo "DISABLE_RATE_LIMIT=true" >> .env
+          echo "ENABLE_INTERNAL_SOURCES=true" >> .env
+          echo "DENSE_EMBEDDER=openai_text_embedding_3_small" >> .env
+          echo "EMBEDDING_DIMENSIONS=1536" >> .env
+          echo "SPARSE_EMBEDDER=fastembed_bm25" >> .env
+
+          ./start.sh --noninteractive
+
+          echo "Verifying services..."
+          docker ps
+          curl -f http://localhost:8001/health || (echo "Backend not healthy"; docker logs airweave-backend; exit 1)
+
+          echo "Waiting for Connect widget..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8082 > /dev/null 2>&1; then
+              echo "Connect widget is healthy!"
+              break
+            fi
+            echo "Waiting for Connect widget... ($i/30)"
+            sleep 2
+          done
+          curl -f http://localhost:8082 || (echo "Connect widget not healthy"; docker logs airweave-connect; exit 1)
+
+      - name: Run Playwright E2E tests
+        working-directory: ./connect
+        env:
+          BACKEND_URL: http://localhost:8001
+          CONNECT_URL: http://localhost:8082
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: playwright-report
+          path: connect/playwright-report/
+          retention-days: 14
+
+      - name: Print service logs on failure
+        if: failure()
+        run: |
+          echo "========== BACKEND LOGS =========="
+          docker logs airweave-backend --tail 500 2>&1 || true
+          echo ""
+          echo "========== CONNECT LOGS =========="
+          docker logs airweave-connect --tail 200 2>&1 || true
+          echo ""
+          echo "========== CONTAINERS =========="
+          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose down -v || true
+          docker system prune -f || true

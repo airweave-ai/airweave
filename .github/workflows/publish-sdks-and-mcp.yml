@@ -109,6 +109,40 @@ jobs:
           ../mcp-publisher login github-oidc
           ../mcp-publisher publish
 
+      # ── Connect SDK packages ────────────────────────────────────────
+      - name: Install Connect widget dependencies
+        run: |
+          cd connect
+          npm ci
+
+      - name: Build and publish @airweave/connect-js
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION=${{ github.event.release.tag_name || github.event.inputs.version }}
+          VERSION=${VERSION#v}
+          cd connect/packages/js
+          npm ci
+          npm version $VERSION --no-git-tag-version
+          npm run build
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          npm publish --access public
+          echo "Published @airweave/connect-js@$VERSION to npm"
+
+      - name: Build and publish @airweave/connect-react
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION=${{ github.event.release.tag_name || github.event.inputs.version }}
+          VERSION=${VERSION#v}
+          cd connect/packages/react
+          npm ci
+          npm version $VERSION --no-git-tag-version
+          npm run build
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          npm publish --access public
+          echo "Published @airweave/connect-react@$VERSION to npm"
+
       - name: Trigger Docs Generation
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:

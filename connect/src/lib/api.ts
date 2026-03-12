@@ -164,6 +164,11 @@ class ConnectApiClient {
             return;
           }
 
+          const isTerminal =
+            data.status === "completed" ||
+            data.status === "failed" ||
+            data.status === "cancelled";
+
           const update: SyncProgressUpdate = {
             entities_inserted: data.inserted ?? 0,
             entities_updated: data.updated ?? 0,
@@ -171,12 +176,12 @@ class ConnectApiClient {
             entities_kept: data.kept ?? 0,
             entities_skipped: data.skipped ?? 0,
             entities_encountered: data.entities_encountered ?? {},
-            is_complete: data.is_complete,
-            is_failed: data.is_failed,
+            is_complete: data.status === "completed",
+            is_failed: data.status === "failed",
             error: data.error,
           };
 
-          if (data.is_complete || data.is_failed) {
+          if (isTerminal) {
             isComplete = true;
             handlers.onComplete(update);
           } else {

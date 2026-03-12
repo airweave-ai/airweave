@@ -32,9 +32,7 @@
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
-  "peerDependencies": {
-    "airweave-connect": "*"
-  },
+  "peerDependencies": {},
   "devDependencies": {
     "airweave-connect": "file:../..",
     "typescript": "^5.8.3",
