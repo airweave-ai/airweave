@@ -4,8 +4,8 @@ from typing import List, Optional
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.arf.protocols import ArfServiceProtocol
+from airweave.domains.sync_pipeline.entity_action_dispatcher import EntityActionDispatcher
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.sync.actions.entity.dispatcher import EntityActionDispatcher
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.handlers.arf import ArfHandler
 from airweave.platform.sync.handlers.destination import DestinationHandler

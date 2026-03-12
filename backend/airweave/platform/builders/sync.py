@@ -102,15 +102,3 @@ class SyncContextBuilder:
                 "scheduled": str(sync_job.scheduled),
             },
         )
-
-    @classmethod
-    async def get_source_connection_id(
-        cls,
-        db: AsyncSession,
-        sync: schemas.Sync,
-        ctx: BaseContext,
-    ) -> UUID:
-        """Get user-facing source connection ID for logging and scoping."""
-        from airweave.platform.builders.source import SourceContextBuilder
-
-        return await SourceContextBuilder.get_source_connection_id(db, sync, ctx)

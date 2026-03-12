@@ -10,7 +10,6 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.syncs.types import SyncProvisionResult
 from airweave.models.sync import Sync
@@ -179,9 +178,6 @@ class SyncServiceProtocol(Protocol):
         collection: schemas.CollectionRecord,
         source_connection: schemas.Connection,
         ctx: ApiContext,
-        dense_embedder: DenseEmbedderProtocol,
-        sparse_embedder: SparseEmbedderProtocol,
-        access_token: Optional[str] = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
     ) -> schemas.Sync:

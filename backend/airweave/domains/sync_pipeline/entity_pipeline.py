@@ -17,14 +17,15 @@ from typing import TYPE_CHECKING, Any, Dict, List
 
 from airweave.core.events.sync import EntityBatchProcessedEvent, TypeActionCounts
 from airweave.core.shared_models import AirweaveFieldFlag
+from airweave.domains.entities.protocols import EntityRepositoryProtocol
+from airweave.domains.sync_pipeline.protocols import (
+    EntityActionDispatcherProtocol,
+    EntityActionResolverProtocol,
+)
 from airweave.platform.contexts import SyncContext
 from airweave.platform.contexts.runtime import SyncRuntime
 from airweave.platform.entities._base import BaseEntity
-from airweave.platform.sync.actions import (
-    EntityActionBatch,
-    EntityActionDispatcher,
-    EntityActionResolver,
-)
+from airweave.platform.sync.actions.entity.types import EntityActionBatch
 from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.sync.pipeline.cleanup_service import cleanup_service
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
@@ -44,21 +45,16 @@ class EntityPipeline:
         self,
         entity_tracker: EntityTracker,
         event_bus: "EventBus",
-        action_resolver: EntityActionResolver,
-        action_dispatcher: EntityActionDispatcher,
+        action_resolver: EntityActionResolverProtocol,
+        action_dispatcher: EntityActionDispatcherProtocol,
+        entity_repo: EntityRepositoryProtocol,
     ):
-        """Initialize pipeline with injected dependencies.
-
-        Args:
-            entity_tracker: Centralized entity state tracker
-            event_bus: Per-sync event bus for EntityBatchProcessedEvent fan-out
-            action_resolver: Resolves entities to actions
-            action_dispatcher: Dispatches actions to handlers
-        """
+        """Initialize with per-sync tracker, event bus, and action components."""
         self._tracker = entity_tracker
         self._event_bus = event_bus
         self._resolver = action_resolver
         self._dispatcher = action_dispatcher
+        self._entity_repo = entity_repo
         self._batch_seq = 0
 
     # -------------------------------------------------------------------------
@@ -71,13 +67,7 @@ class EntityPipeline:
         sync_context: SyncContext,
         runtime: SyncRuntime,
     ) -> None:
-        """Process a batch of entities through the full pipeline.
-
-        Args:
-            entities: Entities to process
-            sync_context: Sync context (frozen data)
-            runtime: Sync runtime (live services)
-        """
+        """Process a batch of entities through the full pipeline."""
         batch_start = time.monotonic()
 
         unique_entities = await self._track_and_dedupe(entities, sync_context)
@@ -103,12 +93,7 @@ class EntityPipeline:
     async def cleanup_orphaned_entities(
         self, sync_context: SyncContext, runtime: SyncRuntime
     ) -> None:
-        """Remove entities from database/destinations that were not encountered during sync.
-
-        Args:
-            sync_context: Sync context
-            runtime: Sync runtime
-        """
+        """Remove entities from database/destinations that were not encountered during sync."""
         orphans_by_definition = await self._identify_orphans(sync_context)
         if not orphans_by_definition:
             return
@@ -123,12 +108,7 @@ class EntityPipeline:
             await self._tracker.record_deletes(definition_id, len(entity_ids))
 
     async def cleanup_temp_files(self, sync_context: SyncContext, runtime: SyncRuntime) -> None:
-        """Remove entire sync_job_id directory (final cleanup safety net).
-
-        Args:
-            sync_context: Sync context
-            runtime: Sync runtime (provides source.file_downloader)
-        """
+        """Remove entire sync_job_id directory (final cleanup safety net)."""
         await cleanup_service.cleanup_temp_files(sync_context, runtime)
 
     # -------------------------------------------------------------------------
@@ -258,7 +238,6 @@ class EntityPipeline:
 
         type_breakdown = self._build_type_breakdown(batch)
 
-        # TODO: wrap this into a class or similar
         skip_guardrails = (
             sync_context.execution_config
             and sync_context.execution_config.behavior
@@ -309,13 +288,14 @@ class EntityPipeline:
 
     async def _identify_orphans(self, sync_context: SyncContext) -> Dict[str, List[str]]:
         """Identify orphaned entity IDs (in DB but not encountered), grouped by definition."""
-        from airweave import crud
         from airweave.db.session import get_db_context
 
         encountered_ids = self._tracker.get_all_encountered_ids_flat()
 
         async with get_db_context() as db:
-            stored_entities = await crud.entity.get_by_sync_id(db=db, sync_id=sync_context.sync.id)
+            stored_entities = await self._entity_repo.get_by_sync_id(
+                db=db, sync_id=sync_context.sync.id
+            )
 
         orphans_by_definition: Dict[str, List[str]] = defaultdict(list)
         for entity in stored_entities:

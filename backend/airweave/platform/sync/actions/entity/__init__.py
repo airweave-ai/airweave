@@ -3,9 +3,9 @@
 Entity-specific action pipeline for sync operations.
 """
 
+from airweave.domains.sync_pipeline.entity_action_dispatcher import EntityActionDispatcher
+from airweave.domains.sync_pipeline.entity_action_resolver import EntityActionResolver
 from airweave.platform.sync.actions.entity.builder import EntityDispatcherBuilder
-from airweave.platform.sync.actions.entity.dispatcher import EntityActionDispatcher
-from airweave.platform.sync.actions.entity.resolver import EntityActionResolver
 from airweave.platform.sync.actions.entity.types import (
     EntityActionBatch,
     EntityDeleteAction,

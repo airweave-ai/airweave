@@ -1,12 +1,13 @@
 """Protocols for the entities domain."""
 
-from typing import List, Protocol
+from typing import Dict, List, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core.protocols.registry import RegistryProtocol
 from airweave.domains.entities.types import EntityDefinitionEntry
+from airweave.models.entity import Entity
 from airweave.schemas.entity_count import EntityCountWithDefinition
 
 
@@ -25,4 +26,22 @@ class EntityCountRepositoryProtocol(Protocol):
         self, db: AsyncSession, sync_id: UUID
     ) -> List[EntityCountWithDefinition]:
         """Get entity counts for a sync grouped by entity definition."""
+        ...
+
+
+class EntityRepositoryProtocol(Protocol):
+    """Entity read access used by the sync pipeline."""
+
+    async def get_by_sync_id(self, db: AsyncSession, sync_id: UUID) -> List[Entity]:
+        """Get all entities for a specific sync."""
+        ...
+
+    async def bulk_get_by_entity_sync_and_definition(
+        self,
+        db: AsyncSession,
+        *,
+        sync_id: UUID,
+        entity_requests: list[Tuple[str, str]],
+    ) -> Dict[Tuple[str, str], Entity]:
+        """Bulk-fetch entities by (entity_id, entity_definition_short_name) for a sync."""
         ...
