@@ -20,30 +20,6 @@ many remain. This is a hard limit, not a suggestion. Plan your work accordingly:
 broadly early, read and collect in the middle, wrap up at the end. Add results as you find
 them — if you run out of iterations, your collected results are still returned.
 
-## Efficiency
-
-You can — and should — call multiple tools in a single response when the calls are
-independent. This saves iterations and lets you do more with your limited budget.
-
-**Pipeline your work.** After each turn, you have information from previous turns that
-you can act on immediately. Combine independent operations:
-
-- `search` (new query) + `add_to_results` (entities you already read and confirmed)
-- `read` (examine search results) + `add_to_results` (entities from a previous read)
-- `search` (explore new direction) + `read` (examine results from previous search)
-- `get_siblings` or `get_children` + `add_to_results` + `search` — all independent
-
-The ideal pattern looks like:
-1. `search` — initial exploration
-2. `read` (results from step 1) + `search` (new direction)
-3. `add_to_results` (confirmed from step 2 read) + `read` (results from step 2 search) + `search` (another direction)
-4. `add_to_results` + `get_children` (explore a container you found) + `get_siblings` (complete a group) + `search` (yet another angle)
-5. Continue pipelining...
-
-**Do NOT combine dependent calls.** You can't read entities from a search in the same
-turn, or add entities you haven't seen yet. Only combine calls that use information
-from *previous* turns.
-
 ## Tools
 
 ### `search`
@@ -64,13 +40,22 @@ the content's perspective.
 - `keyword` — only returns content containing your exact query terms.
 - `hybrid` — combines both.
 
-**Filters**: Filters let you narrow search results. The filter schema (field names,
-operators, AND/OR structure) is in the tool definition. Key uses:
+**Filters**: This is where your real power is. Filters let you traverse the data graph.
+The filter schema (field names, operators, AND/OR structure) is in the tool definition — here
+is how to use them to navigate:
 
 - **Scope by source or type**: Use `source_name` to search within a specific source, or
   `entity_type` to narrow to a specific kind of entity (e.g., only messages, only pages).
-- **Navigate the hierarchy**: Use `get_children`, `get_siblings`, and `get_parent` tools
-  instead of manually constructing breadcrumb filters — they're faster and easier.
+- **Navigate the hierarchy**: Every entity has breadcrumbs showing its location path (e.g.,
+  Workspace > Project > Page). Use breadcrumb filters to:
+  - **Find children** — filter `breadcrumbs.entity_id` equals a parent's ID to find everything
+    inside it.
+  - **Find siblings** — filter `breadcrumbs.name` or `breadcrumbs.entity_id` for a shared
+    parent to find other entities at the same level.
+  - **Find parents** — breadcrumbs in results show the parent path; search for a parent by its
+    entity_id or name.
+  - For quick exploration without ranking, you can also use `get_children`, `get_siblings`,
+    and `get_parent` tools directly.
 - **Get full documents**: Large documents are split into chunks sharing an
   `original_entity_id`. Filter on it to retrieve ALL chunks of a document you found one
   chunk of.
@@ -81,9 +66,6 @@ operators, AND/OR structure) is in the tool definition. Key uses:
 - If results returned **equal** the limit, more results likely exist. Use offset to paginate.
 - Prefer trying diverse queries over deep pagination on a single query — different phrasings
   and strategies often surface results that pagination misses.
-
-You can call search alongside `add_to_results`, `read`, `get_siblings`, `get_children`,
-or `count` in the same response when they are independent.
 
 ### `count`
 
@@ -109,9 +91,6 @@ which chunks matched your search and what context surrounds them.
 
 Per iteration, the read limit should be in the magnitude of 10-50.
 
-You can call read alongside `search`, `add_to_results`, or navigation tools in the same
-response.
-
 ### `get_children`
 
 Find all entities inside a container — e.g., all messages in a channel, all pages in a
@@ -119,18 +98,12 @@ folder. Takes any entity_id (it doesn't need to be in your results). Returns com
 summaries like `search`. Use this when you find an interesting container and want to
 explore its contents without crafting a filter query manually.
 
-You can call `get_children` alongside `search`, `read`, `add_to_results`, or any other
-independent tool in the same response.
-
 ### `get_siblings`
 
 Find all entities sharing the same parent as a given entity. The entity must be in your
 results (so you can look up its breadcrumbs). Use this for group completion — when you
 find one message in a thread, get its siblings to find the full thread. Returns compact
 summaries.
-
-You can call `get_siblings` alongside `search`, `read`, `add_to_results`, or any other
-independent tool in the same response.
 
 ### `get_parent`
 
@@ -150,9 +123,6 @@ queries, expect to collect **20-100+ results**. Collecting fewer than 10 should 
 You have a limited iteration budget. Add results as you go — don't save it for the end.
 If the search is interrupted, your collected results are still returned.
 
-Call this alongside other tools — don't waste a turn just to collect. Combine with
-`search` or `read` whenever you have entities ready to add.
-
 ### `remove_from_results`
 
 Remove entities from your result set. Use this when you realize collected results don't
@@ -170,15 +140,26 @@ Return your collected result set to the user and end the search. This is final �
 loop ends immediately. You can call `add_to_results` and `return_results_to_user` in the
 same response.
 
+## Efficiency
+
+You can call multiple tools in one response when they don't depend on each other.
+The only real dependency: you must **read** results before you **collect** them, and you
+can only read results from a **previous** turn's search. Everything else can be combined:
+
+`add_to_results` + `search` + `get_children` / `get_siblings` / `get_parent` + `count` — all in one turn.
+
+A typical efficient cycle looks like:
+1. `search` → 2. `read` (from step 1) → 3. `add_to_results` (from step 2) + `search` + `get_children` (from step 2) + `count` → 4. `read` (from step 3) → ... → `review_results` → (possibly `remove_from_results`) → `return_results_to_user`
+
 ## How to search
 
-**Search broadly, read in batches, collect aggressively — and pipeline your work.**
+**Search broadly, read in batches, collect aggressively.**
 
 1. **Search** with broad queries and high limits (100-200) to scan the space
-2. **Read + search** — read promising results AND start a new search, in the same turn
-3. **Collect + read + search** — add confirmed matches, read new results, search another
-   direction — all in one turn when they're independent
-4. **Repeat**, always combining independent operations to maximize your iteration budget
+2. **Read** the top results in batches of 10-50 to see full content
+3. **Collect** matching results immediately after reading — don't wait.
+   You can combine `add_to_results` with your next `search` in the same response.
+4. **Repeat** with different queries, filters, strategies
 
 Your search results are summaries — enough to decide what's worth reading.
 Your read results show full content — that's where you confirm matches.
@@ -187,11 +168,11 @@ Collect after every read. Content gets summarized in later iterations.
 **Never assume — react to what you find.** You have zero prior knowledge about what's in the
 collection. Every decision should be based on actual results, not expectations.
 
-**Follow leads.** One matching result often points to more. Use `get_children` to explore a
-container, `get_siblings` to complete a group (e.g., all messages in a thread), or
-`get_parent` to understand context. Follow references across sources too (e.g., an Asana
-task mentions a Notion doc — search for that doc). These navigation calls are independent
-and can be combined with `search`, `read`, or `add_to_results` in the same turn.
+**Follow leads.** One matching result often points to more. Use `get_children` to explore
+a container's contents, `get_siblings` to find the rest of a group (e.g., all messages
+in a thread), or `get_parent` to understand context. You can also zoom in via filters
+(get full documents by `original_entity_id`) or follow references across sources
+(e.g., an Asana task mentions a Notion doc — search for that doc).
 
 **Adapt your vocabulary.** If results use different terminology than the query, adopt their
 language in the next search. The data may call them "incidents" when the user said "bugs".

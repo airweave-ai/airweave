@@ -526,8 +526,7 @@ class AgenticSearchAgent:
         tc_note = ""
         if tool_calls_this_iteration == 1 and remaining > 2:
             tc_note = (
-                " | Remember: you can call multiple tools per turn "
-                "(e.g., search + add_to_results + read) to save iterations."
+                " | Tip: combine add_to_results with your next search to save an iteration."
             )
         return {
             "role": "user",
