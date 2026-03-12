@@ -1300,11 +1300,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         onMouseLeave={() => handleTooltipContentMouseLeave("reRanking")}
                                     >
                                         <div className="space-y-2">
-                                            <div className={DESIGN_SYSTEM.tooltip.title}>AI reranking</div>
-                                            <p className={DESIGN_SYSTEM.tooltip.description}>LLM reorders results for better relevance.</p>
+                                            <div className={DESIGN_SYSTEM.tooltip.title}>Reranking</div>
+                                            <p className={DESIGN_SYSTEM.tooltip.description}>Reorders results by relevance using a dedicated scoring model.</p>
                                             <div className={DESIGN_SYSTEM.tooltip.divider}>
                                                 <a
-                                                    href="https://docs.airweave.ai/search#ai-reranking"
+                                                    href="https://docs.airweave.ai/search#reranking"
                                                     target="_blank"
                                                     rel="noreferrer"
                                                     className={DESIGN_SYSTEM.tooltip.link}

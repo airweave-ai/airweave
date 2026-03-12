@@ -17,6 +17,7 @@ from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols.pubsub import PubSub
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.models.source_connection import SourceConnection
 from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.search.factory import factory
 from airweave.search.helpers import search_helpers
@@ -68,6 +69,10 @@ class SearchService:
         )
         if not collection:
             raise NotFoundException(message=f"Collection '{readable_collection_id}' not found")
+
+        # Inject sync_id filter when source_connection_ids are specified
+        if search_request.source_connection_ids:
+            await self._inject_sync_id_filter(db, search_request, ctx)
 
         ctx.logger.debug("Building search context")
         search_context = await factory.build(
@@ -319,6 +324,39 @@ class SearchService:
         )
 
         return response
+
+    async def _inject_sync_id_filter(
+        self,
+        db: AsyncSession,
+        search_request: "SearchRequest",
+        ctx: ApiContext,
+    ) -> None:
+        """Resolve source_connection_ids to sync_ids and inject as a filter.
+
+        Translates source_connection_ids into a sync_id filter on the search request.
+        Works because sync_id is already indexed in Vespa (FIELD_NAME_MAP + NESTED_SYSTEM_FIELDS).
+        """
+        sc_ids = search_request.source_connection_ids
+        result = await db.execute(
+            sa_select(SourceConnection.sync_id).where(
+                SourceConnection.id.in_(sc_ids),
+                SourceConnection.organization_id == ctx.organization.id,
+            )
+        )
+        sync_ids = [str(row[0]) for row in result.all() if row[0] is not None]
+
+        if not sync_ids:
+            ctx.logger.warning(
+                f"source_connection_ids {sc_ids} resolved to no sync_ids — "
+                f"injecting impossible filter to return empty results"
+            )
+            sync_ids = ["__no_match__"]
+
+        condition = {"key": "sync_id", "match": {"any": sync_ids}}
+        if search_request.filter is None:
+            search_request.filter = {}
+        search_request.filter.setdefault("must", []).append(condition)
+        ctx.logger.debug(f"Injected sync_id filter for {len(sync_ids)} source connections")
 
     async def _handle_failed_federated_auth(
         self,

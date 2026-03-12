@@ -46,6 +46,8 @@ from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.auth_provider.service import AuthProviderService
+from airweave.domains.browse_tree.repository import NodeSelectionRepository
+from airweave.domains.browse_tree.service import BrowseTreeService
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.collections.service import CollectionService
 from airweave.domains.collections.vector_db_deployment_metadata_repository import (
@@ -399,6 +401,21 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # Browse tree service
+    # -----------------------------------------------------------------
+    node_selection_repo = NodeSelectionRepository()
+    browse_tree_service = BrowseTreeService(
+        selection_repo=node_selection_repo,
+        sc_repo=source_deps["sc_repo"],
+        source_lifecycle=source_deps["source_lifecycle_service"],
+        sync_repo=source_deps["sync_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+        collection_repo=source_deps["collection_repo"],
+        conn_repo=source_deps["conn_repo"],
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
+    )
+
+    # -----------------------------------------------------------------
     # Usage billing listener
     # -----------------------------------------------------------------
 
@@ -408,6 +425,8 @@ def create_container(settings: Settings) -> Container:
         billing_service=billing_services["billing_service"],
         billing_webhook=billing_services["billing_webhook"],
         collection_service=collection_service,
+        browse_tree_service=browse_tree_service,
+        selection_repo=node_selection_repo,
         health=health,
         event_bus=event_bus,
         pubsub=pubsub,
@@ -703,6 +722,7 @@ def _create_source_services(settings: Settings) -> dict:
         cred_repo=OAuthCredentialRepository(),
         encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
         source_repo=source_repo,
+        source_registry=source_registry,
     )
 
     source_service = SourceService(

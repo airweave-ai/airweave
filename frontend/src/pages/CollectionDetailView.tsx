@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert } from "@/components/ui/alert";
-import { AlertCircle, RefreshCw, Pencil, Trash, Plus, Clock, Play, Plug, Copy, Check, Loader2, RotateCw, AlertTriangle } from "lucide-react";
+import { AlertCircle, Pencil, Trash, Plus, Plug, Copy, Check, Loader2, RotateCw, AlertTriangle, FolderTree } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { useUsageStore } from "@/lib/stores/usage";
 import { Button } from "@/components/ui/button";
@@ -261,6 +261,9 @@ const Collections = () => {
     const [isRefreshingAll, setIsRefreshingAll] = useState(false);
     const [refreshingSourceIds, setRefreshingSourceIds] = useState<string[]>([]);
 
+    // Browse tree capability for selected connection
+    const [selectedScSupportsBrowseTree, setSelectedScSupportsBrowseTree] = useState(false);
+
     // Usage check from store (read-only, checking happens at app level)
     const actionChecks = useUsageStore(state => state.actionChecks);
     const isCheckingUsage = useUsageStore(state => state.isLoading);
@@ -410,6 +413,27 @@ const Collections = () => {
     }, [isPanelOpen, isCreationModalOpen, collection?.readable_id]);
 
 
+    useEffect(() => {
+        if (!selectedConnection) {
+            setSelectedScSupportsBrowseTree(false);
+            return;
+        }
+        const checkBrowseTree = async () => {
+            try {
+                const resp = await apiClient.get(`/sources/${selectedConnection.short_name}`);
+                if (resp.ok) {
+                    const source = await resp.json();
+                    setSelectedScSupportsBrowseTree(!!source.supports_browse_tree);
+                } else {
+                    setSelectedScSupportsBrowseTree(false);
+                }
+            } catch {
+                setSelectedScSupportsBrowseTree(false);
+            }
+        };
+        checkBrowseTree();
+    }, [selectedConnection?.id]);
+
     /********************************************
      * UI EVENT HANDLERS
      ********************************************/
@@ -422,8 +446,7 @@ const Collections = () => {
         }
     };
 
-    // Update selected connection
-    const handleSelectConnection = async (connection: SourceConnection) => {
+    const handleSelectConnection = (connection: SourceConnection) => {
         console.log("Manually selecting connection:", connection.id);
         setSelectedConnection(connection);
     };
@@ -1079,6 +1102,20 @@ const Collections = () => {
                             </div>
                         )}
                     </div>
+
+                    {/* Browse-tree action buttons for browse-tree capable sources */}
+                    {selectedConnection && selectedScSupportsBrowseTree && (
+                        <div className="mt-3 w-full max-w-[1000px] flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navigate(`/collections/${readable_id}/browse-tree?sc=${selectedConnection.id}`)}
+                            >
+                                <FolderTree className="w-3.5 h-3.5 mr-1.5" />
+                                Re-select Nodes
+                            </Button>
+                        </div>
+                    )}
 
                     {/* NEW: Render SourceConnectionStateView instead of the old DAG view */}
                     {selectedConnection && (

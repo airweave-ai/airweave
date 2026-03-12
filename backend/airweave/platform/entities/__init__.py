@@ -121,6 +121,8 @@ from .github import (
     GithubContentEntity,
     GitHubDirectoryEntity,
     GitHubFileDeletionEntity,
+    GitHubPRCommentEntity,
+    GitHubPullRequestEntity,
     GithubRepoEntity,
     GitHubRepositoryEntity,
 )
@@ -253,6 +255,13 @@ from .sharepoint2019v2 import (
     SharePoint2019V2ItemEntity,
     SharePoint2019V2ListEntity,
     SharePoint2019V2SiteEntity,
+)
+from .sharepoint_online import (
+    SharePointOnlineDriveEntity,
+    SharePointOnlineFileEntity,
+    SharePointOnlineItemEntity,
+    SharePointOnlinePageEntity,
+    SharePointOnlineSiteEntity,
 )
 from .shopify import (
     ShopifyCollectionEntity,
@@ -460,6 +469,8 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         GithubContentEntity,
         GitHubDirectoryEntity,
         GitHubFileDeletionEntity,
+        GitHubPRCommentEntity,
+        GitHubPullRequestEntity,
         GithubRepoEntity,
         GitHubRepositoryEntity,
     ],
@@ -586,6 +597,13 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         SharePoint2019V2ItemEntity,
         SharePoint2019V2ListEntity,
         SharePoint2019V2SiteEntity,
+    ],
+    "sharepoint_online": [
+        SharePointOnlineSiteEntity,
+        SharePointOnlineDriveEntity,
+        SharePointOnlineItemEntity,
+        SharePointOnlineFileEntity,
+        SharePointOnlinePageEntity,
     ],
     "slite": [
         SliteNoteEntity,

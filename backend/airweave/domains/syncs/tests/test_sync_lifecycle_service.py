@@ -17,7 +17,6 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod, SyncJobStatus, SyncStatus
-from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.source_connections.fakes.repository import (
@@ -25,7 +24,6 @@ from airweave.domains.source_connections.fakes.repository import (
 )
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
 from airweave.domains.sources.types import SourceRegistryEntry
-from airweave.platform.configs._base import Fields
 from airweave.domains.syncs.fakes.sync_cursor_repository import FakeSyncCursorRepository
 from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
 from airweave.domains.syncs.fakes.sync_job_service import FakeSyncJobService
@@ -39,6 +37,7 @@ from airweave.models.connection import Connection  # spec only
 from airweave.models.source_connection import SourceConnection  # spec only
 from airweave.models.sync_cursor import SyncCursor  # spec only
 from airweave.models.sync_job import SyncJob  # spec only
+from airweave.platform.configs._base import Fields
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import ScheduleConfig
 
@@ -98,8 +97,17 @@ def _connection() -> MagicMock:
     conn = MagicMock(spec=Connection)
     conn.id = CONNECTION_ID
     conn.name = "Test Connection"
+    conn.readable_id = "test-connection-abc123"
+    conn.description = None
     conn.short_name = "github"
+    conn.integration_type = "source"
+    conn.integration_credential_id = None
+    conn.status = "active"
     conn.organization_id = ORG_ID
+    conn.created_at = NOW
+    conn.modified_at = NOW
+    conn.created_by_email = None
+    conn.modified_by_email = None
     return conn
 
 
@@ -269,15 +277,8 @@ RUN_CASES = [
         expected_error="Source connection has no associated sync",
         expected_status=400,
     ),
-    RunCase(
-        name="force_full_sync_no_cursor",
-        sc=_source_connection(),
-        collection=_collection(),
-        connection=_connection(),
-        force_full_sync=True,
-        expected_error="force_full_sync can only be used with continuous syncs",
-        expected_status=400,
-    ),
+    # force_full_sync_no_cursor: removed — service now logs info and proceeds
+    # (no cursor means first sync, which is inherently a full sync)
 ]
 
 
@@ -294,6 +295,7 @@ async def test_run_errors(case: RunCase):
         sc_repo.seed(case.sc.id, case.sc)
     if case.collection:
         collection_repo.seed(case.collection.id, case.collection)
+        collection_repo.seed_readable(case.collection.readable_id, case.collection)
     if case.connection:
         connection_repo.seed(case.connection.id, case.connection)
     if case.cursor:
@@ -321,7 +323,6 @@ async def test_run_errors(case: RunCase):
 @pytest.mark.asyncio
 async def test_run_force_full_sync_happy_path():
     """Test run() with force_full_sync=True and valid cursor data."""
-
     sc_repo = FakeSourceConnectionRepository()
     collection_repo = FakeCollectionRepository()
     connection_repo = FakeConnectionRepository()
@@ -385,7 +386,6 @@ async def test_run_force_full_sync_happy_path():
 @pytest.mark.asyncio
 async def test_run_happy_path():
     """Test run() happy path: triggers workflow and publishes event."""
-
     sc_repo = FakeSourceConnectionRepository()
     collection_repo = FakeCollectionRepository()
     connection_repo = FakeConnectionRepository()
@@ -604,7 +604,6 @@ async def test_cancel_job_errors(case: CancelCase):
 @pytest.mark.asyncio
 async def test_cancel_job_happy_path():
     """Successful cancel: workflow found, job transitions to CANCELLING."""
-
     sc_repo = FakeSourceConnectionRepository()
     sync_job_repo = FakeSyncJobRepository()
     sync_job_service = FakeSyncJobService()

@@ -7,6 +7,7 @@ export interface Source {
   description?: string | null;
   short_name: string;
   labels?: string[];
+  supports_browse_tree?: boolean;
 }
 
 // Interface for Source Details (extended source info)

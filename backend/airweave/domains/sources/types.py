@@ -1,3 +1,5 @@
+"""Source domain types — registry entries and internal value objects."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -39,6 +41,7 @@ class SourceRegistryEntry(BaseRegistryEntry):
     federated_search: bool
     supports_temporal_relevance: bool
     supports_access_control: bool
+    supports_browse_tree: bool = False
     rate_limit_level: str | None
     feature_flag: str | None
 

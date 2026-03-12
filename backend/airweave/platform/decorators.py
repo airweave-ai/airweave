@@ -23,6 +23,7 @@ def source(
     rate_limit_level: Optional[RateLimitLevel] = None,
     cursor_class: Optional[Type[BaseModel]] = None,
     supports_access_control: bool = False,
+    supports_browse_tree: bool = False,
     feature_flag: Optional[str] = None,
     internal: bool = False,
 ) -> Callable[[type], type]:
@@ -48,6 +49,9 @@ def source(
             1. Set entity.access on all yielded entities
             2. Implement generate_access_control_memberships() method
             Default is False (entities visible to everyone).
+        supports_browse_tree: Whether this source supports lazy-loaded browse tree for
+            node selection. When True, the source must implement get_browse_children()
+            and parse_browse_node_id(). Default is False.
         feature_flag: Optional feature flag (from FeatureFlag enum) required to access this source.
             When set, only organizations with this feature enabled can see/use the source.
         internal: Whether this is an internal/test source (default False). Internal
@@ -112,6 +116,7 @@ def source(
         cls.cursor_class = cursor_class
         cls.rate_limit_level = rate_limit_level
         cls.supports_access_control = supports_access_control
+        cls.supports_browse_tree = supports_browse_tree
         cls.feature_flag = feature_flag
         cls.internal = internal
 

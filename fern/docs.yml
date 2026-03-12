@@ -129,6 +129,8 @@ navigation:
       path: docs/pages/connectors/salesforce/main.mdx
     - page: Sharepoint
       path: docs/pages/connectors/sharepoint/main.mdx
+    - page: SharePoint Online (ACL)
+      path: docs/pages/connectors/sharepoint_online/main.mdx
     - page: Shopify
       path: docs/pages/connectors/shopify/main.mdx
     - page: Slack

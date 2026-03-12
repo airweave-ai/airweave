@@ -162,6 +162,14 @@ class GitHubConfig(SourceConfig):
             "If empty, uses the default branch."
         ),
     )
+    sync_pull_requests: bool = Field(
+        default=False,
+        title="Sync Pull Requests",
+        description=(
+            "Sync merged pull requests and their review comments. "
+            "Enables searching over PR descriptions, discussions, and code review feedback."
+        ),
+    )
 
     @field_validator("repo_name")
     @classmethod
@@ -935,6 +943,12 @@ class CalComConfig(SourceConfig):
         return value.rstrip("/")
 
 
+class CalendlyConfig(SourceConfig):
+    """Calendly configuration schema."""
+
+    pass
+
+
 # AUTH PROVIDER CONFIGURATION CLASSES
 # These are for configuring auth provider behavior
 
@@ -1012,7 +1026,31 @@ class SnapshotConfig(BaseConfig):
         return v.strip().rstrip("/")
 
 
-class CalendlyConfig(SourceConfig):
-    """Calendly configuration schema."""
+class SharePointOnlineConfig(SourceConfig):
+    """SharePoint Online configuration schema.
 
-    pass
+    Configures which SharePoint sites to sync and ACL behavior.
+    """
+
+    site_url: str = Field(
+        default="",
+        title="SharePoint Site URL",
+        description=(
+            "URL of the SharePoint site(s) to sync. Supports a single URL "
+            "(e.g., 'https://contoso.sharepoint.com/sites/Marketing'), "
+            "comma-separated URLs for multiple sites, or leave empty to "
+            "sync all accessible sites."
+        ),
+    )
+
+    include_personal_sites: bool = Field(
+        default=False,
+        title="Include Personal Sites",
+        description="Whether to include OneDrive personal sites in sync.",
+    )
+
+    include_pages: bool = Field(
+        default=True,
+        title="Include Site Pages",
+        description="Whether to sync SharePoint site pages.",
+    )

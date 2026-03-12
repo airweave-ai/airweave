@@ -16,6 +16,7 @@ from .incremental_stub import IncrementalStubCursor
 from .linear import LinearCursor
 from .outlook_mail import OutlookMailCursor
 from .sharepoint2019v2 import SharePoint2019V2Cursor
+from .sharepoint_online import SharePointOnlineCursor
 
 __all__ = [
     "BaseCursor",
@@ -30,4 +31,5 @@ __all__ = [
     "LinearCursor",
     "OutlookMailCursor",
     "SharePoint2019V2Cursor",
+    "SharePointOnlineCursor",
 ]

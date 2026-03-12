@@ -7,14 +7,13 @@ from fastapi import HTTPException
 from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import airweave.core.container as _container_module
+import airweave.core.container as _container_module  # TODO(code-blue): inject via constructor
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.protocols.pubsub import PubSub
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.search import RetrievalStrategy, SearchDefaults, SearchRequest
 from airweave.search.context import SearchContext
@@ -552,12 +551,13 @@ class SearchFactory:
             if not source_connections:
                 return False
 
+            if _container_module.container is None:
+                raise RuntimeError("Container not initialized")
+            registry = _container_module.container.source_registry
+
             for source_connection in source_connections:
-                source_model = await crud.source.get_by_short_name(db, source_connection.short_name)
-                if not source_model:
-                    raise ValueError(f"Source model not found for {source_connection.short_name}")
-                source_class = resource_locator.get_source(source_model)
-                if not getattr(source_class, "federated_search", False):
+                entry = registry.get(source_connection.short_name)
+                if not entry.federated_search:
                     return True
             return False
         except Exception:
@@ -855,14 +855,11 @@ class SearchFactory:
         Raises:
             ValueError: If source is federated but instantiation fails
         """
-        # Step 1: Get source model and validate federated search capability
-        source_model = await crud.source.get_by_short_name(db, source_connection.short_name)
-        if not source_model:
-            ctx.logger.warning(f"Source model not found for {source_connection.short_name}")
-            return None
-
-        source_class = resource_locator.get_source(source_model)
-        if not getattr(source_class, "federated_search", False):
+        # Step 1: Validate federated search capability via source registry
+        if _container_module.container is None:
+            raise RuntimeError("Container not initialized")
+        entry = _container_module.container.source_registry.get(source_connection.short_name)
+        if not entry.federated_search:
             return None
 
         if not source_connection.connection_id:

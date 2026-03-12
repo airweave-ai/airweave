@@ -94,6 +94,7 @@ class SourceService(SourceServiceProtocol):
                     "federated_search": entry.federated_search,
                     "supports_temporal_relevance": entry.supports_temporal_relevance,
                     "supports_access_control": entry.supports_access_control,
+                    "supports_browse_tree": entry.supports_browse_tree,
                     "rate_limit_level": entry.rate_limit_level,
                     "feature_flag": entry.feature_flag,
                     "labels": entry.labels,

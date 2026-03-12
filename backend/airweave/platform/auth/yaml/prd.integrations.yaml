@@ -377,7 +377,7 @@ integrations:
     url: "https://zoom.us/oauth/authorize"
     backend_url: "https://zoom.us/oauth/token"
     grant_type: "authorization_code"
-    client_id: "placeholder_client_id"
+    client_id: "txwMhD8WSKST4B2GTGLdIQ"
     client_secret: "placeholder_client_secret"
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "header"

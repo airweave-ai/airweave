@@ -18,7 +18,6 @@ from airweave.domains.entities.types import EntityDefinitionEntry
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.platform.configs._base import Fields
 
-
 # ---------------------------------------------------------------------------
 # Stub helpers
 # ---------------------------------------------------------------------------
@@ -59,6 +58,7 @@ def _make_source_cls(
     Stub.federated_search = False
     Stub.supports_temporal_relevance = True
     Stub.supports_access_control = False
+    Stub.supports_browse_tree = False
     Stub.rate_limit_level = None
     Stub.feature_flag = None
     Stub.labels = None
@@ -99,7 +99,9 @@ def _make_entity_entry(short_name: str, module_name: str) -> EntityDefinitionEnt
     )
 
 
-def _build_registry(source_classes, *, auth_entries=None, entity_entries=None, enable_internal=True):
+def _build_registry(
+    source_classes, *, auth_entries=None, entity_entries=None, enable_internal=True
+):
     """Build a SourceRegistry from stub classes with patched globals."""
     auth_reg = FakeAuthProviderRegistry()
     if auth_entries:
@@ -231,7 +233,9 @@ class BlockCase:
 BLOCK_CASES = [
     BlockCase(desc="blocked provider excluded", blocked_sources=["slack"], expect_supported=False),
     BlockCase(desc="unblocked provider included", blocked_sources=[], expect_supported=True),
-    BlockCase(desc="other source blocked, not us", blocked_sources=["github"], expect_supported=True),
+    BlockCase(
+        desc="other source blocked, not us", blocked_sources=["github"], expect_supported=True
+    ),
 ]
 
 
@@ -266,7 +270,9 @@ def test_output_entity_definitions_resolved():
 
 
 def test_auth_methods_serialized_from_enum():
-    cls = _make_source_cls("slack", "Slack", auth_methods=[_AuthMethod.DIRECT, _AuthMethod.OAUTH_BROWSER])
+    cls = _make_source_cls(
+        "slack", "Slack", auth_methods=[_AuthMethod.DIRECT, _AuthMethod.OAUTH_BROWSER]
+    )
     registry = _build_registry([cls])
     assert registry.get("slack").auth_methods == ["direct", "oauth_browser"]
 

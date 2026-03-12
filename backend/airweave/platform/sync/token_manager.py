@@ -2,16 +2,17 @@
 
 import asyncio
 import time
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import airweave.core.container as _container_module  # TODO(code-blue): inject via constructor
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.logging import logger
-from airweave.platform.auth.oauth2_service import oauth2_service
 
 
 class TokenManager:
@@ -88,6 +89,11 @@ class TokenManager:
         # token was issued hours/days ago and has since expired
         self._last_refresh_time = 0
         self._refresh_lock = asyncio.Lock()
+
+        # Cache for tokens obtained for alternative resource scopes
+        # (e.g. SharePoint REST API token vs Graph API token)
+        # Stores (token, fetch_timestamp) tuples for TTL enforcement
+        self._resource_tokens: Dict[str, tuple] = {}
 
         # For sources without refresh tokens, we can't refresh
         self._can_refresh = self._determine_refresh_capability()
@@ -217,6 +223,7 @@ class TokenManager:
                 new_token = await self._refresh_token()
                 self._current_token = new_token
                 self._last_refresh_time = time.time()
+                self._resource_tokens.clear()
 
                 self.logger.debug(
                     f"Successfully refreshed token for {self.source_short_name} after 401"
@@ -228,6 +235,93 @@ class TokenManager:
                     f"Failed to refresh token for {self.source_short_name} after 401: {str(e)}"
                 )
                 raise TokenRefreshError(f"Token refresh failed after 401: {str(e)}") from e
+
+    async def get_token_for_resource(self, resource_scope: str) -> str:
+        """Get a token for a different resource scope using the stored refresh token.
+
+        Used for cross-resource access, e.g. obtaining a SharePoint REST API token
+        when the primary token is scoped to Microsoft Graph.
+
+        Args:
+            resource_scope: The target scope, e.g. "https://tenant.sharepoint.com/.default"
+
+        Returns:
+            An access token scoped to the requested resource.
+
+        Raises:
+            TokenRefreshError: If the token exchange fails.
+        """
+        cache_key = resource_scope.lower()
+        if cache_key in self._resource_tokens:
+            cached_token, fetch_time = self._resource_tokens[cache_key]
+            if (time.time() - fetch_time) < self.REFRESH_INTERVAL_SECONDS:
+                return cached_token
+            self.logger.debug(f"Resource token for {resource_scope} expired, refreshing")
+            del self._resource_tokens[cache_key]
+
+        if not self._has_refresh_token:
+            raise TokenRefreshError(
+                f"Cannot get token for resource {resource_scope}: no refresh token available"
+            )
+
+        try:
+            from airweave.db.session import get_db_context
+            from airweave.platform.auth.settings import integration_settings
+
+            async with get_db_context() as refresh_db:
+                credential = await crud.integration_credential.get(
+                    refresh_db, self.integration_credential_id, self.ctx
+                )
+                if not credential:
+                    raise TokenRefreshError("Integration credential not found")
+
+                decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
+                refresh_token = decrypted_credential.get("refresh_token")
+                if not refresh_token:
+                    raise TokenRefreshError("No refresh token for resource token exchange")
+
+            config = await integration_settings.get_by_short_name(self.source_short_name)
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    config.backend_url,
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh_token,
+                        "client_id": config.client_id,
+                        "client_secret": config.client_secret,
+                        "scope": resource_scope,
+                    },
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            token = data.get("access_token")
+            if not token:
+                raise TokenRefreshError(
+                    f"No access_token in response for resource scope {resource_scope}"
+                )
+
+            self._resource_tokens[cache_key] = (token, time.time())
+            self.logger.info(
+                f"Obtained token for resource scope {resource_scope} "
+                f"(source: {self.source_short_name})"
+            )
+            return token
+
+        except TokenRefreshError:
+            raise
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                f"Resource token exchange failed ({e.response.status_code}): "
+                f"{e.response.text[:300]}"
+            )
+            raise TokenRefreshError(
+                f"Resource token exchange failed: {e.response.status_code}"
+            ) from e
+        except Exception as e:
+            raise TokenRefreshError(f"Resource token exchange failed: {str(e)}") from e
 
     async def _refresh_token(self) -> str:
         """Internal method to perform the actual token refresh.
@@ -259,18 +353,15 @@ class TokenManager:
         )
 
         try:
-            # Get the runtime auth fields required by the source
-            from airweave.core.auth_provider_service import auth_provider_service
-
-            auth_fields = await auth_provider_service.get_runtime_auth_fields_for_source(
-                self.db, self.source_short_name
-            )
+            if _container_module.container is None:
+                raise RuntimeError("Container not initialized")
+            entry = _container_module.container.source_registry.get(self.source_short_name)
 
             # Get fresh credentials from auth provider instance
             fresh_credentials = await self.auth_provider_instance.get_creds_for_source(
                 source_short_name=self.source_short_name,
-                source_auth_config_fields=auth_fields.all_fields,
-                optional_fields=auth_fields.optional_fields,
+                source_auth_config_fields=entry.runtime_auth_all_fields,
+                optional_fields=entry.runtime_auth_optional_fields,
             )
 
             # Extract access token
@@ -343,14 +434,15 @@ class TokenManager:
 
                 decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
 
-                # Use the oauth2_service to refresh the token
-                oauth2_response = await oauth2_service.refresh_access_token(
-                    db=refresh_db,
-                    integration_short_name=self.source_short_name,
-                    ctx=self.ctx,
-                    connection_id=self.connection_id,
-                    decrypted_credential=decrypted_credential,
-                    config_fields=self.config_fields,
+                oauth2_response = (
+                    await _container_module.container.oauth2_service.refresh_access_token(
+                        db=refresh_db,
+                        integration_short_name=self.source_short_name,
+                        ctx=self.ctx,
+                        connection_id=self.connection_id,
+                        decrypted_credential=decrypted_credential,
+                        config_fields=self.config_fields,
+                    )
                 )
 
                 return oauth2_response.access_token

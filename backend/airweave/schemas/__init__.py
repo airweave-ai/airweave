@@ -25,16 +25,10 @@ from .collection import (
     CollectionUpdate,
 )
 from .connection import Connection, ConnectionCreate, ConnectionInDBBase, ConnectionUpdate
-from .destination import (
-    Destination,
-    DestinationCreate,
-    DestinationUpdate,
-)
 from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
 from .entity_count import EntityCount as EntityCountSchema
-from .entity_definition import EntityDefinition, EntityDefinitionCreate, EntityDefinitionUpdate
 from .entity_count import EntityCountCreate, EntityCountUpdate, EntityCountWithDefinition
-
+from .entity_definition import EntityDefinition, EntityDefinitionCreate, EntityDefinitionUpdate
 from .errors import (
     ConflictErrorResponse,
     NotFoundErrorResponse,

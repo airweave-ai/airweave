@@ -19,6 +19,8 @@ from airweave.platform.entities.github import (
     GitHubCodeFileEntity,
     GitHubDirectoryEntity,
     GitHubFileDeletionEntity,
+    GitHubPRCommentEntity,
+    GitHubPullRequestEntity,
     GitHubRepositoryEntity,
 )
 from airweave.platform.sources._base import BaseSource
@@ -57,6 +59,12 @@ class GitHubSource(BaseSource):
     """
 
     BASE_URL = "https://api.github.com"
+
+    personal_access_token: str
+    repo_name: str
+    branch: Optional[str]
+    max_file_size: int
+    sync_pull_requests: bool
 
     def get_default_cursor_field(self) -> Optional[str]:
         """Get the default cursor field for GitHub source.
@@ -116,6 +124,8 @@ class GitHubSource(BaseSource):
         instance.branch = config.get("branch", None)
 
         instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
+
+        instance.sync_pull_requests = config.get("sync_pull_requests", False)
 
         return instance
 
@@ -266,7 +276,7 @@ class GitHubSource(BaseSource):
             self.cursor.update(
                 last_repository_pushed_at=current_pushed_at,
                 repo_name=repo_name,
-                branch=getattr(self, "branch", None),
+                branch=self.branch,
             )
 
         return GitHubRepositoryEntity(
@@ -849,11 +859,167 @@ class GitHubSource(BaseSource):
                     f"Available branches: {available_branches}"
                 )
 
+    async def _fetch_merged_pull_requests(
+        self,
+        client: httpx.AsyncClient,
+        repo_name: str,
+        repo_breadcrumb: Breadcrumb,
+        since: Optional[str] = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Fetch merged pull requests and their review comments.
+
+        Args:
+            client: HTTP client
+            repo_name: Repository name (format: "owner/repo")
+            repo_breadcrumb: Breadcrumb for the parent repository
+            since: If set, only yield PRs updated after this ISO 8601 timestamp
+        """
+        owner, repo = repo_name.split("/")
+        url = f"{self.BASE_URL}/repos/{repo_name}/pulls"
+        params = {"state": "closed", "sort": "updated", "direction": "desc"}
+
+        all_prs = await self._get_paginated_results(client, url, params)
+
+        latest_updated_at = since or ""
+
+        for pr_data in all_prs:
+            if not pr_data.get("merged_at"):
+                continue
+
+            pr_updated = pr_data["updated_at"]
+
+            # For incremental sync, skip PRs not updated since last sync
+            if since and pr_updated <= since:
+                continue
+
+            if pr_updated > latest_updated_at:
+                latest_updated_at = pr_updated
+
+            pr_number = pr_data["number"]
+
+            pr_breadcrumb = Breadcrumb(
+                entity_id=f"{repo_name}#{pr_number}",
+                name=f"PR #{pr_number}",
+                entity_type=GitHubPullRequestEntity.__name__,
+            )
+
+            labels = [lbl["name"] for lbl in pr_data.get("labels", []) if lbl.get("name")]
+            assignees = [a["login"] for a in pr_data.get("assignees", []) if a.get("login")]
+            reviewers = [
+                r["login"] for r in pr_data.get("requested_reviewers", []) if r.get("login")
+            ]
+
+            files_data = await self._get_paginated_results(
+                client,
+                f"{self.BASE_URL}/repos/{repo_name}/pulls/{pr_number}/files",
+                {},
+            )
+            changed_paths = [f["filename"] for f in files_data if f.get("filename")]
+
+            pr_entity = GitHubPullRequestEntity(
+                breadcrumbs=[repo_breadcrumb],
+                pr_id=f"{repo_name}#{pr_number}",
+                title=pr_data["title"],
+                body=pr_data.get("body"),
+                number=pr_number,
+                state=pr_data["state"],
+                author=pr_data.get("user", {}).get("login"),
+                labels=labels or None,
+                assignees=assignees or None,
+                reviewers=reviewers or None,
+                base_branch=pr_data.get("base", {}).get("ref"),
+                head_branch=pr_data.get("head", {}).get("ref"),
+                additions=pr_data.get("additions"),
+                deletions=pr_data.get("deletions"),
+                changed_files=pr_data.get("changed_files"),
+                changed_files_list=changed_paths or None,
+                merge_commit_sha=pr_data.get("merge_commit_sha"),
+                created_time=datetime.fromisoformat(pr_data["created_at"].replace("Z", "+00:00")),
+                updated_time=datetime.fromisoformat(pr_data["updated_at"].replace("Z", "+00:00")),
+                merged_at=datetime.fromisoformat(pr_data["merged_at"].replace("Z", "+00:00"))
+                if pr_data.get("merged_at")
+                else None,
+                repo_name=repo,
+                repo_owner=owner,
+                web_url_value=pr_data.get("html_url"),
+            )
+            yield pr_entity
+
+            # Fetch review comments for this PR
+            async for comment_entity in self._fetch_pr_review_comments(
+                client, repo_name, pr_number, owner, repo, [repo_breadcrumb, pr_breadcrumb]
+            ):
+                yield comment_entity
+
+        # Update cursor with latest PR timestamp
+        if self.cursor and latest_updated_at and latest_updated_at != since:
+            self.cursor.update(last_pr_updated_at=latest_updated_at)
+
+    async def _fetch_pr_review_comments(
+        self,
+        client: httpx.AsyncClient,
+        repo_name: str,
+        pr_number: int,
+        owner: str,
+        repo: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Fetch review comments (inline code comments) for a single PR.
+
+        Args:
+            client: HTTP client
+            repo_name: Repository name (format: "owner/repo")
+            pr_number: PR number
+            owner: Repository owner
+            repo: Repository short name
+            breadcrumbs: Breadcrumb chain (repo + PR)
+
+        Yields:
+            GitHubPRCommentEntity for each review comment
+        """
+        url = f"{self.BASE_URL}/repos/{repo_name}/pulls/{pr_number}/comments"
+        try:
+            comments = await self._get_paginated_results(client, url)
+        except Exception as e:
+            self.logger.error(f"Error fetching review comments for PR #{pr_number}: {e}")
+            return
+
+        for comment in comments:
+            comment_id = comment["id"]
+            author = comment.get("user", {}).get("login", "unknown")
+            path = comment.get("path", "")
+            body = comment.get("body", "")
+
+            label_parts = []
+            if author:
+                label_parts.append(author)
+            if path:
+                label_parts.append(path)
+            label = (
+                f"Comment by {' on '.join(label_parts)}" if label_parts else f"Comment {comment_id}"
+            )
+
+            yield GitHubPRCommentEntity(
+                breadcrumbs=breadcrumbs.copy(),
+                comment_id=f"{repo_name}#{pr_number}/comment/{comment_id}",
+                comment_label=label,
+                body=body,
+                path=path,
+                diff_hunk=comment.get("diff_hunk"),
+                author=author,
+                pr_number=pr_number,
+                created_time=datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00")),
+                updated_time=datetime.fromisoformat(comment["updated_at"].replace("Z", "+00:00")),
+                repo_name=repo,
+                repo_owner=owner,
+                web_url_value=comment.get("html_url"),
+            )
+
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from GitHub repository with incremental support.
 
         Yields:
-            Repository, directory, and file entities
+            Repository, directory, file, pull request, and PR comment entities
         """
         if not hasattr(self, "repo_name") or not self.repo_name:
             raise ValueError("Repository name must be specified")
@@ -905,6 +1071,27 @@ class GitHubSource(BaseSource):
                 # Still yield repository entity for cursor update, but skip file traversal
                 repo_entity = await self._get_repository_info(client, self.repo_name)
                 yield repo_entity
+
+            # Sync merged pull requests and review comments if enabled
+            if self.sync_pull_requests:
+                cursor_data = self.cursor.data if self.cursor else {}
+                last_pr_updated = cursor_data.get("last_pr_updated_at") or None
+
+                repo_breadcrumb = Breadcrumb(
+                    entity_id=str(repo_data["id"]),
+                    name=repo_data["name"],
+                    entity_type=GitHubRepositoryEntity.__name__,
+                )
+
+                if last_pr_updated:
+                    self.logger.debug(f"Incremental PR sync - changes since {last_pr_updated}")
+                else:
+                    self.logger.debug("Full PR sync - no previous cursor data")
+
+                async for entity in self._fetch_merged_pull_requests(
+                    client, self.repo_name, repo_breadcrumb, since=last_pr_updated
+                ):
+                    yield entity
 
     async def validate(self) -> bool:
         """Verify GitHub PAT and repo/branch access with lightweight pings."""

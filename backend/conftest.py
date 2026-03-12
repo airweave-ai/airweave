@@ -543,6 +543,22 @@ def fake_init_session_repo():
 
 
 @pytest.fixture
+def fake_browse_tree_service():
+    """Fake BrowseTreeService (MagicMock)."""
+    from unittest.mock import MagicMock
+
+    return MagicMock()
+
+
+@pytest.fixture
+def fake_selection_repo():
+    """Fake NodeSelectionRepository (MagicMock)."""
+    from unittest.mock import MagicMock
+
+    return MagicMock()
+
+
+@pytest.fixture
 def test_container(
     fake_context_cache,
     fake_rate_limiter,
@@ -598,6 +614,8 @@ def test_container(
     fake_organization_service,
     fake_email_service,
     fake_user_service,
+    fake_browse_tree_service,
+    fake_selection_repo,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -628,6 +646,8 @@ def test_container(
         auth_provider_service=fake_auth_provider_service,
         entity_definition_registry=fake_entity_definition_registry,
         collection_service=fake_collection_service,
+        browse_tree_service=fake_browse_tree_service,
+        selection_repo=fake_selection_repo,
         sc_repo=fake_sc_repo,
         collection_repo=fake_collection_repo,
         conn_repo=fake_conn_repo,

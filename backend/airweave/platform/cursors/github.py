@@ -20,6 +20,10 @@ class GitHubCursor(BaseCursor):
         default="",
         description="ISO 8601 timestamp of last repository push (e.g., '2024-11-03T10:00:00Z')",
     )
+    last_pr_updated_at: str = Field(
+        default="",
+        description="ISO 8601 timestamp of the most recently updated merged PR synced",
+    )
     repo_name: Optional[str] = Field(
         default=None, description="Name of the repository being synced"
     )
