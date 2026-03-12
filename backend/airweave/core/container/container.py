@@ -192,7 +192,6 @@ class Container:
     sync_lifecycle: SyncLifecycleServiceProtocol
     sync_factory: SyncFactoryProtocol
 
-    # Entity repository (used by sync pipeline)
     entity_repo: EntityRepositoryProtocol
 
     # Temporal domain
