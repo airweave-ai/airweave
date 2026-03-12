@@ -1,0 +1,159 @@
+---
+title: "Freshdesk"
+description: "Freshdesk integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Freshdesk logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Freshdesk</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Freshdesk through Airweave's unified search layer.
+
+## Configuration
+
+Freshdesk source connector.
+
+Syncs tickets, conversations, contacts, companies, and solution articles from Freshdesk.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/freshdesk.py"
+>
+  Explore the Freshdesk connector implementation
+</Card>
+
+### Authentication
+
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="FreshdeskTicketEntity">
+
+Schema for Freshdesk ticket entities.
+
+Reference: https://developers.freshdesk.com/api/#tickets
+
+| Field | Type | Description |
+|-------|------|-------------|
+| ticket_id | int | Unique identifier of the ticket |
+| subject | str | Subject of the ticket |
+| created_at_value | datetime | When the ticket was created. |
+| updated_at_value | datetime | When the ticket was last updated. |
+| web_url_value | Optional[str] | UI URL to open the ticket in Freshdesk. |
+| description | Optional[str] | HTML content of the ticket |
+| description_text | Optional[str] | Plain text content of the ticket |
+| status | Optional[int] | Status of the ticket (2=Open, 3=Pending, 4=Resolved, 5=Closed) |
+| priority | Optional[int] | Priority (1=Low, 2=Medium, 3=High, 4=Urgent) |
+| requester_id | Optional[int] | ID of the requester |
+| responder_id | Optional[int] | ID of the assigned agent |
+| company_id | Optional[int] | ID of the company |
+| group_id | Optional[int] | ID of the group |
+| type | Optional[str] | Ticket type (e.g. Question, Problem) |
+| source | Optional[int] | Channel (1=Email, 2=Portal, 3=Phone, 7=Chat, etc.) |
+| tags | List[str] | Tags associated with the ticket |
+| custom_fields | Dict[str, Any] | Custom field values |
+
+</Accordion>
+<Accordion title="FreshdeskConversationEntity">
+
+Schema for Freshdesk conversation entities (replies and notes on a ticket).
+
+Reference: https://developers.freshdesk.com/api/#list-all-conversations-of-a-ticket
+
+| Field | Type | Description |
+|-------|------|-------------|
+| conversation_id | int | Unique identifier of the conversation |
+| ticket_id | int | ID of the ticket this conversation belongs to |
+| ticket_subject | str | Subject of the parent ticket |
+| body | Optional[str] | HTML content of the conversation |
+| body_text | str | Plain text content of the conversation |
+| created_at_value | datetime | When the conversation was created. |
+| updated_at_value | Optional[datetime] | When the conversation was last updated. |
+| user_id | Optional[int] | ID of the user who created the conversation |
+| incoming | bool | True if from outside (e.g. customer reply) |
+| private | bool | True if the note is private |
+| web_url_value | Optional[str] | URL to the ticket (conversations don't have direct URLs). |
+
+</Accordion>
+<Accordion title="FreshdeskContactEntity">
+
+Schema for Freshdesk contact entities.
+
+Reference: https://developers.freshdesk.com/api/#contacts
+
+| Field | Type | Description |
+|-------|------|-------------|
+| contact_id | int | Unique identifier of the contact |
+| name | str | Name of the contact |
+| email | Optional[str] | Primary email address |
+| created_at_value | datetime | When the contact was created. |
+| updated_at_value | datetime | When the contact was last updated. |
+| web_url_value | Optional[str] | URL to the contact in Freshdesk. |
+| company_id | Optional[int] | ID of the primary company |
+| job_title | Optional[str] | Job title |
+| phone | Optional[str] | Phone number |
+| mobile | Optional[str] | Mobile number |
+| description | Optional[str] | Description of the contact |
+| tags | List[str] | Tags associated with the contact |
+| custom_fields | Dict[str, Any] | Custom field values |
+
+</Accordion>
+<Accordion title="FreshdeskCompanyEntity">
+
+Schema for Freshdesk company entities.
+
+Reference: https://developers.freshdesk.com/api/#companies
+
+| Field | Type | Description |
+|-------|------|-------------|
+| company_id | int | Unique identifier of the company |
+| name | str | Name of the company |
+| created_at_value | datetime | When the company was created. |
+| updated_at_value | datetime | When the company was last updated. |
+| web_url_value | Optional[str] | URL to the company in Freshdesk. |
+| description | Optional[str] | Description of the company |
+| note | Optional[str] | Notes about the company |
+| domains | List[str] | Domains associated with the company |
+| custom_fields | Dict[str, Any] | Custom field values |
+| industry | Optional[str] | Industry |
+
+</Accordion>
+<Accordion title="FreshdeskSolutionArticleEntity">
+
+Schema for Freshdesk solution/knowledge base article entities.
+
+Reference: https://developers.freshdesk.com/api/#articles
+
+| Field | Type | Description |
+|-------|------|-------------|
+| article_id | int | Unique identifier of the article |
+| title | str | Title of the article |
+| created_at_value | datetime | When the article was created. |
+| updated_at_value | datetime | When the article was last updated. |
+| web_url_value | Optional[str] | URL to the article in Freshdesk. |
+| description | Optional[str] | HTML content of the article |
+| description_text | Optional[str] | Plain text content of the article |
+| status | Optional[int] | Status (1=draft, 2=published) |
+| folder_id | Optional[int] | ID of the folder |
+| category_id | Optional[int] | ID of the category |
+| folder_name | Optional[str] | Name of the folder |
+| category_name | Optional[str] | Name of the category |
+| tags | List[str] | Tags associated with the article |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

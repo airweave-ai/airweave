@@ -33,83 +33,13 @@ and code files with configurable filtering options for branches and file types.
 
 ### Authentication
 
-This connector uses a custom authentication configuration.
-
-<Card
-  title="Authentication Configuration"
-  className="auth-config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
->
-
-Bitbucket authentication credentials schema.
-
-Requires API token authentication with Atlassian email.
-
-<ParamField
-  path="access_token"
-  type="str"
-  required={true}
->
-  Create a Bitbucket API token [here](https://id.atlassian.com/manage-profile/security/api-tokens) with scopes:
-- account
-- read:user:bitbucket
-- read:workspace:bitbucket
-- read:repository:bitbucket
-
-When using this, also provide your Atlassian email address.
-</ParamField>
-<ParamField
-  path="email"
-  type="str"
-  required={true}
->
-  Your Atlassian email address (required for API token authentication)
-</ParamField>
-<ParamField
-  path="workspace"
-  type="str"
-  required={true}
->
-  Bitbucket workspace slug (e.g., 'my-workspace')
-</ParamField>
-<ParamField
-  path="repo_slug"
-  type="Optional[str]"
-  required={false}
-  default=""
->
-  Specific repository to sync (e.g., 'my-repo'). If empty, syncs all repositories in the workspace.
-</ParamField>
-</Card>
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
 
 ### Configuration Options
 
-The following configuration options are available for this connector:
-
-<Card
-  title="Configuration Parameters"
-  className="config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
->
-
-Bitbucket configuration schema.
-<ParamField
-  path="branch"
-  type="str"
-  required={false}
-  default=""
->
-  Specific branch to sync (e.g., 'main', 'develop'). If empty, uses the default branch.
-</ParamField>
-<ParamField
-  path="file_extensions"
-  type="list[str]"
-  required={false}
-  default="[]"
->
-  List of file extensions to include (e.g., '.py', '.js', '.md'). If empty, includes all text files.
-</ParamField>
-</Card>
+This connector does not have any additional configuration options.
 
 ## Data Models
 

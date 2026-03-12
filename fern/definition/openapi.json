@@ -1811,7 +1811,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WebhookSubscription"
+                  "$ref": "#/components/schemas/WebhookSubscriptionDetail"
                 }
               }
             }
@@ -2237,7 +2237,6 @@
       "AdminSearchDestination": {
         "type": "string",
         "enum": [
-          "qdrant",
           "vespa"
         ],
         "title": "AdminSearchDestination",
@@ -2397,17 +2396,6 @@
             ],
             "title": "Total Arf Entity Count"
           },
-          "total_qdrant_entity_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Qdrant Entity Count"
-          },
           "total_vespa_entity_count": {
             "anyOf": [
               {
@@ -2515,114 +2503,429 @@
         "title": "AdminSyncInfo",
         "description": "Extended sync info for admin listing with entity counts and status."
       },
-      "AuthProvider": {
+      "AgenticSearchAccessControl": {
         "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Name",
-            "description": "Human-readable name of the auth provider (e.g., 'Google OAuth', 'GitHub')"
-          },
-          "short_name": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Short Name",
-            "description": "Technical identifier used internally to reference this auth provider. Must be unique."
-          },
-          "class_name": {
-            "type": "string",
-            "title": "Class Name",
-            "description": "Python class name of the auth provider implementation"
-          },
-          "auth_config_class": {
-            "type": "string",
-            "title": "Auth Config Class",
-            "description": "Python class name that defines the authentication configuration fields"
-          },
-          "config_class": {
-            "type": "string",
-            "title": "Config Class",
-            "description": "Python class name that defines the auth provider-specific configuration"
-          },
-          "description": {
+          "viewers": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 1000
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Description",
-            "description": "Detailed description explaining what this auth provider offers"
+            "title": "Viewers",
+            "description": "Principal IDs who can view this entity. None if unknown."
           },
-          "organization_id": {
+          "is_public": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "uuid"
+                "type": "boolean"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Organization Id",
-            "description": "Organization identifier for custom auth providers. System providers have this set to null."
-          },
-          "id": {
+            "title": "Is Public",
+            "description": "Whether this entity is publicly accessible. None if unknown."
+          }
+        },
+        "type": "object",
+        "title": "AgenticSearchAccessControl",
+        "description": "Access control in agentic search result."
+      },
+      "AgenticSearchAnswer": {
+        "properties": {
+          "text": {
             "type": "string",
-            "format": "uuid",
-            "title": "Id"
+            "title": "Text",
+            "description": "The answer text. Should be clear and well-structured."
           },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At"
-          },
-          "auth_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Fields"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Dynamically populated field definitions for authentication configuration. These describe what credentials are required to connect to this auth provider."
-          },
-          "config_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Fields"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Dynamically populated field definitions for auth provider-specific configuration. These describe what additional configuration is required when using this auth provider to connect to a source (e.g., auth_config_id and account_id for Composio)."
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchCitation"
+            },
+            "type": "array",
+            "title": "Citations",
+            "description": "List of entity_ids from search results used to compose the answer."
           }
         },
         "type": "object",
         "required": [
-          "name",
-          "short_name",
-          "class_name",
-          "auth_config_class",
-          "config_class",
-          "id",
-          "created_at",
-          "modified_at"
+          "text",
+          "citations"
         ],
-        "title": "AuthProvider",
-        "description": "Schema for auth provider response."
+        "title": "AgenticSearchAnswer",
+        "description": "Answer generated from search results."
+      },
+      "AgenticSearchBreadcrumb": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id",
+            "description": "ID of the entity in the source."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Display name of the entity."
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type",
+            "description": "Entity class name (e.g., 'AsanaProjectEntity')."
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "name",
+          "entity_type"
+        ],
+        "title": "AgenticSearchBreadcrumb",
+        "description": "Breadcrumb in agentic search result."
+      },
+      "AgenticSearchCitation": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id",
+            "description": "The entity ID of a search result used in the answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id"
+        ],
+        "title": "AgenticSearchCitation",
+        "description": "Citation for a source used in the answer."
+      },
+      "AgenticSearchFilterCondition": {
+        "properties": {
+          "field": {
+            "$ref": "#/components/schemas/AgenticSearchFilterableField",
+            "description": "Field to filter on (use dot notation for nested fields)."
+          },
+          "operator": {
+            "$ref": "#/components/schemas/AgenticSearchFilterOperator",
+            "description": "The comparison operator to use."
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value",
+            "description": "Value to compare against. Use a list for 'in' and 'not_in' operators."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "operator",
+          "value"
+        ],
+        "title": "AgenticSearchFilterCondition",
+        "description": "A single filter condition.\n\nPydantic validates that:\n- ``field`` is a valid AgenticSearchFilterableField enum value\n- ``operator`` is a valid AgenticSearchFilterOperator enum value\n- ``value`` matches the expected types\n- The combination of field + operator + value is semantically valid\n\nInvalid filters raise ``pydantic.ValidationError`` automatically.\n\nExamples:\n    {\"field\": \"airweave_system_metadata.source_name\", \"operator\": \"equals\",\n     \"value\": \"notion\"}\n    {\"field\": \"created_at\", \"operator\": \"greater_than\",\n     \"value\": \"2024-01-01T00:00:00Z\"}\n    {\"field\": \"breadcrumbs.name\", \"operator\": \"contains\", \"value\": \"Engineering\"}"
+      },
+      "AgenticSearchFilterGroup": {
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchFilterCondition"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Conditions",
+            "description": "Filter conditions within this group, combined with AND"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conditions"
+        ],
+        "title": "AgenticSearchFilterGroup",
+        "description": "A group of filter conditions combined with AND.\n\nMultiple filter groups are combined with OR, allowing expressions like:\n(A AND B) OR (C AND D)\n\nExamples:\n    Single group (AND):\n        {\"conditions\": [\n            {\"field\": \"airweave_system_metadata.source_name\",\n             \"operator\": \"equals\", \"value\": \"slack\"},\n            {\"field\": \"airweave_system_metadata.entity_type\",\n             \"operator\": \"equals\", \"value\": \"SlackMessageEntity\"}\n        ]}\n\n    Multiple groups (OR between groups, AND within):\n        [\n            {\"conditions\": [{\"field\": \"name\", \"operator\": \"equals\",\n                             \"value\": \"doc1\"}]},\n            {\"conditions\": [{\"field\": \"name\", \"operator\": \"equals\",\n                             \"value\": \"doc2\"}]}\n        ]\n\n    Breadcrumb filtering:\n        {\"conditions\": [\n            {\"field\": \"breadcrumbs.name\", \"operator\": \"contains\",\n             \"value\": \"Engineering\"}\n        ]}"
+      },
+      "AgenticSearchFilterOperator": {
+        "type": "string",
+        "enum": [
+          "equals",
+          "not_equals",
+          "contains",
+          "greater_than",
+          "less_than",
+          "greater_than_or_equal",
+          "less_than_or_equal",
+          "in",
+          "not_in"
+        ],
+        "title": "AgenticSearchFilterOperator",
+        "description": "Supported filter operators."
+      },
+      "AgenticSearchFilterableField": {
+        "type": "string",
+        "enum": [
+          "entity_id",
+          "name",
+          "created_at",
+          "updated_at",
+          "breadcrumbs.entity_id",
+          "breadcrumbs.name",
+          "breadcrumbs.entity_type",
+          "airweave_system_metadata.entity_type",
+          "airweave_system_metadata.source_name",
+          "airweave_system_metadata.original_entity_id",
+          "airweave_system_metadata.chunk_index",
+          "airweave_system_metadata.sync_id",
+          "airweave_system_metadata.sync_job_id"
+        ],
+        "title": "AgenticSearchFilterableField",
+        "description": "Filterable fields in agentic search.\n\nUses dot notation for nested fields (e.g., breadcrumbs.name,\nairweave_system_metadata.source_name)."
+      },
+      "AgenticSearchMode": {
+        "type": "string",
+        "enum": [
+          "fast",
+          "thinking"
+        ],
+        "title": "AgenticSearchMode",
+        "description": "Search execution mode.\n\n- FAST: Performs a single search pass.\n- THINKING: Performs an intelligent multi-step search to find the best results."
+      },
+      "AgenticSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "The natural language search query."
+          },
+          "filter": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchFilterGroup"
+            },
+            "type": "array",
+            "title": "Filter",
+            "description": "Filter groups that are always applied to search results. Conditions within a group are combined with AND. Multiple groups are combined with OR. Leave empty for no filtering."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/AgenticSearchMode",
+            "description": "The search mode. 'fast' performs a single search pass. 'thinking' performs an intelligent multi-step search to find the best results (may take longer). Defaults to 'thinking'.",
+            "default": "thinking"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit",
+            "description": "Maximum number of results to return. The response will contain at most this many results, but the agent can decide to return fewer. When not set, all results are returned."
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "AgenticSearchRequest",
+        "description": "Request schema for agentic search."
+      },
+      "AgenticSearchResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "answer": {
+            "$ref": "#/components/schemas/AgenticSearchAnswer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "answer"
+        ],
+        "title": "AgenticSearchResponse",
+        "description": "Response schema for agentic search."
+      },
+      "AgenticSearchResult": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id",
+            "description": "Original entity ID."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Entity display name."
+          },
+          "relevance_score": {
+            "type": "number",
+            "title": "Relevance Score",
+            "description": "Relevance score from the search engine."
+          },
+          "breadcrumbs": {
+            "items": {
+              "$ref": "#/components/schemas/AgenticSearchBreadcrumb"
+            },
+            "type": "array",
+            "title": "Breadcrumbs",
+            "description": "Breadcrumbs showing entity hierarchy."
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "When the entity was created."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "When the entity was last updated."
+          },
+          "textual_representation": {
+            "type": "string",
+            "title": "Textual Representation",
+            "description": "Semantically searchable text content"
+          },
+          "airweave_system_metadata": {
+            "$ref": "#/components/schemas/AgenticSearchSystemMetadata",
+            "description": "System metadata"
+          },
+          "access": {
+            "$ref": "#/components/schemas/AgenticSearchAccessControl",
+            "description": "Access control"
+          },
+          "web_url": {
+            "type": "string",
+            "title": "Web Url",
+            "description": "URL to view the entity in its source application (e.g., Notion, Asana)."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Download URL for file entities. Only present for FileEntity types."
+          },
+          "raw_source_fields": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Raw Source Fields",
+            "description": "All source-specific fields."
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "name",
+          "relevance_score",
+          "breadcrumbs",
+          "textual_representation",
+          "airweave_system_metadata",
+          "access",
+          "web_url",
+          "raw_source_fields"
+        ],
+        "title": "AgenticSearchResult",
+        "description": "Agentic search result."
+      },
+      "AgenticSearchSystemMetadata": {
+        "properties": {
+          "source_name": {
+            "type": "string",
+            "title": "Source Name",
+            "description": "Name of the source this entity belongs to."
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type",
+            "description": "Type of the entity this entity represents in the source."
+          },
+          "sync_id": {
+            "type": "string",
+            "title": "Sync Id",
+            "description": "ID of the sync this entity belongs to."
+          },
+          "sync_job_id": {
+            "type": "string",
+            "title": "Sync Job Id",
+            "description": "ID of the sync job this entity belongs to."
+          },
+          "chunk_index": {
+            "type": "integer",
+            "title": "Chunk Index",
+            "description": "Index of the chunk in the file."
+          },
+          "original_entity_id": {
+            "type": "string",
+            "title": "Original Entity Id",
+            "description": "Original entity ID"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_name",
+          "entity_type",
+          "sync_id",
+          "sync_job_id",
+          "chunk_index",
+          "original_entity_id"
+        ],
+        "title": "AgenticSearchSystemMetadata",
+        "description": "System metadata in agentic search result."
       },
       "AuthProviderAuthentication": {
         "properties": {
@@ -2868,6 +3171,72 @@
           "description": "Updated description",
           "name": "Updated Composio Connection"
         }
+      },
+      "AuthProviderMetadata": {
+        "properties": {
+          "short_name": {
+            "type": "string",
+            "title": "Short Name"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "class_name": {
+            "type": "string",
+            "title": "Class Name"
+          },
+          "auth_config_class": {
+            "type": "string",
+            "title": "Auth Config Class"
+          },
+          "config_class": {
+            "type": "string",
+            "title": "Config Class"
+          },
+          "auth_fields": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fields"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "config_fields": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fields"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "short_name",
+          "name",
+          "description",
+          "class_name",
+          "auth_config_class",
+          "config_class"
+        ],
+        "title": "AuthProviderMetadata",
+        "description": "Public auth provider metadata returned by API endpoints."
       },
       "AuthenticationDetails": {
         "properties": {
@@ -3261,29 +3630,18 @@
         "title": "BillingTransition",
         "description": "How this billing period was created."
       },
-      "Body_connect_slack_with_token_connections_direct_token_slack_post": {
+      "Body_change_member_role_organizations__organization_id__members__user_id__patch": {
         "properties": {
-          "token": {
+          "role": {
             "type": "string",
-            "title": "Token"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Role"
           }
         },
         "type": "object",
         "required": [
-          "token"
+          "role"
         ],
-        "title": "Body_connect_slack_with_token_connections_direct_token_slack_post"
+        "title": "Body_change_member_role_organizations__organization_id__members__user_id__patch"
       },
       "Body_resync_with_execution_config_admin_resync__sync_id__post": {
         "properties": {
@@ -3296,7 +3654,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional nested SyncConfig for sync behavior (destinations, handlers, cursor, behavior)",
+            "description": "Optional nested SyncConfig for sync behavior",
             "examples": [
               {
                 "summary": "ARF Capture Only",
@@ -3356,7 +3714,7 @@
               }
             ],
             "title": "Tags",
-            "description": "Optional tags for filtering and organizing sync jobs (e.g., ['vespa-backfill-01-22-2026', 'manual'])",
+            "description": "Optional tags for filtering and organizing sync jobs",
             "examples": [
               [
                 "vespa-backfill-01-22-2026",
@@ -3370,6 +3728,112 @@
         },
         "type": "object",
         "title": "Body_resync_with_execution_config_admin_resync__sync_id__post"
+      },
+      "BrowseNode": {
+        "properties": {
+          "source_node_id": {
+            "type": "string",
+            "title": "Source Node Id"
+          },
+          "node_type": {
+            "type": "string",
+            "title": "Node Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "item_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Count"
+          },
+          "has_children": {
+            "type": "boolean",
+            "title": "Has Children",
+            "default": false
+          },
+          "node_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_node_id",
+          "node_type",
+          "title"
+        ],
+        "title": "BrowseNode",
+        "description": "Source-agnostic browse tree node returned by source.get_browse_children()."
+      },
+      "BrowseTreeResponse": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/BrowseNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "parent_node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Node Id"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nodes",
+          "total"
+        ],
+        "title": "BrowseTreeResponse",
+        "description": "API response for browse tree."
+      },
+      "CheckStatus": {
+        "type": "string",
+        "enum": [
+          "up",
+          "down",
+          "skipped"
+        ],
+        "title": "CheckStatus",
+        "description": "Status of an individual dependency check."
       },
       "CheckoutSessionRequest": {
         "properties": {
@@ -3431,16 +3895,6 @@
             "title": "Id",
             "description": "Unique system identifier for the collection. This UUID is generated automatically and used for internal references."
           },
-          "vector_size": {
-            "type": "integer",
-            "title": "Vector Size",
-            "description": "Vector dimensions used by this collection. Determines which embedding model is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), 1024 (mistral-embed), or 384 (MiniLM-L6-v2)."
-          },
-          "embedding_model_name": {
-            "type": "string",
-            "title": "Embedding Model Name",
-            "description": "Name of the embedding model used for this collection (e.g., 'text-embedding-3-large', 'text-embedding-3-small', 'mistral-embed'). This ensures queries use the same model as the indexed data."
-          },
           "sync_config": {
             "anyOf": [
               {
@@ -3500,6 +3954,16 @@
             "$ref": "#/components/schemas/CollectionStatus",
             "description": "Current operational status of the collection:<br/>\u2022 **NEEDS_SOURCE**: Collection has no authenticated connections, or connections exist but haven't synced yet<br/>\u2022 **ACTIVE**: At least one connection has completed a sync or is currently syncing<br/>\u2022 **ERROR**: All connections have failed their last sync",
             "default": "NEEDS SOURCE"
+          },
+          "vector_size": {
+            "type": "integer",
+            "title": "Vector Size",
+            "description": "Vector dimensions used by this collection (derived from deployment metadata)."
+          },
+          "embedding_model_name": {
+            "type": "string",
+            "title": "Embedding Model Name",
+            "description": "Name of the embedding model used for this collection (derived from deployment metadata)."
           }
         },
         "type": "object",
@@ -3507,14 +3971,14 @@
           "name",
           "readable_id",
           "id",
-          "vector_size",
-          "embedding_model_name",
           "created_at",
           "modified_at",
-          "organization_id"
+          "organization_id",
+          "vector_size",
+          "embedding_model_name"
         ],
         "title": "Collection",
-        "description": "Complete collection representation returned by the API.\n\nThis schema includes all collection metadata plus computed status information\nbased on the health and state of associated source connections.",
+        "description": "API-facing collection schema with embedding metadata.\n\nExtends CollectionRecord with vector_size and embedding_model_name, which\nare resolved by the CollectionService from the deployment metadata and the\ndense embedder registry.\n\nExcludes vector_db_deployment_metadata_id (internal FK).",
         "example": {
           "created_at": "2024-01-15T09:30:00Z",
           "created_by_email": "admin@company.com",
@@ -3749,21 +4213,45 @@
           "detail": "A resource with this identifier already exists"
         }
       },
-      "Connection": {
+      "ConnectSessionContext": {
         "properties": {
-          "name": {
+          "session_id": {
             "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Name",
-            "description": "Human-readable display name for the connection."
+            "format": "uuid",
+            "title": "Session Id",
+            "description": "Unique identifier for this session"
           },
-          "readable_id": {
+          "organization_id": {
             "type": "string",
-            "title": "Readable Id",
-            "description": "URL-safe unique identifier used in API endpoints. This becomes non-optional once the connection is created."
+            "format": "uuid",
+            "title": "Organization Id",
+            "description": "Organization that owns this session"
           },
-          "description": {
+          "collection_id": {
+            "type": "string",
+            "title": "Collection Id",
+            "description": "Readable collection ID this session grants access to"
+          },
+          "allowed_integrations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Integrations",
+            "description": "List of allowed integration short_names, or None for all"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ConnectSessionMode",
+            "description": "Session mode determining allowed operations"
+          },
+          "end_user_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -3772,108 +4260,127 @@
                 "type": "null"
               }
             ],
-            "title": "Description"
+            "title": "End User Id",
+            "description": "End user identifier from your system, if provided during session creation"
           },
-          "integration_type": {
-            "$ref": "#/components/schemas/IntegrationType"
-          },
-          "integration_credential_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Integration Credential Id"
-          },
-          "status": {
-            "$ref": "#/components/schemas/ConnectionStatus"
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id",
-            "description": "Unique system identifier for the connection."
-          },
-          "created_at": {
+          "expires_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Created At",
-            "description": "Timestamp when the connection was created (ISO 8601 format)."
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At",
-            "description": "Timestamp when the connection was last modified (ISO 8601 format)."
-          },
-          "organization_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Organization Id"
-          },
-          "created_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By Email"
-          },
-          "modified_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified By Email"
+            "title": "Expires At",
+            "description": "Timestamp when this session expires"
           }
         },
         "type": "object",
         "required": [
-          "name",
-          "readable_id",
-          "integration_type",
-          "status",
-          "short_name",
-          "id",
-          "created_at",
-          "modified_at"
+          "session_id",
+          "organization_id",
+          "collection_id",
+          "mode",
+          "expires_at"
         ],
-        "title": "Connection",
-        "description": "Schema for connection with config fields."
+        "title": "ConnectSessionContext",
+        "description": "Decoded session context from a validated token.\n\nThis is returned by GET /connect/sessions and used internally\nfor authorization in session-authenticated endpoints."
       },
-      "ConnectionStatus": {
+      "ConnectSessionCreate": {
+        "properties": {
+          "readable_collection_id": {
+            "type": "string",
+            "title": "Readable Collection Id",
+            "description": "The readable ID of the collection to grant access to",
+            "examples": [
+              "finance-data-ab123"
+            ]
+          },
+          "allowed_integrations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Integrations",
+            "description": "Optional list of source short_names to restrict which integrations can be connected. If not provided, all integrations are allowed.",
+            "examples": [
+              [
+                "slack",
+                "github",
+                "notion"
+              ]
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ConnectSessionMode",
+            "description": "Session mode determining allowed operations",
+            "default": "all"
+          },
+          "end_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End User Id",
+            "description": "Optional identifier for the end user in your system. This is included in the session token and can be used for audit tracking and filtering.",
+            "examples": [
+              "user_123",
+              "cust_abc123"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "readable_collection_id"
+        ],
+        "title": "ConnectSessionCreate",
+        "description": "Schema for creating a new connect session.\n\nThe session token grants temporary access to manage source connections\nwithin a specific collection."
+      },
+      "ConnectSessionMode": {
         "type": "string",
         "enum": [
-          "active",
-          "inactive",
-          "error"
+          "all",
+          "connect",
+          "manage",
+          "reauth"
         ],
-        "title": "ConnectionStatus",
-        "description": "Connection status enum."
+        "title": "ConnectSessionMode",
+        "description": "Mode for connect session determining allowed operations.\n\n- ALL: Can perform all operations (connect, manage, reauth)\n- CONNECT: Can only add new connections\n- MANAGE: Can only view/delete existing connections\n- REAUTH: Can only re-authenticate existing connections"
+      },
+      "ConnectSessionResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id",
+            "description": "Unique identifier for this session"
+          },
+          "session_token": {
+            "type": "string",
+            "title": "Session Token",
+            "description": "HMAC-signed token to use for authentication in subsequent requests"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "Timestamp when this session expires (typically 10 minutes)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "session_token",
+          "expires_at"
+        ],
+        "title": "ConnectSessionResponse",
+        "description": "Response returned when creating a connect session.\n\nContains the session token that should be passed to the frontend SDK."
       },
       "CreateSubscriptionRequest": {
         "properties": {
@@ -4080,13 +4587,23 @@
           }
         ]
       },
-      "Destination": {
+      "DependencyCheck": {
         "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus"
           },
-          "description": {
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "error": {
             "anyOf": [
               {
                 "type": "string"
@@ -4095,107 +4612,19 @@
                 "type": "null"
               }
             ],
-            "title": "Description"
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name"
-          },
-          "class_name": {
-            "type": "string",
-            "title": "Class Name"
-          },
-          "auth_config_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Config Class"
-          },
-          "input_entity_definition_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Input Entity Definition Ids"
-          },
-          "organization_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Organization Id"
-          },
-          "config_schema": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Config Schema"
-          },
-          "labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Labels"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At"
+            "title": "Error"
           }
         },
         "type": "object",
         "required": [
-          "name",
-          "short_name",
-          "class_name",
-          "id",
-          "created_at",
-          "modified_at"
+          "status"
         ],
-        "title": "Destination",
-        "description": "Schema for Destination."
+        "title": "DependencyCheck",
+        "description": "Result of a single dependency health check.",
+        "example": {
+          "latency_ms": 1.23,
+          "status": "up"
+        }
       },
       "DestinationConfig": {
         "properties": {
@@ -4242,133 +4671,6 @@
         "title": "DestinationConfig",
         "description": "Controls where entities are written."
       },
-      "DestinationWithAuthenticationFields": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name"
-          },
-          "class_name": {
-            "type": "string",
-            "title": "Class Name"
-          },
-          "auth_config_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Config Class"
-          },
-          "input_entity_definition_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Input Entity Definition Ids"
-          },
-          "organization_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Organization Id"
-          },
-          "config_schema": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Config Schema"
-          },
-          "labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Labels"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At"
-          },
-          "auth_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Fields"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "short_name",
-          "class_name",
-          "id",
-          "created_at",
-          "modified_at"
-        ],
-        "title": "DestinationWithAuthenticationFields",
-        "description": "Schema for Destination with auth config."
-      },
       "DirectAuthentication": {
         "properties": {
           "credentials": {
@@ -4385,212 +4687,15 @@
         "title": "DirectAuthentication",
         "description": "Direct authentication with API keys or passwords."
       },
-      "EmbeddingModel": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "provider": {
-            "type": "string",
-            "title": "Provider"
-          },
-          "model_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Name"
-          },
-          "model_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Version"
-          },
-          "auth_config_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Config Class"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "short_name",
-          "provider",
-          "id",
-          "created_at",
-          "modified_at"
-        ],
-        "title": "EmbeddingModel",
-        "description": "Schema for EmbeddingModel."
-      },
-      "EmbeddingModelWithAuthenticationFields": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "provider": {
-            "type": "string",
-            "title": "Provider"
-          },
-          "model_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Name"
-          },
-          "model_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Version"
-          },
-          "auth_config_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Config Class"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At"
-          },
-          "auth_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Fields"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "short_name",
-          "provider",
-          "id",
-          "created_at",
-          "modified_at"
-        ],
-        "title": "EmbeddingModelWithAuthenticationFields",
-        "description": "Schema for EmbeddingModel with auth config."
-      },
-      "EntityCount": {
-        "properties": {
-          "count": {
-            "type": "integer",
-            "title": "Count"
-          }
-        },
-        "type": "object",
-        "required": [
-          "count"
-        ],
-        "title": "EntityCount",
-        "description": "Schema for entity count."
-      },
       "EntityCountWithDefinition": {
         "properties": {
           "count": {
             "type": "integer",
             "title": "Count"
           },
-          "entity_definition_id": {
+          "entity_definition_short_name": {
             "type": "string",
-            "format": "uuid",
-            "title": "Entity Definition Id"
+            "title": "Entity Definition Short Name"
           },
           "entity_definition_name": {
             "type": "string",
@@ -4620,16 +4725,20 @@
         "type": "object",
         "required": [
           "count",
-          "entity_definition_id",
+          "entity_definition_short_name",
           "entity_definition_name",
           "entity_definition_type",
           "modified_at"
         ],
         "title": "EntityCountWithDefinition",
-        "description": "Entity count with entity definition details."
+        "description": "Entity count with entity definition details.\n\nAfter the entity_definition table elimination, name/type/description\nare populated from the in-memory registry or derived from the short_name."
       },
-      "EntityDefinition": {
+      "EntityDefinitionMetadata": {
         "properties": {
+          "short_name": {
+            "type": "string",
+            "title": "Short Name"
+          },
           "name": {
             "type": "string",
             "title": "Name"
@@ -4645,140 +4754,36 @@
             ],
             "title": "Description"
           },
-          "type": {
-            "$ref": "#/components/schemas/EntityType"
-          },
-          "entity_schema": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "additionalProperties": true,
-                "type": "object"
-              }
-            ],
-            "title": "Entity Schema"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
+          "class_name": {
+            "type": "string",
+            "title": "Class Name"
           },
           "module_name": {
             "type": "string",
             "title": "Module Name"
           },
-          "class_name": {
+          "entity_type": {
             "type": "string",
-            "title": "Class Name"
+            "title": "Entity Type"
           },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "organization_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Organization Id"
+          "entity_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Entity Schema"
           }
         },
         "type": "object",
         "required": [
+          "short_name",
           "name",
-          "type",
-          "entity_schema",
-          "module_name",
+          "description",
           "class_name",
-          "id"
-        ],
-        "title": "EntityDefinition",
-        "description": "Schema for an entity definition."
-      },
-      "EntityDefinitionCreate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "type": {
-            "$ref": "#/components/schemas/EntityType"
-          },
-          "entity_schema": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "additionalProperties": true,
-                "type": "object"
-              }
-            ],
-            "title": "Entity Schema"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
-          },
-          "module_name": {
-            "type": "string",
-            "title": "Module Name"
-          },
-          "class_name": {
-            "type": "string",
-            "title": "Class Name"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "type",
-          "entity_schema",
           "module_name",
-          "class_name"
+          "entity_type",
+          "entity_schema"
         ],
-        "title": "EntityDefinitionCreate",
-        "description": "Schema for creating an entity definition."
+        "title": "EntityDefinitionMetadata",
+        "description": "API response model for entity definitions \u2014 excludes internal fields."
       },
       "EntitySummary": {
         "properties": {
@@ -4798,15 +4803,6 @@
         "type": "object",
         "title": "EntitySummary",
         "description": "Entity state summary."
-      },
-      "EntityType": {
-        "type": "string",
-        "enum": [
-          "file",
-          "json"
-        ],
-        "title": "EntityType",
-        "description": "Type of entity."
       },
       "EntityTypeStats": {
         "properties": {
@@ -4842,24 +4838,30 @@
           "sync.completed",
           "sync.failed",
           "sync.cancelled",
+          "entity.batch_processed",
+          "query.processed",
+          "access_control.batch_processed",
+          "collection.created",
+          "collection.updated",
+          "collection.deleted",
           "source_connection.created",
           "source_connection.auth_completed",
           "source_connection.deleted",
-          "collection.created",
-          "collection.updated",
-          "collection.deleted"
+          "organization.created",
+          "organization.deleted",
+          "organization.member_added",
+          "organization.member_removed"
         ],
-        "title": "EventType",
-        "description": "Webhook event types.\n\nAll available event types that webhook subscribers can filter on.\nConvention: {domain}.{action} \u2014 matches the event_type string\non the corresponding domain event class."
+        "title": "EventType"
       },
       "FeatureFlag": {
         "type": "string",
         "enum": [
-          "s3_destination",
           "priority_support",
           "source_rate_limiting",
           "zephyr_scale",
           "sharepoint_2019_v2",
+          "agentic_search",
           "api_key_admin_sync"
         ],
         "title": "FeatureFlag",
@@ -4920,156 +4922,16 @@
         "title": "HandlerConfig",
         "description": "Controls which handlers run during sync."
       },
-      "IntegrationCredentialInDB": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "integration_short_name": {
-            "type": "string",
-            "title": "Integration Short Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "integration_type": {
-            "$ref": "#/components/schemas/IntegrationType"
-          },
-          "authentication_method": {
-            "$ref": "#/components/schemas/AuthenticationMethod"
-          },
-          "oauth_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OAuthType"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "auth_config_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Config Class"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "organization_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Organization Id"
-          },
-          "encrypted_credentials": {
-            "type": "string",
-            "title": "Encrypted Credentials"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "integration_short_name",
-          "integration_type",
-          "authentication_method",
-          "id",
-          "organization_id",
-          "encrypted_credentials"
-        ],
-        "title": "IntegrationCredentialInDB",
-        "description": "Integration credential in DB without decrypted data."
-      },
-      "IntegrationCredentialRawCreate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "integration_short_name": {
-            "type": "string",
-            "title": "Integration Short Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "integration_type": {
-            "$ref": "#/components/schemas/IntegrationType"
-          },
-          "authentication_method": {
-            "$ref": "#/components/schemas/AuthenticationMethod"
-          },
-          "oauth_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OAuthType"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "auth_config_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Config Class"
-          },
-          "auth_fields": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Auth Fields"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "integration_short_name",
-          "integration_type",
-          "authentication_method",
-          "auth_fields"
-        ],
-        "title": "IntegrationCredentialRawCreate",
-        "description": "Create class for integration credentials with raw auth fields.\n\nThis schema is used when auth fields need to be validated and encrypted\nbefore creating the credential."
-      },
-      "IntegrationType": {
+      "HealthStatus": {
         "type": "string",
         "enum": [
-          "source",
-          "destination",
-          "auth_provider"
+          "healthy",
+          "degraded",
+          "failing",
+          "unknown"
         ],
-        "title": "IntegrationType",
-        "description": "Integration type enum."
+        "title": "HealthStatus",
+        "description": "Health status of a webhook subscription based on recent delivery attempts."
       },
       "InvitationCreate": {
         "properties": {
@@ -5314,6 +5176,19 @@
         "title": "LegacySearchResponse",
         "description": "Legacy search response schema for backwards compatibility."
       },
+      "LivenessResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "alive",
+            "title": "Status",
+            "default": "alive"
+          }
+        },
+        "type": "object",
+        "title": "LivenessResponse",
+        "description": "Response from the liveness probe."
+      },
       "MemberResponse": {
         "properties": {
           "id": {
@@ -5379,18 +5254,98 @@
         "title": "MessageResponse",
         "description": "Generic message response."
       },
-      "MinuteLevelScheduleConfig": {
+      "NodeSelectionData": {
         "properties": {
-          "cron_expression": {
+          "source_node_id": {
             "type": "string",
-            "title": "Cron Expression",
-            "description": "Minute-level cron expression for incremental sync (default: every minute)",
-            "default": "*/1 * * * *"
+            "title": "Source Node Id"
+          },
+          "node_type": {
+            "type": "string",
+            "title": "Node Type"
+          },
+          "node_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Title"
+          },
+          "node_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Metadata"
           }
         },
         "type": "object",
-        "title": "MinuteLevelScheduleConfig",
-        "description": "Configuration for minute-level incremental sync schedules."
+        "required": [
+          "source_node_id",
+          "node_type"
+        ],
+        "title": "NodeSelectionData",
+        "description": "Typed representation of a node selection loaded for targeted sync."
+      },
+      "NodeSelectionRequest": {
+        "properties": {
+          "source_node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Node Ids",
+            "description": "Source node IDs to select"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_node_ids"
+        ],
+        "title": "NodeSelectionRequest",
+        "description": "Request body for selecting nodes."
+      },
+      "NodeSelectionResponse": {
+        "properties": {
+          "source_connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Connection Id",
+            "description": "Source connection ID"
+          },
+          "selections_count": {
+            "type": "integer",
+            "title": "Selections Count"
+          },
+          "sync_job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Sync Job Id",
+            "description": "ID of the triggered sync job"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "Node selections saved and sync triggered"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_connection_id",
+          "selections_count",
+          "sync_job_id"
+        ],
+        "title": "NodeSelectionResponse",
+        "description": "Response after submitting node selections and triggering sync."
       },
       "NotFoundErrorResponse": {
         "properties": {
@@ -5517,17 +5472,6 @@
         ],
         "title": "OAuthTokenAuthentication",
         "description": "OAuth authentication with pre-obtained token."
-      },
-      "OAuthType": {
-        "type": "string",
-        "enum": [
-          "oauth1",
-          "access_only",
-          "with_refresh",
-          "with_rotating_refresh"
-        ],
-        "title": "OAuthType",
-        "description": "OAuth token types for sources."
       },
       "Organization": {
         "properties": {
@@ -6336,6 +6280,48 @@
           "detail": "Rate limit exceeded. Please retry after 60 seconds."
         }
       },
+      "ReadinessResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status"
+          },
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DependencyCheck"
+            },
+            "type": "object",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessResponse",
+        "description": "Response from the readiness probe.",
+        "example": {
+          "checks": {
+            "postgres": {
+              "latency_ms": 1.23,
+              "status": "up"
+            },
+            "redis": {
+              "latency_ms": 0.45,
+              "status": "up"
+            },
+            "temporal": {
+              "status": "skipped"
+            }
+          },
+          "status": "ready"
+        }
+      },
       "RecoverMessagesRequest": {
         "properties": {
           "since": {
@@ -6427,69 +6413,6 @@
         ],
         "title": "RetrievalStrategy",
         "description": "Retrieval strategies for search."
-      },
-      "S3ConfigRequest": {
-        "properties": {
-          "role_arn": {
-            "type": "string",
-            "title": "Role Arn",
-            "description": "IAM Role ARN to assume (e.g., arn:aws:iam::123456789012:role/airweave-writer)"
-          },
-          "external_id": {
-            "type": "string",
-            "title": "External Id",
-            "description": "External ID for secure cross-account trust policy"
-          },
-          "bucket_name": {
-            "type": "string",
-            "title": "Bucket Name",
-            "description": "S3 bucket name"
-          },
-          "bucket_prefix": {
-            "type": "string",
-            "title": "Bucket Prefix",
-            "description": "Prefix for Airweave data",
-            "default": "airweave/"
-          },
-          "aws_region": {
-            "type": "string",
-            "title": "Aws Region",
-            "description": "AWS region",
-            "default": "us-east-1"
-          }
-        },
-        "type": "object",
-        "required": [
-          "role_arn",
-          "external_id",
-          "bucket_name"
-        ],
-        "title": "S3ConfigRequest",
-        "description": "Request to configure S3 destination with IAM role."
-      },
-      "S3ConfigResponse": {
-        "properties": {
-          "connection_id": {
-            "type": "string",
-            "title": "Connection Id"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "message": {
-            "type": "string",
-            "title": "Message"
-          }
-        },
-        "type": "object",
-        "required": [
-          "connection_id",
-          "status",
-          "message"
-        ],
-        "title": "S3ConfigResponse",
-        "description": "Response after configuring S3 destination."
       },
       "ScheduleConfig": {
         "properties": {
@@ -6583,30 +6506,6 @@
         "title": "ScheduleDetails",
         "description": "Schedule information."
       },
-      "ScheduleResponse": {
-        "properties": {
-          "schedule_id": {
-            "type": "string",
-            "title": "Schedule Id"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "message": {
-            "type": "string",
-            "title": "Message"
-          }
-        },
-        "type": "object",
-        "required": [
-          "schedule_id",
-          "status",
-          "message"
-        ],
-        "title": "ScheduleResponse",
-        "description": "Response for schedule operations."
-      },
       "SearchRequest": {
         "properties": {
           "query": {
@@ -6675,6 +6574,22 @@
             "title": "Limit",
             "description": "Maximum number of results to return (default: 1000)",
             "example": 10
+          },
+          "source_connection_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Connection Ids",
+            "description": "Limit search to specific source connections within the collection."
           },
           "temporal_relevance": {
             "anyOf": [
@@ -7040,25 +6955,25 @@
           "supports_continuous": {
             "type": "boolean",
             "title": "Supports Continuous",
-            "description": "Whether this source supports cursor-based continuous syncing for incremental data extraction. Sources with this capability can track their sync position and resume from where they left off.",
+            "description": "Whether this source supports cursor-based continuous syncing for incremental data extraction.",
             "default": false
           },
           "federated_search": {
             "type": "boolean",
             "title": "Federated Search",
-            "description": "Whether this source uses federated search instead of traditional syncing. Federated search sources query data in real-time during searches rather than syncing and indexing all data beforehand.",
+            "description": "Whether this source uses federated search instead of traditional syncing.",
             "default": false
           },
           "supports_temporal_relevance": {
             "type": "boolean",
             "title": "Supports Temporal Relevance",
-            "description": "Whether this source's entities have timestamps that enable recency-based ranking. Sources without file-level timestamps (e.g., code repositories) cannot use temporal relevance for search result weighting.",
+            "description": "Whether this source's entities have timestamps that enable recency-based ranking.",
             "default": true
           },
           "supports_access_control": {
             "type": "boolean",
             "title": "Supports Access Control",
-            "description": "Whether this source supports document-level access control. Sources with this capability extract ACL information from the source and apply it during search to filter results based on user permissions.",
+            "description": "Whether this source supports document-level access control.",
             "default": false
           },
           "rate_limit_level": {
@@ -7085,6 +7000,12 @@
             "title": "Feature Flag",
             "description": "Feature flag required to access this source. If set, only organizations with this feature enabled can see/use this source."
           },
+          "supports_browse_tree": {
+            "type": "boolean",
+            "title": "Supports Browse Tree",
+            "description": "Whether this source supports lazy-loaded browse tree for selective node syncing.",
+            "default": false
+          },
           "auth_fields": {
             "anyOf": [
               {
@@ -7094,11 +7015,11 @@
                 "type": "null"
               }
             ],
-            "description": "Schema definition for authentication fields required to connect to this source. Only present for sources using DIRECT authentication. OAuth sources handle authentication through browser flows."
+            "description": "Schema definition for authentication fields required to connect to this source."
           },
           "config_fields": {
             "$ref": "#/components/schemas/Fields",
-            "description": "Schema definition for configuration fields required to customize this source. Describes field types, validation rules, and user interface hints."
+            "description": "Schema definition for configuration fields required to customize this source."
           },
           "supported_auth_providers": {
             "anyOf": [
@@ -7113,7 +7034,7 @@
               }
             ],
             "title": "Supported Auth Providers",
-            "description": "List of auth provider short names that support this source (e.g., ['composio', 'pipedream']). Computed dynamically for API responses. This field is not stored in the database."
+            "description": "List of auth provider short names that support this source."
           }
         },
         "type": "object",
@@ -7124,97 +7045,7 @@
           "config_fields"
         ],
         "title": "Source",
-        "description": "Complete source representation with authentication and configuration schemas.\n\nServed from the in-memory SourceRegistry \u2014 no database row needed.",
-        "examples": [
-          {
-            "auth_config_class": "GitHubAuthConfig",
-            "auth_fields": {
-              "fields": [
-                {
-                  "description": "Personal Access Token with repository read permissions. Generate one at https://github.com/settings/tokens",
-                  "name": "personal_access_token",
-                  "secret": true,
-                  "title": "Personal Access Token",
-                  "type": "string"
-                }
-              ]
-            },
-            "auth_methods": [
-              "direct"
-            ],
-            "class_name": "GitHubSource",
-            "config_class": "GitHubConfig",
-            "config_fields": {
-              "fields": [
-                {
-                  "description": "Full repository name in format 'owner/repo' (e.g., 'airweave-ai/airweave')",
-                  "name": "repo_name",
-                  "title": "Repository Name",
-                  "type": "string"
-                },
-                {
-                  "description": "Specific branch to sync (e.g., 'main', 'development'). If empty, uses the default branch.",
-                  "name": "branch",
-                  "title": "Branch name",
-                  "type": "string"
-                }
-              ]
-            },
-            "created_at": "2024-01-01T00:00:00Z",
-            "description": "Connect to GitHub repositories for code, issues, pull requests, and documentation",
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "labels": [
-              "code"
-            ],
-            "modified_at": "2024-01-01T00:00:00Z",
-            "name": "GitHub",
-            "output_entity_definitions": [
-              "git_hub_repository_entity",
-              "git_hub_code_file_entity"
-            ],
-            "short_name": "github",
-            "supported_auth_providers": []
-          },
-          {
-            "auth_methods": [
-              "oauth_browser",
-              "oauth_token",
-              "oauth_byoc"
-            ],
-            "class_name": "GmailSource",
-            "config_class": "GmailConfig",
-            "config_fields": {
-              "fields": [
-                {
-                  "default": true,
-                  "description": "Whether to sync email attachments",
-                  "name": "sync_attachments",
-                  "title": "Sync Attachments",
-                  "type": "boolean"
-                }
-              ]
-            },
-            "created_at": "2024-01-01T00:00:00Z",
-            "description": "Connect to Gmail for email threads, messages, and attachments",
-            "id": "660e8400-e29b-41d4-a716-446655440001",
-            "labels": [
-              "Communication",
-              "Email"
-            ],
-            "modified_at": "2024-01-01T00:00:00Z",
-            "name": "Gmail",
-            "oauth_type": "with_refresh",
-            "output_entity_definitions": [
-              "gmail_thread_entity",
-              "gmail_message_entity"
-            ],
-            "short_name": "gmail",
-            "supported_auth_providers": [
-              "pipedream",
-              "composio"
-            ]
-          }
-        ]
+        "description": "Complete source representation with authentication and configuration schemas.\n\nServed from the in-memory SourceRegistry \u2014 no database row needed."
       },
       "SourceConnection": {
         "properties": {
@@ -8299,159 +8130,6 @@
         "title": "SubscriptionInfo",
         "description": "Subscription information response."
       },
-      "Sync": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "source_connection_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Source Connection Id"
-          },
-          "destination_connection_ids": {
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "type": "array",
-            "title": "Destination Connection Ids"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule"
-          },
-          "next_scheduled_run": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Scheduled Run"
-          },
-          "temporal_schedule_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Temporal Schedule Id"
-          },
-          "sync_type": {
-            "type": "string",
-            "title": "Sync Type",
-            "default": "full"
-          },
-          "sync_metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sync Metadata"
-          },
-          "sync_config": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SyncConfig"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/SyncStatus"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "organization_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Organization Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At"
-          },
-          "created_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By Email"
-          },
-          "modified_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified By Email"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "source_connection_id",
-          "destination_connection_ids",
-          "status",
-          "id",
-          "organization_id",
-          "created_at",
-          "modified_at"
-        ],
-        "title": "Sync",
-        "description": "Schema for Sync."
-      },
       "SyncConfig": {
         "properties": {
           "destinations": {
@@ -8470,123 +8148,6 @@
         "type": "object",
         "title": "SyncConfig",
         "description": "Sync configuration with automatic env var loading.\n\nEnv vars use double underscore as delimiter:\n    SYNC_CONFIG__HANDLERS__ENABLE_VECTOR_HANDLERS=false"
-      },
-      "SyncCreate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "source_connection_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Source Connection Id"
-          },
-          "destination_connection_ids": {
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "type": "array",
-            "title": "Destination Connection Ids"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule"
-          },
-          "next_scheduled_run": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Scheduled Run"
-          },
-          "temporal_schedule_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Temporal Schedule Id"
-          },
-          "sync_type": {
-            "type": "string",
-            "title": "Sync Type",
-            "default": "full"
-          },
-          "sync_metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sync Metadata"
-          },
-          "sync_config": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SyncConfig"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SyncStatus"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": "active"
-          },
-          "run_immediately": {
-            "type": "boolean",
-            "title": "Run Immediately",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "source_connection_id",
-          "destination_connection_ids"
-        ],
-        "title": "SyncCreate",
-        "description": "Schema for creating a Sync object."
       },
       "SyncDetails": {
         "properties": {
@@ -8979,291 +8540,6 @@
         ],
         "title": "SyncStatus",
         "description": "Sync status enum."
-      },
-      "SyncUpdate": {
-        "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule"
-          },
-          "next_scheduled_run": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Scheduled Run"
-          },
-          "sync_metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sync Metadata"
-          },
-          "sync_config": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SyncConfig"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SyncStatus"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "temporal_schedule_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Temporal Schedule Id"
-          },
-          "sync_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sync Type"
-          }
-        },
-        "type": "object",
-        "title": "SyncUpdate",
-        "description": "Schema for updating a Sync object."
-      },
-      "Transformer": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "method_name": {
-            "type": "string",
-            "title": "Method Name"
-          },
-          "module_name": {
-            "type": "string",
-            "title": "Module Name"
-          },
-          "input_entity_definition_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Input Entity Definition Ids"
-          },
-          "output_entity_definition_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Output Entity Definition Ids"
-          },
-          "config_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config Schema"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "organization_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Organization Id"
-          },
-          "created_by_email": {
-            "type": "string",
-            "title": "Created By Email"
-          },
-          "modified_by_email": {
-            "type": "string",
-            "title": "Modified By Email"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "method_name",
-          "module_name",
-          "input_entity_definition_ids",
-          "output_entity_definition_ids",
-          "id",
-          "organization_id",
-          "created_by_email",
-          "modified_by_email"
-        ],
-        "title": "Transformer",
-        "description": "Schema for a transformer."
-      },
-      "TransformerCreate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "method_name": {
-            "type": "string",
-            "title": "Method Name"
-          },
-          "module_name": {
-            "type": "string",
-            "title": "Module Name"
-          },
-          "input_entity_definition_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Input Entity Definition Ids"
-          },
-          "output_entity_definition_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Output Entity Definition Ids"
-          },
-          "config_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config Schema"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "method_name",
-          "module_name",
-          "input_entity_definition_ids",
-          "output_entity_definition_ids"
-        ],
-        "title": "TransformerCreate",
-        "description": "Schema for creating a transformer."
-      },
-      "TransformerUpdate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "method_name": {
-            "type": "string",
-            "title": "Method Name"
-          },
-          "module_name": {
-            "type": "string",
-            "title": "Module Name"
-          },
-          "input_entity_definition_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Input Entity Definition Ids"
-          },
-          "output_entity_definition_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Output Entity Definition Ids"
-          },
-          "config_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config Schema"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "method_name",
-          "module_name",
-          "input_entity_definition_ids",
-          "output_entity_definition_ids"
-        ],
-        "title": "TransformerUpdate",
-        "description": "Schema for updating a transformer."
       },
       "UpdatePlanRequest": {
         "properties": {
@@ -10033,6 +9309,109 @@
             "description": "When this subscription was last updated (ISO 8601 format, UTC)",
             "example": "2024-03-15T14:30:00Z"
           },
+          "health_status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Health status of this subscription based on recent delivery attempts. Values: 'healthy' (all recent deliveries succeeded), 'degraded' (mix of successes and failures), 'failing' (consecutive failures beyond threshold), 'unknown' (no delivery data yet).",
+            "default": "unknown",
+            "example": "healthy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WebhookSubscription",
+        "description": "A webhook subscription (endpoint) configuration.\n\nThis is the lightweight representation returned by list, create, update,\nand delete endpoints.  For the full detail view (delivery attempts,\nsigning secret) see ``WebhookSubscriptionDetail``.",
+        "example": {
+          "created_at": "2024-03-01T08:00:00Z",
+          "description": "Production notifications for data team",
+          "disabled": false,
+          "filter_types": [
+            "sync.completed",
+            "sync.failed"
+          ],
+          "health_status": "healthy",
+          "id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
+          "updated_at": "2024-03-15T14:30:00Z",
+          "url": "https://api.mycompany.com/webhooks/airweave"
+        }
+      },
+      "WebhookSubscriptionDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for this subscription (UUID format)",
+            "example": "c3d4e5f6-a7b8-9012-cdef-345678901234"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The URL where webhook events are delivered",
+            "example": "https://api.mycompany.com/webhooks/airweave"
+          },
+          "filter_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter Types",
+            "description": "Event types this subscription is filtered to receive. See EventType enum for all available types.",
+            "example": [
+              "sync.completed",
+              "sync.failed"
+            ]
+          },
+          "disabled": {
+            "type": "boolean",
+            "title": "Disabled",
+            "description": "Whether this subscription is currently disabled. Disabled subscriptions do not receive event deliveries.",
+            "default": false,
+            "example": false
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Optional human-readable description of this subscription",
+            "example": "Production notifications for data team"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When this subscription was created (ISO 8601 format, UTC)",
+            "example": "2024-03-01T08:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "When this subscription was last updated (ISO 8601 format, UTC)",
+            "example": "2024-03-15T14:30:00Z"
+          },
+          "health_status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Health status of this subscription based on recent delivery attempts. Values: 'healthy' (all recent deliveries succeeded), 'degraded' (mix of successes and failures), 'failing' (consecutive failures beyond threshold), 'unknown' (no delivery data yet).",
+            "default": "unknown",
+            "example": "healthy"
+          },
           "delivery_attempts": {
             "anyOf": [
               {
@@ -10046,7 +9425,7 @@
               }
             ],
             "title": "Delivery Attempts",
-            "description": "Recent delivery attempts for this subscription. Only included when fetching a single subscription via GET /subscriptions/{id}."
+            "description": "Recent delivery attempts for this subscription."
           },
           "secret": {
             "anyOf": [
@@ -10069,8 +9448,8 @@
           "created_at",
           "updated_at"
         ],
-        "title": "WebhookSubscription",
-        "description": "A webhook subscription (endpoint) configuration.",
+        "title": "WebhookSubscriptionDetail",
+        "description": "Full subscription detail, including delivery attempts and signing secret.\n\nReturned by ``GET /subscriptions/{id}`` only.",
         "example": {
           "created_at": "2024-03-01T08:00:00Z",
           "description": "Production notifications for data team",
@@ -10079,6 +9458,7 @@
             "sync.completed",
             "sync.failed"
           ],
+          "health_status": "healthy",
           "id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
           "updated_at": "2024-03-15T14:30:00Z",
           "url": "https://api.mycompany.com/webhooks/airweave"
