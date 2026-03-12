@@ -18,7 +18,6 @@ from airweave.domains.entities.types import EntityDefinitionEntry
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.platform.configs._base import Fields
 
-
 # ---------------------------------------------------------------------------
 # Stub helpers
 # ---------------------------------------------------------------------------
@@ -59,6 +58,7 @@ def _make_source_cls(
     Stub.federated_search = False
     Stub.supports_temporal_relevance = True
     Stub.supports_access_control = False
+    Stub.supports_browse_tree = False
     Stub.rate_limit_level = None
     Stub.feature_flag = None
     Stub.labels = None
