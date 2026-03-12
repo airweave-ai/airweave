@@ -139,7 +139,7 @@ export interface ConnectOptions {
 }
 
 export interface ConnectTheme {
-  mode: ThemeMode;
+  mode?: ThemeMode;
   colors?: {
     dark?: ThemeColors;
     light?: ThemeColors;

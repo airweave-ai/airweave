@@ -65,7 +65,7 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     if (theme.mode === "system") {
       return systemPrefersDark ? "dark" : "light";
     }
-    return theme.mode;
+    return theme.mode ?? "light";
   }, [theme, isPending, systemPrefersDark]);
 
   // Merge custom colors with defaults, auto-deriving hover colors
