@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional, Protocol
+from typing import List, Optional, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,9 +13,7 @@ from airweave.domains.browse_tree.types import (
     NodeSelectionCreate,
     NodeSelectionResponse,
 )
-
-if TYPE_CHECKING:
-    from airweave.models.node_selection import NodeSelection
+from airweave.models.node_selection import NodeSelection
 
 
 class NodeSelectionRepositoryProtocol(Protocol):

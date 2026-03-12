@@ -29,7 +29,7 @@ def extract_principal_from_permission(permission: Dict[str, Any]) -> Optional[st
 
     user = granted_to.get("user")
     if user:
-        for field in ("email", "userPrincipalName"):
+        for field in ("email", "userPrincipalName", "displayName"):
             val = user.get(field, "")
             if val and "@" in val:
                 return f"user:{val.lower()}"
@@ -47,7 +47,11 @@ def extract_principal_from_permission(permission: Dict[str, Any]) -> Optional[st
 
     site_group = granted_to.get("siteGroup")
     if site_group:
+        sp_id = site_group.get("id")
         group_name = site_group.get("displayName", "")
+        if sp_id:
+            label = group_name.lower().replace(" ", "_") if group_name else str(sp_id)
+            return f"group:sp:{label}"
         if group_name:
             return f"group:sp:{group_name.lower().replace(' ', '_')}"
         return None

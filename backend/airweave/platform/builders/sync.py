@@ -78,7 +78,6 @@ class SyncContextBuilder:
             entity_map=entity_map,
             source_short_name=source_short_name,
             logger=logger,
-            batch_size=64,
         )
 
     @classmethod

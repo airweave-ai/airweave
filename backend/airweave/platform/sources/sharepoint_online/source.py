@@ -77,6 +77,7 @@ class PendingFileDownload:
     cursor_class=SharePointOnlineCursor,
     supports_access_control=True,
     supports_browse_tree=True,
+    feature_flag="sharepoint_2019_v2",
     labels=["Collaboration", "File Storage"],
 )
 class SharePointOnlineSource(BaseSource):

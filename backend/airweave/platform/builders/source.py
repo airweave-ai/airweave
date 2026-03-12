@@ -11,7 +11,6 @@ Handles sync-specific orchestration on top of SourceLifecycleService:
 from typing import Any, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -22,8 +21,8 @@ from airweave.core.container import (
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
+from airweave.domains.browse_tree.repository import NodeSelectionRepository
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.models.node_selection import NodeSelection
 from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.contexts.source import SourceContext
 from airweave.platform.sources._base import BaseSource
@@ -325,14 +324,10 @@ class SourceContextBuilder:
         ctx: ApiContext,
     ) -> List[NodeSelectionData]:
         """Load node selections for a source connection (for targeted sync)."""
-        result = await db.execute(
-            sa_select(NodeSelection).where(
-                NodeSelection.source_connection_id == source_connection_id,
-                NodeSelection.organization_id == ctx.organization.id,
-            )
+        repo = NodeSelectionRepository()
+        rows = await repo.get_by_source_connection(
+            db, source_connection_id, ctx.organization.id
         )
-        rows = result.scalars().all()
-
         return [
             NodeSelectionData(
                 source_node_id=row.source_node_id,
