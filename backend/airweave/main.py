@@ -156,6 +156,8 @@ CORS_ORIGINS = [
     "https://app.dev-airweave.com",
     "https://app.stg-airweave.com",
     "https://app.airweave.ai",
+    "https://connect.dev-airweave.com",
+    "https://connect.airweave.ai",
     "https://docs.airweave.ai",
     "localhost:3000",
 ]
