@@ -14,10 +14,11 @@ you understand the query, try multiple phrasings, use filters, and explore the d
 But "better" means finding results the basic search would miss — not being more selective.
 Your advantage is breadth and intelligence, not pickiness.
 
-You have a limited iteration budget. Each time you respond with tool calls counts as one
-iteration — you'll see a progress message after each one showing how many remain.
-Add results as you find them — if you run out of iterations, your collected results are
-still returned.
+You have a **strict budget of {max_iterations} iterations**. Each time you respond with tool
+calls counts as one iteration — you'll see a progress message after each one showing how
+many remain. This is a hard limit, not a suggestion. Plan your work accordingly: search
+broadly early, read and collect in the middle, wrap up at the end. Add results as you find
+them — if you run out of iterations, your collected results are still returned.
 
 ## Efficiency
 

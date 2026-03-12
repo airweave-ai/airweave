@@ -14,6 +14,7 @@ import functools
 import json
 from pathlib import Path
 
+from airweave.search.agentic_search.config import config as agentic_config
 from airweave.search.agentic_search.external.llm.tool_response import LLMToolCall
 from airweave.search.agentic_search.schemas.collection_metadata import (
     AgenticSearchCollectionMetadata,
@@ -48,6 +49,7 @@ def load_system_prompt(collection_metadata: AgenticSearchCollectionMetadata) -> 
         The complete system prompt string.
     """
     airweave_overview, agent_task = _load_static_prompt_parts()
+    agent_task = agent_task.replace("{max_iterations}", str(agentic_config.MAX_ITERATIONS))
 
     return f"""# Airweave Overview
 

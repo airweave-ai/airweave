@@ -105,7 +105,7 @@ class AgenticSearchConfig:
     VECTOR_DB_PROVIDER = VectorDBProvider.VESPA
 
     # Agent loop
-    MAX_ITERATIONS = 25  # more room for search+read+mark cycles
+    MAX_ITERATIONS = 15  # tighter budget — agent pipelines multiple tool calls per iteration
     AGENT_LLM_MAX_RETRIES = 3
     AGENT_LLM_RETRY_DELAY = 2.0  # seconds, initial delay for exponential backoff
     STAGNATION_THRESHOLD = 4  # iterations without new marks before nudging
