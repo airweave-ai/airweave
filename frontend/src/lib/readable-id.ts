@@ -11,10 +11,21 @@ const CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
  * @returns Random lowercase alphanumeric string
  */
 export function generateRandomSuffix(length = 6): string {
-  const values = crypto.getRandomValues(new Uint32Array(length));
+  const limit = CHARS.length;
+  // Largest multiple of `limit` that fits in a Uint32.  Values at or
+  // above this threshold would produce modulo bias and are discarded.
+  const maxUnbiased = limit * Math.floor(0x100000000 / limit);
+  const buf = new Uint32Array(length);
   let result = "";
-  for (let i = 0; i < length; i++) {
-    result += CHARS[values[i] % CHARS.length];
+  let filled = 0;
+  while (filled < length) {
+    crypto.getRandomValues(buf);
+    for (let j = 0; j < buf.length && filled < length; j++) {
+      if (buf[j] < maxUnbiased) {
+        result += CHARS[buf[j] % limit];
+        filled++;
+      }
+    }
   }
   return result;
 }

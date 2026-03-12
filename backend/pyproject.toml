@@ -157,6 +157,7 @@ select = [
     "B",      # flake8-bugbear
     "D",      # flake8-docstrings
     "PLC0415", # import-outside-top-level
+    "S311",    # flake8-bandit: pseudo-random generators
 ]
 ignore = [
     "B008",  # ignore fastapi dependency injection warning
@@ -171,6 +172,11 @@ convention = "google"
 "**/tests/**" = ["D100", "D101", "D102", "D103", "D107"]
 "**/fakes/**" = ["D102", "D107"]
 "**/fake.py" = ["D102", "D107"]
+"**/sources/stub.py" = ["S311"]
+"**/sources/file_stub.py" = ["S311"]
+"**/sources/incremental_stub.py" = ["S311"]
+"**/sources/timed.py" = ["S311"]
+"**/search/providers/mistral.py" = ["S311"]
 
 [tool.ruff.format]
 quote-style = "double"
