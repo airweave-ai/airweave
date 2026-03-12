@@ -47,12 +47,6 @@ class BehaviorConfig(BaseModel):
         False, description="Replay from ARF storage instead of calling source"
     )
     skip_guardrails: bool = Field(False, description="Skip usage guardrails (entity count checks)")
-    skip_entity_processing: bool = Field(
-        False, description="Skip entity processing and orphan cleanup (ACL-only sync)"
-    )
-    skip_acl_sync: bool = Field(
-        False, description="Skip access control membership sync (targeted content sync)"
-    )
 
 
 class SyncConfig(BaseSettings):
@@ -152,37 +146,6 @@ class SyncConfig(BaseSettings):
             ),
             cursor=CursorConfig(skip_load=True, skip_updates=True),
             behavior=BehaviorConfig(skip_hash_comparison=True, replay_from_arf=True),
-        )
-
-    @classmethod
-    def targeted_content(cls) -> "SyncConfig":
-        """Targeted content sync: process entities but skip ACL sync.
-
-        Used after browse tree node selection — ACL was already synced separately.
-        """
-        return cls(
-            behavior=BehaviorConfig(
-                skip_acl_sync=True,
-            ),
-        )
-
-    @classmethod
-    def acl_only(cls) -> "SyncConfig":
-        """ACL-only sync: skip entity processing, only run access control pipeline.
-
-        Useful for admin setup: sync group memberships before users browse the tree.
-        """
-        return cls(
-            handlers=HandlerConfig(
-                enable_vector_handlers=False,
-                enable_raw_data_handler=False,
-                enable_postgres_handler=False,
-            ),
-            cursor=CursorConfig(skip_load=True, skip_updates=True),
-            behavior=BehaviorConfig(
-                skip_entity_processing=True,
-                skip_guardrails=True,
-            ),
         )
 
 

@@ -209,12 +209,11 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
             )
             await uow.commit()
 
-        # Auto-trigger targeted content sync on same SC
         sync_job_id = await self._dispatch_sync(
             db,
             source_connection_id,
-            SyncConfig.targeted_content(),
-            "targeted_content",
+            SyncConfig(),
+            "sync",
             ctx,
         )
 

@@ -43,29 +43,12 @@ class HashComputer:
 
         Note:
             Modifies entities in-place, setting airweave_system_metadata.hash.
-            Failed entities are removed from the list and counted as skipped,
-            unless skip_hash_comparison is enabled (then they are kept for force-INSERT).
+            Failed entities are removed from the list and counted as skipped.
 
         Raises:
             SyncFailureError: If any entity has no hash after computation (programming error)
         """
         if not entities:
-            return
-
-        # Check if hash comparison will be skipped (metadata_tree, ACL-only, etc.)
-        skip_hash = (
-            sync_context.execution_config
-            and sync_context.execution_config.behavior
-            and sync_context.execution_config.behavior.skip_hash_comparison
-        )
-
-        # When skip_hash_comparison is enabled, skip hash computation entirely.
-        # All entities will be force-inserted anyway, so hashes are not needed.
-        if skip_hash:
-            sync_context.logger.debug(
-                f"Skipping hash computation for {len(entities)} entities "
-                f"(skip_hash_comparison enabled)"
-            )
             return
 
         # Compute all hashes concurrently with semaphore control
@@ -159,7 +142,6 @@ class HashComputer:
         results: List[Tuple[Tuple[str, str], Optional[str]]],
         sync_context: "SyncContext",
         runtime: "SyncRuntime",
-        keep_failed: bool = False,
     ) -> None:
         """Process hash computation results, handling failures.
 
@@ -168,8 +150,6 @@ class HashComputer:
             results: List of ((entity_type, entity_id), hash_value) tuples
             sync_context: Sync context for logging and progress tracking
             runtime: Sync runtime with live services
-            keep_failed: If True, keep entities that failed hash computation
-                (used when skip_hash_comparison is enabled, so they get force-inserted)
         """
         failed_entities = []
         file_count = 0
@@ -186,23 +166,17 @@ class HashComputer:
             else:
                 failed_entities.append(entity)
 
-        if keep_failed and failed_entities:
-            # In skip_hash_comparison mode, keep failed entities (they'll be force-inserted)
-            sync_context.logger.debug(
-                f"Keeping {len(failed_entities)} entities without hashes "
-                f"(skip_hash_comparison enabled)"
+        # Remove failed entities and mark as skipped
+        for entity in failed_entities:
+            entities.remove(entity)
+
+        if failed_entities:
+            # TODO: Record this through exception handling instead
+            await runtime.entity_tracker.record_skipped(len(failed_entities))
+
+            sync_context.logger.warning(
+                f"Skipped {len(failed_entities)} entities with hash computation failures"
             )
-        else:
-            # Remove failed entities and mark as skipped
-            for entity in failed_entities:
-                entities.remove(entity)
-
-            if failed_entities:
-                await runtime.entity_tracker.record_skipped(len(failed_entities))
-
-                sync_context.logger.warning(
-                    f"Skipped {len(failed_entities)} entities with hash computation failures"
-                )
 
         sync_context.logger.debug(
             f"Computed {file_count + regular_count} hashes: "

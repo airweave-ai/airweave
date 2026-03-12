@@ -44,6 +44,7 @@ class CleanupService:
             if not isinstance(entity, FileEntity):
                 continue
 
+            # FileEntity without local_path is a programming error
             if not hasattr(entity, "local_path") or not entity.local_path:
                 raise SyncFailureError(
                     f"FileEntity {entity.__class__.__name__}[{entity.entity_id}] "
