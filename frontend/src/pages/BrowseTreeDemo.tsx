@@ -154,6 +154,7 @@ function TreeNodeRow({
   node,
   depth,
   isSelected,
+  isImplicitlySelected,
   isExpanded,
   isLoading,
   onSelect,
@@ -162,6 +163,7 @@ function TreeNodeRow({
   node: BrowseNode;
   depth: number;
   isSelected: boolean;
+  isImplicitlySelected: boolean;
   isExpanded: boolean;
   isLoading: boolean;
   onSelect: () => void;
@@ -175,7 +177,11 @@ function TreeNodeRow({
     <div
       className={cn(
         "flex items-center gap-2 py-1.5 px-2 rounded-md transition-colors",
-        isDark ? "hover:bg-gray-800" : "hover:bg-gray-50"
+        isImplicitlySelected
+          ? "opacity-50 cursor-default"
+          : isDark
+            ? "hover:bg-gray-800"
+            : "hover:bg-gray-50"
       )}
       style={{ paddingLeft: `${depth * 24 + 8}px` }}
     >
@@ -203,6 +209,7 @@ function TreeNodeRow({
       <Checkbox
         checked={isSelected}
         onCheckedChange={onSelect}
+        disabled={isImplicitlySelected}
         className="mr-1"
       />
 
@@ -417,17 +424,36 @@ export default function BrowseTreeDemo() {
     [loadTree, treeNodes]
   );
 
-  const handleSelect = useCallback((sourceNodeId: string) => {
-    setSelectedNodeIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(sourceNodeId)) {
-        next.delete(sourceNodeId);
-      } else {
-        next.add(sourceNodeId);
+  const getDescendantIds = useCallback(
+    (nodeId: string): string[] => {
+      const children = treeNodes.get(nodeId) || [];
+      const ids: string[] = [];
+      for (const child of children) {
+        ids.push(child.source_node_id);
+        ids.push(...getDescendantIds(child.source_node_id));
       }
-      return next;
-    });
-  }, []);
+      return ids;
+    },
+    [treeNodes]
+  );
+
+  const handleSelect = useCallback(
+    (sourceNodeId: string) => {
+      setSelectedNodeIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(sourceNodeId)) {
+          next.delete(sourceNodeId);
+        } else {
+          next.add(sourceNodeId);
+          for (const descId of getDescendantIds(sourceNodeId)) {
+            next.delete(descId);
+          }
+        }
+        return next;
+      });
+    },
+    [getDescendantIds]
+  );
 
   // "Show next 10" helper
   const getVisibleLimit = (parentKey: string) => visibleCounts.get(parentKey) ?? PAGE_SIZE;
@@ -440,7 +466,11 @@ export default function BrowseTreeDemo() {
   };
 
   // Render tree recursively with pagination
-  const renderNodes = (parentNodeId: string | null, depth: number): React.ReactNode => {
+  const renderNodes = (
+    parentNodeId: string | null,
+    depth: number,
+    ancestorSelected: boolean = false
+  ): React.ReactNode => {
     const nodes = treeNodes.get(parentNodeId) || [];
     const parentKey = parentNodeId ?? "__root__";
     const limit = getVisibleLimit(parentKey);
@@ -449,21 +479,31 @@ export default function BrowseTreeDemo() {
 
     return (
       <>
-        {visible.map((node) => (
-          <div key={node.source_node_id}>
-            <TreeNodeRow
-              node={node}
-              depth={depth}
-              isSelected={selectedNodeIds.has(node.source_node_id)}
-              isExpanded={expandedNodes.has(node.source_node_id)}
-              isLoading={loadingNodes.has(node.source_node_id)}
-              onSelect={() => handleSelect(node.source_node_id)}
-              onExpand={() => handleExpand(node.source_node_id)}
-            />
-            {expandedNodes.has(node.source_node_id) &&
-              renderNodes(node.source_node_id, depth + 1)}
-          </div>
-        ))}
+        {visible.map((node) => {
+          const isExplicitlySelected = selectedNodeIds.has(node.source_node_id);
+          const isImplicit = ancestorSelected;
+
+          return (
+            <div key={node.source_node_id}>
+              <TreeNodeRow
+                node={node}
+                depth={depth}
+                isSelected={isExplicitlySelected || isImplicit}
+                isImplicitlySelected={isImplicit}
+                isExpanded={expandedNodes.has(node.source_node_id)}
+                isLoading={loadingNodes.has(node.source_node_id)}
+                onSelect={() => handleSelect(node.source_node_id)}
+                onExpand={() => handleExpand(node.source_node_id)}
+              />
+              {expandedNodes.has(node.source_node_id) &&
+                renderNodes(
+                  node.source_node_id,
+                  depth + 1,
+                  ancestorSelected || isExplicitlySelected
+                )}
+            </div>
+          );
+        })}
         {remaining > 0 && (
           <button
             onClick={() => showMore(parentKey)}

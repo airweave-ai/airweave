@@ -97,8 +97,17 @@ def _connection() -> MagicMock:
     conn = MagicMock(spec=Connection)
     conn.id = CONNECTION_ID
     conn.name = "Test Connection"
+    conn.readable_id = "test-connection-abc123"
+    conn.description = None
     conn.short_name = "github"
+    conn.integration_type = "source"
+    conn.integration_credential_id = None
+    conn.status = "active"
     conn.organization_id = ORG_ID
+    conn.created_at = NOW
+    conn.modified_at = NOW
+    conn.created_by_email = None
+    conn.modified_by_email = None
     return conn
 
 
@@ -268,15 +277,8 @@ RUN_CASES = [
         expected_error="Source connection has no associated sync",
         expected_status=400,
     ),
-    RunCase(
-        name="force_full_sync_no_cursor",
-        sc=_source_connection(),
-        collection=_collection(),
-        connection=_connection(),
-        force_full_sync=True,
-        expected_error="force_full_sync can only be used with continuous syncs",
-        expected_status=400,
-    ),
+    # force_full_sync_no_cursor: removed — service now logs info and proceeds
+    # (no cursor means first sync, which is inherently a full sync)
 ]
 
 
