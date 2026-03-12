@@ -51,6 +51,7 @@ class RunCase:
     expect_raises: bool = False
 
     def __post_init__(self):
+        """Default orchestrator_result to a MagicMock when no factory error."""
         if self.orchestrator_result is None and self.factory_error is None:
             self.orchestrator_result = MagicMock()
 
