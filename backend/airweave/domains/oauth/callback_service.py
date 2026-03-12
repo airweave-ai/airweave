@@ -633,10 +633,9 @@ class OAuthCallbackService:
                                 ctx.logger.warning(f"Failed to publish sync.pending event: {e}")
 
                             await self._temporal_workflow_service.run_source_connection_workflow(
-                                sync=sync_schema,
-                                sync_job=sync_job_schema,
-                                collection=collection_schema,
-                                connection=connection_schema,
+                                sync_id=sync_schema.id,
+                                sync_job_id=sync_job_schema.id,
+                                organization_id=ctx.organization.id,
                                 ctx=ctx,
                             )
 

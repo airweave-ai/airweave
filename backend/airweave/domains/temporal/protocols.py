@@ -6,7 +6,6 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio.client import WorkflowHandle
 
-from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 
@@ -23,12 +22,10 @@ class TemporalWorkflowServiceProtocol(Protocol):
 
     async def run_source_connection_workflow(
         self,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        collection: schemas.CollectionRecord,
-        connection: schemas.Connection,
+        sync_id: UUID,
+        sync_job_id: UUID,
+        organization_id: UUID,
         ctx: ApiContext,
-        access_token: Optional[str] = None,
         force_full_sync: bool = False,
     ) -> WorkflowHandle:
         """Start a source connection sync workflow."""

@@ -10,13 +10,11 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.syncs.types import SyncProvisionResult
 from airweave.models.sync import Sync
 from airweave.models.sync_cursor import SyncCursor
 from airweave.models.sync_job import SyncJob
-from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.pipeline.entity_tracker import SyncStats
 from airweave.schemas.source_connection import ScheduleConfig, SourceConnectionJob
 from airweave.schemas.sync import SyncCreate, SyncUpdate
@@ -174,16 +172,10 @@ class SyncServiceProtocol(Protocol):
 
     async def run(
         self,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        collection: schemas.CollectionRecord,
-        source_connection: schemas.Connection,
+        sync_id: UUID,
+        sync_job_id: UUID,
         ctx: ApiContext,
-        dense_embedder: DenseEmbedderProtocol,
-        sparse_embedder: SparseEmbedderProtocol,
-        access_token: Optional[str] = None,
         force_full_sync: bool = False,
-        execution_config: Optional[SyncConfig] = None,
     ) -> schemas.Sync:
         """Run a sync via SyncFactory + SyncOrchestrator."""
         ...

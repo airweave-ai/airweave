@@ -16,178 +16,181 @@ class RunSourceConnectionWorkflow:
 
     async def _create_sync_job_if_needed(
         self,
-        sync_dict: Dict[str, Any],
-        sync_job_dict: Optional[Dict[str, Any]],
-        ctx_dict: Dict[str, Any],
+        sync_id: str,
+        sync_job_id: Optional[str],
+        organization_id: str,
         force_full_sync: bool = False,
     ) -> Optional[Dict[str, Any]]:
-        """Create sync job for scheduled runs or return existing one."""
+        """Create sync job for scheduled runs or return existing ID.
+
+        Returns dict with sync job info, or None if skipped.
+        For manual runs (sync_job_id provided), returns {"id": sync_job_id}.
+        """
         from airweave.platform.temporal.activities import create_sync_job_activity
 
-        sync_id = sync_dict.get("id")
+        if sync_job_id is not None:
+            return {"id": sync_job_id}
 
-        # If no sync_job_dict provided (scheduled run), create a new sync job
-        if sync_job_dict is None:
-            try:
-                # For forced full sync (daily cleanup), use longer timeout to allow waiting
-                timeout = (
-                    timedelta(hours=1, minutes=5) if force_full_sync else timedelta(seconds=30)
-                )
+        try:
+            timeout = timedelta(hours=1, minutes=5) if force_full_sync else timedelta(seconds=30)
 
-                sync_job_dict = await workflow.execute_activity(
-                    create_sync_job_activity,
-                    args=[sync_id, ctx_dict, force_full_sync],
-                    start_to_close_timeout=timeout,
-                    heartbeat_timeout=timedelta(minutes=1) if force_full_sync else None,
-                    retry_policy=RetryPolicy(
-                        maximum_attempts=1,  # NO RETRIES - fail fast
-                    ),
-                )
-            except Exception as e:
-                workflow.logger.warning(f"Skipping scheduled run for sync {sync_id}: {str(e)}")
-                return None
+            result = await workflow.execute_activity(
+                create_sync_job_activity,
+                args=[sync_id, organization_id, force_full_sync],
+                start_to_close_timeout=timeout,
+                heartbeat_timeout=timedelta(minutes=1) if force_full_sync else None,
+                retry_policy=RetryPolicy(
+                    maximum_attempts=1,
+                ),
+            )
+        except Exception as e:
+            workflow.logger.warning(f"Skipping scheduled run for sync {sync_id}: {str(e)}")
+            return None
 
-        if sync_job_dict and sync_job_dict.get("_skipped"):
+        if result and result.get("_skipped"):
             workflow.logger.info(
                 f"Skipping scheduled run for sync {sync_id}: "
-                f"{sync_job_dict.get('reason', 'already running')}"
+                f"{result.get('reason', 'already running')}"
             )
             return None
 
-        return sync_job_dict
+        return result
+
+    @staticmethod
+    def _normalize_args(args: tuple) -> tuple:
+        """Backward-compat: convert old 7-dict payload to (sync_id, sync_job_id, org_id, force).
+
+        Old schedules baked the full serialized dicts into their payload:
+            (sync_dict, sync_job_dict, collection_dict, connection_dict,
+             ctx_dict, access_token, force_full_sync)
+
+        New format is just (sync_id, sync_job_id, organization_id, force_full_sync).
+        Detect by checking whether the first arg is a dict.
+        """
+        if args and isinstance(args[0], dict):
+            sync_dict = args[0]
+            sync_job_dict = args[1] if len(args) > 1 else None
+            ctx_dict = args[4] if len(args) > 4 else {}
+            force = args[6] if len(args) > 6 else False
+
+            sync_id = str(sync_dict["id"])
+            sync_job_id = str(sync_job_dict["id"]) if sync_job_dict else None
+            organization_id = str(ctx_dict.get("organization_id", ""))
+            return sync_id, sync_job_id, organization_id, bool(force)
+
+        sync_id = args[0] if len(args) > 0 else ""
+        sync_job_id = args[1] if len(args) > 1 else None
+        organization_id = args[2] if len(args) > 2 else ""
+        force_full_sync = args[3] if len(args) > 3 else False
+        return sync_id, sync_job_id, organization_id, bool(force_full_sync)
 
     @workflow.run
-    async def run(
-        self,
-        sync_dict: Dict[str, Any],
-        sync_job_dict: Optional[Dict[str, Any]],  # Made optional for scheduled runs
-        collection_dict: Dict[str, Any],
-        connection_dict: Dict[str, Any],  # Connection schema, NOT SourceConnection
-        ctx_dict: Dict[str, Any],
-        access_token: Optional[str] = None,
-        force_full_sync: bool = False,  # Force full sync with deletion
-    ) -> None:
+    async def run(self, *args) -> None:
         """Run the source connection sync workflow.
 
-        Args:
-            sync_dict: The sync configuration as dict
-            sync_job_dict: The sync job as dict (optional for scheduled runs)
-            collection_dict: The collection as dict
-            connection_dict: The connection as dict (Connection schema, NOT SourceConnection)
-            ctx_dict: The API context as dict
-            access_token: Optional access token
-            force_full_sync: If True, forces a full sync with orphaned entity deletion
+        Accepts both:
+        - New format: (sync_id, sync_job_id, organization_id, force_full_sync)
+        - Legacy format: (sync_dict, sync_job_dict, collection_dict,
+          connection_dict, ctx_dict, access_token, force_full_sync)
         """
+        sync_id, sync_job_id, organization_id, force_full_sync = self._normalize_args(args)
+
+        if not sync_id or not organization_id:
+            workflow.logger.error(
+                f"Missing required IDs: sync_id={sync_id!r}, org={organization_id!r}"
+            )
+            return
+
         from airweave.platform.temporal.activities import (
             run_sync_activity,
             self_destruct_orphaned_sync_activity,
         )
 
-        # Create sync job if needed (for scheduled runs)
-        sync_job_dict = await self._create_sync_job_if_needed(
-            sync_dict, sync_job_dict, ctx_dict, force_full_sync
+        sync_job_result = await self._create_sync_job_if_needed(
+            sync_id, sync_job_id, organization_id, force_full_sync
         )
-        if sync_job_dict is None:
-            return  # Exit gracefully if we couldn't create a job
+        if sync_job_result is None:
+            return
 
-        # Check if sync is orphaned (deleted during workflow queueing)
-        if sync_job_dict.get("_orphaned"):
+        if sync_job_result.get("_orphaned"):
             workflow.logger.info(
-                f"🧹 Sync {sync_dict['id']} is orphaned. "
-                f"Reason: {sync_job_dict.get('reason', 'Unknown')}. "
+                f"Sync {sync_id} is orphaned. "
+                f"Reason: {sync_job_result.get('reason', 'Unknown')}. "
                 f"Initiating self-destruct cleanup..."
             )
 
-            # Self-destruct: clean up any remaining schedules
             try:
                 await workflow.execute_activity(
                     self_destruct_orphaned_sync_activity,
                     args=[
-                        sync_dict["id"],
-                        ctx_dict,
-                        sync_job_dict.get("reason", "Sync not found"),
+                        sync_id,
+                        organization_id,
+                        sync_job_result.get("reason", "Sync not found"),
                     ],
                     start_to_close_timeout=timedelta(minutes=5),
                     retry_policy=RetryPolicy(maximum_attempts=3),
                 )
-                workflow.logger.info(
-                    f"✅ Self-destruct cleanup complete for sync {sync_dict['id']}"
-                )
+                workflow.logger.info(f"Self-destruct cleanup complete for sync {sync_id}")
             except Exception as cleanup_error:
                 workflow.logger.warning(
-                    f"⚠️ Self-destruct cleanup encountered an error: {cleanup_error}. "
-                    f"Continuing graceful exit."
+                    f"Self-destruct cleanup error: {cleanup_error}. Continuing graceful exit."
                 )
 
-            return  # Exit gracefully without error
+            return
+
+        sync_job_id = sync_job_result["id"]
 
         try:
-            # Use longer heartbeat timeout in local development for debugging
-            local_development = ctx_dict.get("local_development", False)
-            heartbeat_timeout = timedelta(hours=1) if local_development else timedelta(minutes=15)
-
             await workflow.execute_activity(
                 run_sync_activity,
                 args=[
-                    sync_dict,
-                    sync_job_dict,
-                    collection_dict,
-                    connection_dict,
-                    ctx_dict,
-                    access_token,
+                    sync_id,
+                    sync_job_id,
+                    organization_id,
                     force_full_sync,
                 ],
                 start_to_close_timeout=timedelta(days=7),
-                heartbeat_timeout=heartbeat_timeout,
+                heartbeat_timeout=timedelta(minutes=15),
                 cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
                 retry_policy=RetryPolicy(
-                    maximum_attempts=1,  # NO RETRIES - fail fast
+                    maximum_attempts=1,
                 ),
             )
 
         except Exception as e:
-            # Check if this is an orphaned sync error (source connection deleted mid-execution)
-            # Check both str(e) and the exception's cause chain for the ORPHANED_SYNC marker
             error_str = str(e)
             if hasattr(e, "__cause__") and e.__cause__:
                 error_str += f" {str(e.__cause__)}"
 
-            # Log the full error for debugging
             workflow.logger.debug(f"Activity exception - str: {error_str}")
             workflow.logger.debug(f"Activity exception type: {type(e).__name__}")
 
             if "ORPHANED_SYNC" in error_str:
                 workflow.logger.info(
-                    f"🧹 Sync {sync_dict['id']} became orphaned during execution. "
+                    f"Sync {sync_id} became orphaned during execution. "
                     f"Source connection was deleted. Initiating self-destruct cleanup..."
                 )
 
-                # Self-destruct: clean up any remaining schedules
                 try:
                     await workflow.execute_activity(
                         self_destruct_orphaned_sync_activity,
                         args=[
-                            sync_dict["id"],
-                            ctx_dict,
+                            sync_id,
+                            organization_id,
                             "Source connection deleted during sync execution",
                         ],
                         start_to_close_timeout=timedelta(minutes=5),
                         retry_policy=RetryPolicy(maximum_attempts=3),
                     )
-                    workflow.logger.info(
-                        f"✅ Self-destruct cleanup complete for sync {sync_dict['id']}"
-                    )
+                    workflow.logger.info(f"Self-destruct cleanup complete for sync {sync_id}")
                 except Exception as cleanup_error:
                     workflow.logger.warning(
-                        f"⚠️ Self-destruct cleanup encountered an error: {cleanup_error}. "
-                        f"Continuing graceful exit."
+                        f"Self-destruct cleanup error: {cleanup_error}. Continuing graceful exit."
                     )
 
-                return  # Exit gracefully without error
+                return
 
-            # For CancelledError, need to mark job as cancelled before re-raising
             if isinstance(e, asyncio.CancelledError):
-                # ensure DB gets updated even though the workflow was cancelled
                 from airweave.platform.temporal.activities import mark_sync_job_cancelled_activity
 
                 reason = f"{type(e).__name__}: {e}"
@@ -196,21 +199,18 @@ class RunSourceConnectionWorkflow:
                         workflow.execute_activity(
                             mark_sync_job_cancelled_activity,
                             args=[
-                                str(sync_job_dict["id"]),
-                                ctx_dict,
+                                sync_job_id,
+                                organization_id,
                                 reason,
                                 workflow.now().replace(tzinfo=None).isoformat(),
                             ],
                             start_to_close_timeout=timedelta(seconds=30),
-                            # fire-and-forget semantics on the server side
                             cancellation_type=workflow.ActivityCancellationType.ABANDON,
                         )
                     )
                 finally:
-                    # keep Workflow result as CANCELED
                     raise
 
-            # All other exceptions should be re-raised
             raise
 
 

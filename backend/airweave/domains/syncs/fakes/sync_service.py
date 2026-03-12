@@ -1,11 +1,9 @@
 """Fake sync service for testing."""
 
-from typing import Optional
+from uuid import UUID
 
 from airweave import schemas
-from airweave.api.context import ApiContext
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
-from airweave.platform.sync.config import SyncConfig
+from airweave.core.context import BaseContext
 
 
 class FakeSyncService:
@@ -14,20 +12,21 @@ class FakeSyncService:
     def __init__(self) -> None:
         """Initialize with empty call log."""
         self._calls: list[tuple] = []
+        self._result: schemas.Sync | None = None
+
+    def set_result(self, result: schemas.Sync) -> None:
+        """Configure the sync returned by run()."""
+        self._result = result
 
     async def run(
         self,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        collection: schemas.CollectionRecord,
-        source_connection: schemas.Connection,
-        ctx: ApiContext,
-        dense_embedder: DenseEmbedderProtocol,
-        sparse_embedder: SparseEmbedderProtocol,
-        access_token: Optional[str] = None,
+        sync_id: UUID,
+        sync_job_id: UUID,
+        ctx: BaseContext,
         force_full_sync: bool = False,
-        execution_config: Optional[SyncConfig] = None,
     ) -> schemas.Sync:
-        """Record call and return the sync as-is."""
-        self._calls.append(("run", sync, sync_job))
-        return sync
+        """Record call and return canned result."""
+        self._calls.append(("run", sync_id, sync_job_id, force_full_sync))
+        if self._result is not None:
+            return self._result
+        raise ValueError("FakeSyncService.set_result() not called")

@@ -14,11 +14,11 @@ Does NOT cover:
 
 import uuid
 from typing import List, Optional
+from uuid import UUID
 
 from temporalio.client import WorkflowHandle
 from temporalio.service import RPCError, RPCStatusCode
 
-from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.logging import logger
@@ -41,45 +41,37 @@ class TemporalWorkflowService(TemporalWorkflowServiceProtocol):
 
     async def run_source_connection_workflow(
         self,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        collection: schemas.CollectionRecord,
-        connection: schemas.Connection,
+        sync_id: UUID,
+        sync_job_id: UUID,
+        organization_id: UUID,
         ctx: ApiContext,
-        access_token: Optional[str] = None,
         force_full_sync: bool = False,
     ) -> WorkflowHandle:
         """Start a source connection sync workflow.
 
         Args:
-            sync: The sync configuration.
-            sync_job: The sync job.
-            collection: The collection.
-            connection: The Connection schema (NOT SourceConnection).
+            sync_id: The sync ID.
+            sync_job_id: The sync job ID.
+            organization_id: The organization ID.
             ctx: API context.
-            access_token: Optional access token.
             force_full_sync: If True, ignores cursor data and cleans orphaned entities.
 
         Returns:
             The workflow handle.
         """
         client = await temporal_client.get_client()
-        workflow_id = f"sync-{sync_job.id}"
+        workflow_id = f"sync-{sync_job_id}"
 
-        ctx.logger.info(f"Starting Temporal workflow {workflow_id} for sync job {sync_job.id}")
-        ctx.logger.info(f"Connection: {connection.name} | Collection: {collection.name}")
+        ctx.logger.info(f"Starting Temporal workflow {workflow_id} for sync job {sync_job_id}")
         if force_full_sync:
             ctx.logger.info("Force full sync enabled - will ignore cursor data")
 
         handle = await client.start_workflow(
             RunSourceConnectionWorkflow.run,
             args=[
-                sync.model_dump(mode="json"),
-                sync_job.model_dump(mode="json"),
-                collection.model_dump(mode="json"),
-                connection.model_dump(mode="json"),
-                ctx.to_serializable_dict(),
-                access_token,
+                str(sync_id),
+                str(sync_job_id),
+                str(organization_id),
                 force_full_sync,
             ],
             id=workflow_id,

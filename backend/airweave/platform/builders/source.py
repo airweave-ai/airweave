@@ -40,7 +40,6 @@ class SourceContextBuilder:
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
         infra: InfraContext,
-        access_token: Optional[str] = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
     ) -> SourceContext:
@@ -51,7 +50,6 @@ class SourceContextBuilder:
             sync: Sync configuration
             sync_job: The sync job (needed for file downloader)
             infra: Infrastructure context (provides ctx and logger)
-            access_token: Optional direct token (skips credential loading)
             force_full_sync: If True, skip cursor loading
             execution_config: Optional execution config
 
@@ -95,7 +93,6 @@ class SourceContextBuilder:
             db=db,
             source_connection_id=UUID(str(source_connection_obj.id)),
             ctx=ctx,
-            access_token=access_token,
         )
 
         # Setup file downloader for file-based sources

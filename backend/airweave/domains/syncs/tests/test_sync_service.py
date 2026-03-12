@@ -17,25 +17,13 @@ from airweave.domains.syncs.service import SyncService
 
 
 def _mock_ctx():
-    """Minimal mock that satisfies ApiContext duck-typing."""
+    """Minimal mock that satisfies BaseContext duck-typing."""
     ctx = MagicMock()
     ctx.organization = MagicMock()
     ctx.organization.id = uuid4()
     ctx.logger = MagicMock()
     ctx.logger.error = MagicMock()
     return ctx
-
-
-def _mock_sync(sync_id=None):
-    s = MagicMock()
-    s.id = sync_id or uuid4()
-    return s
-
-
-def _mock_sync_job(job_id=None):
-    j = MagicMock()
-    j.id = job_id or uuid4()
-    return j
 
 
 # ---------------------------------------------------------------------------
@@ -82,13 +70,9 @@ async def test_run(case: RunCase):
     fake_job_svc = FakeSyncJobService()
     svc = SyncService(sync_job_service=fake_job_svc)
 
-    sync = _mock_sync()
-    sync_job = _mock_sync_job()
-    collection = MagicMock()
-    source_connection = MagicMock()
+    sync_id = uuid4()
+    sync_job_id = uuid4()
     ctx = _mock_ctx()
-    dense_embedder = MagicMock()
-    sparse_embedder = MagicMock()
 
     mock_orchestrator = MagicMock()
     mock_orchestrator.run = AsyncMock(return_value=case.orchestrator_result)
@@ -118,23 +102,15 @@ async def test_run(case: RunCase):
         if case.expect_raises:
             with pytest.raises(type(case.factory_error)):
                 await svc.run(
-                    sync=sync,
-                    sync_job=sync_job,
-                    collection=collection,
-                    source_connection=source_connection,
+                    sync_id=sync_id,
+                    sync_job_id=sync_job_id,
                     ctx=ctx,
-                    dense_embedder=dense_embedder,
-                    sparse_embedder=sparse_embedder,
                 )
         else:
             result = await svc.run(
-                sync=sync,
-                sync_job=sync_job,
-                collection=collection,
-                source_connection=source_connection,
+                sync_id=sync_id,
+                sync_job_id=sync_job_id,
                 ctx=ctx,
-                dense_embedder=dense_embedder,
-                sparse_embedder=sparse_embedder,
             )
             assert result is case.orchestrator_result
             mock_orchestrator.run.assert_awaited_once()
@@ -143,7 +119,7 @@ async def test_run(case: RunCase):
         assert len(fake_job_svc._calls) == 1
         call = fake_job_svc._calls[0]
         assert call[0] == "update_status"
-        assert call[1] == sync_job.id
+        assert call[1] == sync_job_id
         assert call[2] == SyncJobStatus.FAILED
         assert call[5] == str(case.factory_error)
     else:
@@ -156,13 +132,13 @@ async def test_run(case: RunCase):
 
 
 @pytest.mark.asyncio
-async def test_run_forwards_optional_kwargs():
-    """access_token, force_full_sync, execution_config reach the factory."""
+async def test_run_forwards_force_full_sync():
+    """force_full_sync reaches the factory."""
     fake_job_svc = FakeSyncJobService()
     svc = SyncService(sync_job_service=fake_job_svc)
 
     mock_orchestrator = MagicMock()
-    mock_orchestrator.run = AsyncMock(return_value=_mock_sync())
+    mock_orchestrator.run = AsyncMock(return_value=MagicMock())
     mock_db = AsyncMock()
 
     with (
@@ -179,25 +155,15 @@ async def test_run_forwards_optional_kwargs():
             return_value=mock_orchestrator,
         )
 
-        exec_config = MagicMock()
-
         await svc.run(
-            sync=_mock_sync(),
-            sync_job=_mock_sync_job(),
-            collection=MagicMock(),
-            source_connection=MagicMock(),
+            sync_id=uuid4(),
+            sync_job_id=uuid4(),
             ctx=_mock_ctx(),
-            dense_embedder=MagicMock(),
-            sparse_embedder=MagicMock(),
-            access_token="tok-123",
             force_full_sync=True,
-            execution_config=exec_config,
         )
 
         _, kwargs = mock_factory_cls.create_orchestrator.call_args
-        assert kwargs["access_token"] == "tok-123"
         assert kwargs["force_full_sync"] is True
-        assert kwargs["execution_config"] is exec_config
 
 
 # ---------------------------------------------------------------------------

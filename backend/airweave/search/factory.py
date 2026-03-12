@@ -883,7 +883,6 @@ class SearchFactory:
                 db=db,
                 source_connection_id=source_connection.id,
                 ctx=ctx,
-                access_token=None,
             )
 
             ctx.logger.info(

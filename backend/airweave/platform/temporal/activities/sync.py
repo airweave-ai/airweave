@@ -28,7 +28,6 @@ from airweave.core.protocols import EventBus
 from airweave.core.redis_client import redis_client
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
@@ -51,18 +50,9 @@ class RunSyncActivity:
         event_bus: Publish sync lifecycle events (RUNNING, COMPLETED, FAILED, CANCELLED)
         sync_service: Build orchestrator and run sync
         sync_job_service: Update sync job status
-
-    Inputs:
-        sync_dict, sync_job_dict, collection_dict, connection_dict, ctx_dict
-        access_token, force_full_sync
-
-    Note: Currently accepts serialized dicts for backward compatibility with
-    existing workflows. Future: migrate to IDs-only.
     """
 
     event_bus: EventBus
-    dense_embedder: DenseEmbedderProtocol
-    sparse_embedder: SparseEmbedderProtocol
     sync_service: SyncServiceProtocol
     sync_job_service: SyncJobServiceProtocol
     collection_repo: CollectionRepositoryProtocol
@@ -70,102 +60,70 @@ class RunSyncActivity:
     @activity.defn(name="run_sync_activity")
     async def run(  # noqa: C901
         self,
-        sync_dict: Dict[str, Any],
-        sync_job_dict: Dict[str, Any],
-        collection_dict: Dict[str, Any],
-        connection_dict: Dict[str, Any],
-        ctx_dict: Dict[str, Any],
-        access_token: Optional[str] = None,
+        sync_id: str,
+        sync_job_id: str,
+        organization_id: str,
         force_full_sync: bool = False,
     ) -> None:
         """Activity to run a sync job.
 
         Args:
-            sync_dict: The sync configuration as dict
-            sync_job_dict: The sync job as dict
-            collection_dict: The collection as dict
-            connection_dict: The connection as dict (Connection schema, NOT SourceConnection)
-            ctx_dict: The API context as dict
-            access_token: Optional access token
+            sync_id: The sync ID (str UUID)
+            sync_job_id: The sync job ID (str UUID)
+            organization_id: The organization ID (str UUID)
             force_full_sync: If True, forces a full sync with orphaned entity deletion
         """
-        # Import here to avoid Temporal sandboxing issues
         from airweave import crud, schemas
         from airweave.core.context import BaseContext
         from airweave.db.session import get_db_context
         from airweave.platform.temporal.worker_metrics import worker_metrics
 
-        # Convert dicts back to Pydantic models
-        sync_job = schemas.SyncJob(**sync_job_dict)
-        connection = schemas.Connection(**connection_dict)
-
-        organization = schemas.Organization(**ctx_dict["organization"])
-
-        ctx = BaseContext(organization=organization)
-        ctx.logger = ctx.logger.with_context(sync_job_id=str(sync_job.id))
-
-        # Fetch fresh sync and collection from DB to avoid stale data
-        # (Temporal schedules bake sync_dict at creation time, which can
-        # contain outdated destination_connection_ids after migrations)
-        sync_id = UUID(sync_dict["id"])
-        collection_id = UUID(collection_dict["id"])
         async with get_db_context() as db:
-            # Fetch sync with connections to get current destination_connection_ids
-            try:
-                sync = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=True)
-                if not sync.destination_connection_ids:
-                    ctx.logger.warning(
-                        f"Sync {sync_id} has no destination connections in DB. "
-                        f"Falling back to workflow-provided sync_dict."
-                    )
-                    sync = schemas.Sync(**sync_dict)
-                else:
-                    ctx.logger.info(
-                        f"Fetched fresh sync data from DB: {sync.id} "
-                        f"(destinations={sync.destination_connection_ids})"
-                    )
-            except Exception as e:
-                ctx.logger.warning(
-                    f"Failed to fetch sync {sync_id} from DB: {e}. "
-                    f"Falling back to workflow-provided sync_dict."
-                )
-                sync = schemas.Sync(**sync_dict)
+            org_model = await crud.organization.get(
+                db=db, id=UUID(organization_id), skip_access_validation=True
+            )
+            if not org_model:
+                raise ValueError(f"Organization {organization_id} not found")
+            organization = schemas.Organization.model_validate(org_model)
 
-            collection_model = await self.collection_repo.get(db=db, id=collection_id, ctx=ctx)
+            ctx = BaseContext(organization=organization)
+            ctx.logger = ctx.logger.with_context(sync_job_id=sync_job_id)
+
+            sync = await crud.sync.get(db=db, id=UUID(sync_id), ctx=ctx, with_connections=True)
+            if not sync:
+                raise ValueError(f"Sync {sync_id} not found")
+
+            sync_job_model = await crud.sync_job.get(db=db, id=UUID(sync_job_id), ctx=ctx)
+            if not sync_job_model:
+                raise ValueError(f"SyncJob {sync_job_id} not found")
+            sync_job = schemas.SyncJob.model_validate(sync_job_model, from_attributes=True)
+
+            source_conn = await crud.source_connection.get_by_sync_id(
+                db=db, sync_id=UUID(sync_id), ctx=ctx
+            )
+            if not source_conn:
+                raise ValueError(f"SourceConnection not found for sync {sync_id}")
+
+            source_connection_id = source_conn.id
+
+            collection_model = await self.collection_repo.get_by_readable_id(
+                db=db, readable_id=source_conn.readable_collection_id, ctx=ctx
+            )
             if not collection_model:
-                raise ValueError(f"Collection {collection_id} not found in database")
-
+                raise ValueError(f"Collection not found for sync {sync_id}")
             collection = schemas.CollectionRecord.model_validate(
                 collection_model, from_attributes=True
             )
-            ctx.logger.info(f"Fetched fresh collection data from DB: {collection.readable_id}")
 
-            # Fetch the SourceConnection to get its user-facing ID for webhook events.
-            # sync.source_connection_id is the internal Connection.id, NOT the
-            # SourceConnection.id that users see in the API and webhook payloads.
-            source_connection_id = sync.source_connection_id  # fallback: internal ID
-            try:
-                source_conn = await crud.source_connection.get_by_sync_id(
-                    db=db, sync_id=sync_id, ctx=ctx
-                )
-                if source_conn:
-                    source_connection_id = source_conn.id
-                    ctx.logger.info(
-                        f"Resolved SourceConnection.id={source_connection_id} "
-                        f"(internal Connection.id={sync.source_connection_id})"
-                    )
-                else:
-                    ctx.logger.warning(
-                        f"No SourceConnection found for sync {sync_id}. "
-                        f"Falling back to sync.source_connection_id={sync.source_connection_id}"
-                    )
-            except Exception as e:
-                ctx.logger.warning(
-                    f"Failed to fetch SourceConnection for sync {sync_id}: {e}. "
-                    f"Falling back to sync.source_connection_id={sync.source_connection_id}"
-                )
+            conn_model = await crud.connection.get(db=db, id=source_conn.connection_id, ctx=ctx)
+            if not conn_model:
+                raise ValueError(f"Connection {source_conn.connection_id} not found")
+            connection = schemas.Connection.model_validate(conn_model, from_attributes=True)
 
-        ctx.logger.debug(f"\n\nStarting sync activity for job {sync_job.id}\n\n")
+        ctx.logger.info(
+            f"Hydrated sync data: sync={sync.id}, job={sync_job.id}, "
+            f"collection={collection.readable_id}, connection={connection.name}"
+        )
 
         # Track this activity in worker metrics (fail-safe: never crash sync)
         tracking_context = None
@@ -192,13 +150,10 @@ class RunSyncActivity:
             # Start the sync task
             sync_task = asyncio.create_task(
                 self._run_sync_task(
-                    sync,
-                    sync_job,
-                    collection,
-                    connection,
-                    ctx,
-                    access_token,
-                    force_full_sync,
+                    sync_id=UUID(sync_id),
+                    sync_job_id=UUID(sync_job_id),
+                    ctx=ctx,
+                    force_full_sync=force_full_sync,
                 )
             )
 
@@ -396,49 +351,25 @@ class RunSyncActivity:
 
     async def _run_sync_task(
         self,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        collection: schemas.Collection,
-        connection: schemas.Connection,
+        sync_id: UUID,
+        sync_job_id: UUID,
         ctx: BaseContext,
-        access_token: Optional[str] = None,
         force_full_sync: bool = False,
     ):
-        """Run the actual sync service."""
-        from airweave import crud
+        """Run the actual sync service (delegates hydration to factory)."""
         from airweave.core.exceptions import NotFoundException
-        from airweave.db.session import get_db_context
-        from airweave.platform.sync.config import SyncConfig
-
-        execution_config = None
-        try:
-            async with get_db_context() as db:
-                sync_job_model = await crud.sync_job.get(db, id=sync_job.id, ctx=ctx)
-                if sync_job_model and sync_job_model.sync_config:
-                    execution_config = SyncConfig(**sync_job_model.sync_config)
-                    ctx.logger.info(
-                        f"Loaded execution config from DB: {sync_job_model.sync_config}"
-                    )
-        except Exception as e:
-            ctx.logger.warning(f"Failed to load execution config from DB: {e}")
 
         try:
             return await self.sync_service.run(
-                sync=sync,
-                sync_job=sync_job,
-                collection=collection,
-                source_connection=connection,
+                sync_id=sync_id,
+                sync_job_id=sync_job_id,
                 ctx=ctx,
-                access_token=access_token,
                 force_full_sync=force_full_sync,
-                execution_config=execution_config,
-                dense_embedder=self.dense_embedder,
-                sparse_embedder=self.sparse_embedder,
             )
         except NotFoundException as e:
             if "Source connection record not found" in str(e) or "Connection not found" in str(e):
                 ctx.logger.info(
-                    f"🧹 Source connection for sync {sync.id} not found. "
+                    f"Source connection for sync {sync_id} not found. "
                     f"Resource was likely deleted during workflow execution."
                 )
                 raise Exception("ORPHANED_SYNC: Source connection record not found") from e
@@ -520,7 +451,7 @@ class MarkSyncJobCancelledActivity:
     async def run(
         self,
         sync_job_id: str,
-        ctx_dict: Dict[str, Any],
+        organization_id: str,
         reason: Optional[str] = None,
         when_iso: Optional[str] = None,
     ) -> None:
@@ -528,15 +459,22 @@ class MarkSyncJobCancelledActivity:
 
         Args:
             sync_job_id: The sync job ID (str UUID)
-            ctx_dict: Serialized ApiContext dict
+            organization_id: The organization ID (str UUID)
             reason: Optional cancellation reason
             when_iso: Optional ISO timestamp for failed_at
         """
-        from airweave import schemas
+        from airweave import crud, schemas
         from airweave.core.context import BaseContext
         from airweave.core.shared_models import SyncJobStatus
+        from airweave.db.session import get_db_context
 
-        organization = schemas.Organization(**ctx_dict["organization"])
+        async with get_db_context() as db:
+            org_model = await crud.organization.get(
+                db=db, id=UUID(organization_id), skip_access_validation=True
+            )
+            if not org_model:
+                raise ValueError(f"Organization {organization_id} not found")
+            organization = schemas.Organization.model_validate(org_model)
 
         ctx = BaseContext(organization=organization)
         ctx.logger = ctx.logger.with_context(sync_job_id=sync_job_id)
@@ -597,14 +535,14 @@ class CreateSyncJobActivity:
     async def run(
         self,
         sync_id: str,
-        ctx_dict: Dict[str, Any],
+        organization_id: str,
         force_full_sync: bool = False,
     ) -> Dict[str, Any]:
         """Create a new sync job for the given sync.
 
         Args:
             sync_id: The sync ID to create a job for
-            ctx_dict: The API context as dict
+            organization_id: The organization ID (str UUID)
             force_full_sync: If True (daily cleanup), wait for running jobs to complete
 
         Returns:
@@ -613,10 +551,17 @@ class CreateSyncJobActivity:
         Raises:
             Exception: If a sync job is already running and force_full_sync is False
         """
+        from airweave import crud as _crud
         from airweave.core.exceptions import NotFoundException
         from airweave.db.session import get_db_context
 
-        organization = schemas.Organization(**ctx_dict["organization"])
+        async with get_db_context() as _org_db:
+            org_model = await _crud.organization.get(
+                db=_org_db, id=UUID(organization_id), skip_access_validation=True
+            )
+            if not org_model:
+                raise ValueError(f"Organization {organization_id} not found")
+            organization = schemas.Organization.model_validate(org_model)
 
         ctx = BaseContext(organization=organization)
         ctx.logger = ctx.logger.with_context(sync_id=sync_id)
@@ -725,9 +670,9 @@ class CreateSyncJobActivity:
                     id=source_conn.connection_id,
                     ctx=ctx,
                 )
-                collection = await self.collection_repo.get(
+                collection = await self.collection_repo.get_by_readable_id(
                     db=db,
-                    id=source_conn.collection_id,
+                    readable_id=source_conn.readable_collection_id,
                     ctx=ctx,
                 )
                 if connection and collection:

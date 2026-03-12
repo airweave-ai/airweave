@@ -27,7 +27,6 @@ from temporalio.client import (
 )
 from temporalio.service import RPCError, RPCStatusCode
 
-from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.logging import logger
@@ -99,12 +98,8 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         self,
         sync_id: UUID,
         cron_expression: str,
-        sync_dict: dict,
-        collection_dict: dict,
-        connection_dict: dict,
         db: AsyncSession,
         ctx: ApiContext,
-        access_token: Optional[str] = None,
         schedule_type: str = "regular",
         force_full_sync: bool = False,
         uow: Optional[UnitOfWork] = None,
@@ -140,15 +135,11 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
             return schedule_id
 
         workflow_args: list = [
-            sync_dict,
+            str(sync_id),
             None,  # no pre-created sync job for scheduled runs
-            collection_dict,
-            connection_dict,
-            ctx.to_serializable_dict(),
-            access_token,
+            str(ctx.organization.id),
+            force_full_sync,
         ]
-        if force_full_sync:
-            workflow_args.append(True)
 
         await client.create_schedule(
             schedule_id,
@@ -264,50 +255,6 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         )
         logger.info(f"Deleted schedule {schedule_id}")
 
-    async def _gather_schedule_data(
-        self,
-        sync_id: UUID,
-        db: AsyncSession,
-        ctx: ApiContext,
-        collection_readable_id: Optional[str] = None,
-        connection_id: Optional[UUID] = None,
-    ) -> tuple[dict, dict, dict]:
-        """Load sync/collection/connection and return serialised dicts."""
-        sync_with_conns = await self._sync_repo.get(db, sync_id, ctx)
-
-        source_connection = await self._sc_repo.get_by_sync_id(db, sync_id, ctx)
-        resolved_collection_readable_id = collection_readable_id
-        resolved_connection_id = connection_id
-        if source_connection:
-            resolved_collection_readable_id = source_connection.readable_collection_id
-            resolved_connection_id = source_connection.connection_id
-        elif resolved_collection_readable_id is None or resolved_connection_id is None:
-            raise ValueError(f"No source connection found for sync {sync_id}")
-
-        collection = await self._collection_repo.get_by_readable_id(
-            db, resolved_collection_readable_id, ctx
-        )
-        if not collection:
-            raise ValueError(f"No collection found for sync {sync_id}")
-
-        if not resolved_connection_id:
-            raise ValueError(f"Source connection for sync {sync_id} has no connection_id")
-        connection_model = await self._connection_repo.get(db, resolved_connection_id, ctx)
-        if not connection_model:
-            raise ValueError(f"Connection {resolved_connection_id} not found")
-
-        sync_dict = schemas.Sync.model_validate(sync_with_conns, from_attributes=True).model_dump(
-            mode="json"
-        )
-        collection_dict = schemas.CollectionRecord.model_validate(
-            collection, from_attributes=True
-        ).model_dump(mode="json")
-        connection_dict = schemas.Connection.model_validate(
-            connection_model, from_attributes=True
-        ).model_dump(mode="json")
-
-        return sync_dict, collection_dict, connection_dict
-
     @staticmethod
     def _schedule_type_for_cron(cron_schedule: str) -> str:
         """Return 'minute' or 'regular' based on the cron pattern."""
@@ -365,20 +312,9 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
                 f"for sync {sync_id}, will create new one"
             )
 
-        sync_dict, collection_dict, connection_dict = await self._gather_schedule_data(
-            sync_id,
-            db,
-            ctx,
-            collection_readable_id=collection_readable_id,
-            connection_id=connection_id,
-        )
-
         schedule_id = await self._create_schedule(
             sync_id=sync_id,
             cron_expression=cron_schedule,
-            sync_dict=sync_dict,
-            collection_dict=collection_dict,
-            connection_dict=connection_dict,
             db=db,
             ctx=ctx,
             schedule_type=self._schedule_type_for_cron(cron_schedule),

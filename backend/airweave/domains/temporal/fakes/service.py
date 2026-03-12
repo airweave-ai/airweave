@@ -1,10 +1,10 @@
 """Fake TemporalWorkflowService for testing."""
 
 from typing import List, Optional
+from uuid import UUID
 
 from temporalio.client import WorkflowHandle
 
-from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 
@@ -38,24 +38,20 @@ class FakeTemporalWorkflowService(TemporalWorkflowServiceProtocol):
 
     async def run_source_connection_workflow(
         self,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        collection: schemas.CollectionRecord,
-        connection: schemas.Connection,
+        sync_id: UUID,
+        sync_job_id: UUID,
+        organization_id: UUID,
         ctx: ApiContext,
-        access_token: Optional[str] = None,
         force_full_sync: bool = False,
     ) -> WorkflowHandle:
         """Record call and return None (consumer ignores handle)."""
         self._calls.append(
             (
                 "run_source_connection_workflow",
-                sync,
-                sync_job,
-                collection,
-                connection,
+                sync_id,
+                sync_job_id,
+                organization_id,
                 ctx,
-                access_token,
                 force_full_sync,
             )
         )

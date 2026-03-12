@@ -231,8 +231,7 @@ class BaseSource:
         if self._token_manager:
             return await self._token_manager.get_valid_token()
 
-        # Fallback to instance access_token if no token manager
-        return getattr(self, "access_token", None)
+        return None
 
     async def refresh_on_unauthorized(self) -> Optional[str]:
         """Refresh token after receiving a 401 error.

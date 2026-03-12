@@ -28,23 +28,32 @@ class SelfDestructOrphanedSyncActivity:
     async def run(
         self,
         sync_id: str,
-        ctx_dict: Dict[str, Any],
+        organization_id: str,
         reason: str = "Resource not found",
     ) -> Dict[str, Any]:
         """Self-destruct cleanup for orphaned workflow.
 
         Args:
             sync_id: The sync ID to clean up
-            ctx_dict: The API context as dict
+            organization_id: The organization ID (str UUID)
             reason: Reason for cleanup (for logging)
 
         Returns:
             Summary of cleanup actions performed
         """
-        from airweave import schemas
-        from airweave.core.context import BaseContext
+        from uuid import UUID
 
-        organization = schemas.Organization(**ctx_dict["organization"])
+        from airweave import crud, schemas
+        from airweave.core.context import BaseContext
+        from airweave.db.session import get_db_context
+
+        async with get_db_context() as db:
+            org_model = await crud.organization.get(
+                db=db, id=UUID(organization_id), skip_access_validation=True
+            )
+            if not org_model:
+                raise ValueError(f"Organization {organization_id} not found")
+            organization = schemas.Organization.model_validate(org_model)
 
         ctx = BaseContext(organization=organization)
         ctx.logger = ctx.logger.with_context(sync_id=sync_id)

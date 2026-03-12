@@ -1228,8 +1228,6 @@ async def resync_with_execution_config(
     if not collection:
         raise NotFoundException(f"Collection {source_conn.readable_collection_id} not found")
 
-    collection_schema = schemas.CollectionRecord.model_validate(collection, from_attributes=True)
-
     # Get the Connection object (bypass org filtering)
     connection_result = await db.execute(
         sa_select(Connection).where(Connection.id == source_conn.connection_id)
@@ -1237,7 +1235,6 @@ async def resync_with_execution_config(
     connection = connection_result.scalar_one_or_none()
     if not connection:
         raise NotFoundException("Connection not found for source connection")
-    connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
 
     # Build context for the sync's organization (not the admin's API key org)
     # This ensures Temporal workers can access resources in the correct org context
@@ -1249,10 +1246,9 @@ async def resync_with_execution_config(
         f"(sync org: {sync_organization_id}, admin org: {ctx.organization.id})"
     )
     await temporal_workflow_service.run_source_connection_workflow(
-        sync=sync_schema,
-        sync_job=sync_job_schema,
-        collection=collection_schema,
-        connection=connection_schema,
+        sync_id=sync_schema.id,
+        sync_job_id=sync_job_schema.id,
+        organization_id=sync_organization_id,
         ctx=sync_org_ctx,  # Use sync's org context, not admin's
         force_full_sync=False,
     )

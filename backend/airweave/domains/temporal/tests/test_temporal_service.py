@@ -31,14 +31,6 @@ def _mock_ctx() -> MagicMock:
     return ctx
 
 
-def _mock_schema(name: str = "test") -> MagicMock:
-    m = MagicMock()
-    m.id = uuid4()
-    m.name = name
-    m.model_dump.return_value = {"id": str(m.id), "name": name}
-    return m
-
-
 # ---------------------------------------------------------------------------
 # run_source_connection_workflow
 # ---------------------------------------------------------------------------
@@ -48,14 +40,11 @@ def _mock_schema(name: str = "test") -> MagicMock:
 class RunWorkflowCase:
     name: str
     force_full_sync: bool = False
-    access_token: Optional[str] = None
 
 
 RUN_WORKFLOW_CASES = [
     RunWorkflowCase(name="default"),
     RunWorkflowCase(name="force_full_sync", force_full_sync=True),
-    RunWorkflowCase(name="with_access_token", access_token="tok-abc"),
-    RunWorkflowCase(name="full_sync_with_token", force_full_sync=True, access_token="tok-xyz"),
 ]
 
 
@@ -69,10 +58,9 @@ async def test_run_source_connection_workflow(case: RunWorkflowCase):
     mock_handle = MagicMock()
     mock_client.start_workflow = AsyncMock(return_value=mock_handle)
 
-    sync = _mock_schema("my-sync")
-    sync_job = _mock_schema("my-job")
-    collection = _mock_schema("my-collection")
-    connection = _mock_schema("my-connection")
+    sync_id = uuid4()
+    sync_job_id = uuid4()
+    organization_id = ctx.organization.id
 
     with patch(
         "airweave.domains.temporal.service.temporal_client"
@@ -80,12 +68,10 @@ async def test_run_source_connection_workflow(case: RunWorkflowCase):
         mock_tc.get_client = AsyncMock(return_value=mock_client)
 
         result = await svc.run_source_connection_workflow(
-            sync=sync,
-            sync_job=sync_job,
-            collection=collection,
-            connection=connection,
+            sync_id=sync_id,
+            sync_job_id=sync_job_id,
+            organization_id=organization_id,
             ctx=ctx,
-            access_token=case.access_token,
             force_full_sync=case.force_full_sync,
         )
 
@@ -94,7 +80,6 @@ async def test_run_source_connection_workflow(case: RunWorkflowCase):
         call_kwargs = mock_client.start_workflow.call_args
         args_list = call_kwargs.kwargs.get("args") or call_kwargs[1].get("args")
         assert args_list[-1] == case.force_full_sync
-        assert args_list[-2] == case.access_token
 
 
 # ---------------------------------------------------------------------------

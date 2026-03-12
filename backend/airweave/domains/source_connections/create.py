@@ -681,9 +681,8 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         except Exception as e:
             ctx.logger.warning(f"Failed to publish sync.pending event: {e}")
         await self._temporal_workflow_service.run_source_connection_workflow(
-            sync=sync_result.sync,
-            sync_job=sync_result.sync_job,
-            collection=collection,
-            connection=connection,
+            sync_id=sync_result.sync_id,
+            sync_job_id=sync_result.sync_job.id,
+            organization_id=ctx.organization.id,
             ctx=ctx,
         )

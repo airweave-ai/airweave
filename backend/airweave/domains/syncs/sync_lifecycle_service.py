@@ -214,10 +214,9 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
         )
 
         await self._temporal_workflow_service.run_source_connection_workflow(
-            sync=sync,
-            sync_job=sync_job,
-            collection=collection_schema,
-            connection=connection_schema,
+            sync_id=sync.id,
+            sync_job_id=sync_job_schema.id,
+            organization_id=ctx.organization.id,
             ctx=ctx,
             force_full_sync=force_full_sync,
         )

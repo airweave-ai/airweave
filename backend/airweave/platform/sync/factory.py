@@ -1,25 +1,25 @@
 """Sync factory - builds orchestrator with SyncContext (data) and SyncRuntime (services).
 
 The factory is responsible for:
-1. Building SyncContext (data) via SyncContextBuilder
-2. Building live services (source, destinations, trackers) via sub-builders
-3. Building per-sync event emitter with subscribers (progress relay, billing)
-4. Assembling SyncRuntime from the services
-5. Wiring everything into SyncOrchestrator
+1. Hydrating sync/sync_job/collection/connection from DB using IDs
+2. Building SyncContext (data) via SyncContextBuilder
+3. Building live services (source, destinations, trackers) via sub-builders
+4. Building per-sync event emitter with subscribers (progress relay, billing)
+5. Assembling SyncRuntime from the services
+6. Wiring everything into SyncOrchestrator
 """
 
 import asyncio
 import time
-from typing import Optional
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import schemas
+from airweave import crud, schemas
 from airweave.core import container as container_mod  # [code blue] todo
 from airweave.core.config import settings
 from airweave.core.context import BaseContext
 from airweave.core.logging import LoggerConfigurator, logger
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.builders import SyncContextBuilder
 from airweave.platform.builders.tracking import TrackingContextBuilder
 from airweave.platform.contexts.runtime import SyncRuntime
@@ -43,27 +43,25 @@ from airweave.platform.sync.worker_pool import AsyncWorkerPool
 class SyncFactory:
     """Factory for sync orchestrator.
 
-    Builds SyncContext (data), SyncRuntime (services), and wires them
-    into the orchestrator and pipeline components.
+    Accepts IDs, hydrates all data from DB, builds SyncContext (data),
+    SyncRuntime (services), and wires them into the orchestrator.
     """
 
     @classmethod
     async def create_orchestrator(
         cls,
         db: AsyncSession,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        collection: schemas.CollectionRecord,
-        connection: schemas.Connection,
+        sync_id: UUID,
+        sync_job_id: UUID,
         ctx: BaseContext,
-        dense_embedder: DenseEmbedderProtocol,
-        sparse_embedder: SparseEmbedderProtocol,
-        access_token: Optional[str] = None,
         max_workers: int = None,
         force_full_sync: bool = False,
-        execution_config: Optional[SyncConfig] = None,
     ) -> SyncOrchestrator:
-        """Create a dedicated orchestrator instance for a sync run."""
+        """Create a dedicated orchestrator instance for a sync run.
+
+        Hydrates sync, sync_job, collection, and connection from DB,
+        then builds all pipeline components.
+        """
         if max_workers is None:
             max_workers = settings.SYNC_MAX_WORKERS
             logger.debug(f"Using configured max_workers: {max_workers}")
@@ -71,7 +69,18 @@ class SyncFactory:
         init_start = time.time()
         logger.info("Creating sync orchestrator...")
 
-        # Step 0: Build layered sync configuration
+        # Step 0: Hydrate all data from DB
+        sync, sync_job, collection, connection = await cls._hydrate(db, sync_id, sync_job_id, ctx)
+
+        # Step 0b: Resolve execution config from sync_job
+        execution_config = None
+        if sync_job.sync_config:
+            try:
+                execution_config = SyncConfig(**sync_job.sync_config)
+            except Exception as e:
+                logger.warning(f"Failed to parse sync_job sync_config: {e}")
+
+        # Step 1: Build layered sync configuration
         resolved_config = SyncConfigBuilder.build(
             collection_overrides=collection.sync_config,
             sync_overrides=sync.sync_config,
@@ -82,17 +91,16 @@ class SyncFactory:
             f"destinations={resolved_config.destinations.model_dump()}"
         )
 
-        # Step 1: Get source connection ID (needed before parallel build)
+        # Step 2: Get source connection ID (needed before parallel build)
         source_connection_id = await SyncContextBuilder.get_source_connection_id(db, sync, ctx)
 
-        # Step 2: Build services in parallel
+        # Step 3: Build services in parallel
         source_result, destinations_result, entity_tracker_result = await asyncio.gather(
             cls._build_source(
                 db=db,
                 sync=sync,
                 sync_job=sync_job,
                 ctx=ctx,
-                access_token=access_token,
                 force_full_sync=force_full_sync,
                 execution_config=resolved_config,
             ),
@@ -114,7 +122,7 @@ class SyncFactory:
         source, cursor = source_result
         destinations, entity_map = destinations_result
 
-        # Step 3: Build SyncContext (data only)
+        # Step 4: Build SyncContext (data only)
         sync_context = await SyncContextBuilder.build(
             db=db,
             sync=sync,
@@ -129,12 +137,12 @@ class SyncFactory:
             execution_config=resolved_config,
         )
 
-        # Step 4: Assemble SyncRuntime (live services)
+        # Step 5: Assemble SyncRuntime (live services)
         runtime = SyncRuntime(
             source=source,
             cursor=cursor,
-            dense_embedder=dense_embedder,
-            sparse_embedder=sparse_embedder,
+            dense_embedder=container_mod.container.dense_embedder,
+            sparse_embedder=container_mod.container.sparse_embedder,
             destinations=destinations,
             entity_tracker=entity_tracker_result,
             event_bus=container_mod.container.event_bus,
@@ -191,13 +199,51 @@ class SyncFactory:
         return orchestrator
 
     # -------------------------------------------------------------------------
+    # Private: Data hydration
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    async def _hydrate(
+        cls,
+        db: AsyncSession,
+        sync_id: UUID,
+        sync_job_id: UUID,
+        ctx: BaseContext,
+    ) -> tuple[schemas.Sync, schemas.SyncJob, schemas.CollectionRecord, schemas.Connection]:
+        """Fetch sync, sync_job, collection, and connection from DB."""
+        sync = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=True)
+        if not sync:
+            raise ValueError(f"Sync {sync_id} not found")
+
+        sync_job_model = await crud.sync_job.get(db=db, id=sync_job_id, ctx=ctx)
+        if not sync_job_model:
+            raise ValueError(f"SyncJob {sync_job_id} not found")
+        sync_job = schemas.SyncJob.model_validate(sync_job_model, from_attributes=True)
+
+        source_conn = await crud.source_connection.get_by_sync_id(db=db, sync_id=sync_id, ctx=ctx)
+        if not source_conn:
+            raise ValueError(f"SourceConnection not found for sync {sync_id}")
+
+        collection_model = await crud.collection.get_by_readable_id(
+            db=db, readable_id=source_conn.readable_collection_id, ctx=ctx
+        )
+        if not collection_model:
+            raise ValueError(f"Collection not found for sync {sync_id}")
+        collection = schemas.CollectionRecord.model_validate(collection_model, from_attributes=True)
+
+        conn_model = await crud.connection.get(db=db, id=source_conn.connection_id, ctx=ctx)
+        if not conn_model:
+            raise ValueError(f"Connection {source_conn.connection_id} not found")
+        connection = schemas.Connection.model_validate(conn_model, from_attributes=True)
+
+        return sync, sync_job, collection, connection
+
+    # -------------------------------------------------------------------------
     # Private: Service builders (delegate to sub-builders)
     # -------------------------------------------------------------------------
 
     @classmethod
-    async def _build_source(
-        cls, db, sync, sync_job, ctx, access_token, force_full_sync, execution_config
-    ):
+    async def _build_source(cls, db, sync, sync_job, ctx, force_full_sync, execution_config):
         """Build source and cursor. Returns (source, cursor) tuple."""
         from airweave.core.logging import LoggerConfigurator
         from airweave.platform.builders.source import SourceContextBuilder
@@ -217,7 +263,6 @@ class SyncFactory:
             sync=sync,
             sync_job=sync_job,
             infra=infra,
-            access_token=access_token,
             force_full_sync=force_full_sync,
             execution_config=execution_config,
         )

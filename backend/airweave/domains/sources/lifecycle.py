@@ -90,8 +90,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         db: AsyncSession,
         source_connection_id: UUID,
         ctx: ApiContext,
-        *,
-        access_token: Optional[str] = None,
     ) -> BaseSource:
         """Create a fully configured source instance for sync or search.
 
@@ -117,7 +115,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             source_connection_data=source_connection_data,
             ctx=ctx,
             logger=logger,
-            access_token=access_token,
         )
 
         # 3. Process credentials for source consumption
@@ -144,7 +141,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             source_credentials=auth_config.credentials,
             ctx=ctx,
             logger=logger,
-            access_token=access_token,
             auth_config=auth_config,
         )
 
@@ -259,26 +255,14 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         source_connection_data: SourceConnectionData,
         ctx: ApiContext,
         logger: ContextualLogger,
-        access_token: Optional[str] = None,
     ) -> AuthConfig:
         """Get complete auth configuration including credentials and proxy setup.
 
-        Handles three auth methods:
-        - Direct token injection (sync only, via access_token parameter)
+        Handles two auth methods:
         - Auth provider connections (Pipedream direct/proxy, Composio direct)
         - Database-stored credentials with OAuth refresh
         """
-        # Case 1: Direct token injection (highest priority — sync only)
-        if access_token:
-            logger.debug("Using directly injected access token")
-            return AuthConfig(
-                credentials=access_token,
-                http_client_factory=None,
-                auth_provider_instance=None,
-                auth_mode=AuthProviderMode.DIRECT,
-            )
-
-        # Case 2: Auth provider connection
+        # Case 1: Auth provider connection
         if (
             source_connection_data.readable_auth_provider_id
             and source_connection_data.auth_provider_config
@@ -645,19 +629,11 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         source_credentials: SourceCredentials,
         ctx: ApiContext,
         logger: ContextualLogger,
-        access_token: Optional[str],
         auth_config: AuthConfig,
     ) -> None:
         """Set up token manager for OAuth sources that support refresh."""
         auth_mode = auth_config.auth_mode
         auth_provider_instance: Optional[BaseAuthProvider] = auth_config.auth_provider_instance
-
-        if access_token is not None:
-            logger.debug(
-                f"Skipping token manager for {source_connection_data.short_name} "
-                f"— direct token injection"
-            )
-            return
 
         if auth_mode == AuthProviderMode.PROXY:
             logger.info(

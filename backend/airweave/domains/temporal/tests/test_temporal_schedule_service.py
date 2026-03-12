@@ -2,8 +2,7 @@
 
 Covers _schedule_type_for_cron, _check_schedule_exists,
 create_or_update_schedule, _create_schedule, _update_schedule,
-_delete_schedule_by_id, _gather_schedule_data, and
-delete_all_schedules_for_sync.
+_delete_schedule_by_id, and delete_all_schedules_for_sync.
 """
 
 from dataclasses import dataclass
@@ -24,9 +23,6 @@ def _rpc_error(msg: str, status: RPCStatusCode) -> RPCError:
 
 ORG_ID = uuid4()
 SYNC_ID = uuid4()
-SC_ID = uuid4()
-COLLECTION_ID = uuid4()
-CONNECTION_ID = uuid4()
 
 
 def _mock_ctx() -> MagicMock:
@@ -62,31 +58,6 @@ def _mock_sync_model(
     s.name = "test-sync"
     s.temporal_schedule_id = temporal_schedule_id
     return s
-
-
-def _mock_source_connection(
-    connection_id: UUID = CONNECTION_ID,
-    readable_collection_id: str = "test-col",
-) -> MagicMock:
-    sc = MagicMock()
-    sc.id = SC_ID
-    sc.connection_id = connection_id
-    sc.readable_collection_id = readable_collection_id
-    return sc
-
-
-def _mock_collection() -> MagicMock:
-    c = MagicMock()
-    c.id = COLLECTION_ID
-    c.name = "Test Col"
-    return c
-
-
-def _mock_connection() -> MagicMock:
-    c = MagicMock()
-    c.id = CONNECTION_ID
-    c.name = "Test Conn"
-    return c
 
 
 # ---------------------------------------------------------------------------
@@ -231,9 +202,6 @@ async def test_create_schedule(case: CreateScheduleCase):
         result = await svc._create_schedule(
             sync_id=SYNC_ID,
             cron_expression="*/5 * * * *",
-            sync_dict={"id": str(SYNC_ID)},
-            collection_dict={"id": str(COLLECTION_ID)},
-            connection_dict={"id": str(CONNECTION_ID)},
             db=AsyncMock(),
             ctx=_mock_ctx(),
             schedule_type=case.schedule_type,
@@ -332,123 +300,6 @@ async def test_delete_schedule_by_id():
 
 
 # ---------------------------------------------------------------------------
-# _gather_schedule_data
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class GatherCase:
-    name: str
-    sc_exists: bool = True
-    collection_exists: bool = True
-    connection_id: Optional[UUID] = CONNECTION_ID
-    connection_exists: bool = True
-    expect_error: bool = False
-
-
-GATHER_CASES = [
-    GatherCase(name="happy_path"),
-    GatherCase(name="no_source_connection", sc_exists=False, expect_error=True),
-    GatherCase(name="no_collection", collection_exists=False, expect_error=True),
-    GatherCase(name="no_connection_id", connection_id=None, expect_error=True),
-    GatherCase(name="connection_not_found", connection_exists=False, expect_error=True),
-]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("case", GATHER_CASES, ids=lambda c: c.name)
-async def test_gather_schedule_data(case: GatherCase):
-    sync_repo = AsyncMock()
-    sc_repo = AsyncMock()
-    collection_repo = AsyncMock()
-    connection_repo = AsyncMock()
-
-    sync_repo.get = AsyncMock(return_value=_mock_sync_model())
-    sc_repo.get_by_sync_id = AsyncMock(
-        return_value=(
-            _mock_source_connection(connection_id=case.connection_id) if case.sc_exists else None
-        ),
-    )
-    collection_repo.get_by_readable_id = AsyncMock(
-        return_value=_mock_collection() if case.collection_exists else None
-    )
-    connection_repo.get = AsyncMock(
-        return_value=_mock_connection() if case.connection_exists else None
-    )
-
-    svc = _build_svc(
-        sync_repo=sync_repo,
-        sc_repo=sc_repo,
-        collection_repo=collection_repo,
-        connection_repo=connection_repo,
-    )
-
-    db = AsyncMock()
-    ctx = _mock_ctx()
-
-    def _mock_validate(val):
-        return MagicMock(model_dump=MagicMock(return_value=val))
-
-    if case.expect_error:
-        with pytest.raises(ValueError):
-            with patch("airweave.domains.temporal.schedule_service.schemas") as ms:
-                ms.Sync.model_validate.return_value = _mock_validate({})
-                ms.CollectionRecord.model_validate.return_value = _mock_validate({})
-                ms.Connection.model_validate.return_value = _mock_validate({})
-                await svc._gather_schedule_data(SYNC_ID, db, ctx)
-    else:
-        with patch("airweave.domains.temporal.schedule_service.schemas") as ms:
-            ms.Sync.model_validate.return_value = _mock_validate({"id": "s"})
-            ms.CollectionRecord.model_validate.return_value = _mock_validate({"id": "c"})
-            ms.Connection.model_validate.return_value = _mock_validate({"id": "cn"})
-            s, c, cn = await svc._gather_schedule_data(SYNC_ID, db, ctx)
-            assert s == {"id": "s"}
-            assert c == {"id": "c"}
-            assert cn == {"id": "cn"}
-
-
-@pytest.mark.asyncio
-async def test_gather_schedule_data_provisioning_fallback():
-    sync_repo = AsyncMock()
-    sc_repo = AsyncMock()
-    collection_repo = AsyncMock()
-    connection_repo = AsyncMock()
-
-    sync_repo.get = AsyncMock(return_value=_mock_sync_model())
-    sc_repo.get_by_sync_id = AsyncMock(return_value=None)
-    collection_repo.get_by_readable_id = AsyncMock(return_value=_mock_collection())
-    connection_repo.get = AsyncMock(return_value=_mock_connection())
-
-    svc = _build_svc(
-        sync_repo=sync_repo,
-        sc_repo=sc_repo,
-        collection_repo=collection_repo,
-        connection_repo=connection_repo,
-    )
-
-    db = AsyncMock()
-    ctx = _mock_ctx()
-
-    def _mock_validate(val):
-        return MagicMock(model_dump=MagicMock(return_value=val))
-
-    with patch("airweave.domains.temporal.schedule_service.schemas") as ms:
-        ms.Sync.model_validate.return_value = _mock_validate({"id": "s"})
-        ms.CollectionRecord.model_validate.return_value = _mock_validate({"id": "c"})
-        ms.Connection.model_validate.return_value = _mock_validate({"id": "cn"})
-        s, c, cn = await svc._gather_schedule_data(
-            SYNC_ID,
-            db,
-            ctx,
-            collection_readable_id="test-col",
-            connection_id=CONNECTION_ID,
-        )
-        assert s == {"id": "s"}
-        assert c == {"id": "c"}
-        assert cn == {"id": "cn"}
-
-
-# ---------------------------------------------------------------------------
 # create_or_update_schedule (public)
 # ---------------------------------------------------------------------------
 
@@ -499,7 +350,6 @@ async def test_create_or_update_schedule(case: CreateOrUpdateCase):
         }
     )
     svc._update_schedule = AsyncMock()
-    svc._gather_schedule_data = AsyncMock(return_value=({}, {}, {}))
     svc._create_schedule = AsyncMock(return_value="new-sched-id")
 
     db = AsyncMock()
