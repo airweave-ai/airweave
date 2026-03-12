@@ -238,8 +238,8 @@ class ConnectService(ConnectServiceProtocol):
         ctx = await self._build_context(db, session)
         connections = await self._sc_service.list(
             db,
-            ctx=ctx,
-            readable_collection_id=session.collection_id,  # type: ignore[arg-type]
+            ctx=ctx,  # type: ignore[arg-type]
+            readable_collection_id=session.collection_id,
         )
 
         if session.allowed_integrations:

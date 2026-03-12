@@ -165,6 +165,7 @@ class TestBuildContext:
         assert str(ctx.organization.id) == str(ORG_ID)
         assert ctx.session_id == SESSION_ID
         assert ctx.collection_id == COLLECTION_ID
+        assert ctx.auth_metadata is not None
         assert ctx.auth_metadata["connect_session_id"] == str(SESSION_ID)
 
     async def test_headers_identify_connect(self, connect_service):

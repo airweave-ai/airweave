@@ -4,19 +4,16 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
-from airweave import schemas
-from airweave.api.context import ApiContext
+from airweave.api.context import ApiContext, ConnectContext
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
+from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connect.service import ConnectService
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
 from airweave.domains.sources.fakes.service import FakeSourceService
 from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
-from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
-from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.schemas.connect_session import ConnectSessionContext, ConnectSessionMode
 from airweave.schemas.organization import Organization
 
