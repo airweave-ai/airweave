@@ -5,10 +5,14 @@ with surrounding chunks for context on chunked documents. Replaces the old
 read_previous_results tool with chunk-aware reads via the vector database.
 """
 
+import asyncio
 from typing import Any
 
 from airweave.search.agentic_search.config import CHARS_PER_TOKEN, config as agentic_config
 from airweave.search.agentic_search.external.llm.tool_response import LLMToolCall
+from airweave.search.agentic_search.external.vector_database.interface import (
+    AgenticSearchVectorDBInterface,
+)
 from airweave.search.agentic_search.schemas.search_result import AgenticSearchResult
 from airweave.search.agentic_search.schemas.state import AgenticSearchState
 from airweave.search.agentic_search.services import AgenticSearchServices
@@ -101,7 +105,26 @@ async def handle_read(
     chars_used = 0
     entities_read = 0
 
-    for orig_id, group in groups.items():
+    # Pre-fetch all structural contexts concurrently
+    group_list = list(groups.items())
+    structural_context_map: dict[str, str] = {}
+
+    async def _get_context_for_group(orig_id: str, group: _ReadGroup) -> tuple[str, str]:
+        """Fetch structural context for the first entity in a group."""
+        for eid in group.matched_entity_ids:
+            r = state.results.get(eid)
+            if r:
+                ctx = await _get_structural_context(r, services.vector_db, collection_id, user_filter)
+                return orig_id, ctx
+        return orig_id, ""
+
+    context_tasks = [_get_context_for_group(oid, g) for oid, g in group_list]
+    context_results = await asyncio.gather(*context_tasks, return_exceptions=True)
+    for cr in context_results:
+        if isinstance(cr, tuple):
+            structural_context_map[cr[0]] = cr[1]
+
+    for orig_id, group in group_list:
         min_chunk = min(group.chunk_indices)
         max_chunk = max(group.chunk_indices)
         range_min = max(0, min_chunk - surrounding)
@@ -142,6 +165,7 @@ async def handle_read(
             group=group,
             chunks=fetched_chunks,
             matched_indices=matched_indices,
+            structural_context=structural_context_map.get(orig_id, ""),
         )
 
         if chars_used + len(entity_part) > max_chars and parts:
@@ -178,6 +202,62 @@ async def handle_read(
     )
 
     return header + "\n".join(parts) + not_found_section + triage_nudge
+
+
+# ── Structural context ────────────────────────────────────────────────
+
+
+async def _get_structural_context(
+    result: AgenticSearchResult,
+    vector_db: AgenticSearchVectorDBInterface,
+    collection_id: str,
+    user_filter: list,
+) -> str:
+    """Query sibling and child counts to show structural context for a result."""
+    orig_id = result.airweave_system_metadata.original_entity_id
+
+    if not result.breadcrumbs:
+        # Root entity — only check children
+        child_filter = [
+            {"conditions": [{"field": "breadcrumbs.entity_id", "operator": "equals", "value": orig_id}]}
+        ]
+        if user_filter:
+            for uf_group in user_filter:
+                child_filter[0]["conditions"].extend(uf_group.get("conditions", []))
+        try:
+            child_count = await vector_db.count(child_filter, collection_id)
+        except Exception:
+            child_count = 0
+        return f"Structure: Root entity | {child_count} children"
+
+    parent = result.breadcrumbs[-1]
+
+    # Build filters for sibling and child counts
+    sibling_filter = [
+        {"conditions": [{"field": "breadcrumbs.entity_id", "operator": "equals", "value": parent.entity_id}]}
+    ]
+    child_filter = [
+        {"conditions": [{"field": "breadcrumbs.entity_id", "operator": "equals", "value": orig_id}]}
+    ]
+
+    # Merge user filters
+    if user_filter:
+        for uf_group in user_filter:
+            sibling_filter[0]["conditions"].extend(uf_group.get("conditions", []))
+            child_filter[0]["conditions"].extend(uf_group.get("conditions", []))
+
+    try:
+        sibling_count, child_count = await asyncio.gather(
+            vector_db.count(sibling_filter, collection_id),
+            vector_db.count(child_filter, collection_id),
+        )
+    except Exception:
+        sibling_count, child_count = 0, 0
+
+    return (
+        f"Structure: Parent: {parent.name} [{parent.entity_id}] | "
+        f"{sibling_count} siblings | {child_count} children"
+    )
 
 
 # ── Internal helpers ──────────────────────────────────────────────────
@@ -259,14 +339,17 @@ def _format_entity_chunks(
     group: _ReadGroup,
     chunks: list[AgenticSearchResult],
     matched_indices: set[int],
+    structural_context: str = "",
 ) -> str:
     """Format chunks for a single entity with chunk labels."""
+    context_line = f"\n{structural_context}" if structural_context else ""
+
     if not chunks:
-        return f"\n---\n\n### {group.name} (original_entity_id: {group.original_entity_id})\n*No chunks retrieved.*"
+        return f"\n---\n\n### {group.name} (original_entity_id: {group.original_entity_id}){context_line}\n*No chunks retrieved.*"
 
     # Single-chunk entity (chunk_index 0 and only one chunk)
     if len(chunks) == 1 and chunks[0].airweave_system_metadata.chunk_index == 0:
-        return f"\n---\n\n{chunks[0].to_md()}"
+        return f"\n---\n\n{chunks[0].to_md()}{context_line}"
 
     # Multi-chunk entity
     all_indices = [c.airweave_system_metadata.chunk_index for c in chunks]
@@ -275,7 +358,7 @@ def _format_entity_chunks(
 
     matched_str = ", ".join(str(i) for i in sorted(matched_indices))
     header = (
-        f"\n---\n\n### {group.name} (original_entity_id: {group.original_entity_id})\n"
+        f"\n---\n\n### {group.name} (original_entity_id: {group.original_entity_id}){context_line}\n"
         f"Showing chunks {min_idx}-{max_idx} (centered on matched chunk(s) {matched_str})\n"
     )
 

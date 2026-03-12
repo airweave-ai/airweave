@@ -6,7 +6,10 @@ from airweave.search.agentic_search.schemas.compiled_query import AgenticSearchC
 from airweave.search.agentic_search.schemas.filter import AgenticSearchFilterGroup
 from airweave.search.agentic_search.schemas.plan import AgenticSearchPlan
 from airweave.search.agentic_search.schemas.query_embeddings import AgenticSearchQueryEmbeddings
-from airweave.search.agentic_search.schemas.search_result import AgenticSearchResults
+from airweave.search.agentic_search.schemas.search_result import (
+    AgenticSearchResult,
+    AgenticSearchResults,
+)
 
 
 class AgenticSearchVectorDBInterface(Protocol):
@@ -69,6 +72,26 @@ class AgenticSearchVectorDBInterface(Protocol):
 
         Returns:
             Total number of matching entities.
+        """
+        ...
+
+    async def filter_search(
+        self,
+        filter_groups: list[AgenticSearchFilterGroup],
+        collection_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[AgenticSearchResult]:
+        """Retrieve entities matching filters without embeddings or ranking.
+
+        Args:
+            filter_groups: Filter groups to narrow results.
+            collection_id: Collection readable ID for tenant filtering.
+            limit: Maximum number of results to return.
+            offset: Number of results to skip.
+
+        Returns:
+            List of matching results (unranked).
         """
         ...
 

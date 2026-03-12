@@ -44,7 +44,7 @@ def manage_context(
             continue
         tc_id = m.get("tool_call_id", "")
         tool_name = m.get("_tool_name", "")
-        if tool_name not in ("search", "read"):
+        if tool_name not in ("search", "read", "get_children", "get_siblings", "get_parent"):
             continue
         if tc_id in all_current:
             continue
@@ -64,14 +64,14 @@ def manage_context(
         tc_id = msg.get("tool_call_id", "")
         tool_name = msg.get("_tool_name", "")
 
-        if tool_name not in ("search", "read"):
+        if tool_name not in ("search", "read", "get_children", "get_siblings", "get_parent"):
             continue
 
         # Skip current iteration — keep full content
         if tc_id in all_current:
             continue
 
-        if tool_name == "search":
+        if tool_name in ("search", "get_children", "get_siblings"):
             results = results_by_tool_call_id.get(tc_id)
             if results is None:
                 continue
@@ -86,7 +86,7 @@ def manage_context(
             if msg.get("content") != summary:
                 messages[idx] = {**msg, "content": summary}
 
-        elif tool_name == "read":
+        elif tool_name in ("read", "get_parent"):
             results = reads_by_tool_call_id.get(tc_id)
             if results is None:
                 continue

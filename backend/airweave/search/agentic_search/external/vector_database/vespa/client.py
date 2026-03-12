@@ -247,6 +247,47 @@ class VespaVectorDB:
         self._logger.debug(f"[VespaVectorDB] Count query: {total_count} matches")
         return total_count
 
+    async def filter_search(
+        self,
+        filter_groups: list,
+        collection_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list:
+        """Retrieve entities matching filters without embeddings or ranking.
+
+        Builds a filter-only YQL query (like count) but returns actual results.
+        No dense/sparse embeddings needed — pure navigation queries.
+        """
+        where_parts = [
+            f"airweave_system_metadata_collection_id contains '{collection_id}'",
+        ]
+
+        filter_yql = self._filter_translator.translate(filter_groups)
+        if filter_yql:
+            where_parts.append(f"({filter_yql})")
+
+        all_schemas = ", ".join(ALL_VESPA_SCHEMAS)
+        yql = f"select * from sources {all_schemas} where {' AND '.join(where_parts)}"
+
+        try:
+            response = await asyncio.to_thread(
+                self._app.query, body={"yql": yql, "hits": limit, "offset": offset}
+            )
+        except Exception as e:
+            self._logger.error(f"[VespaVectorDB] Filter search failed: {e}")
+            raise RuntimeError(f"Vespa filter search failed: {e}") from e
+
+        if not response.is_successful():
+            error_msg = getattr(response, "json", {}).get("error", str(response))
+            raise RuntimeError(f"Vespa filter search error: {error_msg}")
+
+        hits = response.hits or []
+        self._logger.debug(f"[VespaVectorDB] Filter search: {len(hits)} hits")
+
+        results = self._convert_hits_to_results(hits)
+        return results.results
+
     async def close(self) -> None:
         """Close the Vespa connection.
 

@@ -10,6 +10,11 @@ from airweave.search.agentic_search.tools.finish import (
     handle_return_results,
     handle_review_results,
 )
+from airweave.search.agentic_search.tools.navigate import (
+    handle_get_children,
+    handle_get_parent,
+    handle_get_siblings,
+)
 from airweave.search.agentic_search.tools.read import handle_read
 from airweave.search.agentic_search.tools.remove_from_results import handle_remove_from_results
 from airweave.search.agentic_search.tools.search import handle_search
@@ -58,6 +63,24 @@ async def handle_tool_call(
         return await handle_add_to_results(tc=tc, state=state)
     if tc.name == "remove_from_results":
         return await handle_remove_from_results(tc=tc, state=state)
+    if tc.name == "get_children":
+        return await handle_get_children(
+            tc=tc, state=state, services=services,
+            collection_id=collection_id, user_filter=user_filter,
+            context_window_tokens=context_window_tokens,
+        )
+    if tc.name == "get_siblings":
+        return await handle_get_siblings(
+            tc=tc, state=state, services=services,
+            collection_id=collection_id, user_filter=user_filter,
+            context_window_tokens=context_window_tokens,
+        )
+    if tc.name == "get_parent":
+        return await handle_get_parent(
+            tc=tc, state=state, services=services,
+            collection_id=collection_id, user_filter=user_filter,
+            context_window_tokens=context_window_tokens,
+        )
     if tc.name == "review_results":
         return handle_review_results(state, state.messages, context_window_tokens)
     if tc.name == "return_results_to_user":
