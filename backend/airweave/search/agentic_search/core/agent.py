@@ -49,6 +49,9 @@ from airweave.search.agentic_search.services import AgenticSearchServices
 from airweave.search.agentic_search.tools import (
     ADD_TO_RESULTS_TOOL,
     COUNT_TOOL,
+    GET_CHILDREN_TOOL,
+    GET_PARENT_TOOL,
+    GET_SIBLINGS_TOOL,
     READ_TOOL,
     REMOVE_FROM_RESULTS_TOOL,
     RETURN_RESULTS_TOOL,
@@ -127,6 +130,9 @@ class AgenticSearchAgent:
             SEARCH_TOOL,
             COUNT_TOOL,
             READ_TOOL,
+            GET_CHILDREN_TOOL,
+            GET_SIBLINGS_TOOL,
+            GET_PARENT_TOOL,
             ADD_TO_RESULTS_TOOL,
             REMOVE_FROM_RESULTS_TOOL,
             REVIEW_RESULTS_TOOL,
@@ -247,6 +253,7 @@ class AgenticSearchAgent:
                         "content": (
                             "You must use tools to interact. "
                             "Call `search` to find results, `read` to examine them, "
+                            "`get_children`/`get_siblings` to navigate structure, "
                             "`add_to_results` to collect them, "
                             "or `return_results_to_user` to end. Do not respond with plain text."
                         ),
@@ -350,7 +357,11 @@ class AgenticSearchAgent:
                 )
 
             # Progress tracker
-            state.messages.append(self._build_progress_message(state, max_iter))
+            state.messages.append(
+                self._build_progress_message(
+                    state, max_iter, tool_calls_this_iteration=len(response.tool_calls)
+                )
+            )
 
             state.iteration += 1
 
@@ -444,9 +455,9 @@ class AgenticSearchAgent:
             msg["_tool_name"] = tc.name
             state.messages.append(msg)
 
-            if tc.name == "search":
+            if tc.name in ("search", "get_children", "get_siblings"):
                 new_search_tool_call_ids.add(tc.id)
-            elif tc.name == "read":
+            elif tc.name in ("read", "get_parent"):
                 new_read_tool_call_ids.add(tc.id)
 
         return state.should_finish, new_search_tool_call_ids, new_read_tool_call_ids
@@ -474,6 +485,11 @@ class AgenticSearchAgent:
             entity_ids = tc.arguments.get("entity_ids", [])
             found = sum(1 for eid in entity_ids if eid in state.results)
             return {"found": found, "not_found": len(entity_ids) - found}
+        if tc.name in ("get_children", "get_siblings"):
+            results = state.results_by_tool_call_id.get(tc.id, [])
+            return {"result_count": len(results), "total_results_seen": len(state.results)}
+        if tc.name == "get_parent":
+            return {"found": 1 if state.reads_by_tool_call_id.get(tc.id) else 0}
         if tc.name in ("review_results", "return_results_to_user"):
             return {"total_collected": len(state.result_entity_ids)}
         return {}
@@ -499,9 +515,20 @@ class AgenticSearchAgent:
         ]
         return not any(ind in error_str for ind in fatal_indicators)
 
-    def _build_progress_message(self, state: AgenticSearchState, max_iterations: int) -> dict:
+    def _build_progress_message(
+        self,
+        state: AgenticSearchState,
+        max_iterations: int,
+        tool_calls_this_iteration: int = 1,
+    ) -> dict:
         """Build a brief progress status message for the agent."""
         remaining = max_iterations - state.iteration - 1
+        tc_note = ""
+        if tool_calls_this_iteration == 1 and remaining > 2:
+            tc_note = (
+                " | Remember: you can call multiple tools per turn "
+                "(e.g., search + add_to_results + read) to save iterations."
+            )
         return {
             "role": "user",
             "content": (
@@ -509,6 +536,7 @@ class AgenticSearchAgent:
                 f"({remaining} remaining). "
                 f"Results seen: {len(state.results)} | "
                 f"Collected: {len(state.result_entity_ids)}"
+                f"{tc_note}"
             ),
         }
 

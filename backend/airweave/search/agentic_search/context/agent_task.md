@@ -19,6 +19,30 @@ iteration — you'll see a progress message after each one showing how many rema
 Add results as you find them — if you run out of iterations, your collected results are
 still returned.
 
+## Efficiency
+
+You can — and should — call multiple tools in a single response when the calls are
+independent. This saves iterations and lets you do more with your limited budget.
+
+**Pipeline your work.** After each turn, you have information from previous turns that
+you can act on immediately. Combine independent operations:
+
+- `search` (new query) + `add_to_results` (entities you already read and confirmed)
+- `read` (examine search results) + `add_to_results` (entities from a previous read)
+- `search` (explore new direction) + `read` (examine results from previous search)
+- `get_siblings` or `get_children` + `add_to_results` + `search` — all independent
+
+The ideal pattern looks like:
+1. `search` — initial exploration
+2. `read` (results from step 1) + `search` (new direction)
+3. `add_to_results` (confirmed from step 2 read) + `read` (results from step 2 search) + `search` (another direction)
+4. `add_to_results` + `get_children` (explore a container you found) + `get_siblings` (complete a group) + `search` (yet another angle)
+5. Continue pipelining...
+
+**Do NOT combine dependent calls.** You can't read entities from a search in the same
+turn, or add entities you haven't seen yet. Only combine calls that use information
+from *previous* turns.
+
 ## Tools
 
 ### `search`
@@ -64,6 +88,9 @@ is how to use them to navigate:
 - Prefer trying diverse queries over deep pagination on a single query — different phrasings
   and strategies often surface results that pagination misses.
 
+You can call search alongside `add_to_results`, `read`, `get_siblings`, `get_children`,
+or `count` in the same response when they are independent.
+
 ### `count`
 
 Count entities matching filters without retrieving content. Returns the total number of
@@ -88,6 +115,35 @@ which chunks matched your search and what context surrounds them.
 
 Per iteration, the read limit should be in the magnitude of 10-50.
 
+You can call read alongside `search`, `add_to_results`, or navigation tools in the same
+response.
+
+### `get_children`
+
+Find all entities inside a container — e.g., all messages in a channel, all pages in a
+folder. Takes any entity_id (it doesn't need to be in your results). Returns compact
+summaries like `search`. Use this when you find an interesting container and want to
+explore its contents without crafting a filter query manually.
+
+You can call `get_children` alongside `search`, `read`, `add_to_results`, or any other
+independent tool in the same response.
+
+### `get_siblings`
+
+Find all entities sharing the same parent as a given entity. The entity must be in your
+results (so you can look up its breadcrumbs). Use this for group completion — when you
+find one message in a thread, get its siblings to find the full thread. Returns compact
+summaries.
+
+You can call `get_siblings` alongside `search`, `read`, `add_to_results`, or any other
+independent tool in the same response.
+
+### `get_parent`
+
+Find the parent entity of a given entity. The entity must be in your results. Returns
+full content (like `read`). Use this to understand context — what channel, folder, or
+project something belongs to.
+
 ### `add_to_results`
 
 Add entities to the result set you're building for the user. Think of this as including
@@ -99,6 +155,9 @@ queries, expect to collect **20-100+ results**. Collecting fewer than 10 should 
 
 You have a limited iteration budget. Add results as you go — don't save it for the end.
 If the search is interrupted, your collected results are still returned.
+
+Call this alongside other tools — don't waste a turn just to collect. Combine with
+`search` or `read` whenever you have entities ready to add.
 
 ### `remove_from_results`
 
@@ -119,12 +178,13 @@ same response.
 
 ## How to search
 
-**Search broadly, read in batches, collect aggressively.**
+**Search broadly, read in batches, collect aggressively — and pipeline your work.**
 
 1. **Search** with broad queries and high limits (100-200) to scan the space
-2. **Read** the top results in batches of 10-50 to see full content
-3. **Collect** matching results immediately after reading — don't wait
-4. **Repeat** with different queries, filters, strategies
+2. **Read + search** — read promising results AND start a new search, in the same turn
+3. **Collect + read + search** — add confirmed matches, read new results, search another
+   direction — all in one turn when they're independent
+4. **Repeat**, always combining independent operations to maximize your iteration budget
 
 Your search results are summaries — enough to decide what's worth reading.
 Your read results show full content — that's where you confirm matches.
@@ -133,9 +193,11 @@ Collect after every read. Content gets summarized in later iterations.
 **Never assume — react to what you find.** You have zero prior knowledge about what's in the
 collection. Every decision should be based on actual results, not expectations.
 
-**Follow leads.** One matching result often points to more. This can mean zooming in (get the
-full document, check sibling entities, explore the same folder) or following references across
-sources (e.g., an Asana task mentions a Notion doc — search for that doc).
+**Follow leads.** One matching result often points to more. Use `get_children` to explore a
+container, `get_siblings` to complete a group (e.g., all messages in a thread), or
+`get_parent` to understand context. Follow references across sources too (e.g., an Asana
+task mentions a Notion doc — search for that doc). These navigation calls are independent
+and can be combined with `search`, `read`, or `add_to_results` in the same turn.
 
 **Adapt your vocabulary.** If results use different terminology than the query, adopt their
 language in the next search. The data may call them "incidents" when the user said "bugs".
