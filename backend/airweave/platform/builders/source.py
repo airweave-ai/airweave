@@ -193,30 +193,6 @@ class SourceContextBuilder:
 
         return SourceContext(source=source, cursor=cursor)
 
-    @classmethod
-    async def get_source_connection_id(
-        cls,
-        db: AsyncSession,
-        sync: schemas.Sync,
-        ctx: ApiContext,
-    ) -> UUID:
-        """Get user-facing source connection ID for logging and scoping.
-
-        Args:
-            db: Database session
-            sync: Sync configuration
-            ctx: API context
-
-        Returns:
-            User-facing SourceConnection UUID (not internal Connection ID).
-        """
-        source_connection_obj = await crud.source_connection.get_by_sync_id(
-            db, sync_id=sync.id, ctx=ctx
-        )
-        if not source_connection_obj:
-            raise NotFoundException(f"Source connection record not found for sync {sync.id}")
-        return UUID(str(source_connection_obj.id))
-
     # -------------------------------------------------------------------------
     # Private helpers
     # -------------------------------------------------------------------------

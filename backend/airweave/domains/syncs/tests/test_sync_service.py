@@ -17,7 +17,6 @@ from airweave.domains.syncs.service import SyncService
 
 
 def _mock_ctx():
-    """Minimal mock that satisfies ApiContext duck-typing."""
     ctx = MagicMock()
     ctx.organization = MagicMock()
     ctx.organization.id = uuid4()
@@ -52,7 +51,6 @@ class RunCase:
     expect_raises: bool = False
 
     def __post_init__(self):
-        """Default orchestrator_result to a MagicMock when no factory error."""
         if self.orchestrator_result is None and self.factory_error is None:
             self.orchestrator_result = MagicMock()
 
@@ -80,40 +78,38 @@ RUN_CASES = [
 @pytest.mark.parametrize("case", RUN_CASES, ids=lambda c: c.name)
 async def test_run(case: RunCase):
     fake_job_svc = FakeSyncJobService()
-    svc = SyncService(sync_job_service=fake_job_svc)
+    fake_factory = MagicMock()
+
+    mock_orchestrator = MagicMock()
+    mock_orchestrator.run = AsyncMock(return_value=case.orchestrator_result)
+
+    if case.factory_error:
+        fake_factory.create_orchestrator = AsyncMock(
+            side_effect=case.factory_error,
+        )
+    else:
+        fake_factory.create_orchestrator = AsyncMock(
+            return_value=mock_orchestrator,
+        )
+
+    svc = SyncService(
+        sync_job_service=fake_job_svc,
+        sync_factory=fake_factory,
+    )
 
     sync = _mock_sync()
     sync_job = _mock_sync_job()
     collection = MagicMock()
     source_connection = MagicMock()
     ctx = _mock_ctx()
-    dense_embedder = MagicMock()
-    sparse_embedder = MagicMock()
-
-    mock_orchestrator = MagicMock()
-    mock_orchestrator.run = AsyncMock(return_value=case.orchestrator_result)
 
     mock_db = AsyncMock()
 
-    with (
-        patch(
-            "airweave.domains.syncs.service.get_db_context",
-        ) as mock_db_ctx,
-        patch(
-            "airweave.domains.syncs.service.SyncFactory",
-        ) as mock_factory_cls,
-    ):
+    with patch(
+        "airweave.domains.syncs.service.get_db_context",
+    ) as mock_db_ctx:
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        if case.factory_error:
-            mock_factory_cls.create_orchestrator = AsyncMock(
-                side_effect=case.factory_error,
-            )
-        else:
-            mock_factory_cls.create_orchestrator = AsyncMock(
-                return_value=mock_orchestrator,
-            )
 
         if case.expect_raises:
             with pytest.raises(type(case.factory_error)):
@@ -123,8 +119,6 @@ async def test_run(case: RunCase):
                     collection=collection,
                     source_connection=source_connection,
                     ctx=ctx,
-                    dense_embedder=dense_embedder,
-                    sparse_embedder=sparse_embedder,
                 )
         else:
             result = await svc.run(
@@ -133,8 +127,6 @@ async def test_run(case: RunCase):
                 collection=collection,
                 source_connection=source_connection,
                 ctx=ctx,
-                dense_embedder=dense_embedder,
-                sparse_embedder=sparse_embedder,
             )
             assert result is case.orchestrator_result
             mock_orchestrator.run.assert_awaited_once()
@@ -157,29 +149,29 @@ async def test_run(case: RunCase):
 
 @pytest.mark.asyncio
 async def test_run_forwards_optional_kwargs():
-    """access_token, force_full_sync, execution_config reach the factory."""
+    """force_full_sync, execution_config reach the factory."""
     fake_job_svc = FakeSyncJobService()
-    svc = SyncService(sync_job_service=fake_job_svc)
+    fake_factory = MagicMock()
 
     mock_orchestrator = MagicMock()
     mock_orchestrator.run = AsyncMock(return_value=_mock_sync())
-    mock_db = AsyncMock()
+    fake_factory.create_orchestrator = AsyncMock(
+        return_value=mock_orchestrator,
+    )
 
-    with (
-        patch(
-            "airweave.domains.syncs.service.get_db_context",
-        ) as mock_db_ctx,
-        patch(
-            "airweave.domains.syncs.service.SyncFactory",
-        ) as mock_factory_cls,
-    ):
+    svc = SyncService(
+        sync_job_service=fake_job_svc,
+        sync_factory=fake_factory,
+    )
+
+    mock_db = AsyncMock()
+    exec_config = MagicMock()
+
+    with patch(
+        "airweave.domains.syncs.service.get_db_context",
+    ) as mock_db_ctx:
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_factory_cls.create_orchestrator = AsyncMock(
-            return_value=mock_orchestrator,
-        )
-
-        exec_config = MagicMock()
 
         await svc.run(
             sync=_mock_sync(),
@@ -187,15 +179,11 @@ async def test_run_forwards_optional_kwargs():
             collection=MagicMock(),
             source_connection=MagicMock(),
             ctx=_mock_ctx(),
-            dense_embedder=MagicMock(),
-            sparse_embedder=MagicMock(),
-            access_token="tok-123",
             force_full_sync=True,
             execution_config=exec_config,
         )
 
-        _, kwargs = mock_factory_cls.create_orchestrator.call_args
-        assert kwargs["access_token"] == "tok-123"
+        _, kwargs = fake_factory.create_orchestrator.call_args
         assert kwargs["force_full_sync"] is True
         assert kwargs["execution_config"] is exec_config
 
@@ -205,7 +193,9 @@ async def test_run_forwards_optional_kwargs():
 # ---------------------------------------------------------------------------
 
 
-def test_stores_sync_job_service():
-    fake = FakeSyncJobService()
-    svc = SyncService(sync_job_service=fake)
-    assert svc._sync_job_service is fake
+def test_stores_injected_deps():
+    fake_job = FakeSyncJobService()
+    fake_factory = MagicMock()
+    svc = SyncService(sync_job_service=fake_job, sync_factory=fake_factory)
+    assert svc._sync_job_service is fake_job
+    assert svc._sync_factory is fake_factory

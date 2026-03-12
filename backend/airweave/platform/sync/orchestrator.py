@@ -12,6 +12,7 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
+from airweave.domains.sync_pipeline.entity_pipeline import EntityPipeline
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
@@ -20,7 +21,6 @@ from airweave.domains.usage.types import ActionType
 from airweave.platform.contexts import SyncContext
 from airweave.platform.contexts.runtime import SyncRuntime
 from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
-from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
 from airweave.platform.sync.stream import AsyncSourceStream
 from airweave.platform.sync.worker_pool import AsyncWorkerPool

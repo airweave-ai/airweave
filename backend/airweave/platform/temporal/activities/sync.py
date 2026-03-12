@@ -28,7 +28,6 @@ from airweave.core.protocols import EventBus
 from airweave.core.redis_client import redis_client
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
@@ -61,8 +60,6 @@ class RunSyncActivity:
     """
 
     event_bus: EventBus
-    dense_embedder: DenseEmbedderProtocol
-    sparse_embedder: SparseEmbedderProtocol
     sync_service: SyncServiceProtocol
     sync_job_service: SyncJobServiceProtocol
     collection_repo: CollectionRepositoryProtocol
@@ -444,11 +441,8 @@ class RunSyncActivity:
                 collection=collection,
                 source_connection=connection,
                 ctx=ctx,
-                access_token=access_token,
                 force_full_sync=force_full_sync,
                 execution_config=execution_config,
-                dense_embedder=self.dense_embedder,
-                sparse_embedder=self.sparse_embedder,
             )
         except NotFoundException as e:
             if "Source connection record not found" in str(e) or "Connection not found" in str(e):
