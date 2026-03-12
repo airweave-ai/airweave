@@ -222,6 +222,27 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             rate_limit_tpm=2_000_000,
             reasoning=ReasoningConfig(param_name="reasoning", param_value=True),
         ),
+        # ── Qwen 3.5 Dedicated (FP8, 4×H200) ───────────────────────
+        LLMModel.QWEN_3_5_DEDICATED: LLMModelSpec(
+            api_model_name="daan_0248/Qwen/Qwen3.5-397B-A17B-FP8-8e91e0d0",
+            context_window=256_000,
+            max_output_tokens=81_920,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=3_000,
+            rate_limit_tpm=2_000_000,
+            reasoning=ReasoningConfig(param_name="reasoning", param_value=False),
+        ),
+        LLMModel.QWEN_3_5_DEDICATED_THINKING: LLMModelSpec(
+            api_model_name="daan_0248/Qwen/Qwen3.5-397B-A17B-FP8-8e91e0d0",
+            context_window=256_000,
+            max_output_tokens=81_920,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=3_000,
+            rate_limit_tpm=2_000_000,
+            reasoning=ReasoningConfig(param_name="reasoning", param_value=True),
+        ),
         # ── MiniMax M2.5 ──────────────────────────────────────────
         LLMModel.MINIMAX_M2_5: LLMModelSpec(
             api_model_name="MiniMaxAI/MiniMax-M2.5",

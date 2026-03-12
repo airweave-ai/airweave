@@ -227,6 +227,16 @@ class AgenticSearchResults(BaseModel):
         description="Search results ordered by relevance (highest first).",
     )
 
+    # Query metadata (populated by vector DB, not required)
+    coverage_pct: Optional[float] = Field(
+        default=None,
+        description="Percentage of corpus covered by the query (100.0 = full coverage).",
+    )
+    query_time_ms: Optional[float] = Field(
+        default=None,
+        description="Query execution time in milliseconds.",
+    )
+
     def __len__(self) -> int:
         """Return the number of results."""
         return len(self.results)

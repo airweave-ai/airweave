@@ -43,6 +43,8 @@ class LLMModel(str, Enum):
     KIMI_K2_5_THINKING = "kimi-k2.5-thinking"
     QWEN_3_5 = "qwen-3.5"
     QWEN_3_5_THINKING = "qwen-3.5-thinking"
+    QWEN_3_5_DEDICATED = "qwen-3.5-dedicated"
+    QWEN_3_5_DEDICATED_THINKING = "qwen-3.5-dedicated-thinking"
     MINIMAX_M2_5 = "minimax-m2.5"
     MINIMAX_M2_5_THINKING = "minimax-m2.5-thinking"
 

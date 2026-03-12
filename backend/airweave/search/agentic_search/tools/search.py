@@ -69,7 +69,7 @@ async def handle_search(
     context_window_tokens: int,
 ) -> str:
     """Execute the search tool, merge results into state, return formatted content."""
-    results = await execute_search(
+    search_results = await execute_search(
         arguments=tc.arguments,
         user_filter=user_filter,
         dense_embedder=services.dense_embedder,
@@ -77,10 +77,16 @@ async def handle_search(
         vector_db=services.vector_db,
         collection_id=collection_id,
     )
+    results = search_results.results
     for r in results:
         if r.entity_id not in state.results:
             state.results[r.entity_id] = r
     state.results_by_tool_call_id[tc.id] = results
+    # Store coverage/timing metadata for the tool summary
+    state.search_metadata_by_tool_call_id[tc.id] = {
+        "coverage_pct": search_results.coverage_pct,
+        "query_time_ms": search_results.query_time_ms,
+    }
     available_tokens = _estimate_available_tokens(state.messages, context_window_tokens)
     requested_limit = tc.arguments.get("limit", 10)
     requested_offset = tc.arguments.get("offset", 0)
@@ -102,8 +108,8 @@ async def execute_search(
     sparse_embedder: SparseEmbedderProtocol,
     vector_db: AgenticSearchVectorDBInterface,
     collection_id: str,
-) -> list[AgenticSearchResult]:
-    """Execute the search tool and return raw results."""
+) -> AgenticSearchResults:
+    """Execute the search tool and return results with metadata."""
     plan = AgenticSearchPlan.model_validate(arguments)
 
     # Merge with user filters
@@ -137,9 +143,7 @@ async def execute_search(
         embeddings=embeddings,
         collection_id=collection_id,
     )
-    search_results: AgenticSearchResults = await vector_db.execute_query(compiled_query)
-
-    return search_results.results
+    return await vector_db.execute_query(compiled_query)
 
 
 # ── Context budget ─────────────────────────────────────────────────────

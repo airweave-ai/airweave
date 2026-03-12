@@ -468,11 +468,19 @@ class AgenticSearchAgent:
             results = state.results_by_tool_call_id.get(tc.id, [])
             all_ids = set(state.results.keys())
             new_ids = {r.entity_id for r in results}
-            return {
+            summary: dict = {
                 "result_count": len(results),
                 "new_results": len(new_ids - (all_ids - new_ids)),
                 "total_results_seen": len(all_ids),
             }
+            # Include Vespa coverage/timing metadata when available
+            meta = state.search_metadata_by_tool_call_id.get(tc.id)
+            if meta:
+                if meta.get("coverage_pct") is not None:
+                    summary["coverage_pct"] = meta["coverage_pct"]
+                if meta.get("query_time_ms") is not None:
+                    summary["query_time_ms"] = meta["query_time_ms"]
+            return summary
         if tc.name == "add_to_results":
             return {
                 "total_collected": len(state.result_entity_ids),

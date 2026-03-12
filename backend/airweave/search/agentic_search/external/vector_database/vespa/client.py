@@ -198,14 +198,19 @@ class VespaVectorDB:
         total_count = root.get("fields", {}).get("totalCount", 0)
         hits = response.hits or []
 
+        coverage_pct = coverage.get("coverage", 100.0)
+
         self._logger.debug(
             f"[VespaVectorDB] Query completed in {query_time_ms:.1f}ms, "
             f"total={total_count}, hits={len(hits)}, "
-            f"coverage={coverage.get('coverage', 100.0):.1f}%"
+            f"coverage={coverage_pct:.1f}%"
         )
 
         # Convert hits to results
-        return self._convert_hits_to_results(hits)
+        search_results = self._convert_hits_to_results(hits)
+        search_results.coverage_pct = coverage_pct
+        search_results.query_time_ms = round(query_time_ms, 1)
+        return search_results
 
     async def count(
         self,
@@ -412,7 +417,8 @@ class VespaVectorDB:
             "ranking.profile": plan.retrieval_strategy.value,
             "hits": plan.limit,
             "offset": plan.offset,
-            "ranking.softtimeout.enable": "false",
+            "ranking.softtimeout.enable": "true",
+            "timeout": "15s",
             "ranking.globalPhase.rerankCount": global_phase_rerank,
         }
 

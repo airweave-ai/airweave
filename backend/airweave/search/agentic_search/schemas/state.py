@@ -12,6 +12,7 @@ class AgenticSearchState(BaseModel):
     results: dict[str, AgenticSearchResult] = Field(default_factory=dict)
     results_by_tool_call_id: dict[str, list[AgenticSearchResult]] = Field(default_factory=dict)
     reads_by_tool_call_id: dict[str, list[AgenticSearchResult]] = Field(default_factory=dict)
+    search_metadata_by_tool_call_id: dict[str, dict] = Field(default_factory=dict)
     result_entity_ids: set[str] = Field(default_factory=set)
     iteration: int = 0
     should_finish: bool = False

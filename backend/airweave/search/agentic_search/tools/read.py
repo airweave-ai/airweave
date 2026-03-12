@@ -316,7 +316,7 @@ async def _fetch_chunks(
             }
         ]
 
-        results = await execute_search(
+        search_results = await execute_search(
             arguments={
                 "query": {"primary": entity_name},
                 "retrieval_strategy": "semantic",
@@ -330,7 +330,7 @@ async def _fetch_chunks(
             vector_db=services.vector_db,
             collection_id=collection_id,
         )
-        return results
+        return search_results.results
     except Exception:
         return []
 
