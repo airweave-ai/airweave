@@ -129,7 +129,7 @@ class Settings(BaseSettings):
     # Vespa configuration
     VESPA_URL: str = "http://localhost"
     VESPA_PORT: int = 8081
-    VESPA_TIMEOUT: float = 60.0
+    VESPA_TIMEOUT: float = 120.0
     VESPA_CLUSTER: str = "airweave"  # Vespa content cluster name for bulk operations
 
     # -------------------------------------------------------------------------
