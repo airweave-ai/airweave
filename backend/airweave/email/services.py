@@ -1,7 +1,7 @@
 """Email service for sending emails via Resend."""
 
 import asyncio
-import random
+import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -139,7 +139,7 @@ def _send_welcome_email_sync(to_email: str, user_name: str) -> None:
     resend.api_key = settings.RESEND_API_KEY
 
     # Generate random delay between 10 and 40 minutes
-    delay_minutes = random.randint(10, 40)
+    delay_minutes = secrets.randbelow(31) + 10
 
     # Calculate scheduled time using ISO 8601 format
     scheduled_time = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
@@ -203,7 +203,7 @@ def _send_welcome_followup_email_sync(to_email: str, user_name: str) -> None:
     resend.api_key = settings.RESEND_API_KEY
 
     # Generate random delay between 30 and 60 minutes
-    delay_minutes = random.randint(30, 60)
+    delay_minutes = secrets.randbelow(31) + 30
 
     # Schedule for 5 days from now plus random delay
     scheduled_time = datetime.now(timezone.utc) + timedelta(days=5, minutes=delay_minutes)

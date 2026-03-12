@@ -4,6 +4,7 @@ import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { useCollectionCreationStore } from '@/stores/collectionCreationStore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { generateReadableId } from '@/lib/readable-id';
 import { useTheme } from '@/lib/theme-provider';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -42,36 +43,7 @@ export const CollectionCreationModal: React.FC = () => {
   useEffect(() => {
     // Only generate for new collections, not when adding to existing
     if (!isAddingToExistingCollection() && collectionName) {
-      const generateHumanReadableId = (name: string) => {
-        // Convert to lowercase and trim
-        let readableId = name.toLowerCase().trim();
-
-        // Remove any character that's not a letter, number, or space
-        readableId = readableId.replace(/[^a-z0-9\s]/g, '');
-
-        // Replace spaces with hyphens
-        readableId = readableId.replace(/\s+/g, '-');
-
-        // Ensure no consecutive hyphens
-        readableId = readableId.replace(/-+/g, '-');
-
-        // Trim hyphens from start and end
-        readableId = readableId.replace(/^-+|-+$/g, '');
-
-        // Generate random 6-character alphanumeric suffix
-        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        let suffix = '';
-        for (let i = 0; i < 6; i++) {
-          suffix += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-
-        // Combine with suffix
-        readableId = `${readableId}-${suffix}`;
-
-        return readableId;
-      };
-
-      setHumanReadableId(generateHumanReadableId(collectionName));
+      setHumanReadableId(generateReadableId(collectionName));
     } else if (!isAddingToExistingCollection() && !collectionName) {
       // If collection name is empty, clear the readable ID
       setHumanReadableId('');

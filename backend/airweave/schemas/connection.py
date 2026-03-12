@@ -6,48 +6,14 @@ encompasses the connection and sync information for a specific source.
 
 """
 
-import random
-import re
-import string
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
+from airweave.core.readable_id import generate_readable_id
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
-
-
-def generate_readable_id(name: str) -> str:
-    """Generate a readable ID from a connection name.
-
-    Converts the name to lowercase, replaces spaces with hyphens,
-    removes special characters, and adds a random 6-character suffix
-    to ensure uniqueness.
-
-    Args:
-        name: The connection name to convert
-
-    Returns:
-        A URL-safe readable identifier (e.g., "stripe-connection-ab123")
-    """
-    # Convert to lowercase and replace spaces with hyphens
-    readable_id = name.lower().strip()
-
-    # Replace any character that's not a letter, number, or space with nothing
-    readable_id = re.sub(r"[^a-z0-9\s]", "", readable_id)
-    # Replace spaces with hyphens
-    readable_id = re.sub(r"\s+", "-", readable_id)
-    # Ensure no consecutive hyphens
-    readable_id = re.sub(r"-+", "-", readable_id)
-    # Trim hyphens from start and end
-    readable_id = readable_id.strip("-")
-
-    # Add random alphanumeric suffix
-    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    readable_id = f"{(readable_id + '-') if readable_id else ''}{suffix}"
-
-    return readable_id
 
 
 class ConnectionBase(BaseModel):

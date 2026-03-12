@@ -3,7 +3,6 @@
 import asyncio
 import base64
 import hashlib
-import random
 import secrets
 from typing import Any, Optional, Tuple
 from urllib.parse import urlencode
@@ -578,7 +577,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
                     logger.info(f"Received response: Status {response.status_code}, ")
 
                     if self._is_oauth_rate_limit_error(response):
-                        delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                        delay = base_delay * (2**attempt) + secrets.randbelow(2001) / 1000
                         logger.warning(
                             f"OAuth rate limit hit, waiting {delay:.1f}s before retry "
                             f"(attempt {attempt + 1}/{max_retries})"
@@ -591,7 +590,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
             except httpx.HTTPStatusError as e:
                 if self._is_oauth_rate_limit_error(e.response):
-                    delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                    delay = base_delay * (2**attempt) + secrets.randbelow(2001) / 1000
                     logger.warning(
                         f"OAuth rate limit hit (exception), waiting {delay:.1f}s before retry "
                         f"(attempt {attempt + 1}/{max_retries})"

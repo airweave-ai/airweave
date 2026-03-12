@@ -16,7 +16,7 @@ import { DESIGN_SYSTEM } from "@/lib/design-system";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const uid = () => Math.random().toString(36).slice(2, 9);
+const uid = () => crypto.randomUUID();
 
 // ─── Field & Operator definitions (mirror backend enums) ──────────────────────
 
