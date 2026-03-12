@@ -1015,3 +1015,13 @@ class HerbAuthConfig(BaseConfig):
         description="Internal placeholder (ignored)",
         json_schema_extra={"exclude_from_ui": True},
     )
+
+
+class EnronAuthConfig(BaseConfig):
+    """Placeholder authentication for the Enron email corpus (no real credentials needed)."""
+
+    placeholder: str = Field(
+        default="enron",
+        title="Placeholder",
+        description="Internal placeholder (ignored)",
+    )
