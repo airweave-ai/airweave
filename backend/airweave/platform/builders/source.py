@@ -325,9 +325,7 @@ class SourceContextBuilder:
     ) -> List[NodeSelectionData]:
         """Load node selections for a source connection (for targeted sync)."""
         repo = NodeSelectionRepository()
-        rows = await repo.get_by_source_connection(
-            db, source_connection_id, ctx.organization.id
-        )
+        rows = await repo.get_by_source_connection(db, source_connection_id, ctx.organization.id)
         return [
             NodeSelectionData(
                 source_node_id=row.source_node_id,
