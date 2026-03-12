@@ -983,3 +983,13 @@ class HerbAuthConfig(BaseConfig):
         title="Placeholder",
         description="Internal placeholder (ignored)",
     )
+
+
+class EnronAuthConfig(BaseConfig):
+    """Placeholder authentication for the Enron email corpus (no real credentials needed)."""
+
+    placeholder: str = Field(
+        default="enron",
+        title="Placeholder",
+        description="Internal placeholder (ignored)",
+    )
