@@ -389,7 +389,7 @@ class SharePointOnlineSource(BaseSource):
                     )
                     results.append(entity)
                 except FileSkippedException:
-                    pass
+                    self.logger.debug(f"File download skipped for {item.drive_id}/{item.item_id}")
                 except EntityProcessingError as e:
                     self.logger.warning(f"Skipping file download: {e}")
 
@@ -740,11 +740,18 @@ class SharePointOnlineSource(BaseSource):
 
                     if item_data.get("file"):
                         try:
+                            permissions = await graph_client.get_item_permissions(
+                                client, drive_id, item_id
+                            )
                             file_entity = await build_file_entity(
                                 item_data,
                                 drive_id,
                                 "",
                                 [],
+                                permissions,
+                            )
+                            await self._resolve_unresolved_viewers(
+                                file_entity, client, graph_client
                             )
                             self._track_entity_groups(file_entity)
                             file_entity = await self._download_and_save_file(
@@ -868,7 +875,15 @@ class SharePointOnlineSource(BaseSource):
                         url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
                         item_data = await graph_client.get(client, url)
                         if item_data.get("file"):
-                            file_entity = await build_file_entity(item_data, drive_id, "", [])
+                            permissions = await graph_client.get_item_permissions(
+                                client, drive_id, item_id
+                            )
+                            file_entity = await build_file_entity(
+                                item_data, drive_id, "", [], permissions
+                            )
+                            await self._resolve_unresolved_viewers(
+                                file_entity, client, graph_client
+                            )
                             self._track_entity_groups(file_entity)
                             file_entity = await self._download_and_save_file(
                                 file_entity, client, drive_id, item_id
@@ -955,7 +970,13 @@ class SharePointOnlineSource(BaseSource):
                 continue
             if item_data.get("file"):
                 try:
-                    file_entity = await build_file_entity(item_data, drive_id, site_id, [])
+                    permissions = await graph_client.get_item_permissions(
+                        client, drive_id, item_data["id"]
+                    )
+                    file_entity = await build_file_entity(
+                        item_data, drive_id, site_id, [], permissions
+                    )
+                    await self._resolve_unresolved_viewers(file_entity, client, graph_client)
                     self._track_entity_groups(file_entity)
                     pending_files.append(
                         PendingFileDownload(

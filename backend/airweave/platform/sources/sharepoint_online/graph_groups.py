@@ -153,8 +153,9 @@ class EntraGroupExpander:
             else:
                 self.logger.error(f"Error expanding group {group_id}: {e}")
                 raise
+        finally:
+            self._expanding.discard(cache_key)
 
-        self._expanding.discard(cache_key)
         self._group_cache[cache_key] = collected
         self.logger.debug(
             f"Expanded group {group_display_name or group_id}: {len(collected)} memberships"

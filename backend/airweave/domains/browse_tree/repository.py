@@ -43,9 +43,10 @@ class NodeSelectionRepository(NodeSelectionRepositoryProtocol):
         Deletes existing selections and inserts new ones in a single transaction.
         The caller must handle commit/rollback (e.g., via UnitOfWork).
         """
-        # Delete existing
+        # Delete existing (scoped to organization to prevent cross-org deletion)
         del_stmt = delete(NodeSelection).where(
-            NodeSelection.source_connection_id == source_connection_id
+            NodeSelection.source_connection_id == source_connection_id,
+            NodeSelection.organization_id == organization_id,
         )
         await db.execute(del_stmt)
 

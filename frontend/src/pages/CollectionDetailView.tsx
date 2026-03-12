@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert } from "@/components/ui/alert";
-import { AlertCircle, RefreshCw, Pencil, Trash, Plus, Clock, Play, Plug, Copy, Check, Loader2, RotateCw, AlertTriangle, FolderTree } from "lucide-react";
+import { AlertCircle, Pencil, Trash, Plus, Plug, Copy, Check, Loader2, RotateCw, AlertTriangle, FolderTree } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { useUsageStore } from "@/lib/stores/usage";
 import { Button } from "@/components/ui/button";
@@ -413,6 +413,27 @@ const Collections = () => {
     }, [isPanelOpen, isCreationModalOpen, collection?.readable_id]);
 
 
+    useEffect(() => {
+        if (!selectedConnection) {
+            setSelectedScSupportsBrowseTree(false);
+            return;
+        }
+        const checkBrowseTree = async () => {
+            try {
+                const resp = await apiClient.get(`/sources/${selectedConnection.short_name}`);
+                if (resp.ok) {
+                    const source = await resp.json();
+                    setSelectedScSupportsBrowseTree(!!source.supports_browse_tree);
+                } else {
+                    setSelectedScSupportsBrowseTree(false);
+                }
+            } catch {
+                setSelectedScSupportsBrowseTree(false);
+            }
+        };
+        checkBrowseTree();
+    }, [selectedConnection?.id]);
+
     /********************************************
      * UI EVENT HANDLERS
      ********************************************/
@@ -425,22 +446,9 @@ const Collections = () => {
         }
     };
 
-    // Update selected connection + check browse-tree capability
-    const handleSelectConnection = async (connection: SourceConnection) => {
+    const handleSelectConnection = (connection: SourceConnection) => {
         console.log("Manually selecting connection:", connection.id);
         setSelectedConnection(connection);
-        // Check if this source supports browse tree
-        try {
-            const resp = await apiClient.get(`/sources/${connection.short_name}`);
-            if (resp.ok) {
-                const source = await resp.json();
-                setSelectedScSupportsBrowseTree(!!source.supports_browse_tree);
-            } else {
-                setSelectedScSupportsBrowseTree(false);
-            }
-        } catch {
-            setSelectedScSupportsBrowseTree(false);
-        }
     };
 
     // Handle name editing

@@ -14,6 +14,34 @@ from typing import Any, Dict, List, Optional
 from airweave.platform.entities._base import AccessControl
 
 
+def _resolve_user_principal(user: Dict[str, Any]) -> Optional[str]:
+    """Resolve a Graph user identity to a canonical principal string."""
+    for field in ("email", "userPrincipalName", "displayName"):
+        val = user.get(field, "")
+        if val and "@" in val:
+            return f"user:{val.lower()}"
+    user_id = user.get("id", "")
+    return f"user:id:{user_id}" if user_id else None
+
+
+def _resolve_group_principal(group: Dict[str, Any]) -> Optional[str]:
+    """Resolve a Graph group identity to a canonical principal string."""
+    group_id = group.get("id", "")
+    return f"group:entra:{group_id}" if group_id else None
+
+
+def _resolve_site_group_principal(site_group: Dict[str, Any]) -> Optional[str]:
+    """Resolve a SP site group identity to a canonical principal string."""
+    sp_id = site_group.get("id")
+    group_name = site_group.get("displayName", "")
+    if sp_id:
+        label = group_name.lower().replace(" ", "_") if group_name else str(sp_id)
+        return f"group:sp:{label}"
+    if group_name:
+        return f"group:sp:{group_name.lower().replace(' ', '_')}"
+    return None
+
+
 def extract_principal_from_permission(permission: Dict[str, Any]) -> Optional[str]:
     """Extract a canonical principal ID from a Graph permission object.
 
@@ -29,32 +57,15 @@ def extract_principal_from_permission(permission: Dict[str, Any]) -> Optional[st
 
     user = granted_to.get("user")
     if user:
-        for field in ("email", "userPrincipalName", "displayName"):
-            val = user.get(field, "")
-            if val and "@" in val:
-                return f"user:{val.lower()}"
-        user_id = user.get("id", "")
-        if user_id:
-            return f"user:id:{user_id}"
-        return None
+        return _resolve_user_principal(user)
 
     group = granted_to.get("group")
     if group:
-        group_id = group.get("id", "")
-        if group_id:
-            return f"group:entra:{group_id}"
-        return None
+        return _resolve_group_principal(group)
 
     site_group = granted_to.get("siteGroup")
     if site_group:
-        sp_id = site_group.get("id")
-        group_name = site_group.get("displayName", "")
-        if sp_id:
-            label = group_name.lower().replace(" ", "_") if group_name else str(sp_id)
-            return f"group:sp:{label}"
-        if group_name:
-            return f"group:sp:{group_name.lower().replace(' ', '_')}"
-        return None
+        return _resolve_site_group_principal(site_group)
 
     return None
 
@@ -79,6 +90,18 @@ def is_anonymous_link(permission: Dict[str, Any]) -> bool:
     if not link:
         return False
     return link.get("scope", "") == "anonymous"
+
+
+def _extract_identity_principals(perm: Dict[str, Any], viewers: List[str]) -> None:
+    """Extract user principals from grantedToIdentitiesV2/grantedToIdentities."""
+    for identities_key in ("grantedToIdentitiesV2", "grantedToIdentities"):
+        for identity in perm.get(identities_key, []):
+            user = identity.get("user")
+            if not user:
+                continue
+            pid = _resolve_user_principal(user)
+            if pid and pid not in viewers:
+                viewers.append(pid)
 
 
 async def extract_access_control(
@@ -106,6 +129,8 @@ async def extract_access_control(
         principal = extract_principal_from_permission(perm)
         if principal and principal not in viewers:
             viewers.append(principal)
+
+        _extract_identity_principals(perm, viewers)
 
     return AccessControl(viewers=viewers, is_public=is_public)
 

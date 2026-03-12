@@ -92,7 +92,8 @@ class TokenManager:
 
         # Cache for tokens obtained for alternative resource scopes
         # (e.g. SharePoint REST API token vs Graph API token)
-        self._resource_tokens: Dict[str, str] = {}
+        # Stores (token, fetch_timestamp) tuples for TTL enforcement
+        self._resource_tokens: Dict[str, tuple] = {}
 
         # For sources without refresh tokens, we can't refresh
         self._can_refresh = self._determine_refresh_capability()
@@ -222,6 +223,7 @@ class TokenManager:
                 new_token = await self._refresh_token()
                 self._current_token = new_token
                 self._last_refresh_time = time.time()
+                self._resource_tokens.clear()
 
                 self.logger.debug(
                     f"Successfully refreshed token for {self.source_short_name} after 401"
@@ -251,7 +253,11 @@ class TokenManager:
         """
         cache_key = resource_scope.lower()
         if cache_key in self._resource_tokens:
-            return self._resource_tokens[cache_key]
+            cached_token, fetch_time = self._resource_tokens[cache_key]
+            if (time.time() - fetch_time) < self.REFRESH_INTERVAL_SECONDS:
+                return cached_token
+            self.logger.debug(f"Resource token for {resource_scope} expired, refreshing")
+            del self._resource_tokens[cache_key]
 
         if not self._has_refresh_token:
             raise TokenRefreshError(
@@ -297,7 +303,7 @@ class TokenManager:
                     f"No access_token in response for resource scope {resource_scope}"
                 )
 
-            self._resource_tokens[cache_key] = token
+            self._resource_tokens[cache_key] = (token, time.time())
             self.logger.info(
                 f"Obtained token for resource scope {resource_scope} "
                 f"(source: {self.source_short_name})"

@@ -121,6 +121,8 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
         ctx.logger.info(
             f"Dispatching {sync_type} sync job {sync_job_schema.id} for SC {source_connection_id}"
         )
+        if self._temporal_service is None:
+            raise RuntimeError("Cannot dispatch sync: temporal workflow service is not configured")
         await self._temporal_service.run_source_connection_workflow(
             sync=sync_schema,
             sync_job=sync_job_schema,
@@ -141,10 +143,13 @@ class BrowseTreeService(BrowseTreeServiceProtocol):
         """Instantiate source, call get_browse_children(), return response."""
         try:
             source = await self._source_lifecycle.create(db, source_connection_id, ctx)
+        except NotFoundException:
+            raise
         except Exception as exc:
-            raise NotFoundException(
+            ctx.logger.error(
                 f"Failed to initialize source for browse tree (SC {source_connection_id}): {exc}"
-            ) from exc
+            )
+            raise
 
         if not getattr(source, "supports_browse_tree", False):
             raise NotFoundException(

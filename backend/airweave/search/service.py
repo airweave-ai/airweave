@@ -345,12 +345,18 @@ class SearchService:
         )
         sync_ids = [str(row[0]) for row in result.all() if row[0] is not None]
 
-        if sync_ids:
-            condition = {"key": "sync_id", "match": {"any": sync_ids}}
-            if search_request.filter is None:
-                search_request.filter = {}
-            search_request.filter.setdefault("must", []).append(condition)
-            ctx.logger.debug(f"Injected sync_id filter for {len(sync_ids)} source connections")
+        if not sync_ids:
+            ctx.logger.warning(
+                f"source_connection_ids {sc_ids} resolved to no sync_ids — "
+                f"injecting impossible filter to return empty results"
+            )
+            sync_ids = ["__no_match__"]
+
+        condition = {"key": "sync_id", "match": {"any": sync_ids}}
+        if search_request.filter is None:
+            search_request.filter = {}
+        search_request.filter.setdefault("must", []).append(condition)
+        ctx.logger.debug(f"Injected sync_id filter for {len(sync_ids)} source connections")
 
     async def _handle_failed_federated_auth(
         self,

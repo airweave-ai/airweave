@@ -4,6 +4,7 @@ Functions that build typed entity objects from Microsoft Graph API responses.
 Each builder validates required fields and extracts access control.
 """
 
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -208,7 +209,7 @@ async def build_page_entity(
         title=title,
         web_url=page_data.get("webUrl", ""),
         description=page_data.get("description"),
-        page_content=page_data.get("webParts"),
+        page_content=json.dumps(page_data["webParts"]) if page_data.get("webParts") else None,
         site_id=site_id,
         created_at=_parse_datetime(page_data.get("createdDateTime")),
         updated_at=_parse_datetime(page_data.get("lastModifiedDateTime")),

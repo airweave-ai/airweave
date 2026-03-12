@@ -14,6 +14,7 @@ Flow (single SC):
 
 import asyncio
 import json
+import os
 import time
 from typing import Any
 
@@ -29,16 +30,16 @@ BASE_URL = "http://localhost:8001"
 SP_SITE_URL = "http://sharepoint-2019.demos.airweave.ai"
 SP_DOMAIN = "AIRWEAVE-SP2019"
 
-# Active Directory credentials
-AD_USERNAME = "sp2019admin"
-AD_PASSWORD = "OEtJV0DenQDF21gug#"
-AD_DOMAIN = "AIRWEAVE-SP2019"
-AD_SERVER = "ldaps://108.143.169.156:636"
-AD_SEARCH_BASE = "DC=AIRWEAVE-SP2019,DC=local"
+# Active Directory credentials (loaded from environment)
+AD_USERNAME = os.environ.get("AD_USERNAME", "")
+AD_PASSWORD = os.environ.get("AD_PASSWORD", "")
+AD_DOMAIN = os.environ.get("AD_DOMAIN", "AIRWEAVE-SP2019")
+AD_SERVER = os.environ.get("AD_SERVER", "")
+AD_SEARCH_BASE = os.environ.get("AD_SEARCH_BASE", "DC=AIRWEAVE-SP2019,DC=local")
 
-# IT Admin credentials (full access)
-ADMIN_SP_USERNAME = "SP_Admin"
-ADMIN_SP_PASSWORD = "FOKVgLLhxvyvPwFmY#"
+# IT Admin credentials (loaded from environment)
+ADMIN_SP_USERNAME = os.environ.get("ADMIN_SP_USERNAME", "")
+ADMIN_SP_PASSWORD = os.environ.get("ADMIN_SP_PASSWORD", "")
 
 # User principals for search-as-user verification
 FULL_ACCESS_USER = "sp_admin"  # Member of site owner/member groups — sees everything

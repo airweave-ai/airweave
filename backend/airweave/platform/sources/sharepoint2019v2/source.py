@@ -958,7 +958,7 @@ class SharePoint2019V2Source(BaseSource):
                 for selection in self._node_selections:
                     node_type = selection.node_type
                     metadata = selection.node_metadata or {}
-                    site_url = metadata.get("site_url", self._site_url)
+                    site_url = metadata.get("site_url") or metadata.get("url") or self._site_url
 
                     try:
                         if node_type == "site":
@@ -1000,8 +1000,8 @@ class SharePoint2019V2Source(BaseSource):
                                         entity_count += 1
 
                     except Exception as e:
-                        self.logger.warning(f"Error processing targeted selection {selection}: {e}")
-                        continue
+                        self.logger.error(f"Error processing targeted selection {selection}: {e}")
+                        raise
 
                 self.logger.info(f"Targeted sync complete: {entity_count} entities")
 

@@ -339,6 +339,33 @@ class GraphClient:
             "Accept": "application/json;odata=verbose",
         }
 
+    async def _sp_get_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        headers: Dict[str, str],
+        max_attempts: int = 3,
+    ) -> httpx.Response:
+        """Execute a SP REST GET with simple retry on transient errors."""
+        import asyncio
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await client.get(url, headers=headers, timeout=30.0)
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get("Retry-After", "5"))
+                    self.logger.warning(f"SP REST rate limited, retry after {retry_after}s")
+                    await asyncio.sleep(retry_after)
+                    continue
+                response.raise_for_status()
+                return response
+            except (httpx.TimeoutException, httpx.ConnectError) as e:
+                if attempt == max_attempts:
+                    raise
+                self.logger.warning(f"SP REST transient error (attempt {attempt}): {e}")
+                await asyncio.sleep(2**attempt)
+        raise httpx.TimeoutException("SP REST max retries exhausted")
+
     async def get_site_groups(
         self,
         client: httpx.AsyncClient,
@@ -356,8 +383,7 @@ class GraphClient:
         url = f"{site_url}/_api/web/sitegroups"
         headers = await self._sp_headers(sp_token_provider)
         try:
-            response = await client.get(url, headers=headers, timeout=30.0)
-            response.raise_for_status()
+            response = await self._sp_get_with_retry(client, url, headers)
             data = response.json()
             return data.get("d", {}).get("results", [])
         except httpx.HTTPStatusError as e:
@@ -382,8 +408,7 @@ class GraphClient:
         url = f"{site_url}/_api/web/sitegroups/getbyid({group_id})/users"
         headers = await self._sp_headers(sp_token_provider)
         try:
-            response = await client.get(url, headers=headers, timeout=30.0)
-            response.raise_for_status()
+            response = await self._sp_get_with_retry(client, url, headers)
             data = response.json()
             return data.get("d", {}).get("results", [])
         except httpx.HTTPStatusError as e:
@@ -399,21 +424,32 @@ class GraphClient:
     ) -> Dict[str, str]:
         """Resolve Entra user object IDs to email addresses.
 
+        Uses asyncio.gather with concurrency limits to avoid sequential
+        one-per-user API calls that bottleneck on large tenants.
+
         Returns a mapping of user_id -> email (lowercase).
         IDs that cannot be resolved are omitted from the result.
         """
+        import asyncio
+
+        CONCURRENCY = 10
+        semaphore = asyncio.Semaphore(CONCURRENCY)
         result: Dict[str, str] = {}
-        for uid in user_ids:
-            try:
-                url = f"{GRAPH_BASE_URL}/users/{uid}"
-                data = await self.get(client, url, {"$select": "userPrincipalName,mail"})
-                email = data.get("mail") or data.get("userPrincipalName", "")
-                if email and "@" in email:
-                    result[uid] = email.lower()
-                else:
-                    self.logger.warning(f"User {uid} has no resolvable email")
-            except Exception as e:
-                self.logger.warning(f"Could not resolve user {uid}: {e}")
+
+        async def _resolve_one(uid: str) -> None:
+            async with semaphore:
+                try:
+                    url = f"{GRAPH_BASE_URL}/users/{uid}"
+                    data = await self.get(client, url, {"$select": "userPrincipalName,mail"})
+                    email = data.get("mail") or data.get("userPrincipalName", "")
+                    if email and "@" in email:
+                        result[uid] = email.lower()
+                    else:
+                        self.logger.warning(f"User {uid} has no resolvable email")
+                except Exception as e:
+                    self.logger.warning(f"Could not resolve user {uid}: {e}")
+
+        await asyncio.gather(*[_resolve_one(uid) for uid in user_ids])
         return result
 
     # -- File Download --
