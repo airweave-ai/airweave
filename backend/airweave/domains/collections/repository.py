@@ -1,6 +1,6 @@
 """Collection repository wrapping crud.collection."""
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,8 +37,12 @@ class CollectionRepository(CollectionRepositoryProtocol):
         skip: int = 0,
         limit: int = 100,
         search_query: Optional[str] = None,
-    ) -> List[Collection]:
-        """Get multiple collections with pagination and optional search."""
+    ) -> tuple[List[Collection], Dict[str, List[Dict[str, str]]]]:
+        """Get multiple collections with pagination and optional search.
+
+        Returns:
+            Tuple of (collections, source connection summaries by readable_id).
+        """
         return await crud.collection.get_multi(
             db, ctx=ctx, skip=skip, limit=limit, search_query=search_query
         )

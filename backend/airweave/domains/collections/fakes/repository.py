@@ -48,7 +48,7 @@ class FakeCollectionRepository:
         skip: int = 0,
         limit: int = 100,
         search_query: Optional[str] = None,
-    ) -> List[Collection]:
+    ) -> tuple[List[Collection], dict[str, list[dict[str, str]]]]:
         """Return seeded collections with optional search filter."""
         self._calls.append(("get_multi", db, ctx, skip, limit, search_query))
         items = list(self._readable_store.values())
@@ -59,7 +59,7 @@ class FakeCollectionRepository:
                 for c in items
                 if q in getattr(c, "name", "").lower() or q in getattr(c, "readable_id", "").lower()
             ]
-        return items[skip : skip + limit]
+        return items[skip : skip + limit], {}
 
     async def count(
         self, db: AsyncSession, *, ctx: ApiContext, search_query: Optional[str] = None

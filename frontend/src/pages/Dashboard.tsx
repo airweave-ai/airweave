@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useEffect } from "react";
 
-import { Copy, Eye, Key, Plus, ExternalLink, FileText, Github, Code, Sparkles, TrendingUp, Search, Package } from "lucide-react";
-import { useNavigate, Link, useLocation, useSearchParams } from "react-router-dom";
+import { ExternalLink, FileText } from "lucide-react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useTheme } from "@/lib/theme-provider";
 import {
   CollectionCard,
@@ -10,11 +10,10 @@ import {
   ExampleProjectCard,
   RequestConnectorButton,
 } from "@/components/dashboard";
-import { clearStoredErrorDetails, getStoredErrorDetails } from "@/lib/error-utils";
+import { getStoredErrorDetails } from "@/lib/error-utils";
 import { useCollectionCreationStore } from "@/stores/collectionCreationStore";
 import { useCollectionsStore, useSourcesStore } from "@/lib/stores";
 import { useUsageStore } from "@/lib/stores/usage";
-import { apiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -22,15 +21,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { SingleActionCheckResponse } from "@/types";
-
-// Collection type definition
-interface Collection {
-  id: string;
-  name: string;
-  readable_id: string;
-  status: string;
-}
 
 // Source type definition
 interface Source {
@@ -39,15 +29,6 @@ interface Source {
   short_name: string;
   labels?: string[];
   auth_type?: string;
-}
-
-// Source Connection definition
-interface SourceConnection {
-  id: string;
-  name: string;
-  short_name: string;
-  collection: string;
-  status?: string;
 }
 
 
@@ -64,8 +45,6 @@ const Dashboard = () => {
     isLoading: isLoadingCollections,
     fetchCollections,
     fetchCollectionsCount,
-    sourceConnections,
-    fetchSourceConnections
   } = useCollectionsStore();
 
   // Use sources store
@@ -187,6 +166,7 @@ const Dashboard = () => {
                       name={collection.name}
                       readableId={collection.readable_id}
                       status={collection.status}
+                      sourceConnectionSummaries={collection.source_connection_summaries}
                       onClick={() => navigate(`/collections/${collection.readable_id}`)}
                     />
                   ))

@@ -2,15 +2,22 @@ import { create } from 'zustand';
 import { apiClient } from '@/lib/api';
 import { onCollectionEvent, COLLECTION_DELETED, COLLECTION_CREATED, COLLECTION_UPDATED } from "@/lib/events";
 
+// Lightweight source connection info included in collection list responses
+export interface SourceConnectionSummary {
+  short_name: string;
+  name: string;
+}
+
 // Interface for Collection type
 export interface Collection {
   id: string;
   name: string;
   readable_id: string;
   status: string;
+  source_connection_summaries?: SourceConnectionSummary[];
 }
 
-// Interface for SourceConnection type
+// Interface for SourceConnection type (still used by CollectionDetailView)
 export interface SourceConnection {
   id: string;
   name: string;
@@ -24,20 +31,14 @@ interface CollectionsState {
   totalCount: number | null;
   isLoading: boolean;
   error: string | null;
-  // Cache for source connections by collection ID
-  sourceConnections: Record<string, SourceConnection[]>;
-  sourceConnectionsLoading: Record<string, boolean>;
 
   // Request deduplication
   inflightCollectionsRequest: Promise<Collection[]> | null;
-  inflightSourceRequests: Record<string, Promise<SourceConnection[]>>;
   lastCollectionsFetch: number;
-  lastSourceFetch: Record<string, number>;
 
   fetchCollections: (forceRefresh?: boolean) => Promise<Collection[]>;
   fetchCollectionsCount: (searchQuery?: string) => Promise<number>;
   fetchCollectionsPaginated: (skip: number, limit: number, searchQuery?: string) => Promise<Collection[]>;
-  fetchSourceConnections: (collectionId: string, forceRefresh?: boolean) => Promise<SourceConnection[]>;
   subscribeToEvents: () => () => void;
   clearCollections: () => void;
 }
@@ -47,30 +48,21 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
   totalCount: null,
   isLoading: false,
   error: null,
-  sourceConnections: {},
-  sourceConnectionsLoading: {},
   inflightCollectionsRequest: null,
-  inflightSourceRequests: {},
   lastCollectionsFetch: 0,
-  lastSourceFetch: {},
 
   fetchCollections: async (forceRefresh = false) => {
-    // Check if we have a recent fetch (within 5 seconds) unless force refresh
     const now = Date.now();
     const { lastCollectionsFetch, collections, inflightCollectionsRequest } = get();
 
     if (!forceRefresh && lastCollectionsFetch && (now - lastCollectionsFetch) < 5000 && collections.length > 0) {
-      console.log('Using cached collections (fetched', Math.round((now - lastCollectionsFetch) / 1000), 'seconds ago)');
       return collections;
     }
 
-    // If there's already a request in flight and no force refresh, return it
     if (!forceRefresh && inflightCollectionsRequest) {
-      console.log('Returning existing collections request');
       return inflightCollectionsRequest;
     }
 
-    // Create new request
     const request = (async () => {
       set({ isLoading: true, error: null });
 
@@ -147,122 +139,19 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
     }
   },
 
-  fetchSourceConnections: async (collectionId: string, forceRefresh = false) => {
-    // Check if we have a recent fetch (within 5 seconds) unless force refresh
-    const now = Date.now();
-    const { lastSourceFetch, sourceConnections, inflightSourceRequests } = get();
-    const lastFetch = lastSourceFetch[collectionId];
-
-    if (!forceRefresh && lastFetch && (now - lastFetch) < 5000 && sourceConnections[collectionId]) {
-      console.log(`Using cached source connections for ${collectionId} (fetched`, Math.round((now - lastFetch) / 1000), 'seconds ago)');
-      return sourceConnections[collectionId];
-    }
-
-    // If there's already a request in flight and no force refresh, return it
-    if (!forceRefresh && inflightSourceRequests[collectionId]) {
-      console.log(`Returning existing source connections request for ${collectionId}`);
-      return inflightSourceRequests[collectionId];
-    }
-
-    // Create new request
-    const request = (async () => {
-      // Mark as loading
-      set(state => ({
-        sourceConnectionsLoading: {
-          ...state.sourceConnectionsLoading,
-          [collectionId]: true
-        }
-      }));
-
-      try {
-        const response = await apiClient.get(`/source-connections/?collection=${collectionId}`);
-
-        if (response.ok) {
-          const data = await response.json();
-          set(state => ({
-            sourceConnections: {
-              ...state.sourceConnections,
-              [collectionId]: data
-            },
-            sourceConnectionsLoading: {
-              ...state.sourceConnectionsLoading,
-              [collectionId]: false
-            },
-            inflightSourceRequests: {
-              ...state.inflightSourceRequests,
-              [collectionId]: undefined
-            },
-            lastSourceFetch: {
-              ...state.lastSourceFetch,
-              [collectionId]: Date.now()
-            }
-          }));
-          return data;
-        } else {
-          console.error(`Failed to load source connections for ${collectionId}:`, await response.text());
-          set(state => ({
-            sourceConnections: {
-              ...state.sourceConnections,
-              [collectionId]: []
-            },
-            sourceConnectionsLoading: {
-              ...state.sourceConnectionsLoading,
-              [collectionId]: false
-            },
-            inflightSourceRequests: {
-              ...state.inflightSourceRequests,
-              [collectionId]: undefined
-            }
-          }));
-          return [];
-        }
-      } catch (err) {
-        console.error(`Error fetching source connections for ${collectionId}:`, err);
-        set(state => ({
-          sourceConnections: {
-            ...state.sourceConnections,
-            [collectionId]: []
-          },
-          sourceConnectionsLoading: {
-            ...state.sourceConnectionsLoading,
-            [collectionId]: false
-          },
-          inflightSourceRequests: {
-            ...state.inflightSourceRequests,
-            [collectionId]: undefined
-          }
-        }));
-        return [];
-      }
-    })();
-
-    // Store the inflight request
-    set(state => ({
-      inflightSourceRequests: {
-        ...state.inflightSourceRequests,
-        [collectionId]: request
-      }
-    }));
-
-    return request;
-  },
-
   subscribeToEvents: () => {
-    // Subscribe to collection events
-
     const unsubscribeDeleted = onCollectionEvent(COLLECTION_DELETED, () => {
-      get().fetchCollections(true); // Force refresh on delete
+      get().fetchCollections(true);
     });
 
     const unsubscribeCreated = onCollectionEvent(COLLECTION_CREATED, () => {
-      get().fetchCollections(true); // Force refresh on create
+      get().fetchCollections(true);
     });
 
     const unsubscribeUpdated = onCollectionEvent(COLLECTION_UPDATED, () => {
-      get().fetchCollections(true); // Force refresh on update
+      get().fetchCollections(true);
     });
 
-    // Return function to unsubscribe from all events
     return () => {
       unsubscribeDeleted();
       unsubscribeCreated();
@@ -271,13 +160,10 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
   },
 
   clearCollections: () => {
-
     set({
       collections: [],
       isLoading: false,
       error: null,
-      sourceConnections: {},
-      sourceConnectionsLoading: {}
     });
   }
 }));

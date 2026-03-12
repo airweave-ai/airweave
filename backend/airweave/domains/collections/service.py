@@ -47,7 +47,11 @@ class CollectionService(CollectionServiceProtocol):
         self._deployment_metadata_repo = deployment_metadata_repo
         self._dense_registry = dense_registry
 
-    def _to_response(self, db_obj: Collection) -> schemas.Collection:
+    def _to_response(
+        self,
+        db_obj: Collection,
+        source_connection_summaries: Optional[List[dict]] = None,
+    ) -> schemas.Collection:
         """Convert an ORM Collection to a CollectionResponse with embedding metadata."""
         vd = db_obj.vector_db_deployment_metadata
         base = schemas.CollectionRecord.model_validate(db_obj, from_attributes=True)
@@ -55,6 +59,7 @@ class CollectionService(CollectionServiceProtocol):
             **base.model_dump(),
             vector_size=vd.embedding_dimensions,
             embedding_model_name=self._dense_registry.get(vd.dense_embedder).api_model_name,
+            source_connection_summaries=source_connection_summaries or [],
         )
 
     async def list(
@@ -67,10 +72,10 @@ class CollectionService(CollectionServiceProtocol):
         search_query: Optional[str] = None,
     ) -> List[schemas.Collection]:
         """List collections with pagination and optional search."""
-        collections = await self._collection_repo.get_multi(
+        collections, summaries = await self._collection_repo.get_multi(
             db, ctx=ctx, skip=skip, limit=limit, search_query=search_query
         )
-        return [self._to_response(c) for c in collections]
+        return [self._to_response(c, summaries.get(c.readable_id, [])) for c in collections]
 
     async def count(
         self, db: AsyncSession, *, ctx: ApiContext, search_query: Optional[str] = None

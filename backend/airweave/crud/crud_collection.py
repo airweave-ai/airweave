@@ -86,19 +86,17 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
 
     async def _attach_ephemeral_status(
         self, db: AsyncSession, collections: List[Collection], ctx: BaseContext
-    ) -> List[Collection]:
-        """Attach ephemeral status to collections.
-
-        Args:
-            db: The database session
-            collections: The collections to process
-            ctx: The API context
+    ) -> tuple[List[Collection], Dict[str, List[Dict[str, str]]]]:
+        """Attach ephemeral status to collections and build source connection summaries.
 
         Returns:
-            Collections with computed status
+            Tuple of (collections with computed status, summaries keyed by readable_id).
+            Each summary entry is a list of {"short_name": ..., "name": ...} dicts.
         """
+        summaries_by_collection: Dict[str, List[Dict[str, str]]] = {}
+
         if not collections:
-            return []
+            return [], summaries_by_collection
 
         # Fetch all data in ~5 queries total to avoid N+1 problem
         collection_ids = [c.readable_id for c in collections]
@@ -117,7 +115,7 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
             # All collections have no sources
             for collection in collections:
                 collection.status = CollectionStatus.NEEDS_SOURCE
-            return collections
+            return collections, summaries_by_collection
 
         # 2. Bulk fetch all related data using existing optimized methods (4 queries)
         _auth_methods = await crud.source_connection._fetch_auth_methods(db, all_connections)
@@ -127,14 +125,14 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
             db, all_connections
         )
 
-        # 3. Group connections by collection (in-memory operation)
+        # 3. Group connections by collection and build summaries (in-memory operation)
         connections_by_collection: Dict[str, List[Dict[str, Any]]] = {}
         for sc in all_connections:
-            if sc.readable_collection_id not in connections_by_collection:
-                connections_by_collection[sc.readable_collection_id] = []
+            coll_id = sc.readable_collection_id
+            if coll_id not in connections_by_collection:
+                connections_by_collection[coll_id] = []
 
-            # Build same data structure that get_multi_with_stats returns
-            connections_by_collection[sc.readable_collection_id].append(
+            connections_by_collection[coll_id].append(
                 {
                     "is_authenticated": sc.is_authenticated,
                     "federated_search": federated_flags.get(sc.short_name, False),
@@ -142,21 +140,24 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
                 }
             )
 
+            if coll_id not in summaries_by_collection:
+                summaries_by_collection[coll_id] = []
+            summaries_by_collection[coll_id].append({"short_name": sc.short_name, "name": sc.name})
+
         # 4. Compute status for each collection using pre-fetched data (no DB calls)
         for collection in collections:
             conn_data = connections_by_collection.get(collection.readable_id, [])
             collection.status = self._compute_collection_status(conn_data)
 
-        return collections
+        return collections, summaries_by_collection
 
     async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[Collection]:
         """Get a collection by its ID with computed ephemeral status."""
-        # Get the collection using the parent method
         collection = await super().get(db, id=id, ctx=ctx)
 
         if collection:
-            # Compute and set the ephemeral status
-            collection = (await self._attach_ephemeral_status(db, [collection], ctx))[0]
+            collections, _summaries = await self._attach_ephemeral_status(db, [collection], ctx)
+            collection = collections[0]
 
         return collection
 
@@ -178,8 +179,8 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
             # Don't reveal that the collection exists but belongs to another organization
             raise NotFoundException(f"Collection '{readable_id}' not found.")
 
-        # Compute and set the ephemeral status
-        collection = (await self._attach_ephemeral_status(db, [collection], ctx))[0]
+        collections, _summaries = await self._attach_ephemeral_status(db, [collection], ctx)
+        collection = collections[0]
 
         return collection
 
@@ -191,23 +192,15 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         limit: int = 100,
         ctx: BaseContext,
         search_query: Optional[str] = None,
-    ) -> List[Collection]:
+    ) -> tuple[List[Collection], Dict[str, List[Dict[str, str]]]]:
         """Get multiple collections with computed ephemeral statuses and search.
 
-        Args:
-            db: Database session
-            skip: Number of records to skip
-            limit: Maximum number of records to return
-            ctx: API context
-            search_query: Optional search term to filter by name or readable_id
-
         Returns:
-            List of collections with computed statuses
+            Tuple of (collections with computed statuses, source connection summaries
+            keyed by collection readable_id).
         """
-        # Build query with org scope
         query = select(Collection).where(Collection.organization_id == ctx.organization.id)
 
-        # Apply search filter if provided
         if search_query:
             search_pattern = f"%{search_query.lower()}%"
             query = query.where(
@@ -215,20 +208,15 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
                 | (func.lower(Collection.readable_id).like(search_pattern))
             )
 
-        # Apply sorting (always by created_at desc)
         query = query.order_by(Collection.created_at.desc())
-
-        # Apply pagination
         query = query.offset(skip).limit(limit)
 
-        # Execute query
         result = await db.execute(query)
         collections = list(result.scalars().all())
 
-        # Compute and set the ephemeral status for each collection
-        collections = await self._attach_ephemeral_status(db, collections, ctx)
+        collections, summaries = await self._attach_ephemeral_status(db, collections, ctx)
 
-        return collections
+        return collections, summaries
 
     async def count(
         self, db: AsyncSession, ctx: BaseContext, search_query: Optional[str] = None

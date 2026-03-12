@@ -1,6 +1,6 @@
 """Protocols for collection domain."""
 
-from typing import List, Optional, Protocol
+from typing import Dict, List, Optional, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +33,7 @@ class CollectionRepositoryProtocol(Protocol):
         skip: int = 0,
         limit: int = 100,
         search_query: Optional[str] = None,
-    ) -> List[Collection]:
+    ) -> tuple[List[Collection], Dict[str, List[Dict[str, str]]]]:
         """Get multiple collections with pagination and optional search."""
         ...
 
