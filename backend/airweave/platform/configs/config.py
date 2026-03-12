@@ -1,6 +1,6 @@
 """Configuration classes for platform components."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import Field, field_validator
 
@@ -58,14 +58,13 @@ class BitbucketConfig(SourceConfig):
 
     @field_validator("file_extensions", mode="before")
     @classmethod
-    def parse_file_extensions(cls, value):
+    def parse_file_extensions(cls, value: Any) -> list[str]:
         """Convert string input to list if needed."""
         if isinstance(value, str):
             if not value.strip():
                 return []
-            # Split by commas and strip whitespace
             return [ext.strip() for ext in value.split(",") if ext.strip()]
-        return value
+        return value  # type: ignore[no-any-return]
 
 
 class BoxConfig(SourceConfig):
@@ -273,21 +272,20 @@ class GmailConfig(SourceConfig):
 
     @field_validator("included_labels", "excluded_labels", "excluded_categories", mode="before")
     @classmethod
-    def parse_list_fields(cls, value):
+    def parse_list_fields(cls, value: Any) -> list[str]:
         """Convert comma-separated string to list if needed."""
         if isinstance(value, str):
             if not value.strip():
                 return []
             return [item.strip() for item in value.split(",") if item.strip()]
-        return value
+        return value  # type: ignore[no-any-return]
 
     @field_validator("after_date")
     @classmethod
-    def validate_date_format(cls, value):
+    def validate_date_format(cls, value: Optional[str]) -> Optional[str]:
         """Validate date format and convert to YYYY/MM/DD."""
         if not value:
             return value
-        # Accept both YYYY/MM/DD and YYYY-MM-DD formats
         return value.replace("-", "/")
 
 
@@ -328,10 +326,10 @@ class GoogleDriveConfig(SourceConfig):
 
     @field_validator("include_patterns", mode="before")
     @classmethod
-    def _parse_include_patterns(cls, value):
+    def _parse_include_patterns(cls, value: Any) -> list[str]:
         if isinstance(value, str):
             return [p.strip() for p in value.split(",") if p.strip()]
-        return value
+        return value  # type: ignore[no-any-return]
 
 
 class GoogleSlidesConfig(SourceConfig):
@@ -464,21 +462,20 @@ class OutlookMailConfig(SourceConfig):
 
     @field_validator("included_folders", "excluded_folders", mode="before")
     @classmethod
-    def parse_list_fields(cls, value):
+    def parse_list_fields(cls, value: Any) -> list[str]:
         """Convert comma-separated string to list if needed."""
         if isinstance(value, str):
             if not value.strip():
                 return []
             return [item.strip() for item in value.split(",") if item.strip()]
-        return value
+        return value  # type: ignore[no-any-return]
 
     @field_validator("after_date")
     @classmethod
-    def validate_date_format(cls, value):
+    def validate_date_format(cls, value: Optional[str]) -> Optional[str]:
         """Validate date format and convert to YYYY/MM/DD."""
         if not value:
             return value
-        # Accept both YYYY/MM/DD and YYYY-MM-DD formats
         return value.replace("-", "/")
 
 
@@ -520,7 +517,7 @@ class CTTIConfig(SourceConfig):
 
     @field_validator("limit", mode="before")
     @classmethod
-    def parse_limit(cls, value):
+    def parse_limit(cls, value: Any) -> int:
         """Convert string input to integer if needed."""
         if isinstance(value, str):
             if not value.strip():
@@ -529,11 +526,11 @@ class CTTIConfig(SourceConfig):
                 return int(value.strip())
             except ValueError as e:
                 raise ValueError("Limit must be a valid integer") from e
-        return value
+        return value  # type: ignore[no-any-return]
 
     @field_validator("skip", mode="before")
     @classmethod
-    def parse_skip(cls, value):
+    def parse_skip(cls, value: Any) -> int:
         """Convert string input to integer if needed."""
         if isinstance(value, str):
             if not value.strip():
@@ -551,7 +548,7 @@ class CTTIConfig(SourceConfig):
             if value < 0:
                 raise ValueError("Skip must be non-negative")
             return int(value)
-        return value
+        return value  # type: ignore[no-any-return]
 
 
 class SharePointConfig(SourceConfig):
@@ -663,14 +660,14 @@ class SalesforceConfig(SourceConfig):
 
     @field_validator("instance_url", mode="before")
     @classmethod
-    def strip_https_prefix(cls, value):
+    def strip_https_prefix(cls, value: Any) -> Optional[str]:
         """Remove https:// or http:// prefix if present."""
         if isinstance(value, str):
             if value.startswith("https://"):
                 return value.replace("https://", "", 1)
             elif value.startswith("http://"):
                 return value.replace("http://", "", 1)
-        return value
+        return value  # type: ignore[no-any-return]
 
 
 class TodoistConfig(SourceConfig):
@@ -814,7 +811,7 @@ class StubConfig(SourceConfig):
         mode="before",
     )
     @classmethod
-    def parse_weight(cls, value):
+    def parse_weight(cls, value: Any) -> int:
         """Convert string input to integer if needed."""
         if isinstance(value, str):
             if not value.strip():
@@ -823,7 +820,7 @@ class StubConfig(SourceConfig):
                 return int(value.strip())
             except ValueError as e:
                 raise ValueError("Weight must be a valid integer") from e
-        return value
+        return value  # type: ignore[no-any-return]
 
 
 class IncrementalStubConfig(SourceConfig):
