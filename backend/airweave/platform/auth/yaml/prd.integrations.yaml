@@ -46,7 +46,7 @@ integrations:
     url: "https://auth.calendly.com/oauth/authorize"
     backend_url: "https://auth.calendly.com/oauth/token"
     grant_type: "authorization_code"
-    client_id: "placeholder_client_id"
+    client_id: "Z242mtAg5cQZ1ac0j_k4E1qpKBCQGMh79CkJyJq1wVI"
     client_secret: "placeholder_client_secret"
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
