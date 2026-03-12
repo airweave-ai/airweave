@@ -49,7 +49,6 @@ export class AirweaveConnect {
   private state: AirweaveConnectState;
   private modal: Modal | null = null;
   private postMessageHandler: PostMessageHandler | null = null;
-  private sessionToken: string | null = null;
   private expectedOrigin: string;
 
   constructor(config: AirweaveConnectConfig) {
@@ -81,8 +80,7 @@ export class AirweaveConnect {
     this.state.error = null;
 
     try {
-      // Fetch session token
-      this.sessionToken = await this.config.getSessionToken();
+      await this.config.getSessionToken();
 
       // Build iframe URL
       const iframeUrl = this.buildIframeUrl();
@@ -183,7 +181,6 @@ export class AirweaveConnect {
     this.modal = null;
     this.postMessageHandler?.destroy();
     this.postMessageHandler = null;
-    this.sessionToken = null;
     this.state.isOpen = false;
     this.state.status = null;
 
@@ -216,7 +213,6 @@ export class AirweaveConnect {
         this.config
           .getSessionToken()
           .then((token) => {
-            this.sessionToken = token;
             this.sendToIframe({
               type: "TOKEN_RESPONSE",
               requestId: data.requestId,
