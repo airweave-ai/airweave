@@ -76,7 +76,7 @@ class ConnectService(ConnectServiceProtocol):
         if session.allowed_integrations and short_name not in session.allowed_integrations:
             raise HTTPException(
                 status_code=403,
-                detail="Session does not have access to this integration type",
+                detail=f"Source '{short_name}' is not allowed for this session",
             )
 
     @staticmethod
