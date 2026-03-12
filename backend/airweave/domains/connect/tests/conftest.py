@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.api.context import ApiContext, ConnectContext
+from airweave.api.context import ApiContext
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository

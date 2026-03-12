@@ -70,6 +70,8 @@ class TestCheckMode:
 
     @dataclass
     class Case:
+        """Single test vector for mode enforcement."""
+
         id: str
         mode: ConnectSessionMode
         allowed_modes: frozenset
@@ -106,6 +108,8 @@ class TestCheckIntegrationAccess:
 
     @dataclass
     class Case:
+        """Single test vector for integration access."""
+
         id: str
         allowed: Optional[List[str]]
         short_name: str
@@ -187,6 +191,8 @@ class TestListSourceConnections:
 
     @dataclass
     class Case:
+        """Single test vector for list connections."""
+
         id: str
         mode: ConnectSessionMode
         allowed_integrations: Optional[List[str]]
@@ -228,6 +234,8 @@ class TestGetSourceConnection:
 
     @dataclass
     class Case:
+        """Single test vector for get connection."""
+
         id: str
         mode: ConnectSessionMode
         conn_collection: str
@@ -268,6 +276,8 @@ class TestDeleteSourceConnection:
 
     @dataclass
     class Case:
+        """Single test vector for delete connection."""
+
         id: str
         mode: ConnectSessionMode
         should_raise: bool
@@ -301,6 +311,8 @@ class TestCreateSourceConnection:
 
     @dataclass
     class Case:
+        """Single test vector for create connection."""
+
         id: str
         mode: ConnectSessionMode
         allowed_integrations: Optional[List[str]]
