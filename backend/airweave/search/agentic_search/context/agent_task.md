@@ -64,20 +64,13 @@ the content's perspective.
 - `keyword` — only returns content containing your exact query terms.
 - `hybrid` — combines both.
 
-**Filters**: This is where your real power is. Filters let you traverse the data graph.
-The filter schema (field names, operators, AND/OR structure) is in the tool definition — here
-is how to use them to navigate:
+**Filters**: Filters let you narrow search results. The filter schema (field names,
+operators, AND/OR structure) is in the tool definition. Key uses:
 
 - **Scope by source or type**: Use `source_name` to search within a specific source, or
   `entity_type` to narrow to a specific kind of entity (e.g., only messages, only pages).
-- **Navigate the hierarchy**: Every entity has breadcrumbs showing its location path (e.g.,
-  Workspace > Project > Page). Use breadcrumb filters to:
-  - **Find children** — filter `breadcrumbs.entity_id` equals a parent's ID to find everything
-    inside it.
-  - **Find siblings** — filter `breadcrumbs.name` or `breadcrumbs.entity_id` for a shared
-    parent to find other entities at the same level.
-  - **Find parents** — breadcrumbs in results show the parent path; search for a parent by its
-    entity_id or name.
+- **Navigate the hierarchy**: Use `get_children`, `get_siblings`, and `get_parent` tools
+  instead of manually constructing breadcrumb filters — they're faster and easier.
 - **Get full documents**: Large documents are split into chunks sharing an
   `original_entity_id`. Filter on it to retrieve ALL chunks of a document you found one
   chunk of.
