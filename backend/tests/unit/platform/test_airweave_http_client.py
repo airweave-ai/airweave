@@ -12,6 +12,15 @@ import pytest
 from airweave.core.exceptions import SourceRateLimitExceededException
 from airweave.core.logging import logger
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
+from airweave.platform.utils.ssrf import SSRFViolation
+
+
+@pytest.fixture(autouse=True)
+def _pin_ssrf_private_networks(monkeypatch):
+    monkeypatch.setattr(
+        "airweave.platform.utils.ssrf._get_allow_private_default",
+        lambda: False,
+    )
 
 
 @pytest.fixture
@@ -294,4 +303,144 @@ async def test_pipedream_proxy_limit_exceeded(org_id):
         assert exc_info.value.response.status_code == 429
         assert "Pipedream proxy rate limit exceeded" in str(exc_info.value)
         assert "1000 req/5min org-wide" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# SSRF protection tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ssrf_blocks_loopback_in_request(org_id, mock_httpx_client):
+    """Test that request() blocks loopback addresses."""
+    with patch(
+        "airweave.platform.http_client.airweave_client.source_rate_limiter"
+    ) as mock_limiter:
+        mock_limiter.check_and_increment = AsyncMock()
+
+        client = AirweaveHttpClient(
+            wrapped_client=mock_httpx_client,
+            org_id=org_id,
+            source_short_name="test_source",
+            feature_flag_enabled=True,
+            logger=logger,
+        )
+
+        with pytest.raises(SSRFViolation):
+            await client.request("GET", "http://127.0.0.1/admin")
+
+        # Wrapped client should NOT have been called
+        mock_httpx_client.request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ssrf_blocks_metadata_in_request(org_id, mock_httpx_client):
+    """Test that request() blocks cloud metadata endpoints."""
+    with patch(
+        "airweave.platform.http_client.airweave_client.source_rate_limiter"
+    ) as mock_limiter:
+        mock_limiter.check_and_increment = AsyncMock()
+
+        client = AirweaveHttpClient(
+            wrapped_client=mock_httpx_client,
+            org_id=org_id,
+            source_short_name="test_source",
+            feature_flag_enabled=True,
+            logger=logger,
+        )
+
+        with pytest.raises(SSRFViolation, match="blocked metadata"):
+            await client.request("GET", "http://169.254.169.254/latest/meta-data/")
+
+
+@pytest.mark.asyncio
+async def test_ssrf_allows_public_url(org_id, mock_httpx_client):
+    """Test that public URLs pass SSRF check."""
+    with patch(
+        "airweave.platform.http_client.airweave_client.source_rate_limiter"
+    ) as mock_limiter:
+        mock_limiter.check_and_increment = AsyncMock()
+
+        client = AirweaveHttpClient(
+            wrapped_client=mock_httpx_client,
+            org_id=org_id,
+            source_short_name="test_source",
+            feature_flag_enabled=True,
+            logger=logger,
+        )
+
+        await client.request("GET", "https://api.github.com/repos")
+        mock_httpx_client.request.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ssrf_blocks_loopback_in_stream(org_id, mock_httpx_client):
+    """Test that stream() blocks loopback addresses."""
+    with patch(
+        "airweave.platform.http_client.airweave_client.source_rate_limiter"
+    ) as mock_limiter:
+        mock_limiter.check_and_increment = AsyncMock()
+
+        client = AirweaveHttpClient(
+            wrapped_client=mock_httpx_client,
+            org_id=org_id,
+            source_short_name="test_source",
+            feature_flag_enabled=True,
+            logger=logger,
+        )
+
+        with pytest.raises(SSRFViolation):
+            async with client.stream("GET", "http://127.0.0.1/secret"):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_ssrf_event_hook_catches_redirect_to_private():
+    """Test that the event hook catches redirects targeting private IPs."""
+    # Use a real httpx.AsyncClient to test the event hook installation
+    real_client = httpx.AsyncClient()
+    try:
+        org_id = uuid4()
+        AirweaveHttpClient(
+            wrapped_client=real_client,
+            org_id=org_id,
+            source_short_name="test_source",
+            feature_flag_enabled=True,
+            logger=logger,
+        )
+
+        # Verify the hook was installed
+        assert len(real_client.event_hooks.get("request", [])) >= 1
+
+        # Simulate the hook firing on a redirect target
+        private_request = httpx.Request("GET", "http://192.168.1.1/internal")
+        hook = real_client.event_hooks["request"][-1]
+
+        with pytest.raises(SSRFViolation):
+            await hook(private_request)
+    finally:
+        await real_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_ssrf_event_hook_allows_public_redirect():
+    """Test that the event hook allows redirects to public URLs."""
+    real_client = httpx.AsyncClient()
+    try:
+        org_id = uuid4()
+        AirweaveHttpClient(
+            wrapped_client=real_client,
+            org_id=org_id,
+            source_short_name="test_source",
+            feature_flag_enabled=True,
+            logger=logger,
+        )
+
+        public_request = httpx.Request("GET", "https://cdn.example.com/resource")
+        hook = real_client.event_hooks["request"][-1]
+
+        # Should not raise
+        await hook(public_request)
+    finally:
+        await real_client.aclose()
 
