@@ -67,7 +67,7 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: "./connect/package-lock.json"
-      - name: Install widget dependencies (needed by SDK file: reference)
+      - name: "Install widget dependencies (needed by SDK file: reference)"
         run: npm ci
         working-directory: ./connect
       - name: Install and build JS SDK
@@ -91,7 +91,7 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: "./connect/package-lock.json"
-      - name: Install widget dependencies (needed by SDK file: reference)
+      - name: "Install widget dependencies (needed by SDK file: reference)"
         run: npm ci
         working-directory: ./connect
       - name: Install and build React SDK
