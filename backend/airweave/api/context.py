@@ -6,7 +6,7 @@ Only the API layer creates these via deps.get_context().
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict
@@ -158,4 +158,87 @@ class ApiContext(BaseContext):
         return (
             f"ApiContext(request_id={self.request_id[:8]}..., "
             f"method={self.auth_method.value}, org={self.organization.id})"
+        )
+
+
+@dataclass
+class ConnectContext(BaseContext):
+    """Context for Connect session-authenticated requests.
+
+    Not an ApiContext — connect sessions have no user, no Auth0 token,
+    and a different auth lifecycle (HMAC session token scoped to a
+    collection).  Extends BaseContext directly.
+
+    Downstream services type-hint ApiContext but only read BaseContext
+    fields (organization, logger).  ConnectContext satisfies that contract
+    structurally; broadening those hints to BaseContext is a separate task.
+
+    Headers carry ``client_name="airweave-connect"`` so analytics (PostHog)
+    can identify connect traffic once wired.
+    """
+
+    # Request tracking
+    request_id: str = ""
+
+    # Connect session identity
+    session_id: UUID = field(default_factory=uuid4)
+    collection_id: str = ""
+    end_user_id: Optional[str] = None
+    allowed_integrations: Optional[List[str]] = None
+    mode: str = "all"
+
+    # Stored so downstream code that reads auth_metadata keeps working
+    auth_method: AuthMethod = AuthMethod.API_KEY
+    auth_metadata: Optional[Dict[str, Any]] = None
+
+    # Analytics tracking headers
+    headers: Optional[RequestHeaders] = field(default=None, repr=False)
+
+    @classmethod
+    def from_session(
+        cls,
+        *,
+        organization: schemas.Organization,
+        session_id: UUID,
+        collection_id: str,
+        end_user_id: Optional[str] = None,
+        allowed_integrations: Optional[List[str]] = None,
+        mode: str = "all",
+    ) -> "ConnectContext":
+        """Build a ConnectContext from decoded session fields + resolved org."""
+        request_id = str(uuid4())
+        return cls(
+            organization=organization,
+            request_id=request_id,
+            session_id=session_id,
+            collection_id=collection_id,
+            end_user_id=end_user_id,
+            allowed_integrations=allowed_integrations,
+            mode=mode,
+            auth_method=AuthMethod.API_KEY,
+            auth_metadata={
+                "connect_session_id": str(session_id),
+                "end_user_id": end_user_id,
+            },
+            headers=RequestHeaders(
+                client_name="airweave-connect",
+                session_id=str(session_id),
+                request_id=request_id,
+            ),
+            logger=root_logger.with_context(
+                request_id=request_id,
+                session_id=str(session_id),
+                organization_id=str(organization.id),
+                context_base="connect_session",
+                **({"end_user_id": end_user_id} if end_user_id else {}),
+            ),
+        )
+
+    def __str__(self) -> str:
+        """String representation for logging."""
+        return (
+            f"ConnectContext(request_id={self.request_id[:8]}..., "
+            f"session={self.session_id}, "
+            f"collection={self.collection_id}, "
+            f"org={self.organization.id})"
         )

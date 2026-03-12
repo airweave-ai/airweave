@@ -346,6 +346,20 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # Connect domain service
+    # -----------------------------------------------------------------
+    from airweave.domains.connect.service import ConnectService
+    from airweave.domains.organizations.repository import OrganizationRepository as ConnectOrgRepo
+
+    connect_service = ConnectService(
+        source_connection_service=source_connection_service,
+        source_service=source_deps["source_service"],
+        org_repo=ConnectOrgRepo(),
+        collection_repo=source_deps["collection_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+    )
+
+    # -----------------------------------------------------------------
     # Embedder registries + instances (deployment-wide singletons)
     # -----------------------------------------------------------------
     dense_embedder_registry = DenseEmbedderRegistry()
@@ -453,6 +467,7 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         redirect_session_repo=source_deps["redirect_session_repo"],
         source_connection_service=source_connection_service,
+        connect_service=connect_service,
         oauth_flow_service=oauth_flow_svc,
         oauth_callback_service=oauth_callback_svc,
         init_session_repo=init_session_repo,

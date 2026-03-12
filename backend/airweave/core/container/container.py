@@ -43,6 +43,7 @@ from airweave.domains.collections.protocols import (
     CollectionRepositoryProtocol,
     CollectionServiceProtocol,
 )
+from airweave.domains.connect.protocols import ConnectServiceProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.embedders.protocols import (
@@ -219,6 +220,9 @@ class Container:
     # Embedder instances (deployment-wide singletons from domains/embedders/)
     dense_embedder: DenseEmbedderProtocol
     sparse_embedder: SparseEmbedderProtocol
+
+    # Connect domain service (session-based frontend integration flows)
+    connect_service: ConnectServiceProtocol
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured
