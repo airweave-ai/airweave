@@ -118,7 +118,7 @@ async def get_user_from_token(token: str, db: AsyncSession) -> Optional[schemas.
 # ---------------------------------------------------------------------------
 
 
-def extract_bearer_token(authorization: str) -> str:
+def _extract_bearer_token(authorization: str) -> str:
     """Extract token from Bearer authorization header.
 
     Args:
@@ -158,7 +158,7 @@ async def get_connect_session(
     from airweave.platform.auth.state import verify_state
     from airweave.schemas.connect_session import ConnectSessionContext, ConnectSessionMode
 
-    token = extract_bearer_token(authorization)
+    token = _extract_bearer_token(authorization)
 
     try:
         payload = verify_state(token, max_age_seconds=10 * 60)
