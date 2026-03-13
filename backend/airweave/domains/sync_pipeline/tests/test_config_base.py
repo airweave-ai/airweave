@@ -162,16 +162,12 @@ class TestSyncConfigValidation:
 
     def test_no_conflict_with_only_target(self):
         """Test that only target destinations doesn't raise."""
-        config = SyncConfig(
-            destinations=DestinationConfig(target_destinations=[uuid4()])
-        )
+        config = SyncConfig(destinations=DestinationConfig(target_destinations=[uuid4()]))
         assert config is not None
 
     def test_no_conflict_with_only_exclude(self):
         """Test that only exclude destinations doesn't raise."""
-        config = SyncConfig(
-            destinations=DestinationConfig(exclude_destinations=[uuid4()])
-        )
+        config = SyncConfig(destinations=DestinationConfig(exclude_destinations=[uuid4()]))
         assert config is not None
 
 
@@ -236,10 +232,12 @@ class TestSyncConfigMerge:
     def test_merge_deep_nested(self):
         """Test deep merge of nested values."""
         config = SyncConfig.default()
-        merged = config.merge_with({
-            "handlers": {"enable_postgres_handler": False},
-            "behavior": {"skip_hash_comparison": True},
-        })
+        merged = config.merge_with(
+            {
+                "handlers": {"enable_postgres_handler": False},
+                "behavior": {"skip_hash_comparison": True},
+            }
+        )
         assert merged.handlers.enable_postgres_handler is False
         assert merged.behavior.skip_hash_comparison is True
         assert merged.handlers.enable_vector_handlers is True  # Preserved

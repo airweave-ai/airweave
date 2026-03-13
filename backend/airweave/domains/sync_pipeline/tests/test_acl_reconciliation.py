@@ -18,8 +18,10 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.platform.access_control.schemas import ACLChangeType, MembershipChange
 from airweave.domains.sync_pipeline.access_control_pipeline import AccessControlPipeline
+from airweave.platform.access_control.schemas import ACLChangeType, MembershipChange
+
+_GET_DB_CTX = "airweave.domains.sync_pipeline.access_control_pipeline.get_db_context"
 
 
 # ---------------------------------------------------------------------------
@@ -113,9 +115,7 @@ class TestApplyMembershipChanges:
         pipeline._acl_repo.upsert = AsyncMock()
         pipeline._acl_repo.delete_by_key = AsyncMock()
 
-        adds, removes = await pipeline._apply_membership_changes(
-            db, result, source, ctx
-        )
+        adds, removes = await pipeline._apply_membership_changes(db, result, source, ctx)
 
         assert adds == 2
         assert removes == 1
@@ -146,9 +146,7 @@ class TestApplyMembershipChanges:
         pipeline._acl_repo.upsert = AsyncMock()
         pipeline._acl_repo.delete_by_key = AsyncMock()
 
-        adds, removes = await pipeline._apply_membership_changes(
-            db, result, source, ctx
-        )
+        adds, removes = await pipeline._apply_membership_changes(db, result, source, ctx)
 
         assert adds == 2
         assert removes == 0
@@ -172,9 +170,7 @@ class TestApplyMembershipChanges:
 
         pipeline._acl_repo.upsert = AsyncMock()
 
-        await pipeline._apply_membership_changes(
-            db, result, source, ctx
-        )
+        await pipeline._apply_membership_changes(db, result, source, ctx)
 
         pipeline._acl_repo.upsert.assert_called_once_with(
             db,
@@ -200,9 +196,7 @@ class TestApplyMembershipChanges:
         pipeline._acl_repo.upsert = AsyncMock()
         pipeline._acl_repo.delete_by_key = AsyncMock()
 
-        adds, removes = await pipeline._apply_membership_changes(
-            db, result, source, ctx
-        )
+        adds, removes = await pipeline._apply_membership_changes(db, result, source, ctx)
 
         assert adds == 0
         assert removes == 0
@@ -221,9 +215,7 @@ class TestProcessIncremental:
         """Deleted AD groups should have all their memberships removed via delete_by_group."""
         pipeline = _make_pipeline()
         ctx = FakeSyncContext()
-        runtime = FakeRuntime(
-            cursor=FakeCursor(data={"acl_dirsync_cookie": "old_cookie"})
-        )
+        runtime = FakeRuntime(cursor=FakeCursor(data={"acl_dirsync_cookie": "old_cookie"}))
         source = SimpleNamespace(
             _short_name="sp2019v2",
             get_acl_changes=AsyncMock(),
@@ -238,7 +230,7 @@ class TestProcessIncremental:
         )
         source.get_acl_changes.return_value = result
 
-        with patch("airweave.domains.sync_pipeline.access_control_pipeline.get_db_context") as mock_db_ctx:
+        with patch(_GET_DB_CTX) as mock_db_ctx:
             mock_db = MagicMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -255,9 +247,7 @@ class TestProcessIncremental:
         """When DirSync reports zero changes, return 0 but still advance the cookie."""
         pipeline = _make_pipeline()
         ctx = FakeSyncContext()
-        runtime = FakeRuntime(
-            cursor=FakeCursor(data={"acl_dirsync_cookie": "old_cookie"})
-        )
+        runtime = FakeRuntime(cursor=FakeCursor(data={"acl_dirsync_cookie": "old_cookie"}))
         source = SimpleNamespace(
             _short_name="sp2019v2",
             get_acl_changes=AsyncMock(),
@@ -300,9 +290,7 @@ class TestProcessIncremental:
         """End-to-end: ADDs + REMOVEs + deleted groups in one incremental sync."""
         pipeline = _make_pipeline()
         ctx = FakeSyncContext()
-        runtime = FakeRuntime(
-            cursor=FakeCursor(data={"acl_dirsync_cookie": "old"})
-        )
+        runtime = FakeRuntime(cursor=FakeCursor(data={"acl_dirsync_cookie": "old"}))
         source = SimpleNamespace(
             _short_name="sp2019v2",
             get_acl_changes=AsyncMock(),
@@ -321,7 +309,7 @@ class TestProcessIncremental:
         )
         source.get_acl_changes.return_value = result
 
-        with patch("airweave.domains.sync_pipeline.access_control_pipeline.get_db_context") as mock_db_ctx:
+        with patch(_GET_DB_CTX) as mock_db_ctx:
             mock_db = MagicMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -344,9 +332,7 @@ class TestProcessIncremental:
         """With BASIC flags, _process_incremental only applies ADDs (no reconciliation)."""
         pipeline = _make_pipeline()
         ctx = FakeSyncContext()
-        runtime = FakeRuntime(
-            cursor=FakeCursor(data={"acl_dirsync_cookie": "old"})
-        )
+        runtime = FakeRuntime(cursor=FakeCursor(data={"acl_dirsync_cookie": "old"}))
         source = SimpleNamespace(
             _short_name="sp2019v2",
             get_acl_changes=AsyncMock(),
@@ -362,7 +348,7 @@ class TestProcessIncremental:
         )
         source.get_acl_changes.return_value = result
 
-        with patch("airweave.domains.sync_pipeline.access_control_pipeline.get_db_context") as mock_db_ctx:
+        with patch(_GET_DB_CTX) as mock_db_ctx:
             mock_db = MagicMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)

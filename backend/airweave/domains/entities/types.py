@@ -1,3 +1,5 @@
+"""Types for the entities domain."""
+
 from pydantic import BaseModel
 
 from airweave.core.protocols.registry import BaseRegistryEntry

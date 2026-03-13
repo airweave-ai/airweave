@@ -18,7 +18,9 @@ class AccessControlMembershipRepositoryProtocol(Protocol):
         organization_id: UUID,
         source_connection_id: UUID,
         source_name: str,
-    ) -> int: ...
+    ) -> int:
+        """Bulk-insert membership rows."""
+        ...
 
     async def upsert(
         self,
@@ -31,7 +33,9 @@ class AccessControlMembershipRepositoryProtocol(Protocol):
         organization_id: UUID,
         source_connection_id: UUID,
         source_name: str,
-    ) -> None: ...
+    ) -> None:
+        """Insert or update a single membership."""
+        ...
 
     async def delete_by_key(
         self,
@@ -42,7 +46,9 @@ class AccessControlMembershipRepositoryProtocol(Protocol):
         group_id: str,
         source_connection_id: UUID,
         organization_id: UUID,
-    ) -> int: ...
+    ) -> int:
+        """Delete a membership by its composite key."""
+        ...
 
     async def delete_by_group(
         self,
@@ -51,20 +57,26 @@ class AccessControlMembershipRepositoryProtocol(Protocol):
         group_id: str,
         source_connection_id: UUID,
         organization_id: UUID,
-    ) -> int: ...
+    ) -> int:
+        """Delete all memberships for a group."""
+        ...
 
     async def get_by_source_connection(
         self,
         db: AsyncSession,
         source_connection_id: UUID,
         organization_id: UUID,
-    ) -> List[AccessControlMembership]: ...
+    ) -> List[AccessControlMembership]:
+        """Get all memberships for a source connection."""
+        ...
 
     async def bulk_delete(
         self,
         db: AsyncSession,
         ids: List[UUID],
-    ) -> int: ...
+    ) -> int:
+        """Bulk-delete memberships by ID."""
+        ...
 
     async def get_by_member(
         self,
@@ -72,7 +84,9 @@ class AccessControlMembershipRepositoryProtocol(Protocol):
         member_id: str,
         member_type: str,
         organization_id: UUID,
-    ) -> List[AccessControlMembership]: ...
+    ) -> List[AccessControlMembership]:
+        """Get memberships for a specific member."""
+        ...
 
     async def get_by_member_and_collection(
         self,
@@ -81,7 +95,9 @@ class AccessControlMembershipRepositoryProtocol(Protocol):
         member_type: str,
         readable_collection_id: str,
         organization_id: UUID,
-    ) -> List[AccessControlMembership]: ...
+    ) -> List[AccessControlMembership]:
+        """Get memberships scoped to a collection."""
+        ...
 
     async def get_memberships_by_groups(
         self,
@@ -90,11 +106,15 @@ class AccessControlMembershipRepositoryProtocol(Protocol):
         group_ids: List[str],
         source_connection_id: UUID,
         organization_id: UUID,
-    ) -> List[AccessControlMembership]: ...
+    ) -> List[AccessControlMembership]:
+        """Get memberships for a set of group IDs."""
+        ...
 
     async def delete_by_source_connection(
         self,
         db: AsyncSession,
         source_connection_id: UUID,
         organization_id: UUID,
-    ) -> int: ...
+    ) -> int:
+        """Delete all memberships for a source connection."""
+        ...

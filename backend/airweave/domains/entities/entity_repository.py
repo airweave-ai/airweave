@@ -14,6 +14,7 @@ class EntityRepository:
     """Delegates to the crud.entity singleton."""
 
     async def get_by_sync_id(self, db: AsyncSession, sync_id: UUID) -> List[Entity]:
+        """Get all entities for a sync."""
         return await crud.entity.get_by_sync_id(db, sync_id)
 
     async def bulk_get_by_entity_sync_and_definition(
@@ -23,6 +24,7 @@ class EntityRepository:
         sync_id: UUID,
         entity_requests: list[Tuple[str, str]],
     ) -> Dict[Tuple[str, str], Entity]:
+        """Bulk-fetch entities by (entity_id, definition) pairs."""
         return await crud.entity.bulk_get_by_entity_sync_and_definition(
             db, sync_id=sync_id, entity_requests=entity_requests
         )
@@ -34,6 +36,7 @@ class EntityRepository:
         objs: List[EntityCreate],
         ctx: Any,
     ) -> List[Entity]:
+        """Bulk-insert entity rows."""
         return await crud.entity.bulk_create(db, objs=objs, ctx=ctx)
 
     async def bulk_update_hash(
@@ -42,6 +45,7 @@ class EntityRepository:
         *,
         rows: List[Tuple[UUID, str]],
     ) -> None:
+        """Bulk-update content hashes."""
         return await crud.entity.bulk_update_hash(db, rows=rows)
 
     async def bulk_remove(
@@ -51,6 +55,7 @@ class EntityRepository:
         ids: List[UUID],
         ctx: Any,
     ) -> List[Entity]:
+        """Soft-delete entities by ID."""
         return await crud.entity.bulk_remove(db, ids=ids, ctx=ctx)
 
     async def bulk_get_by_entity_and_sync(
@@ -60,6 +65,7 @@ class EntityRepository:
         sync_id: UUID,
         entity_ids: List[str],
     ) -> Dict[str, Entity]:
+        """Bulk-fetch entities by entity_id within a sync."""
         return await crud.entity.bulk_get_by_entity_and_sync(
             db, sync_id=sync_id, entity_ids=entity_ids
         )

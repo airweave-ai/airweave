@@ -36,7 +36,8 @@ class AccessControlPipeline:
         dispatcher: ACActionDispatcher,
         tracker: ACLMembershipTracker,
         acl_repo: AccessControlMembershipRepositoryProtocol,
-    ):
+    ) -> None:
+        """Initialize with resolver, dispatcher, tracker and ACL repository."""
         self._resolver = resolver
         self._dispatcher = dispatcher
         self._tracker = tracker

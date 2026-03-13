@@ -6,6 +6,9 @@ import pytest
 
 from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProcessor
 
+_TEXT_BUILDER = "airweave.domains.sync_pipeline.processors.chunk_embed.text_builder"
+_SEMANTIC_CHUNKER = "airweave.platform.chunkers.semantic.SemanticChunker"
+
 
 @pytest.fixture
 def processor():
@@ -64,26 +67,24 @@ class TestChunkEmbedProcessor:
         self, processor, mock_sync_context, mock_runtime, mock_entity
     ):
         """Test textual entities routed to SemanticChunker."""
-        with patch('airweave.domains.sync_pipeline.processors.chunk_embed.text_builder') as mock_builder, \
-             patch('airweave.platform.chunkers.semantic.SemanticChunker') as MockSemanticChunker, \
-             patch.object(processor, '_embed_entities', new_callable=AsyncMock):
-
-            # Setup mocks
+        with (
+            patch(_TEXT_BUILDER) as mock_builder,
+            patch(_SEMANTIC_CHUNKER) as MockSemanticChunker,
+            patch.object(processor, "_embed_entities", new_callable=AsyncMock),
+        ):
             mock_builder.build_for_batch = AsyncMock(return_value=[mock_entity])
             mock_chunker = MockSemanticChunker.return_value
-            mock_chunker.chunk_batch = AsyncMock(return_value=[
-                [{"text": "Chunk 1"}, {"text": "Chunk 2"}]
-            ])
+            mock_chunker.chunk_batch = AsyncMock(
+                return_value=[[{"text": "Chunk 1"}, {"text": "Chunk 2"}]]
+            )
 
-            result = await processor.process([mock_entity], mock_sync_context, mock_runtime)
+            await processor.process([mock_entity], mock_sync_context, mock_runtime)
 
             # Verify SemanticChunker was called
             mock_chunker.chunk_batch.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_multiply_entities_creates_chunk_suffix(
-        self, processor, mock_sync_context
-    ):
+    async def test_multiply_entities_creates_chunk_suffix(self, processor, mock_sync_context):
         """Test chunk entity creation with proper ID suffix."""
         # Create mock entity
         mock_entity = MagicMock()
@@ -104,9 +105,7 @@ class TestChunkEmbedProcessor:
 
         mock_entity.model_copy = MagicMock(side_effect=create_chunk_entity)
 
-        chunks = [
-            [{"text": "Chunk 0"}, {"text": "Chunk 1"}]
-        ]
+        chunks = [[{"text": "Chunk 0"}, {"text": "Chunk 1"}]]
 
         result = processor._multiply_entities([mock_entity], chunks, mock_sync_context)
 
@@ -116,9 +115,7 @@ class TestChunkEmbedProcessor:
         assert "__chunk_1" in result[1].entity_id
 
     @pytest.mark.asyncio
-    async def test_multiply_entities_sets_chunk_index(
-        self, processor, mock_sync_context
-    ):
+    async def test_multiply_entities_sets_chunk_index(self, processor, mock_sync_context):
         """Test chunk index set correctly."""
         mock_entity = MagicMock()
         mock_entity.entity_id = "test-123"
@@ -141,9 +138,7 @@ class TestChunkEmbedProcessor:
         assert result[0].airweave_system_metadata.chunk_index == 0
 
     @pytest.mark.asyncio
-    async def test_multiply_entities_skips_empty_chunks(
-        self, processor, mock_sync_context
-    ):
+    async def test_multiply_entities_skips_empty_chunks(self, processor, mock_sync_context):
         """Test empty chunks are filtered out."""
         mock_entity = MagicMock()
         mock_entity.entity_id = "test-123"
@@ -159,9 +154,7 @@ class TestChunkEmbedProcessor:
 
         mock_entity.model_copy = MagicMock(side_effect=create_chunk_entity)
 
-        chunks = [
-            [{"text": "Valid"}, {"text": ""}, {"text": "  "}, {"text": "Another"}]
-        ]
+        chunks = [[{"text": "Valid"}, {"text": ""}, {"text": "  "}, {"text": "Another"}]]
 
         result = processor._multiply_entities([mock_entity], chunks, mock_sync_context)
 
@@ -169,9 +162,7 @@ class TestChunkEmbedProcessor:
         assert len(result) == 2
 
     @pytest.mark.asyncio
-    async def test_embed_entities_calls_both_embedders(
-        self, processor, mock_runtime
-    ):
+    async def test_embed_entities_calls_both_embedders(self, processor, mock_runtime):
         """Test both dense and sparse embedders are called."""
         mock_entity = MagicMock()
         mock_entity.textual_representation = "Test content"
@@ -193,9 +184,7 @@ class TestChunkEmbedProcessor:
         mock_runtime.sparse_embedder.embed_many.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_embed_entities_assigns_embeddings(
-        self, processor, mock_runtime
-    ):
+    async def test_embed_entities_assigns_embeddings(self, processor, mock_runtime):
         """Test embeddings assigned to entity system metadata."""
         mock_entity = MagicMock()
         mock_entity.textual_representation = "Test"
@@ -221,17 +210,17 @@ class TestChunkEmbedProcessor:
         assert mock_entity.airweave_system_metadata.sparse_embedding == sparse_embedding
 
     @pytest.mark.asyncio
-    async def test_embed_entities_uses_full_json_for_sparse(
-        self, processor, mock_runtime
-    ):
+    async def test_embed_entities_uses_full_json_for_sparse(self, processor, mock_runtime):
         """Test sparse embedder receives full entity JSON."""
         mock_entity = MagicMock()
         mock_entity.textual_representation = "Test"
         mock_entity.airweave_system_metadata = MagicMock()
-        mock_entity.model_dump = MagicMock(return_value={
-            "entity_id": "test-123",
-            "name": "Test Entity",
-        })
+        mock_entity.model_dump = MagicMock(
+            return_value={
+                "entity_id": "test-123",
+                "name": "Test Entity",
+            }
+        )
 
         chunk_entities = [mock_entity]
 
@@ -249,13 +238,12 @@ class TestChunkEmbedProcessor:
 
         # Verify it's JSON
         import json
+
         parsed = json.loads(call_args[0])
         assert "entity_id" in parsed
 
     @pytest.mark.asyncio
-    async def test_embed_entities_validates_embeddings_exist(
-        self, processor, mock_runtime
-    ):
+    async def test_embed_entities_validates_embeddings_exist(self, processor, mock_runtime):
         """Test validation that all entities have embeddings."""
         mock_entity = MagicMock()
         mock_entity.textual_representation = "Test"
@@ -278,9 +266,7 @@ class TestChunkEmbedProcessor:
         assert "no dense embedding" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_full_pipeline_with_mocks(
-        self, processor, mock_sync_context, mock_runtime
-    ):
+    async def test_full_pipeline_with_mocks(self, processor, mock_sync_context, mock_runtime):
         """Test full pipeline with all mocked dependencies."""
         mock_entity = MagicMock()
         mock_entity.entity_id = "test-123"
@@ -306,20 +292,15 @@ class TestChunkEmbedProcessor:
         mock_runtime.dense_embedder.embed_many = AsyncMock(
             return_value=[dense_result, dense_result_2]
         )
-        mock_runtime.sparse_embedder.embed_many = AsyncMock(
-            return_value=[MagicMock(), MagicMock()]
-        )
+        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock(), MagicMock()])
 
-        with patch('airweave.domains.sync_pipeline.processors.chunk_embed.text_builder') as mock_builder, \
-             patch('airweave.platform.chunkers.semantic.SemanticChunker') as MockChunker:
-
-            # Setup mocks
+        with patch(_TEXT_BUILDER) as mock_builder, patch(_SEMANTIC_CHUNKER) as MockChunker:
             mock_builder.build_for_batch = AsyncMock(return_value=[mock_entity])
 
             mock_chunker = MockChunker.return_value
-            mock_chunker.chunk_batch = AsyncMock(return_value=[
-                [{"text": "Chunk 1"}, {"text": "Chunk 2"}]
-            ])
+            mock_chunker.chunk_batch = AsyncMock(
+                return_value=[[{"text": "Chunk 1"}, {"text": "Chunk 2"}]]
+            )
 
             result = await processor.process([mock_entity], mock_sync_context, mock_runtime)
 
@@ -354,9 +335,7 @@ class TestChunkEmbedProcessor:
         mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
         mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
-        with patch('airweave.domains.sync_pipeline.processors.chunk_embed.text_builder') as mock_builder, \
-             patch('airweave.platform.chunkers.semantic.SemanticChunker') as MockChunker:
-
+        with patch(_TEXT_BUILDER) as mock_builder, patch(_SEMANTIC_CHUNKER) as MockChunker:
             mock_builder.build_for_batch = AsyncMock(return_value=[mock_entity])
 
             mock_chunker = MockChunker.return_value
@@ -368,16 +347,14 @@ class TestChunkEmbedProcessor:
             assert mock_entity.textual_representation is None
 
     @pytest.mark.asyncio
-    async def test_skips_entities_without_text(
-        self, processor, mock_sync_context, mock_runtime
-    ):
+    async def test_skips_entities_without_text(self, processor, mock_sync_context, mock_runtime):
         """Test entities with no textual_representation are skipped."""
         mock_entity = MagicMock()
         mock_entity.entity_id = "test-123"
         mock_entity.textual_representation = None  # No text
         mock_entity.airweave_system_metadata = MagicMock()
 
-        with patch('airweave.domains.sync_pipeline.processors.chunk_embed.text_builder') as mock_builder:
+        with patch(_TEXT_BUILDER) as mock_builder:
             mock_builder.build_for_batch = AsyncMock(return_value=[mock_entity])
 
             result = await processor.process([mock_entity], mock_sync_context, mock_runtime)
@@ -395,9 +372,7 @@ class TestChunkEmbedProcessor:
         mock_entity.textual_representation = "Test"
         mock_entity.airweave_system_metadata = MagicMock()
 
-        with patch('airweave.domains.sync_pipeline.processors.chunk_embed.text_builder') as mock_builder, \
-             patch('airweave.platform.chunkers.semantic.SemanticChunker') as MockChunker:
-
+        with patch(_TEXT_BUILDER) as mock_builder, patch(_SEMANTIC_CHUNKER) as MockChunker:
             mock_builder.build_for_batch = AsyncMock(return_value=[mock_entity])
 
             mock_chunker = MockChunker.return_value

@@ -14,6 +14,7 @@ class AccessBroker:
     """Resolves user access context by expanding group memberships."""
 
     def __init__(self, acl_repo: AccessControlMembershipRepositoryProtocol) -> None:
+        """Initialize with ACL membership repository."""
         self._acl_repo = acl_repo
 
     async def resolve_access_context(
