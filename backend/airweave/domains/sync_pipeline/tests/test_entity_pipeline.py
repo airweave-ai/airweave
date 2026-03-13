@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.domains.sync_pipeline.entity_pipeline import EntityPipeline
+from airweave.domains.sync_pipeline.entity.pipeline import EntityPipeline
 
 # ---------------------------------------------------------------------------
 # Constructor
