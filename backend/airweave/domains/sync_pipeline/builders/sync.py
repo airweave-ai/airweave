@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.core.logging import ContextualLogger, LoggerConfigurator
-from airweave.domains.sync_pipeline.contexts.sync import SyncContext
 from airweave.domains.sync_pipeline.config import SyncConfig
+from airweave.domains.sync_pipeline.contexts.sync import SyncContext
 
 
 class SyncContextBuilder:

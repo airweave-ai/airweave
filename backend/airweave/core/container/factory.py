@@ -44,6 +44,7 @@ from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
+from airweave.domains.access_control.repository import AccessControlMembershipRepository
 from airweave.domains.arf.service import ArfService
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.auth_provider.service import AuthProviderService
@@ -91,11 +92,11 @@ from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
-from airweave.domains.access_control.repository import AccessControlMembershipRepository
 from airweave.domains.storage.factory import get_storage_backend
 from airweave.domains.storage.sync_file_manager import SyncFileManager
 from airweave.domains.sync_pipeline.factory import SyncFactory
 from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProcessor
+from airweave.domains.sync_pipeline.subscribers.progress_relay import SyncProgressRelay
 from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
@@ -113,7 +114,6 @@ from airweave.domains.usage.subscribers.billing_listener import UsageBillingList
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.platform.auth.settings import integration_settings
-from airweave.domains.sync_pipeline.subscribers.progress_relay import SyncProgressRelay
 from airweave.platform.temporal.client import TemporalClient
 
 

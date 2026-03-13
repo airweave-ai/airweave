@@ -7,14 +7,14 @@ for debugging, replay, and audit purposes.
 from typing import TYPE_CHECKING, List
 
 from airweave.domains.arf.protocols import ArfServiceProtocol
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.handlers.protocol import EntityActionHandler
 from airweave.domains.sync_pipeline.types.entity_actions import (
     EntityActionBatch,
     EntityDeleteAction,
     EntityInsertAction,
     EntityUpdateAction,
 )
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-from airweave.domains.sync_pipeline.handlers.protocol import EntityActionHandler
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

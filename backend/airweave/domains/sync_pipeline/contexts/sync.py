@@ -6,8 +6,8 @@ from uuid import UUID
 
 from airweave import schemas
 from airweave.core.context import BaseContext
-from airweave.platform.entities._base import BaseEntity
 from airweave.domains.sync_pipeline.config.base import SyncConfig
+from airweave.platform.entities._base import BaseEntity
 
 
 @dataclass

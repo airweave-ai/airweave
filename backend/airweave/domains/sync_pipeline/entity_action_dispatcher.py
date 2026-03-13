@@ -7,10 +7,10 @@ implementing all-or-nothing semantics where any failure fails the sync.
 import asyncio
 from typing import TYPE_CHECKING, List
 
-from airweave.domains.sync_pipeline.types.entity_actions import EntityActionBatch
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 from airweave.domains.sync_pipeline.handlers.entity_postgres import EntityPostgresHandler
 from airweave.domains.sync_pipeline.handlers.protocol import EntityActionHandler
+from airweave.domains.sync_pipeline.types.entity_actions import EntityActionBatch
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

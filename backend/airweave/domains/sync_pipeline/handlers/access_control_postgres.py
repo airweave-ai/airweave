@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, List
 
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.handlers.protocol import ACActionHandler
 from airweave.domains.sync_pipeline.types.access_control_actions import (
     ACActionBatch,
     ACDeleteAction,
@@ -15,8 +17,6 @@ from airweave.domains.sync_pipeline.types.access_control_actions import (
     ACUpdateAction,
     ACUpsertAction,
 )
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-from airweave.domains.sync_pipeline.handlers.protocol import ACActionHandler
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

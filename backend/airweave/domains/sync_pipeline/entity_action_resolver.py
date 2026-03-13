@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from airweave import models
 from airweave.db.session import get_db_context
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
-from airweave.platform.entities._base import BaseEntity, DeletionEntity
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 from airweave.domains.sync_pipeline.types.entity_actions import (
     EntityActionBatch,
     EntityDeleteAction,
@@ -18,7 +18,7 @@ from airweave.domains.sync_pipeline.types.entity_actions import (
     EntityKeepAction,
     EntityUpdateAction,
 )
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.platform.entities._base import BaseEntity, DeletionEntity
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

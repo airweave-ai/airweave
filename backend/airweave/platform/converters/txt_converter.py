@@ -9,9 +9,9 @@ from typing import Dict, List
 import aiofiles
 
 from airweave.core.logging import logger
-from airweave.platform.converters._base import BaseTextConverter
 from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
+from airweave.platform.converters._base import BaseTextConverter
 
 
 class TxtConverter(BaseTextConverter):

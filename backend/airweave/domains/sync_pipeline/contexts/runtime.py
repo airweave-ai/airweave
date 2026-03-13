@@ -12,10 +12,10 @@ from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 if TYPE_CHECKING:
     from airweave.core.protocols.event_bus import EventBus
     from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
-    from airweave.platform.destinations._base import BaseDestination
-    from airweave.platform.sources._base import BaseSource
     from airweave.domains.sync_pipeline.cursor import SyncCursor
     from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
+    from airweave.platform.destinations._base import BaseDestination
+    from airweave.platform.sources._base import BaseSource
 
 
 @dataclass

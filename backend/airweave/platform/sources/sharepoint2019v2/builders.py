@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 from airweave.platform.entities._base import AccessControl, Breadcrumb
 from airweave.platform.entities.sharepoint2019v2 import (
     SharePoint2019V2FileEntity,
@@ -26,7 +27,6 @@ from airweave.platform.sources.sharepoint2019v2.acl import (
     clean_role_assignments,
     extract_access_control,
 )
-from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 
 
 def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:

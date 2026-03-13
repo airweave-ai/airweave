@@ -6,9 +6,9 @@ import json
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from airweave.core.shared_models import AirweaveFieldFlag
-from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity
 from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
+from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

@@ -6,11 +6,11 @@ Future: May compare hashes to determine INSERT/UPDATE/KEEP/DELETE.
 
 from typing import TYPE_CHECKING, List
 
-from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.domains.sync_pipeline.types.access_control_actions import (
     ACActionBatch,
     ACUpsertAction,
 )
+from airweave.platform.access_control.schemas import MembershipTuple
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

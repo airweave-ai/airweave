@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 from airweave.domains.browse_tree.types import BrowseNode, NodeSelectionData
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.configs.auth import SharePoint2019V2AuthConfig
 from airweave.platform.configs.config import SharePoint2019V2Config
