@@ -19,17 +19,19 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import aiofiles
 
+from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.arf.types import SyncManifest
+from airweave.domains.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.protocols import StorageBackend
 from airweave.platform.contexts import SyncContext
 from airweave.platform.contexts.runtime import SyncRuntime
 from airweave.platform.entities._base import BaseEntity
-from airweave.domains.storage.exceptions import StorageNotFoundError
-from airweave.domains.storage.protocols import StorageBackend
 
 
-class ArfService:
+class ArfService(ArfServiceProtocol):
     """Service for capturing and retrieving raw entity data.
 
+    Implements ArfServiceProtocol.
     All storage I/O is delegated to the injected StorageBackend.
     """
 

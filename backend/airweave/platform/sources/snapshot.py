@@ -128,11 +128,12 @@ class SnapshotSource(BaseSource):
 
     @property
     def storage(self) -> StorageBackend:
-        """Get storage backend (lazy to avoid circular import)."""
+        """Get storage backend from container."""
         if self._storage is None:
-            from airweave.domains.storage import storage_backend
+            # [code blue] todo: inject via constructor once sources receive container
+            from airweave.core import container as container_mod
 
-            self._storage = storage_backend
+            self._storage = container_mod.container.storage_backend
         return self._storage
 
     # =========================================================================

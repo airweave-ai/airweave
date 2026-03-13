@@ -21,15 +21,17 @@ import aiofiles
 
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
+from airweave.domains.arf.protocols import ArfReaderProtocol
 from airweave.platform.entities._base import BaseEntity
 from airweave.domains.storage.exceptions import StorageNotFoundError
 from airweave.domains.storage.paths import StoragePaths
 from airweave.domains.storage.protocols import StorageBackend
 
 
-class ArfReader:
+class ArfReader(ArfReaderProtocol):
     """Reader for ARF storage.
 
+    Implements ArfReaderProtocol.
     Handles reading entities and files using the injected StorageBackend.
     """
 

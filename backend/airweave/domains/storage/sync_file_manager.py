@@ -28,10 +28,18 @@ if TYPE_CHECKING:
 class SyncFileManager:
     """Manages file storage with sync-aware folder structure and caching.
 
-    Storage layout (unified with raw_data.py):
-        raw/{sync_id}/files/{entity_id}_{name}.{ext} # File with name and extension
-        raw/{sync_id}/metadata/{entity_id}.json      # File metadata
-        aactmarkdowns/{entity_id}.md                 # CTTI global storage (legacy)
+    Storage layout (unified with raw_data.py)::
+
+        raw/{sync_id}/files/{entity_id}_{name}.{ext}
+        raw/{sync_id}/metadata/{entity_id}.json
+        aactmarkdowns/{entity_id}.md  (CTTI global, legacy)
+
+    [code blue] Long-term plan:
+        The module-level ``sync_file_manager`` singleton will be removed.
+        SyncFileManager will receive ``StorageBackend`` via its constructor,
+        and instances will live in ``Container``.  Callers (web_fetcher,
+        file_retrieval, sources) will pull it from the container instead of
+        importing the module-level global.
     """
 
     # Container/directory names - unified with raw_data.py
@@ -529,5 +537,5 @@ class SyncFileManager:
         return results
 
 
-# Global instance for convenience
+# [code blue] todo: move to Container; callers should not import this global
 sync_file_manager = SyncFileManager()
