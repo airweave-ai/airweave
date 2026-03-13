@@ -2,9 +2,11 @@
 
 Creates the appropriate storage backend based on configuration.
 Uses settings from core.config for all configuration values.
+
+The Container (core.container) calls this once at startup and owns the
+singleton. Standalone scripts may still call get_storage_backend() directly.
 """
 
-from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from airweave.core.config import StorageBackendType, settings
@@ -14,12 +16,8 @@ if TYPE_CHECKING:
     from airweave.domains.storage.protocols import StorageBackend
 
 
-@lru_cache(maxsize=1)
 def get_storage_backend() -> "StorageBackend":
-    """Factory function to get the configured storage backend.
-
-    Returns a singleton instance based on STORAGE_BACKEND setting.
-    The backend type is auto-resolved from ENVIRONMENT if not explicitly set.
+    """Create a storage backend from the current settings.
 
     Returns:
         StorageBackend: Configured storage backend instance

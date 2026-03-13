@@ -54,9 +54,10 @@ class SyncFileManager:
     def backend(self) -> StorageBackend:
         """Get storage backend (lazy to avoid circular import at module load)."""
         if self._backend is None:
-            from airweave.domains.storage.factory import get_storage_backend
+            # [code blue] todo: inject backend once sync pipeline passes container
+            from airweave.core import container as container_mod
 
-            self._backend = get_storage_backend()
+            self._backend = container_mod.container.storage_backend
         return self._backend
 
     def _get_file_path(self, sync_id: UUID, entity_id: str, filename: str = "") -> str:

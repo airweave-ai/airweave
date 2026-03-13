@@ -148,7 +148,6 @@ class SourceContextBuilder:
             SourceContext with ArfReplaySource
         """
         from airweave.domains.arf.replay_source import ArfReplaySource
-        from airweave.domains.storage.factory import get_storage_backend
 
         ctx = infra.ctx
         logger = infra.logger
@@ -165,7 +164,7 @@ class SourceContextBuilder:
 
         source = await ArfReplaySource.create(
             sync_id=sync.id,
-            storage=get_storage_backend(),
+            storage=app_container.storage_backend,
             logger=logger,
             restore_files=True,
             original_short_name=original_short_name,
@@ -258,7 +257,10 @@ class SourceContextBuilder:
                 "where sync_job exists."
             )
 
-        file_downloader = FileService(sync_job_id=sync_job.id)
+        file_downloader = FileService(
+            sync_job_id=sync_job.id,
+            storage_backend=app_container.storage_backend,
+        )
         source.set_file_downloader(file_downloader)
         logger.debug(
             f"File downloader configured for {source.__class__.__name__} "

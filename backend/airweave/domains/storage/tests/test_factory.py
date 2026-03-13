@@ -13,18 +13,6 @@ from airweave.core.config.enums import StorageBackendType
 class TestGetStorageBackend:
     """Test get_storage_backend factory function."""
 
-    def setup_method(self):
-        """Clear the factory cache before each test."""
-        from airweave.domains.storage.factory import get_storage_backend
-
-        get_storage_backend.cache_clear()
-
-    def teardown_method(self):
-        """Clear the factory cache after each test."""
-        from airweave.domains.storage.factory import get_storage_backend
-
-        get_storage_backend.cache_clear()
-
     @patch("airweave.domains.storage.factory.settings")
     def test_creates_filesystem_backend(self, mock_settings, tmp_path):
         """Test factory creates FilesystemBackend when configured."""
@@ -183,8 +171,8 @@ class TestGetStorageBackend:
         assert "Unknown STORAGE_BACKEND" in str(exc_info.value)
 
     @patch("airweave.domains.storage.factory.settings")
-    def test_factory_caches_result(self, mock_settings, tmp_path):
-        """Test that factory returns cached singleton."""
+    def test_factory_returns_fresh_instance(self, mock_settings, tmp_path):
+        """Factory is pure; Container owns the singleton."""
         mock_settings.STORAGE_BACKEND = StorageBackendType.FILESYSTEM
         mock_settings.STORAGE_PATH = str(tmp_path)
 
@@ -193,7 +181,7 @@ class TestGetStorageBackend:
         backend1 = get_storage_backend()
         backend2 = get_storage_backend()
 
-        assert backend1 is backend2
+        assert backend1 is not backend2
 
 
 class TestStorageBackendTypeEnum:

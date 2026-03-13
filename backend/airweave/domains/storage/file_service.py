@@ -64,9 +64,10 @@ class FileService:
     def storage(self) -> "StorageBackend":
         """Lazy-load storage backend."""
         if self._storage is None:
-            from airweave.domains.storage.factory import get_storage_backend
+            # [code blue] todo: remove fallback once all call sites inject
+            from airweave.core import container as container_mod
 
-            self._storage = get_storage_backend()
+            self._storage = container_mod.container.storage_backend
         return self._storage
 
     def _ensure_base_dir(self) -> None:
