@@ -642,13 +642,9 @@ def test_container(
     For partial overrides, use container.replace():
         real_bus_container = test_container.replace(event_bus=InMemoryEventBus())
     """
-    from airweave.core.admin_sync_service import AdminSyncService
     from airweave.core.container import Container
 
-    fake_admin_sync_service = AdminSyncService(arf_service=fake_arf_service)
-
     return Container(
-        admin_sync_service=fake_admin_sync_service,
         arf_service=fake_arf_service,
         context_cache=fake_context_cache,
         rate_limiter=fake_rate_limiter,

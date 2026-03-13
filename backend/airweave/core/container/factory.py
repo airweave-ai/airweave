@@ -432,16 +432,11 @@ def create_container(settings: Settings) -> Container:
 
     arf_service = ArfService(storage=get_storage_backend())
 
-    from airweave.core.admin_sync_service import AdminSyncService
-
-    admin_sync_service = AdminSyncService(arf_service=arf_service)
-
     # -----------------------------------------------------------------
     # Usage billing listener
     # -----------------------------------------------------------------
 
     return Container(
-        admin_sync_service=admin_sync_service,
         arf_service=arf_service,
         context_cache=context_cache,
         rate_limiter=rate_limiter,

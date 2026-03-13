@@ -43,8 +43,8 @@ def mock_ctx():
 
 @pytest.fixture
 def admin_sync_service():
-    """Admin sync service instance with a mock arf_service."""
-    return AdminSyncService(arf_service=AsyncMock())
+    """Admin sync service instance."""
+    return AdminSyncService()
 
 
 @pytest.fixture
@@ -448,16 +448,20 @@ async def test_fetch_arf_counts_disabled(admin_sync_service, mock_ctx, sample_sy
 @pytest.mark.asyncio
 async def test_fetch_arf_counts_success(admin_sync_service, mock_ctx, sample_syncs):
     """Test successful ARF count fetching."""
-    admin_sync_service._arf_service.get_entity_count = AsyncMock(return_value=50)
+    mock_arf_service = AsyncMock()
+    mock_arf_service.get_entity_count = AsyncMock(return_value=50)
+    mock_container = MagicMock()
+    mock_container.arf_service = mock_arf_service
 
     timings = {}
 
-    count_map = await admin_sync_service._fetch_arf_counts(
-        syncs=sample_syncs,
-        include_arf_counts=True,
-        ctx=mock_ctx,
-        timings=timings,
-    )
+    with patch("airweave.core.container.container", mock_container):
+        count_map = await admin_sync_service._fetch_arf_counts(
+            syncs=sample_syncs,
+            include_arf_counts=True,
+            ctx=mock_ctx,
+            timings=timings,
+        )
 
     assert all(count == 50 for count in count_map.values())
     assert timings["arf_counts"] > 0
@@ -466,18 +470,20 @@ async def test_fetch_arf_counts_success(admin_sync_service, mock_ctx, sample_syn
 @pytest.mark.asyncio
 async def test_fetch_arf_counts_with_failures(admin_sync_service, mock_ctx, sample_syncs):
     """Test ARF count fetching handles individual failures gracefully."""
-    admin_sync_service._arf_service.get_entity_count = AsyncMock(
-        side_effect=Exception("ARF error")
-    )
+    mock_arf_service = AsyncMock()
+    mock_arf_service.get_entity_count = AsyncMock(side_effect=Exception("ARF error"))
+    mock_container = MagicMock()
+    mock_container.arf_service = mock_arf_service
 
     timings = {}
 
-    count_map = await admin_sync_service._fetch_arf_counts(
-        syncs=sample_syncs,
-        include_arf_counts=True,
-        ctx=mock_ctx,
-        timings=timings,
-    )
+    with patch("airweave.core.container.container", mock_container):
+        count_map = await admin_sync_service._fetch_arf_counts(
+            syncs=sample_syncs,
+            include_arf_counts=True,
+            ctx=mock_ctx,
+            timings=timings,
+        )
 
     assert all(count is None for count in count_map.values())
     assert mock_ctx.logger.warning.called
@@ -894,11 +900,8 @@ async def test_count_vespa_for_collection_exception_during_query(
 # ============================================================================
 
 
-def test_admin_sync_service_on_container():
-    """Test that AdminSyncService is importable and constructible."""
-    from unittest.mock import AsyncMock
+def test_global_admin_sync_service_instance():
+    """Test that the global admin_sync_service instance is available."""
+    from airweave.core.admin_sync_service import admin_sync_service
 
-    from airweave.core.admin_sync_service import AdminSyncService
-
-    svc = AdminSyncService(arf_service=AsyncMock())
-    assert isinstance(svc, AdminSyncService)
+    assert isinstance(admin_sync_service, AdminSyncService)

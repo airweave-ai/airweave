@@ -26,8 +26,6 @@ from airweave.platform.storage.protocol import StorageBackend
 
 # Lazy imports for heavy modules
 if TYPE_CHECKING:
-    from airweave.domains.arf.reader import ArfReader
-    from airweave.domains.arf.replay_source import ArfReplaySource
     from airweave.platform.storage.backends import (
         AzureBlobBackend,
         FilesystemBackend,
@@ -55,9 +53,6 @@ __all__ = [
     # File service (lazy)
     "FileService",
     "FileDownloadService",
-    # ARF (lazy)
-    "ArfReader",
-    "ArfReplaySource",
     # Paths
     "StoragePaths",
     "paths",
@@ -108,16 +103,6 @@ def __getattr__(name: str):
         )
 
         return {"FileService": FileService, "FileDownloadService": FileDownloadService}[name]
-
-    if name == "ArfReader":
-        from airweave.domains.arf.reader import ArfReader
-
-        return ArfReader
-
-    if name == "ArfReplaySource":
-        from airweave.domains.arf.replay_source import ArfReplaySource
-
-        return ArfReplaySource
 
     if name in ("SyncFileManager", "sync_file_manager"):
         from airweave.platform.storage.sync_file_manager import (

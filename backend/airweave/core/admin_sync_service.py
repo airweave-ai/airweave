@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.deps import ApiContext
 from airweave.core.shared_models import SyncJobStatus, SyncStatus
-from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.models.collection import Collection
 from airweave.models.connection import Connection
 from airweave.models.entity_count import EntityCount
@@ -225,10 +224,6 @@ class AdminSyncService:
 
     MAX_CONCURRENT_DESTINATION_QUERIES = 10
 
-    def __init__(self, arf_service: ArfServiceProtocol) -> None:
-        """Initialize with injected ARF service for entity counting."""
-        self._arf_service = arf_service
-
     async def list_syncs_with_metadata(
         self,
         db: AsyncSession,
@@ -372,10 +367,14 @@ class AdminSyncService:
             return {s.id: None for s in syncs}
 
         start = time.monotonic()
+        # [code blue] todo: inject arf_service once admin domain is extracted
+        from airweave.core import container as container_mod
+
+        arf_service = container_mod.container.arf_service
 
         async def get_arf_count_safe(sync_id: UUID) -> Optional[int]:
             try:
-                return await self._arf_service.get_entity_count(str(sync_id))
+                return await arf_service.get_entity_count(str(sync_id))
             except Exception as e:
                 ctx.logger.warning(f"Failed to fetch ARF count for sync {sync_id}: {e}")
                 return None
@@ -660,3 +659,7 @@ class AdminSyncService:
             sync_data_list.append(sync_dict)
 
         return sync_data_list
+
+
+# Singleton instance
+admin_sync_service = AdminSyncService()

@@ -13,7 +13,6 @@ Design principles:
 from dataclasses import dataclass, replace
 from typing import Any, Optional
 
-from airweave.core.admin_sync_service import AdminSyncService
 from airweave.core.protocols import (
     CircuitBreaker,
     ContextCache,
@@ -228,10 +227,6 @@ class Container:
 
     # ARF domain — raw entity capture / replay service
     arf_service: ArfServiceProtocol
-
-    # Admin sync service — bulk sync listing / counting for admin endpoints
-    # [code blue] replace with protocol once admin domain is extracted
-    admin_sync_service: AdminSyncService
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured

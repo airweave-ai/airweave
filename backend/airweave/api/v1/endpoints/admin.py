@@ -1626,9 +1626,9 @@ async def admin_list_all_syncs(
     Raises:
         HTTPException: If not admin or invalid parameters
     """
-    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+    from airweave.core.admin_sync_service import admin_sync_service
 
-    admin_sync_service = container_mod.container.admin_sync_service
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 
     # Parse sync_ids if provided
     parsed_sync_ids: Optional[List[UUID]] = None
