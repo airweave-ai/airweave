@@ -84,10 +84,13 @@ def sync_job_repo():
 
 @pytest.fixture
 def connect_service(org_repo, sc_service, source_service, collection_repo, sync_job_repo):
+    from unittest.mock import AsyncMock
+
     return ConnectService(
         source_connection_service=sc_service,
         source_service=source_service,
         org_repo=org_repo,
         collection_repo=collection_repo,
         sync_job_repo=sync_job_repo,
+        oauth_callback_service=AsyncMock(),
     )

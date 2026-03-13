@@ -35,7 +35,13 @@ class FakeResponseBuilder:
         self._should_raise = should_raise
 
     async def build_response(
-        self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        source_conn: SourceConnection,
+        ctx: ApiContext,
+        *,
+        claim_token: str | None = None,
+        **kwargs,
     ) -> SourceConnectionSchema:
         """Build a minimal SourceConnection from source_conn attributes."""
         if self._should_raise:
@@ -55,6 +61,7 @@ class FakeResponseBuilder:
             auth=AuthenticationDetails(
                 method=AuthenticationMethod.DIRECT,
                 authenticated=getattr(source_conn, "is_authenticated", True),
+                claim_token=claim_token,
             ),
         )
 

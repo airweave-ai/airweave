@@ -144,6 +144,7 @@ class ResponseBuilderProtocol(Protocol):
         *,
         auth_url_override: Optional[str] = None,
         auth_url_expiry_override: Optional[datetime] = None,
+        claim_token: Optional[str] = None,
     ) -> SourceConnectionSchema:
         """Build full SourceConnection response from ORM object."""
         ...

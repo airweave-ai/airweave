@@ -48,9 +48,11 @@ export function useOAuthFlow({
   const oauthCompletedRef = useRef(false);
   // Track the connection ID created in this OAuth flow for cleanup on cancel
   const createdConnectionIdRef = useRef<string | null>(null);
+  // Store claim token for verify-oauth call after popup completes
+  const claimTokenRef = useRef<string | null>(null);
 
   const handleOAuthResult = useCallback(
-    (result: OAuthCallbackResult) => {
+    async (result: OAuthCallbackResult) => {
       // Mark OAuth as completed synchronously to prevent race condition with interval
       oauthCompletedRef.current = true;
 
@@ -60,6 +62,23 @@ export function useOAuthFlow({
       popupRef.current = null;
 
       if (result.status === "success" && result.source_connection_id) {
+        try {
+          if (claimTokenRef.current) {
+            await apiClient.verifyOAuth(
+              result.source_connection_id,
+              claimTokenRef.current,
+            );
+            claimTokenRef.current = null;
+          }
+        } catch (err) {
+          setStatus("error");
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to verify OAuth flow ownership",
+          );
+          return;
+        }
         // Clear the ref since OAuth succeeded - don't delete the connection
         createdConnectionIdRef.current = null;
         setStatus("idle");
@@ -138,6 +157,7 @@ export function useOAuthFlow({
       const response = await apiClient.createSourceConnection(payload);
       // Track the created connection for cleanup if user cancels
       createdConnectionIdRef.current = response.id;
+      claimTokenRef.current = response.auth?.claim_token ?? null;
 
       if (response.auth?.auth_url) {
         setStatus("waiting");

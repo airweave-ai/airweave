@@ -183,6 +183,9 @@ class FakeOAuthFlowService:
         redirect_url: Optional[str] = None,
         template_configs: Optional[dict] = None,
         additional_overrides: Optional[Dict[str, Any]] = None,
+        initiator_user_id: Optional[UUID] = None,
+        initiator_session_id: Optional[UUID] = None,
+        claim_token_hash: Optional[str] = None,
     ) -> Any:
         self._calls.append(("create_init_session", short_name, state))
         self._last_create_init_session_kwargs = {
@@ -196,6 +199,9 @@ class FakeOAuthFlowService:
             "redirect_url": redirect_url,
             "template_configs": template_configs,
             "additional_overrides": additional_overrides,
+            "initiator_user_id": initiator_user_id,
+            "initiator_session_id": initiator_session_id,
+            "claim_token_hash": claim_token_hash,
         }
         return type("InitSession", (), {"id": uuid4()})()
 
