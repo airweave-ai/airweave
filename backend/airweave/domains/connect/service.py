@@ -22,6 +22,7 @@ from airweave.domains.source_connections.protocols import SourceConnectionServic
 from airweave.domains.sources.protocols import SourceServiceProtocol
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
 from airweave.platform.auth.state import make_state
+from airweave.analytics.service import analytics
 from airweave.schemas.connect_session import (
     ConnectSessionContext,
     ConnectSessionCreate,
@@ -177,7 +178,17 @@ class ConnectService(ConnectServiceProtocol):
 
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
-        # TODO: track connect_session_created via event bus
+        analytics.track_event(
+            "connect_session_created",
+            {
+                "session_id": str(session_id),
+                "collection_id": session_in.readable_collection_id,
+                "mode": session_in.mode.value,
+                "end_user_id": session_in.end_user_id,
+                "allowed_integrations": session_in.allowed_integrations,
+                "organization_id": str(ctx.organization.id),
+            },
+        )
 
         ctx.logger.info(
             f"Created connect session {session_id} for collection "
@@ -273,7 +284,16 @@ class ConnectService(ConnectServiceProtocol):
             f"Deleting source connection {connection_id} via connect session {session.session_id}"
         )
 
-        # TODO: track connect_source_connection_deleted via event bus
+        analytics.track_event(
+            "connect_connection_deleted",
+            {
+                "session_id": str(session.session_id),
+                "collection_id": session.collection_id,
+                "connection_id": str(connection_id),
+                "end_user_id": session.end_user_id,
+                "organization_id": str(session.organization_id),
+            },
+        )
 
         return await self._sc_service.delete(db, connection_id, ctx)  # type: ignore[arg-type,return-value]
 
@@ -310,7 +330,16 @@ class ConnectService(ConnectServiceProtocol):
 
         result = await self._sc_service.create(db, source_connection_in, ctx)  # type: ignore[arg-type]
 
-        # TODO: track connect_source_connection_created via event bus
+        analytics.track_event(
+            "connect_connection_created",
+            {
+                "session_id": str(session.session_id),
+                "collection_id": session.collection_id,
+                "source_short_name": source_connection_in.short_name,
+                "end_user_id": session.end_user_id,
+                "organization_id": str(session.organization_id),
+            },
+        )
 
         return result  # type: ignore[return-value]
 
