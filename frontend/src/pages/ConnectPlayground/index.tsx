@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { ExternalLink } from "lucide-react";
-import posthog from "@/lib/posthog-provider";
+import { posthog } from "@/lib/posthog-provider";
 import { usePlaygroundState } from "./hooks/usePlaygroundState";
 import { PlaygroundConfig } from "./config/PlaygroundConfig";
 import { ExportDropdown } from "./config/ExportDropdown";
