@@ -30,6 +30,7 @@ class SystemMetadataResult(BaseModel):
     """System metadata in search result."""
 
     entity_type: str
+    entity_schema: Optional[str] = None
     source_name: Optional[str] = None
     sync_id: Optional[str] = None
     sync_job_id: Optional[str] = None

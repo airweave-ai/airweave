@@ -178,6 +178,9 @@ class Settings(BaseSettings):
     TEMPORAL_DISABLE_SANDBOX: bool = False
     TEMPORAL_SDK_METRICS_PORT: int = 9090
 
+    # SCE (Structural Context Extraction)
+    SPACY_NER_MODEL: str = "en_core_web_md"
+
     # Health probe configuration
     HEALTH_CHECK_TIMEOUT: float = 5.0
     HEALTH_CRITICAL_PROBES: str = "postgres"

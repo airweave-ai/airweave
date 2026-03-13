@@ -3,6 +3,9 @@
 from airweave.platform.temporal.workflows.api_key_notifications import (
     APIKeyExpirationCheckWorkflow,
 )
+from airweave.platform.temporal.workflows.sce import (
+    ExtractStructuralContextWorkflow,
+)
 from airweave.platform.temporal.workflows.sync import (
     CleanupStuckSyncJobsWorkflow,
     CleanupSyncDataWorkflow,
@@ -16,4 +19,6 @@ __all__ = [
     "CleanupSyncDataWorkflow",
     # API key workflows
     "APIKeyExpirationCheckWorkflow",
+    # SCE workflows
+    "ExtractStructuralContextWorkflow",
 ]

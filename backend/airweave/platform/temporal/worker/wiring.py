@@ -7,7 +7,7 @@ It connects activities to their dependencies from the container.
 from airweave.core.logging import logger
 
 
-def create_activities() -> list:
+async def create_activities() -> list:
     """Create activity instances with dependencies from the container.
 
     This is the DI wiring point for Temporal activities.
@@ -24,6 +24,7 @@ def create_activities() -> list:
         CleanupStuckSyncJobsActivity,
         CleanupSyncDataActivity,
         CreateSyncJobActivity,
+        ExtractStructuralContextActivity,
         MarkSyncJobCancelledActivity,
         RunSyncActivity,
         SelfDestructOrphanedSyncActivity,
@@ -80,6 +81,10 @@ def create_activities() -> list:
         CheckAndNotifyExpiringKeysActivity(
             email_service=email_service,
         ).run,
+        # SCE
+        ExtractStructuralContextActivity(
+            sce_service=container.sce_service,
+        ).run,
     ]
 
 
@@ -93,6 +98,7 @@ def get_workflows() -> list:
         APIKeyExpirationCheckWorkflow,
         CleanupStuckSyncJobsWorkflow,
         CleanupSyncDataWorkflow,
+        ExtractStructuralContextWorkflow,
         RunSourceConnectionWorkflow,
     )
 
@@ -101,4 +107,5 @@ def get_workflows() -> list:
         CleanupStuckSyncJobsWorkflow,
         CleanupSyncDataWorkflow,
         APIKeyExpirationCheckWorkflow,
+        ExtractStructuralContextWorkflow,
     ]

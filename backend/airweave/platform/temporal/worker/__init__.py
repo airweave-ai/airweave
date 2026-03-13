@@ -98,7 +98,7 @@ class TemporalWorker:
             client,
             task_queue=self._config.task_queue,
             workflows=get_workflows(),
-            activities=create_activities(),
+            activities=await create_activities(),
             workflow_runner=self._get_sandbox_runner(),
             max_concurrent_workflow_task_polls=self._config.max_concurrent_workflow_polls,
             max_concurrent_activity_task_polls=self._config.max_concurrent_activity_polls,
