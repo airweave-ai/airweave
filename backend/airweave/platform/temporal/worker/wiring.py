@@ -7,7 +7,7 @@ It connects activities to their dependencies from the container.
 from airweave.core.logging import logger
 
 
-def create_activities() -> list:
+async def create_activities() -> list:
     """Create activity instances with dependencies from the container.
 
     This is the DI wiring point for Temporal activities.
@@ -79,7 +79,26 @@ def create_activities() -> list:
         CheckAndNotifyExpiringKeysActivity(
             email_service=email_service,
         ).run,
+        # SCE
+        (await _create_sce_activity()),
     ]
+
+
+async def _create_sce_activity():
+    """Create the SCE activity with its own dependencies."""
+    from airweave.platform.destinations.vespa.destination import VespaDestination
+    from airweave.platform.sce.extractors.regex import REGEX_EXTRACTOR_TYPES, RegexExtractor
+    from airweave.platform.sce.service import StructuralContextExtractorService
+    from airweave.platform.temporal.activities import ExtractStructuralContextActivity
+
+    extractor = RegexExtractor(REGEX_EXTRACTOR_TYPES)
+    sce_service = StructuralContextExtractorService([extractor])
+    destination = await VespaDestination.create()
+
+    return ExtractStructuralContextActivity(
+        sce_service=sce_service,
+        destination=destination,
+    ).run
 
 
 def get_workflows() -> list:
@@ -92,6 +111,7 @@ def get_workflows() -> list:
         APIKeyExpirationCheckWorkflow,
         CleanupStuckSyncJobsWorkflow,
         CleanupSyncDataWorkflow,
+        ExtractStructuralContextWorkflow,
         RunSourceConnectionWorkflow,
     )
 
@@ -100,4 +120,5 @@ def get_workflows() -> list:
         CleanupStuckSyncJobsWorkflow,
         CleanupSyncDataWorkflow,
         APIKeyExpirationCheckWorkflow,
+        ExtractStructuralContextWorkflow,
     ]

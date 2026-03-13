@@ -80,7 +80,7 @@ def test_init_constructs_real_control_server(mock_runtime_cls):
 
 @patch("airweave.platform.temporal.worker.Worker")
 @patch("airweave.platform.temporal.worker.get_workflows", return_value=[])
-@patch("airweave.platform.temporal.worker.create_activities", return_value=[])
+@patch("airweave.platform.temporal.worker.create_activities", new_callable=AsyncMock, return_value=[])
 @patch("temporalio.runtime.Runtime")
 async def test_start_passes_runtime_to_get_client(
     mock_runtime_cls,

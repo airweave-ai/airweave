@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Dict, List, Optional
 from uuid import UUID
 
+from pydantic import BaseModel
+
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.entities._base import BaseEntity
@@ -151,6 +153,12 @@ class BaseDestination(ABC):
         return config
 
 
+class VectorDBUpdate(BaseModel):
+    id: str
+    entity_schema: str | None = None
+    fields: Dict[str, Any]
+
+
 class VectorDBDestination(BaseDestination):
     """Abstract base class for destinations backed by a vector database.
 
@@ -160,4 +168,24 @@ class VectorDBDestination(BaseDestination):
     @abstractmethod
     async def get_vector_config_names(self) -> list[str]:
         """Get the vector config names for the destination."""
+        pass
+
+    @abstractmethod
+    async def query_documents(
+        self, airweave_collection_id: UUID, sync_id: UUID, *, limit: int, offset: int
+    ) -> List[AirweaveSearchResult]:
+        """Query vector db documents for a given collection and sync job.
+        Forces pagination since the dataset is large"""
+        pass
+
+    @abstractmethod
+    async def bulk_update(
+        self,
+        updates: List[VectorDBUpdate],
+    ) -> None:
+        """Bulk update metadata fields on existing documents.
+
+        Args:
+            updates: List of VectorDBUpdate, each with "doc_id", "schema" and "fields" to update.
+        """
         pass

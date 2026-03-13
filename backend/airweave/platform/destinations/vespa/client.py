@@ -10,6 +10,7 @@ This module encapsulates all direct communication with Vespa, including:
 from __future__ import annotations
 
 import asyncio
+import enum
 import json
 import time
 from datetime import datetime
@@ -44,6 +45,14 @@ from airweave.schemas.search_result import (
 
 if TYPE_CHECKING:
     from vespa.application import Vespa
+
+
+class VespaQueryOperation(str, enum.Enum):
+    """Type of operation to perform"""
+
+    FEED = "feed"
+    UPDATE = "update"
+    DELETE = "delete"
 
 
 class VespaClient:
@@ -112,8 +121,9 @@ class VespaClient:
         self,
         docs_by_schema: Dict[str, List[VespaDocument]],
         callback: Optional[Callable] = None,
+        operation_type: VespaQueryOperation = VespaQueryOperation.FEED,
     ) -> FeedResult:
-        """Feed documents to Vespa using feed_iterable.
+        """Feed or update documents in Vespa using feed_iterable.
 
         Uses pyvespa's feed_iterable for efficient concurrent feeding via HTTP/2
         multiplexing. Documents are grouped by schema and fed separately.
@@ -123,6 +133,7 @@ class VespaClient:
         Args:
             docs_by_schema: Dict mapping schema name to list of VespaDocuments
             callback: Optional callback for tracking progress
+            operation_type: "feed" for full insert, "update" for partial update
 
         Returns:
             FeedResult with success count and failed documents
@@ -145,12 +156,13 @@ class VespaClient:
             # Convert VespaDocument to dict format expected by feed_iterable
             doc_dicts = [{"id": doc.id, "fields": doc.fields} for doc in docs]
 
-            def _feed_sync(docs_iter=doc_dicts, schema_name=schema):
+            def _feed_sync(docs_iter=doc_dicts, schema_name=schema, op_type=operation_type.value):
                 self.app.feed_iterable(
                     iter=docs_iter,
                     schema=schema_name,
                     namespace="airweave",
                     callback=actual_callback,
+                    operation_type=op_type,
                     max_queue_size=FEED_MAX_QUEUE_SIZE,
                     max_workers=FEED_MAX_WORKERS,
                     max_connections=FEED_MAX_CONNECTIONS,
@@ -431,6 +443,7 @@ class VespaClient:
         """Extract system metadata from flattened Vespa fields."""
         return SystemMetadataResult(
             entity_type=fields.get("airweave_system_metadata_entity_type", ""),
+            entity_schema=fields.get("sddocname"),
             source_name=fields.get("airweave_system_metadata_source_name"),
             sync_id=fields.get("airweave_system_metadata_sync_id"),
             sync_job_id=fields.get("airweave_system_metadata_sync_job_id"),
