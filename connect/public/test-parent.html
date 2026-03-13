@@ -421,8 +421,10 @@
        * Update these values to match your .env file:
        *   VITE_API_URL, TEST_API_KEY, TEST_COLLECTION_ID, TEST_END_USER_ID, TEST_SESSION_MODE
        */
+      const isLocalDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
       const CONFIG = {
-        API_URL: "http://localhost:8001", // VITE_API_URL
+        API_URL: isLocalDev ? "http://localhost:8001" : `https://app.${window.location.hostname.replace("connect.", "")}`,
+        CONNECT_URL: isLocalDev ? "http://localhost:5173" : window.location.origin,
         API_KEY: "test", // TEST_API_KEY
         COLLECTION_ID: "test-16c0r8", // TEST_COLLECTION_ID
         END_USER_ID: "anand", // TEST_END_USER_ID
@@ -939,7 +941,7 @@
         // Reset iframe
         iframe.src = "";
         setTimeout(() => {
-          iframe.src = "http://localhost:5173";
+          iframe.src = CONFIG.CONNECT_URL;
         }, 100);
 
         document.getElementById("openConnect").disabled = true;
