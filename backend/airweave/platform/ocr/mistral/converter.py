@@ -41,7 +41,7 @@ from airweave.platform.ocr.mistral.splitters import (
     PdfSplitter,
     RecursiveSplitter,
 )
-from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
 
 # Mistral upload limit.
 MAX_FILE_SIZE_BYTES = 50_000_000  # 50 MB

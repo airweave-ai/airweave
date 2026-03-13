@@ -49,7 +49,7 @@ from airweave.platform.sources.sharepoint2019v2.builders import (
 )
 from airweave.platform.sources.sharepoint2019v2.client import SharePointClient
 from airweave.domains.storage import FileSkippedException
-from airweave.platform.sync.exceptions import EntityProcessingError
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 from airweave.schemas.source_connection import AuthenticationMethod
 
 # Maximum concurrent file downloads

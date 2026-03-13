@@ -17,6 +17,8 @@ def _build_factory(**overrides):
         "dense_embedder": MagicMock(),
         "sparse_embedder": MagicMock(),
         "entity_repo": MagicMock(),
+        "acl_repo": MagicMock(),
+        "processor": MagicMock(),
     }
     defaults.update(overrides)
     return SyncFactory(**defaults)
@@ -28,7 +30,7 @@ def _build_factory(**overrides):
 
 
 def test_constructor_stores_all_deps():
-    """All six injected deps are stored on the instance."""
+    """All injected deps are stored on the instance."""
     deps = {
         "sc_repo": MagicMock(),
         "event_bus": MagicMock(),
@@ -36,6 +38,8 @@ def test_constructor_stores_all_deps():
         "dense_embedder": MagicMock(),
         "sparse_embedder": MagicMock(),
         "entity_repo": MagicMock(),
+        "acl_repo": MagicMock(),
+        "processor": MagicMock(),
     }
     f = SyncFactory(**deps)
     assert f._sc_repo is deps["sc_repo"]
@@ -44,6 +48,8 @@ def test_constructor_stores_all_deps():
     assert f._dense_embedder is deps["dense_embedder"]
     assert f._sparse_embedder is deps["sparse_embedder"]
     assert f._entity_repo is deps["entity_repo"]
+    assert f._acl_repo is deps["acl_repo"]
+    assert f._processor is deps["processor"]
 
 
 # ---------------------------------------------------------------------------

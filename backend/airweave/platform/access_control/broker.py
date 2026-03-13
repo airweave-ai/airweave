@@ -5,21 +5,16 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud
+from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
 from airweave.platform.access_control.schemas import AccessContext
 from airweave.platform.entities._base import AccessControl
 
 
 class AccessBroker:
-    """Resolves user access context by expanding group memberships.
+    """Resolves user access context by expanding group memberships."""
 
-    Source-agnostic: works for SharePoint, Google Drive, etc.
-    Handles both direct user-group and nested group-group relationships.
-
-    Access control is only applied when at least one source in the collection
-    has supports_access_control=True. For collections with only non-AC sources,
-    no filtering is applied (all entities visible to everyone).
-    """
+    def __init__(self, acl_repo: AccessControlMembershipRepositoryProtocol) -> None:
+        self._acl_repo = acl_repo
 
     async def resolve_access_context(
         self, db: AsyncSession, user_principal: str, organization_id: UUID
@@ -44,7 +39,7 @@ class AccessBroker:
             AccessContext with fully expanded principals
         """
         # Query direct user-group memberships (member_type="user")
-        memberships = await crud.access_control_membership.get_by_member(
+        memberships = await self._acl_repo.get_by_member(
             db=db, member_id=user_principal, member_type="user", organization_id=organization_id
         )
 
@@ -109,7 +104,7 @@ class AccessBroker:
             return None
 
         # Query user-group memberships scoped to collection (member_type="user")
-        memberships = await crud.access_control_membership.get_by_member_and_collection(
+        memberships = await self._acl_repo.get_by_member_and_collection(
             db=db,
             member_id=user_principal,
             member_type="user",
@@ -207,7 +202,7 @@ class AccessBroker:
             visited.add(current_group)
 
             # Query for group-to-group memberships via CRUD layer (member_type="group")
-            nested_memberships = await crud.access_control_membership.get_by_member(
+            nested_memberships = await self._acl_repo.get_by_member(
                 db=db, member_id=current_group, member_type="group", organization_id=organization_id
             )
 
@@ -258,5 +253,11 @@ class AccessBroker:
         return bool(access_context.all_principals & set(entity_access.viewers))
 
 
-# Singleton shared instance
-access_broker = AccessBroker()
+def _default_access_broker() -> "AccessBroker":
+    """Create a default AccessBroker backed by the real repository."""
+    from airweave.domains.access_control.repository import AccessControlMembershipRepository
+
+    return AccessBroker(acl_repo=AccessControlMembershipRepository())
+
+
+access_broker = _default_access_broker()

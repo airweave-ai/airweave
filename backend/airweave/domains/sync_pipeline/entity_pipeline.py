@@ -22,14 +22,14 @@ from airweave.domains.sync_pipeline.protocols import (
     EntityActionDispatcherProtocol,
     EntityActionResolverProtocol,
 )
-from airweave.platform.contexts import SyncContext
-from airweave.platform.contexts.runtime import SyncRuntime
+from airweave.domains.sync_pipeline.contexts import SyncContext
+from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.platform.entities._base import BaseEntity
-from airweave.platform.sync.actions.entity.types import EntityActionBatch
-from airweave.platform.sync.exceptions import SyncFailureError
-from airweave.platform.sync.pipeline.cleanup_service import cleanup_service
-from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
-from airweave.platform.sync.pipeline.hash_computer import hash_computer
+from airweave.domains.sync_pipeline.types.entity_actions import EntityActionBatch
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.pipeline.cleanup_service import cleanup_service
+from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
+from airweave.domains.sync_pipeline.pipeline.hash_computer import hash_computer
 
 if TYPE_CHECKING:
     from airweave.core.protocols.event_bus import EventBus

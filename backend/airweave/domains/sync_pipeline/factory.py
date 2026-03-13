@@ -20,26 +20,27 @@ from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.core.logging import LoggerConfigurator, logger
 from airweave.core.protocols.event_bus import EventBus
+from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
+from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
-from airweave.platform.builders import SyncContextBuilder
-from airweave.platform.builders.tracking import TrackingContextBuilder
-from airweave.platform.contexts.runtime import SyncRuntime
-from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
-from airweave.platform.sync.actions import (
-    ACActionDispatcher,
-    ACActionResolver,
-    EntityDispatcherBuilder,
-)
-from airweave.platform.sync.config import SyncConfig, SyncConfigBuilder
-from airweave.platform.sync.handlers import ACPostgresHandler
-from airweave.platform.sync.orchestrator import SyncOrchestrator
-from airweave.platform.sync.pipeline.acl_membership_tracker import ACLMembershipTracker
-from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
-from airweave.platform.sync.stream import AsyncSourceStream
-from airweave.platform.sync.worker_pool import AsyncWorkerPool
+from airweave.domains.sync_pipeline.builders import SyncContextBuilder
+from airweave.domains.sync_pipeline.builders.tracking import TrackingContextBuilder
+from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
+from airweave.domains.sync_pipeline.access_control_pipeline import AccessControlPipeline
+from airweave.domains.sync_pipeline.access_control_dispatcher import ACActionDispatcher
+from airweave.domains.sync_pipeline.access_control_resolver import ACActionResolver
+from airweave.domains.sync_pipeline.entity_dispatcher_builder import EntityDispatcherBuilder
+from airweave.domains.sync_pipeline.config import SyncConfig, SyncConfigBuilder
+from airweave.domains.sync_pipeline.handlers import ACPostgresHandler
+from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
+from airweave.domains.sync_pipeline.pipeline.acl_membership_tracker import ACLMembershipTracker
+from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
+from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
+from airweave.domains.sync_pipeline.stream import AsyncSourceStream
+from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 
 from .entity_action_resolver import EntityActionResolver
 from .entity_pipeline import EntityPipeline
@@ -60,14 +61,19 @@ class SyncFactory:
         dense_embedder: DenseEmbedderProtocol,
         sparse_embedder: SparseEmbedderProtocol,
         entity_repo: EntityRepositoryProtocol,
+        acl_repo: AccessControlMembershipRepositoryProtocol,
+        processor: ChunkEmbedProcessorProtocol,
+        arf_service: Optional[ArfServiceProtocol] = None,
     ) -> None:
-        """Initialize with all deployment-wide dependencies."""
         self._sc_repo = sc_repo
         self._event_bus = event_bus
         self._usage_checker = usage_checker
         self._dense_embedder = dense_embedder
         self._sparse_embedder = sparse_embedder
         self._entity_repo = entity_repo
+        self._acl_repo = acl_repo
+        self._processor = processor
+        self._arf_service = arf_service
 
     async def create_orchestrator(
         self,
@@ -156,14 +162,13 @@ class SyncFactory:
 
         logger.debug(f"Context + runtime built in {time.time() - init_start:.2f}s")
 
-        from airweave.core import container as container_mod
-
-        _container = container_mod.container
-        arf_service = _container.arf_service if _container else None
-
-        dispatcher = EntityDispatcherBuilder.build(
+        dispatcher_builder = EntityDispatcherBuilder(
+            processor=self._processor,
+            entity_repo=self._entity_repo,
+            arf_service=self._arf_service,
+        )
+        dispatcher = dispatcher_builder.build(
             destinations=runtime.destinations,
-            arf_service=arf_service,
             execution_config=resolved_config,
             logger=sync_context.logger,
         )
@@ -183,12 +188,15 @@ class SyncFactory:
 
         access_control_pipeline = AccessControlPipeline(
             resolver=ACActionResolver(),
-            dispatcher=ACActionDispatcher(handlers=[ACPostgresHandler()]),
+            dispatcher=ACActionDispatcher(
+                handlers=[ACPostgresHandler(acl_repo=self._acl_repo)]
+            ),
             tracker=ACLMembershipTracker(
                 source_connection_id=sync_context.source_connection_id,
                 organization_id=sync_context.organization_id,
                 logger=sync_context.logger,
             ),
+            acl_repo=self._acl_repo,
         )
 
         worker_pool = AsyncWorkerPool(logger=sync_context.logger)
@@ -218,8 +226,8 @@ class SyncFactory:
     @staticmethod
     async def _build_source(db, sync, sync_job, ctx, force_full_sync, execution_config):
         """Build source and cursor. Returns (source, cursor) tuple."""
-        from airweave.platform.builders.source import SourceContextBuilder
-        from airweave.platform.contexts.infra import InfraContext
+        from airweave.domains.sync_pipeline.builders.source import SourceContextBuilder
+        from airweave.domains.sync_pipeline.contexts.infra import InfraContext
 
         sync_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.source_build",
@@ -243,7 +251,7 @@ class SyncFactory:
     @staticmethod
     async def _build_destinations(db, sync, collection, ctx, execution_config):
         """Build destinations and entity map. Returns (destinations, entity_map) tuple."""
-        from airweave.platform.builders.destinations import DestinationsContextBuilder
+        from airweave.domains.sync_pipeline.builders.destinations import DestinationsContextBuilder
 
         dest_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.dest_build",

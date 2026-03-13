@@ -15,7 +15,7 @@ from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
 from airweave.platform.entities._base import WebEntity
 from airweave.platform.entities.web import WebFileEntity
-from airweave.platform.sync.async_helpers import run_in_thread_pool
+from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
 
 # Improved connection management
 _shared_firecrawl_client = None

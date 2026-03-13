@@ -13,7 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from airweave.core.shared_models import CollectionStatus
-from airweave.platform.sync.config.base import SyncConfig
+from airweave.domains.sync_pipeline.config.base import SyncConfig
 
 
 def generate_readable_id(name: str) -> str:

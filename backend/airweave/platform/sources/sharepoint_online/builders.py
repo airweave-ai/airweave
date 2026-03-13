@@ -17,7 +17,7 @@ from airweave.platform.entities.sharepoint_online import (
     SharePointOnlineSiteEntity,
 )
 from airweave.platform.sources.sharepoint_online.acl import extract_access_control
-from airweave.platform.sync.exceptions import EntityProcessingError
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 
 
 def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:

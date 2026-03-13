@@ -420,7 +420,7 @@ class RunSyncActivity:
         from airweave import crud
         from airweave.core.exceptions import NotFoundException
         from airweave.db.session import get_db_context
-        from airweave.platform.sync.config import SyncConfig
+        from airweave.domains.sync_pipeline.config import SyncConfig
 
         execution_config = None
         try:

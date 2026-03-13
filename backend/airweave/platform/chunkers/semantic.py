@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Optional
 from airweave.core.logging import logger
 from airweave.platform.chunkers._base import BaseChunker
 from airweave.platform.chunkers.tiktoken_compat import SafeEncoding
-from airweave.platform.sync.async_helpers import run_in_thread_pool
-from airweave.platform.sync.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 from airweave.platform.tokenizers import TikTokenTokenizer, get_tokenizer
 
 

@@ -6,7 +6,7 @@ from uuid import UUID
 
 from airweave.api.context import ApiContext
 from airweave.core.shared_models import SyncJobStatus
-from airweave.platform.sync.pipeline.entity_tracker import SyncStats
+from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
 
 
 class FakeSyncJobService:
