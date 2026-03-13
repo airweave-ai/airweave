@@ -9,46 +9,8 @@ Available backends:
     - S3Backend: AWS S3 (and S3-compatible like MinIO)
     - GCSBackend: Google Cloud Storage
 
-Exports are lazy-loaded to avoid triggering heavy imports when only
-specific backends are needed.
-"""
+Import backends directly from their modules to avoid pulling in heavy
+cloud SDKs unnecessarily::
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from airweave.domains.storage.backends.aws_s3 import S3Backend
-    from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
     from airweave.domains.storage.backends.filesystem import FilesystemBackend
-    from airweave.domains.storage.backends.gcp_gcs import GCSBackend
-
-__all__ = [
-    "FilesystemBackend",
-    "AzureBlobBackend",
-    "S3Backend",
-    "GCSBackend",
-]
-
-
-def __getattr__(name: str):
-    """Lazy import backends on first access."""
-    if name == "FilesystemBackend":
-        from airweave.domains.storage.backends.filesystem import FilesystemBackend
-
-        return FilesystemBackend
-
-    if name == "AzureBlobBackend":
-        from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
-
-        return AzureBlobBackend
-
-    if name == "S3Backend":
-        from airweave.domains.storage.backends.aws_s3 import S3Backend
-
-        return S3Backend
-
-    if name == "GCSBackend":
-        from airweave.domains.storage.backends.gcp_gcs import GCSBackend
-
-        return GCSBackend
-
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+"""

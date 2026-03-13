@@ -194,3 +194,57 @@ async def test_reconstruct_entity_bad_module():
 def test_cleanup_no_temp_dir():
     reader, _ = _build_reader()
     reader.cleanup()  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# Tests: _restore_file (requires restore_files=True)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_entity_with_file_restoration():
+    """Test that a stored file is restored to temp when restore_files=True."""
+    storage = FakeStorageBackend()
+    reader = ArfReader(
+        sync_id=SYNC_ID,
+        storage=storage,
+        logger=_make_logger(),
+        restore_files=True,
+    )
+
+    file_path = f"raw/{SYNC_ID}/files/file-1_report.pdf"
+    storage.seed_file(file_path, b"restored content")
+    storage.seed_json(f"raw/{SYNC_ID}/entities/file-1.json", {
+        "entity_id": "file-1",
+        "name": "Report",
+        "__entity_class__": "SimpleNamespace",
+        "__entity_module__": "types",
+        "__captured_at__": "2025-01-01T00:00:00Z",
+        "__stored_file__": file_path,
+    })
+
+    entity_dict = await storage.read_json(f"raw/{SYNC_ID}/entities/file-1.json")
+    entity = await reader.reconstruct_entity(entity_dict)
+
+    assert hasattr(entity, "local_path")
+    import os
+    assert os.path.exists(entity.local_path)
+    with open(entity.local_path, "rb") as f:
+        assert f.read() == b"restored content"
+
+    reader.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_restore_file_missing_from_storage():
+    """File not in storage should return None and not crash."""
+    storage = FakeStorageBackend()
+    reader = ArfReader(
+        sync_id=SYNC_ID,
+        storage=storage,
+        logger=_make_logger(),
+        restore_files=True,
+    )
+
+    result = await reader._restore_file("raw/nonexistent/file.pdf")
+    assert result is None
