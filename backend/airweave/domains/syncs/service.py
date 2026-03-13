@@ -10,9 +10,9 @@ from airweave.api.context import ApiContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
+from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol, SyncServiceProtocol
-from airweave.domains.sync_pipeline.config import SyncConfig
 
 
 class SyncService(SyncServiceProtocol):

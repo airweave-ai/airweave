@@ -3,8 +3,8 @@
 import os
 from typing import TYPE_CHECKING, Any, Dict, List
 
-from airweave.platform.entities._base import FileEntity
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.platform.entities._base import FileEntity
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

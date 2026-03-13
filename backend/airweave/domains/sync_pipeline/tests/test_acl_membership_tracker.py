@@ -302,4 +302,3 @@ class TestComplexScenario:
         # 5. Log summary
         tracker.log_summary()
         assert tracker.logger.info.called
-

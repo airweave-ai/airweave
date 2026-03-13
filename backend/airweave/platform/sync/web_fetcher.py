@@ -13,9 +13,9 @@ from firecrawl import AsyncFirecrawlApp
 from airweave.core import container as container_mod
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
+from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
 from airweave.platform.entities._base import WebEntity
 from airweave.platform.entities.web import WebFileEntity
-from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
 from airweave.platform.utils.ssrf import validate_url
 
 # Improved connection management

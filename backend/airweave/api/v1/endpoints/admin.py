@@ -43,13 +43,13 @@ from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.organizations.logic import generate_org_name
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
+from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.domains.usage.repository import UsageRepository
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
 from airweave.models.user_organization import UserOrganization
-from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.schemas.organization_billing import BillingPlan, BillingStatus
 
 router = TrailingSlashRouter()

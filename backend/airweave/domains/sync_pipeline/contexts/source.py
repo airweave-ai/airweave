@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from airweave.platform.sources._base import BaseSource
     from airweave.domains.sync_pipeline.cursor import SyncCursor
+    from airweave.platform.sources._base import BaseSource
 
 
 @dataclass

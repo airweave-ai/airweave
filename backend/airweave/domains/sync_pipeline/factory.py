@@ -25,15 +25,14 @@ from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
-from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
+from airweave.domains.sync_pipeline.access_control_dispatcher import ACActionDispatcher
+from airweave.domains.sync_pipeline.access_control_pipeline import AccessControlPipeline
+from airweave.domains.sync_pipeline.access_control_resolver import ACActionResolver
 from airweave.domains.sync_pipeline.builders import SyncContextBuilder
 from airweave.domains.sync_pipeline.builders.tracking import TrackingContextBuilder
-from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
-from airweave.domains.sync_pipeline.access_control_pipeline import AccessControlPipeline
-from airweave.domains.sync_pipeline.access_control_dispatcher import ACActionDispatcher
-from airweave.domains.sync_pipeline.access_control_resolver import ACActionResolver
-from airweave.domains.sync_pipeline.entity_dispatcher_builder import EntityDispatcherBuilder
 from airweave.domains.sync_pipeline.config import SyncConfig, SyncConfigBuilder
+from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
+from airweave.domains.sync_pipeline.entity_dispatcher_builder import EntityDispatcherBuilder
 from airweave.domains.sync_pipeline.handlers import ACPostgresHandler
 from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
 from airweave.domains.sync_pipeline.pipeline.acl_membership_tracker import ACLMembershipTracker
@@ -41,6 +40,7 @@ from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
 from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
+from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 
 from .entity_action_resolver import EntityActionResolver
 from .entity_pipeline import EntityPipeline
@@ -188,9 +188,7 @@ class SyncFactory:
 
         access_control_pipeline = AccessControlPipeline(
             resolver=ACActionResolver(),
-            dispatcher=ACActionDispatcher(
-                handlers=[ACPostgresHandler(acl_repo=self._acl_repo)]
-            ),
+            dispatcher=ACActionDispatcher(handlers=[ACPostgresHandler(acl_repo=self._acl_repo)]),
             tracker=ACLMembershipTracker(
                 source_connection_id=sync_context.source_connection_id,
                 organization_id=sync_context.organization_id,

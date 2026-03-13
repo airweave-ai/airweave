@@ -14,10 +14,10 @@ with benefits of pre-trained vocabulary/IDF, stopword removal, and learned term 
 import json
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
-from airweave.platform.entities._base import BaseEntity, CodeFileEntity
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 from airweave.domains.sync_pipeline.pipeline.text_builder import text_builder
 from airweave.domains.sync_pipeline.processors.utils import filter_empty_representations
+from airweave.platform.entities._base import BaseEntity, CodeFileEntity
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

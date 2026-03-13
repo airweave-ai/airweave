@@ -32,8 +32,7 @@ class EntityCountRepositoryProtocol(Protocol):
 class EntityRepositoryProtocol(Protocol):
     """Entity data access used by the sync pipeline."""
 
-    async def get_by_sync_id(self, db: AsyncSession, sync_id: UUID) -> List[Entity]:
-        ...
+    async def get_by_sync_id(self, db: AsyncSession, sync_id: UUID) -> List[Entity]: ...
 
     async def bulk_get_by_entity_sync_and_definition(
         self,
@@ -41,8 +40,7 @@ class EntityRepositoryProtocol(Protocol):
         *,
         sync_id: UUID,
         entity_requests: list[Tuple[str, str]],
-    ) -> Dict[Tuple[str, str], Entity]:
-        ...
+    ) -> Dict[Tuple[str, str], Entity]: ...
 
     async def bulk_create(
         self,
@@ -50,16 +48,14 @@ class EntityRepositoryProtocol(Protocol):
         *,
         objs: list,
         ctx: Any,
-    ) -> List[Entity]:
-        ...
+    ) -> List[Entity]: ...
 
     async def bulk_update_hash(
         self,
         db: AsyncSession,
         *,
         rows: List[Tuple[UUID, str]],
-    ) -> None:
-        ...
+    ) -> None: ...
 
     async def bulk_remove(
         self,
@@ -67,8 +63,7 @@ class EntityRepositoryProtocol(Protocol):
         *,
         ids: List[UUID],
         ctx: Any,
-    ) -> List[Entity]:
-        ...
+    ) -> List[Entity]: ...
 
     async def bulk_get_by_entity_and_sync(
         self,
@@ -76,5 +71,4 @@ class EntityRepositoryProtocol(Protocol):
         *,
         sync_id: UUID,
         entity_ids: List[str],
-    ) -> Dict[str, Entity]:
-        ...
+    ) -> Dict[str, Entity]: ...

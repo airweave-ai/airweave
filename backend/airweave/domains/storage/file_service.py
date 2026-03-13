@@ -20,6 +20,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.domains.storage.exceptions import FileSkippedException
 from airweave.domains.storage.paths import paths
 from airweave.domains.storage.protocols import StorageBackend
+from airweave.domains.sync_pipeline.file_types import SUPPORTED_FILE_EXTENSIONS
 from airweave.platform.entities._base import FileEntity
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,

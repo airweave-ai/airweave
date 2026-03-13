@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING, List, Optional, Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.platform.entities._base import BaseEntity
 from airweave.domains.sync_pipeline.types.entity_actions import EntityActionBatch
+from airweave.platform.entities._base import BaseEntity
 
 if TYPE_CHECKING:
     from airweave.core.context import BaseContext
+    from airweave.domains.sync_pipeline.config import SyncConfig
     from airweave.domains.sync_pipeline.contexts import SyncContext
     from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
-    from airweave.domains.sync_pipeline.config import SyncConfig
     from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
 
 

@@ -15,8 +15,8 @@ from airweave.core.logging import logger
 
 if TYPE_CHECKING:
     from PIL import Image
-from airweave.platform.ocr.mistral.models import CompressionResult
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
+from airweave.platform.ocr.mistral.models import CompressionResult
 
 # Quality levels to try, from highest to lowest.
 _QUALITY_STEPS = range(85, 19, -10)
