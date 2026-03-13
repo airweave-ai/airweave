@@ -8,7 +8,7 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 
@@ -93,6 +93,7 @@ def run_migrations_online() -> None:
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
 
         with context.begin_transaction():
+            connection.execute(text("SET lock_timeout = '10s'"))
             context.run_migrations()
 
 

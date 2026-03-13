@@ -47,7 +47,9 @@ If necessary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sy
 - **Config** (`core/config.py`): Environment-based configuration
 - **Logging** (`core/logging.py`): Structured logging system
 - **Exceptions** (`core/exceptions.py`): Centralized error handling
-- **Migrations** (`alembic/`): Database schema versioning
+- **Migrations** (`alembic/`): Database schema versioning. `env.py` sets
+  a 10 s `lock_timeout` by default. Always use `CREATE INDEX CONCURRENTLY`
+  (via `autocommit_block`) and expand-contract for breaking schema changes.
 
 ## Data Flow
 
