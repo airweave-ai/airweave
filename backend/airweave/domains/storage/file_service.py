@@ -9,7 +9,7 @@ Handles:
 
 import os
 import shutil
-from typing import TYPE_CHECKING, Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple
 from uuid import UUID, uuid4
 
 import aiofiles
@@ -17,17 +17,15 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import ContextualLogger
+from airweave.domains.storage.exceptions import FileSkippedException
+from airweave.domains.storage.paths import paths
+from airweave.domains.storage.protocols import StorageBackend
 from airweave.platform.entities._base import FileEntity
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.domains.storage.exceptions import FileSkippedException
-from airweave.domains.storage.paths import paths
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
-
-if TYPE_CHECKING:
-    from airweave.domains.storage.protocols import StorageBackend
 
 
 class FileService:
@@ -41,34 +39,23 @@ class FileService:
     - Cleanup temp directory after sync
     """
 
-    # Maximum file size we'll download (200MB)
     MAX_FILE_SIZE_BYTES = 209715200
 
     def __init__(
         self,
         sync_job_id: UUID,
-        storage_backend: Optional["StorageBackend"] = None,
-    ):
+        storage_backend: StorageBackend,
+    ) -> None:
         """Initialize file service.
 
         Args:
             sync_job_id: Sync job ID for organizing temp files
-            storage_backend: Storage backend for ARF operations (lazy loaded if None)
+            storage_backend: Storage backend for ARF operations
         """
         self.sync_job_id = sync_job_id
-        self._storage = storage_backend
+        self.storage = storage_backend
         self.base_temp_dir = paths.temp_sync_dir(sync_job_id)
         self._ensure_base_dir()
-
-    @property
-    def storage(self) -> "StorageBackend":
-        """Lazy-load storage backend."""
-        if self._storage is None:
-            # [code blue] todo: remove fallback once all call sites inject
-            from airweave.core import container as container_mod
-
-            self._storage = container_mod.container.storage_backend
-        return self._storage
 
     def _ensure_base_dir(self) -> None:
         """Ensure temp directory exists."""

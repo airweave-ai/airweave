@@ -5,7 +5,6 @@ Uses Python's Protocol for structural subtyping (duck typing with type hints).
 """
 
 from typing import (
-    TYPE_CHECKING,
     Any,
     BinaryIO,
     Dict,
@@ -17,8 +16,7 @@ from typing import (
 )
 from uuid import UUID
 
-if TYPE_CHECKING:
-    from airweave.core.logging import ContextualLogger
+from airweave.core.logging import ContextualLogger
 
 
 @runtime_checkable
@@ -150,80 +148,80 @@ class SyncFileManagerProtocol(Protocol):
     """
 
     async def check_file_exists(
-        self, logger: "ContextualLogger", sync_id: UUID, entity_id: str
+        self, logger: ContextualLogger, sync_id: UUID, entity_id: str
     ) -> bool:
         """Check if a file exists in sync-scoped storage."""
         ...
 
     async def store_file_entity(
-        self, logger: "ContextualLogger", entity: Any, content: BinaryIO
+        self, logger: ContextualLogger, entity: Any, content: BinaryIO
     ) -> Any:
         """Store a file entity in persistent storage."""
         ...
 
     async def is_entity_fully_processed(
-        self, logger: "ContextualLogger", cache_key: str
+        self, logger: ContextualLogger, cache_key: str
     ) -> bool:
         """Check if an entity has been fully processed."""
         ...
 
     async def mark_entity_processed(
-        self, logger: "ContextualLogger", sync_id: UUID, entity_id: str, chunk_count: int
+        self, logger: ContextualLogger, sync_id: UUID, entity_id: str, chunk_count: int
     ) -> None:
         """Mark an entity as fully processed after chunking."""
         ...
 
     async def get_cached_file_path(
-        self, logger: "ContextualLogger", sync_id: UUID, entity_id: str, file_name: str
+        self, logger: ContextualLogger, sync_id: UUID, entity_id: str, file_name: str
     ) -> Optional[str]:
         """Get or create a local cache path for a file."""
         ...
 
     async def cleanup_temp_file(
-        self, logger: "ContextualLogger", file_path: str
+        self, logger: ContextualLogger, file_path: str
     ) -> None:
         """Clean up a temporary file after processing."""
         ...
 
     async def get_file_path(
-        self, entity_id: str, sync_id: UUID, filename: str, logger: "ContextualLogger"
+        self, entity_id: str, sync_id: UUID, filename: str, logger: ContextualLogger
     ) -> Optional[str]:
         """Get file path for an entity (from cache or temp directory)."""
         ...
 
     async def get_file_content(
-        self, entity_id: str, sync_id: UUID, filename: str, logger: "ContextualLogger"
+        self, entity_id: str, sync_id: UUID, filename: str, logger: ContextualLogger
     ) -> Optional[bytes]:
         """Get file content as bytes."""
         ...
 
     async def check_ctti_file_exists(
-        self, logger: "ContextualLogger", entity_id: str
+        self, logger: ContextualLogger, entity_id: str
     ) -> bool:
         """Check if a CTTI file exists in global storage."""
         ...
 
     async def store_ctti_file(
-        self, logger: "ContextualLogger", entity: Any, content: BinaryIO
+        self, logger: ContextualLogger, entity: Any, content: BinaryIO
     ) -> Any:
         """Store a CTTI file in global storage."""
         ...
 
     async def is_ctti_entity_processed(
-        self, logger: "ContextualLogger", entity_id: str
+        self, logger: ContextualLogger, entity_id: str
     ) -> bool:
         """Check if a CTTI entity has been fully processed."""
         ...
 
     async def get_ctti_file_content(
-        self, logger: "ContextualLogger", entity_id: str
+        self, logger: ContextualLogger, entity_id: str
     ) -> Optional[str]:
         """Retrieve CTTI file content from global storage."""
         ...
 
     async def download_ctti_file(
         self,
-        logger: "ContextualLogger",
+        logger: ContextualLogger,
         entity_id: str,
         output_path: Optional[str] = None,
         create_dirs: bool = True,
@@ -233,7 +231,7 @@ class SyncFileManagerProtocol(Protocol):
 
     async def download_ctti_files_batch(
         self,
-        logger: "ContextualLogger",
+        logger: ContextualLogger,
         entity_ids: List[str],
         output_dir: Optional[str] = None,
         create_dirs: bool = True,
