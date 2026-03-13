@@ -71,6 +71,31 @@ class TxtConverter(BaseTextConverter):
 
         return results
 
+    @staticmethod
+    def _try_chardet_decode(raw_bytes: bytes, path: str) -> str | None:
+        """Attempt to decode bytes using chardet-detected encoding.
+
+        Returns decoded text on success, None otherwise.
+        """
+        try:
+            import chardet
+
+            detection = chardet.detect(raw_bytes[:100000])
+            if not detection or detection.get("confidence", 0) <= 0.7:
+                return None
+            detected_encoding = detection["encoding"]
+            if not detected_encoding:
+                return None
+            text = raw_bytes.decode(detected_encoding)
+            if text.count("\ufffd") == 0:
+                logger.debug(f"Detected encoding {detected_encoding} for {os.path.basename(path)}")
+                return text
+        except (UnicodeDecodeError, LookupError):
+            pass
+        except ImportError:
+            logger.debug("chardet not available, falling back to UTF-8 with ignore")
+        return None
+
     async def _convert_plain_text(self, path: str) -> str:
         """Read plain text file with encoding detection.
 
@@ -83,44 +108,23 @@ class TxtConverter(BaseTextConverter):
         Raises:
             EntityProcessingError: If file contains excessive binary/corrupted data
         """
-        # Read raw bytes for encoding detection
         async with aiofiles.open(path, "rb") as f:
             raw_bytes = await f.read()
 
         if not raw_bytes:
             return ""
 
-        # Try UTF-8 first (most common)
         try:
             text = raw_bytes.decode("utf-8")
-            replacement_count = text.count("\ufffd")
-            if replacement_count == 0:
+            if text.count("\ufffd") == 0:
                 return text
         except UnicodeDecodeError:
             pass
 
-        # Try encoding detection
-        try:
-            import chardet
+        chardet_result = self._try_chardet_decode(raw_bytes, path)
+        if chardet_result is not None:
+            return chardet_result
 
-            detection = chardet.detect(raw_bytes[:100000])  # Sample first 100KB
-            if detection and detection.get("confidence", 0) > 0.7:
-                detected_encoding = detection["encoding"]
-                if detected_encoding:
-                    try:
-                        text = raw_bytes.decode(detected_encoding)
-                        replacement_count = text.count("\ufffd")
-                        if replacement_count == 0:
-                            logger.debug(
-                                f"Detected encoding {detected_encoding} for {os.path.basename(path)}"
-                            )
-                            return text
-                    except (UnicodeDecodeError, LookupError):
-                        pass
-        except ImportError:
-            logger.debug("chardet not available, falling back to UTF-8 with ignore")
-
-        # Fallback: decode with replace to create U+FFFD for validation
         text = raw_bytes.decode("utf-8", errors="replace")
         replacement_count = text.count("\ufffd")
 
@@ -128,7 +132,6 @@ class TxtConverter(BaseTextConverter):
             text_length = len(text)
             replacement_ratio = replacement_count / text_length if text_length > 0 else 0
 
-            # Warn if high replacement ratio
             if replacement_ratio > 0.25 or replacement_count > 5000:
                 logger.warning(
                     f"File {os.path.basename(path)} contains {replacement_count} "
@@ -233,7 +236,8 @@ class TxtConverter(BaseTextConverter):
                 replacement_count = raw.count("\ufffd")
                 if replacement_count > 100:  # More lenient for fallback
                     raise EntityProcessingError(
-                        f"XML contains excessive binary data ({replacement_count} replacement chars)"
+                        f"XML contains excessive binary data "
+                        f"({replacement_count} replacement chars)"
                     )
 
             return f"```xml\n{raw}\n```" if raw.strip() else None

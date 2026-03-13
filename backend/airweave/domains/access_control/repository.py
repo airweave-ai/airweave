@@ -20,6 +20,7 @@ class AccessControlMembershipRepository:
         source_connection_id: UUID,
         source_name: str,
     ) -> int:
+        """Bulk-insert membership rows."""
         return await crud.access_control_membership.bulk_create(
             db, memberships, organization_id, source_connection_id, source_name
         )
@@ -36,6 +37,7 @@ class AccessControlMembershipRepository:
         source_connection_id: UUID,
         source_name: str,
     ) -> None:
+        """Insert or update a single membership."""
         return await crud.access_control_membership.upsert(
             db,
             member_id=member_id,
@@ -57,6 +59,7 @@ class AccessControlMembershipRepository:
         source_connection_id: UUID,
         organization_id: UUID,
     ) -> int:
+        """Delete a membership by its composite key."""
         return await crud.access_control_membership.delete_by_key(
             db,
             member_id=member_id,
@@ -74,6 +77,7 @@ class AccessControlMembershipRepository:
         source_connection_id: UUID,
         organization_id: UUID,
     ) -> int:
+        """Delete all memberships for a group."""
         return await crud.access_control_membership.delete_by_group(
             db,
             group_id=group_id,
@@ -87,6 +91,7 @@ class AccessControlMembershipRepository:
         source_connection_id: UUID,
         organization_id: UUID,
     ) -> List[AccessControlMembership]:
+        """Get all memberships for a source connection."""
         return await crud.access_control_membership.get_by_source_connection(
             db, source_connection_id, organization_id
         )
@@ -96,6 +101,7 @@ class AccessControlMembershipRepository:
         db: AsyncSession,
         ids: List[UUID],
     ) -> int:
+        """Bulk-delete memberships by ID."""
         return await crud.access_control_membership.bulk_delete(db, ids)
 
     async def get_by_member(
@@ -105,6 +111,7 @@ class AccessControlMembershipRepository:
         member_type: str,
         organization_id: UUID,
     ) -> List[AccessControlMembership]:
+        """Get memberships for a specific member."""
         return await crud.access_control_membership.get_by_member(
             db, member_id, member_type, organization_id
         )
@@ -117,6 +124,7 @@ class AccessControlMembershipRepository:
         readable_collection_id: str,
         organization_id: UUID,
     ) -> List[AccessControlMembership]:
+        """Get memberships scoped to a collection."""
         return await crud.access_control_membership.get_by_member_and_collection(
             db, member_id, member_type, readable_collection_id, organization_id
         )
@@ -129,6 +137,7 @@ class AccessControlMembershipRepository:
         source_connection_id: UUID,
         organization_id: UUID,
     ) -> List[AccessControlMembership]:
+        """Get memberships for a set of group IDs."""
         return await crud.access_control_membership.get_memberships_by_groups(
             db,
             group_ids=group_ids,
@@ -142,6 +151,7 @@ class AccessControlMembershipRepository:
         source_connection_id: UUID,
         organization_id: UUID,
     ) -> int:
+        """Delete all memberships for a source connection."""
         return await crud.access_control_membership.delete_by_source_connection(
             db, source_connection_id, organization_id
         )

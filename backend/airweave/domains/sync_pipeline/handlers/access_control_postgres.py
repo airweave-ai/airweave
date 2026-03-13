@@ -26,6 +26,7 @@ class ACPostgresHandler(ACActionHandler):
     """Persists access control memberships to PostgreSQL."""
 
     def __init__(self, acl_repo: AccessControlMembershipRepositoryProtocol) -> None:
+        """Initialize with ACL membership repository."""
         self._acl_repo = acl_repo
 
     @property

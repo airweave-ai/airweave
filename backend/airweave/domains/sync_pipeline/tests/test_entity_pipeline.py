@@ -7,7 +7,6 @@ import pytest
 
 from airweave.domains.sync_pipeline.entity_pipeline import EntityPipeline
 
-
 # ---------------------------------------------------------------------------
 # Constructor
 # ---------------------------------------------------------------------------

@@ -6,19 +6,18 @@ from uuid import uuid4
 import pytest
 
 from airweave.domains.sync_pipeline.entity_action_resolver import EntityActionResolver
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.types.entity_actions import (
+    EntityInsertAction,
+    EntityKeepAction,
+    EntityUpdateAction,
+)
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import (
     AirweaveSystemMetadata,
     BaseEntity,
     DeletionEntity,
 )
-from airweave.domains.sync_pipeline.types.entity_actions import (
-    EntityInsertAction,
-    EntityKeepAction,
-    EntityUpdateAction,
-)
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-
 
 # ---------------------------------------------------------------------------
 # Helpers

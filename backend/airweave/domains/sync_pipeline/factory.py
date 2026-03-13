@@ -63,6 +63,7 @@ class SyncFactory:
         acl_repo: AccessControlMembershipRepositoryProtocol,
         processor: ChunkEmbedProcessorProtocol,
     ) -> None:
+        """Initialize with all required service and repository dependencies."""
         self._sc_repo = sc_repo
         self._event_bus = event_bus
         self._usage_checker = usage_checker

@@ -30,6 +30,7 @@ class EntityPostgresHandler(EntityActionHandler):
     """Handler for PostgreSQL entity metadata."""
 
     def __init__(self, entity_repo: EntityRepositoryProtocol) -> None:
+        """Initialize with entity repository."""
         self._entity_repo = entity_repo
 
     @property
