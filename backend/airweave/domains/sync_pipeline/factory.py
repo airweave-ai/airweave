@@ -30,7 +30,6 @@ from airweave.domains.sync_pipeline.access_control_pipeline import AccessControl
 from airweave.domains.sync_pipeline.access_control_resolver import ACActionResolver
 from airweave.domains.sync_pipeline.builders import SyncContextBuilder
 from airweave.domains.sync_pipeline.builders.destinations import DestinationsContextBuilder
-from airweave.domains.sync_pipeline.builders.source import SourceContextBuilder
 from airweave.domains.sync_pipeline.builders.tracking import TrackingContextBuilder
 from airweave.domains.sync_pipeline.config import SyncConfig, SyncConfigBuilder
 from airweave.domains.sync_pipeline.contexts.infra import InfraContext
@@ -223,6 +222,8 @@ class SyncFactory:
     @staticmethod
     async def _build_source(db, sync, sync_job, ctx, force_full_sync, execution_config):
         """Build source and cursor. Returns (source, cursor) tuple."""
+        from airweave.domains.sync_pipeline.builders.source import SourceContextBuilder
+
         sync_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.source_build",
             dimensions={
