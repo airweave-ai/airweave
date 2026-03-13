@@ -12,12 +12,12 @@ from airweave.platform.entities._base import (
     BaseEntity,
     DeletionEntity,
 )
-from airweave.platform.sync.actions.entity.types import (
+from airweave.domains.sync_pipeline.types.entity_actions import (
     EntityInsertAction,
     EntityKeepAction,
     EntityUpdateAction,
 )
-from airweave.platform.sync.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
 
 # ---------------------------------------------------------------------------

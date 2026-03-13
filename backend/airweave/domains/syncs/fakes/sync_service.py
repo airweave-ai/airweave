@@ -4,7 +4,7 @@ from typing import Optional
 
 from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.platform.sync.config import SyncConfig
+from airweave.domains.sync_pipeline.config import SyncConfig
 
 
 class FakeSyncService:

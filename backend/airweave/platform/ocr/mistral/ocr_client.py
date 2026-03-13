@@ -25,7 +25,7 @@ from airweave.platform.ocr.mistral.models import (
     OcrResult,
 )
 from airweave.platform.rate_limiters import MistralRateLimiter
-from airweave.platform.sync.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
 # ---------------------------------------------------------------------------
 # Retry configuration

@@ -15,7 +15,7 @@ import pytest
 from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.syncs.sync_job_service import SyncJobService
 from airweave.domains.syncs.types import StatsUpdate, TimestampUpdate
-from airweave.platform.sync.pipeline.entity_tracker import SyncStats
+from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
 
 NOW = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
 

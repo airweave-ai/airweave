@@ -19,7 +19,7 @@ from typing import Any
 import aiofiles.os
 
 from airweave.core.logging import logger
-from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
 
 
 class RecursiveSplitter(ABC):

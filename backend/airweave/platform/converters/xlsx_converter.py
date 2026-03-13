@@ -5,8 +5,8 @@ from typing import Dict, List
 
 from airweave.core.logging import logger
 from airweave.platform.converters._base import BaseTextConverter
-from airweave.platform.sync.async_helpers import run_in_thread_pool
-from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
+from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
 
 
 class XlsxConverter(BaseTextConverter):

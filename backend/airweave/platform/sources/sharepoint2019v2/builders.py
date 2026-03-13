@@ -26,7 +26,7 @@ from airweave.platform.sources.sharepoint2019v2.acl import (
     clean_role_assignments,
     extract_access_control,
 )
-from airweave.platform.sync.exceptions import EntityProcessingError
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 
 
 def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:

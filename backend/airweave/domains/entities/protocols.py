@@ -1,6 +1,6 @@
 """Protocols for the entities domain."""
 
-from typing import Dict, List, Protocol, Tuple
+from typing import Any, Dict, List, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,10 +30,9 @@ class EntityCountRepositoryProtocol(Protocol):
 
 
 class EntityRepositoryProtocol(Protocol):
-    """Entity read access used by the sync pipeline."""
+    """Entity data access used by the sync pipeline."""
 
     async def get_by_sync_id(self, db: AsyncSession, sync_id: UUID) -> List[Entity]:
-        """Get all entities for a specific sync."""
         ...
 
     async def bulk_get_by_entity_sync_and_definition(
@@ -43,5 +42,39 @@ class EntityRepositoryProtocol(Protocol):
         sync_id: UUID,
         entity_requests: list[Tuple[str, str]],
     ) -> Dict[Tuple[str, str], Entity]:
-        """Bulk-fetch entities by (entity_id, entity_definition_short_name) for a sync."""
+        ...
+
+    async def bulk_create(
+        self,
+        db: AsyncSession,
+        *,
+        objs: list,
+        ctx: Any,
+    ) -> List[Entity]:
+        ...
+
+    async def bulk_update_hash(
+        self,
+        db: AsyncSession,
+        *,
+        rows: List[Tuple[UUID, str]],
+    ) -> None:
+        ...
+
+    async def bulk_remove(
+        self,
+        db: AsyncSession,
+        *,
+        ids: List[UUID],
+        ctx: Any,
+    ) -> List[Entity]:
+        ...
+
+    async def bulk_get_by_entity_and_sync(
+        self,
+        db: AsyncSession,
+        *,
+        sync_id: UUID,
+        entity_ids: List[str],
+    ) -> Dict[str, Entity]:
         ...

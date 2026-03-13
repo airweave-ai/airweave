@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from airweave.platform.converters.txt_converter import TxtConverter
-from airweave.platform.sync.exceptions import EntityProcessingError
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 
 
 @pytest.fixture
