@@ -27,8 +27,13 @@ class TextualRepresentationBuilder:
 
     DEFAULT_CONVERTER_BATCH_SIZE = 10
 
-    def __init__(self, converter_registry: ConverterRegistryProtocol) -> None:
-        """Initialize with a converter registry for routing entities to converters."""
+    def __init__(self, converter_registry: Optional[ConverterRegistryProtocol] = None) -> None:
+        """Initialize with a converter registry for routing entities to converters.
+
+        The registry is optional for callers that only need metadata building
+        (e.g. federated search sources). Converter routing will fail at runtime
+        if the registry is None and a file/web entity is encountered.
+        """
         self._registry = converter_registry
 
     # ------------------------------------------------------------------------------------
