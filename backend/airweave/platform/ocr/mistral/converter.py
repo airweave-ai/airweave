@@ -25,8 +25,8 @@ from typing import Dict, List, Optional
 import aiofiles.os
 
 from airweave.core.logging import logger
+from airweave.domains.converters.text_extractors.pptx import extract_pptx_text
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
-from airweave.platform.converters.text_extractors.pptx import extract_pptx_text
 from airweave.platform.ocr.mistral.compressor import compress_image
 from airweave.platform.ocr.mistral.models import (
     IMAGE_EXTENSIONS,

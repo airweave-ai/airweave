@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from airweave.core.shared_models import AirweaveFieldFlag
+from airweave.domains.converters.protocols import ConverterRegistryProtocol
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
 from airweave.domains.sync_pipeline.file_types import SUPPORTED_FILE_EXTENSIONS
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity, WebEntity
@@ -24,8 +25,11 @@ class TextualRepresentationBuilder:
     - Batch conversion orchestration
     """
 
-    # Default batch size for converters without specific config
     DEFAULT_CONVERTER_BATCH_SIZE = 10
+
+    def __init__(self, converter_registry: ConverterRegistryProtocol) -> None:
+        """Initialize with a converter registry for routing entities to converters."""
+        self._registry = converter_registry
 
     # ------------------------------------------------------------------------------------
     # Public API
@@ -272,106 +276,25 @@ class TextualRepresentationBuilder:
         return converter_groups, failed_entities
 
     def _get_converter_and_key(self, entity: BaseEntity) -> Tuple[Any, Optional[str]]:
-        """Get the appropriate converter and key for an entity.
-
-        Args:
-            entity: The entity to get converter for
-
-        Returns:
-            Tuple of (converter, key) where:
-            - converter: The converter module/instance to use
-            - key: The key to pass to convert_batch
-
-        Raises:
-            EntityProcessingError: If entity type is not supported or missing required fields
-        """
-        from airweave.platform import converters
-
-        # WebEntity: use web_converter with crawl_url
+        """Get the appropriate converter and key for an entity."""
         if isinstance(entity, WebEntity):
             if not entity.crawl_url:
                 raise EntityProcessingError(f"WebEntity {entity.entity_id} missing crawl_url")
-            return converters.web_converter, entity.crawl_url
+            return self._registry.for_web(), entity.crawl_url
 
-        # FileEntity: use file-type specific converter with local_path
         if isinstance(entity, FileEntity):
             if not entity.local_path:
                 raise EntityProcessingError(f"FileEntity {entity.entity_id} missing local_path")
-            converter = self._determine_converter_for_file(entity.local_path)
+            _, ext = os.path.splitext(entity.local_path)
+            ext = ext.lower()
+            if ext not in SUPPORTED_FILE_EXTENSIONS:
+                raise EntityProcessingError(f"Unsupported file type: {ext}")
+            converter = self._registry.for_extension(ext)
+            if not converter:
+                raise EntityProcessingError(f"Unsupported file type: {ext}")
             return converter, entity.local_path
 
-        # Other entity types don't need content conversion
         return None, None
-
-    def _determine_converter_for_file(self, file_path: str) -> Any:
-        """Determine converter module based on file extension.
-
-        Args:
-            file_path: Path to the file
-
-        Returns:
-            Converter module with convert_batch function
-
-        Raises:
-            EntityProcessingError: If file type is not supported
-        """
-        from airweave.platform import converters
-
-        _, ext = os.path.splitext(file_path)
-        ext = ext.lower()
-
-        if ext not in SUPPORTED_FILE_EXTENSIONS:
-            raise EntityProcessingError(f"Unsupported file type: {ext}")
-
-        converter_map = {
-            # Documents - Text extraction + Mistral OCR fallback
-            ".pdf": converters.pdf_converter,
-            ".docx": converters.docx_converter,
-            ".pptx": converters.pptx_converter,
-            # Mistral OCR - Images
-            ".jpg": converters.mistral_converter,
-            ".jpeg": converters.mistral_converter,
-            ".png": converters.mistral_converter,
-            # XLSX - local extraction
-            ".xlsx": converters.xlsx_converter,
-            # HTML
-            ".html": converters.html_converter,
-            ".htm": converters.html_converter,
-            # Text files
-            ".txt": converters.txt_converter,
-            ".json": converters.txt_converter,
-            ".xml": converters.txt_converter,
-            ".md": converters.txt_converter,
-            ".yaml": converters.txt_converter,
-            ".yml": converters.txt_converter,
-            ".toml": converters.txt_converter,
-            # Code file extensions
-            ".py": converters.code_converter,
-            ".js": converters.code_converter,
-            ".ts": converters.code_converter,
-            ".tsx": converters.code_converter,
-            ".jsx": converters.code_converter,
-            ".java": converters.code_converter,
-            ".cpp": converters.code_converter,
-            ".c": converters.code_converter,
-            ".h": converters.code_converter,
-            ".hpp": converters.code_converter,
-            ".go": converters.code_converter,
-            ".rs": converters.code_converter,
-            ".rb": converters.code_converter,
-            ".php": converters.code_converter,
-            ".swift": converters.code_converter,
-            ".kt": converters.code_converter,
-            ".kts": converters.code_converter,
-            ".tf": converters.code_converter,
-            ".tfvars": converters.code_converter,
-        }
-
-        converter = converter_map.get(ext)
-        if not converter:
-            raise EntityProcessingError(f"Unsupported file type: {ext}")
-
-        return converter
 
     # ------------------------------------------------------------------------------------
     # Conversion Execution
@@ -492,7 +415,3 @@ class TextualRepresentationBuilder:
         sync_context.logger.warning(
             f"Removed {len(failed_entities)} entities that failed conversion"
         )
-
-
-# Singleton instance
-text_builder = TextualRepresentationBuilder()

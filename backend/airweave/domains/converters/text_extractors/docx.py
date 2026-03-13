@@ -1,9 +1,4 @@
-"""Direct text extraction from DOCX files using python-docx.
-
-Extracts paragraph text and basic structure (headings, lists) without any
-API calls.  If the DOCX has extractable text, this is orders of magnitude
-faster and cheaper than sending it through OCR.
-"""
+"""Direct text extraction from DOCX files using python-docx."""
 
 from __future__ import annotations
 
@@ -14,10 +9,8 @@ from typing import Any, Optional
 from airweave.core.logging import logger
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
-# Minimum total characters to consider the extraction successful.
 MIN_TOTAL_CHARS = 50
 
-# Heading style → markdown prefix mapping (checked in order).
 _HEADING_MAP = (
     ("heading 1", "# "),
     ("heading 2", "## "),
@@ -27,14 +20,6 @@ _HEADING_MAP = (
 
 
 def _format_paragraph(para: Any) -> Optional[str]:
-    """Convert a single DOCX paragraph to a markdown line.
-
-    Args:
-        para: A ``docx.text.paragraph.Paragraph`` instance.
-
-    Returns:
-        Markdown string or ``None`` if the paragraph is empty.
-    """
     text = para.text.strip()
     if not text:
         return None
@@ -52,14 +37,6 @@ def _format_paragraph(para: Any) -> Optional[str]:
 
 
 def _format_table(table: Any) -> str:
-    """Convert a DOCX table to a markdown table string.
-
-    Args:
-        table: A ``docx.table.Table`` instance.
-
-    Returns:
-        Markdown table string (may be empty if the table has no rows).
-    """
     rows: list[str] = []
     for row in table.rows:
         cells = [cell.text.strip() for cell in row.cells]
@@ -74,17 +51,7 @@ def _format_table(table: Any) -> str:
 
 
 async def extract_docx_text(path: str) -> Optional[str]:
-    """Extract text from a DOCX and return markdown.
-
-    Args:
-        path: Path to the DOCX file.
-
-    Returns:
-        Markdown string if extraction yielded sufficient text, ``None`` otherwise.
-
-    Raises:
-        SyncFailureError: If python-docx is not installed.
-    """
+    """Extract text from a DOCX and return markdown."""
     try:
         from docx import Document
     except ImportError:
