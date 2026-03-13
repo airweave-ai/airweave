@@ -28,6 +28,11 @@ export default tseslint.config(
       "@typescript-eslint/no-empty-object-type": "off",
       "react-refresh/only-export-components": "off",
       "react-hooks/exhaustive-deps": "off",
+      "no-restricted-properties": ["error", {
+        "object": "Math",
+        "property": "random",
+        "message": "Use crypto.getRandomValues() or crypto.randomUUID() instead of Math.random().",
+      }],
     },
   }
 );

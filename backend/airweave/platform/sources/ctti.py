@@ -5,7 +5,7 @@ from the studies table, and creates WebEntity instances with ClinicalTrials.gov 
 """
 
 import asyncio
-import random
+import secrets
 from typing import Any, AsyncGenerator, Dict, Optional, Union
 
 import asyncpg
@@ -141,7 +141,7 @@ class CTTISource(BaseSource):
                 if attempt < max_retries:
                     # Calculate delay with exponential backoff and jitter
                     base_delay = 2**attempt  # 1s, 2s, 4s
-                    jitter = random.uniform(0.1, 0.5)
+                    jitter = 0.1 + secrets.randbelow(401) / 1000
                     delay = base_delay + jitter
 
                     self.logger.warning(

@@ -3,7 +3,7 @@
 import asyncio
 import hashlib
 import os
-import random
+import secrets
 from typing import List
 from uuid import uuid4
 
@@ -217,7 +217,7 @@ async def _retry_with_backoff(
                 if is_connection_error:
                     # Longer delays for connection issues
                     base_delay = 5 * (attempt + 1)  # 5, 10, 15 seconds
-                    jitter = random.uniform(1.0, 2.0)
+                    jitter = 1.0 + secrets.randbelow(1001) / 1000
                     delay = base_delay + jitter
 
                     logger.warning(
@@ -227,7 +227,7 @@ async def _retry_with_backoff(
                 elif is_rate_limited:
                     # Medium delay for rate limiting
                     base_delay = 3 ** (attempt + 1)  # 3, 9, 27 seconds
-                    jitter = random.uniform(0.5, 1.0)
+                    jitter = 0.5 + secrets.randbelow(501) / 1000
                     delay = base_delay + jitter
 
                     logger.warning(
@@ -237,7 +237,7 @@ async def _retry_with_backoff(
                 else:
                     # Standard exponential backoff
                     base_delay = 2 * (attempt + 1)  # 2, 4, 6 seconds
-                    jitter = random.uniform(0.1, 0.5)
+                    jitter = 0.1 + secrets.randbelow(401) / 1000
                     delay = base_delay + jitter
 
                     logger.warning(
