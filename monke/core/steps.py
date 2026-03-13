@@ -83,6 +83,37 @@ class CreateStep(TestStep):
             self.context.bongo.created_entities = entities
 
 
+class FetchStep(TestStep):
+    """Fetch existing entities from the source (no creation)."""
+
+    async def execute(self) -> None:
+        """Fetch existing entities via the connector (e.g. single pre-existing event type)."""
+        bongo = self.context.bongo
+        fetcher = getattr(bongo, "fetch_existing_entities", None)
+        if not callable(fetcher):
+            raise ValueError(
+                f"fetch step requires bongo to implement fetch_existing_entities(); "
+                f"{type(bongo).__name__} does not"
+            )
+
+        self.logger.info("=" * 80)
+        self.logger.info("📥 FETCH PHASE: Loading existing entities from source (no creation)")
+        self.logger.info("=" * 80)
+        self.logger.info(f"📡 Source: {self.config.connector.type}")
+
+        entities = await fetcher()
+
+        self.logger.info(f"✅ Fetched {len(entities)} existing entity/entities")
+
+        self.context.created_entities = entities
+        if self.context.bongo:
+            self.context.bongo.created_entities = entities
+
+        self.logger.info("=" * 80)
+        self.logger.info(f"✅ FETCH COMPLETED: {len(entities)} entity/entities ready for sync")
+        self.logger.info("=" * 80)
+
+
 class SyncStep(TestStep):
     """Sync data to Airweave step."""
 
@@ -1050,6 +1081,7 @@ class TestStepFactory:
         "cleanup": CleanupStep,
         "collection_cleanup": CollectionCleanupStep,
         "create": CreateStep,
+        "fetch": FetchStep,
         "sync": SyncStep,
         "force_full_sync": SyncStep,  # Use same class with force_full_sync=True
         "verify": VerifyStep,

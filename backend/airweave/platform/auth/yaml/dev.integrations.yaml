@@ -45,6 +45,17 @@ integrations:
   calcom:
     # Cal.com uses API key (DIRECT auth). OAuth can be added here if needed later.
 
+  calendly:
+    oauth_type: "with_rotating_refresh"
+    url: "https://auth.calendly.com/oauth/authorize"
+    backend_url: "https://auth.calendly.com/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "3080BF64Z3ecPLqzSFcPYe5C4Dyt3KXHPxxwQIIrFW4"
+    client_secret: "placeholder_client_secret"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "users:read event_types:read scheduled_events:read"
+
   confluence:
     oauth_type: "with_rotating_refresh"
     url: "https://auth.atlassian.com/authorize"

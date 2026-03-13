@@ -943,6 +943,12 @@ class CalComConfig(SourceConfig):
         return value.rstrip("/")
 
 
+class CalendlyConfig(SourceConfig):
+    """Calendly configuration schema."""
+
+    pass
+
+
 # AUTH PROVIDER CONFIGURATION CLASSES
 # These are for configuring auth provider behavior
 

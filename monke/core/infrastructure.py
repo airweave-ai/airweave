@@ -85,8 +85,18 @@ def _build_connection_payload(config: TestConfig, context: TestContext) -> Dict[
     Returns:
         Dictionary payload for source connection creation
     """
+    # Generate name with timestamp, ensuring it doesn't exceed 42 characters
+    base_name = f"{config.connector.type.title()} Test"
+    timestamp = str(int(time.time()))
+    # Max length is 42, so we need: base_name + " " + timestamp <= 42
+    # Reserve space for timestamp (10 digits) + space (1) = 11 chars
+    max_base_length = 42 - len(timestamp) - 1
+    if len(base_name) > max_base_length:
+        base_name = base_name[:max_base_length]
+    name = f"{base_name} {timestamp}"
+
     base_payload = {
-        "name": f"{config.connector.type.title()} Test {int(time.time())}",
+        "name": name,
         "short_name": config.connector.type,
         "readable_collection_id": context.collection_readable_id,
         "config": config.connector.config_fields,
