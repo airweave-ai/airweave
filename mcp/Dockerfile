@@ -19,6 +19,8 @@ FROM node:24.14.0-alpine@sha256:7fddd9ddeae8196abf4a3ef2de34e11f7b1a722119f91f28
 
 WORKDIR /app
 
+RUN apk upgrade --no-cache
+
 # Copy package files
 COPY package*.json ./
 
