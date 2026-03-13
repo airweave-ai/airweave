@@ -22,6 +22,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import ZoomAuthConfig
+from airweave.platform.cursors import ZoomCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.zoom import (
@@ -50,7 +51,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     auth_config_class=ZoomAuthConfig,
     config_class=None,
     labels=["Communication", "Meetings", "Video"],
-    supports_continuous=False,
+    supports_continuous=True,
+    cursor_class=ZoomCursor,
     rate_limit_level=RateLimitLevel.ORG,
 )
 class ZoomSource(BaseSource):
@@ -62,23 +64,46 @@ class ZoomSource(BaseSource):
     """
 
     ZOOM_BASE_URL = "https://api.zoom.us/v2"
+    access_token: str = ""
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+        cls, credentials: Optional[Any] = None, config: Optional[Dict[str, Any]] = None
     ) -> "ZoomSource":
-        """Create a new Zoom source instance with the provided OAuth access token.
+        """Create a new Zoom source instance.
 
-        Args:
-            access_token: OAuth access token for Zoom API
-            config: Optional configuration parameters
-
-        Returns:
-            Configured ZoomSource instance
+        For OAuth-based Zoom sources, `credentials` is expected to be an access
+        token string or an auth config object exposing an `access_token`
+        attribute. The config dict is currently unused but accepted for
+        compatibility with BaseSource.create.
         """
         instance = cls()
+        access_token: Optional[str] = None
+        if isinstance(credentials, str):
+            access_token = credentials
+        elif hasattr(credentials, "access_token"):
+            access_token = credentials.access_token
+
+        if not access_token:
+            raise ValueError("ZoomSource.create requires an access token in credentials")
+
         instance.access_token = access_token
         return instance
+
+    def _get_last_synced_at(self) -> Optional[datetime]:
+        """Return the last synced-at timestamp from the cursor, if available."""
+        cursor_data = self.cursor.data if getattr(self, "cursor", None) else {}
+        raw = cursor_data.get("last_synced_at") or ""
+        if not raw:
+            return None
+        try:
+            # Support both plain ISO strings and Z-suffixed values
+            if raw.endswith("Z"):
+                raw = raw.replace("Z", "+00:00")
+            return datetime.fromisoformat(raw)
+        except Exception:
+            # If parsing fails, fall back to no cursor to avoid skipping data
+            return None
 
     @retry(
         stop=stop_after_attempt(5),
@@ -531,6 +556,119 @@ class ZoomSource(BaseSource):
             self.logger.error(f"Error generating recording entities: {str(e)}")
             raise
 
+    async def _yield_scheduled_meetings_incremental(
+        self,
+        client: httpx.AsyncClient,
+        user_id: str,
+        last_synced_at: Optional[datetime],
+        update_max: Any,
+    ) -> AsyncGenerator[ZoomMeetingEntity, None]:
+        """Yield scheduled meeting entities, skipping those already synced."""
+        async for meeting_entity in self._generate_meeting_entities(client, user_id):
+            effective_ts = meeting_entity.start_time or meeting_entity.created_at
+            update_max(effective_ts)
+            if last_synced_at and effective_ts and effective_ts <= last_synced_at:
+                continue
+            yield meeting_entity
+
+    async def _yield_past_meetings_and_participants_incremental(
+        self,
+        client: httpx.AsyncClient,
+        user_id: str,
+        last_synced_at: Optional[datetime],
+        update_max: Any,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Yield past meeting entities and their participants, skipping already synced."""
+        past_meetings: list[ZoomMeetingEntity] = []
+        async for meeting_entity in self._generate_past_meeting_entities(client, user_id):
+            effective_ts = (
+                meeting_entity.updated_at or meeting_entity.start_time or meeting_entity.created_at
+            )
+            update_max(effective_ts)
+            if last_synced_at and effective_ts and effective_ts <= last_synced_at:
+                continue
+            yield meeting_entity
+            past_meetings.append(meeting_entity)
+
+        for meeting in past_meetings:
+            if not meeting.uuid:
+                continue
+            meeting_breadcrumb = Breadcrumb(
+                entity_id=meeting.meeting_id,
+                name=meeting.topic,
+                entity_type="ZoomMeetingEntity",
+            )
+            async for participant_entity in self._generate_participant_entities(
+                client,
+                meeting.meeting_id,
+                meeting.uuid,
+                meeting.topic,
+                meeting_breadcrumb,
+            ):
+                yield participant_entity
+
+    async def _yield_recording_entities_incremental(
+        self,
+        client: httpx.AsyncClient,
+        user_id: str,
+        last_synced_at: Optional[datetime],
+        update_max: Any,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Yield recording and transcript entities, skipping already synced."""
+        async for recording_entity in self._generate_recording_entities(client, user_id):
+            effective_ts: Optional[datetime] = None
+            if isinstance(recording_entity, ZoomRecordingEntity):
+                effective_ts = (
+                    recording_entity.recording_end
+                    or recording_entity.recording_start
+                    or recording_entity.created_at
+                )
+            elif isinstance(recording_entity, ZoomTranscriptEntity):
+                effective_ts = recording_entity.recording_start or recording_entity.created_at
+            update_max(effective_ts)
+            if last_synced_at and effective_ts and effective_ts <= last_synced_at:
+                continue
+            yield recording_entity
+
+    def _persist_cursor_on_success(
+        self,
+        max_seen_timestamp: Optional[datetime],
+        entity_count: int,
+    ) -> None:
+        """Update cursor with last_synced_at only when we have a successful run with data."""
+        if not self.cursor or not max_seen_timestamp or entity_count <= 0:
+            return
+        ts = (
+            max_seen_timestamp
+            if max_seen_timestamp.tzinfo
+            else max_seen_timestamp.replace(tzinfo=timezone.utc)
+        )
+        self.cursor.update(last_synced_at=ts.isoformat())
+
+    async def _stream_all_entities_incremental(
+        self,
+        client: httpx.AsyncClient,
+        user_id: str,
+        last_synced_at: Optional[datetime],
+        update_max: Any,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Yield all Zoom entities in order (scheduled, past+participants, recordings)."""
+        self.logger.info("Generating scheduled meeting entities...")
+        async for entity in self._yield_scheduled_meetings_incremental(
+            client, user_id, last_synced_at, update_max
+        ):
+            yield entity
+        self.logger.info("Generating past meeting entities...")
+        async for entity in self._yield_past_meetings_and_participants_incremental(
+            client, user_id, last_synced_at, update_max
+        ):
+            yield entity
+        self.logger.info("Generating recording entities...")
+        async for entity in self._yield_recording_entities_incremental(
+            client, user_id, last_synced_at, update_max
+        ):
+            yield entity
+
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Zoom entities.
 
@@ -543,70 +681,41 @@ class ZoomSource(BaseSource):
         """
         self.logger.info("===== STARTING ZOOM ENTITY GENERATION =====")
         entity_count = 0
+        last_synced_at = self._get_last_synced_at()
+        self.logger.info(
+            f"Incremental sync since {last_synced_at.isoformat()}"
+            if last_synced_at
+            else "Full 30-day sync (no cursor found)"
+        )
+        max_seen_timestamp: Optional[datetime] = last_synced_at
+
+        def _update_max(ts: Optional[datetime]) -> None:
+            nonlocal max_seen_timestamp
+            if ts is None:
+                return
+            if max_seen_timestamp is None or ts > max_seen_timestamp:
+                max_seen_timestamp = ts
 
         try:
             async with self.http_client() as client:
                 self.logger.info("HTTP client created, starting entity generation")
-
-                # Get current user
                 user = await self._get_current_user(client)
                 user_id = user.get("id", "me")
                 self.logger.info(f"Authenticated as user: {user.get('email', user_id)}")
-
-                # 1) Generate scheduled meeting entities
-                self.logger.info("Generating scheduled meeting entities...")
-                async for meeting_entity in self._generate_meeting_entities(client, user_id):
+                async for entity in self._stream_all_entities_incremental(
+                    client, user_id, last_synced_at, _update_max
+                ):
                     entity_count += 1
-                    self.logger.debug(
-                        f"Yielding entity #{entity_count}: Meeting - {meeting_entity.topic}"
+                    label = getattr(
+                        entity, "topic", getattr(entity, "participant_name", type(entity).__name__)
                     )
-                    yield meeting_entity
-
-                # 2) Generate past meeting entities and their participants
-                self.logger.info("Generating past meeting entities...")
-                past_meetings = []
-                async for meeting_entity in self._generate_past_meeting_entities(client, user_id):
-                    entity_count += 1
-                    self.logger.debug(
-                        f"Yielding entity #{entity_count}: Past Meeting - {meeting_entity.topic}"
-                    )
-                    yield meeting_entity
-                    past_meetings.append(meeting_entity)
-
-                # 3) Generate participant entities for past meetings
-                for meeting in past_meetings:
-                    if meeting.uuid:
-                        meeting_breadcrumb = Breadcrumb(
-                            entity_id=meeting.meeting_id,
-                            name=meeting.topic,
-                            entity_type="ZoomMeetingEntity",
-                        )
-                        async for participant_entity in self._generate_participant_entities(
-                            client,
-                            meeting.meeting_id,
-                            meeting.uuid,
-                            meeting.topic,
-                            meeting_breadcrumb,
-                        ):
-                            entity_count += 1
-                            self.logger.debug(
-                                f"Yielding entity #{entity_count}: "
-                                f"Participant - {participant_entity.participant_name}"
-                            )
-                            yield participant_entity
-
-                # 4) Generate recording and transcript entities
-                self.logger.info("Generating recording entities...")
-                async for recording_entity in self._generate_recording_entities(client, user_id):
-                    entity_count += 1
-                    self.logger.debug(
-                        f"Yielding entity #{entity_count}: {type(recording_entity).__name__}"
-                    )
-                    yield recording_entity
-
+                    self.logger.debug(f"Yielding entity #{entity_count}: {label}")
+                    yield entity
         except Exception as e:
             self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
+        else:
+            self._persist_cursor_on_success(max_seen_timestamp, entity_count)
         finally:
             self.logger.info(
                 f"===== ZOOM ENTITY GENERATION COMPLETE: {entity_count} entities ====="
