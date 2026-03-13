@@ -540,21 +540,15 @@ def _create_secrets_provider(settings: Settings) -> SecretsProvider:
     """Create the secrets provider based on environment.
 
     Uses Azure Key Vault for ``dev`` and ``prd`` environments when
-    ``AZURE_KEYVAULT_NAME`` is configured.  Falls back to an in-memory
-    provider seeded from settings for local development and testing.
+    ``AZURE_KEYVAULT_NAME`` is configured.  Falls back to an empty
+    in-memory provider for local development and testing.
     """
     if settings.ENVIRONMENT in ("dev", "prd") and settings.AZURE_KEYVAULT_NAME:
         logger.info("Using AzureKeyVaultSecretsProvider (vault=%s)", settings.AZURE_KEYVAULT_NAME)
         return AzureKeyVaultSecretsProvider(vault_name=settings.AZURE_KEYVAULT_NAME)
 
-    secrets: dict[str, str] = {}
-    if settings.AWS_S3_DESTINATION_ACCESS_KEY_ID:
-        secrets["aws-iam-access-key-id"] = settings.AWS_S3_DESTINATION_ACCESS_KEY_ID
-    if settings.AWS_S3_DESTINATION_SECRET_ACCESS_KEY:
-        secrets["aws-iam-secret-access-key"] = settings.AWS_S3_DESTINATION_SECRET_ACCESS_KEY
-
-    logger.info("Using InMemorySecretsProvider (%d secret(s) seeded)", len(secrets))
-    return InMemorySecretsProvider(secrets=secrets)
+    logger.info("Using InMemorySecretsProvider (no secrets seeded)")
+    return InMemorySecretsProvider()
 
 
 def _create_metrics_service(settings: Settings) -> PrometheusMetricsService:
