@@ -98,6 +98,7 @@ class FeatureFlag(str, Enum):
     # Scoped admin API key permissions (CASA-compliant granular access)
     # These allow specific admin operations via API key authentication
     API_KEY_ADMIN_SYNC = "api_key_admin_sync"  # Allows resync operations via API key
+    CONNECT = "connect"  # Enables the Connect playground and embeddable widget features
 
 
 class AuthMethod(str, Enum):
