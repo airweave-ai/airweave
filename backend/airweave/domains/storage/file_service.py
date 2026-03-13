@@ -22,12 +22,12 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.platform.storage.exceptions import FileSkippedException
-from airweave.platform.storage.paths import paths
+from airweave.domains.storage.exceptions import FileSkippedException
+from airweave.domains.storage.paths import paths
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
 
 if TYPE_CHECKING:
-    from airweave.platform.storage.protocol import StorageBackend
+    from airweave.domains.storage.protocols import StorageBackend
 
 
 class FileService:
@@ -64,9 +64,9 @@ class FileService:
     def storage(self) -> "StorageBackend":
         """Lazy-load storage backend."""
         if self._storage is None:
-            from airweave.platform.storage import storage_backend
+            from airweave.domains.storage.factory import get_storage_backend
 
-            self._storage = storage_backend
+            self._storage = get_storage_backend()
         return self._storage
 
     def _ensure_base_dir(self) -> None:

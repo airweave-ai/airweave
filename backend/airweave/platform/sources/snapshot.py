@@ -36,7 +36,7 @@ from airweave.platform.configs.config import SnapshotConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.storage import StorageBackend, StoragePaths
+from airweave.domains.storage import StorageBackend, StoragePaths
 from airweave.schemas.source_connection import AuthenticationMethod
 
 # Regex to parse Azure blob URLs
@@ -130,7 +130,7 @@ class SnapshotSource(BaseSource):
     def storage(self) -> StorageBackend:
         """Get storage backend (lazy to avoid circular import)."""
         if self._storage is None:
-            from airweave.platform.storage import storage_backend
+            from airweave.domains.storage import storage_backend
 
             self._storage = storage_backend
         return self._storage

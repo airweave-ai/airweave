@@ -285,7 +285,7 @@ async def web_fetcher(web_entity: WebEntity, logger: ContextualLogger) -> List[W
     logger.debug(f"🌐 WEB_START [{entity_context}] Starting web fetch for URL: {web_entity.url}")
 
     # Import storage manager here to avoid circular imports
-    from airweave.platform.storage import sync_file_manager
+    from airweave.domains.storage import sync_file_manager
 
     # Check if this is a CTTI entity for special handling
     is_ctti = sync_file_manager._is_ctti_entity(web_entity)
@@ -330,7 +330,7 @@ async def _get_ctti_cached_content(
     web_entity: WebEntity, entity_context: str, logger: ContextualLogger
 ):
     """Check for and retrieve CTTI content from global storage."""
-    from airweave.platform.storage import sync_file_manager
+    from airweave.domains.storage import sync_file_manager
 
     existing_content = await sync_file_manager.get_ctti_file_content(logger, web_entity.entity_id)
 
@@ -379,7 +379,7 @@ async def _scrape_with_firecrawl_internal(
     app, semaphore = await get_firecrawl_client(logger)
 
     # Check if this is a CTTI entity and use special semaphore
-    from airweave.platform.storage import sync_file_manager
+    from airweave.domains.storage import sync_file_manager
 
     is_ctti = sync_file_manager._is_ctti_entity(web_entity)
 
@@ -464,7 +464,7 @@ async def _try_scrape_with_timeouts(
 ):
     """Try scraping with progressively longer timeouts."""
     # Check if this is a CTTI entity for special timeout handling
-    from airweave.platform.storage import sync_file_manager
+    from airweave.domains.storage import sync_file_manager
 
     is_ctti = sync_file_manager._is_ctti_entity(web_entity)
 
@@ -499,7 +499,7 @@ async def _try_scrape_with_timeouts(
 async def _scrape_web_content(web_entity: WebEntity, entity_context: str, logger: ContextualLogger):
     """Scrape web content using Firecrawl or retrieve from storage for CTTI entities."""
     # Import storage manager here to avoid circular imports
-    from airweave.platform.storage import sync_file_manager
+    from airweave.domains.storage import sync_file_manager
 
     # Check if this is a CTTI entity that already exists in global storage
     is_ctti = sync_file_manager._is_ctti_entity(web_entity)
@@ -667,7 +667,7 @@ async def _store_file_entity(
     logger: ContextualLogger,
 ) -> None:
     """Store file entity in persistent storage."""
-    from airweave.platform.storage import sync_file_manager
+    from airweave.domains.storage import sync_file_manager
 
     if is_ctti:
         # Check if CTTI file already exists in global storage

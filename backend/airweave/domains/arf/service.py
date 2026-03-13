@@ -23,8 +23,8 @@ from airweave.domains.arf.types import SyncManifest
 from airweave.platform.contexts import SyncContext
 from airweave.platform.contexts.runtime import SyncRuntime
 from airweave.platform.entities._base import BaseEntity
-from airweave.platform.storage.exceptions import StorageNotFoundError
-from airweave.platform.storage.protocol import StorageBackend
+from airweave.domains.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.protocols import StorageBackend
 
 
 class ArfService:

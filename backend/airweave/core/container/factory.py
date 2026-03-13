@@ -45,6 +45,7 @@ from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.arf.service import ArfService
+from airweave.domains.storage.factory import get_storage_backend
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.auth_provider.service import AuthProviderService
 from airweave.domains.browse_tree.repository import NodeSelectionRepository
@@ -426,17 +427,20 @@ def create_container(settings: Settings) -> Container:
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
     )
 
+    # Storage domain
+    # -----------------------------------------------------------------
+    storage_backend = get_storage_backend()
+
     # ARF domain service (raw entity capture / replay)
     # -----------------------------------------------------------------
-    from airweave.platform.storage.factory import get_storage_backend
-
-    arf_service = ArfService(storage=get_storage_backend())
+    arf_service = ArfService(storage=storage_backend)
 
     # -----------------------------------------------------------------
     # Usage billing listener
     # -----------------------------------------------------------------
 
     return Container(
+        storage_backend=storage_backend,
         arf_service=arf_service,
         context_cache=context_cache,
         rate_limiter=rate_limiter,

@@ -19,7 +19,8 @@ import pytest
 from airweave.domains.arf.fakes.reader import FakeArfReader
 from airweave.domains.arf.reader import ArfReader
 from airweave.domains.arf.replay_source import ArfReplaySource
-from airweave.platform.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.fakes import FakeStorageBackend
 
 
 # ---------------------------------------------------------------------------
@@ -28,36 +29,6 @@ from airweave.platform.storage.exceptions import StorageNotFoundError
 
 SYNC_ID = uuid4()
 
-
-class FakeStorageBackend:
-    """Minimal storage for ArfReplaySource construction."""
-
-    async def write_json(self, path: str, data: dict) -> None:
-        pass
-
-    async def read_json(self, path: str) -> dict:
-        raise StorageNotFoundError(path)
-
-    async def write_file(self, path: str, content: bytes) -> None:
-        pass
-
-    async def read_file(self, path: str) -> bytes:
-        raise StorageNotFoundError(path)
-
-    async def exists(self, path: str) -> bool:
-        return False
-
-    async def delete(self, path: str) -> bool:
-        return False
-
-    async def list_files(self, prefix: str = "") -> list:
-        return []
-
-    async def list_dirs(self, prefix: str = "") -> list:
-        return []
-
-    async def count_files(self, prefix: str = "", pattern: str = "*") -> int:
-        return 0
 
 
 def _make_entity(entity_id: str) -> Any:

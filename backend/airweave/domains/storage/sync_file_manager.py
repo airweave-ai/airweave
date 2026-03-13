@@ -18,8 +18,8 @@ import aiofiles
 
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import ContextualLogger
-from airweave.platform.storage.exceptions import StorageNotFoundError
-from airweave.platform.storage.protocol import StorageBackend
+from airweave.domains.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.protocols import StorageBackend
 
 if TYPE_CHECKING:
     from airweave.platform.entities._base import FileEntity
@@ -54,9 +54,9 @@ class SyncFileManager:
     def backend(self) -> StorageBackend:
         """Get storage backend (lazy to avoid circular import at module load)."""
         if self._backend is None:
-            from airweave.platform.storage import storage_backend
+            from airweave.domains.storage.factory import get_storage_backend
 
-            self._backend = storage_backend
+            self._backend = get_storage_backend()
         return self._backend
 
     def _get_file_path(self, sync_id: UUID, entity_id: str, filename: str = "") -> str:

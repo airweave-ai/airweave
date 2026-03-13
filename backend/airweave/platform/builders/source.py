@@ -148,7 +148,7 @@ class SourceContextBuilder:
             SourceContext with ArfReplaySource
         """
         from airweave.domains.arf.replay_source import ArfReplaySource
-        from airweave.platform.storage.factory import get_storage_backend
+        from airweave.domains.storage.factory import get_storage_backend
 
         ctx = infra.ctx
         logger = infra.logger
@@ -248,7 +248,7 @@ class SourceContextBuilder:
         cls, source: BaseSource, sync_job: Optional[Any], logger: ContextualLogger
     ) -> None:
         """Setup file downloader for file-based sources."""
-        from airweave.platform.storage import FileService
+        from airweave.domains.storage.file_service import FileService
 
         # Require sync_job - we're always in sync context when this is called
         if not sync_job or not hasattr(sync_job, "id"):

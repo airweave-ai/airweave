@@ -24,7 +24,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 from airweave.platform.utils.file_extensions import (
     get_language_for_extension,
     is_text_file,

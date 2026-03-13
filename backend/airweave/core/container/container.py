@@ -31,6 +31,7 @@ from airweave.core.protocols import (
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.domains.arf.protocols import ArfServiceProtocol
+from airweave.domains.storage.protocols import StorageBackend
 from airweave.domains.auth_provider.protocols import (
     AuthProviderRegistryProtocol,
     AuthProviderServiceProtocol,
@@ -224,6 +225,9 @@ class Container:
 
     # Connect domain service (session-based frontend integration flows)
     connect_service: ConnectServiceProtocol
+
+    # Storage domain — unified backend for file/object storage
+    storage_backend: StorageBackend
 
     # ARF domain — raw entity capture / replay service
     arf_service: ArfServiceProtocol

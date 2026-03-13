@@ -566,6 +566,15 @@ def fake_selection_repo():
     return MagicMock()
 
 
+@pytest.fixture
+def fake_storage_backend():
+    """Fake StorageBackend for testing storage consumers."""
+    from airweave.domains.storage.fakes import FakeStorageBackend
+
+    return FakeStorageBackend()
+
+
+@pytest.fixture
 def fake_arf_service():
     """Fake ArfService for testing ARF consumers."""
     from airweave.domains.arf.fakes.service import FakeArfService
@@ -575,6 +584,7 @@ def fake_arf_service():
 
 @pytest.fixture
 def test_container(
+    fake_storage_backend,
     fake_arf_service,
     fake_context_cache,
     fake_rate_limiter,
@@ -645,6 +655,7 @@ def test_container(
     from airweave.core.container import Container
 
     return Container(
+        storage_backend=fake_storage_backend,
         arf_service=fake_arf_service,
         context_cache=fake_context_cache,
         rate_limiter=fake_rate_limiter,

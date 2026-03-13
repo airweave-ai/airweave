@@ -22,9 +22,9 @@ import aiofiles
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.entities._base import BaseEntity
-from airweave.platform.storage.exceptions import StorageNotFoundError
-from airweave.platform.storage.paths import StoragePaths
-from airweave.platform.storage.protocol import StorageBackend
+from airweave.domains.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.paths import StoragePaths
+from airweave.domains.storage.protocols import StorageBackend
 
 
 class ArfReader:

@@ -9,11 +9,11 @@ import json
 from typing import Any, Dict, List, Optional
 
 from airweave.core.logging import logger
-from airweave.platform.storage.exceptions import (
+from airweave.domains.storage.exceptions import (
     StorageException,
     StorageNotFoundError,
 )
-from airweave.platform.storage.protocol import StorageBackend
+from airweave.domains.storage.protocols import StorageBackend
 
 
 class S3Backend(StorageBackend):

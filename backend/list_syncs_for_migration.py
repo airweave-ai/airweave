@@ -103,9 +103,9 @@ async def get_arf_entity_count(sync_id: UUID) -> int:
     """Get entity count from ARF storage."""
     try:
         from airweave.domains.arf.service import ArfService
-        from airweave.platform.storage import storage_backend
+        from airweave.domains.storage.factory import get_storage_backend
 
-        arf_service = ArfService(storage=storage_backend)
+        arf_service = ArfService(storage=get_storage_backend())
         count = await arf_service.get_entity_count(str(sync_id))
         return count
     except Exception:

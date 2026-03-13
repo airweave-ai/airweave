@@ -16,7 +16,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.domains.arf.reader import ArfReader
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.storage.protocol import StorageBackend
+from airweave.domains.storage.protocols import StorageBackend
 
 
 class ArfReplaySource(BaseSource):

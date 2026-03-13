@@ -20,7 +20,8 @@ from uuid import UUID, uuid4
 import pytest
 
 from airweave.domains.arf.reader import ArfReader
-from airweave.platform.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.fakes import FakeStorageBackend
 
 
 # ---------------------------------------------------------------------------
@@ -29,50 +30,6 @@ from airweave.platform.storage.exceptions import StorageNotFoundError
 
 SYNC_ID = uuid4()
 
-
-class FakeStorageBackend:
-    """Minimal in-memory storage for testing ArfReader."""
-
-    def __init__(self) -> None:
-        self._json_store: Dict[str, Dict[str, Any]] = {}
-        self._file_store: Dict[str, bytes] = {}
-
-    async def write_json(self, path: str, data: Dict[str, Any]) -> None:
-        self._json_store[path] = data
-
-    async def read_json(self, path: str) -> Dict[str, Any]:
-        if path not in self._json_store:
-            raise StorageNotFoundError(path)
-        return self._json_store[path]
-
-    async def write_file(self, path: str, content: bytes) -> None:
-        self._file_store[path] = content
-
-    async def read_file(self, path: str) -> bytes:
-        if path not in self._file_store:
-            raise StorageNotFoundError(path)
-        return self._file_store[path]
-
-    async def exists(self, path: str) -> bool:
-        return path in self._json_store or path in self._file_store
-
-    async def delete(self, path: str) -> bool:
-        existed = path in self._json_store or path in self._file_store
-        self._json_store.pop(path, None)
-        self._file_store.pop(path, None)
-        return existed
-
-    async def list_files(self, prefix: str = "") -> List[str]:
-        return [k for k in self._json_store if k.startswith(prefix)]
-
-    async def list_dirs(self, prefix: str = "") -> List[str]:
-        return []
-
-    async def count_files(self, prefix: str = "", pattern: str = "*") -> int:
-        files = await self.list_files(prefix)
-        if pattern == "*.json":
-            files = [f for f in files if f.endswith(".json")]
-        return len(files)
 
 
 def _make_logger() -> Any:

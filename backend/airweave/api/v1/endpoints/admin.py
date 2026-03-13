@@ -24,7 +24,7 @@ from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 
-# [code blue] todo: inject these via Inject() once admin endpoints are refactored
+# [code blue] todo: inject context_cache via Inject() instead of container access
 from airweave.core import container as container_mod
 from airweave.core.context import SystemContext
 from airweave.core.exceptions import InvalidStateError, NotFoundException

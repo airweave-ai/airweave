@@ -11,7 +11,7 @@ from airweave import crud
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
-from airweave.platform.storage import sync_file_manager
+from airweave.domains.storage import sync_file_manager
 
 router = TrailingSlashRouter()
 
