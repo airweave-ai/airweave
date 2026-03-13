@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, List, Optional, Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
+from airweave.domains.sync_pipeline.types.access_control_actions import ACActionBatch
 from airweave.domains.sync_pipeline.types.entity_actions import EntityActionBatch
+from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.entities._base import BaseEntity
 
 if TYPE_CHECKING:
@@ -88,6 +90,30 @@ class EntityPipelineProtocol(Protocol):
 
     async def cleanup_temp_files(self, sync_context: SyncContext, runtime: SyncRuntime) -> None:
         """Clean up temporary files created during the sync."""
+        ...
+
+
+class ACActionResolverProtocol(Protocol):
+    """Resolves membership tuples to action objects."""
+
+    async def resolve(
+        self,
+        memberships: List[MembershipTuple],
+        sync_context: SyncContext,
+    ) -> ACActionBatch:
+        """Resolve memberships to actions."""
+        ...
+
+
+class ACActionDispatcherProtocol(Protocol):
+    """Dispatches resolved AC membership actions to handlers."""
+
+    async def dispatch(
+        self,
+        batch: ACActionBatch,
+        sync_context: SyncContext,
+    ) -> int:
+        """Dispatch action batch to all handlers."""
         ...
 
 

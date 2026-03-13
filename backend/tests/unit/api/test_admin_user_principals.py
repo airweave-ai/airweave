@@ -53,21 +53,19 @@ class TestAdminGetUserPrincipals:
 
         collection_repo = _collection_repo("test-collection", mock_ctx.organization_id)
 
-        with patch(
-            "airweave.api.v1.endpoints.admin._require_admin_permission"
-        ), patch(
-            "airweave.platform.access_control.broker.access_broker"
-        ) as mock_broker:
-            mock_broker.resolve_access_context_for_collection = AsyncMock(
-                return_value=fake_access_ctx
-            )
+        mock_broker = MagicMock()
+        mock_broker.resolve_access_context_for_collection = AsyncMock(
+            return_value=fake_access_ctx
+        )
 
+        with patch("airweave.api.v1.endpoints.admin._require_admin_permission"):
             result = await admin_get_user_principals(
                 readable_id="test-collection",
                 user_principal="sp_admin",
                 db=mock_db,
                 ctx=mock_ctx,
                 collection_repo=collection_repo,
+                access_broker=mock_broker,
             )
 
         assert "user:sp_admin" in result
@@ -79,19 +77,17 @@ class TestAdminGetUserPrincipals:
         """Returns empty list when access broker returns None."""
         collection_repo = _collection_repo("test-collection", mock_ctx.organization_id)
 
-        with patch(
-            "airweave.api.v1.endpoints.admin._require_admin_permission"
-        ), patch(
-            "airweave.platform.access_control.broker.access_broker"
-        ) as mock_broker:
-            mock_broker.resolve_access_context_for_collection = AsyncMock(return_value=None)
+        mock_broker = MagicMock()
+        mock_broker.resolve_access_context_for_collection = AsyncMock(return_value=None)
 
+        with patch("airweave.api.v1.endpoints.admin._require_admin_permission"):
             result = await admin_get_user_principals(
                 readable_id="test-collection",
                 user_principal="unknown_user",
                 db=mock_db,
                 ctx=mock_ctx,
                 collection_repo=collection_repo,
+                access_broker=mock_broker,
             )
 
         assert result == []

@@ -13,9 +13,11 @@ from typing import TYPE_CHECKING, List, Set, Tuple
 
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
-from airweave.domains.sync_pipeline.access_control_dispatcher import ACActionDispatcher
-from airweave.domains.sync_pipeline.access_control_resolver import ACActionResolver
 from airweave.domains.sync_pipeline.pipeline.acl_membership_tracker import ACLMembershipTracker
+from airweave.domains.sync_pipeline.protocols import (
+    ACActionDispatcherProtocol,
+    ACActionResolverProtocol,
+)
 from airweave.platform.access_control.schemas import (
     ACLChangeType,
     MembershipTuple,
@@ -32,8 +34,8 @@ class AccessControlPipeline:
 
     def __init__(
         self,
-        resolver: ACActionResolver,
-        dispatcher: ACActionDispatcher,
+        resolver: ACActionResolverProtocol,
+        dispatcher: ACActionDispatcherProtocol,
         tracker: ACLMembershipTracker,
         acl_repo: AccessControlMembershipRepositoryProtocol,
     ) -> None:

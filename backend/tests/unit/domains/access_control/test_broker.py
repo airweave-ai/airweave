@@ -1,10 +1,11 @@
 """Unit tests for AccessBroker."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from airweave.platform.access_control.broker import AccessBroker
+import pytest
+
+from airweave.domains.access_control.broker import AccessBroker
 from airweave.platform.access_control.schemas import AccessContext
 from airweave.platform.entities._base import AccessControl
 

@@ -44,6 +44,7 @@ from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
+from airweave.domains.access_control.broker import AccessBroker
 from airweave.domains.access_control.repository import AccessControlMembershipRepository
 from airweave.domains.arf.service import ArfService
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
@@ -373,6 +374,7 @@ def create_container(settings: Settings) -> Container:
     # Access control membership repo + chunk embed processor
     # -----------------------------------------------------------------
     acl_membership_repo = AccessControlMembershipRepository()
+    access_broker = AccessBroker(acl_repo=acl_membership_repo)
     chunk_embed_processor = ChunkEmbedProcessor()
 
     # -----------------------------------------------------------------
@@ -528,6 +530,7 @@ def create_container(settings: Settings) -> Container:
         sync_lifecycle=sync_deps["sync_lifecycle"],
         sync_factory=sync_factory,
         entity_repo=sync_deps["entity_repo"],
+        access_broker=access_broker,
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
         usage_checker=usage_checker,

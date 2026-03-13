@@ -36,8 +36,13 @@ class EntityDispatcherBuilder:
         logger: Optional[ContextualLogger] = None,
     ) -> EntityActionDispatcher:
         """Build a dispatcher with all configured handlers."""
-        handlers = self._build_handlers(destinations, execution_config, logger)
-        return EntityActionDispatcher(handlers=handlers)
+        destination_handlers, metadata_handler = self._build_handlers(
+            destinations, execution_config, logger
+        )
+        return EntityActionDispatcher(
+            destination_handlers=destination_handlers,
+            metadata_handler=metadata_handler,
+        )
 
     def build_for_cleanup(
         self,
@@ -52,7 +57,7 @@ class EntityDispatcherBuilder:
         destinations: List[BaseDestination],
         execution_config: Optional[SyncConfig],
         logger: Optional[ContextualLogger],
-    ) -> List[EntityActionHandler]:
+    ) -> tuple[List[EntityActionHandler], Optional[EntityActionHandler]]:
         enable_vector = (
             execution_config.handlers.enable_vector_handlers if execution_config else True
         )
@@ -61,16 +66,17 @@ class EntityDispatcherBuilder:
             execution_config.handlers.enable_postgres_handler if execution_config else True
         )
 
-        handlers: List[EntityActionHandler] = []
+        destination_handlers: List[EntityActionHandler] = []
+        metadata_handler: Optional[EntityActionHandler] = None
 
-        self._add_destination_handler(handlers, destinations, enable_vector, logger)
-        self._add_arf_handler(handlers, enable_arf, logger)
-        self._add_postgres_handler(handlers, enable_postgres, logger)
+        self._add_destination_handler(destination_handlers, destinations, enable_vector, logger)
+        self._add_arf_handler(destination_handlers, enable_arf, logger)
+        metadata_handler = self._build_postgres_handler(enable_postgres, logger)
 
-        if not handlers and logger:
+        if not destination_handlers and not metadata_handler and logger:
             logger.warning("No handlers created - sync will fetch entities but not persist them")
 
-        return handlers
+        return destination_handlers, metadata_handler
 
     def _add_destination_handler(
         self,
@@ -115,15 +121,16 @@ class EntityDispatcherBuilder:
         if logger:
             logger.debug("Added ArfHandler")
 
-    def _add_postgres_handler(
+    def _build_postgres_handler(
         self,
-        handlers: List[EntityActionHandler],
         enabled: bool,
         logger: Optional[ContextualLogger],
-    ) -> None:
+    ) -> Optional[EntityActionHandler]:
         if enabled:
-            handlers.append(EntityPostgresHandler(entity_repo=self._entity_repo))
+            handler = EntityPostgresHandler(entity_repo=self._entity_repo)
             if logger:
                 logger.debug("Added EntityPostgresHandler")
-        elif logger:
+            return handler
+        if logger:
             logger.info("Skipping EntityPostgresHandler (disabled by execution_config)")
+        return None
