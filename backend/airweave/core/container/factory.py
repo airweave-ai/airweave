@@ -45,7 +45,6 @@ from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.arf.service import ArfService
-from airweave.domains.storage.factory import get_storage_backend
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.auth_provider.service import AuthProviderService
 from airweave.domains.browse_tree.repository import NodeSelectionRepository
@@ -91,6 +90,8 @@ from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
+from airweave.domains.storage.factory import get_storage_backend
+from airweave.domains.storage.sync_file_manager import SyncFileManager
 from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
@@ -430,6 +431,7 @@ def create_container(settings: Settings) -> Container:
     # Storage domain
     # -----------------------------------------------------------------
     storage_backend = get_storage_backend()
+    sync_file_manager = SyncFileManager(backend=storage_backend)
 
     # ARF domain service (raw entity capture / replay)
     # -----------------------------------------------------------------
@@ -441,6 +443,7 @@ def create_container(settings: Settings) -> Container:
 
     return Container(
         storage_backend=storage_backend,
+        sync_file_manager=sync_file_manager,
         arf_service=arf_service,
         context_cache=context_cache,
         rate_limiter=rate_limiter,

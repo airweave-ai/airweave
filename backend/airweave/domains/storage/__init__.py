@@ -13,10 +13,11 @@ from airweave.domains.storage.exceptions import (
     StorageQuotaExceededError,
 )
 from airweave.domains.storage.paths import StoragePaths, paths
-from airweave.domains.storage.protocols import StorageBackend
+from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
 
 __all__ = [
     "StorageBackend",
+    "SyncFileManagerProtocol",
     "StoragePaths",
     "paths",
     "StorageException",

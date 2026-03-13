@@ -19,14 +19,16 @@ import aiofiles
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import ContextualLogger
 from airweave.domains.storage.exceptions import StorageNotFoundError
-from airweave.domains.storage.protocols import StorageBackend
+from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
 
 if TYPE_CHECKING:
     from airweave.platform.entities._base import FileEntity
 
 
-class SyncFileManager:
+class SyncFileManager(SyncFileManagerProtocol):
     """Manages file storage with sync-aware folder structure and caching.
+
+    Implements SyncFileManagerProtocol.
 
     Storage layout (unified with raw_data.py)::
 
@@ -34,39 +36,17 @@ class SyncFileManager:
         raw/{sync_id}/metadata/{entity_id}.json
         aactmarkdowns/{entity_id}.md  (CTTI global, legacy)
 
-    [code blue] Long-term plan:
-        The module-level ``sync_file_manager`` singleton will be removed.
-        SyncFileManager will receive ``StorageBackend`` via its constructor,
-        and instances will live in ``Container``.  Callers (web_fetcher,
-        file_retrieval, sources) will pull it from the container instead of
-        importing the module-level global.
+    Constructed by the Container factory with an injected StorageBackend.
     """
 
-    # Container/directory names - unified with raw_data.py
     RAW_DIR = "raw"
     CTTI_GLOBAL_DIR = "aactmarkdowns"
 
-    def __init__(self, backend: Optional[StorageBackend] = None):
-        """Initialize sync file manager.
-
-        Args:
-            backend: Storage backend. Uses singleton if not provided.
-        """
-        self._backend = backend
-
-        # Local cache directory for temporary files during processing
+    def __init__(self, backend: StorageBackend) -> None:
+        """Initialize with an injected storage backend."""
+        self.backend = backend
         self.temp_cache_dir = Path("/tmp/airweave/cache")
         self.temp_cache_dir.mkdir(parents=True, exist_ok=True)
-
-    @property
-    def backend(self) -> StorageBackend:
-        """Get storage backend (lazy to avoid circular import at module load)."""
-        if self._backend is None:
-            # [code blue] todo: inject backend once sync pipeline passes container
-            from airweave.core import container as container_mod
-
-            self._backend = container_mod.container.storage_backend
-        return self._backend
 
     def _get_file_path(self, sync_id: UUID, entity_id: str, filename: str = "") -> str:
         """Get storage path for a file: raw/{sync_id}/files/{entity_id}_{name}.{ext}."""
@@ -536,6 +516,3 @@ class SyncFileManager:
 
         return results
 
-
-# [code blue] todo: move to Container; callers should not import this global
-sync_file_manager = SyncFileManager()

@@ -653,9 +653,11 @@ def test_container(
         real_bus_container = test_container.replace(event_bus=InMemoryEventBus())
     """
     from airweave.core.container import Container
+    from airweave.domains.storage.sync_file_manager import SyncFileManager
 
     return Container(
         storage_backend=fake_storage_backend,
+        sync_file_manager=SyncFileManager(backend=fake_storage_backend),
         arf_service=fake_arf_service,
         context_cache=fake_context_cache,
         rate_limiter=fake_rate_limiter,
