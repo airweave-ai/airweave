@@ -89,6 +89,8 @@ services:
       - POSTGRES_USER=airweave
       - POSTGRES_PASSWORD=airweave1234!
       - POSTGRES_DB=airweave
+      # DEV/TEST ONLY: Default superuser credentials for local development and testing
+      # NEVER use these credentials in production - use Azure Key Vault secrets instead
       - FIRST_SUPERUSER=admin@example.com
       - FIRST_SUPERUSER_PASSWORD=admin
       - ENCRYPTION_KEY="SpgLrrEEgJ/7QdhSMSvagL1juEY5eoyCG0tZN7OSQV0="
