@@ -27,9 +27,9 @@ from urllib.parse import urlparse
 
 import httpx
 
+from airweave.domains.access_control.schemas import MembershipTuple
 from airweave.domains.browse_tree.types import BrowseNode, NodeSelectionData
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
-from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.configs.config import SharePointOnlineConfig
 from airweave.platform.cursors.sharepoint_online import SharePointOnlineCursor
 from airweave.platform.decorators import source

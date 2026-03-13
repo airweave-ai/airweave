@@ -26,9 +26,6 @@ from airweave.adapters.metrics import (
     PrometheusHttpMetrics,
     PrometheusMetricsRenderer,
 )
-from airweave.adapters.ocr.docling import DoclingOcrAdapter
-from airweave.adapters.ocr.fallback import FallbackOcrProvider
-from airweave.adapters.ocr.mistral import MistralOcrAdapter
 from airweave.adapters.pubsub.redis import RedisPubSub
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
@@ -37,7 +34,7 @@ from airweave.core.container.container import Container
 from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
 from airweave.core.metrics_service import PrometheusMetricsService
-from airweave.core.protocols import CircuitBreaker, OcrProvider, PubSub
+from airweave.core.protocols import CircuitBreaker, PubSub
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
@@ -80,6 +77,10 @@ from airweave.domains.oauth.repository import (
     OAuthInitSessionRepository,
     OAuthRedirectSessionRepository,
 )
+from airweave.domains.ocr.docling import DoclingOcrAdapter
+from airweave.domains.ocr.fallback import FallbackOcrProvider
+from airweave.domains.ocr.mistral.converter import MistralOCR
+from airweave.domains.ocr.protocols import OcrProvider
 from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
 from airweave.domains.organizations.repository import UserOrganizationRepository
@@ -657,7 +658,7 @@ def _create_ocr_provider(
     Returns None with a warning when no providers are available.
     """
     try:
-        mistral_ocr = MistralOcrAdapter()
+        mistral_ocr = MistralOCR()
     except Exception as e:
         logger.error(f"Error creating Mistral OCR adapter: {e}")
         mistral_ocr = None

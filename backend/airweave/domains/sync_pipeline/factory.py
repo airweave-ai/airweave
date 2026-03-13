@@ -21,31 +21,31 @@ from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import LoggerConfigurator, logger
 from airweave.core.protocols.event_bus import EventBus
+from airweave.domains.access_control.dispatcher import ACActionDispatcher
+from airweave.domains.access_control.membership_tracker import ACLMembershipTracker
+from airweave.domains.access_control.pipeline import AccessControlPipeline
+from airweave.domains.access_control.postgres_handler import ACPostgresHandler
 from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
+from airweave.domains.access_control.resolver import ACActionResolver
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
-from airweave.domains.sync_pipeline.access_control_dispatcher import ACActionDispatcher
-from airweave.domains.sync_pipeline.access_control_pipeline import AccessControlPipeline
-from airweave.domains.sync_pipeline.access_control_resolver import ACActionResolver
 from airweave.domains.sync_pipeline.builders import SyncContextBuilder
 from airweave.domains.sync_pipeline.builders.destinations import DestinationsContextBuilder
 from airweave.domains.sync_pipeline.builders.tracking import TrackingContextBuilder
 from airweave.domains.sync_pipeline.config import SyncConfig, SyncConfigBuilder
 from airweave.domains.sync_pipeline.contexts.infra import InfraContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
-from airweave.domains.sync_pipeline.entity_dispatcher_builder import EntityDispatcherBuilder
-from airweave.domains.sync_pipeline.handlers import ACPostgresHandler
+from airweave.domains.sync_pipeline.entity.dispatcher_builder import EntityDispatcherBuilder
 from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
-from airweave.domains.sync_pipeline.pipeline.acl_membership_tracker import ACLMembershipTracker
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
 from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 
-from .entity_action_resolver import EntityActionResolver
-from .entity_pipeline import EntityPipeline
+from .entity.pipeline import EntityPipeline
+from .entity.resolver import EntityActionResolver
 
 
 class SyncFactory:

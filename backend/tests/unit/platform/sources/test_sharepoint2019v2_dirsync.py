@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from airweave.platform.access_control.schemas import ACLChangeType, MembershipChange
+from airweave.domains.access_control.schemas import ACLChangeType, MembershipChange
 from airweave.platform.sources.sharepoint2019v2.ldap import (
     DIRSYNC_FLAGS_BASIC,
     DIRSYNC_FLAGS_FULL,
