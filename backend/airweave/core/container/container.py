@@ -47,6 +47,7 @@ from airweave.domains.collections.protocols import (
 )
 from airweave.domains.connect.protocols import ConnectServiceProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
+from airweave.domains.converters.protocols import ConverterRegistryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.embedders.protocols import (
     DenseEmbedderProtocol,
@@ -245,6 +246,9 @@ class Container:
 
     # ARF domain — raw entity capture / replay service
     arf_service: ArfServiceProtocol
+
+    # Converter registry (maps file extensions to converter instances)
+    converter_registry: ConverterRegistryProtocol
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured

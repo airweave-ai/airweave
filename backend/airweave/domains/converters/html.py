@@ -4,26 +4,16 @@ import asyncio
 from typing import Dict, List
 
 from airweave.core.logging import logger
+from airweave.domains.converters._base import BaseTextConverter
 from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
-from airweave.platform.converters._base import BaseTextConverter
 
 
 class HtmlConverter(BaseTextConverter):
     """Converts HTML files to markdown text using html-to-markdown."""
 
     async def convert_batch(self, file_paths: List[str]) -> Dict[str, str]:
-        """Convert HTML files to markdown text.
-
-        Args:
-            file_paths: List of file paths to convert
-
-        Returns:
-            Dict mapping file_path -> markdown text content (None if failed)
-
-        Raises:
-            EntityProcessingError: If html-to-markdown package not installed
-        """
+        """Convert HTML files to markdown text."""
         try:
             from html_to_markdown import convert
         except ImportError:
@@ -36,28 +26,25 @@ class HtmlConverter(BaseTextConverter):
         logger.info(f"Converting {len(file_paths)} HTML files to markdown...")
 
         results = {}
-        semaphore = asyncio.Semaphore(20)  # Limit concurrent conversions
+        semaphore = asyncio.Semaphore(20)
 
         async def _convert_one(path: str):
             async with semaphore:
                 try:
 
                     def _convert():
-                        # Read raw bytes for encoding detection
                         with open(path, "rb") as f:
                             raw_bytes = f.read()
 
                         if not raw_bytes:
                             return None
 
-                        # Try UTF-8 first
                         try:
                             html_content = raw_bytes.decode("utf-8")
                         except UnicodeDecodeError:
-                            # Fallback with replace to detect corruption
                             html_content = raw_bytes.decode("utf-8", errors="replace")
                             replacement_count = html_content.count("\ufffd")
-                            if replacement_count > 100:  # Lenient for HTML
+                            if replacement_count > 100:
                                 raise EntityProcessingError(
                                     f"HTML contains excessive binary data "
                                     f"({replacement_count} replacement chars)"
@@ -66,7 +53,6 @@ class HtmlConverter(BaseTextConverter):
                         if not html_content.strip():
                             return None
 
-                        # Convert to markdown using html-to-markdown (Rust-powered)
                         markdown = convert(html_content)
 
                         return markdown.strip() if markdown else None
