@@ -80,17 +80,13 @@ setTokenProvider({
 - Smart caching with force refresh option
 - Handles collection CRUD events automatically
 
-### 3. **Auth Store** (`stores/auth-store.ts`)
-- Persists user authentication state
-- Minimal store for auth state tracking
-
-### 4. **Sync State Store** (`stores/syncStateStore.ts`)
+### 3. **Sync State Store** (`stores/syncStateStore.ts`)
 - Real-time sync progress via SSE
 - Manages multiple concurrent subscriptions
 - Session storage for progress persistence
 - Automatic cleanup and health checks
 
-### 5. **API Keys Store** (`stores/apiKeys.ts`)
+### 4. **API Keys Store** (`stores/apiKeys.ts`)
 - Organization-scoped API key management
 - Auto-clears on organization switch
 
@@ -114,7 +110,14 @@ setTokenProvider({
    - Handles dev mode (auth disabled)
    - Token initialization tracking
 
-3. **Auth Guard** (`components/AuthGuard.tsx`):
+3. **Token Caching Strategy** (`lib/auth0-provider.tsx`):
+   - `getCacheLocation()` selects `memory` for custom Auth0 domains and `localstorage` for standard `*.auth0.com` tenants
+   - Custom domains share the app's eTLD+1, so the Auth0 session cookie is first-party — tokens stay in memory only (no XSS surface via localStorage)
+   - Standard tenants use a third-party cookie that Safari ITP / Firefox strict / Chrome incognito block, so tokens must be persisted in localStorage
+   - `useRefreshTokens={true}` — refresh token rotation is always enabled
+   - `useRefreshTokensFallback={true}` — enables iframe-based silent auth as a fallback when the refresh token is unavailable (e.g. after a page refresh with memory cache)
+
+4. **Auth Guard** (`components/AuthGuard.tsx`):
    - Protects routes requiring authentication
    - Initializes organizations on first load
    - Redirects to `/no-organization` if needed
@@ -339,5 +342,5 @@ try {
 
 ### 3. **Error Handling**
 - Sensitive data stripped from errors
-- No credentials in localStorage
+- Token cache location is conditional: custom Auth0 domains use `memory` (no localStorage exposure), standard `*.auth0.com` tenants use `localstorage` (necessary due to third-party cookie restrictions)
 - Secure OAuth state management
