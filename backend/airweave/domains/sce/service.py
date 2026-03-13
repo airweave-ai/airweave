@@ -2,11 +2,11 @@
 
 from typing import AsyncGenerator, List
 
-from airweave.platform.sce.protocols import (
+from airweave.domains.sce.protocols import (
     ExtractorProtocol,
     StructuralContextExtractorServiceProtocol,
 )
-from airweave.platform.sce.types import EntityAnnotations, EntityExtractionInput, ExtractedRef
+from airweave.domains.sce.types import EntityAnnotations, EntityExtractionInput, ExtractedRef
 
 
 class StructuralContextExtractorService(StructuralContextExtractorServiceProtocol):
@@ -17,11 +17,13 @@ class StructuralContextExtractorService(StructuralContextExtractorServiceProtoco
         self.extractors = extractors
 
     async def extract(self, entity_input: EntityExtractionInput) -> List[ExtractedRef]:
-        """Run all extractors on a single entity, deduplicating results."""
+        """Run applicable extractors on a single entity, deduplicating results."""
         seen: set[str] = set()
         refs: List[ExtractedRef] = []
 
         for extractor in self.extractors:
+            if not extractor.should_extract(entity_input.entity_type):
+                continue
             extracted_refs = await extractor.extract(entity_input.text)
             for ref in extracted_refs:
                 if ref.prefixed not in seen:

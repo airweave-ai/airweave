@@ -2,8 +2,8 @@
 
 import pytest
 
-from airweave.platform.sce.service import StructuralContextExtractorService
-from airweave.platform.sce.types import (
+from airweave.domains.sce.service import StructuralContextExtractorService
+from airweave.domains.sce.types import (
     EntityAnnotations,
     EntityExtractionInput,
     ExtractedRef,
@@ -18,8 +18,16 @@ from airweave.platform.sce.types import (
 class StubExtractor:
     """Extractor that returns a fixed list of refs."""
 
+    excluded_entity_types = None
+
     def __init__(self, refs: list[ExtractedRef]):
         self._refs = refs
+
+    def should_extract(self, entity_type: str | None) -> bool:
+        """Always extract."""
+        if self.excluded_entity_types is None:
+            return True
+        return entity_type is not None and entity_type not in self.excluded_entity_types
 
     async def extract(self, text: str) -> list[ExtractedRef]:
         return list(self._refs)

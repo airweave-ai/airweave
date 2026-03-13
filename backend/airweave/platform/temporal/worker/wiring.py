@@ -24,6 +24,7 @@ async def create_activities() -> list:
         CleanupStuckSyncJobsActivity,
         CleanupSyncDataActivity,
         CreateSyncJobActivity,
+        ExtractStructuralContextActivity,
         MarkSyncJobCancelledActivity,
         RunSyncActivity,
         SelfDestructOrphanedSyncActivity,
@@ -80,25 +81,10 @@ async def create_activities() -> list:
             email_service=email_service,
         ).run,
         # SCE
-        (await _create_sce_activity()),
+        ExtractStructuralContextActivity(
+            sce_service=container.sce_service,
+        ).run,
     ]
-
-
-async def _create_sce_activity():
-    """Create the SCE activity with its own dependencies."""
-    from airweave.platform.destinations.vespa.destination import VespaDestination
-    from airweave.platform.sce.extractors.regex import REGEX_EXTRACTOR_TYPES, RegexExtractor
-    from airweave.platform.sce.service import StructuralContextExtractorService
-    from airweave.platform.temporal.activities import ExtractStructuralContextActivity
-
-    extractor = RegexExtractor(REGEX_EXTRACTOR_TYPES)
-    sce_service = StructuralContextExtractorService([extractor])
-    destination = await VespaDestination.create()
-
-    return ExtractStructuralContextActivity(
-        sce_service=sce_service,
-        destination=destination,
-    ).run
 
 
 def get_workflows() -> list:

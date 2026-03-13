@@ -5,11 +5,13 @@ Records all calls for assertion. Returns canned refs configured at init.
 
 from typing import List, Optional
 
-from airweave.platform.sce.types import ExtractedRef
+from airweave.domains.sce.types import ExtractedRef
 
 
 class FakeExtractor:
     """In-memory fake for ExtractorProtocol."""
+
+    excluded_entity_types = None
 
     def __init__(
         self,
@@ -21,6 +23,12 @@ class FakeExtractor:
         self._refs = refs or []
         self._calls: list[tuple[str, ...]] = []
         self._should_raise = should_raise
+
+    def should_extract(self, entity_type: str | None) -> bool:
+        """Check if extraction should run for this entity type."""
+        if self.excluded_entity_types is None:
+            return True
+        return entity_type is not None and entity_type not in self.excluded_entity_types
 
     async def extract(self, text: str) -> List[ExtractedRef]:
         """Record call and return canned refs."""

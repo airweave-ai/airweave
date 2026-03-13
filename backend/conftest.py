@@ -559,6 +559,14 @@ def fake_selection_repo():
 
 
 @pytest.fixture
+def fake_sce_service():
+    """Create a no-op SCE service for testing."""
+    from airweave.domains.sce.fakes.service import FakeSceService
+
+    return FakeSceService()
+
+
+@pytest.fixture
 def test_container(
     fake_context_cache,
     fake_rate_limiter,
@@ -684,4 +692,5 @@ def test_container(
         organization_service=fake_organization_service,
         email_service=fake_email_service,
         user_service=fake_user_service,
+        sce_service=fake_sce_service,
     )

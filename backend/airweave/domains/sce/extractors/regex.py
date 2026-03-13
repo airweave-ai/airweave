@@ -5,8 +5,8 @@ from typing import Callable, List
 
 from pydantic import BaseModel
 
-from airweave.platform.sce.protocols import ExtractorProtocol
-from airweave.platform.sce.types import ExtractedRef, ExtractedRefType
+from airweave.domains.sce.protocols import ExtractorProtocol
+from airweave.domains.sce.types import ExtractedRef, ExtractedRefType
 
 
 class RegexExtractorType(BaseModel):
@@ -59,9 +59,15 @@ REGEX_EXTRACTOR_TYPES = [
 class RegexExtractor(ExtractorProtocol):
     """Extract references from text using configurable regex patterns."""
 
+    excluded_entity_types = None
+
     def __init__(self, extractor_types: List[RegexExtractorType]):
         """Initialize with a list of regex extractor type configurations."""
         self.extractor_types = extractor_types
+
+    def should_extract(self, entity_type: str | None) -> bool:
+        """Always extract — regex works on all entity types."""
+        return True
 
     async def extract(self, text: str) -> List[ExtractedRef]:
         """Extract references from text using all configured patterns."""

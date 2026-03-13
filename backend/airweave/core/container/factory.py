@@ -416,6 +416,11 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # Structural context extraction service
+    # -----------------------------------------------------------------
+    sce_service = _create_sce_service(settings)
+
+    # -----------------------------------------------------------------
     # Usage billing listener
     # -----------------------------------------------------------------
 
@@ -476,6 +481,7 @@ def create_container(settings: Settings) -> Container:
         organization_service=org_service,
         user_service=user_service,
         email_service=email_service,
+        sce_service=sce_service,
     )
 
 
@@ -1039,3 +1045,37 @@ def _create_rate_limiter(settings: Settings):
     from airweave.adapters.rate_limiter.redis import RedisRateLimiter
 
     return RedisRateLimiter(redis_client=redis_client.client)
+
+
+def _create_sce_service(settings: Settings):
+    """Create the Structural Context Extraction service with extractors.
+
+    Builds the regex and NER extractors, wires the NER exclusion set
+    from the CodeFileEntity class hierarchy.
+    """
+    import airweave.platform.entities  # noqa: F401 — trigger subclass registration
+    from airweave.domains.sce.extractors import (
+        REGEX_EXTRACTOR_TYPES,
+        NamedEntityRecognitionExtractor,
+        RegexExtractor,
+    )
+    from airweave.domains.sce.service import StructuralContextExtractorService
+    from airweave.platform.entities._base import CodeFileEntity
+
+    def _collect_subclass_names(cls: type) -> set[str]:
+        """Recursively collect class names for a class and all its subclasses."""
+        names = {cls.__name__}
+        for sub in cls.__subclasses__():
+            names |= _collect_subclass_names(sub)
+        return names
+
+    # NER produces garbage on code — exclude CodeFileEntity and all subclasses
+    ner_excluded = _collect_subclass_names(CodeFileEntity)
+
+    regex_extractor = RegexExtractor(REGEX_EXTRACTOR_TYPES)
+    ner_extractor = NamedEntityRecognitionExtractor(
+        model=settings.SPACY_NER_MODEL,
+        excluded_entity_types=ner_excluded,
+    )
+
+    return StructuralContextExtractorService([regex_extractor, ner_extractor])

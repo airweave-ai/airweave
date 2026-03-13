@@ -14,6 +14,10 @@ class ExtractedRefType(str, Enum):
     MENTION = "mention"
     TICKET_ID = "ticket_id"
     FILE_PATH = "file_path"
+    PERSON = "person"
+    ORG = "org"
+    PRODUCT = "product"
+    EVENT = "event"
 
 
 class ExtractedRef(BaseModel):
@@ -36,6 +40,7 @@ class EntityExtractionInput(BaseModel):
 
     entity_id: str
     text: str
+    entity_type: str | None = None
 
 
 class EntityAnnotations(BaseModel):

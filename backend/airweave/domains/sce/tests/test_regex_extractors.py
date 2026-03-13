@@ -2,7 +2,7 @@
 
 import pytest
 
-from airweave.platform.sce.extractors.regex import (
+from airweave.domains.sce.extractors.regex import (
     RegexExtractor,
     RegexExtractorType,
     URL_EXTRACTOR_TYPE,
@@ -12,7 +12,7 @@ from airweave.platform.sce.extractors.regex import (
     FILE_PATH_EXTRACTOR_TYPE,
     REGEX_EXTRACTOR_TYPES,
 )
-from airweave.platform.sce.types import ExtractedRefType
+from airweave.domains.sce.types import ExtractedRefType
 
 
 def _make_extractor(*types: RegexExtractorType) -> RegexExtractor:
@@ -202,5 +202,11 @@ class TestRefTypeAndEmptyContract:
         assert set(by_type[ExtractedRefType.TICKET_ID]) == {"ENG-123", "ENG-789"}
         assert by_type[ExtractedRefType.FILE_PATH] == ["/src/main.py"]
 
-        # All five ref types present
-        assert set(by_type.keys()) == set(ExtractedRefType)
+        # All regex ref types present
+        assert set(by_type.keys()) == {
+            ExtractedRefType.URL,
+            ExtractedRefType.EMAIL,
+            ExtractedRefType.MENTION,
+            ExtractedRefType.TICKET_ID,
+            ExtractedRefType.FILE_PATH,
+        }

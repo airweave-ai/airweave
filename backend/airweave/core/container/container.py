@@ -64,6 +64,7 @@ from airweave.domains.organizations.protocols import (
     OrganizationServiceProtocol,
     UserOrganizationRepositoryProtocol,
 )
+from airweave.domains.sce.protocols import StructuralContextExtractorServiceProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
@@ -219,6 +220,9 @@ class Container:
     # Embedder instances (deployment-wide singletons from domains/embedders/)
     dense_embedder: DenseEmbedderProtocol
     sparse_embedder: SparseEmbedderProtocol
+
+    # SCE service (structural context extraction — regex + NER extractors)
+    sce_service: StructuralContextExtractorServiceProtocol
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured
