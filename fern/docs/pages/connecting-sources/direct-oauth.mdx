@@ -46,10 +46,10 @@ The URL-based OAuth flow is the simplest way to connect sources. Users are redir
 
 ### How it works
 
-1. **Initiate Connection**: Create a source connection using the URL-based authentication method
+1. **Initiate Connection**: Create a source connection using the URL-based authentication method. The response includes a `claim_token` that you must store for the verification step.
 2. **User Consent**: Users are redirected to the service provider's consent screen
 3. **Token Exchange**: Airweave exchanges the authorization code for access and refresh tokens
-4. **Data Sync**: The connection is established and data synchronization begins
+4. **Verify Ownership**: After the OAuth callback completes, call `POST /source-connections/{id}/verify-oauth` with the `claim_token` to prove your client initiated the flow. This triggers data synchronization.
 
 ### Creating a URL-based OAuth connection
 
@@ -131,8 +131,40 @@ curl -X POST https://api.airweave.ai/source-connections \
 When using URL-based OAuth, you'll receive an authorization URL that you need to redirect users to. After they complete the OAuth flow, they'll be redirected back to your specified callback URL with the necessary parameters.
 
 <Note>
-**Important**: OAuth browser flows (both standard and BYOC) cannot use `sync_immediately=true`. The sync will automatically start after the user completes the OAuth authentication flow. Setting `sync_immediately=true` will result in a validation error.
+**Important**: OAuth browser flows (both standard and BYOC) cannot use `sync_immediately=true`. After the user completes the OAuth consent screen, you must call the `verify-oauth` endpoint with the `claim_token` from the create response to trigger data synchronization. Setting `sync_immediately=true` will result in a validation error.
 </Note>
+
+### Verifying the OAuth flow
+
+After the OAuth callback completes and the user is redirected back to your application, call the verify-oauth endpoint with the `claim_token` received during connection creation. This proves your client initiated the flow and triggers the data sync.
+
+<CodeBlocks>
+```Python title="Python"
+# After user completes OAuth and is redirected back:
+airweave.source_connections.verify_oauth(
+    id=source_connection.id,
+    claim_token=source_connection.auth.claim_token,
+)
+```
+
+```javascript title="Node.js"
+// After user completes OAuth and is redirected back:
+await airweave.sourceConnections.verifyOauth(
+    sourceConnection.id,
+    { claimToken: sourceConnection.auth.claimToken }
+);
+```
+
+```bash title="cURL"
+# After user completes OAuth and is redirected back:
+curl -X POST https://api.airweave.ai/source-connections/{connection-id}/verify-oauth \
+     -H "x-api-key: <apiKey>" \
+     -H "Content-Type: application/json" \
+     -d '{
+  "claim_token": "<claim_token from create response>"
+}'
+```
+</CodeBlocks>
 
 ### Redirect URI basics
 

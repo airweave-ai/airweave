@@ -40,6 +40,7 @@ api/
   - For direct auth: validates credential format
   - For OAuth: handles authorization flows
   - For auth providers: validates provider exists and supports the source
+- **POST /source-connections/{id}/verify-oauth**: Verifies claim-token ownership and triggers deferred sync. Called after the OAuth callback completes to prove the caller that initiated the flow is the one completing it. Required for all browser-based OAuth flows.
 
 ## Core Components
 

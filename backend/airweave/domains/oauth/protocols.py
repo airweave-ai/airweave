@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.api.context import ApiContext, ConnectContext
 from airweave.core.logging import ContextualLogger
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.oauth.types import OAuth1TokenResponse, OAuthBrowserInitiationResult
@@ -156,6 +156,16 @@ class OAuthInitSessionRepositoryProtocol(Protocol):
         """Persist a new init session."""
         ...
 
+    async def get(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+    ) -> Optional[ConnectionInitSession]:
+        """Fetch an init session by ID (org-scoped)."""
+        ...
+
     async def mark_completed(
         self,
         db: AsyncSession,
@@ -277,6 +287,9 @@ class OAuthFlowServiceProtocol(Protocol):
         redirect_url: Optional[str] = None,
         template_configs: Optional[dict] = None,
         additional_overrides: Optional[Dict[str, Any]] = None,
+        initiator_user_id: Optional[UUID] = None,
+        initiator_session_id: Optional[UUID] = None,
+        claim_token_hash: Optional[str] = None,
     ) -> ConnectionInitSession:
         """Persist an init session for a new OAuth flow."""
         ...
@@ -328,4 +341,15 @@ class OAuthCallbackServiceProtocol(Protocol):
 
         Exchange verifier, wire credential + connection, trigger sync.
         """
+        ...
+
+    async def verify_oauth_flow(
+        self,
+        db: AsyncSession,
+        *,
+        source_connection_id: UUID,
+        claim_token: str,
+        ctx: ApiContext | ConnectContext,
+    ) -> SourceConnectionSchema:
+        """Verify OAuth flow ownership via claim token and trigger deferred sync."""
         ...

@@ -38,6 +38,7 @@ from airweave.schemas.errors import (
     RateLimitErrorResponse,
     ValidationErrorResponse,
 )
+from airweave.schemas.source_connection import VerifyOAuthRequest
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,35 @@ async def oauth_callback(
     return Response(
         status_code=303,
         headers={"Location": final_url},
+    )
+
+
+@router.post(
+    "/{source_connection_id}/verify-oauth",
+    response_model=schemas.SourceConnection,
+    summary="Verify OAuth Flow",
+    description="""Verify ownership of an OAuth flow by presenting the claim token
+returned during connection creation. This triggers the deferred sync.""",
+    responses={
+        200: {"model": schemas.SourceConnection, "description": "Verified source connection"},
+        403: {"description": "Invalid claim token or identity mismatch"},
+        404: {"model": NotFoundErrorResponse, "description": "Source Connection Not Found"},
+    },
+)
+async def verify_oauth(
+    *,
+    db: AsyncSession = Depends(get_db),
+    source_connection_id: UUID = Path(...),
+    body: VerifyOAuthRequest,
+    ctx: ApiContext = Depends(deps.get_context),
+    oauth_callback_svc: OAuthCallbackServiceProtocol = Inject(OAuthCallbackServiceProtocol),
+) -> schemas.SourceConnection:
+    """Verify OAuth flow ownership and trigger deferred sync."""
+    return await oauth_callback_svc.verify_oauth_flow(
+        db,
+        source_connection_id=source_connection_id,
+        claim_token=body.claim_token,
+        ctx=ctx,
     )
 
 

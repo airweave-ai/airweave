@@ -131,6 +131,16 @@ class FakeConnectService(ConnectServiceProtocol):
         )
         raise NotImplementedError("FakeConnectService.create_source_connection not seeded")
 
+    async def verify_oauth(
+        self,
+        db: AsyncSession,
+        connection_id: UUID,
+        claim_token: str,
+        session: ConnectSessionContext,
+    ) -> Any:
+        self._calls.append(("verify_oauth", connection_id, claim_token, session))
+        raise NotImplementedError("FakeConnectService.verify_oauth not seeded")
+
     async def get_connection_jobs(
         self,
         db: AsyncSession,

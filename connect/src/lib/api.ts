@@ -102,6 +102,19 @@ class ConnectApiClient {
     );
   }
 
+  async verifyOAuth(
+    connectionId: string,
+    claimToken: string,
+  ): Promise<SourceConnectionCreateResponse> {
+    return this.fetch<SourceConnectionCreateResponse>(
+      `/connect/source-connections/${connectionId}/verify-oauth`,
+      {
+        method: "POST",
+        body: JSON.stringify({ claim_token: claimToken }),
+      },
+    );
+  }
+
   async getConnectionJobs(
     connectionId: string,
   ): Promise<SourceConnectionJob[]> {

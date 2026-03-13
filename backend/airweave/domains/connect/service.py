@@ -18,6 +18,7 @@ from airweave.core.context import BaseContext
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connect.protocols import ConnectServiceProtocol
 from airweave.domains.connect.types import MODES_CREATE, MODES_DELETE, MODES_VIEW
+from airweave.domains.oauth.protocols import OAuthCallbackServiceProtocol
 from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.domains.sources.protocols import SourceServiceProtocol
@@ -44,12 +45,14 @@ class ConnectService(ConnectServiceProtocol):
         org_repo: OrganizationRepositoryProtocol,
         collection_repo: CollectionRepositoryProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,
+        oauth_callback_service: OAuthCallbackServiceProtocol,
     ) -> None:
         self._sc_service = source_connection_service
         self._source_service = source_service
         self._org_repo = org_repo
         self._collection_repo = collection_repo
         self._sync_job_repo = sync_job_repo
+        self._oauth_callback_service = oauth_callback_service
 
     # ------------------------------------------------------------------
     # Guards (private — all access checks live on the service)
@@ -345,6 +348,24 @@ class ConnectService(ConnectServiceProtocol):
         )
 
         return result  # type: ignore[return-value]
+
+    async def verify_oauth(
+        self,
+        db: AsyncSession,
+        connection_id: UUID,
+        claim_token: str,
+        session: ConnectSessionContext,
+    ) -> schemas.SourceConnection:
+        """Verify OAuth flow ownership via Connect session."""
+        self._check_mode(session, MODES_CREATE, "verifying OAuth flow")
+        ctx = await self._build_context(db, session)
+
+        return await self._oauth_callback_service.verify_oauth_flow(
+            db,
+            source_connection_id=connection_id,
+            claim_token=claim_token,
+            ctx=ctx,
+        )
 
     # ------------------------------------------------------------------
     # Sync jobs

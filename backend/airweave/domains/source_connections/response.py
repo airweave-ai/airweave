@@ -71,6 +71,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         *,
         auth_url_override: Optional[str] = None,
         auth_url_expiry_override: Optional[datetime] = None,
+        claim_token: Optional[str] = None,
     ) -> SourceConnectionSchema:
         """Build complete SourceConnection response from an ORM object."""
         auth = await self._build_auth_details(
@@ -79,6 +80,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
             ctx,
             auth_url_override=auth_url_override,
             auth_url_expiry_override=auth_url_expiry_override,
+            claim_token=claim_token,
         )
         schedule = await self._build_schedule_details(db, source_conn, ctx)
         sync_details = await self._build_sync_details(db, source_conn, ctx)
@@ -159,6 +161,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         *,
         auth_url_override: Optional[str] = None,
         auth_url_expiry_override: Optional[datetime] = None,
+        claim_token: Optional[str] = None,
     ) -> AuthenticationDetails:
         """Build authentication details section."""
         actual_auth_method = await self._resolve_auth_method(db, source_conn, ctx)
@@ -193,6 +196,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
             auth_url=auth_url,
             auth_url_expires=auth_url_expires,
             redirect_url=redirect_url,
+            claim_token=claim_token,
         )
 
     async def _resolve_auth_method(

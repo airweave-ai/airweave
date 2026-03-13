@@ -282,6 +282,9 @@ class OAuthFlowService:
         redirect_url: Optional[str] = None,
         template_configs: Optional[dict] = None,
         additional_overrides: Optional[Dict[str, Any]] = None,
+        initiator_user_id: Optional[UUID] = None,
+        initiator_session_id: Optional[UUID] = None,
+        claim_token_hash: Optional[str] = None,
     ) -> ConnectionInitSession:
         """Persist an init session for a new OAuth flow.
 
@@ -316,6 +319,9 @@ class OAuthFlowService:
                 "status": ConnectionInitStatus.PENDING,
                 "expires_at": expires_at,
                 "redirect_session_id": redirect_session_id,
+                "initiator_user_id": initiator_user_id,
+                "initiator_session_id": initiator_session_id,
+                "claim_token_hash": claim_token_hash,
             },
             ctx=ctx,
             uow=uow,

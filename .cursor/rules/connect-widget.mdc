@@ -109,7 +109,7 @@ requestClose(reason: "success" | "cancel" | "error");
 ```
 
 ### 3. OAuth Flow Security
-OAuth uses same-origin popups with validated messaging:
+OAuth uses same-origin popups with validated messaging and claim-token verification:
 ```typescript
 // oauth-callback.tsx posts to same origin
 window.opener.postMessage({ type: "OAUTH_COMPLETE", ...result }, window.location.origin);
@@ -119,6 +119,20 @@ const handler = (event: MessageEvent) => {
   if (event.origin !== window.location.origin) return;
   // Process OAUTH_COMPLETE...
 };
+```
+
+**Claim-token verification (two-step completion):**
+After the OAuth popup completes, the Connect widget calls `verifyOAuth` with the claim token before considering the flow complete. The claim token is returned by the initial `createSourceConnection` call and stored in `claimTokenRef`. This ensures the caller that initiated the OAuth flow is the same one completing it.
+
+See `useOAuthFlow.ts` lines 66-72 for the implementation:
+```typescript
+if (claimTokenRef.current) {
+  await apiClient.verifyOAuth(
+    result.source_connection_id,
+    claimTokenRef.current,
+  );
+  claimTokenRef.current = null;
+}
 ```
 
 ### 4. Theming System
