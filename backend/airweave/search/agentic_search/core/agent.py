@@ -19,6 +19,7 @@ from airweave.analytics.agentic_search_analytics import (
 )
 from airweave.api.context import ApiContext
 from airweave.core.protocols.metrics import AgenticSearchMetrics
+from airweave.domains.embedders.protocols import EmbeddingPurpose
 from airweave.search.agentic_search.builders import (
     AgenticSearchCollectionMetadataBuilder,
     AgenticSearchCompletePlanBuilder,
@@ -405,7 +406,9 @@ class AgenticSearchAgent:
             AgenticSearchRetrievalStrategy.HYBRID,
         ):
             texts = [query.primary] + list(query.variations)
-            dense_embeddings = await self.services.dense_embedder.embed_many(texts)
+            dense_embeddings = await self.services.dense_embedder.embed_many(
+                texts, purpose=EmbeddingPurpose.QUERY
+            )
 
         if strategy in (
             AgenticSearchRetrievalStrategy.KEYWORD,

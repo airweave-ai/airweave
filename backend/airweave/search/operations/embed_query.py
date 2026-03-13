@@ -8,7 +8,11 @@ the retrieval strategy (hybrid, neural, or keyword).
 from typing import TYPE_CHECKING, List, Optional
 
 from airweave.api.context import ApiContext
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.embedders.protocols import (
+    DenseEmbedderProtocol,
+    EmbeddingPurpose,
+    SparseEmbedderProtocol,
+)
 from airweave.schemas.search import RetrievalStrategy
 from airweave.search.context import SearchContext
 
@@ -110,7 +114,7 @@ class EmbedQuery(SearchOperation):
             f"[EmbedQuery] Generating {self.dense_embedder.dimensions}-dim embeddings "
             f"for {len(queries)} queries"
         )
-        results = await self.dense_embedder.embed_many(queries)
+        results = await self.dense_embedder.embed_many(queries, purpose=EmbeddingPurpose.QUERY)
 
         # Validate we got embeddings for all queries
         if len(results) != len(queries):

@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from airweave.core.container.factory import _create_dense_embedder
+from airweave.domains.embedders.dense.gemini import GeminiDenseEmbedder
 from airweave.domains.embedders.dense.local import LocalDenseEmbedder
 from airweave.domains.embedders.dense.mistral import MistralDenseEmbedder
 from airweave.domains.embedders.dense.openai import OpenAIDenseEmbedder
@@ -18,6 +19,7 @@ def _make_settings(**overrides):
     defaults = dict(
         OPENAI_API_KEY="sk-test-openai",
         MISTRAL_API_KEY="test-mistral-key",
+        GEMINI_API_KEY="test-gemini-key",
         TEXT2VEC_INFERENCE_URL="http://localhost:9878",
     )
     defaults.update(overrides)
@@ -106,6 +108,31 @@ class TestCreateDenseEmbedder:
 
         assert isinstance(result, LocalDenseEmbedder)
         assert result.dimensions == 384
+
+    def test_creates_gemini_embedder(self):
+        spec = DenseEmbedderSpec(
+            short_name="gemini_embedding_2",
+            name="Gemini Embedding 2",
+            description="test",
+            provider="gemini",
+            api_model_name="gemini-embedding-2-preview",
+            max_dimensions=3072,
+            max_tokens=8192,
+            supports_matryoshka=True,
+            embedder_class=GeminiDenseEmbedder,
+            required_setting="GEMINI_API_KEY",
+        )
+        registry = _build_registry(spec)
+        settings = _make_settings()
+
+        with patch(
+            "airweave.core.container.factory.DENSE_EMBEDDER", "gemini_embedding_2"
+        ), patch("airweave.core.container.factory.EMBEDDING_DIMENSIONS", 3072):
+            result = _create_dense_embedder(settings, registry)
+
+        assert isinstance(result, GeminiDenseEmbedder)
+        assert result.dimensions == 3072
+        assert result.model_name == "gemini-embedding-2-preview"
 
     def test_raises_for_unknown_embedder_class(self):
         class _UnknownEmbedder:

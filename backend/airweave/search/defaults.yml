@@ -97,6 +97,19 @@ provider_models:
       tokenizer: "mistral-small-latest"  # Uses native Mistral tokenizer
       context_window: 32000
 
+  # Google Gemini Embedding 2 - natively multimodal, Matryoshka support
+  # Requires GEMINI_API_KEY to be set
+  # Supports any dimension from 128 to 3072 via Matryoshka truncation
+  gemini:
+    llm: null
+    embedding:
+      name: "gemini-embedding-2-preview"
+      tokenizer: "cl100k_base"  # Approximation for token counting
+      dimensions: 3072
+      max_tokens: 8192
+      supported_dimensions: [128, 256, 384, 512, 768, 1024, 1536, 3072]
+    rerank: null
+
   # Local embedding provider using text2vec-transformers container
   # No API key required - requires TEXT2VEC_INFERENCE_URL to be set
   # Start with: docker compose --profile local-embeddings up
@@ -156,6 +169,10 @@ operation_preferences:
   embed_query:
     order:
       - provider: openai
+        llm: null
+        embedding: embedding
+        rerank: null
+      - provider: gemini
         llm: null
         embedding: embedding
         rerank: null

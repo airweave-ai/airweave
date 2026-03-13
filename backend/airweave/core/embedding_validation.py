@@ -55,6 +55,9 @@ def get_available_providers() -> List[str]:
     if settings.MISTRAL_API_KEY:
         available.append("mistral")
 
+    if settings.GEMINI_API_KEY:
+        available.append("gemini")
+
     # Local is available if TEXT2VEC_INFERENCE_URL is set
     # Note: LocalProvider for search is not yet implemented, but sync embeddings work
     if settings.TEXT2VEC_INFERENCE_URL:
@@ -90,7 +93,8 @@ def validate_embedding_stack() -> Tuple[bool, List[str]]:
     if not available:
         messages.append(
             "WARNING: No embedding providers available. "
-            "Set OPENAI_API_KEY, MISTRAL_API_KEY, or configure TEXT2VEC_INFERENCE_URL."
+            "Set OPENAI_API_KEY, MISTRAL_API_KEY, GEMINI_API_KEY, "
+            "or configure TEXT2VEC_INFERENCE_URL."
         )
         is_valid = False
     else:

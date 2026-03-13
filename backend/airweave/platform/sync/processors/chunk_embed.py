@@ -14,6 +14,7 @@ with benefits of pre-trained vocabulary/IDF, stopword removal, and learned term 
 import json
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
+from airweave.domains.embedders.protocols import EmbeddingPurpose
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity
 from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.sync.pipeline.text_builder import text_builder
@@ -245,7 +246,9 @@ class ChunkEmbedProcessor:
             entity_ids,
         )
         try:
-            dense_results = await runtime.dense_embedder.embed_many(dense_texts)
+            dense_results = await runtime.dense_embedder.embed_many(
+                dense_texts, purpose=EmbeddingPurpose.DOCUMENT
+            )
         except Exception:
             sync_context.logger.error(
                 "[ChunkEmbedProcessor] Dense embedding failed for entity IDs: %s",

@@ -1,5 +1,6 @@
 """Protocols for embedders and embedder registries."""
 
+from enum import Enum
 from typing import Protocol
 
 from airweave.core.protocols.registry import RegistryProtocol
@@ -9,6 +10,23 @@ from airweave.domains.embedders.types import (
     SparseEmbedderEntry,
     SparseEmbedding,
 )
+
+# ---------------------------------------------------------------------------
+# Embedding purpose enum
+# ---------------------------------------------------------------------------
+
+
+class EmbeddingPurpose(str, Enum):
+    """Whether the text being embedded is a document or a query.
+
+    Gemini Embedding 2 uses this to select the appropriate task type
+    (RETRIEVAL_DOCUMENT vs RETRIEVAL_QUERY). Other providers accept
+    the parameter but ignore it.
+    """
+
+    DOCUMENT = "document"
+    QUERY = "query"
+
 
 # ---------------------------------------------------------------------------
 # Embedder protocols
@@ -28,11 +46,15 @@ class DenseEmbedderProtocol(Protocol):
         """The output vector dimensionality."""
         ...
 
-    async def embed(self, text: str) -> DenseEmbedding:
+    async def embed(
+        self, text: str, *, purpose: EmbeddingPurpose = EmbeddingPurpose.DOCUMENT
+    ) -> DenseEmbedding:
         """Embed a single text into a dense vector."""
         ...
 
-    async def embed_many(self, texts: list[str]) -> list[DenseEmbedding]:
+    async def embed_many(
+        self, texts: list[str], *, purpose: EmbeddingPurpose = EmbeddingPurpose.DOCUMENT
+    ) -> list[DenseEmbedding]:
         """Embed a batch of texts into dense vectors."""
         ...
 
