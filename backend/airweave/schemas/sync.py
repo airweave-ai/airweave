@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from airweave import schemas
 from airweave.core.shared_models import SyncStatus
-from airweave.platform.sync.config.base import SyncConfig
+from airweave.domains.sync_pipeline.config.base import SyncConfig
 
 
 class SyncBase(BaseModel):

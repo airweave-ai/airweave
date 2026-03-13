@@ -12,7 +12,7 @@ import os
 from typing import Any, Optional
 
 from airweave.core.logging import logger
-from airweave.platform.sync.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
 # Minimum total characters to consider the extraction successful.
 MIN_TOTAL_CHARS = 50

@@ -8,14 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.platform.entities._base import BaseEntity
-from airweave.platform.sync.actions.entity.types import EntityActionBatch
+from airweave.domains.sync_pipeline.types.entity_actions import EntityActionBatch
 
 if TYPE_CHECKING:
     from airweave.core.context import BaseContext
-    from airweave.platform.contexts import SyncContext
-    from airweave.platform.contexts.runtime import SyncRuntime
-    from airweave.platform.sync.config import SyncConfig
-    from airweave.platform.sync.orchestrator import SyncOrchestrator
+    from airweave.domains.sync_pipeline.contexts import SyncContext
+    from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
+    from airweave.domains.sync_pipeline.config import SyncConfig
+    from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
 
 
 class ChunkEmbedProcessorProtocol(Protocol):

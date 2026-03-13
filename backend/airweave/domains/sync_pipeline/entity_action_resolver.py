@@ -11,17 +11,17 @@ from airweave import models
 from airweave.db.session import get_db_context
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.platform.entities._base import BaseEntity, DeletionEntity
-from airweave.platform.sync.actions.entity.types import (
+from airweave.domains.sync_pipeline.types.entity_actions import (
     EntityActionBatch,
     EntityDeleteAction,
     EntityInsertAction,
     EntityKeepAction,
     EntityUpdateAction,
 )
-from airweave.platform.sync.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
 if TYPE_CHECKING:
-    from airweave.platform.contexts import SyncContext
+    from airweave.domains.sync_pipeline.contexts import SyncContext
 
 
 class EntityActionResolver:

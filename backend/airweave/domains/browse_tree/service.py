@@ -25,7 +25,7 @@ from airweave.domains.source_connections.protocols import SourceConnectionReposi
 from airweave.domains.sources.protocols import SourceLifecycleServiceProtocol
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncRepositoryProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
-from airweave.platform.sync.config import SyncConfig
+from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.schemas.sync_job import SyncJobCreate, SyncJobStatus
 
 

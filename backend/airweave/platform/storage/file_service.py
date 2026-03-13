@@ -24,7 +24,7 @@ from airweave.platform.sources.retry_helpers import (
 )
 from airweave.platform.storage.exceptions import FileSkippedException
 from airweave.platform.storage.paths import paths
-from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
+from airweave.domains.sync_pipeline.file_types import SUPPORTED_FILE_EXTENSIONS
 
 if TYPE_CHECKING:
     from airweave.platform.storage.protocol import StorageBackend

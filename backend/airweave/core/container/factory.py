@@ -90,7 +90,9 @@ from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
+from airweave.domains.access_control.repository import AccessControlMembershipRepository
 from airweave.domains.sync_pipeline.factory import SyncFactory
+from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProcessor
 from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
@@ -108,7 +110,7 @@ from airweave.domains.usage.subscribers.billing_listener import UsageBillingList
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.platform.auth.settings import integration_settings
-from airweave.platform.sync.subscribers.progress_relay import SyncProgressRelay
+from airweave.domains.sync_pipeline.subscribers.progress_relay import SyncProgressRelay
 from airweave.platform.temporal.client import TemporalClient
 
 
@@ -379,6 +381,12 @@ def create_container(settings: Settings) -> Container:
     sparse_embedder = _create_sparse_embedder(sparse_embedder_registry)
 
     # -----------------------------------------------------------------
+    # Access control membership repo + chunk embed processor
+    # -----------------------------------------------------------------
+    acl_membership_repo = AccessControlMembershipRepository()
+    chunk_embed_processor = ChunkEmbedProcessor()
+
+    # -----------------------------------------------------------------
     # Sync factory + service
     # -----------------------------------------------------------------
     sync_factory = SyncFactory(
@@ -388,6 +396,8 @@ def create_container(settings: Settings) -> Container:
         dense_embedder=dense_embedder,
         sparse_embedder=sparse_embedder,
         entity_repo=sync_deps["entity_repo"],
+        acl_repo=acl_membership_repo,
+        processor=chunk_embed_processor,
     )
 
     sync_service = SyncService(

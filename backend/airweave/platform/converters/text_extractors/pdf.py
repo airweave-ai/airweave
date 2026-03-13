@@ -16,7 +16,7 @@ import os
 from dataclasses import dataclass, field
 
 from airweave.core.logging import logger
-from airweave.platform.sync.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
 # Minimum characters per page to consider it "has text layer".
 # Pages below this threshold are treated as image-only.
