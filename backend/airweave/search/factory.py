@@ -352,10 +352,12 @@ class SearchFactory:
             and has_vector_sources
         )
         if has_acl_context:
+            assert _container_module.container is not None
             access_control_op = AccessControlFilter(
                 db=db,
                 user_email=acl_user_email,
                 organization_id=acl_org_id,
+                access_broker=_container_module.container.access_broker,
             )
             if user_principal_override:
                 ctx.logger.info(

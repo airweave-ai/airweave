@@ -30,26 +30,13 @@ class AccessBroker:
         Note: SharePoint uses /transitivemembers so group expansion happens
         server-side. Other sources may store group-group tuples that need
         recursive expansion here.
-
-        Args:
-            db: Database session
-            user_principal: User principal (username or identifier)
-            organization_id: Organization ID
-
-        Returns:
-            AccessContext with fully expanded principals
         """
-        # Query direct user-group memberships (member_type="user")
         memberships = await self._acl_repo.get_by_member(
             db=db, member_id=user_principal, member_type="user", organization_id=organization_id
         )
 
-        # Build principals
         user_principals = [f"user:{user_principal}"]
 
-        # Recursively expand group-to-group relationships (if any exist)
-        # For SharePoint: no group-group tuples exist (uses /transitivemembers)
-        # For other sources: this handles nested group expansion
         all_groups = await self._expand_group_memberships(
             db=db, group_ids=[m.group_id for m in memberships], organization_id=organization_id
         )
@@ -69,31 +56,9 @@ class AccessBroker:
     ) -> Optional[AccessContext]:
         """Resolve user's access context scoped to a collection's source connections.
 
-        This method only considers group memberships from source connections that belong
-        to the specified collection, enabling collection-scoped access control.
-
-        IMPORTANT: Returns None if the collection has no sources with access control
-        support. This allows the search layer to skip filtering entirely for collections
-        that only contain sources like Slack, Asana, etc.
-
-        Steps:
-        1. Check if collection has any sources with access control
-        2. If no AC sources, return None (no filtering needed)
-        3. Query database for user's group memberships within the collection
-        4. Recursively expand group-to-group relationships (if any)
-        5. Build AccessContext with user + all expanded group principals
-
-        Args:
-            db: Database session
-            user_principal: User principal (username or identifier)
-            readable_collection_id: Collection readable_id (string) to scope the access context
-            organization_id: Organization ID
-
-        Returns:
-            AccessContext with fully expanded principals scoped to collection,
-            or None if collection has no access-control-enabled sources
+        Returns None if the collection has no sources with access control
+        support, allowing the search layer to skip filtering entirely.
         """
-        # Check if collection has any sources with access control
         has_ac_sources = await self._collection_has_ac_sources(
             db=db,
             readable_collection_id=readable_collection_id,
@@ -101,10 +66,8 @@ class AccessBroker:
         )
 
         if not has_ac_sources:
-            # No access control sources in collection → skip filtering
             return None
 
-        # Query user-group memberships scoped to collection (member_type="user")
         memberships = await self._acl_repo.get_by_member_and_collection(
             db=db,
             member_id=user_principal,
@@ -113,11 +76,8 @@ class AccessBroker:
             organization_id=organization_id,
         )
 
-        # Build principals
         user_principals = [f"user:{user_principal}"]
 
-        # Recursively expand group-to-group relationships (if any exist)
-        # Note: Group expansion is still organization-wide, not collection-scoped
         all_groups = await self._expand_group_memberships(
             db=db, group_ids=[m.group_id for m in memberships], organization_id=organization_id
         )
@@ -134,26 +94,12 @@ class AccessBroker:
         readable_collection_id: str,
         organization_id: UUID,
     ) -> bool:
-        """Check if a collection has any sources with access control enabled.
-
-        This queries the access_control_membership table to see if there are
-        any memberships for this collection. If there are memberships, at least
-        one source in the collection supports access control.
-
-        Args:
-            db: Database session
-            readable_collection_id: Collection readable_id
-            organization_id: Organization ID
-
-        Returns:
-            True if collection has at least one AC-enabled source
-        """
+        """Check if a collection has any sources with access control enabled."""
         from sqlalchemy import exists, select
 
         from airweave.models.access_control_membership import AccessControlMembership
         from airweave.models.source_connection import SourceConnection
 
-        # Check if any memberships exist for source connections in this collection
         stmt = select(
             exists(
                 select(AccessControlMembership.id)
@@ -176,23 +122,12 @@ class AccessBroker:
     ) -> Set[str]:
         """Recursively expand group memberships to handle nested groups.
 
-        For sources that store group-to-group relationships (e.g., Google Drive),
-        this recursively expands nested groups via CRUD layer. For SharePoint,
-        /transitivemembers handles this server-side, so no group-group tuples exist.
-
-        Args:
-            db: Database session
-            group_ids: List of initial group IDs
-            organization_id: Organization ID
-
-        Returns:
-            Set of all group IDs (direct + transitive)
+        Max depth of 10 to prevent infinite loops from circular group references.
         """
         all_groups = set(group_ids)
         to_process = set(group_ids)
         visited = set()
 
-        # Recursively expand (max depth: 10 to prevent infinite loops)
         max_depth = 10
         depth = 0
 
@@ -202,12 +137,10 @@ class AccessBroker:
                 continue
             visited.add(current_group)
 
-            # Query for group-to-group memberships via CRUD layer (member_type="group")
             nested_memberships = await self._acl_repo.get_by_member(
                 db=db, member_id=current_group, member_type="group", organization_id=organization_id
             )
 
-            # Add parent groups and queue for processing
             for m in nested_memberships:
                 if m.group_id not in all_groups:
                     all_groups.add(m.group_id)
@@ -220,45 +153,17 @@ class AccessBroker:
     def check_entity_access(
         self, entity_access: Optional[AccessControl], access_context: Optional[AccessContext]
     ) -> bool:
-        """Check if user can access entity based on access control.
-
-        Args:
-            entity_access: Entity's AccessControl field (entity.access), may be None
-            access_context: User's AccessContext (from resolve_access_context), may be None
-
-        Returns:
-            True if user has access to the entity:
-            - True if entity_access is None (no AC = public for non-AC sources)
-            - True if entity_access.is_public is True
-            - True if access_context is None (no AC context = no filtering)
-            - True if any of user's principals match entity.access.viewers
-            - False otherwise
-        """
-        # No access control on entity = visible to everyone (non-AC source)
+        """Check if user can access entity based on access control."""
         if entity_access is None:
             return True
 
-        # Public entity = visible to everyone
         if entity_access.is_public:
             return True
 
-        # No access context = no filtering (collection has no AC sources)
         if access_context is None:
             return True
 
-        # No viewers specified = visible to everyone (legacy behavior)
         if not entity_access.viewers:
             return True
 
-        # Check if any principal matches
         return bool(access_context.all_principals & set(entity_access.viewers))
-
-
-def _default_access_broker() -> "AccessBroker":
-    """Create a default AccessBroker backed by the real repository."""
-    from airweave.domains.access_control.repository import AccessControlMembershipRepository
-
-    return AccessBroker(acl_repo=AccessControlMembershipRepository())
-
-
-access_broker = _default_access_broker()
