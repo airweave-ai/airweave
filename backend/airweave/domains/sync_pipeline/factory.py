@@ -65,6 +65,7 @@ class SyncFactory:
         processor: ChunkEmbedProcessorProtocol,
         arf_service: Optional[ArfServiceProtocol] = None,
     ) -> None:
+        """Initialize with all required service and repository dependencies."""
         self._sc_repo = sc_repo
         self._event_bus = event_bus
         self._usage_checker = usage_checker

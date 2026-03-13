@@ -45,6 +45,7 @@ class DestinationHandler(EntityActionHandler):
         destinations: List[BaseDestination],
         processor: ChunkEmbedProcessorProtocol,
     ) -> None:
+        """Initialize with destination list and chunk/embed processor."""
         self._destinations = destinations
         self._processor = processor
 

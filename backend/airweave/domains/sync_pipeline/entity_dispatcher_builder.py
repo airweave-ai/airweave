@@ -24,6 +24,7 @@ class EntityDispatcherBuilder:
         entity_repo: EntityRepositoryProtocol,
         arf_service: Optional[ArfServiceProtocol] = None,
     ) -> None:
+        """Initialize with processor and entity repository."""
         self._processor = processor
         self._entity_repo = entity_repo
         self._arf_service = arf_service
@@ -34,6 +35,7 @@ class EntityDispatcherBuilder:
         execution_config: Optional[SyncConfig] = None,
         logger: Optional[ContextualLogger] = None,
     ) -> EntityActionDispatcher:
+        """Build a dispatcher with all configured handlers."""
         handlers = self._build_handlers(destinations, execution_config, logger)
         return EntityActionDispatcher(handlers=handlers)
 
@@ -42,6 +44,7 @@ class EntityDispatcherBuilder:
         destinations: List[BaseDestination],
         logger: Optional[ContextualLogger] = None,
     ) -> EntityActionDispatcher:
+        """Build a dispatcher configured for cleanup (no execution config)."""
         return self.build(destinations=destinations, execution_config=None, logger=logger)
 
     def _build_handlers(

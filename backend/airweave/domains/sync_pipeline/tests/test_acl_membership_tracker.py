@@ -1,8 +1,9 @@
 """Unit tests for ACL Membership Tracker."""
 
-import pytest
 from unittest.mock import MagicMock
 from uuid import uuid4
+
+import pytest
 
 from airweave.domains.sync_pipeline.pipeline.acl_membership_tracker import ACLMembershipTracker
 

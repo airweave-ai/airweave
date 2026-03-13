@@ -10,15 +10,15 @@ Validates that temporary files are cleaned up correctly for different action typ
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, DeletionEntity, FileEntity
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 from airweave.domains.sync_pipeline.pipeline.cleanup_service import cleanup_service
+from airweave.platform.entities._airweave_field import AirweaveField
+from airweave.platform.entities._base import BaseEntity, DeletionEntity, FileEntity
 
 
 # Test entity classes
@@ -70,10 +70,7 @@ def create_file_entity_with_temp_file(temp_dir: str, filename: str) -> _TestFile
     Path(file_path).write_text("test content")
 
     entity = _TestFileEntity(
-        file_id=str(uuid4()),
-        name=filename,
-        url=f"https://example.com/{filename}",
-        breadcrumbs=[]
+        file_id=str(uuid4()), name=filename, url=f"https://example.com/{filename}", breadcrumbs=[]
     )
     entity.local_path = file_path
     return entity
@@ -175,7 +172,9 @@ async def test_cleanup_ignores_deletes(temp_dir, mock_sync_context):
     DeletionEntity is not a FileEntity, so it should be skipped.
     """
     # Create a deletion entity (no file on disk)
-    deletion_entity = _TestDeletionEntity(deletion_id=str(uuid4()), label="deleted-item", breadcrumbs=[])
+    deletion_entity = _TestDeletionEntity(
+        deletion_id=str(uuid4()), label="deleted-item", breadcrumbs=[]
+    )
 
     partitions = {
         "inserts": [],
@@ -199,7 +198,9 @@ async def test_cleanup_ignores_non_file_entities(temp_dir, mock_sync_context):
     """Test that non-FileEntity types are ignored."""
     # Mix FileEntity with non-FileEntity
     file_entity = create_file_entity_with_temp_file(temp_dir, "file.txt")
-    non_file_entity = _TestNonFileEntity(test_id=str(uuid4()), name="non-file-entity", breadcrumbs=[])
+    non_file_entity = _TestNonFileEntity(
+        test_id=str(uuid4()), name="non-file-entity", breadcrumbs=[]
+    )
 
     partitions = {
         "inserts": [file_entity, non_file_entity],

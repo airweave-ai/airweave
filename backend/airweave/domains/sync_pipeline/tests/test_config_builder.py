@@ -6,7 +6,6 @@ from unittest.mock import patch
 from airweave.domains.sync_pipeline.config.base import (
     BehaviorConfig,
     CursorConfig,
-    DestinationConfig,
     HandlerConfig,
     SyncConfig,
 )
@@ -110,9 +109,7 @@ class TestSyncConfigBuilderPartialOverrides:
         """Test that overriding one section preserves other sections."""
         with _clean_env():
             config = SyncConfigBuilder.build(
-                job_overrides=SyncConfig(
-                    behavior=BehaviorConfig(skip_hash_comparison=True)
-                )
+                job_overrides=SyncConfig(behavior=BehaviorConfig(skip_hash_comparison=True))
             )
             assert config.behavior.skip_hash_comparison is True
             assert config.handlers.enable_vector_handlers is True  # Other section default
@@ -144,8 +141,6 @@ class TestSyncConfigBuilderFromDB:
         }
 
         with _clean_env():
-            config = SyncConfigBuilder.build(
-                collection_overrides=SyncConfig(**db_json)
-            )
+            config = SyncConfigBuilder.build(collection_overrides=SyncConfig(**db_json))
             assert config.handlers.enable_vector_handlers is False
             assert config.behavior.skip_hash_comparison is True

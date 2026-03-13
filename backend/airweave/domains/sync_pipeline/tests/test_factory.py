@@ -123,9 +123,7 @@ async def test_create_orchestrator_passes_entity_repo_to_pipeline():
     db = AsyncMock()
 
     with (
-        patch(
-            "airweave.domains.sync_pipeline.factory.SyncContextBuilder"
-        ) as mock_sc_builder,
+        patch("airweave.domains.sync_pipeline.factory.SyncContextBuilder") as mock_sc_builder,
         patch(
             "airweave.domains.sync_pipeline.factory.EntityDispatcherBuilder"
         ) as mock_disp_builder,

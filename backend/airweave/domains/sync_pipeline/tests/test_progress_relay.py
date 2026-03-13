@@ -6,7 +6,6 @@ from uuid import UUID, uuid4
 import pytest
 
 from airweave.adapters.pubsub.fake import FakePubSub
-from airweave.core.events.enums import SyncEventType
 from airweave.core.events.sync import (
     AccessControlMembershipBatchProcessedEvent,
     EntityBatchProcessedEvent,
@@ -29,9 +28,7 @@ def _make_relay():
     return relay, pubsub
 
 
-def _running_event(
-    sync_id=SYNC_ID, job_id=JOB_ID
-) -> SyncLifecycleEvent:
+def _running_event(sync_id=SYNC_ID, job_id=JOB_ID) -> SyncLifecycleEvent:
     return SyncLifecycleEvent.running(
         organization_id=ORG_ID,
         sync_id=sync_id,
@@ -45,8 +42,13 @@ def _running_event(
 
 
 def _batch_event(
-    inserted=5, updated=3, deleted=1, kept=2,
-    job_id=JOB_ID, billable=True, type_breakdown=None,
+    inserted=5,
+    updated=3,
+    deleted=1,
+    kept=2,
+    job_id=JOB_ID,
+    billable=True,
+    type_breakdown=None,
 ) -> EntityBatchProcessedEvent:
     return EntityBatchProcessedEvent(
         organization_id=ORG_ID,
@@ -166,10 +168,15 @@ class TestBatchAccumulation:
             "FileEntity": TypeActionCounts(inserted=5, updated=2, deleted=0, kept=1),
             "FolderEntity": TypeActionCounts(inserted=3, updated=0, deleted=0, kept=0),
         }
-        await relay.handle(_batch_event(
-            inserted=8, updated=2, deleted=0, kept=1,
-            type_breakdown=breakdown,
-        ))
+        await relay.handle(
+            _batch_event(
+                inserted=8,
+                updated=2,
+                deleted=0,
+                kept=1,
+                type_breakdown=breakdown,
+            )
+        )
 
         session = relay._sessions[JOB_ID]
         assert "FileEntity" in session.type_counts
@@ -184,8 +191,12 @@ class TestBatchAccumulation:
         batch1 = {"FileEntity": TypeActionCounts(inserted=3, updated=1, deleted=0, kept=0)}
         batch2 = {"FileEntity": TypeActionCounts(inserted=2, updated=4, deleted=0, kept=0)}
 
-        await relay.handle(_batch_event(inserted=3, updated=1, deleted=0, kept=0, type_breakdown=batch1))
-        await relay.handle(_batch_event(inserted=2, updated=4, deleted=0, kept=0, type_breakdown=batch2))
+        await relay.handle(
+            _batch_event(inserted=3, updated=1, deleted=0, kept=0, type_breakdown=batch1)
+        )
+        await relay.handle(
+            _batch_event(inserted=2, updated=4, deleted=0, kept=0, type_breakdown=batch2)
+        )
 
         session = relay._sessions[JOB_ID]
         assert session.type_counts["FileEntity"].inserted == 5
@@ -417,10 +428,15 @@ class TestNamedCounts:
         breakdown = {
             "FileEntity": TypeActionCounts(inserted=5, updated=2, deleted=3, kept=10),
         }
-        await relay.handle(_batch_event(
-            inserted=5, updated=2, deleted=3, kept=10,
-            type_breakdown=breakdown,
-        ))
+        await relay.handle(
+            _batch_event(
+                inserted=5,
+                updated=2,
+                deleted=3,
+                kept=10,
+                type_breakdown=breakdown,
+            )
+        )
 
         session = relay._sessions[JOB_ID]
         assert session.named_counts["FileEntity"] == 17  # 5 + 2 + 10

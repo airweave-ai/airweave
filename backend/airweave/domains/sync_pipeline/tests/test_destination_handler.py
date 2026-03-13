@@ -15,6 +15,8 @@ import pytest
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 from airweave.domains.sync_pipeline.handlers.destination import DestinationHandler
 
+_ASYNC_SLEEP = "airweave.domains.sync_pipeline.handlers.destination.asyncio.sleep"
+
 
 def _make_mock_destination(soft_fail=False):
     """Create a mock destination with required attributes."""
@@ -55,7 +57,7 @@ class TestExecuteWithRetryTimeout:
             call_count += 1
             raise TimeoutError("feed timed out")
 
-        with patch("airweave.domains.sync_pipeline.handlers.destination.asyncio.sleep", new_callable=AsyncMock):
+        with patch(_ASYNC_SLEEP, new_callable=AsyncMock):
             with pytest.raises(SyncFailureError, match="Destination unavailable"):
                 await handler._execute_with_retry(
                     operation=failing_operation,
@@ -82,7 +84,7 @@ class TestExecuteWithRetryTimeout:
             call_count += 1
             raise asyncio.TimeoutError()
 
-        with patch("airweave.domains.sync_pipeline.handlers.destination.asyncio.sleep", new_callable=AsyncMock):
+        with patch(_ASYNC_SLEEP, new_callable=AsyncMock):
             with pytest.raises(SyncFailureError, match="Destination unavailable"):
                 await handler._execute_with_retry(
                     operation=failing_operation,
@@ -110,7 +112,7 @@ class TestExecuteWithRetryTimeout:
                 raise TimeoutError("temporary failure")
             return "success"
 
-        with patch("airweave.domains.sync_pipeline.handlers.destination.asyncio.sleep", new_callable=AsyncMock):
+        with patch(_ASYNC_SLEEP, new_callable=AsyncMock):
             result = await handler._execute_with_retry(
                 operation=flaky_operation,
                 operation_name="insert_MockDestination",
@@ -132,7 +134,7 @@ class TestExecuteWithRetryTimeout:
         async def failing_operation():
             raise TimeoutError("feed timed out")
 
-        with patch("airweave.domains.sync_pipeline.handlers.destination.asyncio.sleep", new_callable=AsyncMock):
+        with patch(_ASYNC_SLEEP, new_callable=AsyncMock):
             with pytest.raises(SyncFailureError):
                 await handler._execute_with_retry(
                     operation=failing_operation,
