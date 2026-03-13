@@ -160,6 +160,12 @@ class AgenticSearchCollectionMetadataBuilder:
             "A cloud-based CRM application for managing sales processes, marketing "
             "activities, and customer support."
         ),
+        # Enron email corpus
+        "enron": (
+            "The Enron Email Dataset (CMU corpus) — over 500,000 real corporate emails "
+            "from Enron employees, including internal communications, meeting scheduling, "
+            "project discussions, and business operations."
+        ),
         # HERB benchmark sources
         "herb_code_review": (
             "GitHub pull requests and code reviews from the HERB benchmark dataset, "

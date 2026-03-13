@@ -148,8 +148,25 @@ can only read results from a **previous** turn's search. Everything else can be 
 
 `add_to_results` + `search` + `get_children` / `get_siblings` / `get_parent` + `count` — all in one turn.
 
-A typical efficient cycle looks like:
-1. `search` → 2. `read` (from step 1) → 3. `add_to_results` (from step 2) + `search` + `get_children` (from step 2) + `count` → 4. `read` (from step 3) → ... → `review_results` → (possibly `remove_from_results`) → `return_results_to_user`
+**You must follow this cycle — it is the core loop, not a suggestion:**
+
+1. `search` →
+2. `read` promising results (from step 1) →
+3. `add_to_results` (from step 2) + next `search` (different angle) + optionally `get_children` / `get_siblings` + `count` — **all in one turn** →
+4. `read` (from step 3's search) →
+5. repeat ...
+6. `review_results` → (possibly `remove_from_results`) → `return_results_to_user`
+
+**Every search that returns results must be followed by read or collect — not another
+search.** Searching again without processing results wastes your iteration budget. PIVOT. Two
+exceptions:
+- **Following a lead**: something in the results points you to a targeted follow-up search. That is a pivot driven by evidence.
+- **Nothing worth reading**: the results are clearly irrelevant — but then your next search
+  must be a **completely different approach**. Rewording a broad query slightly returns nearly identical results from the vector database because of semantic similarity.
+
+**Maximize work per iteration.** The more tools you combine in one response, the more you
+accomplish within your budget. A single response with `add_to_results` + `search` +
+`get_children` does the work of three separate iterations.
 
 ## How to search
 
@@ -159,7 +176,8 @@ A typical efficient cycle looks like:
 2. **Read** the top results in batches of 10-50 to see full content
 3. **Collect** matching results immediately after reading — don't wait.
    You can combine `add_to_results` with your next `search` in the same response.
-4. **Repeat** with different queries, filters, strategies
+4. **Repeat** with a genuinely different angle — different filters, different strategy,
+   different vocabulary. Not a minor variation of the same query.
 
 Your search results are summaries — enough to decide what's worth reading.
 Your read results show full content — that's where you confirm matches.
