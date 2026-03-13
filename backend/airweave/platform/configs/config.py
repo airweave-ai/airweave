@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import Field, field_validator
 
 from airweave.platform.configs._base import BaseConfig, RequiredTemplateConfig
+from airweave.platform.utils.ssrf import validate_host, validate_url
 
 
 class SourceConfig(BaseConfig):
@@ -137,6 +138,14 @@ class Document360Config(SourceConfig):
         title="Language Code",
         description="Language code for article content (e.g. 'en', 'es'). Default: en.",
     )
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url_ssrf(cls, v: Optional[str]) -> Optional[str]:
+        """Validate base URL is not targeting internal resources."""
+        if v is not None:
+            validate_url(v)
+        return v
 
 
 class ElasticsearchConfig(SourceConfig):
@@ -562,6 +571,12 @@ class SharePoint2019V2Config(SourceConfig):
         json_schema_extra={"required_for_auth": True},
     )
 
+    @field_validator("site_url")
+    @classmethod
+    def validate_site_url_ssrf(cls, v: str) -> str:
+        """Validate site URL is not targeting internal resources."""
+        return validate_url(v)
+
     # Active Directory config (required for SID resolution)
     ad_server: str = Field(
         title="Active Directory Server",
@@ -589,6 +604,12 @@ class ShopifyConfig(SourceConfig):
         min_length=3,
     )
 
+    @field_validator("shop_domain")
+    @classmethod
+    def validate_shop_domain_ssrf(cls, v: str) -> str:
+        """Validate shop domain is not targeting internal resources."""
+        return validate_host(v)
+
 
 class SlabConfig(SourceConfig):
     """Slab configuration schema."""
@@ -603,6 +624,12 @@ class SlabConfig(SourceConfig):
         ),
         min_length=1,
     )
+
+    @field_validator("host")
+    @classmethod
+    def validate_host_ssrf(cls, v: str) -> str:
+        """Validate host is not targeting internal resources."""
+        return validate_host(v)
 
 
 class SlackConfig(SourceConfig):
@@ -653,9 +680,11 @@ class SalesforceConfig(SourceConfig):
         """Remove https:// or http:// prefix if present."""
         if isinstance(value, str):
             if value.startswith("https://"):
-                return value.replace("https://", "", 1)
+                value = value.replace("https://", "", 1)
             elif value.startswith("http://"):
-                return value.replace("http://", "", 1)
+                value = value.replace("http://", "", 1)
+            if value:
+                validate_host(value)
         return value
 
 
@@ -940,7 +969,9 @@ class CalComConfig(SourceConfig):
         if not value.startswith(("http://", "https://")):
             value = f"https://{value}"
         # Remove trailing slash for consistent URL joining
-        return value.rstrip("/")
+        value = value.rstrip("/")
+        validate_url(value)
+        return value
 
 
 # AUTH PROVIDER CONFIGURATION CLASSES
@@ -1036,6 +1067,18 @@ class SharePointOnlineConfig(SourceConfig):
             "sync all accessible sites."
         ),
     )
+
+    @field_validator("site_url")
+    @classmethod
+    def validate_site_url_ssrf(cls, v: str) -> str:
+        """Validate each comma-separated site URL for SSRF safety."""
+        if not v:
+            return v
+        for url in v.split(","):
+            url = url.strip()
+            if url:
+                validate_url(url)
+        return v
 
     include_personal_sites: bool = Field(
         default=False,

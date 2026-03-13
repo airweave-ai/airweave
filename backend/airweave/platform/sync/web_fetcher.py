@@ -15,6 +15,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.platform.entities._base import WebEntity
 from airweave.platform.entities.web import WebFileEntity
 from airweave.platform.sync.async_helpers import run_in_thread_pool
+from airweave.platform.utils.ssrf import validate_url
 
 # Improved connection management
 _shared_firecrawl_client = None
@@ -281,6 +282,9 @@ async def web_fetcher(web_entity: WebEntity, logger: ContextualLogger) -> List[W
         content as markdown and local_path set
     """
     entity_context = f"Entity({web_entity.entity_id})"
+
+    # Validate URL before passing to Firecrawl
+    validate_url(web_entity.url)
 
     logger.debug(f"🌐 WEB_START [{entity_context}] Starting web fetch for URL: {web_entity.url}")
 

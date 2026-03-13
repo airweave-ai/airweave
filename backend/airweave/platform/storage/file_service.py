@@ -25,6 +25,7 @@ from airweave.platform.sources.retry_helpers import (
 from airweave.platform.storage.exceptions import FileSkippedException
 from airweave.platform.storage.paths import paths
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
+from airweave.platform.utils.ssrf import validate_url
 
 if TYPE_CHECKING:
     from airweave.platform.storage.protocol import StorageBackend
@@ -233,6 +234,10 @@ class FileService:
             FileSkippedException: If file should be skipped
             ValueError: If url is missing
         """
+        # SSRF check on the download URL
+        if entity.url:
+            validate_url(entity.url)
+
         should_download, skip_reason = await self._validate_file_before_download(
             entity, http_client_factory, access_token_provider, logger
         )

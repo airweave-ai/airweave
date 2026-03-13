@@ -1,10 +1,12 @@
 """Auth config."""
 
 from typing import Any, Optional, Self
+from urllib.parse import urlparse
 
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from airweave.platform.configs._base import BaseConfig
+from airweave.platform.utils.ssrf import validate_host, validate_url
 
 
 class AuthConfig(BaseConfig):
@@ -73,6 +75,12 @@ class URLAndAPIKeyAuthConfig(AuthConfig):
     url: str = Field(title="URL", description="The URL of the API")
     api_key: str = Field(title="API Key", description="The API key for the API")
 
+    @field_validator("url")
+    @classmethod
+    def validate_url_ssrf(cls, v: str) -> str:
+        """Validate URL is not targeting internal resources."""
+        return validate_url(v)
+
 
 # Source auth configs
 
@@ -92,6 +100,12 @@ class ODBCAuthConfig(AuthConfig):
         alias="schema", title="Schema", description="The schema of the ODBC database"
     )
     tables: str = Field(title="Tables", description="The tables of the ODBC database")
+
+    @field_validator("host")
+    @classmethod
+    def validate_host_ssrf(cls, v: str) -> str:
+        """Validate host is not targeting internal resources."""
+        return validate_host(v)
 
 
 class BaseDatabaseAuthConfig(AuthConfig):
@@ -167,6 +181,7 @@ class BaseDatabaseAuthConfig(AuthConfig):
             raise ValueError(
                 "Host should not include protocol (e.g., use 'localhost' not 'postgresql://localhost')"
             )
+        validate_host(v)
         return v
 
     @field_validator("port")
@@ -217,6 +232,12 @@ class WeaviateAuthConfig(AuthConfig):
     cluster_url: str = Field(title="Cluster URL", description="The URL of the Weaviate cluster")
     api_key: str = Field(title="API Key", description="The API key for the Weaviate cluster")
 
+    @field_validator("cluster_url")
+    @classmethod
+    def validate_cluster_url_ssrf(cls, v: str) -> str:
+        """Validate cluster URL is not targeting internal resources."""
+        return validate_url(v)
+
 
 class Neo4jAuthConfig(AuthConfig):
     """Neo4j authentication credentials schema."""
@@ -224,6 +245,15 @@ class Neo4jAuthConfig(AuthConfig):
     uri: str = Field(title="URI", description="The URI of the Neo4j database")
     username: str = Field(title="Username", description="The username for the Neo4j database")
     password: str = Field(title="Password", description="The password for the Neo4j database")
+
+    @field_validator("uri")
+    @classmethod
+    def validate_uri_ssrf(cls, v: str) -> str:
+        """Validate the host component of the Neo4j URI."""
+        parsed = urlparse(v)
+        if parsed.hostname:
+            validate_host(parsed.hostname)
+        return v
 
 
 # AUTH CONFIGS FOR ALL SOURCES
@@ -452,6 +482,7 @@ class ElasticsearchAuthConfig(AuthConfig):
         """Validate that the host URL starts with http:// or https://."""
         if not v.startswith(("http://", "https://")):
             raise ValueError("Host must start with http:// or https://")
+        validate_url(v)
         return v
 
 
@@ -745,6 +776,14 @@ class ServiceNowAuthConfig(AuthConfig):
         description="ServiceNow password for API access",
         min_length=1,
     )
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_ssrf(cls, v: Optional[str]) -> Optional[str]:
+        """Validate URL is not targeting internal resources."""
+        if v is not None:
+            validate_url(v)
+        return v
 
     @model_validator(mode="before")
     @classmethod

@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from airweave.platform.utils.ssrf import validate_url
+
 
 class PipedreamProxyClient:
     """HTTP client that routes through Pipedream proxy.
@@ -153,6 +155,9 @@ class PipedreamProxyClient:
         Returns:
             httpx.Response from the proxied request
         """
+        # Validate the original URL before proxy encoding
+        validate_url(url)
+
         proxy_url, kwargs = await self._prepare_proxy_request(url, **kwargs)
         return await self._client.request(method, proxy_url, **kwargs)
 
@@ -231,6 +236,9 @@ class PipedreamProxyClient:
         This allows us to do async preparation (like getting fresh tokens)
         before creating the actual stream.
         """
+        # Validate the original URL before proxy encoding
+        validate_url(url)
+
         proxy_url, prepared_kwargs = await self._prepare_proxy_request(url, **kwargs)
         # Now delegate to the actual stream context manager
         async with self._client.stream(method, proxy_url, **prepared_kwargs) as response:

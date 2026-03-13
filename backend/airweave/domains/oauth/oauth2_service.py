@@ -32,6 +32,7 @@ from airweave.platform.auth.schemas import (
     OAuth2TokenResponse,
 )
 from airweave.platform.auth.settings import integration_settings
+from airweave.platform.utils.ssrf import validate_url
 
 
 class OAuth2Service(OAuth2ServiceProtocol):
@@ -719,6 +720,8 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
         Supports both standard OAuth 2.0 and PKCE (Proof Key for Code Exchange).
         """
+        validate_url(backend_url)
+
         headers = {
             "Content-Type": integration_config.content_type,
         }
