@@ -434,24 +434,32 @@ export const redirectUrlValidation: FieldValidation<string> = {
 };
 
 /**
- * Repository name validation (owner/repo format)
+ * Repository name validation (owner/repo format or full GitHub URL)
  */
 export const repoNameValidation: FieldValidation<string> = {
   field: 'repo_name',
   debounceMs: 500,
   showOn: 'change',
   validate: (value: string): ValidationResult => {
-    const trimmed = value.trim();
+    let trimmed = value.trim().replace(/\/+$/, '');
 
     if (!trimmed) {
       return { isValid: true, severity: 'info' };
+    }
+
+    // Strip GitHub URL prefix if present
+    for (const prefix of ['https://github.com/', 'http://github.com/']) {
+      if (trimmed.toLowerCase().startsWith(prefix)) {
+        trimmed = trimmed.slice(prefix.length);
+        break;
+      }
     }
 
     // Must contain a slash
     if (!trimmed.includes('/')) {
       return {
         isValid: false,
-        hint: 'Repository must be in owner/repo format (e.g., airweave-ai/airweave)',
+        hint: 'Use owner/repo format (e.g., airweave-ai/airweave) or a full GitHub URL',
         severity: 'warning'
       };
     }
@@ -460,7 +468,7 @@ export const repoNameValidation: FieldValidation<string> = {
     if (parts.length !== 2) {
       return {
         isValid: false,
-        hint: 'Repository must be in owner/repo format (e.g., airweave-ai/airweave)',
+        hint: 'Use owner/repo format (e.g., airweave-ai/airweave) or a full GitHub URL',
         severity: 'warning'
       };
     }
