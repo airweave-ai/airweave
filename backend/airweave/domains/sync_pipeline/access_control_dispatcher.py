@@ -6,8 +6,8 @@ Currently only PostgresHandler, but architecture supports Redis, etc.
 
 from typing import TYPE_CHECKING, List
 
-from airweave.domains.sync_pipeline.types.access_control_actions import ACActionBatch
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.types.access_control_actions import ACActionBatch
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

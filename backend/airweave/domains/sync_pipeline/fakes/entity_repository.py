@@ -26,19 +26,13 @@ class FakeEntityRepository:
     ) -> Dict[Tuple[str, str], Entity]:
         return {}
 
-    async def bulk_create(
-        self, db: AsyncSession, *, objs: list, ctx: Any
-    ) -> List[Entity]:
+    async def bulk_create(self, db: AsyncSession, *, objs: list, ctx: Any) -> List[Entity]:
         return []
 
-    async def bulk_update_hash(
-        self, db: AsyncSession, *, rows: List[Tuple[UUID, str]]
-    ) -> None:
+    async def bulk_update_hash(self, db: AsyncSession, *, rows: List[Tuple[UUID, str]]) -> None:
         pass
 
-    async def bulk_remove(
-        self, db: AsyncSession, *, ids: List[UUID], ctx: Any
-    ) -> List[Entity]:
+    async def bulk_remove(self, db: AsyncSession, *, ids: List[UUID], ctx: Any) -> List[Entity]:
         self._entities = [e for e in self._entities if e.id not in ids]
         return []
 

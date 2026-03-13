@@ -13,10 +13,10 @@ from airweave import schemas
 from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
 from airweave.core.context import BaseContext
 from airweave.core.logging import ContextualLogger
+from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.destinations.vespa import VespaDestination
 from airweave.platform.entities._base import BaseEntity
-from airweave.domains.sync_pipeline.config import SyncConfig
 
 
 class DestinationsContextBuilder:

@@ -4,14 +4,14 @@ from typing import List, Optional
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
-from airweave.domains.sync_pipeline.entity_action_dispatcher import EntityActionDispatcher
-from airweave.platform.destinations._base import BaseDestination
 from airweave.domains.sync_pipeline.config import SyncConfig
+from airweave.domains.sync_pipeline.entity_action_dispatcher import EntityActionDispatcher
 from airweave.domains.sync_pipeline.handlers.arf import ArfHandler
 from airweave.domains.sync_pipeline.handlers.destination import DestinationHandler
 from airweave.domains.sync_pipeline.handlers.entity_postgres import EntityPostgresHandler
 from airweave.domains.sync_pipeline.handlers.protocol import EntityActionHandler
 from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
+from airweave.platform.destinations._base import BaseDestination
 
 
 class EntityDispatcherBuilder:

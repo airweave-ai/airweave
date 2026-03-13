@@ -205,4 +205,3 @@ class TestTxtConverterEdgeCases:
 
         assert file_path in result
         assert result[file_path] is None
-

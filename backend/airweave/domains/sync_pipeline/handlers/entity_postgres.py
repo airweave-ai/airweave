@@ -12,14 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.db.session import get_db_context
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.handlers.protocol import EntityActionHandler
 from airweave.domains.sync_pipeline.types.entity_actions import (
     EntityActionBatch,
     EntityDeleteAction,
     EntityInsertAction,
     EntityUpdateAction,
 )
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-from airweave.domains.sync_pipeline.handlers.protocol import EntityActionHandler
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

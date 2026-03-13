@@ -8,9 +8,9 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from airweave.core.config import settings
 from airweave.core.logging import logger
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 from airweave.platform.converters._base import BaseTextConverter
 from airweave.platform.rate_limiters import FirecrawlRateLimiter
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
 # ==================== CONFIGURATION ====================
 

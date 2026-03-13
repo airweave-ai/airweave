@@ -6,9 +6,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from airweave.core.shared_models import AirweaveFieldFlag
-from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity, WebEntity
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
 from airweave.domains.sync_pipeline.file_types import SUPPORTED_FILE_EXTENSIONS
+from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity, WebEntity
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext

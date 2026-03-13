@@ -23,11 +23,11 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.domains.browse_tree.repository import NodeSelectionRepository
 from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.contexts.infra import InfraContext
 from airweave.domains.sync_pipeline.contexts.source import SourceContext
-from airweave.platform.sources._base import BaseSource
-from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.cursor import SyncCursor
+from airweave.platform.sources._base import BaseSource
 
 
 class SourceContextBuilder:

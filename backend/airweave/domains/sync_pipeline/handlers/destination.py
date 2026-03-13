@@ -10,16 +10,16 @@ from typing import TYPE_CHECKING, Awaitable, Callable, List
 import httpcore
 import httpx
 
-from airweave.platform.destinations._base import BaseDestination
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.handlers.protocol import EntityActionHandler
+from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
 from airweave.domains.sync_pipeline.types.entity_actions import (
     EntityActionBatch,
     EntityDeleteAction,
     EntityInsertAction,
     EntityUpdateAction,
 )
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-from airweave.domains.sync_pipeline.handlers.protocol import EntityActionHandler
-from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
+from airweave.platform.destinations._base import BaseDestination
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext
