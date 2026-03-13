@@ -101,6 +101,108 @@ class GoogleSlidesSource(BaseSource):
         except ValueError:
             return None
 
+    def _has_file_changed(self, file_obj: Dict) -> bool:
+        """Check if file metadata indicates change without downloading.
+
+        Compares: modifiedTime, md5Checksum, size
+        Returns True if file is new or changed, False if unchanged.
+
+        Args:
+            file_obj: File metadata from Google Drive API
+
+        Returns:
+            True if file should be processed (new or changed), False if unchanged
+        """
+        if not self.cursor:
+            return True
+
+        file_id = file_obj.get("id")
+        if not file_id:
+            return True
+
+        cursor_data = self.cursor.data
+        file_metadata = cursor_data.get("file_metadata", {})
+        stored_meta = file_metadata.get(file_id)
+
+        if not stored_meta:
+            return True
+
+        current_modified = file_obj.get("modifiedTime")
+        current_md5 = file_obj.get("md5Checksum")
+        current_size = file_obj.get("size")
+
+        if (
+            stored_meta.get("modified_time") != current_modified
+            or stored_meta.get("md5_checksum") != current_md5
+            or stored_meta.get("size") != current_size
+        ):
+            return True
+
+        return False
+
+    def _store_file_metadata(self, file_obj: Dict) -> None:
+        """Store file metadata in cursor for future change detection.
+
+        Args:
+            file_obj: File metadata from Google Drive API
+        """
+        if not self.cursor:
+            return
+
+        file_id = file_obj.get("id")
+        if not file_id:
+            return
+
+        cursor_data = self.cursor.data
+        file_metadata = cursor_data.get("file_metadata", {})
+
+        file_metadata[file_id] = {
+            "modified_time": file_obj.get("modifiedTime"),
+            "md5_checksum": file_obj.get("md5Checksum"),
+            "size": file_obj.get("size"),
+        }
+
+        self.cursor.update(file_metadata=file_metadata)
+
+    async def _store_next_start_page_token(self, client: httpx.AsyncClient) -> None:
+        """Fetch and store the next start page token for future incremental syncs.
+
+        Args:
+            client: HTTP client for API requests
+        """
+        if not self.cursor:
+            return
+
+        try:
+            access_token = await self.get_access_token()
+            headers = {"Authorization": f"Bearer {access_token}"}
+
+            response = await client.get(
+                "https://www.googleapis.com/drive/v3/changes/startPageToken",
+                headers=headers,
+            )
+
+            if response.status_code == 401:
+                await self.refresh_on_unauthorized()
+                access_token = await self.get_access_token()
+                headers = {"Authorization": f"Bearer {access_token}"}
+                response = await client.get(
+                    "https://www.googleapis.com/drive/v3/changes/startPageToken",
+                    headers=headers,
+                )
+
+            response.raise_for_status()
+            data = response.json()
+            token = data.get("startPageToken")
+
+            if token:
+                self.cursor.update(start_page_token=token)
+                self.logger.info(
+                    f"Stored new start page token for next incremental sync: {token[:20]}..."
+                )
+        except Exception as e:
+            self.logger.error(f"Failed to fetch/store next start page token: {e}")
+
     # -----------------------
     # HTTP helpers
     # -----------------------
@@ -146,35 +248,186 @@ class GoogleSlidesSource(BaseSource):
     # -----------------------
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate Google Slides entities."""
-        async for presentation in self._fetch_presentations():
-            # Download the file using file downloader
-            try:
-                await self.file_downloader.download_from_url(
-                    entity=presentation,
-                    http_client_factory=self.http_client,
-                    access_token_provider=self.get_access_token,
-                    logger=self.logger,
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Check cursor data
+            cursor_data = self.cursor.data if self.cursor else {}
+            start_token = cursor_data.get("start_page_token")
+
+            # If we have a cursor, do incremental sync via changes API
+            if start_token:
+                self.logger.info(
+                    f"📊 Incremental sync mode - processing changes only (token={start_token[:20]}...)"
                 )
 
-                # Verify download succeeded
-                if not presentation.local_path:
-                    self.logger.error(
-                        f"Download failed - no local path set for {presentation.name}"
-                    )
-                    continue
+                async for entity in self._process_changes(client, start_token):
+                    yield entity
+            else:
+                # Full sync: list all presentations
+                self.logger.info("🔄 Full sync mode - listing all presentations")
 
-                self.logger.debug(f"Successfully downloaded presentation: {presentation.name}")
-                yield presentation
+                async for presentation in self._fetch_presentations():
+                    # Download the file using file downloader
+                    try:
+                        await self.file_downloader.download_from_url(
+                            entity=presentation,
+                            http_client_factory=self.http_client,
+                            access_token_provider=self.get_access_token,
+                            logger=self.logger,
+                        )
 
-            except FileSkippedException as e:
-                # Presentation intentionally skipped (unsupported type, too large, etc.)
-                self.logger.debug(f"Skipping presentation {presentation.title}: {e.reason}")
-                continue
+                        # Verify download succeeded
+                        if not presentation.local_path:
+                            self.logger.error(
+                                f"Download failed - no local path set for {presentation.name}"
+                            )
+                            continue
 
+                        # Store metadata for future change detection
+                        file_data = {
+                            "id": presentation.presentation_id,
+                            "modifiedTime": presentation.modified_time.isoformat()
+                            if presentation.modified_time
+                            else None,
+                            "size": presentation.size,
+                        }
+                        self._store_file_metadata(file_data)
+
+                        self.logger.debug(
+                            f"Successfully downloaded presentation: {presentation.name}"
+                        )
+                        yield presentation
+
+                    except FileSkippedException as e:
+                        # Presentation intentionally skipped (unsupported type, too large, etc.)
+                        self.logger.debug(f"Skipping presentation {presentation.title}: {e.reason}")
+                        continue
+
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to download presentation {presentation.title}: {e}"
+                        )
+                        # Continue with other presentations
+                        continue
+
+                # Store start page token for next incremental sync
+                await self._store_next_start_page_token(client)
+
+    # -----------------------
+    # Incremental sync via Changes API
+    # -----------------------
+    async def _process_changes(
+        self, client: httpx.AsyncClient, start_token: str
+    ) -> AsyncGenerator[GoogleSlidesPresentationEntity, None]:
+        """Process changes from the Drive Changes API.
+
+        Args:
+            client: HTTP client for API requests
+            start_token: Starting page token for changes
+
+        Yields:
+            GoogleSlidesPresentationEntity for changed/new presentations
+        """
+        url = "https://www.googleapis.com/drive/v3/changes"
+        page_token = start_token
+        latest_new_start = None
+
+        while page_token:
+            params = {
+                "pageToken": page_token,
+                "pageSize": 100,
+                "includeItemsFromAllDrives": "true",
+                "supportsAllDrives": "true",
+                "fields": "nextPageToken, newStartPageToken, changes(fileId, removed, file(*))",
+            }
+
+            try:
+                data = await self._make_request(url, params=params)
             except Exception as e:
-                self.logger.error(f"Failed to download presentation {presentation.title}: {e}")
-                # Continue with other presentations
-                continue
+                self.logger.error(f"Failed to fetch changes: {e}")
+                break
+
+            # Process changes
+            changes = data.get("changes", [])
+            for change in changes:
+                file_data = change.get("file")
+                removed = change.get("removed", False)
+
+                # Only process Google Slides files
+                if (
+                    file_data
+                    and file_data.get("mimeType") == "application/vnd.google-apps.presentation"
+                ):
+                    # Skip removed/trashed presentations
+                    if removed or file_data.get("trashed", False):
+                        continue
+
+                    # Skip if configured to exclude trashed
+                    if not self.include_trashed and file_data.get("trashed", False):
+                        continue
+
+                    # Skip if configured to exclude shared
+                    if not self.include_shared and file_data.get("shared", False):
+                        continue
+
+                    # Check if file actually changed using metadata
+                    if not self._has_file_changed(file_data):
+                        self.logger.debug(
+                            f"Presentation {file_data.get('name')} unchanged (metadata match) - skipping"
+                        )
+                        continue
+
+                    # File changed - process it
+                    presentation = await self._create_presentation_entity(file_data)
+                    if presentation:
+                        # Download the file using file downloader
+                        try:
+                            await self.file_downloader.download_from_url(
+                                entity=presentation,
+                                http_client_factory=self.http_client,
+                                access_token_provider=self.get_access_token,
+                                logger=self.logger,
+                            )
+
+                            # Verify download succeeded
+                            if not presentation.local_path:
+                                self.logger.error(
+                                    f"Download failed - no local path set for {presentation.name}"
+                                )
+                                continue
+
+                            # Store metadata for future change detection
+                            self._store_file_metadata(file_data)
+
+                            self.logger.debug(
+                                f"Successfully downloaded presentation: {presentation.name}"
+                            )
+                            yield presentation
+
+                        except FileSkippedException as e:
+                            # Presentation intentionally skipped
+                            self.logger.debug(f"Skipping presentation: {e.reason}")
+                            continue
+
+                        except Exception as e:
+                            self.logger.error(
+                                f"Failed to download presentation {presentation.title}: {e}"
+                            )
+                            continue
+
+            # Update pagination
+            page_token = data.get("nextPageToken")
+            if data.get("newStartPageToken"):
+                latest_new_start = data["newStartPageToken"]
+
+            if not page_token:
+                break
+
+        # Update cursor for next incremental sync
+        if latest_new_start and self.cursor:
+            self.cursor.update(start_page_token=latest_new_start)
+            self.logger.info(
+                f"Updated cursor with new start page token: {latest_new_start[:20]}..."
+            )
 
     # -----------------------
     # Presentation fetching
