@@ -7,7 +7,7 @@ import pytest
 
 from airweave.api.v1.endpoints.admin import admin_get_user_principals
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
-from airweave.platform.access_control.schemas import AccessContext
+from airweave.domains.access_control.schemas import AccessContext
 
 
 @pytest.fixture

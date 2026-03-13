@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-from airweave.domains.sync_pipeline.handlers.destination import DestinationHandler
+from airweave.domains.sync_pipeline.entity.handlers.destination import DestinationHandler
 
-_ASYNC_SLEEP = "airweave.domains.sync_pipeline.handlers.destination.asyncio.sleep"
+_ASYNC_SLEEP = "airweave.domains.sync_pipeline.entity.handlers.destination.asyncio.sleep"
 
 
 def _make_mock_destination(soft_fail=False):

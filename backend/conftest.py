@@ -106,7 +106,7 @@ def fake_circuit_breaker():
 @pytest.fixture
 def fake_ocr_provider():
     """Fake OcrProvider that returns canned markdown."""
-    from airweave.adapters.ocr.fake import FakeOcrProvider
+    from airweave.domains.ocr.fakes.provider import FakeOcrProvider
 
     return FakeOcrProvider()
 

@@ -1,12 +1,22 @@
 """Protocols for the access control domain."""
 
-from typing import List, Optional, Protocol
+from __future__ import annotations
+
+from typing import List, Optional, Protocol, runtime_checkable
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave.domains.access_control.actions import (
+    ACActionBatch,
+    ACDeleteAction,
+    ACInsertAction,
+    ACUpdateAction,
+    ACUpsertAction,
+)
+from airweave.domains.access_control.schemas import AccessContext, MembershipTuple
+from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.models.access_control_membership import AccessControlMembership
-from airweave.platform.access_control.schemas import AccessContext
 from airweave.platform.entities._base import AccessControl
 
 
@@ -150,4 +160,85 @@ class AccessBrokerProtocol(Protocol):
         access_context: Optional[AccessContext],
     ) -> bool:
         """Check if user can access entity based on access control."""
+        ...
+
+
+class ACActionResolverProtocol(Protocol):
+    """Resolves membership tuples to action objects."""
+
+    async def resolve(
+        self,
+        memberships: List[MembershipTuple],
+        sync_context: SyncContext,
+    ) -> ACActionBatch:
+        """Resolve memberships to actions."""
+        ...
+
+
+class ACActionDispatcherProtocol(Protocol):
+    """Dispatches resolved AC membership actions to handlers."""
+
+    async def dispatch(
+        self,
+        batch: ACActionBatch,
+        sync_context: SyncContext,
+    ) -> int:
+        """Dispatch action batch to all handlers."""
+        ...
+
+
+@runtime_checkable
+class ACActionHandler(Protocol):
+    """Protocol for access control membership action handlers.
+
+    Handlers receive resolved AC actions and persist them to their destination.
+
+    Contract:
+    - Handlers MUST be idempotent (safe to retry on failure)
+    - Handlers MUST raise SyncFailureError for non-recoverable errors
+    """
+
+    @property
+    def name(self) -> str:
+        """Handler name for logging and debugging."""
+        ...
+
+    async def handle_batch(
+        self,
+        batch: "ACActionBatch",
+        sync_context: "SyncContext",
+    ) -> int:
+        """Handle a full action batch (main entry point)."""
+        ...
+
+    async def handle_upserts(
+        self,
+        actions: List["ACUpsertAction"],
+        sync_context: "SyncContext",
+    ) -> int:
+        """Handle upsert actions."""
+        ...
+
+    async def handle_inserts(
+        self,
+        actions: List["ACInsertAction"],
+        sync_context: "SyncContext",
+    ) -> int:
+        """Handle insert actions."""
+        ...
+
+    async def handle_updates(
+        self,
+        actions: List["ACUpdateAction"],
+        sync_context: "SyncContext",
+    ) -> int:
+        """Handle update actions."""
+        ...
+
+    async def handle_deletes(
+        self,
+        actions: List["ACDeleteAction"],
+        sync_context: "SyncContext",
+    ) -> int:
+        """Handle delete actions."""
         ...

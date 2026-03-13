@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.platform.access_control.schemas import AccessContext
+from airweave.domains.access_control.schemas import AccessContext
 from airweave.search.operations.access_control_filter import AccessControlFilter
 from airweave.search.state import SearchState
 

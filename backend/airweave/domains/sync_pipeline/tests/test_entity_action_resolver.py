@@ -5,9 +5,9 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.domains.sync_pipeline.entity_action_resolver import EntityActionResolver
+from airweave.domains.sync_pipeline.entity.resolver import EntityActionResolver
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-from airweave.domains.sync_pipeline.types.entity_actions import (
+from airweave.domains.sync_pipeline.entity.actions import (
     EntityInsertAction,
     EntityKeepAction,
     EntityUpdateAction,

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.platform.access_control.schemas import AccessContext
+from airweave.domains.access_control.schemas import AccessContext
 from airweave.platform.entities._base import AccessControl
 
 

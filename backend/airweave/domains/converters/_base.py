@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
 from airweave.core.logging import logger
-from airweave.core.protocols.ocr import OcrProvider
+from airweave.domains.ocr.protocols import OcrProvider
 
 
 class BaseTextConverter(ABC):

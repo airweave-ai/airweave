@@ -24,7 +24,7 @@ from ldap3.core.exceptions import LDAPSessionTerminatedByServerError, LDAPSocket
 from pyasn1.codec.ber import decoder as ber_decoder
 from pyasn1.type.univ import Sequence
 
-from airweave.platform.access_control.schemas import (
+from airweave.domains.access_control.schemas import (
     ACLChangeType,
     MembershipChange,
     MembershipTuple,

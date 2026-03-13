@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from airweave.core.protocols.ocr import OcrProvider
 from airweave.domains.converters._base import BaseTextConverter
 from airweave.domains.converters.code import CodeConverter
 from airweave.domains.converters.docx import DocxConverter
@@ -14,6 +13,7 @@ from airweave.domains.converters.pptx import PptxConverter
 from airweave.domains.converters.txt import TxtConverter
 from airweave.domains.converters.web import WebConverter
 from airweave.domains.converters.xlsx import XlsxConverter
+from airweave.domains.ocr.protocols import OcrProvider
 
 
 class ConverterRegistry:
