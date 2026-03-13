@@ -209,6 +209,6 @@ class FakeOAuthFlowService:
         self._calls.append(("create_proxy_url", provider_auth_url))
         return (
             "https://api.example.com/source-connections/authorize/abc12345",
-            datetime.now(timezone.utc) + timedelta(hours=24),
+            datetime.now(timezone.utc) + timedelta(minutes=5),
             uuid4(),
         )
