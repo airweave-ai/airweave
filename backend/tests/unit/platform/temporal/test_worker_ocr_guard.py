@@ -42,9 +42,6 @@ async def test_passes_guard_when_ocr_present(test_container):
                 "initialize_container",
             ),
             patch(
-                "airweave.platform.converters.initialize_converters",
-            ),
-            patch(
                 "airweave.platform.temporal.worker.WorkerConfig.from_settings",
                 side_effect=SystemExit(99),
             ),
