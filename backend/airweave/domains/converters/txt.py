@@ -9,48 +9,32 @@ from typing import Dict, List
 import aiofiles
 
 from airweave.core.logging import logger
+from airweave.domains.converters._base import BaseTextConverter
 from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
-from airweave.platform.converters._base import BaseTextConverter
 
 
 class TxtConverter(BaseTextConverter):
-    """Converts text files (TXT, JSON, XML, MD, YAML, TOML) to markdown.
-
-    Features:
-    - JSON: Pretty-prints with code fence
-    - XML: Pretty-prints with code fence
-    - Others: Returns as plain text
-    """
+    """Converts text files (TXT, JSON, XML, MD, YAML, TOML) to markdown."""
 
     async def convert_batch(self, file_paths: List[str]) -> Dict[str, str]:
-        """Convert text files to markdown.
-
-        Args:
-            file_paths: List of text file paths
-
-        Returns:
-            Dict mapping file_path -> markdown content (None if failed)
-        """
+        """Convert text files to markdown."""
         logger.debug(f"Converting {len(file_paths)} text files to markdown...")
 
         results = {}
-        semaphore = asyncio.Semaphore(20)  # Limit concurrent file reads
+        semaphore = asyncio.Semaphore(20)
 
         async def _convert_one(path: str):
             async with semaphore:
                 try:
-                    # Determine format from extension
                     _, ext = os.path.splitext(path)
                     ext = ext.lower()
 
-                    # Dispatch to format-specific handler
                     if ext == ".json":
                         text = await self._convert_json(path)
                     elif ext == ".xml":
                         text = await self._convert_xml(path)
                     else:
-                        # Plain text (TXT, MD, YAML, TOML, etc.)
                         text = await self._convert_plain_text(path)
 
                     if text and text.strip():
@@ -73,10 +57,6 @@ class TxtConverter(BaseTextConverter):
 
     @staticmethod
     def _try_chardet_decode(raw_bytes: bytes, path: str) -> str | None:
-        """Attempt to decode bytes using chardet-detected encoding.
-
-        Returns decoded text on success, None otherwise.
-        """
         try:
             import chardet
 
@@ -97,17 +77,6 @@ class TxtConverter(BaseTextConverter):
         return None
 
     async def _convert_plain_text(self, path: str) -> str:
-        """Read plain text file with encoding detection.
-
-        Args:
-            path: Path to text file
-
-        Returns:
-            File content as string
-
-        Raises:
-            EntityProcessingError: If file contains excessive binary/corrupted data
-        """
         async with aiofiles.open(path, "rb") as f:
             raw_bytes = await f.read()
 
@@ -146,31 +115,16 @@ class TxtConverter(BaseTextConverter):
         return text
 
     async def _convert_json(self, path: str) -> str:
-        """Convert JSON to pretty-printed code fence.
-
-        Args:
-            path: Path to JSON file
-
-        Returns:
-            Formatted JSON in markdown code fence
-
-        Raises:
-            EntityProcessingError: If JSON syntax is invalid or contains corrupted data
-        """
-
         def _read_and_format():
-            # Read raw bytes
             with open(path, "rb") as f:
                 raw_bytes = f.read()
 
-            # Try UTF-8 first
             try:
                 text = raw_bytes.decode("utf-8")
             except UnicodeDecodeError:
-                # Fallback with replace to detect corruption
                 text = raw_bytes.decode("utf-8", errors="replace")
                 replacement_count = text.count("\ufffd")
-                if replacement_count > 50:  # Strict for JSON
+                if replacement_count > 50:
                     raise EntityProcessingError(
                         f"JSON contains binary data ({replacement_count} replacement chars)"
                     )
@@ -186,31 +140,16 @@ class TxtConverter(BaseTextConverter):
             raise EntityProcessingError(f"Invalid JSON syntax in {path}")
 
     async def _convert_xml(self, path: str) -> str:
-        """Convert XML to pretty-printed code fence.
-
-        Args:
-            path: Path to XML file
-
-        Returns:
-            Formatted XML in markdown code fence
-
-        Raises:
-            EntityProcessingError: If XML contains corrupted data
-        """
-
         def _read_and_format():
-            # Read raw bytes
             with open(path, "rb") as f:
                 raw_bytes = f.read()
 
-            # Try UTF-8 first
             try:
                 content = raw_bytes.decode("utf-8")
             except UnicodeDecodeError:
-                # Fallback with replace to detect corruption
                 content = raw_bytes.decode("utf-8", errors="replace")
                 replacement_count = content.count("\ufffd")
-                if replacement_count > 50:  # Strict for XML
+                if replacement_count > 50:
                     raise EntityProcessingError(
                         f"XML contains binary data ({replacement_count} replacement chars)"
                     )
@@ -225,7 +164,6 @@ class TxtConverter(BaseTextConverter):
             raise
         except Exception as e:
             logger.warning(f"XML parsing failed for {path}: {e}, using raw content")
-            # Fallback to raw content - read with validation
             with open(path, "rb") as f:
                 raw_bytes = f.read()
 
@@ -234,7 +172,7 @@ class TxtConverter(BaseTextConverter):
             except UnicodeDecodeError:
                 raw = raw_bytes.decode("utf-8", errors="replace")
                 replacement_count = raw.count("\ufffd")
-                if replacement_count > 100:  # More lenient for fallback
+                if replacement_count > 100:
                     raise EntityProcessingError(
                         f"XML contains excessive binary data "
                         f"({replacement_count} replacement chars)"

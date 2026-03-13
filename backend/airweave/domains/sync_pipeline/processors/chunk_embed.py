@@ -14,8 +14,9 @@ with benefits of pre-trained vocabulary/IDF, stopword removal, and learned term 
 import json
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
+from airweave.domains.converters.protocols import ConverterRegistryProtocol
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-from airweave.domains.sync_pipeline.pipeline.text_builder import text_builder
+from airweave.domains.sync_pipeline.pipeline.text_builder import TextualRepresentationBuilder
 from airweave.domains.sync_pipeline.processors.utils import filter_empty_representations
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity
 
@@ -25,24 +26,11 @@ if TYPE_CHECKING:
 
 
 class ChunkEmbedProcessor:
-    """Unified processor that chunks text and computes embeddings.
+    """Unified processor that chunks text and computes embeddings."""
 
-    Pipeline:
-    1. Build textual representation (text extraction from files/web)
-    2. Chunk text (semantic for text, AST for code)
-    3. Compute embeddings:
-       - Dense embeddings (3072-dim for neural/semantic search)
-       - Sparse embeddings (FastEmbed Qdrant/bm25 for keyword search scoring)
-
-    Output:
-        Chunk entities with:
-        - entity_id: "{original_id}__chunk_{idx}"
-        - textual_representation: chunk text
-        - airweave_system_metadata.dense_embedding: 3072-dim vector
-        - airweave_system_metadata.sparse_embedding: FastEmbed BM25 sparse vector
-        - airweave_system_metadata.original_entity_id: original entity_id
-        - airweave_system_metadata.chunk_index: chunk position
-    """
+    def __init__(self, converter_registry: ConverterRegistryProtocol) -> None:
+        """Initialize with a converter registry for text building."""
+        self._text_builder = TextualRepresentationBuilder(converter_registry)
 
     async def process(
         self,
@@ -55,7 +43,7 @@ class ChunkEmbedProcessor:
             return []
 
         # Step 1: Build textual representations
-        processed = await text_builder.build_for_batch(entities, sync_context, runtime)
+        processed = await self._text_builder.build_for_batch(entities, sync_context, runtime)
 
         # Step 2: Filter empty representations
         processed = await filter_empty_representations(

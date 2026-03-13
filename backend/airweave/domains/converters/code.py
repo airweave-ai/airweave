@@ -6,35 +6,22 @@ from typing import Dict, List
 import aiofiles
 
 from airweave.core.logging import logger
-from airweave.platform.converters._base import BaseTextConverter
+from airweave.domains.converters._base import BaseTextConverter
 
 
 class CodeConverter(BaseTextConverter):
-    """Converts code files to markdown code fences.
-
-    Simple converter that wraps code content in markdown code fences
-    with appropriate language tags. No AI summarization - code-specific
-    embeddings will be used later for optimal retrieval.
-    """
+    """Converts code files to markdown code fences."""
 
     async def convert_batch(self, file_paths: List[str]) -> Dict[str, str]:
-        """Convert code files to markdown code fences.
-
-        Args:
-            file_paths: List of code file paths
-
-        Returns:
-            Dict mapping file_path -> markdown (code fence with language tag)
-        """
+        """Convert code files to markdown code fences."""
         logger.debug(f"Converting {len(file_paths)} code files to markdown...")
 
         results = {}
-        semaphore = asyncio.Semaphore(20)  # Limit concurrent file reads
+        semaphore = asyncio.Semaphore(20)
 
         async def _convert_one(path: str):
             async with semaphore:
                 try:
-                    # Read raw bytes for encoding detection
                     async with aiofiles.open(path, "rb") as f:
                         raw_bytes = await f.read()
 
@@ -43,7 +30,6 @@ class CodeConverter(BaseTextConverter):
                         results[path] = None
                         return
 
-                    # Try UTF-8 first (most common for code)
                     try:
                         code = raw_bytes.decode("utf-8")
                         if "\ufffd" not in code:
@@ -53,7 +39,6 @@ class CodeConverter(BaseTextConverter):
                     except UnicodeDecodeError:
                         pass
 
-                    # Fallback: decode with replace to detect corruption
                     code = raw_bytes.decode("utf-8", errors="replace")
                     replacement_count = code.count("\ufffd")
 

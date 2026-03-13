@@ -1,8 +1,4 @@
-"""Direct text extraction from PPTX files using python-pptx.
-
-Extracts text from slide shapes, tables, and notes to produce markdown.
-Images and diagrams are not captured -- this is a text-only extraction.
-"""
+"""Direct text extraction from PPTX files using python-pptx."""
 
 from __future__ import annotations
 
@@ -13,21 +9,10 @@ from typing import Any, Optional
 from airweave.core.logging import logger
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
-# Minimum total characters to consider the extraction successful.
 MIN_TOTAL_CHARS = 50
 
 
 def _extract_shape_text(shape: Any) -> list[str]:
-    """Extract text lines from a single PPTX shape.
-
-    Handles both text-frame shapes and table shapes.
-
-    Args:
-        shape: A ``pptx.shapes.base.BaseShape`` instance.
-
-    Returns:
-        List of text lines (may be empty).
-    """
     lines: list[str] = []
 
     if shape.has_text_frame:
@@ -45,15 +30,6 @@ def _extract_shape_text(shape: Any) -> list[str]:
 
 
 def _extract_slide(slide: Any, slide_idx: int) -> str:
-    """Extract markdown for a single slide.
-
-    Args:
-        slide: A ``pptx.slide.Slide`` instance.
-        slide_idx: 1-based slide number (used for the heading).
-
-    Returns:
-        Markdown string for the slide.
-    """
     parts: list[str] = [f"## Slide {slide_idx}"]
 
     for shape in slide.shapes:
@@ -68,20 +44,7 @@ def _extract_slide(slide: Any, slide_idx: int) -> str:
 
 
 async def extract_pptx_text(path: str) -> Optional[str]:
-    """Extract text from a PPTX and return markdown.
-
-    Iterates over slides, shapes, tables, and notes to produce a markdown
-    representation.  Images and diagrams are not captured.
-
-    Args:
-        path: Path to the PPTX file.
-
-    Returns:
-        Markdown string if extraction yielded sufficient text, ``None`` otherwise.
-
-    Raises:
-        SyncFailureError: If python-pptx is not installed.
-    """
+    """Extract text from a PPTX and return markdown."""
     try:
         from pptx import Presentation
     except ImportError:

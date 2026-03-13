@@ -57,6 +57,7 @@ from airweave.domains.collections.vector_db_deployment_metadata_repository impor
     VectorDbDeploymentMetadataRepository,
 )
 from airweave.domains.connections.repository import ConnectionRepository
+from airweave.domains.converters.registry import ConverterRegistry
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.embedders.config import (
     DENSE_EMBEDDER,
@@ -389,7 +390,8 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     acl_membership_repo = AccessControlMembershipRepository()
     access_broker = AccessBroker(acl_repo=acl_membership_repo)
-    chunk_embed_processor = ChunkEmbedProcessor()
+    converter_registry = ConverterRegistry(ocr_provider=ocr_provider)
+    chunk_embed_processor = ChunkEmbedProcessor(converter_registry=converter_registry)
 
     # -----------------------------------------------------------------
     # Sync factory + service
@@ -529,6 +531,7 @@ def create_container(settings: Settings) -> Container:
         sync_factory=sync_factory,
         entity_repo=sync_deps["entity_repo"],
         access_broker=access_broker,
+        converter_registry=converter_registry,
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
         usage_checker=usage_checker,

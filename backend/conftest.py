@@ -410,6 +410,14 @@ def fake_access_broker():
 
 
 @pytest.fixture
+def fake_converter_registry():
+    """Fake ConverterRegistry."""
+    from airweave.domains.converters.fakes.registry import FakeConverterRegistry
+
+    return FakeConverterRegistry()
+
+
+@pytest.fixture
 def fake_billing_webhook():
     """Fake BillingWebhookProcessor."""
     from airweave.adapters.payment.fake import FakePaymentGateway
@@ -670,6 +678,7 @@ def test_container(
     fake_sync_factory,
     fake_entity_repo,
     fake_access_broker,
+    fake_converter_registry,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -746,4 +755,5 @@ def test_container(
         sync_factory=fake_sync_factory,
         entity_repo=fake_entity_repo,
         access_broker=fake_access_broker,
+        converter_registry=fake_converter_registry,
     )
