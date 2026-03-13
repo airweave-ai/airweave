@@ -4,6 +4,34 @@ This folder contains educational materials and tutorials to help developers get 
 
 ## Contents
 
+### `intro_to_airweave.ipynb`
+An interactive Jupyter notebook that introduces the core Airweave workflow:
+
+1. **Client Setup** - Installing the SDK and initializing the client
+2. **Collections** - Creating a collection to organize data sources
+3. **Source Connections** - Connecting a data source (Stripe example)
+4. **Search** - Performing natural language searches across connected sources
+
+This is the best starting point for new users who prefer hands-on exploration.
+
+### `search_concepts.ipynb`
+A comprehensive Jupyter notebook with **14 practical examples** covering all major search features:
+
+1. **Basic Search** - Simple queries with default settings
+2. **Query Expansion** - AI-generated query variations for better recall
+3. **Search Methods** - Hybrid vs Neural search approaches
+4. **Filtering** - Structured filters by source, date range, and exclusions
+5. **Query Interpretation** - Natural language filtering (Beta)
+6. **Temporal Relevance** - Boosting recent content with recency bias
+7. **Pagination** - Handling large result sets with limit/offset
+8. **Score Filtering** - High-confidence results only
+9. **AI Reranking** - Improving result quality with AI reordering
+10. **AI Answer Generation** - Getting synthesized responses
+11. **Complete Example** - Combining all features together
+
+### `webhook-demo/`
+A minimal FastAPI app that receives Airweave webhook events and streams them to a browser UI in real time via WebSocket. See [webhook-demo/README.md](webhook-demo/README.md) for details.
+
 ### `quickstart_tutorial.py`
 A comprehensive Python script that walks through the complete Airweave quickstart process:
 
