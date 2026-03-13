@@ -5,10 +5,9 @@ implementing all-or-nothing semantics where any failure fails the sync.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-from airweave.domains.sync_pipeline.handlers.entity_postgres import EntityPostgresHandler
 from airweave.domains.sync_pipeline.handlers.protocol import EntityActionHandler
 from airweave.domains.sync_pipeline.types.entity_actions import EntityActionBatch
 
@@ -23,25 +22,23 @@ class EntityActionDispatcher:
     Implements all-or-nothing semantics:
     - Destination handlers (Qdrant, RawData) run concurrently
     - If ANY destination handler fails, SyncFailureError bubbles up
-    - PostgreSQL metadata handler runs ONLY AFTER all destination handlers succeed
+    - Metadata handler runs ONLY AFTER all destination handlers succeed
     - This ensures consistency between vector stores and metadata
 
     Execution Order:
-    1. All destination handlers (non-Postgres) execute concurrently
-    2. If all succeed → PostgreSQL metadata handler executes
-    3. If any fails → SyncFailureError, no Postgres writes
+    1. All destination handlers execute concurrently
+    2. If all succeed → metadata handler executes
+    3. If any fails → SyncFailureError, no metadata writes
     """
 
-    def __init__(self, handlers: List[EntityActionHandler]):
-        """Initialize with handler list, separating Postgres from destinations."""
-        self._destination_handlers: List[EntityActionHandler] = []
-        self._postgres_handler: EntityPostgresHandler | None = None
-
-        for handler in handlers:
-            if isinstance(handler, EntityPostgresHandler):
-                self._postgres_handler = handler
-            else:
-                self._destination_handlers.append(handler)
+    def __init__(
+        self,
+        destination_handlers: List[EntityActionHandler],
+        metadata_handler: Optional[EntityActionHandler] = None,
+    ):
+        """Initialize with destination handlers and optional metadata handler."""
+        self._destination_handlers = destination_handlers
+        self._postgres_handler = metadata_handler
 
     # -------------------------------------------------------------------------
     # Public API

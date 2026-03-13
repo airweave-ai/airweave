@@ -30,6 +30,7 @@ from airweave.core.protocols import (
 )
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
+from airweave.domains.access_control.protocols import AccessBrokerProtocol
 from airweave.domains.auth_provider.protocols import (
     AuthProviderRegistryProtocol,
     AuthProviderServiceProtocol,
@@ -193,6 +194,9 @@ class Container:
     sync_factory: SyncFactoryProtocol
 
     entity_repo: EntityRepositoryProtocol
+
+    # Access control broker (resolves user → group principals)
+    access_broker: AccessBrokerProtocol
 
     # Temporal domain
     temporal_workflow_service: TemporalWorkflowServiceProtocol
