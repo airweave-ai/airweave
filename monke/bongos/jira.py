@@ -34,10 +34,18 @@ class JiraBongo(BaseBongo):
         self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
         self.project_keys = kwargs.get("project_keys", [])
 
+        # Feature flags for rich data generation
+        self.create_comments = kwargs.get("create_comments", True)
+        self.create_labels = kwargs.get("create_labels", True)
+        self.assign_issues = kwargs.get("assign_issues", True)
+        self.create_subtasks = kwargs.get("create_subtasks", False)  # Optional
+
         # Test data tracking
         self.test_issues = []
+        self.test_comments = []  # Track comments separately
         self.test_project_key = None
         self.valid_issue_types = []  # Store valid issue types for the project
+        self.project_users = []  # Track available assignees
 
         # Rate limiting (Jira: varies by endpoint)
         self.last_request_time = 0
@@ -47,7 +55,7 @@ class JiraBongo(BaseBongo):
         self.logger = get_logger("jira_bongo")
 
     async def create_entities(self) -> List[Dict[str, Any]]:
-        """Create test issues in Jira."""
+        """Create test issues with rich metadata in Jira."""
         self.logger.info(f"🥁 Creating {self.entity_count} test issues in Jira")
         entities = []
 
@@ -58,44 +66,81 @@ class JiraBongo(BaseBongo):
         # Get or create a test project
         await self._ensure_test_project()
 
-        # Determine which issue type to use (prefer standard types)
+        # Determine which issue type to use
         issue_type_to_use = self._get_preferred_issue_type()
 
-        # Create issues based on configuration
-        from monke.generation.jira import generate_jira_artifact
+        # Import generation functions
+        from monke.generation.jira import generate_jira_issue, generate_jira_comments
 
         for i in range(self.entity_count):
-            # Short unique token used in summary and description for verification
+            # Unique token for verification
             token = str(uuid.uuid4())[:8]
 
-            summary, description, _ = await generate_jira_artifact(
-                self.openai_model, token
+            # Generate issue with rich metadata
+            summary, description, _, labels, should_have_comments, num_comments = \
+                await generate_jira_issue(self.openai_model, token)
+
+            # Randomly assign users if enabled
+            assignee_account_id = None
+            if self.assign_issues and self.project_users and i % 2 == 0:  # Assign 50%
+                assignee_account_id = self.project_users[i % len(self.project_users)]["accountId"]
+
+            # Create issue with metadata
+            issue_data = await self._create_test_issue_with_metadata(
+                self.test_project_key,
+                summary,
+                description,
+                issue_type_to_use,
+                labels=labels if self.create_labels else [],
+                assignee_account_id=assignee_account_id
             )
 
-            # Create issue with a valid issue type
-            issue_data = await self._create_test_issue(
-                self.test_project_key, summary, description, issue_type_to_use
+            entity_info = {
+                "type": "issue",
+                "id": issue_data["id"],
+                "key": issue_data["key"],
+                "project_key": self.test_project_key,
+                "summary": summary,
+                "token": token,
+                "expected_content": token,
+                "labels": labels if self.create_labels else [],
+                "has_assignee": assignee_account_id is not None,
+            }
+
+            entities.append(entity_info)
+            self.logger.info(
+                f"🎫 Created test issue: {issue_data['key']} "
+                f"(labels: {len(labels)}, assignee: {assignee_account_id is not None})"
             )
 
-            entities.append(
-                {
-                    "type": "issue",
-                    "id": issue_data["id"],
-                    "key": issue_data["key"],
-                    "project_key": self.test_project_key,
-                    "summary": summary,
-                    "token": token,
-                    "expected_content": token,
-                }
-            )
+            # Add comments if enabled
+            if self.create_comments and should_have_comments and num_comments > 0:
+                comments = await generate_jira_comments(
+                    self.openai_model, token, summary, num_comments
+                )
 
-            self.logger.info(f"🎫 Created test issue: {issue_data['key']}")
+                comment_ids = []
+                for comment_body in comments:
+                    comment_data = await self._add_comment_to_issue(
+                        issue_data["id"], comment_body
+                    )
+                    comment_ids.append(comment_data["id"])
+                    self.test_comments.append({
+                        "id": comment_data["id"],
+                        "issue_id": issue_data["id"],
+                        "body": comment_body,
+                        "token": token  # Comments inherit parent token
+                    })
+
+                entity_info["comments"] = comment_ids
+                entity_info["comment_count"] = len(comment_ids)
+                self.logger.info(f"💬 Added {len(comment_ids)} comments to {issue_data['key']}")
 
             # Rate limiting
             if self.entity_count > 10:
                 await asyncio.sleep(0.5)
 
-        self.test_issues = entities  # Store for later operations
+        self.test_issues = entities
         return entities
 
     async def update_entities(self) -> List[Dict[str, Any]]:
@@ -151,7 +196,7 @@ class JiraBongo(BaseBongo):
 
     async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
         """Delete specific entities from Jira.
-        
+
         Returns:
             List of entity IDs that were successfully deleted
         """
@@ -236,7 +281,7 @@ class JiraBongo(BaseBongo):
             # Use the first configured project key
             self.test_project_key = self.project_keys[0]
             self.logger.info(f"📁 Using configured project: {self.test_project_key}")
-            
+
             # Verify the project exists
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -246,7 +291,7 @@ class JiraBongo(BaseBongo):
                         "Accept": "application/json",
                     },
                 )
-                
+
                 if response.status_code != 200:
                     raise Exception(
                         f"Configured project '{self.test_project_key}' not found or not accessible. "
@@ -278,6 +323,10 @@ class JiraBongo(BaseBongo):
         # Fetch valid issue types for this project
         await self._fetch_valid_issue_types()
 
+        # Fetch assignable users if we'll be assigning issues
+        if self.assign_issues:
+            await self._fetch_project_users()
+
     async def _fetch_valid_issue_types(self):
         """Fetch valid issue types for the current project."""
         await self._rate_limit()
@@ -298,7 +347,7 @@ class JiraBongo(BaseBongo):
 
             project_data = response.json()
             issue_types = project_data.get("issueTypes", [])
-            
+
             if not issue_types:
                 raise Exception(f"No issue types found for project {self.test_project_key}")
 
@@ -310,7 +359,7 @@ class JiraBongo(BaseBongo):
 
     def _get_preferred_issue_type(self) -> str:
         """Get a preferred issue type from the available types.
-        
+
         Prefers standard types like Task, Bug, or Story.
         Falls back to the first available type.
         """
@@ -319,16 +368,150 @@ class JiraBongo(BaseBongo):
 
         # Preferred types in order
         preferred_types = ["Task", "Bug", "Story"]
-        
+
         for preferred in preferred_types:
             if preferred in self.valid_issue_types:
                 self.logger.info(f"🎯 Using issue type: {preferred}")
                 return preferred
-        
+
         # Fall back to first available type
         fallback_type = self.valid_issue_types[0]
         self.logger.info(f"🎯 Using fallback issue type: {fallback_type}")
         return fallback_type
+
+    async def _fetch_project_users(self):
+        """Fetch users who can be assigned issues in the project."""
+        await self._rate_limit()
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # Get assignable users for the project
+                response = await client.get(
+                    f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/user/assignable/search",
+                    params={"project": self.test_project_key},
+                    headers={
+                        "Authorization": f"Bearer {self.access_token}",
+                        "Accept": "application/json",
+                    },
+                )
+
+                if response.status_code == 200:
+                    users = response.json()
+                    self.project_users = [
+                        {
+                            "accountId": user["accountId"],
+                            "displayName": user["displayName"]
+                        }
+                        for user in users[:10]  # Limit to first 10 users
+                    ]
+                    self.logger.info(
+                        f"✅ Found {len(self.project_users)} assignable users in project"
+                    )
+                else:
+                    self.logger.warning(
+                        f"⚠️ Could not fetch project users: {response.status_code}"
+                    )
+                    self.project_users = []
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ Error fetching project users: {e}")
+            self.project_users = []
+
+    async def _add_comment_to_issue(self, issue_id: str, comment_body: str) -> Dict[str, Any]:
+        """Add a comment to an issue."""
+        await self._rate_limit()
+
+        comment_data = {
+            "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": comment_body}]
+                    }
+                ],
+            }
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue/{issue_id}/comment",
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json=comment_data,
+            )
+
+            if response.status_code != 201:
+                raise Exception(
+                    f"Failed to add comment: {response.status_code} - {response.text}"
+                )
+
+            return response.json()
+
+    async def _create_test_issue_with_metadata(
+        self,
+        project_key: str,
+        summary: str,
+        description: str,
+        issue_type: str = "Task",
+        labels: List[str] = None,
+        assignee_account_id: str = None,
+        priority: str = "Medium"
+    ) -> Dict[str, Any]:
+        """Create a test issue with rich metadata via Jira API."""
+        await self._rate_limit()
+
+        fields = {
+            "project": {"key": project_key},
+            "summary": summary,
+            "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": description}]}
+                ],
+            },
+            "issuetype": {"name": issue_type},
+        }
+
+        # Add optional fields
+        if labels:
+            fields["labels"] = labels
+
+        if assignee_account_id:
+            fields["assignee"] = {"accountId": assignee_account_id}
+
+        # Note: Priority might not be a field in all Jira instances
+        # We'll try to set it, but won't fail if it's not available
+
+        issue_data = {"fields": fields}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue",
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json=issue_data,
+            )
+
+            if response.status_code != 201:
+                raise Exception(
+                    f"Failed to create issue: {response.status_code} - {response.text}"
+                )
+
+            result = response.json()
+
+            # Track created issue
+            self.created_entities.append({"id": result["id"], "key": result["key"]})
+
+            return result
 
     async def _create_test_issue(
         self, project_key: str, summary: str, description: str, issue_type: str = "Task"
