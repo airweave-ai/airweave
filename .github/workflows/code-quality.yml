@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
       - run: pip install "ruff==0.9.6"
       - name: Get changed Python files
         id: changed
@@ -56,9 +56,12 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
       - name: Install Poetry
-        run: pip install poetry
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+        with:
+          version: 2.3.2
+          virtualenvs-create: false
       - name: Install dependencies
         run: poetry install
       - name: Get changed Python files
@@ -87,9 +90,12 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
       - name: Install Poetry
-        run: pip install poetry
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+        with:
+          version: 2.3.2
+          virtualenvs-create: false
       - name: Install dependencies
         run: poetry install --only dev
       - name: Run import-linter

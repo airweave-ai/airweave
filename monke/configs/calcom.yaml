@@ -1,0 +1,62 @@
+# Cal.com connector Monke test configuration (calcom short name)
+name: "Cal.com Connector Test"
+description: "End-to-end test for Cal.com bookings source"
+
+connector:
+  name: "calcom_test"
+  type: "calcom"
+
+  # Authentication: direct API key from environment
+  auth_mode: direct
+  auth_fields:
+    api_key: MONKE_CALCOM_API_KEY
+
+  # Additional configuration passed into CalComBongo via **kwargs
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+    # REQUIRED: Event type ID to use for creating test bookings.
+    # The human must set this to a valid Cal.com event type id.
+    event_type_id: "${MONKE_CALCOM_EVENT_TYPE_ID}"
+    attendee_time_zone: "America/New_York"
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    # Deletion support is optional and best-effort; enable partial + complete deletion.
+    - partial_delete
+    - force_full_sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - force_full_sync
+    - verify_complete_deletion
+    - cleanup
+    - collection_cleanup
+
+entity_count: 3
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+collection:
+  name_template: "monke-{connector_type}-test-{timestamp}"
+  description: "Test collection for {connector_type} connector"
+
+verification:
+  score_threshold: 0.0
+  retry_attempts: 5
+  retry_delay_seconds: 10
+  expected_fields:
+    - title
+    - description
+    - entity_id
+    - created_at

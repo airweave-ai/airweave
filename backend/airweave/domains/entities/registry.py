@@ -58,6 +58,25 @@ def _get_entity_schema_with_direct_fields_only(cls: Type) -> dict:
     return filtered_schema
 
 
+def _validate_entity_class_fields(cls: Type, name: str, module_name: str) -> None:
+    """Validate that all direct fields use Pydantic Field with a description.
+
+    Raises ValueError at startup so missing descriptions are caught early.
+    """
+    direct_annotations = getattr(cls, "__annotations__", {})
+    for field_name, field_info in cls.model_fields.items():
+        if field_name.startswith("_"):
+            continue
+        if field_name not in direct_annotations:
+            continue
+        if not getattr(field_info, "description", None):
+            raise ValueError(
+                f"Entity '{name}' in module '{module_name}' has field '{field_name}' "
+                f"without a Pydantic Field description. All entity fields must use "
+                f"Field with a description parameter."
+            )
+
+
 class EntityDefinitionRegistry(EntityDefinitionRegistryProtocol):
     """In-memory entity definition registry, built from ENTITIES_BY_SOURCE."""
 
@@ -109,6 +128,8 @@ class EntityDefinitionRegistry(EntityDefinitionRegistryProtocol):
             for entity_cls in entity_classes:
                 class_name = entity_cls.__name__
                 short_name = _to_snake_case(class_name)
+
+                _validate_entity_class_fields(entity_cls, class_name, module_name)
 
                 entry = EntityDefinitionEntry(
                     short_name=short_name,

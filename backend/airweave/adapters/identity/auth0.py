@@ -177,6 +177,33 @@ class Auth0ManagementClient:
                 return []
             raise
 
+    # -- Paginated fetching --
+
+    PAGE_SIZE = 100
+    MAX_PAGES = 20
+
+    async def _get_all_pages(
+        self,
+        endpoint: str,
+        *,
+        return_empty_list_on_error: bool = False,
+    ) -> List[Dict]:
+        """Fetch all pages from a paginated Auth0 Management API endpoint."""
+        all_items: List[Dict] = []
+        for page in range(self.MAX_PAGES):
+            separator = "&" if "?" in endpoint else "?"
+            paged_endpoint = f"{endpoint}{separator}per_page={self.PAGE_SIZE}&page={page}"
+            result = await self._make_request(
+                "GET",
+                paged_endpoint,
+                return_empty_list_on_error=return_empty_list_on_error,
+            )
+            items = result if isinstance(result, list) else []
+            all_items.extend(items)
+            if len(items) < self.PAGE_SIZE:
+                break
+        return all_items
+
     # -- Organization management --
 
     async def create_organization(self, name: str, display_name: str) -> Dict:
@@ -210,9 +237,9 @@ class Auth0ManagementClient:
     # -- User-organization relationships --
 
     async def get_user_organizations(self, auth0_user_id: str) -> List[Dict]:
-        """Get organizations a user belongs to."""
-        return await self._make_request(  # type: ignore[return-value]
-            "GET", f"/users/{auth0_user_id}/organizations", return_empty_list_on_error=True
+        """Get all organizations a user belongs to (paginated)."""
+        return await self._get_all_pages(
+            f"/users/{auth0_user_id}/organizations", return_empty_list_on_error=True
         )
 
     async def add_user_to_organization(self, org_id: str, user_id: str) -> None:
@@ -244,9 +271,9 @@ class Auth0ManagementClient:
             raise
 
     async def get_organization_members(self, org_id: str) -> List[Dict]:
-        """Get all members of an organization."""
-        return await self._make_request(  # type: ignore[return-value]
-            "GET", f"/organizations/{org_id}/members", return_empty_list_on_error=True
+        """Get all members of an organization (paginated)."""
+        return await self._get_all_pages(
+            f"/organizations/{org_id}/members", return_empty_list_on_error=True
         )
 
     # -- Roles & invitations --

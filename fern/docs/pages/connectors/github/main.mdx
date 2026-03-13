@@ -33,52 +33,13 @@ configurable filtering options for branches and file types.
 
 ### Authentication
 
-This connector uses a custom authentication configuration.
-
-<Card
-  title="Authentication Configuration"
-  className="auth-config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
->
-
-GitHub authentication credentials schema.
-
-<ParamField
-  path="personal_access_token"
-  type="str"
-  required={true}
->
-  GitHub PAT with read rights (code, contents, metadata) to the repository
-</ParamField>
-</Card>
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
 
 ### Configuration Options
 
-The following configuration options are available for this connector:
-
-<Card
-  title="Configuration Parameters"
-  className="config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
->
-
-Github configuration schema.
-<ParamField
-  path="repo_name"
-  type="str"
-  required={true}
->
-  Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')
-</ParamField>
-<ParamField
-  path="branch"
-  type="str"
-  required={false}
-  default=""
->
-  Specific branch to sync (e.g., 'main', 'development'). If empty, uses the default branch.
-</ParamField>
-</Card>
+This connector does not have any additional configuration options.
 
 ## Data Models
 
@@ -133,6 +94,64 @@ Schema for GitHub code file entity.
 | line_count | Optional[int] | Number of lines in the file |
 | is_binary | bool | Flag indicating if file is binary |
 | html_url | Optional[str] | HTML URL for viewing this content on GitHub. |
+
+</Accordion>
+<Accordion title="GitHubPullRequestEntity">
+
+Schema for a merged GitHub pull request.
+
+Reference:
+    https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28
+
+| Field | Type | Description |
+|-------|------|-------------|
+| pr_id | str | Repository-qualified PR identifier (owner/repo#number) |
+| title | str | Pull request title |
+| body | Optional[str] | Pull request description (markdown) |
+| number | int | PR number within the repository |
+| state | str | PR state (closed for merged PRs) |
+| author | Optional[str] | Login of the PR author |
+| labels | Optional[List[str]] | Labels applied to the PR |
+| assignees | Optional[List[str]] | Assignee logins |
+| reviewers | Optional[List[str]] | Requested reviewer logins |
+| base_branch | Optional[str] | Base branch the PR was merged into |
+| head_branch | Optional[str] | Source branch of the PR |
+| additions | Optional[int] | Number of lines added |
+| deletions | Optional[int] | Number of lines deleted |
+| changed_files | Optional[int] | Number of files changed |
+| changed_files_list | Optional[List[str]] | Paths of files changed in this PR |
+| merge_commit_sha | Optional[str] | SHA of the merge commit |
+| created_time | datetime | When the PR was created |
+| updated_time | datetime | When the PR was last updated |
+| merged_at | Optional[datetime] | When the PR was merged |
+| repo_name | str | Repository short name |
+| repo_owner | str | Repository owner |
+| web_url_value | Optional[str] | Link to the PR on GitHub |
+
+</Accordion>
+<Accordion title="GitHubPRCommentEntity">
+
+Schema for a review comment on a GitHub pull request.
+
+Review comments are anchored to specific lines in the diff.
+
+Reference:
+    https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28
+
+| Field | Type | Description |
+|-------|------|-------------|
+| comment_id | str | Repository-qualified comment identifier (owner/repo#number/comment/id) |
+| comment_label | str | Short label for the comment |
+| body | Optional[str] | Comment body (markdown) |
+| path | Optional[str] | File path the comment is anchored to |
+| diff_hunk | Optional[str] | Diff context surrounding the comment |
+| author | Optional[str] | Login of the comment author |
+| pr_number | int | PR number this comment belongs to |
+| created_time | datetime | When the comment was created |
+| updated_time | datetime | When the comment was last updated |
+| repo_name | str | Repository short name |
+| repo_owner | str | Repository owner |
+| web_url_value | Optional[str] | Link to the comment on GitHub |
 
 </Accordion>
 <Accordion title="GithubRepoEntity">

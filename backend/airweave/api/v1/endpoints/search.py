@@ -345,11 +345,11 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
             }
             yield f"data: {json.dumps(connected_event)}\n\n"
 
-            last_heartbeat = asyncio.get_event_loop().time()
+            last_heartbeat = asyncio.get_running_loop().time()
             heartbeat_interval = 30
 
             async for message in ps.listen():
-                now = asyncio.get_event_loop().time()
+                now = asyncio.get_running_loop().time()
                 if now - last_heartbeat > heartbeat_interval:
                     heartbeat_event = {
                         "type": "heartbeat",
@@ -382,7 +382,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                 elif message["type"] == "subscribe":
                     ctx.logger.info(f"[SearchStream] Subscribed to channel search:{request_id}")
                 else:
-                    current = asyncio.get_event_loop().time()
+                    current = asyncio.get_running_loop().time()
                     if current - last_heartbeat > heartbeat_interval:
                         heartbeat_event = {
                             "type": "heartbeat",

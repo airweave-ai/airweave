@@ -3,10 +3,14 @@
 Based on the GitHub REST API (read-only scope), we define entity schemas for:
   • Repository
   • Repository Contents
+  • Pull Requests (merged only)
+  • Pull Request Review Comments
 
 References:
   • https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28 (Repositories)
   • https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28 (Repository contents)
+  • https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28 (Pull requests)
+  • https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28 (PR review comments)
 """
 
 from datetime import datetime
@@ -149,6 +153,138 @@ class GitHubCodeFileEntity(CodeFileEntity):
         if self.html_url:
             return self.html_url
         return f"https://github.com/{self.repo_owner}/{self.repo_name}/blob/{self.branch}/{self.path_in_repo}"
+
+
+class GitHubPullRequestEntity(BaseEntity):
+    """Schema for a merged GitHub pull request.
+
+    Reference:
+        https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28
+    """
+
+    pr_id: str = AirweaveField(
+        ...,
+        description="Repository-qualified PR identifier (owner/repo#number)",
+        is_entity_id=True,
+    )
+    title: str = AirweaveField(
+        ...,
+        description="Pull request title",
+        is_name=True,
+        embeddable=True,
+    )
+    body: Optional[str] = AirweaveField(
+        None, description="Pull request description (markdown)", embeddable=True
+    )
+    number: int = AirweaveField(
+        ..., description="PR number within the repository", embeddable=False
+    )
+    state: str = AirweaveField(..., description="PR state (closed for merged PRs)", embeddable=True)
+    author: Optional[str] = AirweaveField(
+        None, description="Login of the PR author", embeddable=True
+    )
+    labels: Optional[List[str]] = AirweaveField(
+        None, description="Labels applied to the PR", embeddable=True
+    )
+    assignees: Optional[List[str]] = AirweaveField(
+        None, description="Assignee logins", embeddable=True
+    )
+    reviewers: Optional[List[str]] = AirweaveField(
+        None, description="Requested reviewer logins", embeddable=True
+    )
+    base_branch: Optional[str] = AirweaveField(
+        None, description="Base branch the PR was merged into", embeddable=True
+    )
+    head_branch: Optional[str] = AirweaveField(
+        None, description="Source branch of the PR", embeddable=True
+    )
+    additions: Optional[int] = AirweaveField(
+        None, description="Number of lines added", embeddable=False
+    )
+    deletions: Optional[int] = AirweaveField(
+        None, description="Number of lines deleted", embeddable=False
+    )
+    changed_files: Optional[int] = AirweaveField(
+        None, description="Number of files changed", embeddable=False
+    )
+    changed_files_list: Optional[List[str]] = AirweaveField(
+        None, description="Paths of files changed in this PR", embeddable=True
+    )
+    merge_commit_sha: Optional[str] = AirweaveField(
+        None, description="SHA of the merge commit", embeddable=False
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the PR was created", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the PR was last updated", is_updated_at=True
+    )
+    merged_at: Optional[datetime] = AirweaveField(
+        None, description="When the PR was merged", embeddable=False
+    )
+    repo_name: str = AirweaveField(..., description="Repository short name", embeddable=True)
+    repo_owner: str = AirweaveField(..., description="Repository owner", embeddable=True)
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="Link to the PR on GitHub", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable URL for the pull request."""
+        return self.web_url_value or ""
+
+
+class GitHubPRCommentEntity(BaseEntity):
+    """Schema for a review comment on a GitHub pull request.
+
+    Review comments are anchored to specific lines in the diff.
+
+    Reference:
+        https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28
+    """
+
+    comment_id: str = AirweaveField(
+        ...,
+        description="Repository-qualified comment identifier (owner/repo#number/comment/id)",
+        is_entity_id=True,
+    )
+    comment_label: str = AirweaveField(
+        ...,
+        description="Short label for the comment",
+        is_name=True,
+        embeddable=True,
+    )
+    body: Optional[str] = AirweaveField(
+        None, description="Comment body (markdown)", embeddable=True
+    )
+    path: Optional[str] = AirweaveField(
+        None, description="File path the comment is anchored to", embeddable=True
+    )
+    diff_hunk: Optional[str] = AirweaveField(
+        None, description="Diff context surrounding the comment", embeddable=True
+    )
+    author: Optional[str] = AirweaveField(
+        None, description="Login of the comment author", embeddable=True
+    )
+    pr_number: int = AirweaveField(
+        ..., description="PR number this comment belongs to", embeddable=False
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the comment was created", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the comment was last updated", is_updated_at=True
+    )
+    repo_name: str = AirweaveField(..., description="Repository short name", embeddable=True)
+    repo_owner: str = AirweaveField(..., description="Repository owner", embeddable=True)
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="Link to the comment on GitHub", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable URL for the review comment."""
+        return self.web_url_value or ""
 
 
 class GithubRepoEntity(BaseEntity):

@@ -64,10 +64,6 @@ class VespaDestination(VectorDBDestination):
     - QueryBuilder for YQL construction
     """
 
-    from airweave.platform.sync.pipeline import ProcessingRequirement
-
-    processing_requirement = ProcessingRequirement.CHUNKS_AND_EMBEDDINGS
-
     def __init__(self, soft_fail: bool = False):
         """Initialize the Vespa destination.
 
@@ -213,10 +209,7 @@ class VespaDestination(VectorDBDestination):
         )
 
         # 5xx and 599 (pyvespa connection error) are transient — retry
-        is_transient = any(
-            status >= 500 or status == 0
-            for _, status, _ in failed_docs
-        )
+        is_transient = any(status >= 500 or status == 0 for _, status, _ in failed_docs)
         if is_transient:
             raise VespaTransientFeedError(msg)
         raise RuntimeError(msg)

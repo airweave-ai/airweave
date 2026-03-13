@@ -93,23 +93,25 @@ return {current_count + 1, 0}  -- Success, return new count
         except Exception:
             pass
 
-        # Cache miss - fetch from database
+        # Cache miss - fetch from source registry
         try:
-            from airweave import crud
-            from airweave.db.session import get_db_context
+            # [code blue] todo: inject source_registry via Inject() instead of container access
+            from airweave.core import container as container_mod
 
-            async with get_db_context() as db:
-                source = await crud.source.get_by_short_name(db, source_short_name)
-                rate_limit_level = source.rate_limit_level
+            source_registry = container_mod.container.source_registry
+            entry = source_registry.get(source_short_name)
+            rate_limit_level = entry.rate_limit_level
 
-                # Cache for 10 minutes (source metadata rarely changes)
-                try:
-                    await redis_client.client.setex(cache_key, 600, rate_limit_level or "None")
-                except Exception:
-                    pass
+            # Cache for 10 minutes (source metadata rarely changes)
+            try:
+                await redis_client.client.setex(cache_key, 600, rate_limit_level or "None")
+            except Exception:
+                pass
 
-                return rate_limit_level
+            return rate_limit_level
 
+        except KeyError:
+            return None
         except Exception as e:
             logger.error(f"Failed to fetch source metadata for {source_short_name}: {e}")
             return None

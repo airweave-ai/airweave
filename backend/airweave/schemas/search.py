@@ -2,7 +2,8 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 import tiktoken
 from pydantic import BaseModel, Field, field_validator
@@ -140,6 +141,11 @@ class SearchRequest(BaseModel):
         default=None,
         description="Maximum number of results to return (default: 1000)",
         json_schema_extra={"example": 10},
+    )
+
+    source_connection_ids: Optional[List[UUID]] = Field(
+        default=None,
+        description="Limit search to specific source connections within the collection.",
     )
 
     temporal_relevance: Optional[float] = Field(

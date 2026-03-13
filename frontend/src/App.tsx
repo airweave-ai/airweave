@@ -25,6 +25,8 @@ import BillingSetup from '@/pages/BillingSetup';
 import BillingPortal from '@/pages/BillingPortal';
 import { AdminDashboard } from '@/pages/AdminDashboard';
 import WebhooksPage from '@/pages/Webhooks';
+import BrowseTreeDemo from '@/pages/BrowseTreeDemo';
+import ConnectPlayground from '@/pages/ConnectPlayground/index';
 
 function App() {
   // Initialize collections event listeners when the app loads
@@ -52,6 +54,8 @@ function App() {
           <Route path={protectedPaths.dashboard} element={<Dashboard />} />
           <Route path={protectedPaths.collections} element={<CollectionsView />} />
           <Route path={protectedPaths.collectionDetail} element={<CollectionDetailView />} />
+          <Route path="/collections/:readable_id/browse-tree" element={<BrowseTreeDemo />} />
+          <Route path="/connect/playground" element={<ConnectPlayground />} />
           <Route path={protectedPaths.apiKeys} />
           <Route path={protectedPaths.authProviders} element={<AuthProviders />} />
           <Route path={protectedPaths.webhooks} element={<WebhooksPage />} />

@@ -24,9 +24,10 @@ class RunSourceConnectionWorkflow:
         """Create sync job for scheduled runs or return existing one."""
         from airweave.platform.temporal.activities import create_sync_job_activity
 
+        sync_id = sync_dict.get("id")
+
         # If no sync_job_dict provided (scheduled run), create a new sync job
         if sync_job_dict is None:
-            sync_id = sync_dict.get("id")
             try:
                 # For forced full sync (daily cleanup), use longer timeout to allow waiting
                 timeout = (
@@ -43,9 +44,16 @@ class RunSourceConnectionWorkflow:
                     ),
                 )
             except Exception as e:
-                # If we can't create a sync job (e.g., one is already running), skip this run
                 workflow.logger.warning(f"Skipping scheduled run for sync {sync_id}: {str(e)}")
-                return None  # Signal to exit gracefully
+                return None
+
+        if sync_job_dict and sync_job_dict.get("_skipped"):
+            workflow.logger.info(
+                f"Skipping scheduled run for sync {sync_id}: "
+                f"{sync_job_dict.get('reason', 'already running')}"
+            )
+            return None
+
         return sync_job_dict
 
     @workflow.run

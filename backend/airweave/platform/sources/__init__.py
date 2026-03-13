@@ -6,6 +6,7 @@ from .asana import AsanaSource
 from .attio import AttioSource
 from .bitbucket import BitbucketSource
 from .box import BoxSource
+from .calcom import CalSource
 from .clickup import ClickUpSource
 from .coda import CodaSource
 from .confluence import ConfluenceSource
@@ -48,6 +49,7 @@ from .salesforce import SalesforceSource
 from .servicenow import ServiceNowSource
 from .sharepoint import SharePointSource
 from .sharepoint2019v2.source import SharePoint2019V2Source
+from .sharepoint_online.source import SharePointOnlineSource
 from .shopify import ShopifySource
 from .slab import SlabSource
 from .slack import SlackSource
@@ -62,6 +64,7 @@ from .trello import TrelloSource
 from .word import WordSource
 from .zendesk import ZendeskSource
 from .zoho_crm import ZohoCRMSource
+from .zoom import ZoomSource
 
 ALL_SOURCES: list[type] = [
     AirtableSource,
@@ -70,6 +73,7 @@ ALL_SOURCES: list[type] = [
     AttioSource,
     BitbucketSource,
     BoxSource,
+    CalSource,
     ClickUpSource,
     CodaSource,
     ConfluenceSource,
@@ -110,6 +114,7 @@ ALL_SOURCES: list[type] = [
     ServiceNowSource,
     SharePointSource,
     SharePoint2019V2Source,
+    SharePointOnlineSource,
     ShopifySource,
     SlabSource,
     SliteSource,
@@ -123,5 +128,6 @@ ALL_SOURCES: list[type] = [
     TrelloSource,
     WordSource,
     ZendeskSource,
+    ZoomSource,
     ZohoCRMSource,
 ]

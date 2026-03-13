@@ -21,6 +21,7 @@ from airweave.domains.temporal.schedule_service import TemporalScheduleService
 def _rpc_error(msg: str, status: RPCStatusCode) -> RPCError:
     return RPCError(msg, status, b"")
 
+
 ORG_ID = uuid4()
 SYNC_ID = uuid4()
 SC_ID = uuid4()
@@ -134,7 +135,12 @@ class CheckExistsCase:
 CHECK_EXISTS_CASES = [
     CheckExistsCase(name="exists_running"),
     CheckExistsCase(name="exists_paused", paused=True, expected_running=False),
-    CheckExistsCase(name="not_found", describe_raises=True, expected_exists=False, expected_running=False),
+    CheckExistsCase(
+        name="not_found",
+        describe_raises=True,
+        expected_exists=False,
+        expected_running=False,
+    ),
 ]
 
 
@@ -257,8 +263,16 @@ class UpdateScheduleCase:
 
 UPDATE_SCHEDULE_CASES = [
     UpdateScheduleCase(name="valid_daily", cron="0 0 * * *"),
-    UpdateScheduleCase(name="valid_minute_interval", cron="*/5 * * * *", expected_sync_type="incremental"),
-    UpdateScheduleCase(name="valid_specific_minute", cron="15 * * * *", expected_sync_type="incremental"),
+    UpdateScheduleCase(
+        name="valid_minute_interval",
+        cron="*/5 * * * *",
+        expected_sync_type="incremental",
+    ),
+    UpdateScheduleCase(
+        name="valid_specific_minute",
+        cron="15 * * * *",
+        expected_sync_type="incremental",
+    ),
     UpdateScheduleCase(name="invalid_cron", cron="bad", is_valid=False),
 ]
 
@@ -351,7 +365,9 @@ async def test_gather_schedule_data(case: GatherCase):
 
     sync_repo.get = AsyncMock(return_value=_mock_sync_model())
     sc_repo.get_by_sync_id = AsyncMock(
-        return_value=_mock_source_connection(connection_id=case.connection_id) if case.sc_exists else None
+        return_value=(
+            _mock_source_connection(connection_id=case.connection_id) if case.sc_exists else None
+        ),
     )
     collection_repo.get_by_readable_id = AsyncMock(
         return_value=_mock_collection() if case.collection_exists else None
@@ -370,22 +386,21 @@ async def test_gather_schedule_data(case: GatherCase):
     db = AsyncMock()
     ctx = _mock_ctx()
 
+    def _mock_validate(val):
+        return MagicMock(model_dump=MagicMock(return_value=val))
+
     if case.expect_error:
         with pytest.raises(ValueError):
-            with patch("airweave.domains.temporal.schedule_service.schemas") as mock_schemas:
-                mock_schemas.Sync.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={}))
-                mock_schemas.CollectionRecord.model_validate.return_value = MagicMock(
-                    model_dump=MagicMock(return_value={})
-                )
-                mock_schemas.Connection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={}))
+            with patch("airweave.domains.temporal.schedule_service.schemas") as ms:
+                ms.Sync.model_validate.return_value = _mock_validate({})
+                ms.CollectionRecord.model_validate.return_value = _mock_validate({})
+                ms.Connection.model_validate.return_value = _mock_validate({})
                 await svc._gather_schedule_data(SYNC_ID, db, ctx)
     else:
-        with patch("airweave.domains.temporal.schedule_service.schemas") as mock_schemas:
-            mock_schemas.Sync.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "s"}))
-            mock_schemas.CollectionRecord.model_validate.return_value = MagicMock(
-                model_dump=MagicMock(return_value={"id": "c"})
-            )
-            mock_schemas.Connection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "cn"}))
+        with patch("airweave.domains.temporal.schedule_service.schemas") as ms:
+            ms.Sync.model_validate.return_value = _mock_validate({"id": "s"})
+            ms.CollectionRecord.model_validate.return_value = _mock_validate({"id": "c"})
+            ms.Connection.model_validate.return_value = _mock_validate({"id": "cn"})
             s, c, cn = await svc._gather_schedule_data(SYNC_ID, db, ctx)
             assert s == {"id": "s"}
             assert c == {"id": "c"}
@@ -393,7 +408,7 @@ async def test_gather_schedule_data(case: GatherCase):
 
 
 @pytest.mark.asyncio
-async def test_gather_schedule_data_uses_provisioning_context_when_source_connection_not_linked_yet():
+async def test_gather_schedule_data_provisioning_fallback():
     sync_repo = AsyncMock()
     sc_repo = AsyncMock()
     collection_repo = AsyncMock()
@@ -414,10 +429,13 @@ async def test_gather_schedule_data_uses_provisioning_context_when_source_connec
     db = AsyncMock()
     ctx = _mock_ctx()
 
-    with patch("airweave.domains.temporal.schedule_service.schemas") as mock_schemas:
-        mock_schemas.Sync.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "s"}))
-        mock_schemas.CollectionRecord.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "c"}))
-        mock_schemas.Connection.model_validate.return_value = MagicMock(model_dump=MagicMock(return_value={"id": "cn"}))
+    def _mock_validate(val):
+        return MagicMock(model_dump=MagicMock(return_value=val))
+
+    with patch("airweave.domains.temporal.schedule_service.schemas") as ms:
+        ms.Sync.model_validate.return_value = _mock_validate({"id": "s"})
+        ms.CollectionRecord.model_validate.return_value = _mock_validate({"id": "c"})
+        ms.Connection.model_validate.return_value = _mock_validate({"id": "cn"})
         s, c, cn = await svc._gather_schedule_data(
             SYNC_ID,
             db,
@@ -464,16 +482,22 @@ async def test_create_or_update_schedule(case: CreateOrUpdateCase):
     sync_repo = AsyncMock()
     svc = _build_svc(sync_repo=sync_repo)
 
-    sync_model = _mock_sync_model(
-        temporal_schedule_id="existing-sched" if case.has_existing_schedule else None
-    ) if case.sync_exists else None
+    sync_model = (
+        _mock_sync_model(
+            temporal_schedule_id="existing-sched" if case.has_existing_schedule else None
+        )
+        if case.sync_exists
+        else None
+    )
     sync_repo.get_without_connections = AsyncMock(return_value=sync_model)
 
-    svc._check_schedule_exists = AsyncMock(return_value={
-        "exists": case.existing_schedule_found,
-        "running": case.existing_schedule_found,
-        "schedule_info": None,
-    })
+    svc._check_schedule_exists = AsyncMock(
+        return_value={
+            "exists": case.existing_schedule_found,
+            "running": case.existing_schedule_found,
+            "schedule_info": None,
+        }
+    )
     svc._update_schedule = AsyncMock()
     svc._gather_schedule_data = AsyncMock(return_value=({}, {}, {}))
     svc._create_schedule = AsyncMock(return_value="new-sched-id")
@@ -553,9 +577,7 @@ async def test_get_client_caches():
     svc = _build_svc()
     mock_client = MagicMock()
 
-    with patch(
-        "airweave.domains.temporal.schedule_service.temporal_client"
-    ) as mock_tc:
+    with patch("airweave.domains.temporal.schedule_service.temporal_client") as mock_tc:
         mock_tc.get_client = AsyncMock(return_value=mock_client)
 
         c1 = await svc._get_client()
@@ -563,3 +585,176 @@ async def test_get_client_caches():
 
         assert c1 is c2
         mock_tc.get_client.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# delete_schedule_handle
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DeleteHandleCase:
+    name: str
+    delete_side_effect: Optional[Exception] = None
+    expect_raises: bool = False
+
+
+DELETE_HANDLE_CASES = [
+    DeleteHandleCase(name="success"),
+    DeleteHandleCase(
+        name="not_found_ignored",
+        delete_side_effect=_rpc_error("not found", RPCStatusCode.NOT_FOUND),
+    ),
+    DeleteHandleCase(
+        name="rpc_error_propagates",
+        delete_side_effect=_rpc_error("unavailable", RPCStatusCode.UNAVAILABLE),
+        expect_raises=True,
+    ),
+    DeleteHandleCase(
+        name="generic_error_swallowed",
+        delete_side_effect=RuntimeError("connection reset"),
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", DELETE_HANDLE_CASES, ids=lambda c: c.name)
+async def test_delete_schedule_handle(case: DeleteHandleCase):
+    svc = _build_svc()
+    mock_client = MagicMock()
+    mock_handle = AsyncMock()
+    mock_handle.delete = AsyncMock(side_effect=case.delete_side_effect)
+    mock_client.get_schedule_handle.return_value = mock_handle
+    svc._client = mock_client
+
+    if case.expect_raises:
+        with pytest.raises(RPCError):
+            await svc.delete_schedule_handle("sched-123")
+    else:
+        await svc.delete_schedule_handle("sched-123")
+
+    mock_client.get_schedule_handle.assert_called_once_with("sched-123")
+
+
+# ---------------------------------------------------------------------------
+# _ensure_singleton_schedule
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class EnsureSingletonCase:
+    name: str
+    already_exists: bool = False
+    describe_raises_other: bool = False
+    describe_raises_generic: bool = False
+
+
+ENSURE_SINGLETON_CASES = [
+    EnsureSingletonCase(name="creates_when_not_found"),
+    EnsureSingletonCase(name="skips_when_exists", already_exists=True),
+    EnsureSingletonCase(
+        name="propagates_non_not_found_rpc",
+        describe_raises_other=True,
+    ),
+    EnsureSingletonCase(
+        name="propagates_generic_describe_error",
+        describe_raises_generic=True,
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ENSURE_SINGLETON_CASES, ids=lambda c: c.name)
+async def test_ensure_singleton_schedule(case: EnsureSingletonCase):
+    from datetime import timedelta
+
+    svc = _build_svc()
+    mock_client = MagicMock()
+    mock_handle = AsyncMock()
+
+    if case.already_exists:
+        mock_handle.describe = AsyncMock(return_value=MagicMock())
+    elif case.describe_raises_other:
+        mock_handle.describe = AsyncMock(
+            side_effect=_rpc_error("unavailable", RPCStatusCode.UNAVAILABLE)
+        )
+    elif case.describe_raises_generic:
+        mock_handle.describe = AsyncMock(side_effect=RuntimeError("boom"))
+    else:
+        mock_handle.describe = AsyncMock(
+            side_effect=_rpc_error("not found", RPCStatusCode.NOT_FOUND)
+        )
+
+    mock_client.get_schedule_handle.return_value = mock_handle
+    mock_client.create_schedule = AsyncMock()
+
+    mock_workflow_cls = MagicMock()
+    mock_workflow_cls.run = MagicMock()
+
+    if case.describe_raises_other:
+        with pytest.raises(RPCError):
+            await svc._ensure_singleton_schedule(
+                client=mock_client,
+                schedule_id="test-system-sched",
+                workflow_cls=mock_workflow_cls,
+                workflow_id="test-workflow",
+                interval=timedelta(minutes=5),
+                note="test note",
+            )
+        mock_client.create_schedule.assert_not_called()
+        return
+
+    if case.describe_raises_generic:
+        with pytest.raises(RuntimeError):
+            await svc._ensure_singleton_schedule(
+                client=mock_client,
+                schedule_id="test-system-sched",
+                workflow_cls=mock_workflow_cls,
+                workflow_id="test-workflow",
+                interval=timedelta(minutes=5),
+                note="test note",
+            )
+        mock_client.create_schedule.assert_not_called()
+        return
+
+    await svc._ensure_singleton_schedule(
+        client=mock_client,
+        schedule_id="test-system-sched",
+        workflow_cls=mock_workflow_cls,
+        workflow_id="test-workflow",
+        interval=timedelta(minutes=5),
+        note="test note",
+    )
+
+    if case.already_exists:
+        mock_client.create_schedule.assert_not_called()
+    else:
+        mock_client.create_schedule.assert_called_once()
+        call_args = mock_client.create_schedule.call_args
+        assert call_args[0][0] == "test-system-sched"
+
+
+# ---------------------------------------------------------------------------
+# ensure_system_schedules
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ensure_system_schedules_calls_both():
+    """ensure_system_schedules should create both cleanup and API key schedules."""
+    svc = _build_svc()
+    mock_client = MagicMock()
+    svc._client = mock_client
+
+    call_ids = []
+
+    async def track_ensure(client, schedule_id, **kwargs):
+        call_ids.append(schedule_id)
+
+    svc._ensure_singleton_schedule = track_ensure
+
+    await svc.ensure_system_schedules()
+
+    assert "cleanup-stuck-sync-jobs" in call_ids
+    assert "api-key-expiration-notifications" in call_ids
+    assert len(call_ids) == 2

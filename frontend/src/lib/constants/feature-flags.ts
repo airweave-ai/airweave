@@ -18,6 +18,9 @@ export const FeatureFlags = {
 
   // Search
   AGENTIC_SEARCH: 'agentic_search',
+
+  // Connect
+  CONNECT: 'connect',
 } as const;
 
 export type FeatureFlag = typeof FeatureFlags[keyof typeof FeatureFlags];

@@ -11,18 +11,17 @@ from airweave.core import credentials
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.exceptions import InvalidInputError, InvalidStateError, NotFoundException
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
-from airweave.platform.configs._base import ConfigValues
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.auth_provider.protocols import (
     AuthProviderRegistryProtocol,
     AuthProviderServiceProtocol,
 )
-from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
-from airweave.domains.auth_provider.types import AuthProviderMetadata
+from airweave.domains.auth_provider.types import AuthProviderMetadata, AuthProviderRegistryEntry
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.models.connection import Connection
 from airweave.platform.auth.settings import AuthenticationMethod
+from airweave.platform.configs._base import ConfigValues
 
 
 class AuthProviderService(AuthProviderServiceProtocol):

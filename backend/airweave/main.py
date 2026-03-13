@@ -47,7 +47,6 @@ from airweave.core.logging import logger
 from airweave.db.init_db import init_db
 from airweave.db.session import AsyncSessionLocal
 from airweave.domains.embedders.config import validate_embedding_config
-from airweave.platform.db_sync import sync_platform_components
 
 
 @asynccontextmanager
@@ -81,34 +80,19 @@ async def lifespan(app: FastAPI):
                 cwd=backend_dir,
                 env=env,
             )
-        if settings.RUN_DB_SYNC:
-            await sync_platform_components(db)
         await init_db(db)
 
         # Reconcile embedding config against DB deployment metadata
         await validate_embedding_config(db)
 
-    # Initialize cleanup schedule for stuck sync jobs
+    # Initialize system-level Temporal schedules (cleanup, API key notifications)
     try:
-        from airweave.platform.temporal.schedule_service import temporal_schedule_service
-
-        logger.info("Initializing cleanup schedule for stuck sync jobs...")
-        await temporal_schedule_service.create_cleanup_schedule()
-        logger.info("Cleanup schedule initialized successfully")
+        logger.info("Initializing system Temporal schedules...")
+        await container_mod.container.temporal_schedule_service.ensure_system_schedules()
+        logger.info("System Temporal schedules initialized successfully")
     except Exception as e:
         logger.warning(
-            f"Failed to initialize cleanup schedule (Temporal may not be available): {e}"
-        )
-
-    # Initialize API key expiration notification schedule
-    try:
-        logger.info("Initializing API key expiration notification schedule...")
-        await temporal_schedule_service.create_api_key_notification_schedule()
-        logger.info("API key notification schedule initialized successfully")
-    except Exception as e:
-        logger.warning(
-            f"Failed to initialize API key notification schedule "
-            f"(Temporal may not be available): {e}"
+            f"Failed to initialize system schedules (Temporal may not be available): {e}"
         )
 
     # Start metrics sidecar + DB pool sampler; wire app.state.http_metrics
@@ -166,11 +150,13 @@ app.exception_handler(AirweaveException)(airweave_exception_handler)
 # Default CORS origins - white labels and environment variables can extend this
 CORS_ORIGINS = [
     "http://localhost:5173",
+    "http://localhost:5174",
     "localhost:8001",
     "http://localhost:8080",
     "https://app.dev-airweave.com",
     "https://app.stg-airweave.com",
     "https://app.airweave.ai",
+    "https://connect.dev-airweave.com",
     "https://docs.airweave.ai",
     "localhost:3000",
 ]

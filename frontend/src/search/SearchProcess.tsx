@@ -914,7 +914,7 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
                 rows.push(
                     <div key={`rerank-${i}-start`} className="px-2 py-1 text-[11px] flex items-center gap-1.5">
                         <FiList className="h-3 w-3 opacity-80" />
-                        <span className="opacity-90">AI reranking</span>
+                        <span className="opacity-90">Reranking</span>
                     </div>
                 );
                 continue;

@@ -5,6 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.api.context import ApiContext
+
+# [code blue] todo: inject source_registry via Inject() instead of container access
+from airweave.core import container as container_mod
 from airweave.models.entity_count import EntityCount as EntityCountModel
 from airweave.search.agentic_search.schemas import (
     AgenticSearchCollection,
@@ -50,7 +53,8 @@ class PostgreSQLAgenticSearchDatabase:
 
     async def get_collection_by_readable_id(self, readable_id: str) -> AgenticSearchCollection:
         """Get collection by readable_id."""
-        collection = await crud.collection.get_by_readable_id(
+        assert container_mod.container is not None  # [code blue]
+        collection = await container_mod.container.collection_repo.get_by_readable_id(
             self._session,
             readable_id=readable_id,
             ctx=self._ctx,
@@ -85,15 +89,15 @@ class PostgreSQLAgenticSearchDatabase:
 
     async def get_source_by_short_name(self, short_name: str) -> AgenticSearchSource:
         """Get source definition by short_name."""
-        source = await crud.source.get_by_short_name(
-            self._session,
-            short_name=short_name,
-        )
-        if not source:
+        assert container_mod.container is not None
+        source_registry = container_mod.container.source_registry
+        try:
+            entry = source_registry.get(short_name)
+        except KeyError:
             raise ValueError(f"Source not found: {short_name}")
         return AgenticSearchSource(
-            short_name=source.short_name,
-            output_entity_definitions=source.output_entity_definitions or [],
+            short_name=entry.short_name,
+            output_entity_definitions=entry.output_entity_definitions or [],
         )
 
     async def get_entity_definitions_of_source(
@@ -103,6 +107,7 @@ class PostgreSQLAgenticSearchDatabase:
         # [code blue] todo: remove container import
         from airweave.core.container import container as app_container
 
+        assert app_container is not None
         entries = app_container.entity_definition_registry.list_for_source(source.short_name)
 
         if not entries:

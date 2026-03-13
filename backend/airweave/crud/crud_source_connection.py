@@ -98,7 +98,6 @@ class CRUDSourceConnection(
         auth_methods = await self._fetch_auth_methods(db, source_connections)
         last_jobs = await self._fetch_last_jobs(db, source_connections)
         entity_counts = await self._fetch_entity_counts(db, source_connections)
-        federated_search_flags = await self._fetch_federated_search_flags(db, source_connections)
 
         # 3. Combine into response dictionaries
         results = []
@@ -120,7 +119,6 @@ class CRUDSourceConnection(
                     "authentication_method": auth_methods.get(sc.id),
                     "last_job": last_jobs.get(sc.id),
                     "entity_count": entity_counts.get(sc.id, 0),
-                    "federated_search": federated_search_flags.get(sc.short_name, False),
                 }
             )
 
@@ -294,25 +292,6 @@ class CRUDSourceConnection(
         return {
             sync_to_sc[row.sync_id]: row.total or 0 for row in result if row.sync_id in sync_to_sc
         }
-
-    async def _fetch_federated_search_flags(
-        self, db: AsyncSession, source_conns: List[SourceConnection]
-    ) -> Dict[str, bool]:
-        """Fetch federated_search flags from Source table by short_name."""
-        from airweave.models.source import Source
-
-        short_names = {sc.short_name for sc in source_conns}
-        if not short_names:
-            return {}
-
-        query = select(Source.short_name, Source.federated_search).where(
-            Source.short_name.in_(short_names)
-        )
-
-        result = await db.execute(query)
-
-        # Map short_name to federated_search flag
-        return {row.short_name: row.federated_search or False for row in result}
 
     async def get_by_query_and_org(
         self,

@@ -1,11 +1,15 @@
 """Source registry — in-memory registry built once at startup from @source decorators."""
 
+import re
+
 from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.sources.types import SourceRegistryEntry
+from airweave.platform.auth.schemas import OAuth2Settings
+from airweave.platform.auth.settings import integration_settings
 from airweave.platform.configs._base import Fields
 from airweave.platform.sources import ALL_SOURCES
 
@@ -98,9 +102,8 @@ class SourceRegistry(SourceRegistryProtocol):
         with ClassVar defaults on BaseSource). Missing required fields will raise
         AttributeError at startup.
         """
-        # config_class and auth_config_class are actual types or None.
-        # auth_config_class is None for OAuth sources (they don't use direct auth).
-        # config_class is None for sources with no configuration.
+        self._validate_template_config(source_cls)
+
         config_ref = source_cls.config_class
         auth_config_ref = source_cls.auth_config_class
 
@@ -137,6 +140,7 @@ class SourceRegistry(SourceRegistryProtocol):
             federated_search=source_cls.federated_search,
             supports_temporal_relevance=source_cls.supports_temporal_relevance,
             supports_access_control=source_cls.supports_access_control,
+            supports_browse_tree=source_cls.supports_browse_tree,
             rate_limit_level=_enum_to_str(source_cls.rate_limit_level),
             feature_flag=source_cls.feature_flag,
             labels=source_cls.labels,
@@ -187,3 +191,61 @@ class SourceRegistry(SourceRegistryProtocol):
             return ["access_token"], set()
 
         return [], set()
+
+    @staticmethod
+    def _validate_template_config(source_cls: type) -> None:
+        """Validate that YAML template variables match config RequiredTemplateConfig fields.
+
+        Raises ValueError on mismatch so the app fails fast at startup.
+        """
+        short_name = source_cls.short_name
+        config_class = source_cls.config_class
+        if not config_class:
+            return
+
+        try:
+            oauth_settings = integration_settings.get_settings(short_name)
+            if not isinstance(oauth_settings, OAuth2Settings) or not oauth_settings.url_template:
+                return
+
+            url_vars = set(re.findall(r"\{(\w+)\}", oauth_settings.url))
+            if oauth_settings.backend_url_template:
+                url_vars |= set(re.findall(r"\{(\w+)\}", oauth_settings.backend_url))
+
+            if not url_vars:
+                registry_logger.warning(
+                    f"Source '{short_name}' has url_template=true but no template variables found"
+                )
+                return
+
+            config_fields = set(config_class.get_template_config_fields())
+
+            missing = url_vars - config_fields
+            if missing:
+                raise ValueError(
+                    f"Source '{short_name}' template validation failed:\n"
+                    f"  YAML template variables: {sorted(url_vars)}\n"
+                    f"  Config template fields: {sorted(config_fields)}\n"
+                    f"  Missing in config class: {sorted(missing)}\n\n"
+                    f"Fix: Add to {config_class.__name__}:\n"
+                    + "\n".join(
+                        f"    {var}: str = RequiredTemplateConfig("
+                        f'title="{var.replace("_", " ").title()}")'
+                        for var in sorted(missing)
+                    )
+                )
+
+            extra = config_fields - url_vars
+            if extra:
+                registry_logger.warning(
+                    f"Source '{short_name}' has template config fields not used in YAML: "
+                    f"{sorted(extra)}. These may be for direct auth or API calls."
+                )
+
+        except ValueError:
+            raise
+        except Exception as e:
+            registry_logger.warning(
+                f"Could not validate templates for '{short_name}': {e}. "
+                f"This is non-fatal but templates may not work correctly."
+            )

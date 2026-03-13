@@ -1,6 +1,6 @@
 """Source connection repository wrapping crud.source_connection."""
 
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -12,12 +12,17 @@ from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
+from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.source_connection import SourceConnection
 
 
 class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
     """Delegates to the crud.source_connection singleton."""
+
+    def __init__(self, source_registry: SourceRegistryProtocol) -> None:
+        """Initialize with source registry for enriching results."""
+        self._source_registry = source_registry
 
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
         """Get a source connection by ID within org scope."""
@@ -66,10 +71,16 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
         limit: int = 100,
     ) -> List[SourceConnectionStats]:
         """Get source connections with complete stats."""
-        raw = await crud.source_connection.get_multi_with_stats(
+        stat_rows = await crud.source_connection.get_multi_with_stats(
             db, ctx=ctx, collection_id=collection_id, skip=skip, limit=limit
         )
-        return [SourceConnectionStats.from_dict(d) for d in raw]
+        for row in stat_rows:
+            try:
+                entry = self._source_registry.get(row["short_name"])
+                row["federated_search"] = entry.federated_search
+            except KeyError:
+                row["federated_search"] = False
+        return [SourceConnectionStats.from_dict(row) for row in stat_rows]
 
     async def get_sync_ids_for_collection(
         self,
@@ -89,6 +100,27 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
             .distinct()
         )
         return [row[0] for row in rows if row[0]]
+
+    async def get_by_collection_ids(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: UUID,
+        readable_collection_ids: List[str],
+    ) -> List[SourceConnection]:
+        """Get all source connections for the given collection readable IDs."""
+        query = select(SourceConnection).where(
+            SourceConnection.organization_id == organization_id,
+            SourceConnection.readable_collection_id.in_(readable_collection_ids),
+        )
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+    async def fetch_last_jobs(
+        self, db: AsyncSession, source_conns: List[SourceConnection]
+    ) -> Dict[UUID, Dict]:
+        """Fetch the most recent sync job for each connection."""
+        return await crud.source_connection._fetch_last_jobs(db, source_conns)
 
     async def update(
         self,

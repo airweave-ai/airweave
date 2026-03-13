@@ -221,6 +221,7 @@ class SyncProgressRelay(EventSubscriber):
             deleted=session.deleted,
             kept=session.kept,
             skipped=session.skipped,
+            entities_encountered=session.named_counts,
             last_update_timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -255,6 +256,7 @@ class SyncProgressRelay(EventSubscriber):
             deleted=session.deleted,
             kept=session.kept,
             skipped=session.skipped,
+            entities_encountered=session.named_counts,
             status=status,
             last_update_timestamp=datetime.now(timezone.utc).isoformat(),
         )

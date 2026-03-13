@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity
 from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.sync.pipeline.text_builder import text_builder
-from airweave.platform.sync.processors.protocol import ContentProcessor
 from airweave.platform.sync.processors.utils import filter_empty_representations
 
 if TYPE_CHECKING:
@@ -25,7 +24,7 @@ if TYPE_CHECKING:
     from airweave.platform.contexts.runtime import SyncRuntime
 
 
-class ChunkEmbedProcessor(ContentProcessor):
+class ChunkEmbedProcessor:
     """Unified processor that chunks text and computes embeddings.
 
     Pipeline:

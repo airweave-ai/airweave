@@ -8,16 +8,21 @@ from typing import Any, Dict, List
 
 from temporalio import activity
 
+from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
+
 
 @dataclass
 class SelfDestructOrphanedSyncActivity:
     """Self-destruct cleanup for orphaned workflow.
 
-    Dependencies: None (uses internal schedule service)
+    Dependencies:
+        temporal_schedule_service: Delete orphaned Temporal schedules
 
     Called when a workflow detects its sync/source_connection no longer exists.
     Cleans up any remaining schedules and workflows for this sync_id.
     """
+
+    temporal_schedule_service: TemporalScheduleServiceProtocol
 
     @activity.defn(name="self_destruct_orphaned_sync_activity")
     async def run(
@@ -44,18 +49,15 @@ class SelfDestructOrphanedSyncActivity:
         ctx = BaseContext(organization=organization)
         ctx.logger = ctx.logger.with_context(sync_id=sync_id)
 
-        ctx.logger.info(f"🧹 Starting self-destruct cleanup for sync {sync_id}. Reason: {reason}")
+        ctx.logger.info(f"Starting self-destruct cleanup for sync {sync_id}. Reason: {reason}")
 
-        cleanup_summary = {
+        cleanup_summary: Dict[str, Any] = {
             "sync_id": sync_id,
             "reason": reason,
             "schedules_deleted": [],
             "workflows_cancelled": [],
             "errors": [],
         }
-
-        # Delete all schedule types using existing schedule service logic
-        from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
         schedule_ids = [
             f"sync-{sync_id}",
@@ -65,14 +67,14 @@ class SelfDestructOrphanedSyncActivity:
 
         for schedule_id in schedule_ids:
             try:
-                await temporal_schedule_service.delete_schedule_handle(schedule_id)
-                ctx.logger.info(f"  ✓ Deleted schedule: {schedule_id}")
+                await self.temporal_schedule_service.delete_schedule_handle(schedule_id)
+                ctx.logger.info(f"  Deleted schedule: {schedule_id}")
                 cleanup_summary["schedules_deleted"].append(schedule_id)
             except Exception as e:
-                ctx.logger.debug(f"  - Schedule {schedule_id} not found: {e}")
+                ctx.logger.debug(f"  Schedule {schedule_id} not found: {e}")
 
         ctx.logger.info(
-            f"🧹 Self-destruct cleanup complete for sync {sync_id}. "
+            f"Self-destruct cleanup complete for sync {sync_id}. "
             f"Deleted {len(cleanup_summary['schedules_deleted'])} schedule(s)."
         )
 
@@ -83,7 +85,8 @@ class SelfDestructOrphanedSyncActivity:
 class CleanupSyncDataActivity:
     """Clean up external data (Vespa, ARF, schedules) for deleted syncs.
 
-    Dependencies: None (uses internal services)
+    Dependencies:
+        temporal_schedule_service: Delete orphaned Temporal schedules
 
     This activity runs asynchronously after a source connection or collection
     has been deleted from the database. It handles the slow, potentially
@@ -97,6 +100,8 @@ class CleanupSyncDataActivity:
     non-critical -- the data in Vespa is just orphaned (unsearchable since
     the collection metadata no longer exists).
     """
+
+    temporal_schedule_service: TemporalScheduleServiceProtocol
 
     @activity.defn(name="cleanup_sync_data_activity")
     async def run(
@@ -120,7 +125,6 @@ class CleanupSyncDataActivity:
         from airweave.core.logging import LoggerConfigurator
         from airweave.platform.destinations.vespa.destination import VespaDestination
         from airweave.platform.sync.arf import arf_service
-        from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
         logger = LoggerConfigurator.configure_logger(
             "airweave.temporal.cleanup_sync_data",
@@ -141,7 +145,6 @@ class CleanupSyncDataActivity:
             "errors": [],
         }
 
-        # Build Vespa destination once (only needs collection_id + organization_id)
         vespa: VespaDestination | None = None
         try:
             vespa = await VespaDestination.create(
@@ -162,7 +165,7 @@ class CleanupSyncDataActivity:
             for prefix in ("sync", "minute-sync", "daily-cleanup"):
                 schedule_id = f"{prefix}-{sync_id}"
                 try:
-                    await temporal_schedule_service.delete_schedule_handle(schedule_id)
+                    await self.temporal_schedule_service.delete_schedule_handle(schedule_id)
                     summary["schedules_deleted"] += 1
                 except Exception as e:
                     logger.debug(f"Schedule {schedule_id} not deleted: {e}")

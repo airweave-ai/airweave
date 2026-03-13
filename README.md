@@ -70,6 +70,7 @@ cd airweave
 <img src="frontend/src/components/icons/apps/attio.svg" alt="Attio" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/bitbucket.svg" alt="Bitbucket" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/box.svg" alt="Box" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/calcom.svg" alt="cal.com" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/clickup.svg" alt="ClickUp" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/coda.svg" alt="Coda" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/confluence.svg" alt="Confluence" width="40" height="40" style="margin: 6px;" />
@@ -98,6 +99,7 @@ cd airweave
 <img src="frontend/src/components/icons/apps/stripe.svg" alt="Stripe" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/trello.svg" alt="Trello" width="40" height="40" style="margin: 6px;" />
 <img src="frontend/src/components/icons/apps/zendesk.svg" alt="Zendesk" width="40" height="40" style="margin: 6px;" />
+<img src="frontend/src/components/icons/apps/zoom.svg" alt="Zoom" width="40" height="40" style="margin: 6px;" />
 </p>
 
 <!-- END_APP_GRID -->

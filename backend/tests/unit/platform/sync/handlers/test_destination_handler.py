@@ -21,7 +21,6 @@ def _make_mock_destination(soft_fail=False):
     dest = MagicMock()
     dest.__class__.__name__ = "MockDestination"
     dest.soft_fail = soft_fail
-    dest.processing_requirement = MagicMock()
     dest.bulk_insert = AsyncMock()
     dest.bulk_delete_by_parent_ids = AsyncMock()
     return dest
@@ -246,29 +245,23 @@ class TestTimingLogs:
         handler = DestinationHandler([dest])
         ctx = _make_mock_sync_context()
 
-        # Mock processor
         mock_processor = MagicMock()
         mock_processor.__class__.__name__ = "ChunkEmbedProcessor"
         mock_processor.process = AsyncMock(return_value=[])
 
-        # Mock the event loop time to simulate 15s processing
         time_values = [0.0, 15.0]
         time_iter = iter(time_values)
 
         mock_loop = MagicMock()
         mock_loop.time = MagicMock(side_effect=time_iter)
 
-        # Mock entity with model_copy
         mock_entity = MagicMock()
-        mock_entity.model_copy = MagicMock(return_value=mock_entity)
-
         mock_runtime = MagicMock()
 
         with patch("asyncio.get_running_loop", return_value=mock_loop), \
-             patch.object(handler, "_get_processor", return_value=mock_processor):
+             patch("airweave.platform.sync.handlers.destination._processor", mock_processor):
             await handler._do_process_and_insert([mock_entity], ctx, mock_runtime)
 
-        # Should log warning about slow processing
         warning_calls = ctx.logger.warning.call_args_list
         slow_warnings = [c for c in warning_calls if "slow" in str(c)]
         assert len(slow_warnings) == 1

@@ -42,6 +42,9 @@ integrations:
     client_credential_location: "body"
     scope: "root_readwrite"
 
+  calcom:
+    # Cal.com uses API key (DIRECT auth). OAuth can be added here if needed later.
+
   confluence:
     oauth_type: "with_rotating_refresh"
     url: "https://auth.atlassian.com/authorize"
@@ -308,6 +311,20 @@ integrations:
       response_type: "code"
       response_mode: "query"
 
+  sharepoint_online:
+    oauth_type: "with_rotating_refresh"
+    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    grant_type: "authorization_code"
+    client_id: "02669594-1acf-495d-a846-f18a80126a11"
+    client_secret: "xna8Q~EYqiLH~x-u4oAVC0fEAe4Ts1d60RocUcGF"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "offline_access https://graph.microsoft.com/User.Read.All https://graph.microsoft.com/Group.Read.All https://graph.microsoft.com/GroupMember.Read.All https://graph.microsoft.com/Directory.Read.All https://graph.microsoft.com/Sites.Read.All https://graph.microsoft.com/Files.Read.All"
+    additional_frontend_params:
+      response_type: "code"
+      response_mode: "query"
+
   slab:
 
   slite:
@@ -361,6 +378,17 @@ integrations:
 
   coda:
     # Coda API v1 uses Personal API Token (DIRECT auth). OAuth via Packs can be added later.
+
+  zoom:
+    oauth_type: "with_refresh"
+    url: "https://zoom.us/oauth/authorize"
+    backend_url: "https://zoom.us/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "KEOgNEJNT2SF8vKsvsdfQw"
+    client_secret: "placeholder_client_secret"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "header"
+    scope: "user:read:user:admin meeting:read:list_meetings:admin meeting:read:past_meeting:admin meeting:read:list_past_participants:admin cloud_recording:read:list_user_recordings:admin cloud_recording:read:recording:admin cloud_recording:read:list_recording_files:admin cloud_recording:read:meeting_transcript:admin"
 
   clickup:
     oauth_type: "access_only"

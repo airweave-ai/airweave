@@ -370,6 +370,14 @@ def fake_sync_job_service():
 
 
 @pytest.fixture
+def fake_sync_service():
+    """Fake SyncService."""
+    from airweave.domains.syncs.fakes.sync_service import FakeSyncService
+
+    return FakeSyncService()
+
+
+@pytest.fixture
 def fake_sync_lifecycle():
     """Fake SyncLifecycleService."""
     from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
@@ -495,6 +503,22 @@ def fake_organization_service():
 
 
 @pytest.fixture
+def fake_email_service():
+    """Fake EmailService that records calls."""
+    from airweave.adapters.email.fake import FakeEmailService
+
+    return FakeEmailService()
+
+
+@pytest.fixture
+def fake_user_service():
+    """Fake UserService that records calls."""
+    from airweave.domains.users.fakes.service import FakeUserService
+
+    return FakeUserService()
+
+
+@pytest.fixture
 def fake_oauth_flow_service():
     """Fake OAuthFlowService."""
     from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
@@ -516,6 +540,30 @@ def fake_init_session_repo():
     from airweave.domains.oauth.fakes.repository import FakeOAuthInitSessionRepository
 
     return FakeOAuthInitSessionRepository()
+
+
+@pytest.fixture
+def fake_connect_service():
+    """Fake ConnectService for testing."""
+    from airweave.domains.connect.fakes.service import FakeConnectService
+
+    return FakeConnectService()
+
+
+@pytest.fixture
+def fake_browse_tree_service():
+    """Fake BrowseTreeService (MagicMock)."""
+    from unittest.mock import MagicMock
+
+    return MagicMock()
+
+
+@pytest.fixture
+def fake_selection_repo():
+    """Fake NodeSelectionRepository (MagicMock)."""
+    from unittest.mock import MagicMock
+
+    return MagicMock()
 
 
 @pytest.fixture
@@ -557,6 +605,7 @@ def test_container(
     fake_sync_job_repo,
     fake_sync_record_service,
     fake_sync_job_service,
+    fake_sync_service,
     fake_sync_lifecycle,
     fake_billing_service,
     fake_billing_webhook,
@@ -571,6 +620,11 @@ def test_container(
     fake_usage_ledger,
     fake_identity_provider,
     fake_organization_service,
+    fake_email_service,
+    fake_user_service,
+    fake_connect_service,
+    fake_browse_tree_service,
+    fake_selection_repo,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -601,6 +655,8 @@ def test_container(
         auth_provider_service=fake_auth_provider_service,
         entity_definition_registry=fake_entity_definition_registry,
         collection_service=fake_collection_service,
+        browse_tree_service=fake_browse_tree_service,
+        selection_repo=fake_selection_repo,
         sc_repo=fake_sc_repo,
         collection_repo=fake_collection_repo,
         conn_repo=fake_conn_repo,
@@ -613,6 +669,7 @@ def test_container(
         oauth_callback_service=fake_oauth_callback_service,
         init_session_repo=fake_init_session_repo,
         source_connection_service=fake_source_connection_service,
+        connect_service=fake_connect_service,
         source_lifecycle_service=fake_source_lifecycle_service,
         response_builder=fake_response_builder,
         temporal_workflow_service=fake_temporal_workflow_service,
@@ -622,6 +679,7 @@ def test_container(
         sync_job_repo=fake_sync_job_repo,
         sync_record_service=fake_sync_record_service,
         sync_job_service=fake_sync_job_service,
+        sync_service=fake_sync_service,
         sync_lifecycle=fake_sync_lifecycle,
         billing_service=fake_billing_service,
         billing_webhook=fake_billing_webhook,
@@ -634,4 +692,6 @@ def test_container(
         usage_ledger=fake_usage_ledger,
         identity_provider=fake_identity_provider,
         organization_service=fake_organization_service,
+        email_service=fake_email_service,
+        user_service=fake_user_service,
     )

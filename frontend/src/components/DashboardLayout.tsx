@@ -19,6 +19,7 @@ import {
   Github,  // Add Github icon
   FileText, // Change from Book to FileText
   Webhook,
+  Plug,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -196,6 +197,7 @@ const DashboardLayout = () => {
   const { resolvedTheme, setTheme } = useTheme();
   const { fetchSources } = useSourcesStore();
   const { currentOrganization } = useOrganizationStore();
+  const hasConnectFeature = useOrganizationStore((state) => state.hasFeature('connect'));
   const { openPanel } = useSidePanelStore(); // Get the function to open the panel
 
   // Usage check from store
@@ -241,6 +243,10 @@ const DashboardLayout = () => {
 
   const isWebhooksActive = useMemo(() =>
     location.pathname === '/webhooks',
+    [location.pathname]);
+
+  const isConnectPlaygroundActive = useMemo(() =>
+    location.pathname === '/connect/playground',
     [location.pathname]);
 
   // Fully memoized SidebarContent component
@@ -360,6 +366,20 @@ const DashboardLayout = () => {
             </NavItem>
           </div>
 
+          {/* Connect Playground (feature-flagged) */}
+          {hasConnectFeature && (
+          <div>
+            <NavItem
+              to="/connect/playground"
+              isActive={isConnectPlaygroundActive}
+              icon={<Plug className="mr-2 h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />}
+            >
+              Connect
+              <span className="ml-1.5 text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wide">new</span>
+            </NavItem>
+          </div>
+          )}
+
         </div>
       </ScrollArea>
 
@@ -368,7 +388,7 @@ const DashboardLayout = () => {
         <UserProfileDropdown />
       </div>
     </div>
-  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, isWebhooksActive, currentOrganization?.id, sourceConnectionsAllowed, entitiesAllowed, isCheckingUsage, usageCheckDetails]);
+  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, isWebhooksActive, isConnectPlaygroundActive, hasConnectFeature, currentOrganization?.id, sourceConnectionsAllowed, entitiesAllowed, isCheckingUsage, usageCheckDetails]);
 
   // Main component render
   return (

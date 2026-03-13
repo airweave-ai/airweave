@@ -27,7 +27,6 @@ from airweave.domains.credentials.protocols import IntegrationCredentialReposito
 from airweave.domains.oauth.protocols import (
     OAuthFlowServiceProtocol,
     OAuthInitSessionRepositoryProtocol,
-    OAuthSourceRepositoryProtocol,
 )
 from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
@@ -47,7 +46,6 @@ from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.collection import Collection
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.integration_credential import IntegrationType
-from airweave.models.source import Source
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.auth.schemas import OAuth1Settings, OAuth2TokenResponse
 from airweave.platform.auth.settings import integration_settings
@@ -83,7 +81,6 @@ class OAuthCallbackService:
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
         event_bus: EventBus,
         organization_repo: OrganizationRepositoryProtocol,
-        source_repo: OAuthSourceRepositoryProtocol,
         sc_repo: SourceConnectionRepositoryProtocol,
         credential_repo: IntegrationCredentialRepositoryProtocol,
         connection_repo: ConnectionRepositoryProtocol,
@@ -102,7 +99,6 @@ class OAuthCallbackService:
         self._temporal_workflow_service = temporal_workflow_service
         self._event_bus = event_bus
         self._organization_repo = organization_repo
-        self._source_repo = source_repo
         self._sc_repo = sc_repo
         self._credential_repo = credential_repo
         self._connection_repo = connection_repo
@@ -177,15 +173,20 @@ class OAuthCallbackService:
             init_session.short_name, code, init_session.overrides, ctx
         )
 
-        source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
+        try:
+            source_entry = self._source_registry.get(init_session.short_name)
+        except KeyError:
+            raise HTTPException(
+                status_code=404, detail=f"Source '{init_session.short_name}' not found"
+            )
         await self._validate_oauth2_token_or_raise(
-            source=source,
+            source_entry=source_entry,
             access_token=token_response.access_token,
             ctx=ctx,
         )
 
         source_conn = await self._complete_oauth2_connection(
-            db, source_conn_shell, init_session, token_response, ctx
+            db, source_conn_shell, init_session, token_response, source_entry, ctx
         )
 
         return await self._finalize_callback(db, source_conn, ctx)
@@ -291,8 +292,9 @@ class OAuthCallbackService:
         ctx: ApiContext,
     ) -> SourceConnection:
         """Complete OAuth1 connection after callback."""
-        source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
-        if not source:
+        try:
+            source_entry = self._source_registry.get(init_session.short_name)
+        except KeyError:
             raise HTTPException(
                 status_code=404, detail=f"Source '{init_session.short_name}' not found"
             )
@@ -333,7 +335,7 @@ class OAuthCallbackService:
 
         return await self._complete_connection_common(
             db,
-            source,
+            source_entry,
             source_conn_shell,
             init_session_id,
             payload,
@@ -349,15 +351,10 @@ class OAuthCallbackService:
         source_conn_shell: SourceConnection,
         init_session: ConnectionInitSession,
         token_response: OAuth2TokenResponse,
+        source_entry: SourceRegistryEntry,
         ctx: ApiContext,
     ) -> SourceConnection:
         """Complete OAuth2 connection after callback."""
-        source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
-        if not source:
-            raise HTTPException(
-                status_code=404, detail=f"Source '{init_session.short_name}' not found"
-            )
-
         init_session_id = init_session.id
         payload = init_session.payload or {}
         overrides = init_session.overrides or {}
@@ -393,7 +390,7 @@ class OAuthCallbackService:
 
         return await self._complete_connection_common(
             db,
-            source,
+            source_entry,
             source_conn_shell,
             init_session_id,
             payload,
@@ -410,7 +407,7 @@ class OAuthCallbackService:
     async def _complete_connection_common(  # noqa: C901
         self,
         db: AsyncSession,
-        source: Source,
+        source_entry: SourceRegistryEntry,
         source_conn_shell: SourceConnection,
         init_session_id: UUID,
         payload: Dict[str, Any],
@@ -420,22 +417,25 @@ class OAuthCallbackService:
         ctx: ApiContext,
     ) -> SourceConnection:
         """Common logic for completing OAuth connections (shared by OAuth1/OAuth2)."""
-        validated_config = self._validate_config(source, payload.get("config"))
+        validated_config = self._validate_config(source_entry, payload.get("config"))
 
         auth_type_name = "OAuth1" if is_oauth1 else "OAuth2"
+        auth_config_class = (
+            source_entry.auth_config_ref.__name__ if source_entry.auth_config_ref else None
+        )
 
         async with UnitOfWork(db) as uow:
             encrypted = self._credential_encryptor.encrypt(auth_fields)
 
             cred_in = schemas.IntegrationCredentialCreateEncrypted(
-                name=f"{source.name} {auth_type_name} Credential",
-                description=f"{auth_type_name} credentials for {source.name}",
-                integration_short_name=source.short_name,
+                name=f"{source_entry.name} {auth_type_name} Credential",
+                description=f"{auth_type_name} credentials for {source_entry.name}",
+                integration_short_name=source_entry.short_name,
                 integration_type=IntegrationType.SOURCE,
                 authentication_method=auth_method_to_save,
-                oauth_type=getattr(source, "oauth_type", None),
+                oauth_type=source_entry.oauth_type,
                 encrypted_credentials=encrypted,
-                auth_config_class=source.auth_config_class,
+                auth_config_class=auth_config_class,
             )
             credential = await self._credential_repo.create(
                 uow.session, obj_in=cred_in, ctx=ctx, uow=uow
@@ -445,11 +445,11 @@ class OAuthCallbackService:
             await uow.session.refresh(credential)
 
             conn_in = schemas.ConnectionCreate(
-                name=payload.get("name", f"Connection to {source.name}"),
+                name=payload.get("name", f"Connection to {source_entry.name}"),
                 integration_type=IntegrationType.SOURCE,
                 status=ConnectionStatus.ACTIVE,
                 integration_credential_id=credential.id,
-                short_name=source.short_name,
+                short_name=source_entry.short_name,
             )
             connection = await self._connection_repo.create(
                 uow.session, obj_in=conn_in, ctx=ctx, uow=uow
@@ -464,14 +464,14 @@ class OAuthCallbackService:
             await uow.session.flush()
             await uow.session.refresh(connection)
 
-            entry: SourceRegistryEntry = self._source_registry.get(source.short_name)
-            source_class = entry.source_class_ref
+            source_class = source_entry.source_class_ref
 
             is_federated = getattr(source_class, "federated_search", False)
 
             if is_federated:
                 ctx.logger.info(
-                    f"Skipping sync creation for federated search source '{source.short_name}'. "
+                    f"Skipping sync creation for federated search source "
+                    f"'{source_entry.short_name}'. "
                     "Federated search sources are searched at query time."
                 )
                 sc_update: Dict[str, Any] = {
@@ -504,12 +504,12 @@ class OAuthCallbackService:
 
                 sync_result = await self._sync_lifecycle.provision_sync(
                     uow.session,
-                    name=payload.get("name") or source.name,
+                    name=payload.get("name") or source_entry.name,
                     source_connection_id=connection.id,
                     destination_connection_ids=destination_ids,
                     collection_id=collection.id,
                     collection_readable_id=collection.readable_id,
-                    source_entry=entry,
+                    source_entry=source_entry,
                     schedule_config=schedule_config,
                     run_immediately=True,
                     ctx=ctx,
@@ -546,16 +546,16 @@ class OAuthCallbackService:
     async def _validate_oauth2_token_or_raise(
         self,
         *,
-        source: Source | None,
+        source_entry: SourceRegistryEntry | None,
         access_token: str,
         ctx: ApiContext,
     ) -> None:
         """Validate OAuth2 token using source implementation; fail callback if invalid."""
-        if not source:
+        if not source_entry:
             return
 
         try:
-            source_cls = self._source_registry.get(source.short_name).source_class_ref
+            source_cls = source_entry.source_class_ref
 
             source_instance = await source_cls.create(access_token=access_token, config=None)
             source_instance.set_logger(ctx.logger)
@@ -657,31 +657,23 @@ class OAuthCallbackService:
 
     def _validate_config(
         self,
-        source: Source,
+        source_entry: SourceRegistryEntry,
         config_fields: Mapping[str, Any] | None,
     ) -> Dict[str, Any]:
         """Validate config fields using source_registry."""
         if not config_fields:
             return {}
 
-        try:
-            entry = self._source_registry.get(source.short_name)
-        except KeyError:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Source '{source.short_name}' is not registered",
-            )
-
         if not isinstance(config_fields, Mapping):
             raise HTTPException(status_code=422, detail="Invalid config fields: expected object")
 
         payload = dict(config_fields)
 
-        if not entry.config_ref:
+        if not source_entry.config_ref:
             return payload
 
         try:
-            config_class = entry.config_ref
+            config_class = source_entry.config_ref
             model = config_class.model_validate(payload)
             return model.model_dump()
 

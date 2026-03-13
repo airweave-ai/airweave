@@ -1,6 +1,6 @@
 """Fake source connection repository for testing."""
 
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,7 @@ class FakeSourceConnectionRepository(SourceConnectionRepositoryProtocol):
         self._stats: List[SourceConnectionStats] = []
         self._sync_ids_by_collection: dict[str, List[UUID]] = {}
         self._org_counts: dict[UUID, int] = {}
+        self._last_jobs: Dict[UUID, Dict] = {}
         self._calls: list[tuple[Any, ...]] = []
 
     def seed(self, id: UUID, obj: SourceConnection) -> None:
@@ -126,6 +127,32 @@ class FakeSourceConnectionRepository(SourceConnectionRepositoryProtocol):
             ("get_sync_ids_for_collection", db, organization_id, readable_collection_id)
         )
         return self._sync_ids_by_collection.get(readable_collection_id, [])
+
+    async def get_by_collection_ids(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: UUID,
+        readable_collection_ids: List[str],
+    ) -> List[SourceConnection]:
+        """Return source connections matching the given collection readable IDs."""
+        self._calls.append(("get_by_collection_ids", db, organization_id, readable_collection_ids))
+        return [
+            sc
+            for sc in self._store.values()
+            if getattr(sc, "readable_collection_id", None) in readable_collection_ids
+        ]
+
+    def seed_last_jobs(self, last_jobs: Dict[UUID, Dict]) -> None:
+        """Seed the last-jobs map returned by fetch_last_jobs."""
+        self._last_jobs = dict(last_jobs)
+
+    async def fetch_last_jobs(
+        self, db: AsyncSession, source_conns: List[SourceConnection]
+    ) -> Dict[UUID, Dict]:
+        """Return seeded last-jobs map."""
+        self._calls.append(("fetch_last_jobs", db, source_conns))
+        return dict(self._last_jobs)
 
     async def update(
         self,

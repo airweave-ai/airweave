@@ -24,6 +24,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
+from airweave.domains.browse_tree.types import BrowseNode, NodeSelectionData
 from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.configs.auth import SharePoint2019V2AuthConfig
 from airweave.platform.configs.config import SharePoint2019V2Config
@@ -76,6 +77,7 @@ class PendingFileDownload:
     supports_continuous=True,
     cursor_class=SharePoint2019V2Cursor,
     supports_access_control=True,
+    supports_browse_tree=True,
     feature_flag="sharepoint_2019_v2",
 )
 class SharePoint2019V2Source(BaseSource):
@@ -163,6 +165,9 @@ class SharePoint2019V2Source(BaseSource):
         # These are AD groups directly assigned to items, not via SP site groups
         instance._item_level_ad_groups: set = set()
 
+        # Browse tree support: targeted sync via node selections
+        instance._node_selections: Optional[List[NodeSelectionData]] = None
+
         return instance
 
     @property
@@ -182,6 +187,198 @@ class SharePoint2019V2Source(BaseSource):
                 self._ad_search_base,
             ]
         )
+
+    def set_node_selections(self, selections: List[NodeSelectionData]) -> None:
+        """Set node selections for targeted sync."""
+        self._node_selections = selections
+
+    # -------------------------------------------------------------------------
+    # Browse Tree (lazy-loaded from source API)
+    # -------------------------------------------------------------------------
+
+    def parse_browse_node_id(self, node_id: str) -> tuple:
+        """Parse an encoded browse node ID into (node_type, metadata_dict).
+
+        Encoding conventions (defined by get_browse_children):
+        - "site:{url}"
+        - "list:{site_url}|{list_id}"
+        - "item:{site_url}|{list_id}|{item_id}"
+        """
+        if ":" not in node_id:
+            return "unknown", {"raw_id": node_id}
+
+        prefix, _, payload = node_id.partition(":")
+        if prefix == "site":
+            return "site", {"url": payload}
+        elif prefix == "list":
+            parts = payload.split("|", 1)
+            return "list", {
+                "site_url": parts[0],
+                "list_id": parts[1] if len(parts) > 1 else "",
+            }
+        elif prefix == "item":
+            parts = payload.split("|", 2)
+            return "item", {
+                "site_url": parts[0] if len(parts) > 0 else "",
+                "list_id": parts[1] if len(parts) > 1 else "",
+                "item_id": parts[2] if len(parts) > 2 else "",
+            }
+        else:
+            return prefix, {"raw_id": node_id}
+
+    # Maximum items to return when expanding a list in the browse tree
+    BROWSE_TREE_MAX_ITEMS = 500
+
+    async def get_browse_children(
+        self,
+        parent_node_id: Optional[str] = None,
+    ) -> List[BrowseNode]:
+        """Lazy-load tree nodes from SharePoint API.
+
+        Tree structure:
+        - Root (parent_node_id=None): returns the root site
+        - Site node (site:{url}): returns subsites + lists
+        - List node (list:{site_url}|{list_id}): returns items (capped at BROWSE_TREE_MAX_ITEMS)
+
+        Args:
+            parent_node_id: Encoded node ID. None = root level.
+
+        Returns:
+            List of BrowseNode objects.
+
+        Raises:
+            ValueError: If the parent_node_id has an unrecognized prefix.
+            httpx.HTTPError: If the SharePoint API call fails.
+        """
+        sp_client = self._create_client()
+        nodes: List[BrowseNode] = []
+
+        import httpx
+
+        async with httpx.AsyncClient() as client:
+            if parent_node_id is None:
+                # Root level: return the root site
+                site_data = await sp_client.get_site(client, self._site_url)
+                title = site_data.get("Title", "Root Site")
+                url = site_data.get("Url", self._site_url)
+                nodes.append(
+                    BrowseNode(
+                        source_node_id=f"site:{url}",
+                        node_type="site",
+                        title=title,
+                        description=site_data.get("Description"),
+                        has_children=True,
+                        node_metadata={"url": url},
+                    )
+                )
+
+            elif parent_node_id.startswith("site:"):
+                # Site node: return subsites + lists
+                site_url = parent_node_id[5:]  # strip "site:" prefix
+
+                # Discover subsites
+                async for web in sp_client.discover_subsites(client, site_url):
+                    sub_url = web.get("Url", "")
+                    nodes.append(
+                        BrowseNode(
+                            source_node_id=f"site:{sub_url}",
+                            node_type="site",
+                            title=web.get("Title", sub_url),
+                            description=web.get("Description"),
+                            has_children=True,
+                            node_metadata={"url": sub_url},
+                        )
+                    )
+
+                # Discover lists
+                async for lst in sp_client.discover_lists(client, site_url):
+                    list_id = lst.get("Id", "")
+                    item_count = lst.get("ItemCount", 0)
+                    base_template = lst.get("BaseTemplate", 0)
+                    nodes.append(
+                        BrowseNode(
+                            source_node_id=f"list:{site_url}|{list_id}",
+                            node_type="list",
+                            title=lst.get("Title", list_id),
+                            description=lst.get("Description"),
+                            item_count=item_count,
+                            has_children=item_count > 0,
+                            node_metadata={
+                                "site_url": site_url,
+                                "list_id": list_id,
+                                "base_template": base_template,
+                            },
+                        )
+                    )
+
+            elif parent_node_id.startswith("list:"):
+                # List node: return items (capped)
+                payload = parent_node_id[5:]  # strip "list:" prefix
+                if "|" not in payload:
+                    raise ValueError(
+                        f"Malformed list node ID: expected 'list:{{site_url}}|{{list_id}}', "
+                        f"got '{parent_node_id}'"
+                    )
+                site_url, list_id = payload.split("|", 1)
+
+                count = 0
+                async for item in sp_client.discover_items(
+                    client, site_url, list_id, page_size=100
+                ):
+                    if count >= self.BROWSE_TREE_MAX_ITEMS:
+                        break
+
+                    item_id = item.get("Id", count)
+                    file_info = item.get("File", {})
+                    if isinstance(file_info, dict) and file_info.get("Name"):
+                        # File item
+                        file_name = file_info["Name"]
+                        server_relative_url = file_info.get("ServerRelativeUrl", "")
+                        nodes.append(
+                            BrowseNode(
+                                source_node_id=f"item:{site_url}|{list_id}|{item_id}",
+                                node_type="file",
+                                title=file_name,
+                                has_children=False,
+                                node_metadata={
+                                    "site_url": site_url,
+                                    "list_id": list_id,
+                                    "item_id": item_id,
+                                    "file_name": file_name,
+                                    "server_relative_url": server_relative_url,
+                                },
+                            )
+                        )
+                    else:
+                        # Regular list item
+                        field_values = item.get("FieldValuesAsText", {})
+                        title = (
+                            field_values.get("Title", f"Item {item_id}")
+                            if isinstance(field_values, dict)
+                            else f"Item {item_id}"
+                        )
+                        nodes.append(
+                            BrowseNode(
+                                source_node_id=f"item:{site_url}|{list_id}|{item_id}",
+                                node_type="item",
+                                title=title,
+                                has_children=False,
+                                node_metadata={
+                                    "site_url": site_url,
+                                    "list_id": list_id,
+                                    "item_id": item_id,
+                                },
+                            )
+                        )
+                    count += 1
+
+            else:
+                raise ValueError(
+                    f"Unrecognized browse node ID prefix: '{parent_node_id}'. "
+                    f"Expected 'site:', 'list:', or 'item:'."
+                )
+
+        return nodes
 
     def _track_entity_ad_groups(self, entity: BaseEntity) -> None:
         """Extract and track AD groups from an entity's access control.
@@ -293,7 +490,7 @@ class SharePoint2019V2Source(BaseSource):
         await asyncio.gather(*tasks, return_exceptions=True)
         return results
 
-    async def _process_items_batch(
+    async def _process_items_batch(  # noqa: C901
         self,
         items_batch: List[Dict[str, Any]],
         site_url: str,
@@ -407,10 +604,20 @@ class SharePoint2019V2Source(BaseSource):
 
         On the first run (no cursor), performs a full crawl.
         On subsequent runs, uses the GetChanges API for incremental updates.
+        If node_selections are set, performs a targeted sync of selected nodes only.
 
         Yields:
             BaseEntity instances (Site, List, Item, File, or Deletion markers)
         """
+        # Targeted sync: only fetch selected nodes
+        if self._node_selections:
+            self.logger.info(
+                f"Sync strategy: TARGETED ({len(self._node_selections)} node selections)"
+            )
+            async for entity in self._targeted_sync():
+                yield entity
+            return
+
         is_full, reason = self._should_do_full_sync()
         self.logger.info(f"Sync strategy: {'FULL' if is_full else 'INCREMENTAL'} ({reason})")
 
@@ -513,8 +720,12 @@ class SharePoint2019V2Source(BaseSource):
 
                             # Collect items into batches for parallel file downloads
                             batch: List[Dict[str, Any]] = []
+                            item_page_size = 100
                             async for item_meta in sp_client.discover_items(
-                                client, current_site_url, list_guid
+                                client,
+                                current_site_url,
+                                list_guid,
+                                page_size=item_page_size,
                             ):
                                 batch.append(item_meta)
 
@@ -718,6 +929,178 @@ class SharePoint2019V2Source(BaseSource):
         finally:
             ldap_client.close()
 
+    async def _targeted_sync(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
+        """Targeted sync: fetch only the nodes specified in node_selections.
+
+        Each selection has node_type and node_metadata with enough info
+        to do targeted API calls (site_url, list_id, item_id).
+
+        Yields:
+            BaseEntity instances for selected nodes and their children.
+        """
+        from airweave.platform.sources.sharepoint2019v2.ldap import LDAPClient
+
+        ldap_client = LDAPClient(
+            server=self._ad_server,
+            username=self._ad_username,
+            password=self._ad_password,
+            domain=self._ad_domain,
+            search_base=self._ad_search_base,
+            logger=self.logger,
+        )
+
+        entity_count = 0
+
+        try:
+            async with self.http_client(verify=False) as client:
+                sp_client = self._create_client()
+
+                for selection in self._node_selections:
+                    node_type = selection.node_type
+                    metadata = selection.node_metadata or {}
+                    site_url = metadata.get("site_url") or metadata.get("url") or self._site_url
+
+                    try:
+                        if node_type == "site":
+                            # Fetch site + all lists + all items
+                            async for entity in self._targeted_sync_site(
+                                sp_client, client, ldap_client, site_url
+                            ):
+                                yield entity
+                                entity_count += 1
+
+                        elif node_type == "list":
+                            list_id = metadata.get("list_id", selection.source_node_id)
+                            if list_id:
+                                async for entity in self._targeted_sync_list(
+                                    sp_client, client, ldap_client, site_url, list_id
+                                ):
+                                    yield entity
+                                    entity_count += 1
+
+                        elif node_type in ("item", "file"):
+                            list_id = metadata.get("list_id", "")
+                            item_id = metadata.get("item_id")
+                            if list_id and item_id:
+                                item_data = await sp_client.get_item_by_id(
+                                    client, site_url, list_id, int(item_id)
+                                )
+                                if item_data:
+                                    is_doc_lib = metadata.get("is_doc_lib", node_type == "file")
+                                    async for entity in self._process_item(
+                                        item_data,
+                                        site_url,
+                                        list_id,
+                                        [],
+                                        is_doc_lib,
+                                        client,
+                                        ldap_client,
+                                    ):
+                                        yield entity
+                                        entity_count += 1
+
+                    except Exception as e:
+                        self.logger.error(f"Error processing targeted selection {selection}: {e}")
+                        raise
+
+                self.logger.info(f"Targeted sync complete: {entity_count} entities")
+
+        finally:
+            ldap_client.close()
+
+    async def _targeted_sync_site(
+        self, sp_client, client, ldap_client, site_url: str
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Fetch a site and all its lists + items for targeted sync."""
+        # Fetch site entity
+        site_data = await sp_client.get_site(client, site_url)
+        site_entity = await build_site_entity(site_data, [], ldap_client)
+        self._track_entity_ad_groups(site_entity)
+        yield site_entity
+
+        site_breadcrumb = Breadcrumb(
+            entity_id=site_entity.site_id,
+            name=site_entity.title,
+            entity_type="SharePoint2019V2SiteEntity",
+        )
+
+        # Fetch all lists in this site
+        async for list_meta in sp_client.discover_lists(client, site_url):
+            async for entity in self._targeted_sync_list(
+                sp_client,
+                client,
+                ldap_client,
+                site_url,
+                list_meta["Id"],
+                parent_breadcrumbs=[site_breadcrumb],
+            ):
+                yield entity
+
+    async def _targeted_sync_list(
+        self,
+        sp_client,
+        client,
+        ldap_client,
+        site_url: str,
+        list_id: str,
+        parent_breadcrumbs: Optional[List[Breadcrumb]] = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Fetch a list and all its items for targeted sync."""
+        breadcrumbs = parent_breadcrumbs or []
+
+        # Fetch list metadata
+        list_data = await sp_client.get_list_by_id(client, site_url, list_id)
+        if not list_data:
+            return
+
+        list_entity = await build_list_entity(list_data, site_url, breadcrumbs, ldap_client)
+        self._track_entity_ad_groups(list_entity)
+        yield list_entity
+
+        list_breadcrumb = Breadcrumb(
+            entity_id=list_entity.list_id,
+            name=list_entity.title,
+            entity_type="SharePoint2019V2ListEntity",
+        )
+        list_breadcrumbs = breadcrumbs + [list_breadcrumb]
+
+        is_doc_lib = list_entity.base_template == 101
+
+        # Fetch all items in batches
+        batch: List[Dict[str, Any]] = []
+        item_page_size = 100
+        async for item_meta in sp_client.discover_items(
+            client,
+            site_url,
+            list_id,
+            page_size=item_page_size,
+        ):
+            batch.append(item_meta)
+            if len(batch) >= ITEM_BATCH_SIZE:
+                async for entity in self._process_items_batch(
+                    batch,
+                    site_url,
+                    list_id,
+                    list_breadcrumbs,
+                    is_doc_lib,
+                    client,
+                    ldap_client,
+                ):
+                    yield entity
+                batch = []
+
+        if batch:
+            async for entity in self._process_items_batch(
+                batch,
+                site_url,
+                list_id,
+                list_breadcrumbs,
+                is_doc_lib,
+                client,
+                ldap_client,
+            ):
+                yield entity
+
     async def _process_item(
         self,
         item_meta: Dict[str, Any],
@@ -761,6 +1144,7 @@ class SharePoint2019V2Source(BaseSource):
                     item_meta, site_url, list_id, breadcrumbs, ldap_client
                 )
                 self.logger.debug(f"File entity: {json.dumps(file_entity, indent=2, default=str)}")
+
                 file_entity = await self._download_and_save_file(file_entity, client, site_url)
                 self._track_entity_ad_groups(file_entity)
                 yield file_entity

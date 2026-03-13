@@ -1,4 +1,4 @@
-"""Repository protocols for the users domain."""
+"""Protocols for the users domain."""
 
 from typing import Any, Protocol
 from uuid import UUID
@@ -6,7 +6,12 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
+from airweave.domains.users.types import CreateOrUpdateResult
 from airweave.models.user import User
+
+# ---------------------------------------------------------------------------
+# Repository protocols
+# ---------------------------------------------------------------------------
 
 
 class UserRepositoryProtocol(Protocol):
@@ -28,4 +33,37 @@ class UserRepositoryProtocol(Protocol):
         self, db: AsyncSession, *, id: UUID, obj_in: schemas.UserUpdate
     ) -> Any:
         """Update user fields without auth context. Returns ORM model."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Service protocol (single facade consumed by API layer)
+# ---------------------------------------------------------------------------
+
+
+class UserServiceProtocol(Protocol):
+    """User domain service used by API endpoints.
+
+    Covers user creation/update with Auth0 integration and org queries.
+    """
+
+    async def create_or_update(
+        self,
+        db: AsyncSession,
+        user_data: schemas.UserCreate,
+        auth0_user: Any,
+    ) -> CreateOrUpdateResult:
+        """Create or update a user, syncing Auth0 organizations.
+
+        Returns a result indicating the user and whether they are new.
+        Raises ValueError on auth0 ID conflict.
+        """
+        ...
+
+    async def get_user_organizations(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+    ) -> list[schemas.OrganizationWithRole]:
+        """Return all organizations the user belongs to, with roles."""
         ...

@@ -48,6 +48,12 @@ from .box import (
     BoxFolderEntity,
     BoxUserEntity,
 )
+from .calcom import (
+    CalBookingDeletionEntity,
+    CalBookingEntity,
+    CalEventTypeEntity,
+    CalScheduleEntity,
+)
 from .clickup import (
     ClickUpCommentEntity,
     ClickUpFileEntity,
@@ -110,6 +116,8 @@ from .github import (
     GithubContentEntity,
     GitHubDirectoryEntity,
     GitHubFileDeletionEntity,
+    GitHubPRCommentEntity,
+    GitHubPullRequestEntity,
     GithubRepoEntity,
     GitHubRepositoryEntity,
 )
@@ -249,6 +257,13 @@ from .sharepoint2019v2 import (
     SharePoint2019V2ListEntity,
     SharePoint2019V2SiteEntity,
 )
+from .sharepoint_online import (
+    SharePointOnlineDriveEntity,
+    SharePointOnlineFileEntity,
+    SharePointOnlineItemEntity,
+    SharePointOnlinePageEntity,
+    SharePointOnlineSiteEntity,
+)
 from .shopify import (
     ShopifyCollectionEntity,
     ShopifyCustomerEntity,
@@ -336,6 +351,12 @@ from .zoho_crm import (
     ZohoCRMProductEntity,
     ZohoCRMQuoteEntity,
     ZohoCRMSalesOrderEntity,
+)
+from .zoom import (
+    ZoomMeetingEntity,
+    ZoomMeetingParticipantEntity,
+    ZoomRecordingEntity,
+    ZoomTranscriptEntity,
 )
 
 ENTITIES_BY_SOURCE: dict[str, list[type]] = {
@@ -446,6 +467,8 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         GithubContentEntity,
         GitHubDirectoryEntity,
         GitHubFileDeletionEntity,
+        GitHubPRCommentEntity,
+        GitHubPullRequestEntity,
         GithubRepoEntity,
         GitHubRepositoryEntity,
     ],
@@ -593,6 +616,13 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         SharePoint2019V2ListEntity,
         SharePoint2019V2SiteEntity,
     ],
+    "sharepoint_online": [
+        SharePointOnlineSiteEntity,
+        SharePointOnlineDriveEntity,
+        SharePointOnlineItemEntity,
+        SharePointOnlineFileEntity,
+        SharePointOnlinePageEntity,
+    ],
     "slite": [
         SliteNoteEntity,
     ],
@@ -685,6 +715,12 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
     "powerpoint": [
         PowerPointPresentationEntity,
     ],
+    "zoom": [
+        ZoomMeetingEntity,
+        ZoomMeetingParticipantEntity,
+        ZoomRecordingEntity,
+        ZoomTranscriptEntity,
+    ],
     "zendesk": [
         ZendeskAttachmentEntity,
         ZendeskCommentEntity,
@@ -701,5 +737,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ZohoCRMProductEntity,
         ZohoCRMQuoteEntity,
         ZohoCRMSalesOrderEntity,
+    ],
+    "calcom": [
+        CalBookingEntity,
+        CalBookingDeletionEntity,
+        CalEventTypeEntity,
+        CalScheduleEntity,
     ],
 }

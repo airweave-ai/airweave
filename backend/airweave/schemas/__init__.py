@@ -24,17 +24,17 @@ from .collection import (
     CollectionRecord,
     CollectionUpdate,
 )
-from .connection import Connection, ConnectionCreate, ConnectionInDBBase, ConnectionUpdate
-from .destination import (
-    Destination,
-    DestinationCreate,
-    DestinationUpdate,
+from .connect_session import (
+    ConnectSessionContext,
+    ConnectSessionCreate,
+    ConnectSessionMode,
+    ConnectSessionResponse,
 )
+from .connection import Connection, ConnectionCreate, ConnectionInDBBase, ConnectionUpdate
 from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
 from .entity_count import EntityCount as EntityCountSchema
-from .entity_definition import EntityDefinition, EntityDefinitionCreate, EntityDefinitionUpdate
 from .entity_count import EntityCountCreate, EntityCountUpdate, EntityCountWithDefinition
-
+from .entity_definition import EntityDefinition, EntityDefinitionCreate, EntityDefinitionUpdate
 from .errors import (
     ConflictErrorResponse,
     NotFoundErrorResponse,
@@ -89,12 +89,7 @@ from .search_query import (
     SearchQueryResponse,
     SearchQueryUpdate,
 )
-from .source import (
-    Source,
-    SourceCreate,
-    SourceInDBBase,
-    SourceUpdate,
-)
+from .source import Source
 from .source_connection import (
     AuthenticationDetails,
     AuthenticationMethod,

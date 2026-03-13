@@ -301,7 +301,6 @@ files = [
 
 [package.dependencies]
 frozenlist = ">=1.1.0"
-typing-extensions = {version = ">=4.2", markers = "python_version < \"3.13\""}
 
 [[package]]
 name = "aiosqlite"
@@ -395,23 +394,9 @@ files = [
 
 [package.dependencies]
 idna = ">=2.8"
-typing_extensions = {version = ">=4.5", markers = "python_version < \"3.13\""}
 
 [package.extras]
 trio = ["trio (>=0.31.0) ; python_version < \"3.10\"", "trio (>=0.32.0) ; python_version >= \"3.10\""]
-
-[[package]]
-name = "async-timeout"
-version = "5.0.1"
-description = "Timeout context manager for asyncio programs"
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-markers = "python_version == \"3.11\" and python_full_version <= \"3.11.2\""
-files = [
-    {file = "async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c"},
-    {file = "async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3"},
-]
 
 [[package]]
 name = "asyncpg"
@@ -502,7 +487,6 @@ description = "LTS Port of Python audioop"
 optional = false
 python-versions = ">=3.13"
 groups = ["main"]
-markers = "python_version == \"3.13\""
 files = [
     {file = "audioop_lts-0.2.2-cp313-abi3-macosx_10_13_universal2.whl", hash = "sha256:fd3d4602dc64914d462924a08c1a9816435a2155d74f325853c1f1ac3b2d9800"},
     {file = "audioop_lts-0.2.2-cp313-abi3-macosx_10_13_x86_64.whl", hash = "sha256:550c114a8df0aafe9a05442a1162dfc8fec37e9af1d625ae6060fed6e756f303"},
@@ -1353,7 +1337,7 @@ description = "Cross-platform colored terminal text."
 optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
 groups = ["main", "dev"]
-markers = "sys_platform == \"win32\" or platform_system == \"Windows\""
+markers = "platform_system == \"Windows\" or sys_platform == \"win32\""
 files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
     {file = "colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"},
@@ -1962,19 +1946,9 @@ files = [
 huggingface-hub = ">=0.20,<2.0"
 loguru = ">=0.7.2,<0.8.0"
 mmh3 = ">=4.1.0,<6.0.0"
-numpy = [
-    {version = ">=1.21", markers = "python_version == \"3.11\""},
-    {version = ">=1.26", markers = "python_version == \"3.12\""},
-    {version = ">=2.1.0", markers = "python_version == \"3.13\""},
-]
-onnxruntime = [
-    {version = ">=1.17.0,<1.20.0 || >1.20.0", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
-    {version = ">1.20.0", markers = "python_version >= \"3.13\""},
-]
-pillow = [
-    {version = ">=10.3.0,<12.0", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
-    {version = ">=11.0.0,<12.0", markers = "python_version >= \"3.13\""},
-]
+numpy = {version = ">=2.1.0", markers = "python_version == \"3.13\""}
+onnxruntime = {version = ">1.20.0", markers = "python_version >= \"3.13\""}
+pillow = {version = ">=11.0.0,<12.0", markers = "python_version >= \"3.13\""}
 py-rust-stemmers = ">=0.1.0,<0.2.0"
 requests = ">=2.31,<3.0"
 tokenizers = ">=0.15,<1.0"
@@ -2309,10 +2283,7 @@ files = [
 [package.dependencies]
 google-auth = ">=2.14.1,<3.0.0"
 googleapis-common-protos = ">=1.56.2,<2.0.0"
-proto-plus = [
-    {version = ">=1.22.3,<2.0.0"},
-    {version = ">=1.25.0,<2.0.0", markers = "python_version >= \"3.13\""},
-]
+proto-plus = {version = ">=1.25.0,<2.0.0", markers = "python_version >= \"3.13\""}
 protobuf = ">=3.19.5,<3.20.0 || >3.20.0,<3.20.1 || >3.20.1,<4.21.0 || >4.21.0,<4.21.1 || >4.21.1,<4.21.2 || >4.21.2,<4.21.3 || >4.21.3,<4.21.4 || >4.21.4,<4.21.5 || >4.21.5,<7.0.0"
 requests = ">=2.18.0,<3.0.0"
 
@@ -3651,11 +3622,7 @@ files = [
 
 [package.dependencies]
 click = ">=8.1.7"
-numpy = [
-    {version = ">=1.24", markers = "python_version < \"3.12\""},
-    {version = ">=1.26", markers = "python_version == \"3.12\""},
-    {version = ">=2.1.0", markers = "python_version >= \"3.13\""},
-]
+numpy = {version = ">=2.1.0", markers = "python_version >= \"3.13\""}
 onnxruntime = [
     {version = ">=1.17.0,<=1.20.1", markers = "sys_platform == \"win32\" and python_version > \"3.9\""},
     {version = ">=1.17.0", markers = "python_version > \"3.9\" and sys_platform != \"win32\""},
@@ -6492,9 +6459,6 @@ files = [
     {file = "redis-4.6.0.tar.gz", hash = "sha256:585dc516b9eb042a619ef0a39c3d7d55fe81bdb4df09a52c9cdde0d07bf1aa7d"},
 ]
 
-[package.dependencies]
-async-timeout = {version = ">=4.0.2", markers = "python_full_version <= \"3.11.2\""}
-
 [package.extras]
 hiredis = ["hiredis (>=1.0.0)"]
 ocsp = ["cryptography (>=36.0.1)", "pyopenssl (==20.0.1)", "requests (>=2.26.0)"]
@@ -6514,7 +6478,6 @@ files = [
 [package.dependencies]
 attrs = ">=22.2.0"
 rpds-py = ">=0.7.0"
-typing-extensions = {version = ">=4.4.0", markers = "python_version < \"3.13\""}
 
 [[package]]
 name = "regex"
@@ -7305,7 +7268,6 @@ description = "Standard library aifc redistribution. \"dead battery\"."
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "python_version == \"3.13\""
 files = [
     {file = "standard_aifc-3.13.0-py3-none-any.whl", hash = "sha256:f7ae09cc57de1224a0dd8e3eb8f73830be7c3d0bc485de4c1f82b4a7f645ac66"},
     {file = "standard_aifc-3.13.0.tar.gz", hash = "sha256:64e249c7cb4b3daf2fdba4e95721f811bde8bdfc43ad9f936589b7bb2fae2e43"},
@@ -7322,7 +7284,6 @@ description = "Standard library chunk redistribution. \"dead battery\"."
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "python_version == \"3.13\""
 files = [
     {file = "standard_chunk-3.13.0-py3-none-any.whl", hash = "sha256:17880a26c285189c644bd5bd8f8ed2bdb795d216e3293e6dbe55bbd848e2982c"},
     {file = "standard_chunk-3.13.0.tar.gz", hash = "sha256:4ac345d37d7e686d2755e01836b8d98eda0d1a3ee90375e597ae43aaf064d654"},
@@ -7574,14 +7535,14 @@ blobfile = ["blobfile (>=2)"]
 
 [[package]]
 name = "together"
-version = "2.3.2"
+version = "2.4.0"
 description = "The official Python library for the together API"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "together-2.3.2-py3-none-any.whl", hash = "sha256:16fdb467ff3f183521cff70684afbec7c7bd73b781449a30d42a0e07d5c9612c"},
-    {file = "together-2.3.2.tar.gz", hash = "sha256:9a6c1d73b65c1350114c5e9ee4778939b7e544b6669fd09910f7e6e149ec497f"},
+    {file = "together-2.4.0-py3-none-any.whl", hash = "sha256:a9001332670881611efdb619d041102ca9ddf109ae5d3229a25cd9f378df9581"},
+    {file = "together-2.4.0.tar.gz", hash = "sha256:11b5df49a9b646af5487fd310eb7bca8ee2daff2c3a99560e44b9abc803afab9"},
 ]
 
 [package.dependencies]
@@ -8701,5 +8662,5 @@ type = ["pytest-mypy"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.11,<3.14"
-content-hash = "4be656685493bc01e1d5a8e635a69793defb783bf5cc0d76fd194423d14d6365"
+python-versions = ">=3.13,<3.14"
+content-hash = "1626474fdfae646de84941c3946ebeac80e8228d442aced753de97622e0fb9fb"

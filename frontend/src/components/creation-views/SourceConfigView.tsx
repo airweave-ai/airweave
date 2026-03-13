@@ -73,6 +73,8 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
     existingCollectionId,
     closeModal,
     reset,
+    supportsBrowseTree,
+    setSupportsBrowseTree,
     isAddingToExistingCollection
   } = useCollectionCreationStore();
 
@@ -82,7 +84,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
   const [isCreating, setIsCreating] = useState(false);
   const [sourceDetails, setSourceDetails] = useState<SourceDetails | null>(null);
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
-  const [configData, setConfigData] = useState<Record<string, string | string[]>>({});
+  const [configData, setConfigData] = useState<Record<string, string | string[] | boolean>>({});
   const [useOwnCredentials, setUseOwnCredentials] = useState(false);
   // Initialize connection name from store or with source default
   const [connectionName, setConnectionName] = useState(
@@ -194,6 +196,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
         if (response.ok) {
           const source = await response.json();
           setSourceDetails(source);
+          setSupportsBrowseTree(!!source.supports_browse_tree);
 
           // Initialize auth fields for config-based auth
           if (source.auth_fields?.fields) {
@@ -209,9 +212,13 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
 
           // Initialize config fields
           if (source.config_fields?.fields) {
-            const initialValues: Record<string, string> = {};
+            const initialValues: Record<string, string | string[] | boolean> = {};
             source.config_fields.fields.forEach((field: any) => {
-              initialValues[field.name] = '';
+              if (field.type === 'boolean') {
+                initialValues[field.name] = field.default === true;
+              } else {
+                initialValues[field.name] = '';
+              }
             });
             setConfigData(initialValues);
           }
@@ -308,6 +315,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
       if (requiredConfigFields.length > 0) {
         const allFilled = requiredConfigFields.every(field => {
           const value = configData[field.name];
+          if (typeof value === 'boolean') return true;
           if (Array.isArray(value)) {
             return value.length > 0;
           }
@@ -391,7 +399,8 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
         // For direct auth, sync immediately since we have credentials
         // For OAuth, don't sync until after authorization is complete
         // For external provider, sync immediately since we're using existing auth
-        sync_immediately: authMode === 'direct_auth' || authMode === 'external_provider',
+        // For browse-tree sources, don't sync immediately — user selects nodes first
+        sync_immediately: (authMode === 'direct_auth' || authMode === 'external_provider') && !supportsBrowseTree,
         // Set redirect URL for OAuth flows
         redirect_url: getDefaultRedirectUrl(),
       };
@@ -448,8 +457,13 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
           // Close the modal
           closeModal();
 
-          // Navigate to collection detail with success params
-          navigate(`/collections/${targetCollectionId}?status=success&source_connection_id=${result.id}`);
+          if (supportsBrowseTree) {
+            // Browse-tree source: redirect to browse tree page for node selection
+            navigate(`/collections/${targetCollectionId}/browse-tree?sc=${result.id}`);
+          } else {
+            // Navigate to collection detail with success params
+            navigate(`/collections/${targetCollectionId}?status=success&source_connection_id=${result.id}`);
+          }
 
           // Reset store state after navigation
           setTimeout(() => {
@@ -644,66 +658,100 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                         })()}
                       </label>
                       {sourceDetails.config_fields.fields.map((field) => (
-                        <div key={field.name}>
-                          <label className="block text-sm font-medium mb-1">
-                            {field.title || field.name}
-                            {field.required && <span className="text-red-500 ml-1">*</span>}
-                          </label>
-                          {field.description && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-                              <ReactMarkdown
-                                components={{
-                                  p: ({ children }) => <span>{children}</span>,
-                                  a: ({ href, children }) => (
-                                    <a
-                                      href={href}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 dark:text-blue-400 hover:underline"
-                                    >
-                                      {children}
-                                    </a>
-                                  ),
-                                  ul: ({ children }) => (
-                                    <ul className="list-disc pl-4 my-2 space-y-0.5">
-                                      {children}
-                                    </ul>
-                                  ),
-                                  li: ({ children }) => (
-                                    <li className="text-xs text-gray-500 dark:text-gray-400">
-                                      {children}
-                                    </li>
-                                  ),
-                                }}
-                              >
-                                {field.description}
-                              </ReactMarkdown>
-                            </div>
-                          )}
-                          {field.type === 'array' ? (
-                            <TagInput
-                              value={(Array.isArray(configData[field.name]) ? configData[field.name] : []) as string[]}
-                              onChange={(tags) => setConfigData({ ...configData, [field.name]: tags })}
-                              placeholder={`Enter ${field.title?.toLowerCase() || field.name} and press Enter...`}
-                              transformInput={sourceDetails?.short_name === 'jira' && field.name === 'project_keys' ? (v) => v.toUpperCase() : undefined}
-                            />
-                          ) : (
-                            <input
-                              type="text"
-                              placeholder=""
-                              value={configData[field.name] || ''}
-                              onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.value })}
-                              className={cn(
-                                "w-full px-4 py-2 rounded-lg text-sm",
-                                "border bg-transparent",
-                                "focus:outline-none focus:border-gray-400 dark:focus:border-gray-600",
-                                isDark
-                                  ? "border-gray-800 text-white placeholder:text-gray-600"
-                                  : "border-gray-200 text-gray-900 placeholder:text-gray-400"
+                        field.type === 'boolean' ? (
+                          <label key={field.name} className="flex items-center justify-between gap-4 cursor-pointer group">
+                            <div className="min-w-0">
+                              <span className="block text-sm font-medium">
+                                {field.title || field.name}
+                              </span>
+                              {field.description && (
+                                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                  {field.description}
+                                </span>
                               )}
-                            />
-                          )}
-                        </div>
+                            </div>
+                            <div className="relative flex-shrink-0">
+                              <input
+                                type="checkbox"
+                                checked={!!configData[field.name]}
+                                onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.checked })}
+                                className="sr-only"
+                              />
+                              <div className={cn(
+                                "w-10 h-6 rounded-full transition-colors",
+                                configData[field.name]
+                                  ? "bg-blue-600"
+                                  : isDark ? "bg-gray-800" : "bg-gray-200"
+                              )}>
+                                <div className={cn(
+                                  "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                                  configData[field.name] && "translate-x-4"
+                                )} />
+                              </div>
+                            </div>
+                          </label>
+                        ) : (
+                          <div key={field.name}>
+                            <label className="block text-sm font-medium mb-1">
+                              {field.title || field.name}
+                              {field.required && <span className="text-red-500 ml-1">*</span>}
+                            </label>
+                            {field.description && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                                <ReactMarkdown
+                                  components={{
+                                    p: ({ children }) => <span>{children}</span>,
+                                    a: ({ href, children }) => (
+                                      <a
+                                        href={href}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 dark:text-blue-400 hover:underline"
+                                      >
+                                        {children}
+                                      </a>
+                                    ),
+                                    ul: ({ children }) => (
+                                      <ul className="list-disc pl-4 my-2 space-y-0.5">
+                                        {children}
+                                      </ul>
+                                    ),
+                                    li: ({ children }) => (
+                                      <li className="text-xs text-gray-500 dark:text-gray-400">
+                                        {children}
+                                      </li>
+                                    ),
+                                  }}
+                                >
+                                  {field.description}
+                                </ReactMarkdown>
+                              </div>
+                            )}
+                            {field.type === 'array' ? (
+                              <TagInput
+                                value={(Array.isArray(configData[field.name]) ? configData[field.name] : []) as string[]}
+                                onChange={(tags) => setConfigData({ ...configData, [field.name]: tags })}
+                                placeholder={`Enter ${field.title?.toLowerCase() || field.name} and press Enter...`}
+                                transformInput={sourceDetails?.short_name === 'jira' && field.name === 'project_keys' ? (v) => v.toUpperCase() : undefined}
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                placeholder=""
+                                value={(configData[field.name] as string) || ''}
+                                onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.value })}
+                                className={cn(
+                                  "w-full px-4 py-2 rounded-lg text-sm",
+                                  "border bg-transparent",
+                                  "focus:outline-none focus:border-gray-400 dark:focus:border-gray-600",
+                                  isDark
+                                    ? "border-gray-800 text-white placeholder:text-gray-600"
+                                    : "border-gray-200 text-gray-900 placeholder:text-gray-400"
+                                )}
+                              />
+                            )}
+                          </div>
+                        )
                       ))}
                     </div>
                   )}

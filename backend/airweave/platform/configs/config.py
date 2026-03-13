@@ -162,6 +162,14 @@ class GitHubConfig(SourceConfig):
             "If empty, uses the default branch."
         ),
     )
+    sync_pull_requests: bool = Field(
+        default=False,
+        title="Sync Pull Requests",
+        description=(
+            "Sync merged pull requests and their review comments. "
+            "Enables searching over PR descriptions, discussions, and code review feedback."
+        ),
+    )
 
     @field_validator("repo_name")
     @classmethod
@@ -901,6 +909,40 @@ class ServiceNowConfig(SourceConfig):
     pass
 
 
+class CalComConfig(SourceConfig):
+    """Cal.com configuration schema.
+
+    Supports self-hosted Cal.com instances by allowing a custom host/base URL.
+    """
+
+    host: str = Field(
+        default="https://api.cal.com",
+        title="Host",
+        description=(
+            "Base URL for your Cal.com instance. Use the default for cal.com cloud "
+            "(https://api.cal.com). For self-hosted instances, set this to your API host "
+            "(e.g. https://cal.example.com or https://cal.example.com/api if exposed there)."
+        ),
+    )
+
+    @field_validator("host", mode="before")
+    @classmethod
+    def normalize_host(cls, v: str) -> str:
+        """Normalize host to a valid base URL (add scheme, strip trailing slash)."""
+        if v is None:
+            return "https://api.cal.com"
+        if not isinstance(v, str):
+            raise ValueError("host must be a string")
+        value = v.strip()
+        if not value:
+            return "https://api.cal.com"
+        # Allow providing host without scheme (e.g. cal.example.com)
+        if not value.startswith(("http://", "https://")):
+            value = f"https://{value}"
+        # Remove trailing slash for consistent URL joining
+        return value.rstrip("/")
+
+
 # AUTH PROVIDER CONFIGURATION CLASSES
 # These are for configuring auth provider behavior
 
@@ -978,6 +1020,36 @@ class SnapshotConfig(BaseConfig):
         return v.strip().rstrip("/")
 
 
+class SharePointOnlineConfig(SourceConfig):
+    """SharePoint Online configuration schema.
+
+    Configures which SharePoint sites to sync and ACL behavior.
+    """
+
+    site_url: str = Field(
+        default="",
+        title="SharePoint Site URL",
+        description=(
+            "URL of the SharePoint site(s) to sync. Supports a single URL "
+            "(e.g., 'https://contoso.sharepoint.com/sites/Marketing'), "
+            "comma-separated URLs for multiple sites, or leave empty to "
+            "sync all accessible sites."
+        ),
+    )
+
+    include_personal_sites: bool = Field(
+        default=False,
+        title="Include Personal Sites",
+        description="Whether to include OneDrive personal sites in sync.",
+    )
+
+    include_pages: bool = Field(
+        default=True,
+        title="Include Site Pages",
+        description="Whether to sync SharePoint site pages.",
+    )
+
+
 class HerbConfig(SourceConfig):
     """Configuration for HERB benchmark sources.
 
@@ -1003,8 +1075,7 @@ class EnronConfig(SourceConfig):
         ...,
         title="Enron Data Directory",
         description=(
-            "Path to the downloaded Enron email dataset root "
-            "(e.g. '/data/enron-emails-data')"
+            "Path to the downloaded Enron email dataset root (e.g. '/data/enron-emails-data')"
         ),
         min_length=1,
     )

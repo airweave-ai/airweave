@@ -16,6 +16,7 @@ from typing import Any, Optional
 from airweave.core.protocols import (
     CircuitBreaker,
     ContextCache,
+    EmailService,
     EndpointVerifier,
     EventBus,
     HealthServiceProtocol,
@@ -34,10 +35,15 @@ from airweave.domains.auth_provider.protocols import (
     AuthProviderServiceProtocol,
 )
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
+from airweave.domains.browse_tree.protocols import (
+    BrowseTreeServiceProtocol,
+    NodeSelectionRepositoryProtocol,
+)
 from airweave.domains.collections.protocols import (
     CollectionRepositoryProtocol,
     CollectionServiceProtocol,
 )
+from airweave.domains.connect.protocols import ConnectServiceProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.embedders.protocols import (
@@ -76,12 +82,14 @@ from airweave.domains.syncs.protocols import (
     SyncLifecycleServiceProtocol,
     SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
+    SyncServiceProtocol,
 )
 from airweave.domains.temporal.protocols import (
     TemporalScheduleServiceProtocol,
     TemporalWorkflowServiceProtocol,
 )
 from airweave.domains.usage.protocols import UsageLedgerProtocol, UsageLimitCheckerProtocol
+from airweave.domains.users.protocols import UserServiceProtocol
 
 
 @dataclass(frozen=True)
@@ -142,6 +150,10 @@ class Container:
     # Collection service — domain service for collection lifecycle
     collection_service: CollectionServiceProtocol
 
+    # Browse tree service — metadata tree browsing and node selection
+    browse_tree_service: BrowseTreeServiceProtocol
+    selection_repo: NodeSelectionRepositoryProtocol
+
     # Repository protocols (thin wrappers around crud singletons)
     sc_repo: SourceConnectionRepositoryProtocol
     collection_repo: CollectionRepositoryProtocol
@@ -172,6 +184,7 @@ class Container:
     sync_job_repo: SyncJobRepositoryProtocol
     sync_record_service: SyncRecordServiceProtocol
     sync_job_service: SyncJobServiceProtocol
+    sync_service: SyncServiceProtocol
     sync_lifecycle: SyncLifecycleServiceProtocol
 
     # Temporal domain
@@ -191,8 +204,14 @@ class Container:
     # Identity provider (Auth0 / Null / Fake)
     identity_provider: IdentityProvider
 
+    # Email service (Resend / Null / Fake)
+    email_service: EmailService
+
     # Organization domain service (lifecycle + membership + provisioning)
     organization_service: OrganizationServiceProtocol
+
+    # User domain service (create-or-update + org queries)
+    user_service: UserServiceProtocol
 
     # Embedder registries (static reference data, built once at startup)
     dense_embedder_registry: DenseEmbedderRegistryProtocol
@@ -201,6 +220,9 @@ class Container:
     # Embedder instances (deployment-wide singletons from domains/embedders/)
     dense_embedder: DenseEmbedderProtocol
     sparse_embedder: SparseEmbedderProtocol
+
+    # Connect domain service (session-based frontend integration flows)
+    connect_service: ConnectServiceProtocol
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured

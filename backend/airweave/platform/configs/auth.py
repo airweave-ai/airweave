@@ -621,6 +621,12 @@ class WordAuthConfig(OAuth2WithRefreshAuthConfig):
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
 
 
+class ZoomAuthConfig(OAuth2WithRefreshAuthConfig):
+    """Zoom authentication credentials schema."""
+
+    # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
+
+
 class CTTIAuthConfig(AuthConfig):
     """CTTI Clinical Trials authentication credentials schema."""
 
@@ -824,6 +830,31 @@ class StripeAuthConfig(AuthConfig):
         if not v.startswith(("sk_test_", "sk_live_")):
             raise ValueError("Stripe API key must start with 'sk_test_' or 'sk_live_'")
         return v
+
+
+class CalComAuthConfig(APIKeyAuthConfig):
+    """Cal.com authentication credentials schema.
+
+    Uses a Cal.com API key (Settings → Security). Keys typically start with
+    `cal_` (test mode) or `cal_live_` (live mode).
+    """
+
+    api_key: str = Field(
+        title="API Key",
+        description=(
+            "Cal.com API key. Generate it from your Cal.com Settings → Security page. "
+            "Test keys start with 'cal_' and live keys with 'cal_live_'."
+        ),
+        min_length=10,
+    )
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate Cal.com API key."""
+        if not v or not v.strip():
+            raise ValueError("API key is required")
+        return v.strip()
 
 
 class FreshdeskAuthConfig(AuthConfig):

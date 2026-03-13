@@ -15,10 +15,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.core.config import settings
-
-# TODO: Remove this once we have pipe our DI framework to the sync factory
-from airweave.core.container import container
+from airweave.core import container as container_mod  # [code blue] todo
 from airweave.core.context import BaseContext
 from airweave.core.logging import LoggerConfigurator, logger
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
@@ -61,15 +58,10 @@ class SyncFactory:
         dense_embedder: DenseEmbedderProtocol,
         sparse_embedder: SparseEmbedderProtocol,
         access_token: Optional[str] = None,
-        max_workers: int = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
     ) -> SyncOrchestrator:
         """Create a dedicated orchestrator instance for a sync run."""
-        if max_workers is None:
-            max_workers = settings.SYNC_MAX_WORKERS
-            logger.debug(f"Using configured max_workers: {max_workers}")
-
         init_start = time.time()
         logger.info("Creating sync orchestrator...")
 
@@ -139,8 +131,8 @@ class SyncFactory:
             sparse_embedder=sparse_embedder,
             destinations=destinations,
             entity_tracker=entity_tracker_result,
-            event_bus=container.event_bus,
-            usage_checker=container.usage_checker,
+            event_bus=container_mod.container.event_bus,
+            usage_checker=container_mod.container.usage_checker,
         )
 
         logger.debug(f"Context + runtime built in {time.time() - init_start:.2f}s")
@@ -156,7 +148,7 @@ class SyncFactory:
 
         entity_pipeline = EntityPipeline(
             entity_tracker=runtime.entity_tracker,
-            event_bus=container.event_bus,
+            event_bus=container_mod.container.event_bus,
             action_resolver=action_resolver,
             action_dispatcher=dispatcher,
         )
@@ -171,7 +163,7 @@ class SyncFactory:
             ),
         )
 
-        worker_pool = AsyncWorkerPool(max_workers=max_workers, logger=sync_context.logger)
+        worker_pool = AsyncWorkerPool(logger=sync_context.logger)
 
         stream = AsyncSourceStream(
             source_generator=runtime.source.generate_entities(),

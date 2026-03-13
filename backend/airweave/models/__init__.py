@@ -7,19 +7,18 @@ from .billing_period import BillingPeriod
 from .collection import Collection
 from .connection import Connection
 from .connection_init_session import ConnectionInitSession
-from .destination import Destination
 from .entity import Entity
 from .entity_count import EntityCount
 from .entity_definition import EntityDefinition
 from .entity_relation import EntityRelation
 from .feature_flag import FeatureFlag
 from .integration_credential import IntegrationCredential
+from .node_selection import NodeSelection
 from .organization import Organization
 from .organization_billing import OrganizationBilling
 from .processed_webhook_event import ProcessedWebhookEvent
 from .redirect_session import RedirectSession
 from .search_query import SearchQuery
-from .source import Source
 from .source_connection import SourceConnection
 from .source_rate_limit import SourceRateLimit
 from .sync import Sync
@@ -41,17 +40,16 @@ __all__ = [
     "EntityCount",
     "Connection",
     "ConnectionInitSession",
-    "Destination",
     "EntityDefinition",
     "EntityRelation",
     "FeatureFlag",
     "IntegrationCredential",
+    "NodeSelection",
     "Organization",
     "OrganizationBilling",
     "ProcessedWebhookEvent",
     "RedirectSession",
     "SearchQuery",
-    "Source",
     "SourceConnection",
     "SourceRateLimit",
     "Sync",

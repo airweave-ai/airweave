@@ -213,6 +213,7 @@ class SharePointClient:
         client: httpx.AsyncClient,
         site_url: str,
         list_id: str,
+        page_size: int = 100,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Discover items in a list with necessary expansions.
 
@@ -225,6 +226,7 @@ class SharePointClient:
             client: httpx AsyncClient instance
             site_url: Base URL of the site
             list_id: GUID of the list
+            page_size: Number of items per API page (default 100, use higher for metadata-only)
 
         Yields:
             Item metadata dicts with expanded properties
@@ -232,7 +234,7 @@ class SharePointClient:
         endpoint = f"{site_url}/_api/web/lists(guid'{list_id}')/items"
         params = {
             "$expand": f"File,{self.ROLE_EXPAND},FieldValuesAsText",
-            "$top": 100,
+            "$top": page_size,
         }
         async for item in self.get_paginated(client, endpoint, params):
             yield item

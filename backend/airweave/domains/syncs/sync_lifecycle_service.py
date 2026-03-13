@@ -393,17 +393,14 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
     async def _validate_force_full_sync(
         self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
     ) -> None:
-        """Raise 400 if force_full_sync is invalid for this sync."""
+        """Log force_full_sync intent. No-op if no cursor (already a full sync)."""
         cursor = await self._sync_cursor_repo.get_by_sync_id(db, sync_id, ctx)
         if not cursor or not cursor.cursor_data:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "force_full_sync can only be used with continuous syncs "
-                    "(syncs with cursor data). This sync is non-continuous and "
-                    "always performs full syncs by default."
-                ),
+            ctx.logger.info(
+                f"force_full_sync requested but no cursor data exists for sync {sync_id}. "
+                "This sync will perform a full sync by default."
             )
+            return
         ctx.logger.info(
             f"Force full sync requested for continuous sync {sync_id}. "
             "Will ignore cursor data and perform full sync with orphaned entity cleanup."

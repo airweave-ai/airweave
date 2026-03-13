@@ -9,7 +9,7 @@ Type Aliases:
     EntityActionHandler = ActionHandler[BaseEntity, EntityActionBatch]
 
 Entity Handlers:
-- DestinationHandler: Generic handler using processor strategy pattern
+- DestinationHandler: Chunks/embeds entities and inserts into vector destinations
 - ArfHandler: Raw entity storage for audit/replay (ARF = Airweave Raw Format)
 - EntityPostgresHandler: Entity metadata persistence (runs last)
 

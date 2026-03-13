@@ -12,9 +12,7 @@ from airweave.models._base import Base
 
 if TYPE_CHECKING:
     from airweave.models.auth_provider import AuthProvider
-    from airweave.models.destination import Destination
     from airweave.models.integration_credential import IntegrationCredential
-    from airweave.models.source import Source
     from airweave.models.source_connection import SourceConnection
     from airweave.models.sync_connection import SyncConnection
 
@@ -53,22 +51,6 @@ class Connection(Base):
     # Relationships
     integration_credential: Mapped[Optional["IntegrationCredential"]] = relationship(
         "IntegrationCredential", back_populates="connections", lazy="noload"
-    )
-    source: Mapped[Optional["Source"]] = relationship(
-        "Source",
-        primaryjoin="and_(foreign(Connection.short_name)==remote(Source.short_name), "
-        "Connection.integration_type=='SOURCE')",
-        foreign_keys=[short_name],
-        viewonly=True,
-        lazy="noload",
-    )
-    destination: Mapped[Optional["Destination"]] = relationship(
-        "Destination",
-        primaryjoin="and_(foreign(Connection.short_name)==remote(Destination.short_name), "
-        "Connection.integration_type=='DESTINATION')",
-        foreign_keys=[short_name],
-        viewonly=True,
-        lazy="noload",
     )
     auth_provider: Mapped[Optional["AuthProvider"]] = relationship(
         "AuthProvider",

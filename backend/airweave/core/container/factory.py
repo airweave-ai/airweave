@@ -46,6 +46,8 @@ from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.auth_provider.service import AuthProviderService
+from airweave.domains.browse_tree.repository import NodeSelectionRepository
+from airweave.domains.browse_tree.service import BrowseTreeService
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.collections.service import CollectionService
 from airweave.domains.collections.vector_db_deployment_metadata_repository import (
@@ -71,11 +73,8 @@ from airweave.domains.oauth.flow_service import OAuthFlowService
 from airweave.domains.oauth.oauth1_service import OAuth1Service
 from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.oauth.repository import (
-    OAuthConnectionRepository,
-    OAuthCredentialRepository,
     OAuthInitSessionRepository,
     OAuthRedirectSessionRepository,
-    OAuthSourceRepository,
 )
 from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
@@ -237,6 +236,20 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # Email service
+    # -----------------------------------------------------------------
+    email_service = _create_email_service(settings)
+
+    # -----------------------------------------------------------------
+    # User domain service
+    # -----------------------------------------------------------------
+    user_service = _create_user_service(
+        org_service=org_service,
+        user_org_repo=user_org_repo,
+        email_service=email_service,
+    )
+
+    # -----------------------------------------------------------------
     # Sync domain services
     # Repos come from source_deps; services are built here.
     # -----------------------------------------------------------------
@@ -330,6 +343,20 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # Connect domain service
+    # -----------------------------------------------------------------
+    from airweave.domains.connect.service import ConnectService
+    from airweave.domains.organizations.repository import OrganizationRepository as ConnectOrgRepo
+
+    connect_service = ConnectService(
+        source_connection_service=source_connection_service,
+        source_service=source_deps["source_service"],
+        org_repo=ConnectOrgRepo(),
+        collection_repo=source_deps["collection_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+    )
+
+    # -----------------------------------------------------------------
     # Embedder registries + instances (deployment-wide singletons)
     # -----------------------------------------------------------------
     dense_embedder_registry = DenseEmbedderRegistry()
@@ -374,7 +401,6 @@ def create_container(settings: Settings) -> Container:
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         event_bus=event_bus,
         organization_repo=OrgRepo(),
-        source_repo=source_deps["source_repo"],
         sc_repo=source_deps["sc_repo"],
         credential_repo=source_deps["cred_repo"],
         connection_repo=source_deps["conn_repo"],
@@ -382,6 +408,21 @@ def create_container(settings: Settings) -> Container:
         sync_repo=source_deps["sync_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
         credential_encryptor=encryptor,
+    )
+
+    # -----------------------------------------------------------------
+    # Browse tree service
+    # -----------------------------------------------------------------
+    node_selection_repo = NodeSelectionRepository()
+    browse_tree_service = BrowseTreeService(
+        selection_repo=node_selection_repo,
+        sc_repo=source_deps["sc_repo"],
+        source_lifecycle=source_deps["source_lifecycle_service"],
+        sync_repo=source_deps["sync_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+        collection_repo=source_deps["collection_repo"],
+        conn_repo=source_deps["conn_repo"],
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
     )
 
     # -----------------------------------------------------------------
@@ -394,6 +435,8 @@ def create_container(settings: Settings) -> Container:
         billing_service=billing_services["billing_service"],
         billing_webhook=billing_services["billing_webhook"],
         collection_service=collection_service,
+        browse_tree_service=browse_tree_service,
+        selection_repo=node_selection_repo,
         health=health,
         event_bus=event_bus,
         pubsub=pubsub,
@@ -420,6 +463,7 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         redirect_session_repo=source_deps["redirect_session_repo"],
         source_connection_service=source_connection_service,
+        connect_service=connect_service,
         oauth_flow_service=oauth_flow_svc,
         oauth_callback_service=oauth_callback_svc,
         init_session_repo=init_session_repo,
@@ -433,6 +477,7 @@ def create_container(settings: Settings) -> Container:
         payment_gateway=billing_services["payment_gateway"],
         sync_record_service=sync_deps["sync_record_service"],
         sync_job_service=sync_deps["sync_job_service"],
+        sync_service=sync_deps["sync_service"],
         sync_lifecycle=sync_deps["sync_lifecycle"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
@@ -440,6 +485,8 @@ def create_container(settings: Settings) -> Container:
         usage_ledger=usage_ledger,
         identity_provider=identity_provider,
         organization_service=org_service,
+        user_service=user_service,
+        email_service=email_service,
     )
 
 
@@ -670,22 +717,21 @@ def _create_source_services(settings: Settings) -> dict:
     source_registry.build()
 
     # Repository adapters
-    sc_repo = SourceConnectionRepository()
-    collection_repo = CollectionRepository()
+    sc_repo = SourceConnectionRepository(source_registry=source_registry)
+    collection_repo = CollectionRepository(source_registry=source_registry, sc_repo=sc_repo)
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
     sync_repo = SyncRepository()
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
     redirect_session_repo = OAuthRedirectSessionRepository()
-    source_repo = OAuthSourceRepository()
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
         settings=settings,
-        conn_repo=OAuthConnectionRepository(),
-        cred_repo=OAuthCredentialRepository(),
+        conn_repo=conn_repo,
+        cred_repo=cred_repo,
         encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
-        source_repo=source_repo,
+        source_registry=source_registry,
     )
 
     source_service = SourceService(
@@ -712,7 +758,6 @@ def _create_source_services(settings: Settings) -> dict:
         "cred_repo": cred_repo,
         "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
-        "source_repo": source_repo,
         "redirect_session_repo": redirect_session_repo,
         "source_lifecycle_service": source_lifecycle_service,
         "sync_repo": sync_repo,
@@ -809,6 +854,10 @@ def _create_sync_services(
     entity_count_repo = EntityCountRepository()
 
     sync_job_service = SyncJobService(sync_job_repo=sync_job_repo)
+
+    from airweave.domains.syncs.service import SyncService
+
+    sync_service = SyncService(sync_job_service=sync_job_service)
     temporal_workflow_service = TemporalWorkflowService()
 
     sync_record_service = SyncRecordService(
@@ -850,6 +899,7 @@ def _create_sync_services(
     return {
         "sync_record_service": sync_record_service,
         "sync_job_service": sync_job_service,
+        "sync_service": sync_service,
         "sync_lifecycle": sync_lifecycle,
         "temporal_workflow_service": temporal_workflow_service,
         "temporal_schedule_service": temporal_schedule_service,
@@ -955,6 +1005,36 @@ def _create_organization_service(
         identity_provider=identity_provider,
         event_bus=event_bus,
     )
+
+
+def _create_user_service(  # type: ignore[no-untyped-def]
+    *,
+    org_service,
+    user_org_repo,
+    email_service,
+):
+    """Build the user service with org service + repo + email dependencies."""
+    from airweave.domains.users.repository import UserRepository
+    from airweave.domains.users.service import UserService
+
+    return UserService(
+        user_repo=UserRepository(),
+        org_service=org_service,
+        user_org_repo=user_org_repo,
+        email_service=email_service,
+    )
+
+
+def _create_email_service(settings):  # type: ignore[no-untyped-def]
+    """Create email service: Resend if configured, otherwise null (no-op)."""
+    if settings.RESEND_API_KEY and settings.RESEND_FROM_EMAIL:
+        from airweave.adapters.email.resend import ResendEmailService
+
+        return ResendEmailService()
+
+    from airweave.adapters.email.null import NullEmailService
+
+    return NullEmailService()
 
 
 def _create_rate_limiter(settings: Settings):

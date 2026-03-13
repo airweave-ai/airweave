@@ -6,7 +6,6 @@ This handler runs AFTER destination handlers to ensure consistency.
 
 import asyncio
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
-from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -1,12 +1,10 @@
 import { apiClient } from '@/lib/api';
 import { useEntityStateStore, SourceConnectionState, SyncProgressUpdate, SyncCompleteUpdate } from '@/stores/entityStateStore';
-import { useSyncStateStore } from '@/stores/syncStateStore';
 
 export class EntityStateMediator {
   private connectionId: string;
   private currentJobId?: string;
   private stateStore = useEntityStateStore.getState();
-  private syncStore = useSyncStateStore.getState();
   private eventSource?: AbortController;
 
   constructor(connectionId: string) {
@@ -255,9 +253,6 @@ export class EntityStateMediator {
     if (this.eventSource) {
       this.eventSource.abort();
       this.eventSource = undefined;
-    }
-    if (this.currentJobId) {
-      this.syncStore.unsubscribe(this.connectionId);
     }
   }
 }

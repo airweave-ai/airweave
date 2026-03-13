@@ -160,7 +160,7 @@ async def update_organization(
             status_code=403, detail="Only organization owners and admins can update organizations"
         )
 
-    organization = await crud.organization.get(db=db, id=organization_id, ctx=ctx)
+    organization = await crud.organization.get(db=db, id=organization_id, ctx=ctx, enrich=False)
     update_data = schemas.OrganizationUpdate(
         name=organization_data.name, description=organization_data.description or ""
     )
@@ -168,6 +168,7 @@ async def update_organization(
         db=db, db_obj=organization, obj_in=update_data, ctx=ctx
     )
 
+    enabled_features = crud.organization._extract_enabled_features(updated_organization)
     return schemas.OrganizationWithRole(
         id=updated_organization.id,
         name=updated_organization.name,
@@ -176,7 +177,7 @@ async def update_organization(
         modified_at=updated_organization.modified_at,
         role=user_role,
         is_primary=user_is_primary,
-        enabled_features=updated_organization.enabled_features or [],
+        enabled_features=enabled_features,
     )
 
 

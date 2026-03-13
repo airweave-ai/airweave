@@ -9,6 +9,22 @@ from pydantic import BaseModel, Field, model_validator
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 from airweave.schemas.organization_billing import OrganizationBilling as OrganizationBillingSchema
 
+_KNOWN_FLAGS = {f.value for f in FeatureFlagEnum}
+
+
+def _filter_known_flags(data: dict) -> dict:
+    """Drop unknown feature flag values so Pydantic validation doesn't reject them."""
+    if "enabled_features" in data and isinstance(data["enabled_features"], list):
+        data = {
+            **data,
+            "enabled_features": [
+                f
+                for f in data["enabled_features"]
+                if f in _KNOWN_FLAGS or isinstance(f, FeatureFlagEnum)
+            ],
+        }
+    return data
+
 
 class OrganizationBase(BaseModel):
     """Organization base schema."""
@@ -79,11 +95,9 @@ class Organization(OrganizationInDBBase):
     def extract_enabled_features(cls, data: Any) -> Any:
         """Extract enabled_features from feature_flags relationship."""
         if isinstance(data, dict):
-            return data
+            return _filter_known_flags(data)
 
-        # Handle SQLAlchemy model
         if hasattr(data, "__dict__"):
-            # Extract feature flags
             if "feature_flags" in data.__dict__:
                 enabled = []
                 for ff in data.__dict__["feature_flags"]:
@@ -94,8 +108,6 @@ class Organization(OrganizationInDBBase):
                     except ValueError:
                         pass
                 data.enabled_features = enabled
-
-            # Note: billing relationship and current_period will be loaded by CRUD layer
 
         return data
 
@@ -132,12 +144,9 @@ class OrganizationWithRole(BaseModel):
     def extract_enabled_features(cls, data: Any) -> Any:
         """Extract enabled_features from feature_flags relationship."""
         if isinstance(data, dict):
-            # If it's already a dict with enabled_features, return as is
-            return data
+            return _filter_known_flags(data)
 
-        # Handle SQLAlchemy model or other object
         if hasattr(data, "__dict__"):
-            # Extract feature flags
             if "feature_flags" in data.__dict__ and not hasattr(data, "enabled_features"):
                 enabled = []
                 for ff in data.__dict__["feature_flags"]:
