@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
+from airweave.analytics.service import analytics
 from airweave.api.context import ConnectContext
 from airweave.core.context import BaseContext
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
@@ -22,7 +23,6 @@ from airweave.domains.source_connections.protocols import SourceConnectionServic
 from airweave.domains.sources.protocols import SourceServiceProtocol
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
 from airweave.platform.auth.state import make_state
-from airweave.analytics.service import analytics
 from airweave.schemas.connect_session import (
     ConnectSessionContext,
     ConnectSessionCreate,
@@ -188,6 +188,7 @@ class ConnectService(ConnectServiceProtocol):
                 "allowed_integrations": session_in.allowed_integrations,
                 "organization_id": str(ctx.organization.id),
             },
+            ctx=ctx,
         )
 
         ctx.logger.info(
@@ -293,6 +294,7 @@ class ConnectService(ConnectServiceProtocol):
                 "end_user_id": session.end_user_id,
                 "organization_id": str(session.organization_id),
             },
+            ctx=ctx,
         )
 
         return await self._sc_service.delete(db, connection_id, ctx)  # type: ignore[arg-type,return-value]
@@ -339,6 +341,7 @@ class ConnectService(ConnectServiceProtocol):
                 "end_user_id": session.end_user_id,
                 "organization_id": str(session.organization_id),
             },
+            ctx=ctx,
         )
 
         return result  # type: ignore[return-value]
