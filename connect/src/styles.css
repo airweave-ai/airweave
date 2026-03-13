@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+/* Default theme CSS variables (transparent until theme is set) */
+:root {
+  --connect-bg: transparent;
+  --connect-surface: transparent;
+  --connect-text: transparent;
+  --connect-text-muted: transparent;
+  --connect-primary: transparent;
+  --connect-primary-hover: transparent;
+  --connect-secondary: transparent;
+  --connect-secondary-hover: transparent;
+  --connect-border: transparent;
+  --connect-success: transparent;
+  --connect-error: transparent;
+
+  /* Font family variables */
+  --connect-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  --connect-font-heading: var(--connect-font-body);
+  --connect-font-button: var(--connect-font-body);
+}
+
+body {
+  @apply m-0;
+  font-family: var(--connect-font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
+/* Dropdown menu animations */
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes dropdown-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.dropdown-popup {
+  animation: dropdown-in 150ms ease-out;
+  transform-origin: top right;
+}
+
+.dropdown-popup[data-ending-style] {
+  animation: dropdown-out 100ms ease-in;
+}
+
+/* Indeterminate progress bar animation */
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.animate-progress-indeterminate {
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
+}
+
+/* Scrollable content with fade mask */
+.scrollable-content {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 16px,
+    black calc(100% - 16px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 16px,
+    black calc(100% - 16px),
+    transparent 100%
+  );
+  padding-top: 16px;
+  padding-bottom: 16px;
+}

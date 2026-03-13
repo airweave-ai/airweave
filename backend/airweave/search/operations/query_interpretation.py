@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from airweave import crud
 from airweave.api.context import ApiContext
+
+# [code blue] todo: inject source_registry via Inject() instead of container access
+from airweave.core import container as container_mod
 from airweave.db.session import get_db_context
 from airweave.search.context import SearchContext
 from airweave.search.prompts import QUERY_INTERPRETATION_SYSTEM_PROMPT
@@ -238,16 +241,18 @@ class QueryInterpretation(SearchOperation):
             unique_short_names = {conn.short_name for conn in source_connections}
 
             # Get fields for each unique source
+            source_registry = container_mod.container.source_registry
             for short_name in unique_short_names:
                 # Skip PostgreSQL - doesn't support query interpretation
                 if short_name == "postgresql":
                     continue
 
-                source = await crud.source.get_by_short_name(db, short_name=short_name)
-                if not source:
+                try:
+                    source_entry = source_registry.get(short_name)
+                except KeyError:
                     continue
 
-                source_fields = self._get_source_fields(source)
+                source_fields = self._get_source_fields(source_entry)
 
                 if not source_fields:
                     raise ValueError(
@@ -267,12 +272,12 @@ class QueryInterpretation(SearchOperation):
 
         return fields
 
-    def _get_source_fields(self, source: Any) -> Dict[str, str]:
+    def _get_source_fields(self, source_entry: Any) -> Dict[str, str]:
         """Get fields for a specific source from its entity definitions."""
         # [code blue] todo: remove container import
         from airweave.core.container import container as app_container
 
-        entries = app_container.entity_definition_registry.list_for_source(source.short_name)
+        entries = app_container.entity_definition_registry.list_for_source(source_entry.short_name)
 
         if not entries:
             return {}

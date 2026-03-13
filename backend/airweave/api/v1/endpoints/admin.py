@@ -39,6 +39,7 @@ from airweave.domains.billing.repository import (
     BillingPeriodRepository,
     OrganizationBillingRepository,
 )
+from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.organizations.logic import generate_org_name
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
@@ -1407,6 +1408,7 @@ async def admin_get_user_principals(
     user_principal: str = Query(..., description="Username to resolve principals for"),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    collection_repo: CollectionRepositoryProtocol = Inject(CollectionRepositoryProtocol),
 ) -> List[str]:
     """Admin-only: Get the resolved access principals for a user in a collection.
 
@@ -1417,7 +1419,7 @@ async def admin_get_user_principals(
 
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 
-    collection = await crud.collection.get_by_readable_id(
+    collection = await collection_repo.get_by_readable_id(
         db,
         readable_id=readable_id,
         ctx=ctx,

@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.entities._base import BaseEntity
-from airweave.platform.sync.pipeline import ProcessingRequirement
 from airweave.schemas.search import AirweaveTemporalConfig
 from airweave.schemas.search_result import AirweaveSearchResult
 
@@ -19,12 +18,6 @@ class BaseDestination(ABC):
 
     # Class variables for integration metadata
     _labels: ClassVar[List[str]] = []
-
-    # Processing requirement - override in subclasses
-    # Default is CHUNKS_AND_EMBEDDINGS for backward compatibility
-    processing_requirement: ClassVar[ProcessingRequirement] = (
-        ProcessingRequirement.CHUNKS_AND_EMBEDDINGS
-    )
 
     def __init__(self, soft_fail: bool = False):
         """Initialize the base destination.

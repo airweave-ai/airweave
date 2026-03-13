@@ -38,16 +38,16 @@ from airweave.adapters.encryption.fake import FakeCredentialEncryptor
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException, TokenRefreshError
 from airweave.core.logging import logger
-from airweave.core.shared_models import AuthMethod
-from airweave.domains.oauth.fakes.repository import (
-    FakeOAuthConnectionRepository,
-    FakeOAuthCredentialRepository,
-    FakeOAuthSourceRepository,
-)
+from airweave.core.shared_models import AuthMethod, IntegrationType
+from airweave.domains.connections.fakes.repository import FakeConnectionRepository
+from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
 from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
+from airweave.models.connection import Connection
+from airweave.models.integration_credential import IntegrationCredential
 from airweave.platform.auth.schemas import OAuth2Settings, OAuth2TokenResponse
 from airweave.schemas.organization import Organization
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 NOW = datetime.now(timezone.utc)
 ORG_ID = uuid4()
@@ -158,10 +158,9 @@ class Deps:
 
     def __init__(self, **settings_overrides):
         self.settings = _make_settings(**settings_overrides)
-        self.conn_repo = FakeOAuthConnectionRepository()
-        self.cred_repo = FakeOAuthCredentialRepository()
+        self.conn_repo = FakeConnectionRepository()
+        self.cred_repo = FakeIntegrationCredentialRepository()
         self.encryptor = FakeCredentialEncryptor()
-        self.source_repo = FakeOAuthSourceRepository()
         self.source_registry = FakeSourceRegistry()
 
     def build(self) -> OAuth2Service:
@@ -170,7 +169,6 @@ class Deps:
             conn_repo=self.conn_repo,
             cred_repo=self.cred_repo,
             encryptor=self.encryptor,
-            source_repo=self.source_repo,
             source_registry=self.source_registry,
         )
 
@@ -1210,10 +1208,29 @@ async def test_refresh_access_token(case: RefreshCase):
         return integration_config
 
     # Seed repos for rotating refresh path
-    deps.conn_repo.seed(
-        connection_id, SimpleNamespace(id=connection_id, integration_credential_id=cred_id)
+    conn = Connection(
+        id=connection_id,
+        name="test-conn",
+        readable_id=f"conn-{connection_id}",
+        integration_type=IntegrationType.SOURCE,
+        organization_id=ORG_ID,
+        created_by_email="test@test.com",
+        modified_by_email="test@test.com",
+        integration_credential_id=cred_id,
+        short_name="google_drive",
     )
-    deps.cred_repo.seed(cred_id, SimpleNamespace(id=cred_id, encrypted_credentials="enc-blob"))
+    cred = IntegrationCredential(
+        id=cred_id,
+        organization_id=ORG_ID,
+        name="test-cred",
+        integration_short_name="google_drive",
+        integration_type=IntegrationType.SOURCE,
+        authentication_method=AuthenticationMethod.OAUTH_BROWSER,
+        encrypted_credentials="enc-blob",
+        oauth_type=OAuthType.WITH_REFRESH,
+    )
+    deps.conn_repo.seed(connection_id, conn)
+    deps.cred_repo.seed(cred_id, cred)
     deps.encryptor.seed_decrypt(dict(case.decrypted_credential))
 
     mock_http_response = _make_httpx_response(case.http_status, case.http_body)
@@ -1312,10 +1329,29 @@ async def test_handle_token_response(case: HandleResponseCase):
 
     http_response = _make_httpx_response(200, case.response_body)
 
-    deps.conn_repo.seed(
-        connection_id, SimpleNamespace(id=connection_id, integration_credential_id=cred_id)
+    conn = Connection(
+        id=connection_id,
+        name="test-conn",
+        readable_id=f"conn-{connection_id}",
+        integration_type=IntegrationType.SOURCE,
+        organization_id=ORG_ID,
+        created_by_email="test@test.com",
+        modified_by_email="test@test.com",
+        integration_credential_id=cred_id,
+        short_name="google_drive",
     )
-    deps.cred_repo.seed(cred_id, SimpleNamespace(id=cred_id, encrypted_credentials="enc-blob"))
+    cred = IntegrationCredential(
+        id=cred_id,
+        organization_id=ORG_ID,
+        name="test-cred",
+        integration_short_name="google_drive",
+        integration_type=IntegrationType.SOURCE,
+        authentication_method=AuthenticationMethod.OAUTH_BROWSER,
+        encrypted_credentials="enc-blob",
+        oauth_type=OAuthType.WITH_REFRESH,
+    )
+    deps.conn_repo.seed(connection_id, conn)
+    deps.cred_repo.seed(cred_id, cred)
     deps.encryptor.seed_decrypt({"refresh_token": "old-rt", "access_token": "old-at"})
 
     result = await svc._handle_token_response(
@@ -1324,13 +1360,14 @@ async def test_handle_token_response(case: HandleResponseCase):
 
     assert result.access_token == case.response_body["access_token"]
 
+    update_calls = [c for c in deps.cred_repo._calls if c[0] == "update"]
     if case.expect_credential_update:
-        assert len(deps.cred_repo._updated) == 1
+        assert len(update_calls) == 1
         assert len(deps.encryptor._encrypt_calls) == 1
         encrypted_input = deps.encryptor._encrypt_calls[0]
         assert encrypted_input["refresh_token"] == case.response_body["refresh_token"]
     else:
-        assert len(deps.cred_repo._updated) == 0
+        assert len(update_calls) == 0
         assert len(deps.encryptor._encrypt_calls) == 0
 
 

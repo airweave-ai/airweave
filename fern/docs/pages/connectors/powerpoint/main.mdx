@@ -1,0 +1,87 @@
+---
+title: "Powerpoint"
+description: "Powerpoint integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Powerpoint logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Powerpoint</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Powerpoint through Airweave's unified search layer.
+
+## Configuration
+
+Microsoft PowerPoint source connector integrates with the Microsoft Graph API.
+
+Synchronizes PowerPoint presentations from Microsoft OneDrive and SharePoint.
+Presentations are processed through Airweave's file handling pipeline which:
+- Downloads the .pptx/.ppt/.pptm file
+- Extracts text for indexing
+- Chunks content for vector search
+- Indexes for semantic search
+
+It provides comprehensive access to PowerPoint presentations with proper token refresh
+and rate limiting.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/powerpoint.py"
+>
+  Explore the Powerpoint connector implementation
+</Card>
+
+### Authentication
+
+This connector uses **OAuth 2.0 authentication**. You can connect through the Airweave UI or API using the OAuth flow.
+
+**Supported authentication methods:**
+- OAuth Browser Flow (recommended for UI)
+- OAuth Token (for programmatic access)
+- Auth Provider (enterprise SSO)
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="PowerPointPresentationEntity">
+
+Schema for a Microsoft PowerPoint presentation as a file entity.
+
+Represents PowerPoint presentations (.pptx, .ppt, .pptm) stored in OneDrive/SharePoint.
+Extends FileEntity to leverage Airweave's file processing.
+
+Reference:
+    https://learn.microsoft.com/en-us/graph/api/resources/driveitem
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | str | Drive item ID for the PowerPoint presentation. |
+| title | str | Human-readable title for the presentation. |
+| created_datetime | Optional[datetime] | When the presentation was created. |
+| last_modified_datetime | Optional[datetime] | When the presentation was last modified. |
+| web_url_override | Optional[str] | URL to open the presentation in PowerPoint Online. |
+| content_download_url | Optional[str] | Direct download URL for the presentation content. |
+| created_by | Optional[Dict[str, Any]] | Identity of the user who created the presentation. |
+| last_modified_by | Optional[Dict[str, Any]] | Identity of the user who last modified the presentation. |
+| parent_reference | Optional[Dict[str, Any]] | Information about the parent folder/drive location. |
+| drive_id | Optional[str] | ID of the drive containing this presentation. |
+| folder_path | Optional[str] | Full path to the parent folder. |
+| description | Optional[str] | Description of the presentation if available. |
+| shared | Optional[Dict[str, Any]] | Information about sharing status of the presentation. |
+
+</Accordion>
+
+
+
+
+{/* AUTO-GENERATED CONTENT END */}

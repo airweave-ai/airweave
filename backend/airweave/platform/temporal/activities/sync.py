@@ -65,6 +65,7 @@ class RunSyncActivity:
     sparse_embedder: SparseEmbedderProtocol
     sync_service: SyncServiceProtocol
     sync_job_service: SyncJobServiceProtocol
+    collection_repo: CollectionRepositoryProtocol
 
     @activity.defn(name="run_sync_activity")
     async def run(  # noqa: C901
@@ -130,7 +131,7 @@ class RunSyncActivity:
                 )
                 sync = schemas.Sync(**sync_dict)
 
-            collection_model = await crud.collection.get(db=db, id=collection_id, ctx=ctx)
+            collection_model = await self.collection_repo.get(db=db, id=collection_id, ctx=ctx)
             if not collection_model:
                 raise ValueError(f"Collection {collection_id} not found in database")
 

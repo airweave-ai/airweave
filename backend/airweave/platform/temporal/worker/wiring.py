@@ -53,6 +53,7 @@ async def create_activities() -> list:
             sparse_embedder=sparse_embedder,
             sync_service=sync_service,
             sync_job_service=sync_job_service,
+            collection_repo=collection_repo,
         ).run,
         CreateSyncJobActivity(
             event_bus=event_bus,

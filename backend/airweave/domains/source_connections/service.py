@@ -12,8 +12,8 @@ from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.oauth.protocols import OAuthRedirectSessionRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
-    SourceConnectionCreateServiceProtocol,
     ResponseBuilderProtocol,
+    SourceConnectionCreateServiceProtocol,
     SourceConnectionDeletionServiceProtocol,
     SourceConnectionRepositoryProtocol,
     SourceConnectionServiceProtocol,
@@ -36,7 +36,7 @@ from airweave.schemas.source_connection import (
 class SourceConnectionService(SourceConnectionServiceProtocol):
     """Service for source connections."""
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         # Repositories
         sc_repo: SourceConnectionRepositoryProtocol,

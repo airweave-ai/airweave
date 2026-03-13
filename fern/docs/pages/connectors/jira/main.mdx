@@ -44,30 +44,7 @@ This connector uses **OAuth 2.0 authentication**. You can connect through the Ai
 
 ### Configuration Options
 
-The following configuration options are available for this connector:
-
-<Card
-  title="Configuration Parameters"
-  className="config-card"
-  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
->
-
-Jira configuration schema.
-<ParamField
-  path="project_keys"
-  type="list[str]"
-  required={true}
->
-  List of Jira project keys to sync (e.g., 'PROJ', 'DEV', 'MARKET'). Only the specified projects will be synced. Hit enter to add new project.  You can find project keys in your Jira project settings.
-</ParamField>
-<ParamField
-  path="zephyr_scale_api_token"
-  type="Optional[str]"
-  required={false}
->
-  API token for Zephyr Scale test management integration. Leave empty if not using Zephyr Scale.
-</ParamField>
-</Card>
+This connector does not have any additional configuration options.
 
 ## Data Models
 

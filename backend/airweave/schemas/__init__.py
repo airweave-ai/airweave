@@ -24,6 +24,12 @@ from .collection import (
     CollectionRecord,
     CollectionUpdate,
 )
+from .connect_session import (
+    ConnectSessionContext,
+    ConnectSessionCreate,
+    ConnectSessionMode,
+    ConnectSessionResponse,
+)
 from .connection import Connection, ConnectionCreate, ConnectionInDBBase, ConnectionUpdate
 from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
 from .entity_count import EntityCount as EntityCountSchema
@@ -83,12 +89,7 @@ from .search_query import (
     SearchQueryResponse,
     SearchQueryUpdate,
 )
-from .source import (
-    Source,
-    SourceCreate,
-    SourceInDBBase,
-    SourceUpdate,
-)
+from .source import Source
 from .source_connection import (
     AuthenticationDetails,
     AuthenticationMethod,

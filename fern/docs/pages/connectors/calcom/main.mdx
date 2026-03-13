@@ -1,0 +1,141 @@
+---
+title: "Calcom"
+description: "Calcom integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Calcom logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Calcom</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Calcom through Airweave's unified search layer.
+
+## Configuration
+
+Cal.com source connector.
+
+Syncs bookings from the Cal.com API into searchable entities.
+
+The connector:
+- Uses the Bookings API with `cal-api-version=2024-08-13`
+- Paginates with `take`/`skip`
+- Supports incremental sync via `afterUpdatedAt` cursor watermark
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/calcom.py"
+>
+  Explore the Calcom connector implementation
+</Card>
+
+### Authentication
+
+**Supported authentication methods:**
+- Direct Credentials
+- Auth Provider
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="CalBookingEntity">
+
+Schema for Cal.com bookings (single or recurring instances).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| uid | str | Cal.com booking UID (stable identifier used in APIs and redirects). |
+| booking_id | int | Numeric Cal.com booking ID. |
+| title | str | Title of the booking. |
+| description | Optional[str] | Description of the booking (agenda, context, etc.). |
+| status | Optional[str] | Booking status (accepted, cancelled, rejected, pending). |
+| cancellation_reason | Optional[str] | Reason provided when the booking was cancelled. |
+| cancelled_by_email | Optional[str] | Email address of the user who cancelled the booking. |
+| rescheduling_reason | Optional[str] | Reason provided when the booking was rescheduled. |
+| rescheduled_by_email | Optional[str] | Email address of the user who rescheduled the booking. |
+| rescheduled_from_uid | Optional[str] | UID of the previous booking this one was rescheduled from. |
+| rescheduled_to_uid | Optional[str] | UID of the booking this one was rescheduled to. |
+| start | Optional[datetime] | Start time of the booking (UTC). |
+| end | Optional[datetime] | End time of the booking (UTC). |
+| duration_minutes | Optional[int] | Duration of the booking in minutes. |
+| created_at | Optional[datetime] | When this booking was created. |
+| updated_at | Optional[datetime] | When this booking was last updated (status changes, reschedules, etc.). |
+| hosts | List[Dict[str, Any]] | Hosts for this booking (name, email, username, timezone). |
+| attendees | List[Dict[str, Any]] | Primary attendees for this booking. |
+| guests | List[str] | Additional guest email addresses for this booking. |
+| absent_host | Optional[bool] | Whether the host was marked absent for this booking. |
+| event_type_id | Optional[int] | Cal.com event type ID (deprecated upstream in favor of event_type.id). |
+| event_type | Optional[Dict[str, Any]] | Embedded event type object (id, slug). |
+| location | Optional[str] | Resolved meeting location or conferencing URL. |
+| meeting_url | Optional[str] | Deprecated meeting URL field (kept for backwards compatibility). |
+| metadata | Dict[str, Any] | Arbitrary metadata attached to the booking (CRM IDs, tags, etc.). |
+| rating | Optional[float] | Post-meeting rating, if collected. |
+| ics_uid | Optional[str] | UID of the underlying calendar event in ICS format. |
+| booking_fields_responses | Dict[str, Any] | Responses for custom booking fields (keyed by booking field slug). These often contain rich, user-provided context. |
+| recurring_booking_uid | Optional[str] | Recurring booking UID when this booking is part of a recurring series. |
+| web_url_value | Optional[str] | User-facing URL associated with this booking. If not provided, falls back to the conferencing/location URL when available. |
+
+</Accordion>
+<Accordion title="CalBookingDeletionEntity">
+
+Deletion signal for a Cal.com booking.
+
+Emitted during incremental sync when a booking is cancelled and should be removed
+from destinations.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| uid | str | Cal.com booking UID (stable identifier). Matches CalBookingEntity.uid. |
+| label | str | Human-readable deletion label. |
+| booking_id | Optional[int] | Numeric Cal.com booking ID (optional, for debugging). |
+
+</Accordion>
+<Accordion title="CalEventTypeEntity">
+
+Schema for Cal.com event types.
+
+Event types represent reusable booking templates (duration, locations, booking page).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| event_type_id | int | Numeric Cal.com event type ID. |
+| title | str | Human-readable title of the event type. |
+| slug | str | URL slug for the event type (used in booking URLs). |
+| description | Optional[str] | Long-form description shown on the booking page. |
+| length_in_minutes | int | Primary meeting duration in minutes for this event type. |
+| metadata | Dict[str, Any] | Arbitrary metadata attached to the event type. |
+| booking_url | Optional[str] | Full booking URL for this event type (e.g. https://cal.com/user/30min). |
+| schedule_id | Optional[int] | ID of the primary schedule backing this event type, if any. |
+| hidden | bool | Whether this event type is hidden from public listing. |
+| booking_requires_authentication | bool | If true, only authenticated users (owner, org/team admin) can book this event type via API. |
+
+</Accordion>
+<Accordion title="CalScheduleEntity">
+
+Schema for Cal.com schedules (availability definitions).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| schedule_id | int | Numeric Cal.com schedule ID. |
+| owner_id | int | ID of the schedule owner (user or organization). |
+| name | str | Human-readable name of the schedule (e.g. 'Working hours'). |
+| time_zone | str | IANA time zone identifier used for this schedule. |
+| availability | List[Dict[str, Any]] | Weekly availability rules: days of week with startTime/endTime windows in HH:MM. |
+| is_default | bool | Whether this is the user's default schedule. |
+| overrides | List[Dict[str, Any]] | Date-specific overrides to the base schedule (date plus startTime/endTime). |
+
+</Accordion>
+
+
+
+
+{/* AUTO-GENERATED CONTENT END */}

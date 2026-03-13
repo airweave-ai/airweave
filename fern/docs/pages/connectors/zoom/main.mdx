@@ -1,0 +1,143 @@
+---
+title: "Zoom"
+description: "Zoom integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Zoom logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Zoom</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Zoom through Airweave's unified search layer.
+
+## Configuration
+
+Zoom source connector integrates with the Zoom API.
+
+Synchronizes data from Zoom including meetings, participants, recordings,
+and transcripts. Provides comprehensive access to meeting context with
+proper token refresh and rate limiting.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/zoom.py"
+>
+  Explore the Zoom connector implementation
+</Card>
+
+### Authentication
+
+This connector uses **OAuth 2.0 authentication**. You can connect through the Airweave UI or API using the OAuth flow.
+
+**Supported authentication methods:**
+- OAuth Browser Flow (recommended for UI)
+- OAuth Token (for programmatic access)
+- Auth Provider (enterprise SSO)
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="ZoomMeetingEntity">
+
+Schema for a Zoom meeting.
+
+Based on the Zoom API meeting resource.
+Reference: https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/meeting
+
+| Field | Type | Description |
+|-------|------|-------------|
+| meeting_id | str | Unique meeting ID from Zoom. |
+| topic | str | Meeting topic/title. |
+| meeting_type | Optional[int] | Meeting type (1=instant, 2=scheduled, 3=recurring no fixed time, 8=recurring fixed time). |
+| start_time | Optional[datetime] | Meeting start time. |
+| duration | Optional[int] | Scheduled duration in minutes. |
+| timezone | Optional[str] | Timezone for the meeting start time. |
+| agenda | Optional[str] | Meeting agenda/description. |
+| host_id | Optional[str] | ID of the meeting host. |
+| host_email | Optional[str] | Email of the meeting host. |
+| status | Optional[str] | Meeting status (waiting, started, finished). |
+| join_url | Optional[str] | URL to join the meeting. |
+| password | Optional[str] | Meeting password (if set). |
+| settings | Optional[Dict[str, Any]] | Meeting settings. |
+| uuid | Optional[str] | Meeting UUID (unique per meeting instance). |
+
+</Accordion>
+<Accordion title="ZoomMeetingParticipantEntity">
+
+Schema for a Zoom meeting participant.
+
+Based on the Zoom API participant resource.
+Reference: https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/pastMeetingParticipants
+
+| Field | Type | Description |
+|-------|------|-------------|
+| participant_id | str | Unique participant ID (generated from user_id + meeting_id). |
+| participant_name | str | Display name of the participant. |
+| meeting_id | str | ID of the meeting this participant attended. |
+| user_id | Optional[str] | Zoom user ID if the participant is a Zoom user. |
+| user_email | Optional[str] | Email address of the participant. |
+| join_time | Optional[datetime] | Time when participant joined the meeting. |
+| leave_time | Optional[datetime] | Time when participant left the meeting. |
+| duration | Optional[int] | Duration of participation in seconds. |
+| registrant_id | Optional[str] | Registrant ID if the participant registered for the meeting. |
+| status | Optional[str] | Participant status. |
+
+</Accordion>
+<Accordion title="ZoomRecordingEntity">
+
+Schema for a Zoom meeting recording.
+
+Based on the Zoom API recording resource.
+Reference: https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/recordingGet
+
+| Field | Type | Description |
+|-------|------|-------------|
+| recording_id | str | Unique recording file ID. |
+| recording_name | str | Recording file name (derived from meeting topic). |
+| meeting_id | str | ID of the meeting this recording belongs to. |
+| meeting_topic | Optional[str] | Topic of the meeting this recording belongs to. |
+| recording_start | Optional[datetime] | When the recording started. |
+| recording_end | Optional[datetime] | When the recording ended. |
+| file_type | Optional[str] | Recording file type (MP4, M4A, CHAT, TRANSCRIPT, etc.). |
+| file_size | Optional[int] | Recording file size in bytes. |
+| file_extension | Optional[str] | File extension. |
+| play_url | Optional[str] | URL to play/view the recording. |
+| download_url | Optional[str] | URL to download the recording. |
+| status | Optional[str] | Recording status. |
+| recording_type | Optional[str] | Type of recording (shared_screen, active_speaker, etc.). |
+
+</Accordion>
+<Accordion title="ZoomTranscriptEntity">
+
+Schema for a Zoom meeting transcript.
+
+Based on the Zoom API transcript resource.
+Transcripts are stored as VTT files in cloud recordings.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| transcript_id | str | Unique transcript ID. |
+| transcript_name | str | Transcript name (derived from meeting topic). |
+| meeting_id | str | ID of the meeting this transcript belongs to. |
+| meeting_topic | Optional[str] | Topic of the meeting this transcript belongs to. |
+| recording_start | Optional[datetime] | When the recording/transcript started. |
+| transcript_content | Optional[str] | Full text content of the transcript. |
+| download_url | Optional[str] | URL to download the transcript file. |
+| file_type | Optional[str] | Transcript file type (TRANSCRIPT, CC). |
+
+</Accordion>
+
+
+
+
+{/* AUTO-GENERATED CONTENT END */}

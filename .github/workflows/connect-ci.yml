@@ -1,0 +1,107 @@
+name: Connect CI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "connect/**"
+      - ".github/workflows/connect-ci.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "connect/**"
+      - ".github/workflows/connect-ci.yml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./connect
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "./connect/package-lock.json"
+      - run: npm ci
+      - run: npx eslint . --max-warnings 0
+
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./connect
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "./connect/package-lock.json"
+      - run: npm ci
+      - run: npm run typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./connect
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "./connect/package-lock.json"
+      - run: npm ci
+      - run: npm run test
+
+  build-sdk-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "./connect/package-lock.json"
+      - name: "Install widget dependencies (needed by SDK file: reference)"
+        run: npm ci
+        working-directory: ./connect
+      - name: Install and build JS SDK
+        working-directory: ./connect/packages/js
+        run: |
+          npm ci
+          npm run build
+      - name: Verify dist output exists
+        working-directory: ./connect/packages/js
+        run: |
+          test -f dist/index.js
+          test -f dist/index.cjs
+          test -f dist/index.d.ts
+
+  build-sdk-react:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "./connect/package-lock.json"
+      - name: "Install widget dependencies (needed by SDK file: reference)"
+        run: npm ci
+        working-directory: ./connect
+      - name: Install and build React SDK
+        working-directory: ./connect/packages/react
+        run: |
+          npm ci
+          npm run build
+      - name: Verify dist output exists
+        working-directory: ./connect/packages/react
+        run: |
+          test -f dist/index.js
+          test -f dist/index.cjs
+          test -f dist/index.d.ts

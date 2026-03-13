@@ -115,7 +115,10 @@ class SearchFactory:
             result = await db.execute(sa_select(Collection).where(Collection.id == collection_id))
             collection = result.scalar_one_or_none()
         else:
-            collection = await crud.collection.get(db, id=collection_id, ctx=ctx)
+            assert _container_module.container is not None  # [code blue]
+            collection = await _container_module.container.collection_repo.get(
+                db, id=collection_id, ctx=ctx
+            )
 
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")

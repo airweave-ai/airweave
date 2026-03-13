@@ -6,7 +6,6 @@ by comparing content hashes against stored values in the database.
 
 import time
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
-from uuid import UUID
 
 from airweave import crud, models
 from airweave.db.session import get_db_context

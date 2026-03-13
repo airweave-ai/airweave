@@ -47,7 +47,6 @@ from airweave.core.logging import logger
 from airweave.db.init_db import init_db
 from airweave.db.session import AsyncSessionLocal
 from airweave.domains.embedders.config import validate_embedding_config
-from airweave.platform.db_sync import sync_platform_components
 
 
 @asynccontextmanager
@@ -81,8 +80,6 @@ async def lifespan(app: FastAPI):
                 cwd=backend_dir,
                 env=env,
             )
-        if settings.RUN_DB_SYNC:
-            await sync_platform_components(db)
         await init_db(db)
 
         # Reconcile embedding config against DB deployment metadata
@@ -153,11 +150,13 @@ app.exception_handler(AirweaveException)(airweave_exception_handler)
 # Default CORS origins - white labels and environment variables can extend this
 CORS_ORIGINS = [
     "http://localhost:5173",
+    "http://localhost:5174",
     "localhost:8001",
     "http://localhost:8080",
     "https://app.dev-airweave.com",
     "https://app.stg-airweave.com",
     "https://app.airweave.ai",
+    "https://connect.dev-airweave.com",
     "https://docs.airweave.ai",
     "localhost:3000",
 ]

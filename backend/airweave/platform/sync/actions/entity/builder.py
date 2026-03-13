@@ -94,10 +94,8 @@ class EntityDispatcherBuilder:
         if enabled:
             handlers.append(DestinationHandler(destinations=destinations))
             if logger:
-                processor_info = [
-                    f"{d.__class__.__name__}→{d.processing_requirement.value}" for d in destinations
-                ]
-                logger.info(f"Created DestinationHandler with requirements: {processor_info}")
+                dest_names = [d.__class__.__name__ for d in destinations]
+                logger.info(f"Created DestinationHandler for {dest_names}")
         elif logger:
             logger.info(
                 f"Skipping VectorDBHandler (disabled by execution_config) for "

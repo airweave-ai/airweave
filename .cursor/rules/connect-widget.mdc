@@ -1,0 +1,289 @@
+---
+globs: **/connect/**
+alwaysApply: false
+---
+# Airweave Connect Widget Architecture
+
+## What is Connect?
+
+The Connect widget is an embeddable component that allows end users to manage their source connections within third-party applications. It runs inside an iframe and communicates with parent applications via `postMessage`.
+
+## Tech Stack & Core Technologies
+- **React 19** with TypeScript for type-safe component development
+- **Vite** for fast development builds and HMR
+- **TailwindCSS v4** for styling with CSS-first configuration
+- **Base UI** (`@base-ui/react`) for accessible, unstyled primitives
+- **Lucide** icons for consistent iconography
+- **TanStack Router** for file-based routing with type safety
+- **TanStack Query** for server state and data fetching
+- **marked** for Markdown rendering in form field descriptions (with XSS-safe link renderer)
+- **No authentication** - relies on session tokens passed from parent
+
+## Project Structure
+```
+connect/src/
+├── components/         # UI components
+│   ├── ConnectionItem.tsx     # Single connection display
+│   ├── ConnectionsErrorView.tsx
+│   ├── DynamicFormField.tsx   # Dynamic form fields with markdown support
+│   ├── EmptyState.tsx         # Dual-layout empty state (rich hero when showConnect=true, simple manage view otherwise)
+│   ├── ErrorScreen.tsx        # Full-screen error display
+│   ├── FolderSelectionView.tsx # Folder picker wrapper (optional feature)
+│   ├── FolderTree.tsx         # Hierarchical folder checkbox tree
+│   ├── LoadingScreen.tsx      # Loading spinner
+│   ├── PoweredByAirweave.tsx  # Footer branding
+│   ├── SessionProvider.tsx    # Session context provider
+│   ├── SourceItem.tsx         # Single source in picker
+│   ├── SourcesList.tsx        # Source selection grid
+│   └── SuccessScreen.tsx      # Main connected state
+├── hooks/
+│   └── useParentMessaging.ts  # iframe ↔ parent communication
+├── lib/
+│   ├── api.ts                 # API client with session auth
+│   ├── connection-utils.ts    # Connection status helpers
+│   ├── env.ts                 # Environment configuration
+│   ├── icons.ts               # Icon registry and helpers
+│   ├── oauth.ts               # OAuth popup and message handling
+│   ├── theme-defaults.ts      # Default theme configuration
+│   ├── theme.tsx              # Theme context and CSS variables
+│   ├── types.ts               # TypeScript type definitions
+│   └── useOAuthFlow.ts        # OAuth flow state management hook
+├── routes/
+│   ├── __root.tsx             # Root layout
+│   ├── index.tsx              # Main entry route
+│   └── oauth-callback.tsx     # OAuth callback handler
+├── router.tsx                 # TanStack Router setup
+├── routeTree.gen.ts           # Auto-generated route tree
+└── styles.css                 # Global styles and Tailwind imports
+```
+
+## Key Architectural Patterns
+
+### 1. Session-Based Authentication
+Connect uses session tokens instead of user authentication:
+```typescript
+interface ConnectSessionContext {
+  sessionToken: string;
+  apiBaseUrl: string;
+}
+```
+Sessions are passed via URL parameters or parent messages.
+
+### 2. Parent Communication (`useParentMessaging`)
+The widget runs in an iframe and communicates with the parent via `postMessage`.
+
+**SECURITY: Origin validation is enforced for postMessage:**
+
+The Connect widget captures the parent origin from the first `TOKEN_RESPONSE` message and validates all subsequent messages against it:
+
+```typescript
+// In useParentMessaging.ts - parent origin is captured and stored
+const parentOriginRef = useRef<string | null>(null);
+
+const handleMessage = (event: MessageEvent) => {
+  // Capture origin from first TOKEN_RESPONSE
+  if (data.type === "TOKEN_RESPONSE" && !parentOriginRef.current) {
+    parentOriginRef.current = event.origin;
+  }
+  
+  // Validate all messages once origin is established
+  if (parentOriginRef.current && event.origin !== parentOriginRef.current) {
+    return; // Ignore messages from unexpected origins
+  }
+  // Process message...
+};
+
+// SENDING: Uses captured origin (falls back to "*" only for initial CONNECT_READY)
+const sendToParent = (message) => {
+  const targetOrigin = parentOriginRef.current || "*";
+  window.parent.postMessage(message, targetOrigin);
+};
+```
+
+**Available message types:**
+```typescript
+// Notify parent of connection changes
+notifyConnectionCreated(connectionId: string);
+notifyStatusChange(status: SessionStatus);
+requestClose(reason: "success" | "cancel" | "error");
+```
+
+### 3. OAuth Flow Security
+OAuth uses same-origin popups with validated messaging:
+```typescript
+// oauth-callback.tsx posts to same origin
+window.opener.postMessage({ type: "OAUTH_COMPLETE", ...result }, window.location.origin);
+
+// oauth.ts validates origin when receiving
+const handler = (event: MessageEvent) => {
+  if (event.origin !== window.location.origin) return;
+  // Process OAUTH_COMPLETE...
+};
+```
+
+### 4. Theming System
+Fully customizable via CSS variables passed from parent:
+```typescript
+interface ConnectTheme {
+  colors: { primary, background, text, border, ... };
+  fonts: { family, sizeBase, ... };
+  spacing: { base, containerPadding, ... };
+  borderRadius: { base, button, card, ... };
+}
+```
+Theme values are injected as CSS custom properties (`--connect-*`).
+
+### 5. View Navigation
+Internal view state managed within `SuccessScreen.tsx`:
+```typescript
+type NavigateView = "connections" | "sources" | "configure" | "folder-selection";
+```
+
+**View flow:**
+- `connections` - List of existing source connections (default for manage mode)
+- `sources` - Source picker grid (default for connect mode)
+- `configure` - Source configuration form (auth fields, config fields)
+- `folder-selection` - Optional folder picker shown after OAuth (when `enableFolderSelection` enabled)
+
+### 6. Connect Options
+Optional features controlled via `ConnectOptions`:
+```typescript
+interface ConnectOptions {
+  showConnectionName?: boolean;     // Show name field in configure form (default: false)
+  enableFolderSelection?: boolean;  // Show folder picker after OAuth (default: false)
+}
+```
+
+**Related components:**
+- `FolderSelectionView.tsx` - Wrapper for folder selection UI
+- `FolderTree.tsx` - Hierarchical folder checkbox tree with indeterminate states
+
+## Component Patterns
+
+### Base UI Usage
+Use Base UI primitives for accessible, unstyled components:
+```typescript
+import { Button } from "@base-ui/react";
+
+// Style with Tailwind classes
+<Button className="px-4 py-2 bg-primary rounded-md">
+  Click me
+</Button>
+```
+
+### API Client Pattern
+```typescript
+import { createConnectClient } from "@/lib/api";
+
+const client = createConnectClient(session);
+const connections = await client.getSourceConnections();
+```
+
+### TanStack Query Usage
+```typescript
+import { useQuery } from "@tanstack/react-query";
+
+const { data, isLoading, error } = useQuery({
+  queryKey: ["source-connections"],
+  queryFn: () => client.getSourceConnections(),
+});
+```
+
+## Development Guidelines
+
+### 1. Component Organization
+- Keep components focused and single-purpose
+- Use TypeScript interfaces for all props
+- Prefer composition over complex props
+
+### 2. Styling Guidelines
+- Use Tailwind utility classes
+- Reference theme variables via `var(--connect-*)` when needed
+- Avoid hardcoded colors; use theme tokens
+
+### 3. State Management
+- TanStack Query for server state
+- React state for local UI state
+- Context for shared session/theme data
+
+### 4. API Integration
+```typescript
+// Always handle loading and error states
+if (isLoading) return <LoadingScreen />;
+if (error) return <ErrorScreen error={error} />;
+```
+
+### 5. Coding Conventions
+- Prefix unused variables/arguments with `_` (enforced by ESLint)
+- Example: `const handler = (_event: Event) => { ... }`
+
+## Packages & SDKs
+
+The connect widget can be embedded via packages:
+```
+connect/packages/
+├── react/           # React wrapper component
+└── vanilla/         # Vanilla JS embed script
+```
+
+## Testing
+
+Run tests with:
+```bash
+cd connect && npm run test
+```
+
+Use Vitest with Testing Library for component tests.
+
+## Key Differences from Main Frontend
+
+| Aspect | Connect Widget | Main Frontend |
+|--------|---------------|---------------|
+| React version | 19 | 18 |
+| UI Components | Base UI | ShadCN UI |
+| Router | TanStack Router | React Router |
+| Auth | Session tokens | Auth0 |
+| State | TanStack Query only | Zustand + Query |
+| Deployment | Embeddable iframe | Standalone app |
+
+## Docker Deployment
+
+The Connect widget uses a multi-stage Docker build for production deployment:
+
+### Build Stage
+- **Base image:** `node:20-slim`
+- Copies frontend icons from `../frontend/src/components/icons/apps/` (required by vite.config.ts)
+- Builds with `npm run build`, producing `.output/` directory
+
+### Runtime Stage
+- **Base image:** `node:20-alpine`
+- Runs on port 8082 (configurable via `PORT` env var)
+- Uses `docker-entrypoint.sh` for runtime configuration
+
+### Runtime Configuration (`/config.js`)
+The entrypoint script generates `/config.js` at container startup to inject environment variables:
+
+```javascript
+// Generated by docker-entrypoint.sh
+window.__CONNECT_ENV__ = {
+  API_URL: "${API_URL}"
+};
+```
+
+This script is loaded in `__root.tsx` via the head scripts array and read by `lib/env.ts`:
+
+```typescript
+// In env.ts - reads runtime config
+const env = window.__CONNECT_ENV__ || {};
+export const API_URL = env.API_URL || import.meta.env.VITE_API_URL;
+```
+
+**Important:** The `/config.js` script is only generated in Docker deployments. During local development, Vite environment variables (`VITE_*`) are used instead.
+
+### Environment Variables
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_URL` | `http://localhost:8001` | Backend API URL |
+| `PORT` | `8082` | Server port |
+| `CSP_FRAME_ANCESTORS` | `*` | Origins allowed to embed Connect in an iframe |
+| `CSP_ADDITIONAL_CONNECT_SRC` | _(empty)_ | Extra origins for CSP connect-src (space-separated) |

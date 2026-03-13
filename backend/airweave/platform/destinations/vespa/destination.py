@@ -55,10 +55,6 @@ class VespaDestination(VectorDBDestination):
     - QueryBuilder for YQL construction
     """
 
-    from airweave.platform.sync.pipeline import ProcessingRequirement
-
-    processing_requirement = ProcessingRequirement.CHUNKS_AND_EMBEDDINGS
-
     def __init__(self, soft_fail: bool = False):
         """Initialize the Vespa destination.
 

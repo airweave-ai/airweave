@@ -43,6 +43,7 @@ from airweave.domains.collections.protocols import (
     CollectionRepositoryProtocol,
     CollectionServiceProtocol,
 )
+from airweave.domains.connect.protocols import ConnectServiceProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.embedders.protocols import (
@@ -223,6 +224,8 @@ class Container:
 
     # SCE service (structural context extraction — regex + NER extractors)
     sce_service: StructuralContextExtractorServiceProtocol
+    # Connect domain service (session-based frontend integration flows)
+    connect_service: ConnectServiceProtocol
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured

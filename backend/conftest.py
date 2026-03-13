@@ -543,6 +543,14 @@ def fake_init_session_repo():
 
 
 @pytest.fixture
+def fake_connect_service():
+    """Fake ConnectService for testing."""
+    from airweave.domains.connect.fakes.service import FakeConnectService
+
+    return FakeConnectService()
+
+
+@pytest.fixture
 def fake_browse_tree_service():
     """Fake BrowseTreeService (MagicMock)."""
     from unittest.mock import MagicMock
@@ -622,6 +630,7 @@ def test_container(
     fake_organization_service,
     fake_email_service,
     fake_user_service,
+    fake_connect_service,
     fake_browse_tree_service,
     fake_selection_repo,
 ):
@@ -668,6 +677,7 @@ def test_container(
         oauth_callback_service=fake_oauth_callback_service,
         init_session_repo=fake_init_session_repo,
         source_connection_service=fake_source_connection_service,
+        connect_service=fake_connect_service,
         source_lifecycle_service=fake_source_lifecycle_service,
         response_builder=fake_response_builder,
         temporal_workflow_service=fake_temporal_workflow_service,
