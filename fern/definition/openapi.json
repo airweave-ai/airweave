@@ -4862,7 +4862,8 @@
           "zephyr_scale",
           "sharepoint_2019_v2",
           "agentic_search",
-          "api_key_admin_sync"
+          "api_key_admin_sync",
+          "connect"
         ],
         "title": "FeatureFlag",
         "description": "Available feature flags in Airweave.\n\nAdd new flags here to enable feature gating at the organization level."
