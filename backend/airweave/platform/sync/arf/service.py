@@ -43,8 +43,8 @@ from airweave.platform.storage.protocol import StorageBackend
 from airweave.platform.sync.arf.schema import SyncManifest
 
 if TYPE_CHECKING:
-    from airweave.platform.contexts import SyncContext
-    from airweave.platform.contexts.runtime import SyncRuntime
+    from airweave.domains.sync_pipeline.contexts import SyncContext
+    from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
     from airweave.platform.entities._base import BaseEntity
 
 

@@ -13,9 +13,9 @@ from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
+from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncJobServiceProtocol
 from airweave.domains.syncs.types import StatsUpdate, TimestampUpdate
-from airweave.platform.sync.pipeline.entity_tracker import SyncStats
 
 
 class SyncJobService(SyncJobServiceProtocol):

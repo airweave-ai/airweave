@@ -3,12 +3,10 @@
 import types
 from unittest.mock import patch
 
-import pytest
-
 from airweave.adapters.circuit_breaker.fake import FakeCircuitBreaker
-from airweave.adapters.ocr.fake import FakeOcrProvider
-from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.core.container.factory import _create_ocr_provider
+from airweave.domains.ocr.fakes.provider import FakeOcrProvider
+from airweave.domains.ocr.fallback import FallbackOcrProvider
 
 
 def _make_settings(docling_base_url=None):
@@ -23,7 +21,7 @@ class TestCreateOcrProvider:
         settings = _make_settings(docling_base_url=None)
 
         with patch(
-            "airweave.core.container.factory.MistralOcrAdapter",
+            "airweave.core.container.factory.MistralOCR",
             side_effect=RuntimeError("no key"),
         ):
             result = _create_ocr_provider(cb, settings)
@@ -36,7 +34,7 @@ class TestCreateOcrProvider:
         settings = _make_settings(docling_base_url=None)
 
         with patch(
-            "airweave.core.container.factory.MistralOcrAdapter",
+            "airweave.core.container.factory.MistralOCR",
             return_value=FakeOcrProvider(),
         ):
             result = _create_ocr_provider(cb, settings)
@@ -50,7 +48,7 @@ class TestCreateOcrProvider:
 
         with (
             patch(
-                "airweave.core.container.factory.MistralOcrAdapter",
+                "airweave.core.container.factory.MistralOCR",
                 return_value=FakeOcrProvider(),
             ),
             patch(

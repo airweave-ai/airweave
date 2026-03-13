@@ -259,8 +259,11 @@ class SearchService:
         start_time = time.monotonic()
 
         # Get collection without organization filtering
+        import airweave.core.container as _container_module
         from airweave.models.collection import Collection
-        from airweave.platform.access_control.broker import access_broker
+
+        assert _container_module.container is not None
+        _access_broker = _container_module.container.access_broker
 
         result = await db.execute(
             sa_select(Collection).where(Collection.readable_id == readable_collection_id)
@@ -276,7 +279,7 @@ class SearchService:
         )
 
         # Resolve access context for the specified user
-        access_context = await access_broker.resolve_access_context_for_collection(
+        access_context = await _access_broker.resolve_access_context_for_collection(
             db=db,
             user_principal=user_principal,
             readable_collection_id=readable_collection_id,
