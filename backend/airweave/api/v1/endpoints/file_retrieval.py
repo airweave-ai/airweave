@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.inject import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.platform.storage import sync_file_manager
+from airweave.domains.storage.protocols import SyncFileManagerProtocol
 
 router = TrailingSlashRouter()
 
@@ -55,6 +56,7 @@ async def download_file(
     entity_id: str,
     ctx: ApiContext = Depends(deps.get_context),
     db: AsyncSession = Depends(deps.get_db),
+    sfm: SyncFileManagerProtocol = Inject(SyncFileManagerProtocol),
 ) -> FileResponse:
     """Download a file by entity ID.
 
@@ -62,6 +64,7 @@ async def download_file(
         entity_id: The entity ID
         ctx: The current authentication context
         db: Database session
+        sfm: Sync file manager (injected)
 
     Returns:
         FileResponse: The file content
@@ -74,7 +77,7 @@ async def download_file(
 
     try:
         # Download to temp file
-        content, file_path = await sync_file_manager.download_ctti_file(
+        content, file_path = await sfm.download_ctti_file(
             ctx.logger,
             entity_id,
             output_path=f"/tmp/{entity_id.replace(':', '_').replace('/', '_')}.md",
@@ -108,6 +111,7 @@ async def get_file_content(
     entity_id: str,
     ctx: ApiContext = Depends(deps.get_context),
     db: AsyncSession = Depends(deps.get_db),
+    sfm: SyncFileManagerProtocol = Inject(SyncFileManagerProtocol),
 ) -> dict:
     """Get file content as JSON response.
 
@@ -115,6 +119,7 @@ async def get_file_content(
         entity_id: The entity ID
         ctx: The current authentication context
         db: Database session
+        sfm: Sync file manager (injected)
 
     Returns:
         dict: JSON response with the file content
@@ -126,7 +131,7 @@ async def get_file_content(
     await verify_picnic_health_access(ctx, db)
 
     try:
-        content = await sync_file_manager.get_ctti_file_content(ctx.logger, entity_id)
+        content = await sfm.get_ctti_file_content(ctx.logger, entity_id)
 
         if content is None:
             raise HTTPException(
@@ -158,6 +163,7 @@ async def download_files_batch(
     entity_ids: List[str],
     ctx: ApiContext = Depends(deps.get_context),
     db: AsyncSession = Depends(deps.get_db),
+    sfm: SyncFileManagerProtocol = Inject(SyncFileManagerProtocol),
 ) -> StreamingResponse:
     """Download multiple files as a ZIP archive.
 
@@ -165,6 +171,7 @@ async def download_files_batch(
         entity_ids: List of entity IDs to download
         ctx: The current authentication context
         db: Database session
+        sfm: Sync file manager (injected)
 
     Returns:
         StreamingResponse: ZIP file containing all requested files
@@ -183,7 +190,7 @@ async def download_files_batch(
 
     try:
         # Download all files
-        results = await sync_file_manager.download_ctti_files_batch(
+        results = await sfm.download_ctti_files_batch(
             ctx.logger, entity_ids, continue_on_error=True
         )
 
@@ -242,6 +249,7 @@ async def check_files_exist(
     entity_ids: List[str] = Query(..., description="List of entity IDs to check"),
     ctx: ApiContext = Depends(deps.get_context),
     db: AsyncSession = Depends(deps.get_db),
+    sfm: SyncFileManagerProtocol = Inject(SyncFileManagerProtocol),
 ) -> dict:
     """Check which files exist in storage.
 
@@ -249,6 +257,7 @@ async def check_files_exist(
         entity_ids: List of entity IDs to check
         ctx: The current authentication context
         db: Database session
+        sfm: Sync file manager (injected)
 
     Returns:
         dict: Dictionary with entity_ids as keys and existence status as values
@@ -268,7 +277,7 @@ async def check_files_exist(
 
     for entity_id in entity_ids:
         try:
-            exists = await sync_file_manager.check_ctti_file_exists(ctx.logger, entity_id)
+            exists = await sfm.check_ctti_file_exists(ctx.logger, entity_id)
             results[entity_id] = exists
         except Exception as e:
             ctx.logger.warning(f"Error checking file {entity_id}: {e}")

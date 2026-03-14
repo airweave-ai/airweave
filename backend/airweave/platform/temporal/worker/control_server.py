@@ -25,7 +25,7 @@ from airweave.core.protocols import (
     WorkerMetrics,
     WorkerMetricsRegistryProtocol,
 )
-from airweave.platform.sync.async_helpers import get_active_thread_count
+from airweave.domains.sync_pipeline.async_helpers import get_active_thread_count
 from airweave.platform.temporal.worker_metrics_snapshot import (
     ConnectorSnapshot,
     WorkerMetricsSnapshot,

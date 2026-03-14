@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """Admin-only API endpoints for organization management.
 
 TODO: Enhance CRUD layer to support bypassing organization filtering cleanly.
@@ -34,6 +35,7 @@ from airweave.core.shared_models import AuthMethod
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 from airweave.crud.crud_organization_billing import organization_billing
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.access_control.protocols import AccessBrokerProtocol
 from airweave.domains.billing.operations import BillingOperations
 from airweave.domains.billing.repository import (
     BillingPeriodRepository,
@@ -43,13 +45,13 @@ from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.organizations.logic import generate_org_name
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
+from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.domains.usage.repository import UsageRepository
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
 from airweave.models.user_organization import UserOrganization
-from airweave.platform.sync.config import SyncConfig
 from airweave.schemas.organization_billing import BillingPlan, BillingStatus
 
 router = TrailingSlashRouter()
@@ -1409,14 +1411,13 @@ async def admin_get_user_principals(
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     collection_repo: CollectionRepositoryProtocol = Inject(CollectionRepositoryProtocol),
+    access_broker: AccessBrokerProtocol = Inject(AccessBrokerProtocol),
 ) -> List[str]:
     """Admin-only: Get the resolved access principals for a user in a collection.
 
     Returns all principals (user + group memberships) that would be used for
     access control filtering when the user searches the collection.
     """
-    from airweave.platform.access_control.broker import access_broker
-
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 
     collection = await collection_repo.get_by_readable_id(

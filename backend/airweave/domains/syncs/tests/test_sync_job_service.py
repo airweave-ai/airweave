@@ -13,9 +13,9 @@ from uuid import uuid4
 import pytest
 
 from airweave.core.shared_models import SyncJobStatus
+from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
 from airweave.domains.syncs.sync_job_service import SyncJobService
 from airweave.domains.syncs.types import StatsUpdate, TimestampUpdate
-from airweave.platform.sync.pipeline.entity_tracker import SyncStats
 
 NOW = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -50,7 +50,11 @@ STATS_CASES = [
     StatsCase(
         name="mixed_values",
         stats=SyncStats(
-            inserted=5, updated=3, deleted=1, kept=10, skipped=2,
+            inserted=5,
+            updated=3,
+            deleted=1,
+            kept=10,
+            skipped=2,
             entities_encountered={"Document": 15, "Image": 6},
         ),
         expected=StatsUpdate(
@@ -86,7 +90,7 @@ class TimestampCase:
     error: Optional[str] = None
     expected: Optional[TimestampUpdate] = None
 
-    def __post_init__(self):
+    def __post_init__(self):  # noqa: D105
         if self.expected is None:
             self.expected = TimestampUpdate()
 
@@ -212,9 +216,7 @@ async def test_update_status(case: UpdateStatusCase):
     mock_ctx.organization = MagicMock()
     mock_ctx.organization.id = uuid4()
 
-    with patch(
-        "airweave.domains.syncs.sync_job_service.get_db_context"
-    ) as mock_ctx_mgr:
+    with patch("airweave.domains.syncs.sync_job_service.get_db_context") as mock_ctx_mgr:
         mock_ctx_mgr.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx_mgr.return_value.__aexit__ = AsyncMock(return_value=False)
 

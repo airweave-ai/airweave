@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
-from airweave.platform.access_control.broker import access_broker
+from airweave.domains.access_control.protocols import AccessBrokerProtocol
 from airweave.search.context import SearchContext
 
 from ._base import SearchOperation
@@ -45,17 +45,13 @@ class AccessControlFilter(SearchOperation):
         db: AsyncSession,
         user_email: str,
         organization_id: UUID,
+        access_broker: AccessBrokerProtocol,
     ) -> None:
-        """Initialize with database session and user info.
-
-        Args:
-            db: Database session for AccessBroker queries
-            user_email: User's email for principal resolution
-            organization_id: Organization ID for scoped queries
-        """
+        """Initialize with database session, user info, and access broker."""
         self.db = db
         self.user_email = user_email
         self.organization_id = organization_id
+        self._access_broker = access_broker
 
     def depends_on(self) -> List[str]:
         """No dependencies - runs early in the pipeline."""
@@ -75,7 +71,7 @@ class AccessControlFilter(SearchOperation):
 
         # Resolve access context for this collection
         # Returns None if collection has no AC sources (skip filtering)
-        access_context = await access_broker.resolve_access_context_for_collection(
+        access_context = await self._access_broker.resolve_access_context_for_collection(
             db=self.db,
             user_principal=self.user_email,
             readable_collection_id=context.readable_collection_id,

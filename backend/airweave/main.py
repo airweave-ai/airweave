@@ -63,11 +63,6 @@ async def lifespan(app: FastAPI):
     initialize_container(settings)
     logger.info("Container initialized successfully")
 
-    # Initialize converters with OCR from the container
-    from airweave.platform.converters import initialize_converters
-
-    initialize_converters(ocr_provider=container_mod.container.ocr_provider)
-
     async with AsyncSessionLocal() as db:
         if settings.RUN_ALEMBIC_MIGRATIONS:
             logger.info("Running alembic migrations...")

@@ -11,7 +11,7 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 import httpx
 
-from airweave.platform.access_control.schemas import MembershipTuple
+from airweave.domains.access_control.schemas import MembershipTuple
 from airweave.platform.sources.sharepoint_online.acl import format_entra_group_id
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"

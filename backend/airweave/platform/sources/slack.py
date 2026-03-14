@@ -8,6 +8,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
+from airweave.domains.sync_pipeline.pipeline.text_builder import TextualRepresentationBuilder
 from airweave.platform.configs.auth import SlackAuthConfig
 from airweave.platform.configs.config import SlackConfig
 from airweave.platform.decorators import source
@@ -18,7 +19,6 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.platform.sync.pipeline.text_builder import text_builder
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -326,9 +326,7 @@ class SlackSource(BaseSource):
                 web_url_value=message.get("permalink"),
             )
 
-            # Build textual representation using shared utility
-            # (normally built by TextualRepresentationBuilder in sync pipeline)
-            entity.textual_representation = text_builder.build_metadata_section(
+            entity.textual_representation = TextualRepresentationBuilder().build_metadata_section(
                 entity=entity,
                 source_name="slack",
             )

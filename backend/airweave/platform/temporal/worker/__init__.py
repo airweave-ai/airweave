@@ -183,12 +183,7 @@ async def main() -> None:
         )
         raise SystemExit(1)
 
-    # 3. Initialize converters with OCR from the container
-    from airweave.platform.converters import initialize_converters
-
-    initialize_converters(ocr_provider=container_mod.container.ocr_provider)
-
-    # 4. Create worker with config
+    # 3. Create worker with config
     config = WorkerConfig.from_settings()
     worker = TemporalWorker(config)
 

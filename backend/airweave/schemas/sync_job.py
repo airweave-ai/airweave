@@ -11,8 +11,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from airweave.domains.sync_pipeline.config.base import SyncConfig
 from airweave.models.sync_job import SyncJobStatus
-from airweave.platform.sync.config.base import SyncConfig
 
 
 class SyncJobBase(BaseModel):

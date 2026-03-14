@@ -24,8 +24,9 @@ import json
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
+from airweave.domains.access_control.schemas import MembershipTuple
 from airweave.domains.browse_tree.types import BrowseNode, NodeSelectionData
-from airweave.platform.access_control.schemas import MembershipTuple
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 from airweave.platform.configs.auth import SharePoint2019V2AuthConfig
 from airweave.platform.configs.config import SharePoint2019V2Config
 from airweave.platform.cursors.sharepoint2019v2 import SharePoint2019V2Cursor
@@ -48,8 +49,7 @@ from airweave.platform.sources.sharepoint2019v2.builders import (
     build_site_entity,
 )
 from airweave.platform.sources.sharepoint2019v2.client import SharePointClient
-from airweave.platform.storage import FileSkippedException
-from airweave.platform.sync.exceptions import EntityProcessingError
+from airweave.domains.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod
 
 # Maximum concurrent file downloads

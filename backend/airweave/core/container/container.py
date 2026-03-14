@@ -30,6 +30,8 @@ from airweave.core.protocols import (
 )
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
+from airweave.domains.access_control.protocols import AccessBrokerProtocol
+from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.auth_provider.protocols import (
     AuthProviderRegistryProtocol,
     AuthProviderServiceProtocol,
@@ -45,6 +47,7 @@ from airweave.domains.collections.protocols import (
 )
 from airweave.domains.connect.protocols import ConnectServiceProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
+from airweave.domains.converters.protocols import ConverterRegistryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.embedders.protocols import (
     DenseEmbedderProtocol,
@@ -52,7 +55,10 @@ from airweave.domains.embedders.protocols import (
     SparseEmbedderProtocol,
     SparseEmbedderRegistryProtocol,
 )
-from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
+from airweave.domains.entities.protocols import (
+    EntityDefinitionRegistryProtocol,
+    EntityRepositoryProtocol,
+)
 from airweave.domains.oauth.protocols import (
     OAuth1ServiceProtocol,
     OAuth2ServiceProtocol,
@@ -75,6 +81,8 @@ from airweave.domains.sources.protocols import (
     SourceRegistryProtocol,
     SourceServiceProtocol,
 )
+from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
+from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
 from airweave.domains.syncs.protocols import (
     SyncCursorRepositoryProtocol,
     SyncJobRepositoryProtocol,
@@ -186,6 +194,12 @@ class Container:
     sync_job_service: SyncJobServiceProtocol
     sync_service: SyncServiceProtocol
     sync_lifecycle: SyncLifecycleServiceProtocol
+    sync_factory: SyncFactoryProtocol
+
+    entity_repo: EntityRepositoryProtocol
+
+    # Access control broker (resolves user → group principals)
+    access_broker: AccessBrokerProtocol
 
     # Temporal domain
     temporal_workflow_service: TemporalWorkflowServiceProtocol
@@ -223,6 +237,18 @@ class Container:
 
     # Connect domain service (session-based frontend integration flows)
     connect_service: ConnectServiceProtocol
+
+    # Storage domain — unified backend for file/object storage
+    storage_backend: StorageBackend
+
+    # Storage domain — sync-aware file manager (CTTI, metadata, caching)
+    sync_file_manager: SyncFileManagerProtocol
+
+    # ARF domain — raw entity capture / replay service
+    arf_service: ArfServiceProtocol
+
+    # Converter registry (maps file extensions to converter instances)
+    converter_registry: ConverterRegistryProtocol
 
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured
