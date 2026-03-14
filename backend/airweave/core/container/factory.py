@@ -380,6 +380,15 @@ def create_container(settings: Settings) -> Container:
     converter_registry = ConverterRegistry(ocr_provider=ocr_provider)
     chunk_embed_processor = ChunkEmbedProcessor(converter_registry=converter_registry)
 
+    # Storage domain
+    # -----------------------------------------------------------------
+    storage_backend = get_storage_backend()
+    sync_file_manager = SyncFileManager(backend=storage_backend)
+
+    # ARF domain service (raw entity capture / replay)
+    # -----------------------------------------------------------------
+    arf_service = ArfService(storage=storage_backend)
+
     # -----------------------------------------------------------------
     # Sync factory + service
     # -----------------------------------------------------------------
@@ -392,6 +401,7 @@ def create_container(settings: Settings) -> Container:
         entity_repo=sync_deps["entity_repo"],
         acl_repo=acl_membership_repo,
         processor=chunk_embed_processor,
+        arf_service=arf_service,
     )
 
     sync_service = SyncService(
@@ -464,19 +474,6 @@ def create_container(settings: Settings) -> Container:
         conn_repo=source_deps["conn_repo"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
     )
-
-    # Storage domain
-    # -----------------------------------------------------------------
-    storage_backend = _create_storage_backend(settings)
-    sync_file_manager = SyncFileManager(backend=storage_backend)
-
-    # ARF domain service (raw entity capture / replay)
-    # -----------------------------------------------------------------
-    arf_service = ArfService(storage=storage_backend)
-
-    # -----------------------------------------------------------------
-    # Usage billing listener
-    # -----------------------------------------------------------------
 
     return Container(
         storage_backend=storage_backend,

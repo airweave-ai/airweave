@@ -47,7 +47,6 @@ from airweave.platform.sources.sharepoint_online.builders import (
 from airweave.platform.sources.sharepoint_online.client import GraphClient
 from airweave.platform.sources.sharepoint_online.graph_groups import EntraGroupExpander
 from airweave.domains.storage import FileSkippedException
-from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 MAX_CONCURRENT_FILE_DOWNLOADS = 10

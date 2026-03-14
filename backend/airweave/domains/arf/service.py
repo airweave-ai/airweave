@@ -22,8 +22,8 @@ from airweave.domains.arf.types import SyncManifest
 from airweave.domains.storage.exceptions import StorageNotFoundError
 from airweave.domains.storage.paths import StoragePaths
 from airweave.domains.storage.protocols import StorageBackend
-from airweave.platform.contexts import SyncContext
-from airweave.platform.contexts.runtime import SyncRuntime
+from airweave.domains.sync_pipeline.contexts import SyncContext
+from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.platform.entities._base import BaseEntity
 
 
