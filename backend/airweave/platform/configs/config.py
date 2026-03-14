@@ -1048,3 +1048,34 @@ class SharePointOnlineConfig(SourceConfig):
         title="Include Site Pages",
         description="Whether to sync SharePoint site pages.",
     )
+
+
+class HerbConfig(SourceConfig):
+    """Configuration for HERB benchmark sources.
+
+    Points to the HERB /data directory containing product JSON files and metadata/.
+    """
+
+    data_dir: str = Field(
+        ...,
+        title="HERB Data Directory",
+        description="Path to the HERB /data directory (e.g. '/tmp/HERB/data')",
+        min_length=1,
+    )
+
+
+class EnronConfig(SourceConfig):
+    """Configuration for the Enron email dataset source.
+
+    Points to the root of a HuggingFace snapshot_download of corbt/enron-emails.
+    Expected structure: {data_dir}/data/*.parquet
+    """
+
+    data_dir: str = Field(
+        ...,
+        title="Enron Data Directory",
+        description=(
+            "Path to the downloaded Enron email dataset root (e.g. '/data/enron-emails-data')"
+        ),
+        min_length=1,
+    )

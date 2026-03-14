@@ -31,6 +31,16 @@ from airweave.schemas.search import AirweaveTemporalConfig
 from airweave.schemas.search_result import AirweaveSearchResult
 
 
+class VespaTransientFeedError(ConnectionError):
+    """Raised when Vespa feed fails with a transient error (5xx, connection issues).
+
+    Inherits from ConnectionError so the destination handler's retry logic
+    treats it as a retryable network error.
+    """
+
+    pass
+
+
 @destination(
     "Vespa",
     "vespa",
@@ -177,7 +187,12 @@ class VespaDestination(VectorDBDestination):
             self._handle_feed_failures(result.failed_docs, total_docs)
 
     def _handle_feed_failures(self, failed_docs: List[tuple], total_docs: int) -> None:
-        """Log and raise error for feed failures."""
+        """Log and raise error for feed failures.
+
+        Raises VespaTransientFeedError for server/connection errors (5xx, 599)
+        so the destination handler can retry. Raises RuntimeError for client
+        errors (4xx) which won't be helped by retrying.
+        """
         self.logger.error(f"{len(failed_docs)}/{total_docs} documents failed to feed")
         for doc_id, status, body in failed_docs[:5]:
             self.logger.error(f"  Failed {doc_id}: status={status}, body={body}")
@@ -188,10 +203,16 @@ class VespaDestination(VectorDBDestination):
             if isinstance(first_body, dict)
             else str(first_body)
         )
-        raise RuntimeError(
+        msg = (
             f"Vespa feed failed: {len(failed_docs)}/{total_docs} documents. "
             f"First error ({first_doc_id}): {error_msg}"
         )
+
+        # 5xx and 599 (pyvespa connection error) are transient — retry
+        is_transient = any(status >= 500 or status == 0 for _, status, _ in failed_docs)
+        if is_transient:
+            raise VespaTransientFeedError(msg)
+        raise RuntimeError(msg)
 
     async def delete_by_sync_id(self, sync_id: UUID) -> None:
         """Delete all documents from a sync run.

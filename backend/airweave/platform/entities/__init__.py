@@ -93,6 +93,7 @@ from .dropbox import (
     DropboxFileEntity,
     DropboxFolderEntity,
 )
+from .enron import EnronEmailEntity
 from .file_stub import (
     DocxFileStubEntity,
     FileStubContainerEntity,
@@ -150,6 +151,12 @@ from .google_slides import (
     GoogleSlidesPresentationEntity,
     GoogleSlidesSlideEntity,
 )
+from .herb_code_review import HerbPullRequestEntity
+from .herb_documents import HerbDocumentEntity
+from .herb_meetings import HerbMeetingChatEntity, HerbMeetingTranscriptEntity
+from .herb_messaging import HerbMessageEntity
+from .herb_people import HerbCustomerEntity, HerbEmployeeEntity
+from .herb_resources import HerbResourceEntity
 from .hubspot import (
     HubspotCompanyEntity,
     HubspotContactEntity,
@@ -435,6 +442,9 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         DropboxFileEntity,
         DropboxFolderEntity,
     ],
+    "enron": [
+        EnronEmailEntity,
+    ],
     "file_stub": [
         DocxFileStubEntity,
         FileStubContainerEntity,
@@ -475,6 +485,26 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         GmailMessageDeletionEntity,
         GmailMessageEntity,
         GmailThreadEntity,
+    ],
+    "herb_code_review": [
+        HerbPullRequestEntity,
+    ],
+    "herb_documents": [
+        HerbDocumentEntity,
+    ],
+    "herb_meetings": [
+        HerbMeetingTranscriptEntity,
+        HerbMeetingChatEntity,
+    ],
+    "herb_messaging": [
+        HerbMessageEntity,
+    ],
+    "herb_people": [
+        HerbEmployeeEntity,
+        HerbCustomerEntity,
+    ],
+    "herb_resources": [
+        HerbResourceEntity,
     ],
     "google_calendar": [
         GoogleCalendarCalendarEntity,

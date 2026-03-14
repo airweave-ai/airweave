@@ -17,7 +17,7 @@ from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.events.sync import QueryProcessedEvent
-from airweave.core.protocols import EventBus, MetricsService, PubSub
+from airweave.core.protocols import EventBus, PubSub
 from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
@@ -28,7 +28,11 @@ from airweave.search.agentic_search.emitter import (
     AgenticSearchLoggingEmitter,
     AgenticSearchPubSubEmitter,
 )
-from airweave.search.agentic_search.schemas import AgenticSearchRequest, AgenticSearchResponse
+from airweave.search.agentic_search.schemas import (
+    AgenticSearchRequest,
+    AgenticSearchResponse,
+    InternalAgenticSearchRequest,
+)
 from airweave.search.agentic_search.schemas.events import AgenticSearchErrorEvent
 from airweave.search.agentic_search.services import AgenticSearchServices
 
@@ -43,7 +47,6 @@ async def agentic_search(
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
     event_bus: EventBus = Inject(EventBus),
-    metrics_service: MetricsService = Inject(MetricsService),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> AgenticSearchResponse:
@@ -62,7 +65,7 @@ async def agentic_search(
 
     try:
         emitter = AgenticSearchLoggingEmitter(ctx)
-        agent = AgenticSearchAgent(services, ctx, emitter, metrics=metrics_service.agentic_search)
+        agent = AgenticSearchAgent(services, ctx, emitter)
 
         response = await agent.run(readable_id, request, is_streaming=False)
 
@@ -81,7 +84,6 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
     event_bus: EventBus = Inject(EventBus),
-    metrics_service: MetricsService = Inject(MetricsService),
     pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
@@ -103,7 +105,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
     )
     ctx.logger.info(
         f"[AgenticSearchStream] Request body: query={request.query!r}, "
-        f"mode={request.mode}, filter={request.filter}"
+        f"filter={request.filter}"
     )
 
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
@@ -128,9 +130,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
             services = await AgenticSearchServices.create(
                 ctx, readable_id, dense_embedder=dense_embedder, sparse_embedder=sparse_embedder
             )
-            agent = AgenticSearchAgent(
-                services, ctx, emitter, metrics=metrics_service.agentic_search
-            )
+            agent = AgenticSearchAgent(services, ctx, emitter)
             agent_reached = True
             await agent.run(readable_id, request, is_streaming=True)
         except Exception as e:
@@ -210,6 +210,134 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
                 ctx.logger.info(
                     f"[AgenticSearchStream] Closed pubsub for agentic_search:{request_id}"
                 )
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Content-Type": "text/event-stream",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin router — internal endpoints with model override support
+# ---------------------------------------------------------------------------
+admin_router = TrailingSlashRouter()
+
+
+@admin_router.post("/{readable_id}/agentic-search/stream")
+async def admin_stream_agentic_search(  # noqa: C901 - streaming orchestration is acceptable
+    request: InternalAgenticSearchRequest,
+    readable_id: str = Path(..., description="The unique readable identifier of the collection"),
+    db: AsyncSession = Depends(get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
+    pubsub: PubSub = Inject(PubSub),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
+) -> StreamingResponse:
+    """Internal streaming agentic search endpoint with optional model override.
+
+    Identical to the public streaming endpoint but accepts an optional `model` field
+    (format: "provider/model") to override the LLM for this request. Used by the
+    evals framework for model comparison experiments.
+    """
+    if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
+        raise HTTPException(
+            status_code=403,
+            detail="AGENTIC_SEARCH feature not enabled for this organization",
+        )
+
+    request_id = ctx.request_id
+    model_desc = f", model={request.model}" if request.model else ""
+    ctx.logger.info(
+        f"[AdminAgenticSearchStream] Starting stream for collection '{readable_id}' "
+        f"id={request_id}{model_desc}"
+    )
+    ctx.logger.info(
+        f"[AdminAgenticSearchStream] Request body: query={request.query!r}, "
+        f"filter={request.filter}{model_desc}"
+    )
+
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+
+    ps = await pubsub.subscribe("agentic_search", request_id)
+    emitter = AgenticSearchPubSubEmitter(request_id, pubsub=pubsub)
+
+    async def _run_search() -> None:
+        services = None
+        agent_reached = False
+        try:
+            services = await AgenticSearchServices.create(
+                ctx,
+                readable_id,
+                dense_embedder=dense_embedder,
+                sparse_embedder=sparse_embedder,
+                model_override=request.model,
+            )
+            agent = AgenticSearchAgent(services, ctx, emitter)
+            agent_reached = True
+            await agent.run(readable_id, request, is_streaming=True)
+        except Exception as e:
+            ctx.logger.exception(f"[AdminAgenticSearchStream] Error in search {request_id}: {e}")
+            if not agent_reached:
+                try:
+                    await emitter.emit(AgenticSearchErrorEvent(message=str(e)))
+                except Exception:
+                    ctx.logger.error(
+                        f"[AdminAgenticSearchStream] Failed to emit error event for {request_id}"
+                    )
+        finally:
+            if services is not None:
+                await services.close()
+
+    search_task = asyncio.create_task(_run_search())
+
+    async def event_stream():  # noqa: C901 - streaming loop is acceptable
+        try:
+            async for message in ps.listen():
+                if message["type"] == "message":
+                    data = message["data"]
+                    try:
+                        parsed = json.loads(data)
+                        event_type = parsed.get("type", "")
+                        yield f"data: {data}\n\n"
+                        if event_type == "done":
+                            try:
+                                await event_bus.publish(
+                                    QueryProcessedEvent(organization_id=ctx.organization.id)
+                                )
+                            except Exception:
+                                pass
+                            break
+                        if event_type == "error":
+                            break
+                    except json.JSONDecodeError:
+                        yield f"data: {data}\n\n"
+                elif message["type"] == "subscribe":
+                    pass
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            error_data = json.dumps({"type": "error", "message": str(e)})
+            yield f"data: {error_data}\n\n"
+        finally:
+            if not search_task.done():
+                search_task.cancel()
+                try:
+                    await search_task
+                except Exception:
+                    pass
+            try:
+                await ps.close()
             except Exception:
                 pass
 

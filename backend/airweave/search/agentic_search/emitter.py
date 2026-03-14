@@ -15,16 +15,14 @@ from airweave.api.context import ApiContext
 from airweave.search.agentic_search.schemas.events import (
     AgenticSearchDoneEvent,
     AgenticSearchErrorEvent,
-    AgenticSearchEvaluatingEvent,
-    AgenticSearchingEvent,
-    AgenticSearchPlanningEvent,
+    AgenticSearchThinkingEvent,
+    AgenticSearchToolCallEvent,
 )
 
 # Concrete union for type hints (matches AgenticSearchEvent but avoids Annotated issues in Protocol)
 _EventTypes = Union[
-    AgenticSearchPlanningEvent,
-    AgenticSearchingEvent,
-    AgenticSearchEvaluatingEvent,
+    AgenticSearchThinkingEvent,
+    AgenticSearchToolCallEvent,
     AgenticSearchDoneEvent,
     AgenticSearchErrorEvent,
 ]
@@ -53,18 +51,18 @@ class AgenticSearchLoggingEmitter:
         """Log the event."""
         prefix = "[AgenticSearch:Event]"
 
-        if isinstance(event, AgenticSearchPlanningEvent):
+        if isinstance(event, AgenticSearchThinkingEvent):
+            text = event.text[:500] + "..." if len(event.text) > 500 else event.text
             self._ctx.logger.debug(
-                f"{prefix} Planning (iter {event.iteration}): {event.plan.reasoning}"
+                f"{prefix} Thinking (iter {event.iteration}): {text} "
+                f"[{event.prompt_tokens}+{event.completion_tokens} tok, "
+                f"{event.tool_calls_count} calls, stop={event.stop_reason}]"
             )
-        elif isinstance(event, AgenticSearchingEvent):
+        elif isinstance(event, AgenticSearchToolCallEvent):
             self._ctx.logger.debug(
-                f"{prefix} Search (iter {event.iteration}): "
-                f"{event.result_count} results in {event.duration_ms}ms"
+                f"{prefix} ToolCall (iter {event.iteration}): "
+                f"{event.tool_name} → {event.duration_ms}ms"
             )
-        elif isinstance(event, AgenticSearchEvaluatingEvent):
-            ev = event.evaluation
-            self._ctx.logger.debug(f"{prefix} Evaluation (iter {event.iteration}): {ev.reasoning}")
         elif isinstance(event, AgenticSearchDoneEvent):
             result_count = len(event.response.results)
             self._ctx.logger.debug(f"{prefix} Done: {result_count} results")

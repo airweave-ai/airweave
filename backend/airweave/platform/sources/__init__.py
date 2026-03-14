@@ -13,6 +13,7 @@ from .confluence import ConfluenceSource
 from .ctti import CTTISource
 from .document360 import Document360Source
 from .dropbox import DropboxSource
+from .enron import EnronSource
 from .file_stub import FileStubSource
 from .fireflies import FirefliesSource
 from .freshdesk import FreshdeskSource
@@ -23,6 +24,14 @@ from .google_calendar import GoogleCalendarSource
 from .google_docs import GoogleDocsSource
 from .google_drive import GoogleDriveSource
 from .google_slides import GoogleSlidesSource
+from .herb import (
+    HerbCodeReviewSource,
+    HerbDocumentsSource,
+    HerbMeetingsSource,
+    HerbMessagingSource,
+    HerbPeopleSource,
+    HerbResourcesSource,
+)
 from .hubspot import HubspotSource
 from .incremental_stub import IncrementalStubSource
 from .intercom import IntercomSource
@@ -71,11 +80,18 @@ ALL_SOURCES: list[type] = [
     CTTISource,
     Document360Source,
     DropboxSource,
+    EnronSource,
     FileStubSource,
     FirefliesSource,
     FreshdeskSource,
     GitHubSource,
     GitLabSource,
+    HerbCodeReviewSource,
+    HerbDocumentsSource,
+    HerbMeetingsSource,
+    HerbMessagingSource,
+    HerbPeopleSource,
+    HerbResourcesSource,
     GmailSource,
     GoogleCalendarSource,
     GoogleDocsSource,

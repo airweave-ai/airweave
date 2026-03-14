@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { apiClient, API_CONFIG } from '@/lib/api';
+import { API_CONFIG } from '@/lib/api';
 import { Terminal } from 'lucide-react';
 import { useTheme } from '@/lib/theme-provider';
 import { cn } from '@/lib/utils';
@@ -11,56 +11,69 @@ import { McpIcon } from '@/components/icons/McpIcon';
 import { CodeBlock } from '@/components/ui/code-block';
 import { DESIGN_SYSTEM } from '@/lib/design-system';
 
-interface SearchConfig {
-    search_method: "hybrid" | "neural" | "keyword";
-    expansion_strategy: "auto" | "llm" | "no_expansion";
-    enable_query_interpretation: boolean;
-    recency_bias: number;
-    enable_reranking: boolean;
-    response_type: "raw" | "completion";
-    filter?: any;
-}
-
-interface AgenticConfig {
-    mode: "fast" | "thinking";
-    filter: any[];  // backend-ready filter groups
-}
+// Local type aliases — avoids circular import with SearchBox
+type SearchTier = "instant" | "classic" | "agentic";
+type RetrievalStrategy = "hybrid" | "neural" | "keyword";
 
 interface ApiIntegrationDocProps {
     collectionReadableId: string;
     query?: string;
-    searchConfig?: SearchConfig;
-    agenticConfig?: AgenticConfig;
-    filter?: string | null;
+    tier: SearchTier;
+    retrievalStrategy?: RetrievalStrategy;
+    thinking?: boolean;
+    filter?: any[];
     apiKey?: string;
 }
 
-export const ApiIntegrationDoc = ({ collectionReadableId, query, searchConfig, agenticConfig, filter, apiKey = "YOUR_API_KEY" }: ApiIntegrationDocProps) => {
-    // LiveApiDoc state
+export const ApiIntegrationDoc = ({
+    collectionReadableId,
+    query,
+    tier,
+    retrievalStrategy = "hybrid",
+    thinking = false,
+    filter = [],
+    apiKey = "YOUR_API_KEY",
+}: ApiIntegrationDocProps) => {
     const [apiTab, setApiTab] = useState<"rest" | "python" | "node" | "mcp">("rest");
 
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
 
-    const isAgentic = !!agenticConfig;
-
-    // ─── Agentic search snippets ─────────────────────────────────────
-    const agenticEndpoints = useMemo(() => {
-        if (!agenticConfig) return null;
-
+    const endpoints = useMemo(() => {
         const apiBaseUrl = API_CONFIG.baseURL;
-        const apiUrl = `${apiBaseUrl}/collections/${collectionReadableId}/agentic-search`;
         const searchQuery = query || "Ask a question about your data";
+        const hasFilters = filter.length > 0;
 
         const escapeForJson = (str: string) => str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         const escapeForPython = (str: string) => str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-        // Build request body
-        const requestBody: any = {
-            query: searchQuery,
-            ...(agenticConfig.filter.length > 0 ? { filter: agenticConfig.filter } : {}),
-            mode: agenticConfig.mode,
-        };
+        // v2 endpoint URL
+        const apiUrl = `${apiBaseUrl}/collections/${collectionReadableId}/search/${tier}`;
+
+        // Request body per tier
+        let requestBody: any;
+        switch (tier) {
+            case "instant":
+                requestBody = {
+                    query: searchQuery,
+                    retrieval_strategy: retrievalStrategy,
+                    ...(hasFilters && { filter }),
+                };
+                break;
+            case "classic":
+                requestBody = {
+                    query: searchQuery,
+                    ...(hasFilters && { filter }),
+                };
+                break;
+            case "agentic":
+                requestBody = {
+                    query: searchQuery,
+                    thinking,
+                    ...(hasFilters && { filter }),
+                };
+                break;
+        }
 
         const jsonBody = JSON.stringify(requestBody, null, 2)
             .split('\n')
@@ -71,22 +84,34 @@ export const ApiIntegrationDoc = ({ collectionReadableId, query, searchConfig, a
             })
             .join('\n');
 
-        // cURL
-        const curlSnippet = `# Agentic search
-curl -X 'POST' \\
+        // ─── cURL ────────────────────────────────────────────────────────
+        const curlSnippet = `curl -X 'POST' \\
   '${apiUrl}' \\
   -H 'accept: application/json' \\
   -H 'x-api-key: ${apiKey}' \\
   -H 'Content-Type: application/json' \\
   -d '${jsonBody}'`;
 
-        // Python
-        const filterLines = agenticConfig.filter.length > 0
-            ? `\n        filter=${JSON.stringify(agenticConfig.filter, null, 4)
+        // ─── Python ──────────────────────────────────────────────────────
+        const sdkMethodPython = tier === "instant" ? "search_instant"
+            : tier === "classic" ? "search_classic"
+            : "search_agentic";
+
+        const pythonParams: string[] = [
+            `        "query": "${escapeForPython(searchQuery)}"`,
+        ];
+        if (tier === "instant") {
+            pythonParams.push(`        "retrieval_strategy": "${retrievalStrategy}"`);
+        }
+        if (tier === "agentic") {
+            pythonParams.push(`        "thinking": ${thinking ? "True" : "False"}`);
+        }
+        if (hasFilters) {
+            pythonParams.push(`        "filter": ${JSON.stringify(filter, null, 4)
                 .split('\n')
                 .map((l, i) => i === 0 ? l : '        ' + l)
-                .join('\n')},`
-            : '';
+                .join('\n')}`);
+        }
 
         const pythonSnippet =
             `from airweave import AirweaveSDK
@@ -95,42 +120,52 @@ client = AirweaveSDK(
     api_key="${apiKey}",
 )
 
-# Agentic search
-response = client.collections.agentic_search(
+response = client.collections.${sdkMethodPython}(
     readable_id="${collectionReadableId}",
     request={
-        "query": "${escapeForPython(searchQuery)}",${filterLines}
-        "mode": "${agenticConfig.mode}",
+${pythonParams.join(',\n')},
     },
 )
-print(response.results, response.answer)`;
+print(response.results${tier === "agentic" ? ", response.answer" : ""})`;
 
-        // Node.js
-        const nodeFilterLines = agenticConfig.filter.length > 0
-            ? `\n            filter: ${JSON.stringify(agenticConfig.filter, null, 4)
+        // ─── Node.js ─────────────────────────────────────────────────────
+        const sdkMethodNode = tier === "instant" ? "searchInstant"
+            : tier === "classic" ? "searchClassic"
+            : "searchAgentic";
+
+        const nodeParams: string[] = [
+            `            query: "${escapeForJson(searchQuery)}"`,
+        ];
+        if (tier === "instant") {
+            nodeParams.push(`            retrievalStrategy: "${retrievalStrategy}"`);
+        }
+        if (tier === "agentic") {
+            nodeParams.push(`            thinking: ${thinking}`);
+        }
+        if (hasFilters) {
+            nodeParams.push(`            filter: ${JSON.stringify(filter, null, 4)
                 .split('\n')
                 .map((l, i) => i === 0 ? l : '            ' + l)
-                .join('\n')},`
-            : '';
+                .join('\n')}`);
+        }
 
         const nodeSnippet =
             `import { AirweaveSDKClient } from "@airweave/sdk";
 
 const client = new AirweaveSDKClient({ apiKey: "${apiKey}" });
 
-// Agentic search
-const response = await client.collections.agenticSearch(
+const response = await client.collections.${sdkMethodNode}(
     "${collectionReadableId}",
     {
         request: {
-            query: "${escapeForJson(searchQuery)}",${nodeFilterLines}
-            mode: "${agenticConfig.mode}",
+${nodeParams.join(',\n')},
         }
     }
 );
 
-console.log(response.results, response.answer);`;
+console.log(response.results${tier === "agentic" ? ", response.answer" : ""});`;
 
+        // ─── MCP config (collection-level, not tier-specific) ────────────
         const configSnippet = `{
   "mcpServers": {
     "airweave-${collectionReadableId}": {
@@ -139,190 +174,14 @@ console.log(response.results, response.answer);`;
       "env": {
         "AIRWEAVE_API_KEY": "${apiKey}",
         "AIRWEAVE_COLLECTION": "${collectionReadableId}",
-        "AIRWEAVE_BASE_URL": "${API_CONFIG.baseURL}"
+        "AIRWEAVE_BASE_URL": "${apiBaseUrl}"
       }
     }
   }
 }`;
 
         return { curlSnippet, pythonSnippet, nodeSnippet, configSnippet };
-    }, [collectionReadableId, apiKey, agenticConfig, query]);
-
-    // ─── Regular search snippets ─────────────────────────────────────
-    const apiEndpoints = useMemo(() => {
-        if (isAgentic) return null;
-
-        const apiBaseUrl = API_CONFIG.baseURL;
-        const apiUrl = `${apiBaseUrl}/collections/${collectionReadableId}/search`;
-        const searchQuery = query || "Ask a question about your data";
-
-        // Escape query for different contexts
-        const escapeForJson = (str: string) => str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-        const escapeForPython = (str: string) => str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-
-        // Parse filter if provided
-        let parsedFilter = null;
-        if (filter) {
-            try {
-                parsedFilter = JSON.parse(filter);
-            } catch {
-                parsedFilter = null;
-            }
-        }
-
-        // Build request body with ALL parameters in specific order (new schema)
-        const requestBody: any = {
-            query: searchQuery,  // Will be escaped when stringified
-            retrieval_strategy: searchConfig?.search_method || "hybrid",
-            expand_query: searchConfig?.expansion_strategy !== "no_expansion",
-            ...(parsedFilter ? { filter: parsedFilter } : {}),  // Include filter only if valid
-            interpret_filters: searchConfig?.enable_query_interpretation || false,
-            temporal_relevance: searchConfig?.recency_bias ?? 0.3,
-            rerank: searchConfig?.enable_reranking ?? true,
-            generate_answer: searchConfig?.response_type === "completion",
-            limit: 20,
-            offset: 0
-        };
-
-        // Create the cURL command with formatted JSON
-        const jsonBody = JSON.stringify(requestBody, null, 2)
-            .split('\n')
-            .map((line, index, array) => {
-                if (index === 0) return line;
-                if (index === array.length - 1) return '  ' + line;
-                return '  ' + line;
-            })
-            .join('\n');
-
-        // Add note about query interpretation if enabled
-        const interpretNote = searchConfig?.enable_query_interpretation
-            ? `# Note: interpret_filters is enabled, which may automatically add\n# additional filters extracted from your natural language query.\n# The filter shown below is your manual filter only.\n\n`
-            : '';
-
-        const curlSnippet = `${interpretNote}curl -X 'POST' \\
-  '${apiUrl}' \\
-  -H 'accept: application/json' \\
-  -H 'x-api-key: ${apiKey}' \\
-  -H 'Content-Type: application/json' \\
-  -d '${jsonBody}'`;
-
-        // Create the Python code with ALL parameters in specific order
-        const pythonFilterStr = parsedFilter ?
-            JSON.stringify(parsedFilter, null, 4)
-                .split('\n')
-                .map((line, index) => index === 0 ? line : '        ' + line)
-                .join('\n') :
-            null;
-
-        const pythonRequestParams = [
-            `        query="${escapeForPython(searchQuery)}"`,
-            `        retrieval_strategy=RetrievalStrategy.${(searchConfig?.search_method || "hybrid").toUpperCase()}`,
-            `        expand_query=${searchConfig?.expansion_strategy !== "no_expansion" ? "True" : "False"}`,
-            ...(pythonFilterStr ? [`        filter=${pythonFilterStr}`] : []),
-            `        interpret_filters=${searchConfig?.enable_query_interpretation ? "True" : "False"}`,
-            `        temporal_relevance=${searchConfig?.recency_bias ?? 0}`,
-            `        rerank=${(searchConfig?.enable_reranking ?? true) ? "True" : "False"}`,
-            `        generate_answer=${searchConfig?.response_type === "compilation" ? "True" : "False"}`,
-            `        limit=1000`,
-            `        offset=0`
-        ];
-
-        const pythonInterpretNote = searchConfig?.enable_query_interpretation
-            ? `# Note: interpret_filters is enabled, which may automatically add
-# additional filters extracted from your natural language query.
-# The filter shown below is your manual filter only.
-
-`
-            : '';
-
-        const pythonSnippet =
-            `${pythonInterpretNote}from airweave import AirweaveSDK, SearchRequest, RetrievalStrategy
-
-client = AirweaveSDK(
-    api_key="${apiKey}",
-)
-
-result = client.collections.search(
-    readable_id="${collectionReadableId}",
-    request=SearchRequest(
-${pythonRequestParams.join(',\n')}
-    ),
-)
-
-print(result.completion)  # AI-generated answer (if generate_answer=True)
-print(len(result.results))  # Number of results`;
-
-        // Create the Node.js code with ALL parameters in specific order
-        const nodeFilterStr = parsedFilter ?
-            JSON.stringify(parsedFilter, null, 4)
-                .split('\n')
-                .map((line, index) => index === 0 ? line : '            ' + line)
-                .join('\n') :
-            null;
-
-        const nodeRequestParams = [
-            `            query: "${escapeForJson(searchQuery)}"`,
-            `            retrievalStrategy: "${searchConfig?.search_method || "hybrid"}"`,
-            `            expandQuery: ${searchConfig?.expansion_strategy !== "no_expansion"}`,
-            ...(nodeFilterStr ? [`            filter: ${nodeFilterStr}`] : []),
-            `            interpretFilters: ${searchConfig?.enable_query_interpretation || false}`,
-            `            temporalRelevance: ${searchConfig?.recency_bias ?? 0}`,
-            `            rerank: ${searchConfig?.enable_reranking ?? true}`,
-            `            generateAnswer: ${searchConfig?.response_type === "completion"}`,
-            `            limit: 1000`,
-            `            offset: 0`
-        ];
-
-        const nodeInterpretNote = searchConfig?.enable_query_interpretation
-            ? `// Note: interpretFilters is enabled, which may automatically add
-// additional filters extracted from your natural language query.
-// The filter shown below is your manual filter only.
-
-`
-            : '';
-
-        const nodeSnippet =
-            `${nodeInterpretNote}import { AirweaveSDKClient } from "@airweave/sdk";
-
-const client = new AirweaveSDKClient({ apiKey: "${apiKey}" });
-
-const result = await client.collections.search("${collectionReadableId}", {
-    request: {
-${nodeRequestParams.join(',\n')}
-    }
-});
-
-console.log(result.completion);  // AI-generated answer (if generateAnswer=true)
-console.log(result.results.length);  // Number of results`;
-
-        // MCP Server code examples
-        const configSnippet =
-            `{
-  "mcpServers": {
-    "airweave-${collectionReadableId}": {
-      "command": "npx",
-      "args": ["airweave-mcp-search"],
-      "env": {
-        "AIRWEAVE_API_KEY": "${apiKey}",
-        "AIRWEAVE_COLLECTION": "${collectionReadableId}",
-        "AIRWEAVE_BASE_URL": "${API_CONFIG.baseURL}"
-      }
-    }
-  }
-}`;
-
-        return {
-            curlSnippet,
-            pythonSnippet,
-            nodeSnippet,
-            configSnippet
-        };
-    }, [collectionReadableId, apiKey, searchConfig, query, filter, isAgentic]);
-
-    // Resolved endpoints — whichever mode is active
-    const endpoints = isAgentic ? agenticEndpoints : apiEndpoints;
-
-
+    }, [collectionReadableId, apiKey, tier, retrievalStrategy, thinking, filter, query]);
 
     // Memoize footer components
     const docLinkFooter = useMemo(() => (
@@ -447,23 +306,20 @@ console.log(result.results.length);  // Number of results`;
 
                         {/* Tab Content */}
                         <div className={"h-[460px]"}>
-                            {endpoints && apiTab === "rest" && (
+                            {apiTab === "rest" && (
                                 <CodeBlock
                                     code={endpoints.curlSnippet}
                                     language="bash"
                                     badgeText="POST"
                                     badgeColor="bg-amber-600 hover:bg-amber-600"
-                                    title={isAgentic
-                                        ? `/collections/${collectionReadableId}/agentic-search`
-                                        : `/collections/${collectionReadableId}/search`
-                                    }
+                                    title={`/collections/${collectionReadableId}/search/${tier}`}
                                     footerContent={docLinkFooter}
                                     height="100%"
                                     className="h-full rounded-none border-none"
                                 />
                             )}
 
-                            {endpoints && apiTab === "python" && (
+                            {apiTab === "python" && (
                                 <CodeBlock
                                     code={endpoints.pythonSnippet}
                                     language="python"
@@ -476,7 +332,7 @@ console.log(result.results.length);  // Number of results`;
                                 />
                             )}
 
-                            {endpoints && apiTab === "node" && (
+                            {apiTab === "node" && (
                                 <CodeBlock
                                     code={endpoints.nodeSnippet}
                                     language="javascript"
@@ -489,7 +345,7 @@ console.log(result.results.length);  // Number of results`;
                                 />
                             )}
 
-                            {endpoints && apiTab === "mcp" && (
+                            {apiTab === "mcp" && (
                                 <CodeBlock
                                     code={endpoints.configSnippet}
                                     language="json"

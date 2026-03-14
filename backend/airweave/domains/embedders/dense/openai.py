@@ -127,6 +127,11 @@ class OpenAIDenseEmbedder(DenseEmbedderProtocol):
             if not text or not text.strip():
                 raise EmbedderInputError(f"Text at index {i} is empty or blank")
 
+            # Sanitize characters that break JSON serialization on the API side
+            text = text.replace("\x00", "")
+            text = text.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
+            texts[i] = text
+
             token_count = len(self._encoder.encode(text, allowed_special="all"))
             if token_count > self._MAX_TOKENS_PER_TEXT:
                 raise EmbedderInputError(

@@ -495,16 +495,15 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             const event = src[i] as any;
 
             // ─── Agentic search events ───────────────────────────────────
-            if (event.type === 'planning') {
-                const plan = event.plan;
+            if (event.type === 'thinking') {
                 rows.push(
-                    <div key={`planning-${i}`} className="animate-fade-in space-y-1.5 py-1.5">
-                        {plan?.reasoning && (
+                    <div key={`thinking-${i}`} className="animate-fade-in space-y-1.5 py-1.5">
+                        {event.text && (
                             <div className={cn(
                                 "text-[11px] leading-relaxed",
                                 isDark ? "text-gray-400" : "text-gray-500"
                             )}>
-                                {plan.reasoning}
+                                {event.text}
                             </div>
                         )}
                     </div>
@@ -523,23 +522,6 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                         </span>
                     </div>
                 );
-                continue;
-            }
-
-            if (event.type === 'evaluating') {
-                const eval_ = event.evaluation;
-                if (eval_?.reasoning) {
-                    rows.push(
-                        <div key={`evaluating-${i}`} className="animate-fade-in py-0.5">
-                            <div className={cn(
-                                "text-[11px] leading-relaxed",
-                                isDark ? "text-gray-400" : "text-gray-500"
-                            )}>
-                                {eval_.reasoning}
-                            </div>
-                        </div>
-                    );
-                }
                 continue;
             }
 

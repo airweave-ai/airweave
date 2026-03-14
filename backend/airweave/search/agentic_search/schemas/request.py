@@ -1,22 +1,10 @@
 """Request schemas for agentic search."""
 
-from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 from airweave.search.agentic_search.schemas.filter import AgenticSearchFilterGroup
-
-
-class AgenticSearchMode(str, Enum):
-    """Search execution mode.
-
-    - FAST: Performs a single search pass.
-    - THINKING: Performs an intelligent multi-step search to find the best results.
-    """
-
-    FAST = "fast"
-    THINKING = "thinking"
 
 
 class AgenticSearchRequest(BaseModel):
@@ -30,15 +18,6 @@ class AgenticSearchRequest(BaseModel):
             "Conditions within a group are combined with AND. "
             "Multiple groups are combined with OR. "
             "Leave empty for no filtering."
-        ),
-    )
-    mode: AgenticSearchMode = Field(
-        default=AgenticSearchMode.THINKING,
-        description=(
-            "The search mode. "
-            "'fast' performs a single search pass. "
-            "'thinking' performs an intelligent multi-step search to find the best results "
-            "(may take longer). Defaults to 'thinking'."
         ),
     )
     limit: Optional[int] = Field(
@@ -58,3 +37,19 @@ class AgenticSearchRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("Query cannot be empty")
         return v
+
+
+class InternalAgenticSearchRequest(AgenticSearchRequest):
+    """Internal agentic search request with model override.
+
+    Used by the admin endpoint to allow per-request model selection for evals.
+    """
+
+    model: Optional[str] = Field(
+        default=None,
+        description=(
+            "LLM model override. Format: 'provider/model' "
+            "e.g. 'anthropic/claude-sonnet-4.5'. "
+            "When not set, uses the default model from config."
+        ),
+    )

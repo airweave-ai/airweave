@@ -11,6 +11,7 @@ from airweave.core.config import settings
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.search.agentic_search.config import (
     DatabaseImpl,
+    LLMModel,
     LLMProvider,
     TokenizerType,
     VectorDBProvider,
@@ -25,6 +26,7 @@ from airweave.search.agentic_search.external.llm.registry import (
 from airweave.search.agentic_search.external.llm.registry import (
     get_model_spec as get_llm_model_spec,
 )
+from airweave.search.agentic_search.external.reranker import AgenticSearchRerankerInterface
 from airweave.search.agentic_search.external.tokenizer import AgenticSearchTokenizerInterface
 from airweave.search.agentic_search.external.tokenizer.registry import (
     get_model_spec as get_tokenizer_model_spec,
@@ -34,6 +36,8 @@ from airweave.search.agentic_search.external.vector_database import AgenticSearc
 # Module-level singletons shared across all requests
 _shared_circuit_breaker: InMemoryCircuitBreaker | None = None
 _shared_llm: AgenticSearchLLMInterface | None = None
+_shared_reranker: AgenticSearchRerankerInterface | None = None
+_shared_reranker_initialized: bool = False
 
 
 def _get_shared_circuit_breaker() -> InMemoryCircuitBreaker:
@@ -66,6 +70,7 @@ class AgenticSearchServices:
         dense_embedder: DenseEmbedderProtocol,
         sparse_embedder: SparseEmbedderProtocol,
         vector_db: AgenticSearchVectorDBInterface,
+        reranker: AgenticSearchRerankerInterface | None = None,
     ):
         """Initialize with external dependencies.
 
@@ -76,6 +81,7 @@ class AgenticSearchServices:
             dense_embedder: Dense embedder for semantic search.
             sparse_embedder: Sparse embedder for keyword search.
             vector_db: Vector database for query compilation and execution.
+            reranker: Optional reranker for result reranking.
         """
         self.db = db
         self.tokenizer = tokenizer
@@ -83,6 +89,7 @@ class AgenticSearchServices:
         self.dense_embedder = dense_embedder
         self.sparse_embedder = sparse_embedder
         self.vector_db = vector_db
+        self.reranker = reranker
 
     @classmethod
     async def create(
@@ -92,6 +99,7 @@ class AgenticSearchServices:
         *,
         dense_embedder: DenseEmbedderProtocol,
         sparse_embedder: SparseEmbedderProtocol,
+        model_override: str | None = None,
     ) -> AgenticSearchServices:
         """Create services from config.
 
@@ -103,6 +111,9 @@ class AgenticSearchServices:
             readable_id: Collection readable ID.
             dense_embedder: Dense embedder for semantic search.
             sparse_embedder: Sparse embedder for keyword search.
+            model_override: Optional model override in "provider/model" format
+                (e.g. "anthropic/claude-sonnet-4.5"). When set, creates a fresh
+                LLM instance instead of using the shared singleton.
 
         Returns:
             AgenticSearchServices instance with all dependencies wired.
@@ -110,19 +121,28 @@ class AgenticSearchServices:
         db = await cls._create_db(ctx)
 
         tokenizer = cls._create_tokenizer()
-        llm = cls._create_llm(tokenizer)
+
+        if model_override:
+            llm = cls._create_llm_from_override(model_override, tokenizer)
+        else:
+            llm = cls._create_llm(tokenizer)
 
         vector_db = await cls._create_vector_db(ctx)
+        reranker = cls._create_reranker()
 
         # Log initialized services summary
         llm_spec = llm.model_spec
         tokenizer_spec = tokenizer.model_spec
 
-        chain_desc = " → ".join(f"{p.value}/{m.value}" for p, m in config.LLM_FALLBACK_CHAIN)
+        if model_override:
+            llm_desc = f"override: {model_override}"
+        else:
+            chain_desc = " → ".join(f"{p.value}/{m.value}" for p, m in config.LLM_FALLBACK_CHAIN)
+            llm_desc = f"chain: {chain_desc}"
         ctx.logger.debug(
             f"[AgenticSearchServices] Initialized:\n"
             f"  - Database: {config.DATABASE_IMPL.value}\n"
-            f"  - LLM chain: {chain_desc}\n"
+            f"  - LLM: {llm_desc}\n"
             f"  - Primary LLM: {llm_spec.api_model_name}\n"
             f"  - Tokenizer: {config.TOKENIZER_TYPE.value} / "
             f"{tokenizer_spec.encoding_name}\n"
@@ -139,6 +159,7 @@ class AgenticSearchServices:
             dense_embedder=dense_embedder,
             sparse_embedder=sparse_embedder,
             vector_db=vector_db,
+            reranker=reranker,
         )
 
     @staticmethod
@@ -248,6 +269,11 @@ class AgenticSearchServices:
 
             return AnthropicLLM(model_spec=model_spec, tokenizer=tokenizer)
 
+        if provider == LLMProvider.TOGETHER:
+            from airweave.search.agentic_search.external.llm.together import TogetherLLM
+
+            return TogetherLLM(model_spec=model_spec, tokenizer=tokenizer)
+
         raise ValueError(f"Unknown LLM provider: {provider}")
 
     @staticmethod
@@ -327,6 +353,71 @@ class AgenticSearchServices:
 
         _shared_llm = result
         return result
+
+    @staticmethod
+    def _create_llm_from_override(
+        model_override: str,
+        tokenizer: AgenticSearchTokenizerInterface,
+    ) -> AgenticSearchLLMInterface:
+        """Create a fresh (non-singleton) LLM from a 'provider/model' string.
+
+        This bypasses the shared singleton so each override gets its own instance.
+
+        Args:
+            model_override: String in "provider/model" format,
+                e.g. "anthropic/claude-sonnet-4.5".
+            tokenizer: Shared tokenizer.
+
+        Returns:
+            LLM interface implementation.
+
+        Raises:
+            ValueError: If the format is invalid or the provider/model is unknown.
+        """
+        parts = model_override.split("/", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise ValueError(
+                f"Invalid model override format: '{model_override}'. "
+                f"Expected 'provider/model', e.g. 'anthropic/claude-sonnet-4.5'"
+            )
+
+        provider_str, model_str = parts
+
+        try:
+            provider = LLMProvider(provider_str)
+        except ValueError:
+            available = [p.value for p in LLMProvider]
+            raise ValueError(f"Unknown LLM provider: '{provider_str}'. Available: {available}")
+
+        try:
+            model = LLMModel(model_str)
+        except ValueError:
+            available = [m.value for m in LLMModel]
+            raise ValueError(f"Unknown LLM model: '{model_str}'. Available: {available}")
+
+        model_spec = get_llm_model_spec(provider, model)
+        return AgenticSearchServices._create_single_provider(provider, model_spec, tokenizer)
+
+    @staticmethod
+    def _create_reranker() -> AgenticSearchRerankerInterface | None:
+        """Get or create a shared reranker singleton.
+
+        Returns None if COHERE_API_KEY is not configured.
+        """
+        global _shared_reranker, _shared_reranker_initialized
+        if _shared_reranker_initialized:
+            return _shared_reranker
+
+        api_key = getattr(settings, "COHERE_API_KEY", None)
+        if api_key:
+            from airweave.search.agentic_search.external.reranker.cohere import (
+                CohereReranker,
+            )
+
+            _shared_reranker = CohereReranker(api_key=api_key)
+
+        _shared_reranker_initialized = True
+        return _shared_reranker
 
     @staticmethod
     async def _create_vector_db(ctx: ApiContext) -> AgenticSearchVectorDBInterface:

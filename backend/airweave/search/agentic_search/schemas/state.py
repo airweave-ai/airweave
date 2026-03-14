@@ -1,64 +1,40 @@
-"""AgenticSearch state schema."""
-
-from typing import Optional
+"""Agent loop state schema."""
 
 from pydantic import BaseModel, Field
 
-from airweave.search.agentic_search.schemas.filter import AgenticSearchFilterGroup
-from airweave.search.agentic_search.schemas.request import AgenticSearchMode
-
-from .collection_metadata import AgenticSearchCollectionMetadata
-from .compiled_query import AgenticSearchCompiledQuery
-from .evaluation import AgenticSearchEvaluation
-from .history import AgenticSearchHistory
-from .plan import AgenticSearchPlan
-from .query_embeddings import AgenticSearchQueryEmbeddings
-from .search_result import AgenticSearchResults
-
-
-class AgenticSearchCurrentIteration(BaseModel):
-    """Current agentic_search iteration schema."""
-
-    plan: Optional[AgenticSearchPlan] = Field(default=None, description="Search plan.")
-    query_embeddings: Optional[AgenticSearchQueryEmbeddings] = Field(
-        default=None, description="Query embeddings."
-    )
-    compiled_query: Optional[AgenticSearchCompiledQuery] = Field(
-        None, description="The compiled query."
-    )
-    search_results: Optional[AgenticSearchResults] = Field(
-        default=None, description="Search results."
-    )
-    search_error: Optional[str] = Field(
-        default=None,
-        description="Error message if the search query failed. None means search succeeded.",
-    )
-    evaluation: Optional[AgenticSearchEvaluation] = Field(default=None, description="Evaluation.")
+from .search_result import AgenticSearchResult
 
 
 class AgenticSearchState(BaseModel):
-    """AgenticSearch state schema."""
+    """Mutable state for the agentic search conversation loop."""
 
-    user_query: str = Field(..., description="The user query.")
-    user_filter: list[AgenticSearchFilterGroup] = Field(
-        default_factory=list, description="The user filter."
-    )
-    mode: AgenticSearchMode = Field(
-        default=AgenticSearchMode.THINKING, description="The search mode."
-    )
+    messages: list[dict] = Field(default_factory=list)
+    results: dict[str, AgenticSearchResult] = Field(default_factory=dict)
+    results_by_tool_call_id: dict[str, list[AgenticSearchResult]] = Field(default_factory=dict)
+    reads_by_tool_call_id: dict[str, list[AgenticSearchResult]] = Field(default_factory=dict)
+    search_metadata_by_tool_call_id: dict[str, dict] = Field(default_factory=dict)
+    result_entity_ids: set[str] = Field(default_factory=set)
+    iteration: int = 0
+    should_finish: bool = False
+    return_warned: bool = False
 
-    collection_metadata: AgenticSearchCollectionMetadata = Field(
-        ..., description="The collection metadata."
-    )
+    model_config = {"arbitrary_types_allowed": True}
 
-    iteration_number: int = Field(..., description="The current iteration number.")
-    current_iteration: AgenticSearchCurrentIteration = Field(
-        ..., description="The current iteration."
-    )
+    def add_to_results(self, entity_ids: list[str]) -> tuple[list[str], list[str], list[str]]:
+        """Add entity IDs to the result set.
 
-    history: Optional[AgenticSearchHistory] = Field(default=None, description="The history.")
-
-    is_consolidation: bool = Field(
-        default=False,
-        description="Whether this is a consolidation pass (final search after exhaustion).",
-    )
+        Returns:
+            Tuple of (newly added, already in results, not found in search results).
+        """
+        newly_added: list[str] = []
+        already_added: list[str] = []
+        not_found: list[str] = []
+        for eid in entity_ids:
+            if eid not in self.results:
+                not_found.append(eid)
+            elif eid in self.result_entity_ids:
+                already_added.append(eid)
+            else:
+                self.result_entity_ids.add(eid)
+                newly_added.append(eid)
+        return newly_added, already_added, not_found

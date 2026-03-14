@@ -16,6 +16,7 @@ from airweave.api.v1.endpoints import (
     health,
     organizations,
     search,
+    search_v2,
     source_connections,
     source_rate_limits,
     sources,
@@ -38,6 +39,7 @@ api_router.include_router(auth_providers.router, prefix="/auth-providers", tags=
 api_router.include_router(collections.router, prefix="/collections", tags=["collections"])
 api_router.include_router(search.router, prefix="/collections", tags=["collections"])
 api_router.include_router(agentic_search.router, prefix="/collections", tags=["collections"])
+api_router.include_router(search_v2.router, prefix="/collections", tags=["search-v2"])
 api_router.include_router(
     source_connections.router, prefix="/source-connections", tags=["source-connections"]
 )
@@ -49,6 +51,7 @@ api_router.include_router(entities.router, prefix="/entities", tags=["entities"]
 api_router.include_router(entity_counts.router, prefix="/entity-counts", tags=["entity-counts"])
 api_router.include_router(file_retrieval.router, prefix="/files", tags=["files"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(agentic_search.admin_router, prefix="/admin/collections", tags=["admin"])
 api_router.include_router(
     browse_tree.router,
     prefix="/source-connections",

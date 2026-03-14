@@ -141,8 +141,9 @@ class VespaVectorDB:
         self._logger.debug(
             f"[VespaVectorDB] Compiled query: YQL={len(yql)} chars, params={len(params)} keys"
         )
-        self._logger.debug(f"[VespaVectorDB] YQL:\n{yql}")
-        self._logger.debug(f"[VespaVectorDB] Params (no embeddings): {display_params}")
+        # Full YQL + params available in conversation_dump.json via debug tooling
+        # self._logger.debug(f"[VespaVectorDB] YQL:\n{yql}")
+        # self._logger.debug(f"[VespaVectorDB] Params (no embeddings): {display_params}")
 
         return AgenticSearchCompiledQuery(
             vector_db="vespa",
@@ -197,14 +198,100 @@ class VespaVectorDB:
         total_count = root.get("fields", {}).get("totalCount", 0)
         hits = response.hits or []
 
+        coverage_pct = coverage.get("coverage", 100.0)
+
         self._logger.debug(
             f"[VespaVectorDB] Query completed in {query_time_ms:.1f}ms, "
             f"total={total_count}, hits={len(hits)}, "
-            f"coverage={coverage.get('coverage', 100.0):.1f}%"
+            f"coverage={coverage_pct:.1f}%"
         )
 
         # Convert hits to results
-        return self._convert_hits_to_results(hits)
+        search_results = self._convert_hits_to_results(hits)
+        search_results.coverage_pct = coverage_pct
+        search_results.query_time_ms = round(query_time_ms, 1)
+        return search_results
+
+    async def count(
+        self,
+        filter_groups: list,
+        collection_id: str,
+    ) -> int:
+        """Count entities matching filters without retrieving content.
+
+        Builds a filter-only YQL query with hits=0 and reads totalCount
+        from the response. No embeddings or ranking needed.
+        """
+        # Build WHERE clause
+        where_parts = [
+            f"airweave_system_metadata_collection_id contains '{collection_id}'",
+        ]
+
+        filter_yql = self._filter_translator.translate(filter_groups)
+        if filter_yql:
+            where_parts.append(f"({filter_yql})")
+
+        all_schemas = ", ".join(ALL_VESPA_SCHEMAS)
+        yql = f"select * from sources {all_schemas} where {' AND '.join(where_parts)}"
+
+        query_params = {"yql": yql, "hits": 0}
+
+        try:
+            response = await asyncio.to_thread(self._app.query, body=query_params)
+        except Exception as e:
+            self._logger.error(f"[VespaVectorDB] Count query failed: {e}")
+            raise RuntimeError(f"Vespa count query failed: {e}") from e
+
+        if not response.is_successful():
+            error_msg = getattr(response, "json", {}).get("error", str(response))
+            raise RuntimeError(f"Vespa count query error: {error_msg}")
+
+        raw_json = response.json if hasattr(response, "json") else {}
+        total_count = raw_json.get("root", {}).get("fields", {}).get("totalCount", 0)
+
+        self._logger.debug(f"[VespaVectorDB] Count query: {total_count} matches")
+        return total_count
+
+    async def filter_search(
+        self,
+        filter_groups: list,
+        collection_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list:
+        """Retrieve entities matching filters without embeddings or ranking.
+
+        Builds a filter-only YQL query (like count) but returns actual results.
+        No dense/sparse embeddings needed — pure navigation queries.
+        """
+        where_parts = [
+            f"airweave_system_metadata_collection_id contains '{collection_id}'",
+        ]
+
+        filter_yql = self._filter_translator.translate(filter_groups)
+        if filter_yql:
+            where_parts.append(f"({filter_yql})")
+
+        all_schemas = ", ".join(ALL_VESPA_SCHEMAS)
+        yql = f"select * from sources {all_schemas} where {' AND '.join(where_parts)}"
+
+        try:
+            response = await asyncio.to_thread(
+                self._app.query, body={"yql": yql, "hits": limit, "offset": offset}
+            )
+        except Exception as e:
+            self._logger.error(f"[VespaVectorDB] Filter search failed: {e}")
+            raise RuntimeError(f"Vespa filter search failed: {e}") from e
+
+        if not response.is_successful():
+            error_msg = getattr(response, "json", {}).get("error", str(response))
+            raise RuntimeError(f"Vespa filter search error: {error_msg}")
+
+        hits = response.hits or []
+        self._logger.debug(f"[VespaVectorDB] Filter search: {len(hits)} hits")
+
+        results = self._convert_hits_to_results(hits)
+        return results.results
 
     async def close(self) -> None:
         """Close the Vespa connection.
@@ -330,7 +417,8 @@ class VespaVectorDB:
             "ranking.profile": plan.retrieval_strategy.value,
             "hits": plan.limit,
             "offset": plan.offset,
-            "ranking.softtimeout.enable": "false",
+            "ranking.softtimeout.enable": "true",
+            "timeout": "15s",
             "ranking.globalPhase.rerankCount": global_phase_rerank,
         }
 
@@ -351,6 +439,28 @@ class VespaVectorDB:
             sparse_tensor = self._convert_sparse_to_tensor(embeddings.sparse_embedding)
             if sparse_tensor:
                 params["input.query(q_sparse)"] = sparse_tensor
+                num_tokens = len(sparse_tensor.get("cells", {}))
+                self._logger.debug(f"[VespaVectorDB] Sparse embedding: {num_tokens} tokens")
+            else:
+                self._logger.warning("[VespaVectorDB] Sparse embedding conversion returned None")
+        elif plan.retrieval_strategy in (
+            AgenticSearchRetrievalStrategy.KEYWORD,
+            AgenticSearchRetrievalStrategy.HYBRID,
+        ):
+            self._logger.warning(
+                f"[VespaVectorDB] No sparse embedding for {plan.retrieval_strategy.value} query"
+            )
+
+        # Log embedding summary
+        has_dense = any(
+            k.startswith("input.query(q") and k != "input.query(q_sparse)" for k in params
+        )
+        has_sparse = "input.query(q_sparse)" in params
+        self._logger.debug(
+            f"[VespaVectorDB] Query params: dense={has_dense}, sparse={has_sparse}, "
+            f"profile={params.get('ranking.profile')}, "
+            f"rerankCount={global_phase_rerank}"
+        )
 
         return params
 
@@ -394,8 +504,8 @@ class VespaVectorDB:
             relevance = hit.get("relevance", 0.0)
 
             # Log debug info for first few hits
-            if i < 5:
-                self._log_hit_debug(i, fields, relevance)
+            # if i < 5:
+            # self._log_hit_debug(i, fields, relevance)
 
             # Validate required fields
             entity_id = fields.get("entity_id")
@@ -441,9 +551,13 @@ class VespaVectorDB:
         entity_name = fields.get("name", "N/A")
         entity_type = fields.get("airweave_system_metadata_entity_type", "N/A")
         truncated_name = entity_name[:40] if entity_name else "N/A"
+        match_features = fields.get("matchfeatures", {})
+        kw = match_features.get("keyword_score", "-")
+        sem = match_features.get("semantic_score", "-")
         self._logger.debug(
             f"[VespaVectorDB] Hit {index}: name='{truncated_name}' "
-            f"type={entity_type} relevance={relevance:.4f}"
+            f"type={entity_type} relevance={relevance:.4f} "
+            f"kw={kw} sem={sem}"
         )
 
     def _extract_system_metadata(

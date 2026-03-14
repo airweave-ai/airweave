@@ -8,6 +8,39 @@ on:
 
 jobs:
   # ───────────────────────────────────────────────────────────────────
+  # LLM Tool Schema Tests: verify tool calling works across providers
+  # No Docker needed — just Python + API keys
+  # ───────────────────────────────────────────────────────────────────
+  test-llm-tool-schemas:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          cd backend && poetry install --no-root
+
+      - name: Run LLM tool schema integration tests
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          cd backend
+          poetry run pytest tests/integration/agentic_search/test_llm_tool_schemas.py -v --tb=short
+
+  # ───────────────────────────────────────────────────────────────────
   # Build: compile the backend Docker image once, share via artifact
   # ───────────────────────────────────────────────────────────────────
   build:

@@ -3,25 +3,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterator, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
-
-from airweave.search.agentic_search.external.tokenizer.interface import (
-    AgenticSearchTokenizerInterface,
-)
-
-# NOTE: a lot more required than in the sync pipeline
-
-# Module-level constants for results formatting
-NO_RESULTS_MESSAGE = "No search results returned."
-RESULTS_TRUNCATION_NOTICE = "\n*(Additional results truncated to fit context window)*"
-RESULTS_FULLY_TRUNCATED_NOTICE = (
-    "*(Search results exist but were truncated to fit context window. "
-    "Results were found but details are not shown.)*"
-)
 
 
 class AgenticSearchBreadcrumb(BaseModel):
@@ -32,11 +17,7 @@ class AgenticSearchBreadcrumb(BaseModel):
     entity_type: str = Field(..., description="Entity class name (e.g., 'AsanaProjectEntity').")
 
     def to_md(self) -> str:
-        """Render the breadcrumb as markdown.
-
-        Returns:
-            Markdown string: name (entity_type) [entity_id]
-        """
+        """Render the breadcrumb as markdown."""
         return f"{self.name} ({self.entity_type}) [{self.entity_id}]"
 
 
@@ -54,11 +35,7 @@ class AgenticSearchSystemMetadata(BaseModel):
     original_entity_id: str = Field(..., description="Original entity ID")
 
     def to_md(self) -> str:
-        """Render the system metadata as markdown.
-
-        Returns:
-            Markdown string with all metadata fields.
-        """
+        """Render the system metadata as markdown."""
         lines = [
             f"- Source: {self.source_name}",
             f"- Entity Type: {self.entity_type}",
@@ -81,14 +58,7 @@ class AgenticSearchAccessControl(BaseModel):
     )
 
     def to_md(self) -> str:
-        """Render the access control as markdown.
-
-        When both fields are None, the entity has no explicit ACL (visible to all).
-
-        Returns:
-            Markdown string with access info.
-        """
-        # None means no ACL set (visible to all)
+        """Render the access control as markdown."""
         if self.is_public is None and self.viewers is None:
             return "No ACL (visible to all)"
 
@@ -137,17 +107,51 @@ class AgenticSearchResult(BaseModel):
         description="All source-specific fields.",
     )
 
+    def to_summary_md(self) -> str:
+        """Compact metadata summary for context retention (excludes content)."""
+        path = " > ".join(bc.to_md() for bc in self.breadcrumbs) if self.breadcrumbs else "(root)"
+        created = self.created_at.isoformat() if self.created_at else "unknown"
+        updated = self.updated_at.isoformat() if self.updated_at else "unknown"
+        meta = self.airweave_system_metadata
+        return (
+            f"- **{self.name}** (id: {self.entity_id}, score: {self.relevance_score:.4f})\n"
+            f"  Breadcrumbs: {path}\n"
+            f"  Source: {meta.source_name} ({meta.entity_type}) | "
+            f"Created: {created} | Updated: {updated}\n"
+            f"  Original entity: {meta.original_entity_id} (chunk {meta.chunk_index})"
+        )
+
+    def to_snippet_summary_md(self) -> str:
+        """Compact summary with content snippet (~100 tokens) for search results."""
+        path = " > ".join(bc.to_md() for bc in self.breadcrumbs) if self.breadcrumbs else "(root)"
+        meta = self.airweave_system_metadata
+        created = self.created_at.isoformat() if self.created_at else "unknown"
+        updated = self.updated_at.isoformat() if self.updated_at else "unknown"
+
+        # 400-char content snippet (~100 tokens — enough to judge relevance)
+        content = self.textual_representation.strip()
+        total_chars = len(content)
+        truncated = total_chars > 400
+        snippet = (content[:397] + "...") if truncated else content
+
+        # Chunk info (only show if chunked)
+        chunk_info = ""
+        if meta.chunk_index > 0:
+            chunk_info = f" | Chunk {meta.chunk_index}"
+
+        # Show how much of the content is visible
+        size_info = f" [{400}/{total_chars} chars]" if truncated else ""
+
+        return (
+            f"- **{self.name}** (id: `{self.entity_id}`, score: {self.relevance_score:.4f})\n"
+            f"  {meta.source_name} ({meta.entity_type}){chunk_info} | "
+            f"Created: {created} | Updated: {updated}\n"
+            f"  Path: {path}\n"
+            f"  > {snippet}{size_info}"
+        )
+
     def to_md(self) -> str:
-        """Render the search result as markdown for LLM context.
-
-        Includes base metadata, system metadata, access control, and the FULL
-        textual representation. Omits source-specific fields (already captured
-        in textual_representation) and download URLs (massive S3 pre-signed URLs)
-        to maximize how many results fit in the context window.
-
-        Returns:
-            Markdown string with essential result information.
-        """
+        """Render the search result as markdown for LLM context."""
         lines = [
             f"### {self.name}",
             "",
@@ -167,7 +171,7 @@ class AgenticSearchResult(BaseModel):
         lines.append(f"**Created:** {created}")
         lines.append(f"**Updated:** {updated}")
 
-        # Breadcrumbs (uses AgenticSearchBreadcrumb.to_md())
+        # Breadcrumbs
         if self.breadcrumbs:
             breadcrumb_path = " > ".join(bc.to_md() for bc in self.breadcrumbs)
             lines.append(f"**Path:** {breadcrumb_path}")
@@ -176,13 +180,13 @@ class AgenticSearchResult(BaseModel):
 
         lines.append("")
 
-        # System metadata (uses AgenticSearchSystemMetadata.to_md())
+        # System metadata
         lines.append("**System Metadata:**")
         lines.append(self.airweave_system_metadata.to_md())
 
         lines.append("")
 
-        # Access control (uses AgenticSearchAccessControl.to_md())
+        # Access control
         lines.append(f"**Access:** {self.access.to_md()}")
 
         lines.append("")
@@ -196,19 +200,11 @@ class AgenticSearchResult(BaseModel):
         return "\n".join(lines)
 
     def to_full_md(self) -> str:
-        """Render the full search result as markdown including source fields.
-
-        Includes everything from to_md() plus source-specific fields and download URLs.
-        Used for debugging and detailed inspection, NOT for LLM context (too large).
-
-        Returns:
-            Markdown string with complete result information.
-        """
+        """Render the full search result as markdown including source fields."""
         lines = [self.to_md()]
 
         if self.url:
             lines.append("")
-            # Strip query params from download URLs too
             url_display = self.url
             if len(url_display) > 200:
                 url_display = url_display.split("?")[0]
@@ -223,198 +219,24 @@ class AgenticSearchResult(BaseModel):
         return "\n".join(lines)
 
 
-@dataclass
-class ResultsSectionInfo:
-    """Information about the rendered results section.
-
-    Returned by build_results_section so callers (evaluator, composer)
-    know exactly how many results were included vs truncated.
-    """
-
-    markdown: str
-    results_shown: int
-    results_total: int
-
-
 class AgenticSearchResults(BaseModel):
-    """Container for search results with budget-aware rendering.
-
-    Results are stored in relevance order (highest first, as returned by Vespa).
-    """
+    """Container for search results in relevance order."""
 
     results: list[AgenticSearchResult] = Field(
         default_factory=list,
         description="Search results ordered by relevance (highest first).",
     )
 
+    # Query metadata (populated by vector DB, not required)
+    coverage_pct: Optional[float] = Field(
+        default=None,
+        description="Percentage of corpus covered by the query (100.0 = full coverage).",
+    )
+    query_time_ms: Optional[float] = Field(
+        default=None,
+        description="Query execution time in milliseconds.",
+    )
+
     def __len__(self) -> int:
         """Return the number of results."""
         return len(self.results)
-
-    @classmethod
-    def get_truncation_reserve_tokens(cls, tokenizer: AgenticSearchTokenizerInterface) -> int:
-        """Get the maximum tokens needed for truncation notices.
-
-        Use this when calculating budget to ensure truncation notices always fit.
-
-        Args:
-            tokenizer: Tokenizer for counting tokens.
-
-        Returns:
-            Maximum tokens needed for either truncation notice.
-        """
-        return max(
-            tokenizer.count_tokens(RESULTS_TRUNCATION_NOTICE),
-            tokenizer.count_tokens(RESULTS_FULLY_TRUNCATED_NOTICE),
-        )
-
-    @classmethod
-    def build_results_section(
-        cls,
-        results: AgenticSearchResults | None,
-        tokenizer: AgenticSearchTokenizerInterface,
-        budget: int,
-    ) -> ResultsSectionInfo:
-        """Build results markdown within token budget, handling None case.
-
-        This is the main entry point for the evaluator/composer to get results
-        markdown. Handles the case where results is None (search not yet executed).
-
-        Args:
-            results: The results object, or None if search not executed.
-            tokenizer: Tokenizer for counting tokens.
-            budget: Maximum tokens for results content.
-
-        Returns:
-            ResultsSectionInfo with markdown, results_shown, and results_total.
-        """
-        if results is None or len(results) == 0:
-            return ResultsSectionInfo(
-                markdown=NO_RESULTS_MESSAGE,
-                results_shown=0,
-                results_total=0,
-            )
-
-        markdown, results_shown = results.to_md_with_budget(tokenizer, budget)
-        return ResultsSectionInfo(
-            markdown=markdown,
-            results_shown=results_shown,
-            results_total=len(results),
-        )
-
-    def iter_by_relevance(self) -> Iterator[AgenticSearchResult]:
-        """Iterate over results from highest to lowest relevance.
-
-        Results are already stored in relevance order from Vespa.
-
-        Yields:
-            AgenticSearchResult objects in descending relevance order.
-        """
-        yield from self.results
-
-    def to_md_with_budget(
-        self,
-        tokenizer: AgenticSearchTokenizerInterface,
-        budget: int,
-    ) -> tuple[str, int]:
-        """Build results markdown within the token budget.
-
-        Results are added by relevance (highest first) until budget is exhausted.
-        If truncation occurs, a notice is appended. The caller should reserve
-        tokens for the truncation notice in their budget calculation using
-        `AgenticSearchResults.get_truncation_reserve_tokens()`.
-
-        Args:
-            tokenizer: Tokenizer for counting tokens.
-            budget: Maximum tokens for results content.
-
-        Returns:
-            Tuple of (markdown string, number of results included).
-        """
-        result_parts: list[str] = []
-        tokens_used = 0
-        results_included = 0
-
-        for result in self.iter_by_relevance():
-            result_md = result.to_md()
-            result_tokens = tokenizer.count_tokens(result_md)
-
-            # Check if adding this result would exceed budget
-            if tokens_used + result_tokens > budget:
-                # Add truncation notice
-                if result_parts:
-                    result_parts.append(RESULTS_TRUNCATION_NOTICE)
-                break
-
-            result_parts.append(result_md)
-            tokens_used += result_tokens
-            results_included += 1
-
-        # If we couldn't fit any results, indicate that
-        if not result_parts:
-            return RESULTS_FULLY_TRUNCATED_NOTICE, 0
-
-        # Add header with counts
-        total = len(self.results)
-        header = f"**{results_included} of {total} results shown** (by relevance):\n\n"
-
-        return header + "\n\n---\n\n".join(result_parts), results_included
-
-
-@dataclass
-class ResultBriefEntry:
-    """A single entry in a ResultBrief.
-
-    Contains just enough metadata for the planner to know what was found
-    and to build filters for exploration. Includes parent breadcrumb info
-    so the planner can filter by breadcrumb entity_type, entity_id, or name.
-    """
-
-    name: str
-    source_name: str
-    entity_type: str
-    original_entity_id: str
-    chunk_index: int
-    relevance_score: float
-    breadcrumb_path: str
-    parent_breadcrumb_name: Optional[str] = None
-    parent_breadcrumb_entity_type: Optional[str] = None
-    parent_breadcrumb_entity_id: Optional[str] = None
-
-
-@dataclass
-class ResultBrief:
-    """Deterministic summary of search results for history.
-
-    Built from raw search results without any LLM involvement.
-    Compact (~200 tokens for 10 entries) vs LLM-generated summaries (~800+ tokens).
-    """
-
-    total_count: int
-    entries: list[ResultBriefEntry]
-
-    def to_md(self) -> str:
-        """Render the result brief as markdown for planner history.
-
-        Returns:
-            Compact markdown summary of what was found.
-        """
-        if not self.entries:
-            return "**Results:** 0 found"
-
-        lines = [f"**Results ({self.total_count} found):**"]
-        for i, entry in enumerate(self.entries, 1):
-            parent_info = ""
-            if entry.parent_breadcrumb_name:
-                parent_info = (
-                    f" | parent: {entry.parent_breadcrumb_name} "
-                    f"({entry.parent_breadcrumb_entity_type})"
-                    f" [{entry.parent_breadcrumb_entity_id}]"
-                )
-            lines.append(
-                f"{i}. **{entry.name}** ({entry.entity_type} from {entry.source_name}) "
-                f"— score {entry.relevance_score:.3f}, "
-                f"chunk {entry.chunk_index} of `{entry.original_entity_id}` | "
-                f"path: {entry.breadcrumb_path}{parent_info}"
-            )
-        return "\n".join(lines)

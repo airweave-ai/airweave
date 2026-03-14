@@ -82,6 +82,9 @@ services:
     container_name: airweave-vespa
     image: vespaengine/vespa:8
     hostname: vespa
+    mem_limit: 12g
+    environment:
+      - VESPA_CONFIGSERVER_JVMARGS=-Xms512m -Xmx1g
     ports:
       - "8081:8081"   # Query/Document API
       - "19071:19071" # Config server (for deployment)

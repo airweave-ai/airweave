@@ -3,9 +3,13 @@
 from typing import Protocol
 
 from airweave.search.agentic_search.schemas.compiled_query import AgenticSearchCompiledQuery
+from airweave.search.agentic_search.schemas.filter import AgenticSearchFilterGroup
 from airweave.search.agentic_search.schemas.plan import AgenticSearchPlan
 from airweave.search.agentic_search.schemas.query_embeddings import AgenticSearchQueryEmbeddings
-from airweave.search.agentic_search.schemas.search_result import AgenticSearchResults
+from airweave.search.agentic_search.schemas.search_result import (
+    AgenticSearchResult,
+    AgenticSearchResults,
+)
 
 
 class AgenticSearchVectorDBInterface(Protocol):
@@ -52,6 +56,42 @@ class AgenticSearchVectorDBInterface(Protocol):
 
         Raises:
             RuntimeError: If query execution fails.
+        """
+        ...
+
+    async def count(
+        self,
+        filter_groups: list[AgenticSearchFilterGroup],
+        collection_id: str,
+    ) -> int:
+        """Count entities matching filters without retrieving content.
+
+        Args:
+            filter_groups: Filter groups to narrow the count.
+            collection_id: Collection readable ID for tenant filtering.
+
+        Returns:
+            Total number of matching entities.
+        """
+        ...
+
+    async def filter_search(
+        self,
+        filter_groups: list[AgenticSearchFilterGroup],
+        collection_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[AgenticSearchResult]:
+        """Retrieve entities matching filters without embeddings or ranking.
+
+        Args:
+            filter_groups: Filter groups to narrow results.
+            collection_id: Collection readable ID for tenant filtering.
+            limit: Maximum number of results to return.
+            offset: Number of results to skip.
+
+        Returns:
+            List of matching results (unranked).
         """
         ...
 
