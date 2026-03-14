@@ -147,25 +147,24 @@ class SourceContextBuilder:
         Returns:
             SourceContext with ArfReplaySource
         """
-        from airweave.platform.storage.replay_source import ArfReplaySource
+        from airweave.domains.arf.replay_source import ArfReplaySource
 
         ctx = infra.ctx
         logger = infra.logger
 
-        # Get original source short_name from DB
         source_connection = await crud.source_connection.get_by_sync_id(
             db, sync_id=sync.id, ctx=ctx
         )
         original_short_name = source_connection.short_name if source_connection else None
 
         logger.info(
-            f"🔄 ARF Replay mode: Creating ArfReplaySource for sync {sync.id} "
+            f"ARF Replay mode: Creating ArfReplaySource for sync {sync.id} "
             f"(masquerading as '{original_short_name}')"
         )
 
-        # Create the ARF replay source with original source identity
         source = await ArfReplaySource.create(
             sync_id=sync.id,
+            storage=app_container.storage_backend,
             logger=logger,
             restore_files=True,
             original_short_name=original_short_name,
@@ -248,7 +247,7 @@ class SourceContextBuilder:
         cls, source: BaseSource, sync_job: Optional[Any], logger: ContextualLogger
     ) -> None:
         """Setup file downloader for file-based sources."""
-        from airweave.platform.storage import FileService
+        from airweave.domains.storage.file_service import FileService
 
         # Require sync_job - we're always in sync context when this is called
         if not sync_job or not hasattr(sync_job, "id"):
@@ -258,7 +257,10 @@ class SourceContextBuilder:
                 "where sync_job exists."
             )
 
-        file_downloader = FileService(sync_job_id=sync_job.id)
+        file_downloader = FileService(
+            sync_job_id=sync_job.id,
+            storage_backend=app_container.storage_backend,
+        )
         source.set_file_downloader(file_downloader)
         logger.debug(
             f"File downloader configured for {source.__class__.__name__} "

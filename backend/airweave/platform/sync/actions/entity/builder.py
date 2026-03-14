@@ -3,6 +3,7 @@
 from typing import List, Optional
 
 from airweave.core.logging import ContextualLogger
+from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.sync.actions.entity.dispatcher import EntityActionDispatcher
 from airweave.platform.sync.config import SyncConfig
@@ -19,6 +20,7 @@ class EntityDispatcherBuilder:
     def build(
         cls,
         destinations: List[BaseDestination],
+        arf_service: Optional[ArfServiceProtocol] = None,
         execution_config: Optional[SyncConfig] = None,
         logger: Optional[ContextualLogger] = None,
     ) -> EntityActionDispatcher:
@@ -26,36 +28,30 @@ class EntityDispatcherBuilder:
 
         Args:
             destinations: Destination instances
+            arf_service: ARF service for raw entity capture
             execution_config: Optional config to enable/disable handlers
             logger: Optional logger for logging handler creation
-
-        Returns:
-            EntityActionDispatcher with configured handlers.
         """
-        handlers = cls._build_handlers(destinations, execution_config, logger)
+        handlers = cls._build_handlers(destinations, arf_service, execution_config, logger)
         return EntityActionDispatcher(handlers=handlers)
 
     @classmethod
     def build_for_cleanup(
         cls,
         destinations: List[BaseDestination],
+        arf_service: Optional[ArfServiceProtocol] = None,
         logger: Optional[ContextualLogger] = None,
     ) -> EntityActionDispatcher:
-        """Build dispatcher for cleanup operations (all handlers enabled).
-
-        Args:
-            destinations: Destinations context
-            logger: Optional logger
-
-        Returns:
-            EntityActionDispatcher for cleanup.
-        """
-        return cls.build(destinations=destinations, execution_config=None, logger=logger)
+        """Build dispatcher for cleanup operations (all handlers enabled)."""
+        return cls.build(
+            destinations=destinations, arf_service=arf_service, execution_config=None, logger=logger
+        )
 
     @classmethod
     def _build_handlers(
         cls,
         destinations: List[BaseDestination],
+        arf_service: Optional[ArfServiceProtocol],
         execution_config: Optional[SyncConfig],
         logger: Optional[ContextualLogger],
     ) -> List[EntityActionHandler]:
@@ -71,7 +67,7 @@ class EntityDispatcherBuilder:
         handlers: List[EntityActionHandler] = []
 
         cls._add_destination_handler(handlers, destinations, enable_vector, logger)
-        cls._add_arf_handler(handlers, enable_arf, logger)
+        cls._add_arf_handler(handlers, arf_service, enable_arf, logger)
         cls._add_postgres_handler(handlers, enable_postgres, logger)
 
         if not handlers and logger:
@@ -106,16 +102,24 @@ class EntityDispatcherBuilder:
     def _add_arf_handler(
         cls,
         handlers: List[EntityActionHandler],
+        arf_service: Optional[ArfServiceProtocol],
         enabled: bool,
         logger: Optional[ContextualLogger],
     ) -> None:
-        """Add ARF handler if enabled."""
-        if enabled:
-            handlers.append(ArfHandler())
+        """Add ARF handler if enabled and service available."""
+        if not enabled:
             if logger:
-                logger.debug("Added ArfHandler")
-        elif logger:
-            logger.info("Skipping ArfHandler (disabled by execution_config)")
+                logger.info("Skipping ArfHandler (disabled by execution_config)")
+            return
+
+        if arf_service is None:
+            if logger:
+                logger.warning("Skipping ArfHandler (no arf_service provided)")
+            return
+
+        handlers.append(ArfHandler(arf_service=arf_service))
+        if logger:
+            logger.debug("Added ArfHandler")
 
     @classmethod
     def _add_postgres_handler(

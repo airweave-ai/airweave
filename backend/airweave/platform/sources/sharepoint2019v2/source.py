@@ -48,7 +48,7 @@ from airweave.platform.sources.sharepoint2019v2.builders import (
     build_site_entity,
 )
 from airweave.platform.sources.sharepoint2019v2.client import SharePointClient
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 from airweave.platform.sync.exceptions import EntityProcessingError
 from airweave.schemas.source_connection import AuthenticationMethod
 

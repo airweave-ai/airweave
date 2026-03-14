@@ -16,11 +16,11 @@ from typing import Any, Dict, List, Union
 import aiofiles
 import aiofiles.os
 
-from airweave.platform.storage.exceptions import (
+from airweave.domains.storage.exceptions import (
     StorageException,
     StorageNotFoundError,
 )
-from airweave.platform.storage.protocol import StorageBackend
+from airweave.domains.storage.protocols import StorageBackend
 
 logger = logging.getLogger(__name__)
 

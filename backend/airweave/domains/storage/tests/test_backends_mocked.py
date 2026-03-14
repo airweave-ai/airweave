@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from airweave.platform.storage.exceptions import (
+from airweave.domains.storage.exceptions import (
     StorageException,
     StorageNotFoundError,
 )
@@ -19,7 +19,7 @@ class TestAzureBlobBackendMocked:
 
     def test_init_stores_config(self):
         """Test that init stores configuration correctly."""
-        from airweave.platform.storage.backends.azure_blob import AzureBlobBackend
+        from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
 
         backend = AzureBlobBackend(
             storage_account="testaccount",
@@ -33,7 +33,7 @@ class TestAzureBlobBackendMocked:
 
     def test_init_empty_prefix(self):
         """Test that empty prefix is handled correctly."""
-        from airweave.platform.storage.backends.azure_blob import AzureBlobBackend
+        from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
 
         backend = AzureBlobBackend(
             storage_account="testaccount",
@@ -45,7 +45,7 @@ class TestAzureBlobBackendMocked:
 
     def test_resolve_adds_prefix(self):
         """Test that _resolve adds prefix to path."""
-        from airweave.platform.storage.backends.azure_blob import AzureBlobBackend
+        from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
 
         backend = AzureBlobBackend(
             storage_account="test",
@@ -59,7 +59,7 @@ class TestAzureBlobBackendMocked:
     @pytest.mark.asyncio
     async def test_sdk_import_error_raises_storage_exception(self):
         """Test that missing SDK raises StorageException."""
-        from airweave.platform.storage.backends.azure_blob import AzureBlobBackend
+        from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
 
         backend = AzureBlobBackend(
             storage_account="test",
@@ -68,7 +68,7 @@ class TestAzureBlobBackendMocked:
 
         with patch.dict("sys.modules", {"azure.identity.aio": None}):
             with patch(
-                "airweave.platform.storage.backends.azure_blob.AzureBlobBackend._get_blob_service_client",
+                "airweave.domains.storage.backends.azure_blob.AzureBlobBackend._get_blob_service_client",
                 side_effect=ImportError("No module named 'azure'"),
             ):
                 # The actual SDK import happens in _get_blob_service_client
@@ -77,7 +77,7 @@ class TestAzureBlobBackendMocked:
     @pytest.mark.asyncio
     async def test_close_cleans_up_clients(self):
         """Test that close() properly cleans up async clients."""
-        from airweave.platform.storage.backends.azure_blob import AzureBlobBackend
+        from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
 
         backend = AzureBlobBackend(
             storage_account="test",
@@ -105,7 +105,7 @@ class TestS3BackendMocked:
 
     def test_init_stores_config(self):
         """Test that init stores configuration correctly."""
-        from airweave.platform.storage.backends.aws_s3 import S3Backend
+        from airweave.domains.storage.backends.aws_s3 import S3Backend
 
         backend = S3Backend(
             bucket="testbucket",
@@ -121,7 +121,7 @@ class TestS3BackendMocked:
 
     def test_init_empty_prefix(self):
         """Test that empty prefix is handled correctly."""
-        from airweave.platform.storage.backends.aws_s3 import S3Backend
+        from airweave.domains.storage.backends.aws_s3 import S3Backend
 
         backend = S3Backend(
             bucket="testbucket",
@@ -133,7 +133,7 @@ class TestS3BackendMocked:
 
     def test_init_no_endpoint(self):
         """Test that endpoint_url can be None (default AWS)."""
-        from airweave.platform.storage.backends.aws_s3 import S3Backend
+        from airweave.domains.storage.backends.aws_s3 import S3Backend
 
         backend = S3Backend(
             bucket="testbucket",
@@ -144,7 +144,7 @@ class TestS3BackendMocked:
 
     def test_resolve_adds_prefix(self):
         """Test that _resolve adds prefix to path."""
-        from airweave.platform.storage.backends.aws_s3 import S3Backend
+        from airweave.domains.storage.backends.aws_s3 import S3Backend
 
         backend = S3Backend(
             bucket="test",
@@ -158,7 +158,7 @@ class TestS3BackendMocked:
     @pytest.mark.asyncio
     async def test_close_cleans_up_client(self):
         """Test that close() properly cleans up async client."""
-        from airweave.platform.storage.backends.aws_s3 import S3Backend
+        from airweave.domains.storage.backends.aws_s3 import S3Backend
 
         backend = S3Backend(
             bucket="test",
@@ -182,7 +182,7 @@ class TestGCSBackendMocked:
 
     def test_init_stores_config(self):
         """Test that init stores configuration correctly."""
-        from airweave.platform.storage.backends.gcp_gcs import GCSBackend
+        from airweave.domains.storage.backends.gcp_gcs import GCSBackend
 
         backend = GCSBackend(
             bucket="testbucket",
@@ -196,7 +196,7 @@ class TestGCSBackendMocked:
 
     def test_init_empty_prefix(self):
         """Test that empty prefix is handled correctly."""
-        from airweave.platform.storage.backends.gcp_gcs import GCSBackend
+        from airweave.domains.storage.backends.gcp_gcs import GCSBackend
 
         backend = GCSBackend(
             bucket="testbucket",
@@ -208,7 +208,7 @@ class TestGCSBackendMocked:
 
     def test_init_no_project(self):
         """Test that project can be None (auto-detected)."""
-        from airweave.platform.storage.backends.gcp_gcs import GCSBackend
+        from airweave.domains.storage.backends.gcp_gcs import GCSBackend
 
         backend = GCSBackend(
             bucket="testbucket",
@@ -218,7 +218,7 @@ class TestGCSBackendMocked:
 
     def test_resolve_adds_prefix(self):
         """Test that _resolve adds prefix to path."""
-        from airweave.platform.storage.backends.gcp_gcs import GCSBackend
+        from airweave.domains.storage.backends.gcp_gcs import GCSBackend
 
         backend = GCSBackend(
             bucket="test",
@@ -231,7 +231,7 @@ class TestGCSBackendMocked:
     @pytest.mark.asyncio
     async def test_close_clears_client(self):
         """Test that close() clears client references."""
-        from airweave.platform.storage.backends.gcp_gcs import GCSBackend
+        from airweave.domains.storage.backends.gcp_gcs import GCSBackend
 
         backend = GCSBackend(bucket="test")
 
@@ -249,7 +249,7 @@ class TestBackendPrefixNormalization:
 
     def test_azure_prefix_trailing_slash_stripped(self):
         """Test Azure prefix has trailing slash stripped then added."""
-        from airweave.platform.storage.backends.azure_blob import AzureBlobBackend
+        from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
 
         backend = AzureBlobBackend(
             storage_account="test",
@@ -260,7 +260,7 @@ class TestBackendPrefixNormalization:
 
     def test_s3_prefix_trailing_slash_stripped(self):
         """Test S3 prefix has trailing slash stripped then added."""
-        from airweave.platform.storage.backends.aws_s3 import S3Backend
+        from airweave.domains.storage.backends.aws_s3 import S3Backend
 
         backend = S3Backend(
             bucket="test",
@@ -271,7 +271,7 @@ class TestBackendPrefixNormalization:
 
     def test_gcs_prefix_trailing_slash_stripped(self):
         """Test GCS prefix has trailing slash stripped then added."""
-        from airweave.platform.storage.backends.gcp_gcs import GCSBackend
+        from airweave.domains.storage.backends.gcp_gcs import GCSBackend
 
         backend = GCSBackend(
             bucket="test",
@@ -285,32 +285,32 @@ class TestAllBackendsProtocolCompliance:
 
     def test_azure_implements_protocol(self):
         """Test AzureBlobBackend implements StorageBackend."""
-        from airweave.platform.storage.backends.azure_blob import AzureBlobBackend
-        from airweave.platform.storage.protocol import StorageBackend
+        from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
+        from airweave.domains.storage.protocols import StorageBackend
 
         backend = AzureBlobBackend(storage_account="test", container="test")
         assert isinstance(backend, StorageBackend)
 
     def test_s3_implements_protocol(self):
         """Test S3Backend implements StorageBackend."""
-        from airweave.platform.storage.backends.aws_s3 import S3Backend
-        from airweave.platform.storage.protocol import StorageBackend
+        from airweave.domains.storage.backends.aws_s3 import S3Backend
+        from airweave.domains.storage.protocols import StorageBackend
 
         backend = S3Backend(bucket="test", region="us-east-1")
         assert isinstance(backend, StorageBackend)
 
     def test_gcs_implements_protocol(self):
         """Test GCSBackend implements StorageBackend."""
-        from airweave.platform.storage.backends.gcp_gcs import GCSBackend
-        from airweave.platform.storage.protocol import StorageBackend
+        from airweave.domains.storage.backends.gcp_gcs import GCSBackend
+        from airweave.domains.storage.protocols import StorageBackend
 
         backend = GCSBackend(bucket="test")
         assert isinstance(backend, StorageBackend)
 
     def test_filesystem_implements_protocol(self, tmp_path):
         """Test FilesystemBackend implements StorageBackend."""
-        from airweave.platform.storage.backends.filesystem import FilesystemBackend
-        from airweave.platform.storage.protocol import StorageBackend
+        from airweave.domains.storage.backends.filesystem import FilesystemBackend
+        from airweave.domains.storage.protocols import StorageBackend
 
         backend = FilesystemBackend(base_path=tmp_path)
         assert isinstance(backend, StorageBackend)
@@ -330,17 +330,17 @@ class TestAllBackendsProtocolCompliance:
 
         if backend_class == "FilesystemBackend":
             module = importlib.import_module(
-                "airweave.platform.storage.backends.filesystem"
+                "airweave.domains.storage.backends.filesystem"
             )
         elif backend_class == "AzureBlobBackend":
             module = importlib.import_module(
-                "airweave.platform.storage.backends.azure_blob"
+                "airweave.domains.storage.backends.azure_blob"
             )
         elif backend_class == "S3Backend":
-            module = importlib.import_module("airweave.platform.storage.backends.aws_s3")
+            module = importlib.import_module("airweave.domains.storage.backends.aws_s3")
         elif backend_class == "GCSBackend":
             module = importlib.import_module(
-                "airweave.platform.storage.backends.gcp_gcs"
+                "airweave.domains.storage.backends.gcp_gcs"
             )
 
         cls = getattr(module, backend_class)

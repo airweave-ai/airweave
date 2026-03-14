@@ -25,7 +25,7 @@ from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.google_docs import GoogleDocsDocumentEntity
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
