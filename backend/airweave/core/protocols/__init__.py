@@ -12,6 +12,7 @@ from airweave.core.protocols.email import EmailService
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandler, EventSubscriber
 from airweave.core.protocols.identity import IdentityProvider
+from airweave.core.protocols.llm import LLMProtocol
 from airweave.core.protocols.metrics import (
     AgenticSearchMetrics,
     DbPool,
@@ -25,6 +26,8 @@ from airweave.core.protocols.ocr import OcrProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.pubsub import PubSub, PubSubSubscription
 from airweave.core.protocols.rate_limiter import RateLimiter
+from airweave.core.protocols.reranker import RerankerProtocol
+from airweave.core.protocols.tokenizer import TokenizerProtocol
 from airweave.core.protocols.webhooks import (
     EndpointVerifier,
     WebhookAdmin,
@@ -49,6 +52,7 @@ __all__ = [
     "HealthProbe",
     "HealthServiceProtocol",
     "HttpMetrics",
+    "LLMProtocol",
     "IdentityProvider",
     "MetricsRenderer",
     "MetricsService",
@@ -57,8 +61,10 @@ __all__ = [
     "PubSub",
     "PubSubSubscription",
     "RateLimiter",
+    "RerankerProtocol",
     "WebhookAdmin",
     "WebhookPublisher",
+    "TokenizerProtocol",
     "WebhookServiceProtocol",
     "WorkerMetrics",
     "WorkerMetricsRegistryProtocol",

@@ -65,6 +65,11 @@ from airweave.domains.organizations.protocols import (
     OrganizationServiceProtocol,
     UserOrganizationRepositoryProtocol,
 )
+from airweave.domains.search.protocols import (
+    AgenticSearchServiceProtocol,
+    ClassicSearchServiceProtocol,
+    InstantSearchServiceProtocol,
+)
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
@@ -224,8 +229,13 @@ class Container:
     # Connect domain service (session-based frontend integration flows)
     connect_service: ConnectServiceProtocol
 
+    # Search domain (v2 tiers)
+    instant_search: InstantSearchServiceProtocol
+    classic_search: ClassicSearchServiceProtocol
+    agentic_search: AgenticSearchServiceProtocol
+
+    # Optional fields (default=None) — must be last in frozen dataclass
     # OCR provider (with fallback chain + circuit breaking)
-    # Optional: None when no OCR backend (Mistral/Docling) is configured
     ocr_provider: Optional[OcrProvider] = None
 
     # -----------------------------------------------------------------

@@ -567,6 +567,30 @@ def fake_selection_repo():
 
 
 @pytest.fixture
+def fake_instant_search():
+    """Fake InstantSearchService."""
+    from airweave.domains.search.fakes.instant import FakeInstantSearchService
+
+    return FakeInstantSearchService()
+
+
+@pytest.fixture
+def fake_classic_search():
+    """Fake ClassicSearchService."""
+    from airweave.domains.search.fakes.classic import FakeClassicSearchService
+
+    return FakeClassicSearchService()
+
+
+@pytest.fixture
+def fake_agentic_search_v2():
+    """Fake AgenticSearchService (v2)."""
+    from airweave.domains.search.fakes.agentic import FakeAgenticSearchService
+
+    return FakeAgenticSearchService()
+
+
+@pytest.fixture
 def test_container(
     fake_context_cache,
     fake_rate_limiter,
@@ -625,6 +649,9 @@ def test_container(
     fake_connect_service,
     fake_browse_tree_service,
     fake_selection_repo,
+    fake_instant_search,
+    fake_classic_search,
+    fake_agentic_search_v2,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -694,4 +721,7 @@ def test_container(
         organization_service=fake_organization_service,
         email_service=fake_email_service,
         user_service=fake_user_service,
+        instant_search=fake_instant_search,
+        classic_search=fake_classic_search,
+        agentic_search=fake_agentic_search_v2,
     )
