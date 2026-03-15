@@ -1,0 +1,198 @@
+"""Unit tests for MediaChunker.
+
+Tests are skipped if ffmpeg is not installed on the system.
+Audio tests mock pydub; video tests mock ffmpeg subprocess calls.
+"""
+
+import shutil
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from airweave.platform.chunkers.media import (
+    AUDIO_MAX_SECONDS,
+    OVERLAP_SECONDS,
+    VIDEO_AUDIO_MAX_SECONDS,
+    VIDEO_NOAUDIO_MAX_SECONDS,
+    MediaChunker,
+    MediaSegment,
+)
+
+
+# ---------------------------------------------------------------------------
+# Audio chunking
+# ---------------------------------------------------------------------------
+
+
+class TestChunkAudio:
+    @pytest.mark.asyncio
+    async def test_short_audio_returns_single_segment(self, tmp_path):
+        """Audio shorter than AUDIO_MAX_SECONDS -> 1 segment (original file)."""
+        audio_file = tmp_path / "short.mp3"
+        audio_file.write_bytes(b"\x00" * 100)
+
+        mock_audio = MagicMock()
+        mock_audio.__len__ = MagicMock(return_value=30_000)  # 30 seconds in ms
+
+        with patch(
+            "pydub.AudioSegment.from_file",
+            return_value=mock_audio,
+        ):
+            chunker = MediaChunker(temp_dir=str(tmp_path / "segments"))
+            segments = await chunker.chunk_audio(str(audio_file))
+
+        assert len(segments) == 1
+        assert segments[0].file_path == str(audio_file)
+        assert segments[0].start_seconds == 0.0
+        assert segments[0].end_seconds == 30.0
+        assert segments[0].has_audio is True
+
+    @pytest.mark.asyncio
+    async def test_long_audio_produces_overlapping_segments(self, tmp_path):
+        """Audio longer than AUDIO_MAX_SECONDS -> multiple overlapping segments."""
+        audio_file = tmp_path / "long.mp3"
+        audio_file.write_bytes(b"\x00" * 100)
+
+        # 3 minutes = 180 seconds
+        duration_ms = 180_000
+        mock_audio = MagicMock()
+        mock_audio.__len__ = MagicMock(return_value=duration_ms)
+        mock_audio.__getitem__ = MagicMock(return_value=MagicMock(
+            export=MagicMock()
+        ))
+
+        with patch(
+            "pydub.AudioSegment.from_file",
+            return_value=mock_audio,
+        ):
+            chunker = MediaChunker(temp_dir=str(tmp_path / "segments"))
+            segments = await chunker.chunk_audio(str(audio_file))
+
+        # 180s / (75-5)s step = ~2.57, so 3 segments
+        assert len(segments) >= 3
+        assert segments[0].start_seconds == 0.0
+
+        # Check overlap exists between consecutive segments
+        for i in range(1, len(segments)):
+            overlap = segments[i - 1].end_seconds - segments[i].start_seconds
+            assert overlap >= 0  # segments should overlap or be adjacent
+
+    @pytest.mark.asyncio
+    async def test_audio_at_exact_limit(self, tmp_path):
+        """Audio exactly at AUDIO_MAX_SECONDS -> 1 segment."""
+        audio_file = tmp_path / "exact.mp3"
+        audio_file.write_bytes(b"\x00" * 100)
+
+        mock_audio = MagicMock()
+        mock_audio.__len__ = MagicMock(return_value=AUDIO_MAX_SECONDS * 1000)
+
+        with patch(
+            "pydub.AudioSegment.from_file",
+            return_value=mock_audio,
+        ):
+            chunker = MediaChunker()
+            segments = await chunker.chunk_audio(str(audio_file))
+
+        assert len(segments) == 1
+
+
+# ---------------------------------------------------------------------------
+# Video chunking
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg not installed")
+class TestChunkVideo:
+    @pytest.mark.asyncio
+    async def test_short_video_returns_single_segment(self, tmp_path):
+        """Video shorter than limit -> 1 segment (original file)."""
+        video_file = tmp_path / "short.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+
+        chunker = MediaChunker(temp_dir=str(tmp_path / "segments"))
+
+        with patch.object(
+            chunker, "_probe_duration", new_callable=AsyncMock, return_value=30.0
+        ), patch.object(
+            chunker, "_probe_has_audio", new_callable=AsyncMock, return_value=True
+        ):
+            segments = await chunker.chunk_video(str(video_file))
+
+        assert len(segments) == 1
+        assert segments[0].file_path == str(video_file)
+        assert segments[0].has_audio is True
+
+    @pytest.mark.asyncio
+    async def test_long_video_with_audio(self, tmp_path):
+        """Video with audio > VIDEO_AUDIO_MAX_SECONDS -> multiple segments."""
+        video_file = tmp_path / "long.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+
+        chunker = MediaChunker(temp_dir=str(tmp_path / "segments"))
+
+        async def mock_ffmpeg_segment(*args, **kwargs):
+            """Simulate successful ffmpeg segment creation."""
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            return proc
+
+        with patch.object(
+            chunker, "_probe_duration", new_callable=AsyncMock, return_value=200.0
+        ), patch.object(
+            chunker, "_probe_has_audio", new_callable=AsyncMock, return_value=True
+        ), patch(
+            "asyncio.create_subprocess_exec", side_effect=mock_ffmpeg_segment
+        ):
+            segments = await chunker.chunk_video(str(video_file))
+
+        # 200s / (75-5) step = ~2.86, so 3 segments
+        assert len(segments) >= 3
+
+    @pytest.mark.asyncio
+    async def test_video_without_audio_uses_higher_limit(self, tmp_path):
+        """Video without audio uses VIDEO_NOAUDIO_MAX_SECONDS."""
+        video_file = tmp_path / "silent.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+
+        chunker = MediaChunker(temp_dir=str(tmp_path / "segments"))
+
+        with patch.object(
+            chunker, "_probe_duration", new_callable=AsyncMock, return_value=100.0
+        ), patch.object(
+            chunker, "_probe_has_audio", new_callable=AsyncMock, return_value=False
+        ):
+            segments = await chunker.chunk_video(str(video_file))
+
+        # 100s < 115s limit -> 1 segment
+        assert len(segments) == 1
+
+    @pytest.mark.asyncio
+    async def test_ffmpeg_not_found(self, tmp_path):
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+
+        chunker = MediaChunker()
+
+        with patch("shutil.which", return_value=None):
+            with pytest.raises(RuntimeError, match="ffmpeg is required"):
+                await chunker.chunk_video(str(video_file))
+
+
+# ---------------------------------------------------------------------------
+# MediaSegment dataclass
+# ---------------------------------------------------------------------------
+
+
+class TestMediaSegment:
+    def test_creation(self):
+        seg = MediaSegment(
+            file_path="/tmp/seg.mp3",
+            start_seconds=0.0,
+            end_seconds=75.0,
+            has_audio=True,
+            mime_type="audio/mpeg",
+        )
+        assert seg.file_path == "/tmp/seg.mp3"
+        assert seg.has_audio is True
+        assert seg.mime_type == "audio/mpeg"

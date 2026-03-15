@@ -97,9 +97,10 @@ provider_models:
       tokenizer: "mistral-small-latest"  # Uses native Mistral tokenizer
       context_window: 32000
 
-  # Google Gemini Embedding 2 - natively multimodal, Matryoshka support
+  # Google Gemini Embedding 2 - Matryoshka support
   # Requires GEMINI_API_KEY to be set
-  # Supports any dimension from 128 to 3072 via Matryoshka truncation
+  # The API accepts any output_dimensionality in [128, 3072]; common values listed below
+  # To use unlisted values, add them to supported_dimensions
   gemini:
     llm: null
     embedding:
@@ -107,7 +108,7 @@ provider_models:
       tokenizer: "cl100k_base"  # Approximation for token counting
       dimensions: 3072
       max_tokens: 8192
-      supported_dimensions: [128, 256, 384, 512, 768, 1024, 1536, 3072]
+      supported_dimensions: [128, 256, 384, 512, 768, 1024, 1536, 2048, 3072]
     rerank: null
 
   # Local embedding provider using text2vec-transformers container

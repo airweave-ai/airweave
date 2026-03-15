@@ -45,6 +45,40 @@ class FakeDenseEmbedder:
         """No-op."""
 
 
+class FakeMultimodalDenseEmbedder(FakeDenseEmbedder):
+    """Test implementation of MultimodalDenseEmbedderProtocol.
+
+    Extends FakeDenseEmbedder with multimodal file embedding support.
+    Returns zero-vectors for any file input.
+    """
+
+    _SUPPORTED_MIME_TYPES: set[str] = {
+        "image/png",
+        "image/jpeg",
+        "application/pdf",
+        "audio/mpeg",
+        "audio/wav",
+        "video/mp4",
+    }
+
+    @property
+    def supports_multimodal(self) -> bool:
+        return True
+
+    @property
+    def supported_mime_types(self) -> set[str]:
+        return self._SUPPORTED_MIME_TYPES
+
+    async def embed_file(
+        self,
+        file_path: str,
+        mime_type: str,
+        *,
+        purpose: EmbeddingPurpose = EmbeddingPurpose.DOCUMENT,
+    ) -> DenseEmbedding:
+        return DenseEmbedding(vector=[0.0] * self._dimensions)
+
+
 class FakeSparseEmbedder:
     """Test implementation of SparseEmbedderProtocol.
 

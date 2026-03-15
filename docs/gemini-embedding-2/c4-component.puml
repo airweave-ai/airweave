@@ -1,0 +1,55 @@
+@startuml C4_Component_EmbeddingPipeline
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram: Gemini Embedding 2 Multimodal Pipeline
+
+Container_Boundary(worker, "Temporal Worker (Python 3.13 + ffmpeg)") {
+
+    Component(syncWf, "SyncWorkflow", "Temporal Activity", "Orchestrates entity pipeline per sync job")
+
+    Component(chunkEmbed, "ChunkEmbedProcessor", "Python", "Entry point: process(entities)")
+    Component(partitioner, "_partition_by_embedding_mode", "Python", "isinstance(MultimodalDenseEmbedderProtocol)")
+
+    Component(nativePipe, "Native Multimodal Pipeline", "Python", "1 chunk/file (img/PDF)\nN chunks/file (audio/video)")
+    Component(textPipe, "Text Pipeline", "Python", "SemanticChunker + embed_many()")
+
+    Component(textBuilder, "TextBuilder", "Python", "Routes to file-type converters")
+    Component(mediaChunker, "MediaChunker", "pydub + ffmpeg", "Splits audio/video into segments")
+
+    Component(geminiEmbed, "GeminiDenseEmbedder", "google-genai SDK", "embed_many() + embed_file()")
+    Component(sparseEmbed, "BM25 Sparse Embedder", "FastEmbed", "Keyword scoring vectors")
+
+    Component(audioConv, "AudioConverter", "Gemini generate_content", "Audio -> transcript text")
+    Component(videoConv, "VideoConverter", "ffmpeg + AudioConverter", "Video -> audio -> text")
+    Component(pdfConv, "PdfConverter", "PyMuPDF + OCR", "PDF -> markdown text")
+}
+
+System_Ext(geminiApi, "Google Gemini API", "embed_content + generate_content")
+System_Ext(vespa, "Vespa", "Hybrid dense + BM25 search")
+
+Rel(syncWf, chunkEmbed, "Processes entity batches")
+Rel(chunkEmbed, partitioner, "Classifies by embedder capability")
+Rel(partitioner, nativePipe, "FileEntity + supported MIME", "native path")
+Rel(partitioner, textPipe, "BaseEntity / unsupported MIME", "text path")
+
+Rel(nativePipe, textBuilder, "Step 1: Extract text for BM25")
+Rel(nativePipe, geminiEmbed, "Step 2: embed_file(path, mime)")
+Rel(nativePipe, mediaChunker, "Audio/video: chunk first")
+Rel(nativePipe, sparseEmbed, "Step 3: BM25 from textual_repr")
+
+Rel(textPipe, textBuilder, "Extract text")
+Rel(textPipe, geminiEmbed, "embed_many(texts)")
+Rel(textPipe, sparseEmbed, "BM25 from entity JSON")
+
+Rel(textBuilder, pdfConv, ".pdf")
+Rel(textBuilder, audioConv, ".mp3, .wav")
+Rel(textBuilder, videoConv, ".mp4")
+
+Rel(geminiEmbed, geminiApi, "embed_content API")
+Rel(audioConv, geminiApi, "generate_content (transcription)")
+Rel(videoConv, audioConv, "Delegates after ffmpeg extract")
+
+Rel(chunkEmbed, vespa, "Upsert chunks with vectors")
+
+SHOW_LEGEND()
+@enduml

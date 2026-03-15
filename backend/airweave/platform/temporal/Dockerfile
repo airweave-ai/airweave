@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     unixodbc \
     unixodbc-dev \
     exiftool \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir "poetry==2.3.2"
 

@@ -1,17 +1,20 @@
 """Gemini dense embedder satisfying DenseEmbedderProtocol.
 
 Handles batching, concurrency, input validation, L2 normalization
-for Matryoshka dimensions, purpose-aware task types, and error
-translation. Callers pass text, get DenseEmbedding back, handle
-errors themselves.
+for Matryoshka dimensions, purpose-aware task types, multimodal file
+embedding, and error translation. Callers pass text or file paths,
+get DenseEmbedding back, handle errors themselves.
 """
 
 import asyncio
 import math
+import os
 
+import aiofiles
 import httpx
 from google import genai
 from google.genai import errors
+from google.genai.types import Blob, Part
 
 from airweave.domains.embedders.exceptions import (
     EmbedderAuthError,
@@ -23,7 +26,7 @@ from airweave.domains.embedders.exceptions import (
     EmbedderResponseError,
     EmbedderTimeoutError,
 )
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, EmbeddingPurpose
+from airweave.domains.embedders.protocols import EmbeddingPurpose
 from airweave.domains.embedders.types import DenseEmbedding
 
 _PROVIDER = "gemini"
@@ -34,14 +37,44 @@ _PROVIDER = "gemini"
 # reject truly over-limit inputs.
 _MAX_CHARS_PER_TEXT: int = 40_000  # ~10K tokens at 4 chars/token
 
+# ---------------------------------------------------------------------------
+# Multimodal constants
+# ---------------------------------------------------------------------------
 
-class GeminiDenseEmbedder(DenseEmbedderProtocol):
-    """Gemini dense embedder satisfying DenseEmbedderProtocol.
+_MULTIMODAL_MIME_TYPES: set[str] = {
+    "image/png",
+    "image/jpeg",
+    "application/pdf",
+    "audio/mpeg",
+    "audio/wav",
+    "video/mp4",
+}
+
+
+def _get_max_pdf_pages() -> int:
+    """Read configurable PDF page limit from settings, fallback to 6."""
+    try:
+        from airweave.core.config import settings
+        return settings.MULTIMODAL_PDF_MAX_PAGES
+    except Exception:
+        return 6
+
+
+def _get_max_file_size_bytes() -> int:
+    """Read configurable file size limit from settings, fallback to 20MB."""
+    try:
+        from airweave.core.config import settings
+        return settings.MULTIMODAL_MAX_FILE_SIZE_MB * 1024 * 1024
+    except Exception:
+        return 20 * 1024 * 1024
+
+
+class GeminiDenseEmbedder:
+    """Gemini dense embedder satisfying DenseEmbedderProtocol + MultimodalDenseEmbedderProtocol.
 
     Handles batching, concurrency, input validation, L2 normalization
-    for Matryoshka dimensions, purpose-aware task types, and error
-    translation. Callers pass text, get DenseEmbedding back, handle
-    errors themselves.
+    for Matryoshka dimensions, purpose-aware task types, multimodal file
+    embedding, and error translation.
     """
 
     _MAX_TEXTS_PER_SUB_BATCH: int = 100
@@ -73,7 +106,7 @@ class GeminiDenseEmbedder(DenseEmbedderProtocol):
         self._semaphore = asyncio.Semaphore(self._MAX_CONCURRENT_REQUESTS)
 
     # ------------------------------------------------------------------
-    # Public interface
+    # Public interface — DenseEmbedderProtocol
     # ------------------------------------------------------------------
 
     @property
@@ -113,14 +146,60 @@ class GeminiDenseEmbedder(DenseEmbedderProtocol):
         return [embedding for batch_result in nested_results for embedding in batch_result]
 
     async def close(self) -> None:
-        """Release held resources (best-effort, google-genai has no public close)."""
+        """Release held resources (closes the async HTTP transport)."""
         try:
-            await self._client.aio.live._api_client._http_client.aclose()
+            await self._client.aio.aclose()
         except Exception:
             pass
 
     # ------------------------------------------------------------------
-    # Validation
+    # Public interface — MultimodalDenseEmbedderProtocol
+    # ------------------------------------------------------------------
+
+    @property
+    def supports_multimodal(self) -> bool:
+        """Whether this embedder supports native file embedding."""
+        return True
+
+    @property
+    def supported_mime_types(self) -> set[str]:
+        """Set of MIME types this embedder can embed natively."""
+        return _MULTIMODAL_MIME_TYPES
+
+    async def embed_file(
+        self,
+        file_path: str,
+        mime_type: str,
+        *,
+        purpose: EmbeddingPurpose = EmbeddingPurpose.DOCUMENT,
+    ) -> DenseEmbedding:
+        """Embed a file natively via the Gemini API.
+
+        Reads the file from disk, sends it as inline_data to the embedding
+        API, and returns a single DenseEmbedding. The file bytes are discarded
+        after the API call to avoid memory amplification.
+
+        Args:
+            file_path: Path to the file on disk.
+            mime_type: MIME type of the file.
+            purpose: Whether this is a document or query embedding.
+
+        Returns:
+            A single DenseEmbedding for the file.
+
+        Raises:
+            EmbedderInputError: If the file is invalid.
+        """
+        self._validate_file_input(file_path, mime_type)
+        file_bytes = await self._read_file_bytes(file_path)
+
+        part = Part(inline_data=Blob(data=file_bytes, mime_type=mime_type))
+        response = await self._call_multimodal_api(part, purpose)
+        results = self._validate_response(response, expected_count=1)
+        return results[0]
+
+    # ------------------------------------------------------------------
+    # Text validation
     # ------------------------------------------------------------------
 
     def _validate_inputs(self, texts: list[str]) -> None:
@@ -141,7 +220,78 @@ class GeminiDenseEmbedder(DenseEmbedderProtocol):
                 )
 
     # ------------------------------------------------------------------
-    # Batching
+    # File validation
+    # ------------------------------------------------------------------
+
+    def _validate_file_input(self, file_path: str, mime_type: str) -> None:
+        """Validate file input for multimodal embedding.
+
+        Raises:
+            EmbedderInputError: On unsupported MIME, missing file, size exceeded,
+                or PDF page count exceeded.
+        """
+        if mime_type not in _MULTIMODAL_MIME_TYPES:
+            raise EmbedderInputError(
+                f"Unsupported MIME type for multimodal embedding: {mime_type}. "
+                f"Supported: {sorted(_MULTIMODAL_MIME_TYPES)}"
+            )
+
+        if not os.path.isfile(file_path):
+            raise EmbedderInputError(f"File not found: {file_path}")
+
+        max_bytes = _get_max_file_size_bytes()
+        file_size = os.path.getsize(file_path)
+        if file_size > max_bytes:
+            raise EmbedderInputError(
+                f"File size {file_size} bytes exceeds limit of {max_bytes} bytes"
+            )
+
+        if file_size == 0:
+            raise EmbedderInputError(f"File is empty: {file_path}")
+
+        if mime_type == "application/pdf":
+            self._validate_pdf_pages(file_path)
+
+    def _validate_pdf_pages(self, file_path: str) -> None:
+        """Check that a PDF has at most the configured max pages.
+
+        Raises:
+            EmbedderInputError: If the PDF exceeds the page limit.
+        """
+        import fitz  # PyMuPDF — already in pyproject.toml
+
+        max_pages = _get_max_pdf_pages()
+
+        try:
+            with fitz.open(file_path) as doc:
+                page_count = len(doc)
+        except Exception as e:
+            raise EmbedderInputError(f"Failed to read PDF: {e}") from e
+
+        if page_count > max_pages:
+            raise EmbedderInputError(
+                f"PDF has {page_count} pages, exceeding the limit of {max_pages}"
+            )
+
+    # ------------------------------------------------------------------
+    # File I/O
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _read_file_bytes(file_path: str) -> bytes:
+        """Read file contents asynchronously.
+
+        Raises:
+            EmbedderInputError: If the file cannot be read.
+        """
+        try:
+            async with aiofiles.open(file_path, "rb") as f:
+                return await f.read()
+        except OSError as e:
+            raise EmbedderInputError(f"Failed to read file {file_path}: {e}") from e
+
+    # ------------------------------------------------------------------
+    # Batching (text)
     # ------------------------------------------------------------------
 
     async def _embed_sub_batch(
@@ -158,16 +308,12 @@ class GeminiDenseEmbedder(DenseEmbedderProtocol):
         response = await self._call_api(batch, purpose)
         return self._validate_response(response, expected_count=len(batch))
 
-    async def _call_api(self, batch: list[str], purpose: EmbeddingPurpose) -> object:
-        """Call the Gemini embeddings API, translating provider exceptions.
+    # ------------------------------------------------------------------
+    # API calls
+    # ------------------------------------------------------------------
 
-        Raises:
-            EmbedderAuthError: On authentication failure (401/403).
-            EmbedderRateLimitError: On rate limit (HTTP 429).
-            EmbedderTimeoutError: On request timeout.
-            EmbedderConnectionError: On connection failure.
-            EmbedderProviderError: On other API errors.
-        """
+    async def _call_api(self, batch: list[str], purpose: EmbeddingPurpose) -> object:
+        """Call the Gemini embeddings API for text, translating provider exceptions."""
         task_type = self._PURPOSE_TO_TASK_TYPE[purpose]
 
         try:
@@ -178,22 +324,7 @@ class GeminiDenseEmbedder(DenseEmbedderProtocol):
                 config={"task_type": task_type, **config},
             )
         except errors.ClientError as e:
-            status = getattr(e, "code", None) or getattr(e, "status", None)
-            if status in (401, 403):
-                raise EmbedderAuthError(
-                    f"Gemini authentication failed: {e}",
-                    provider=_PROVIDER,
-                ) from e
-            if status == 429:
-                raise EmbedderRateLimitError(
-                    f"Gemini rate limit exceeded: {e}",
-                    provider=_PROVIDER,
-                ) from e
-            raise EmbedderProviderError(
-                f"Gemini API client error: {e}",
-                provider=_PROVIDER,
-                retryable=False,
-            ) from e
+            self._translate_client_error(e)
         except errors.ServerError as e:
             raise EmbedderProviderError(
                 f"Gemini API server error: {e}",
@@ -215,6 +346,72 @@ class GeminiDenseEmbedder(DenseEmbedderProtocol):
                 f"Gemini transport error: {e}",
                 provider=_PROVIDER,
             ) from e
+
+    async def _call_multimodal_api(
+        self, part: Part, purpose: EmbeddingPurpose
+    ) -> object:
+        """Call the Gemini embeddings API for a file Part, translating provider exceptions."""
+        task_type = self._PURPOSE_TO_TASK_TYPE[purpose]
+
+        try:
+            async with self._semaphore:
+                return await self._client.aio.models.embed_content(
+                    model=self._model,
+                    contents=[part],
+                    config={
+                        "task_type": task_type,
+                        "output_dimensionality": self._dimensions,
+                    },
+                )
+        except errors.ClientError as e:
+            self._translate_client_error(e)
+        except errors.ServerError as e:
+            raise EmbedderProviderError(
+                f"Gemini API server error: {e}",
+                provider=_PROVIDER,
+                retryable=True,
+            ) from e
+        except (TimeoutError, httpx.TimeoutException) as e:
+            raise EmbedderTimeoutError(
+                f"Gemini request timed out: {e}",
+                provider=_PROVIDER,
+            ) from e
+        except (ConnectionError, httpx.ConnectError) as e:
+            raise EmbedderConnectionError(
+                f"Gemini connection failed: {e}",
+                provider=_PROVIDER,
+            ) from e
+        except httpx.RequestError as e:
+            raise EmbedderConnectionError(
+                f"Gemini transport error: {e}",
+                provider=_PROVIDER,
+            ) from e
+
+    def _translate_client_error(self, e: errors.ClientError) -> None:
+        """Translate a Gemini ClientError into domain exceptions.
+
+        Always raises — never returns normally.
+        """
+        status = getattr(e, "code", None) or getattr(e, "status", None)
+        if status in (401, 403):
+            raise EmbedderAuthError(
+                f"Gemini authentication failed: {e}",
+                provider=_PROVIDER,
+            ) from e
+        if status == 429:
+            raise EmbedderRateLimitError(
+                f"Gemini rate limit exceeded: {e}",
+                provider=_PROVIDER,
+            ) from e
+        raise EmbedderProviderError(
+            f"Gemini API client error: {e}",
+            provider=_PROVIDER,
+            retryable=False,
+        ) from e
+
+    # ------------------------------------------------------------------
+    # Response validation
+    # ------------------------------------------------------------------
 
     def _validate_response(self, response: object, *, expected_count: int) -> list[DenseEmbedding]:
         """Validate and convert the API response to DenseEmbedding objects.
@@ -251,7 +448,7 @@ class GeminiDenseEmbedder(DenseEmbedderProtocol):
 
     @staticmethod
     def _l2_normalize(vector: list[float]) -> list[float]:
-        """L2-normalize a vector in-place (no numpy dependency)."""
+        """L2-normalize a vector, returning a new list (no numpy dependency)."""
         norm = math.sqrt(sum(x * x for x in vector))
         if norm == 0.0:
             return vector

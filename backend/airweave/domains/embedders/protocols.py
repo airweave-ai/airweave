@@ -1,7 +1,7 @@
 """Protocols for embedders and embedder registries."""
 
 from enum import Enum
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from airweave.core.protocols.registry import RegistryProtocol
 from airweave.domains.embedders.types import (
@@ -60,6 +60,48 @@ class DenseEmbedderProtocol(Protocol):
 
     async def close(self) -> None:
         """Release any held resources (HTTP clients, etc.)."""
+        ...
+
+
+@runtime_checkable
+class MultimodalDenseEmbedderProtocol(Protocol):
+    """Protocol for dense embedders that support native file embedding.
+
+    Embedders implementing this protocol can embed files (PDFs, images,
+    audio, video) directly via the provider API, bypassing text extraction.
+    The pipeline detects this capability at runtime via isinstance() checks.
+    """
+
+    @property
+    def supports_multimodal(self) -> bool:
+        """Whether this embedder supports native file embedding."""
+        ...
+
+    @property
+    def supported_mime_types(self) -> set[str]:
+        """Set of MIME types this embedder can embed natively."""
+        ...
+
+    async def embed_file(
+        self,
+        file_path: str,
+        mime_type: str,
+        *,
+        purpose: EmbeddingPurpose = EmbeddingPurpose.DOCUMENT,
+    ) -> DenseEmbedding:
+        """Embed a file natively via the provider API.
+
+        Args:
+            file_path: Path to the file on disk.
+            mime_type: MIME type of the file.
+            purpose: Whether this is a document or query embedding.
+
+        Returns:
+            A single DenseEmbedding for the file.
+
+        Raises:
+            EmbedderInputError: If the file is invalid (wrong MIME, too large, etc.).
+        """
         ...
 
 

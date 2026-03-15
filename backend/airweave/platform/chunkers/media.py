@@ -1,0 +1,280 @@
+"""Media chunker for audio and video files.
+
+Splits audio/video into segments that fit within Gemini Embedding 2's
+duration limits using pydub (audio) and ffmpeg subprocess (video).
+Temp directories are cleaned up after embedding completes.
+"""
+
+import asyncio
+import logging
+import os
+import shutil
+import tempfile
+from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
+
+# Defaults — overridden by settings when available
+AUDIO_MAX_SECONDS: int = 75
+VIDEO_AUDIO_MAX_SECONDS: int = 75
+VIDEO_NOAUDIO_MAX_SECONDS: int = 115
+OVERLAP_SECONDS: int = 5
+
+
+def _load_media_config() -> tuple[int, int, int, int]:
+    """Load media chunking config from settings, falling back to defaults."""
+    try:
+        from airweave.core.config import settings
+
+        return (
+            settings.MULTIMODAL_AUDIO_MAX_SECONDS,
+            settings.MULTIMODAL_VIDEO_AUDIO_MAX_SECONDS,
+            settings.MULTIMODAL_VIDEO_NOAUDIO_MAX_SECONDS,
+            settings.MULTIMODAL_MEDIA_OVERLAP_SECONDS,
+        )
+    except Exception:
+        return (
+            AUDIO_MAX_SECONDS,
+            VIDEO_AUDIO_MAX_SECONDS,
+            VIDEO_NOAUDIO_MAX_SECONDS,
+            OVERLAP_SECONDS,
+        )
+
+
+@dataclass
+class MediaSegment:
+    """A chunk of a media file within Gemini's embedding duration limits."""
+
+    file_path: str
+    start_seconds: float
+    end_seconds: float
+    has_audio: bool
+    mime_type: str
+
+
+class MediaChunker:
+    """Splits audio/video files into embeddable segments.
+
+    Use as a context manager to ensure temp directories are cleaned up:
+
+        async with MediaChunker() as chunker:
+            segments = await chunker.chunk_audio(path)
+            # ... embed segments ...
+        # temp dirs cleaned up here
+    """
+
+    def __init__(self, temp_dir: str | None = None) -> None:
+        self._temp_dir = temp_dir
+        self._created_dirs: list[str] = []
+
+    async def __aenter__(self) -> "MediaChunker":
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        self.cleanup()
+
+    def cleanup(self) -> None:
+        """Remove all temp directories created by this chunker."""
+        for d in self._created_dirs:
+            try:
+                shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+        self._created_dirs.clear()
+
+    def _get_temp_dir(self) -> str:
+        if self._temp_dir:
+            os.makedirs(self._temp_dir, exist_ok=True)
+            return self._temp_dir
+        d = tempfile.mkdtemp(prefix="airweave_media_")
+        self._created_dirs.append(d)
+        return d
+
+    async def chunk_audio(self, file_path: str) -> list[MediaSegment]:
+        """Split an audio file into segments.
+
+        Uses pydub to load and slice audio. Each segment is exported
+        as a separate file in the temp directory.
+
+        Args:
+            file_path: Path to the audio file (mp3, wav).
+
+        Returns:
+            List of MediaSegment objects, one per chunk.
+        """
+        from pydub import AudioSegment
+
+        audio_max, _, _, overlap = _load_media_config()
+
+        audio = await asyncio.to_thread(AudioSegment.from_file, file_path)
+        duration_seconds = len(audio) / 1000.0
+
+        if duration_seconds <= audio_max:
+            ext = os.path.splitext(file_path)[1]
+            mime = "audio/mpeg" if ext == ".mp3" else "audio/wav"
+            return [
+                MediaSegment(
+                    file_path=file_path,
+                    start_seconds=0.0,
+                    end_seconds=duration_seconds,
+                    has_audio=True,
+                    mime_type=mime,
+                )
+            ]
+
+        temp_dir = self._get_temp_dir()
+        segments: list[MediaSegment] = []
+        step_ms = (audio_max - overlap) * 1000
+        max_ms = int(audio_max * 1000)
+        ext = os.path.splitext(file_path)[1] or ".mp3"
+        mime = "audio/mpeg" if ext == ".mp3" else "audio/wav"
+
+        start_ms = 0
+        idx = 0
+        total_ms = len(audio)
+
+        while start_ms < total_ms:
+            end_ms = min(start_ms + max_ms, total_ms)
+            segment_audio = audio[start_ms:end_ms]
+
+            segment_path = os.path.join(temp_dir, f"audio_seg_{idx}{ext}")
+            fmt = "mp3" if ext == ".mp3" else "wav"
+            await asyncio.to_thread(segment_audio.export, segment_path, format=fmt)
+
+            segments.append(
+                MediaSegment(
+                    file_path=segment_path,
+                    start_seconds=start_ms / 1000.0,
+                    end_seconds=end_ms / 1000.0,
+                    has_audio=True,
+                    mime_type=mime,
+                )
+            )
+
+            start_ms += int(step_ms)
+            idx += 1
+
+        return segments
+
+    async def chunk_video(self, file_path: str) -> list[MediaSegment]:
+        """Split a video file into segments using ffmpeg.
+
+        Probes the video for duration and audio track presence, then
+        splits into segments using ffmpeg's -ss/-t arguments.
+
+        Args:
+            file_path: Path to the video file (mp4).
+
+        Returns:
+            List of MediaSegment objects, one per chunk.
+        """
+        if not shutil.which("ffmpeg"):
+            raise RuntimeError("ffmpeg is required for video chunking but not found on PATH")
+
+        _, vid_audio_max, vid_noaudio_max, overlap = _load_media_config()
+
+        duration = await self._probe_duration(file_path)
+        has_audio = await self._probe_has_audio(file_path)
+        max_seconds = vid_audio_max if has_audio else vid_noaudio_max
+
+        if duration <= max_seconds:
+            return [
+                MediaSegment(
+                    file_path=file_path,
+                    start_seconds=0.0,
+                    end_seconds=duration,
+                    has_audio=has_audio,
+                    mime_type="video/mp4",
+                )
+            ]
+
+        temp_dir = self._get_temp_dir()
+        segments: list[MediaSegment] = []
+        step = max_seconds - overlap
+
+        start = 0.0
+        idx = 0
+
+        while start < duration:
+            seg_duration = min(max_seconds, duration - start)
+            segment_path = os.path.join(temp_dir, f"video_seg_{idx}.mp4")
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(start),
+                "-i", file_path,
+                "-t", str(seg_duration),
+                "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
+                segment_path,
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+
+            if proc.returncode != 0:
+                logger.warning(
+                    f"ffmpeg segment {idx} failed (rc={proc.returncode}): "
+                    f"{stderr.decode(errors='replace')[:200]}. "
+                    f"Returning {len(segments)} partial segments."
+                )
+                break
+
+            segments.append(
+                MediaSegment(
+                    file_path=segment_path,
+                    start_seconds=start,
+                    end_seconds=start + seg_duration,
+                    has_audio=has_audio,
+                    mime_type="video/mp4",
+                )
+            )
+
+            start += step
+            idx += 1
+
+        return segments
+
+    @staticmethod
+    async def _probe_duration(file_path: str) -> float:
+        """Get video duration in seconds via ffprobe."""
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path,
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        try:
+            return float(stdout.decode().strip())
+        except (ValueError, AttributeError):
+            raise RuntimeError(f"Could not determine duration for {file_path}")
+
+    @staticmethod
+    async def _probe_has_audio(file_path: str) -> bool:
+        """Check if the video has an audio stream via ffprobe."""
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=codec_type",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path,
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        return bool(stdout.decode().strip())

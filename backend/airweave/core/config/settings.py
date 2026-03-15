@@ -112,6 +112,46 @@ class Settings(BaseSettings):
     RUN_ALEMBIC_MIGRATIONS: bool = True
     RUN_DB_SYNC: bool = True
     ENABLE_INTERNAL_SOURCES: bool = False  # Enable internal/testing sources (stub, snapshot)
+    ENABLE_MEDIA_SYNC: bool = False  # Enable audio/video sync (requires ffmpeg)
+
+    # -------------------------------------------------------------------------
+    # Multimodal embedding configuration
+    # -------------------------------------------------------------------------
+    # These control how native file embedding (Gemini Embedding 2) handles
+    # PDFs, images, audio, and video. Only active when the dense embedder
+    # implements MultimodalDenseEmbedderProtocol.
+
+    # PDF: max pages per native embed call (Gemini limit = 6)
+    MULTIMODAL_PDF_MAX_PAGES: int = 6
+    # PDF: overlap pages when chunking oversized PDFs (e.g., 1 = last page
+    # of chunk N is also first page of chunk N+1)
+    MULTIMODAL_PDF_OVERLAP_PAGES: int = 1
+    # Max file size in MB for any single native embed call
+    MULTIMODAL_MAX_FILE_SIZE_MB: int = 20
+
+    # Audio: max seconds per segment (Gemini limit = 80s)
+    MULTIMODAL_AUDIO_MAX_SECONDS: int = 75
+    # Video with audio: max seconds per segment (Gemini limit = 80s)
+    MULTIMODAL_VIDEO_AUDIO_MAX_SECONDS: int = 75
+    # Video without audio: max seconds per segment (Gemini limit = 128s)
+    MULTIMODAL_VIDEO_NOAUDIO_MAX_SECONDS: int = 120
+    # Overlap between consecutive audio/video segments in seconds
+    MULTIMODAL_MEDIA_OVERLAP_SECONDS: int = 5
+
+    # Aggregation mode for multi-part native embeds.
+    # Controls whether the Gemini API aggregates multiple parts into one vector
+    # or each part produces its own vector.
+    #
+    # "separate" (default): Each chunk/part is embedded independently via its own
+    #   embed_content call. N chunks = N vectors in Vespa. Matches the text
+    #   pipeline model. Works for all modalities.
+    #
+    # "aggregate": Multiple parts are sent in a single embed_content call.
+    #   The API natively aggregates them into one vector. Only works where
+    #   the API supports it (e.g., text+images). PDFs are limited to 1 per
+    #   content entry by the API, so oversized PDFs always use separate mode
+    #   regardless of this setting.
+    MULTIMODAL_AGGREGATION: str = "separate"
 
     # Redis configuration
     REDIS_HOST: str = "localhost"

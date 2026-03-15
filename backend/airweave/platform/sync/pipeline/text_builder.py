@@ -345,6 +345,11 @@ class TextualRepresentationBuilder:
             ".yaml": converters.txt_converter,
             ".yml": converters.txt_converter,
             ".toml": converters.txt_converter,
+            # Audio files
+            ".mp3": converters.audio_converter,
+            ".wav": converters.audio_converter,
+            # Video files
+            ".mp4": converters.video_converter,
             # Code file extensions
             ".py": converters.code_converter,
             ".js": converters.code_converter,

@@ -58,7 +58,7 @@ def _build_embedder(
         if client_mock is None:
             client_mock = MagicMock()
             client_mock.aio.models.embed_content = AsyncMock()
-            client_mock.aio.live._api_client._http_client.aclose = AsyncMock()
+            client_mock.aio.aclose = AsyncMock()
         mock_genai.Client.return_value = client_mock
 
         embedder = GeminiDenseEmbedder(
@@ -79,7 +79,7 @@ async def test_embed_returns_single_dense_embedding():
     """embed() delegates to embed_many and returns the first result."""
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(return_value=_make_response([_vector()]))
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
     result = await embedder.embed("hello world")
@@ -99,7 +99,7 @@ async def test_embed_many_empty_returns_empty():
     """Empty input returns empty list without API call."""
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock()
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
     result = await embedder.embed_many([])
@@ -115,7 +115,7 @@ async def test_embed_many_single_batch():
     vectors = [_vector() for _ in texts]
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(return_value=_make_response(vectors))
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
     result = await embedder.embed_many(texts)
@@ -140,7 +140,7 @@ async def test_embed_many_sub_batching():
 
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(side_effect=fake_embed)
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
     result = await embedder.embed_many(texts)
@@ -196,7 +196,7 @@ async def test_count_mismatch_raises_response_error():
     client.aio.models.embed_content = AsyncMock(
         return_value=_make_response([_vector(), _vector()])
     )
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -212,7 +212,7 @@ async def test_dimension_mismatch_raises_dimension_error():
     client.aio.models.embed_content = AsyncMock(
         return_value=_make_response([[0.1] * wrong_dims])
     )
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -236,7 +236,7 @@ async def test_l2_normalization_for_sub_native_dims():
 
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(return_value=_make_response([raw_vector]))
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client, dims=2)
     result = await embedder.embed("test")
@@ -257,7 +257,7 @@ async def test_no_normalization_at_native_dims():
 
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(return_value=_make_response([raw_vector]))
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client, dims=3072)
     result = await embedder.embed("test")
@@ -276,7 +276,7 @@ async def test_document_purpose_maps_to_retrieval_document():
     """DOCUMENT purpose passes RETRIEVAL_DOCUMENT task type."""
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(return_value=_make_response([_vector()]))
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
     await embedder.embed("test", purpose=EmbeddingPurpose.DOCUMENT)
@@ -291,7 +291,7 @@ async def test_query_purpose_maps_to_retrieval_query():
     """QUERY purpose passes RETRIEVAL_QUERY task type."""
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(return_value=_make_response([_vector()]))
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
     await embedder.embed("search query", purpose=EmbeddingPurpose.QUERY)
@@ -315,7 +315,7 @@ async def test_client_error_401_raises_auth_error():
 
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(side_effect=exc)
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -332,7 +332,7 @@ async def test_client_error_403_raises_auth_error():
 
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(side_effect=exc)
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -349,7 +349,7 @@ async def test_client_error_429_raises_rate_limit_error():
 
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(side_effect=exc)
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -366,7 +366,7 @@ async def test_server_error_raises_retryable_provider_error():
     client.aio.models.embed_content = AsyncMock(
         side_effect=genai_errors.ServerError(500, {"error": {"message": "Internal error"}})
     )
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -381,7 +381,7 @@ async def test_timeout_raises_timeout_error():
     """TimeoutError raises EmbedderTimeoutError."""
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(side_effect=TimeoutError("timed out"))
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -396,7 +396,7 @@ async def test_connection_error_raises_connection_error():
     client.aio.models.embed_content = AsyncMock(
         side_effect=ConnectionError("connection refused")
     )
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -413,7 +413,7 @@ async def test_httpx_timeout_raises_timeout_error():
     client.aio.models.embed_content = AsyncMock(
         side_effect=httpx.ReadTimeout("read timed out")
     )
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -430,7 +430,7 @@ async def test_httpx_connect_error_raises_connection_error():
     client.aio.models.embed_content = AsyncMock(
         side_effect=httpx.ConnectError("refused")
     )
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -447,7 +447,7 @@ async def test_httpx_request_error_raises_connection_error():
     client.aio.models.embed_content = AsyncMock(
         side_effect=httpx.RequestError("network error", request=MagicMock())
     )
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -464,7 +464,7 @@ async def test_error_chaining_preserves_original():
 
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock(side_effect=original)
-    client.aio.live._api_client._http_client.aclose = AsyncMock()
+    client.aio.aclose = AsyncMock()
 
     embedder = _build_embedder(client_mock=client)
 
@@ -481,11 +481,11 @@ async def test_error_chaining_preserves_original():
 
 @pytest.mark.asyncio
 async def test_close_attempts_client_cleanup():
-    """close() attempts to close the underlying HTTP client (best-effort)."""
+    """close() calls the public aio.aclose() method (best-effort)."""
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock()
     aclose_mock = AsyncMock()
-    client.aio.live._api_client._http_client.aclose = aclose_mock
+    client.aio.aclose = aclose_mock
 
     embedder = _build_embedder(client_mock=client)
     await embedder.close()
@@ -495,10 +495,10 @@ async def test_close_attempts_client_cleanup():
 
 @pytest.mark.asyncio
 async def test_close_swallows_errors():
-    """close() swallows exceptions from the internal client."""
+    """close() swallows exceptions from the SDK."""
     client = MagicMock()
     client.aio.models.embed_content = AsyncMock()
-    client.aio.live._api_client._http_client.aclose = AsyncMock(
+    client.aio.aclose = AsyncMock(
         side_effect=AttributeError("SDK changed")
     )
 
