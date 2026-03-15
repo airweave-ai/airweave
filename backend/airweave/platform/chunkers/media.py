@@ -142,7 +142,8 @@ class MediaChunker:
         # within the size limit. Calculate from bitrate.
         if file_size > _MAX_SINGLE_FILE_BYTES and duration_seconds > 0:
             bytes_per_second = file_size / duration_seconds
-            size_limited_max = _MAX_SINGLE_FILE_BYTES / bytes_per_second
+            # 5% safety margin for container/header overhead (e.g., WAV headers)
+            size_limited_max = (_MAX_SINGLE_FILE_BYTES * 0.95) / bytes_per_second
             # Use the smaller of duration limit and size limit
             audio_max = min(audio_max, size_limited_max)
             # Ensure at least 1 second segments

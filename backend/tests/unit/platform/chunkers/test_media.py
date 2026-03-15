@@ -85,6 +85,34 @@ class TestChunkAudio:
 
         assert len(segments) == 1
 
+    @pytest.mark.asyncio
+    async def test_short_but_oversized_audio_forces_split(self, tmp_path):
+        """A short audio file (40s) that exceeds 19MB must be split by size."""
+        audio_file = tmp_path / "big_short.wav"
+        # Create a 25MB file (over the 19MB limit)
+        audio_file.write_bytes(b"\x00" * (25 * 1024 * 1024))
+
+        chunker = MediaChunker(temp_dir=str(tmp_path / "segments"))
+
+        async def mock_ffmpeg_segment(*args, **kwargs):
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            return proc
+
+        with patch.object(
+            chunker, "_probe_duration", new_callable=AsyncMock, return_value=40.0
+        ), patch(
+            "asyncio.create_subprocess_exec", side_effect=mock_ffmpeg_segment
+        ):
+            segments = await chunker.chunk_audio(str(audio_file))
+
+        # 40s file at 25MB → ~625KB/s → size_limited_max ≈ 28.9s (with 5% margin)
+        # → must produce >= 2 segments
+        assert len(segments) >= 2, (
+            f"Short-but-large audio must be split by size, got {len(segments)} segments"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Video chunking
