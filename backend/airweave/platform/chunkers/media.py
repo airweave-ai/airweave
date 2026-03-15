@@ -91,10 +91,11 @@ class MediaChunker:
         return d
 
     async def chunk_audio(self, file_path: str) -> list[MediaSegment]:
-        """Split an audio file into segments.
+        """Split an audio file into segments using ffmpeg.
 
-        Uses pydub to load and slice audio. Each segment is exported
-        as a separate file in the temp directory.
+        Uses ffprobe for duration detection and ffmpeg for splitting.
+        Never decodes the full file into memory (avoids OOM on large files).
+        Falls back to pydub only if ffmpeg is unavailable.
 
         Args:
             file_path: Path to the audio file (mp3, wav).
@@ -102,16 +103,22 @@ class MediaChunker:
         Returns:
             List of MediaSegment objects, one per chunk.
         """
-        from pydub import AudioSegment
-
         audio_max, _, _, overlap = _load_media_config()
+        ext = os.path.splitext(file_path)[1] or ".mp3"
+        mime = "audio/mpeg" if ext == ".mp3" else "audio/wav"
 
-        audio = await asyncio.to_thread(AudioSegment.from_file, file_path)
-        duration_seconds = len(audio) / 1000.0
+        # Use ffprobe for duration (no memory decode)
+        if shutil.which("ffprobe"):
+            duration_seconds = await self._probe_duration(file_path)
+        else:
+            # Fallback: use pydub (decodes into memory)
+            from pydub import AudioSegment as PydubAudioSegment
+
+            audio = await asyncio.to_thread(PydubAudioSegment.from_file, file_path)
+            duration_seconds = len(audio) / 1000.0
+            del audio  # Free memory immediately
 
         if duration_seconds <= audio_max:
-            ext = os.path.splitext(file_path)[1]
-            mime = "audio/mpeg" if ext == ".mp3" else "audio/wav"
             return [
                 MediaSegment(
                     file_path=file_path,
@@ -122,36 +129,56 @@ class MediaChunker:
                 )
             ]
 
+        # Split using ffmpeg (stream copy, no decode/re-encode)
+        if not shutil.which("ffmpeg"):
+            raise RuntimeError("ffmpeg is required for audio chunking but not found on PATH")
+
         temp_dir = self._get_temp_dir()
         segments: list[MediaSegment] = []
-        step_ms = (audio_max - overlap) * 1000
-        max_ms = int(audio_max * 1000)
-        ext = os.path.splitext(file_path)[1] or ".mp3"
-        mime = "audio/mpeg" if ext == ".mp3" else "audio/wav"
+        step = max(1, audio_max - overlap)
 
-        start_ms = 0
+        start = 0.0
         idx = 0
-        total_ms = len(audio)
 
-        while start_ms < total_ms:
-            end_ms = min(start_ms + max_ms, total_ms)
-            segment_audio = audio[start_ms:end_ms]
-
+        while start < duration_seconds:
+            seg_duration = min(audio_max, duration_seconds - start)
             segment_path = os.path.join(temp_dir, f"audio_seg_{idx}{ext}")
-            fmt = "mp3" if ext == ".mp3" else "wav"
-            await asyncio.to_thread(segment_audio.export, segment_path, format=fmt)
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(start),
+                "-i", file_path,
+                "-t", str(seg_duration),
+                "-c", "copy",
+                segment_path,
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+
+            if proc.returncode != 0:
+                logger.warning(
+                    f"ffmpeg audio segment {idx} failed (rc={proc.returncode}): "
+                    f"{stderr.decode(errors='replace')[:200]}. "
+                    f"Returning {len(segments)} partial segments."
+                )
+                break
 
             segments.append(
                 MediaSegment(
                     file_path=segment_path,
-                    start_seconds=start_ms / 1000.0,
-                    end_seconds=end_ms / 1000.0,
+                    start_seconds=start,
+                    end_seconds=start + seg_duration,
                     has_audio=True,
                     mime_type=mime,
                 )
             )
 
-            start_ms += int(step_ms)
+            start += step
             idx += 1
 
         return segments

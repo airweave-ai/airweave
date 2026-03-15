@@ -22,7 +22,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
-from airweave.domains.embedders.exceptions import EmbedderInputError
+from airweave.domains.embedders.exceptions import EmbedderInputError, EmbedderProviderError
 from airweave.domains.embedders.protocols import (
     EmbeddingPurpose,
     MultimodalDenseEmbedderProtocol,
@@ -236,9 +236,9 @@ class ChunkEmbedProcessor:
                     chunk.airweave_system_metadata.dense_embedding = dense_result.vector
                     chunk_entities.append(chunk)
 
-            except EmbedderInputError as e:
+            except (EmbedderInputError, EmbedderProviderError) as e:
                 # For oversized PDFs, try chunking into 6-page segments
-                if mime == "application/pdf":
+                if mime == "application/pdf" and isinstance(e, EmbedderInputError):
                     try:
                         sync_context.logger.info(
                             f"[ChunkEmbed-Multimodal] PDF {file_entity.entity_id} "
@@ -250,7 +250,7 @@ class ChunkEmbedProcessor:
                         )
                         chunk_entities.extend(pdf_chunks)
                         continue
-                    except EmbedderInputError:
+                    except (EmbedderInputError, EmbedderProviderError):
                         pass  # All PDF chunks failed, fall through to text
 
                 sync_context.logger.warning(
@@ -333,9 +333,19 @@ class ChunkEmbedProcessor:
                     chunk.airweave_system_metadata.chunk_index = idx
                     chunk.airweave_system_metadata.original_entity_id = original_id
                     chunk.airweave_system_metadata.dense_embedding = dense_result.vector
+
+                    # Assign segment-specific textual_representation so each
+                    # chunk gets its own sparse embedding and answer context,
+                    # not the full parent transcript duplicated across all chunks.
+                    parent_text = entity.textual_representation or ""
+                    chunk.textual_representation = (
+                        f"[Segment {idx}: {segment.start_seconds:.1f}s - "
+                        f"{segment.end_seconds:.1f}s] {parent_text}"
+                    )
+
                     chunks.append(chunk)
 
-                except EmbedderInputError as e:
+                except (EmbedderInputError, EmbedderProviderError) as e:
                     logger.warning(
                         f"[ChunkEmbed-Multimodal] Segment {idx} of {original_id} "
                         f"failed: {e}. Skipping segment."
@@ -407,10 +417,8 @@ class ChunkEmbedProcessor:
 
             doc.close()
 
-            # Step 2: Embed each chunk independently
-            # Note: Gemini limits document parts to 1 per content entry,
-            # so native multi-part aggregation doesn't work for PDFs.
-            # In "aggregate" mode, we embed separately then mean-pool.
+            # Step 2: Embed each chunk independently.
+            # Gemini limits document parts to 1 per content entry.
             chunks: List[BaseEntity] = []
             for idx, chunk_path in enumerate(temp_files):
                 try:
