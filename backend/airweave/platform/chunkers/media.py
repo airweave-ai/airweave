@@ -138,6 +138,16 @@ class MediaChunker:
                 )
             ]
 
+        # If file is oversized but short, reduce segment duration to fit
+        # within the size limit. Calculate from bitrate.
+        if file_size > _MAX_SINGLE_FILE_BYTES and duration_seconds > 0:
+            bytes_per_second = file_size / duration_seconds
+            size_limited_max = _MAX_SINGLE_FILE_BYTES / bytes_per_second
+            # Use the smaller of duration limit and size limit
+            audio_max = min(audio_max, size_limited_max)
+            # Ensure at least 1 second segments
+            audio_max = max(1.0, audio_max)
+
         # Split using ffmpeg (stream copy, no decode/re-encode)
         if not shutil.which("ffmpeg"):
             raise RuntimeError("ffmpeg is required for audio chunking but not found on PATH")
