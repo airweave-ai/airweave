@@ -442,7 +442,7 @@ class ChunkEmbedProcessor:
                     chunk.airweave_system_metadata.dense_embedding = dense_result.vector
                     chunks.append(chunk)
 
-                except EmbedderInputError as e:
+                except (EmbedderInputError, EmbedderProviderError) as e:
                     logger.warning(
                         f"[ChunkEmbed-Multimodal] PDF chunk {idx} "
                         f"failed: {e}. Skipping."

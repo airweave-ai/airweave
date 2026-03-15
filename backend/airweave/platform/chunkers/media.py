@@ -1,8 +1,10 @@
 """Media chunker for audio and video files.
 
 Splits audio/video into segments that fit within Gemini Embedding 2's
-duration limits using pydub (audio) and ffmpeg subprocess (video).
-Temp directories are cleaned up after embedding completes.
+duration and file size limits. Uses ffprobe for duration detection and
+ffmpeg for stream-copy splitting (no decode into RAM). Falls back to
+pydub only when ffmpeg is unavailable. Temp directories are cleaned up
+via the async context manager after embedding completes.
 """
 
 import asyncio
@@ -93,8 +95,9 @@ class MediaChunker:
     async def chunk_audio(self, file_path: str) -> list[MediaSegment]:
         """Split an audio file into segments using ffmpeg.
 
-        Uses ffprobe for duration detection and ffmpeg for splitting.
+        Uses ffprobe for duration detection and ffmpeg stream-copy for splitting.
         Never decodes the full file into memory (avoids OOM on large files).
+        A file is returned as-is only if BOTH duration <= limit AND size <= 19MB.
         Falls back to pydub only if ffmpeg is unavailable.
 
         Args:
@@ -118,7 +121,13 @@ class MediaChunker:
             duration_seconds = len(audio) / 1000.0
             del audio  # Free memory immediately
 
-        if duration_seconds <= audio_max:
+        # Return as single segment only if BOTH duration and file size are safe.
+        # A short but large file (e.g., 40s uncompressed WAV at 23MB) must still
+        # be split because Gemini rejects inline_data > 20MB.
+        _MAX_SINGLE_FILE_BYTES = 19 * 1024 * 1024  # 19MB, conservative under 20MB limit
+        file_size = os.path.getsize(file_path)
+
+        if duration_seconds <= audio_max and file_size <= _MAX_SINGLE_FILE_BYTES:
             return [
                 MediaSegment(
                     file_path=file_path,
