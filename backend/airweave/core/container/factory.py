@@ -97,6 +97,7 @@ from airweave.domains.organizations.repository import UserOrganizationRepository
 from airweave.domains.search.adapters.vector_db.filter_translator import FilterTranslator
 from airweave.domains.search.adapters.vector_db.vespa_client import VespaVectorDB
 from airweave.domains.search.agentic.service import AgenticSearchService
+from airweave.domains.search.agentic.subscribers.stream_relay import SearchStreamRelay
 from airweave.domains.search.builders.collection_metadata import CollectionMetadataBuilder
 from airweave.domains.search.classic.service import ClassicSearchService
 from airweave.domains.search.config import SearchConfig
@@ -410,6 +411,7 @@ def create_container(settings: Settings) -> Container:
         sc_repo=source_deps["sc_repo"],
         source_registry=source_deps["source_registry"],
         entity_definition_registry=source_deps["entity_definition_registry"],
+        event_bus=event_bus,
     )
 
     # -----------------------------------------------------------------
@@ -626,6 +628,11 @@ def _create_event_bus(
     usage_billing_listener = UsageBillingListener(ledger=usage_ledger)
     for pattern in usage_billing_listener.EVENT_PATTERNS:
         bus.subscribe(pattern, usage_billing_listener.handle)
+
+    # SearchStreamRelay — bridges search events to PubSub for SSE streaming
+    search_stream_relay = SearchStreamRelay(pubsub=pubsub)
+    for pattern in search_stream_relay.EVENT_PATTERNS:
+        bus.subscribe(pattern, search_stream_relay.handle)
 
     # DonkeNotificationSubscriber — best-effort signup notification
     from airweave.domains.organizations.subscribers.donke_notification import (
@@ -1154,6 +1161,7 @@ def _create_search_services(
     sc_repo: "SourceConnectionRepository",
     source_registry: "SourceRegistry",
     entity_definition_registry: "EntityDefinitionRegistry",
+    event_bus: "EventBus",
 ) -> dict:
     """Create search domain services (LLM, tokenizer, reranker, metadata builder, per-tier).
 
@@ -1221,7 +1229,9 @@ def _create_search_services(
     )
 
     # 6. Per-tier services
-    instant_search = InstantSearchService(executor=executor, collection_repo=collection_repo)
+    instant_search = InstantSearchService(
+        executor=executor, collection_repo=collection_repo, event_bus=event_bus
+    )
     classic_search = ClassicSearchService(
         llm=llm,
         tokenizer=tokenizer,
@@ -1237,6 +1247,7 @@ def _create_search_services(
         dense_embedder=dense_embedder,
         sparse_embedder=sparse_embedder,
         metadata_builder=metadata_builder,
+        event_bus=event_bus,
     )
 
     return {

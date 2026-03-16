@@ -1,23 +1,27 @@
 """Instant search service.
 
 Converts request directly into a SearchPlan (no LLM) and executes
-via the shared SearchPlanExecutor.
+via the shared SearchPlanExecutor. Emits SearchCompletedEvent on success.
 """
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.events.search import SearchCompletedEvent
+from airweave.core.protocols.event_bus import EventBus
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.search.protocols import (
     InstantSearchServiceProtocol,
     SearchPlanExecutorProtocol,
 )
 from airweave.domains.search.types import SearchPlan, SearchQuery, SearchResults
+from airweave.schemas.search_v2 import SearchTier
 
 if TYPE_CHECKING:
     from airweave.schemas.search_v2 import InstantSearchRequest
@@ -33,10 +37,12 @@ class InstantSearchService(InstantSearchServiceProtocol):
         self,
         executor: SearchPlanExecutorProtocol,
         collection_repo: CollectionRepositoryProtocol,
+        event_bus: EventBus,
     ) -> None:
-        """Initialize with executor and collection repo for readable_id -> UUID resolution."""
+        """Initialize with executor, collection repo, and event bus."""
         self._executor = executor
         self._collection_repo = collection_repo
+        self._event_bus = event_bus
 
     async def search(
         self,
@@ -57,8 +63,23 @@ class InstantSearchService(InstantSearchServiceProtocol):
             offset=request.offset,
             retrieval_strategy=request.retrieval_strategy,
         )
-        return await self._executor.execute(
+
+        start = time.monotonic()
+        results = await self._executor.execute(
             plan=plan,
             user_filter=request.filter or [],
             collection_id=str(collection.id),
         )
+        duration_ms = int((time.monotonic() - start) * 1000)
+
+        await self._event_bus.publish(
+            SearchCompletedEvent(
+                organization_id=ctx.organization.id,
+                request_id=ctx.request_id,
+                tier=SearchTier.INSTANT,
+                results=results.results,
+                duration_ms=duration_ms,
+            )
+        )
+
+        return results

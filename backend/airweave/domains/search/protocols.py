@@ -15,7 +15,6 @@ from airweave.domains.search.types import (
 )
 
 if TYPE_CHECKING:
-    from airweave.core.protocols import PubSub
     from airweave.schemas.search_v2 import (
         AgenticSearchRequest,
         ClassicSearchRequest,
@@ -105,8 +104,11 @@ class AgenticSearchServiceProtocol(Protocol):
         ctx: ApiContext,
         readable_id: str,
         request: AgenticSearchRequest,
-        pubsub: PubSub,
-        request_id: str,
     ) -> None:
-        """Execute agentic search and stream results via PubSub."""
+        """Execute agentic search, emitting events to EventBus.
+
+        The agent publishes domain events (thinking, tool_called, completed,
+        failed) to the EventBus. The SearchStreamRelay subscriber bridges
+        them to PubSub for SSE streaming.
+        """
         ...

@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 from airweave.domains.search.types import FilterGroup, RetrievalStrategy, SearchResult
+
+
+class SearchTier(str, Enum):
+    """Search tiers."""
+
+    INSTANT = "instant"
+    CLASSIC = "classic"
+    AGENTIC = "agentic"
 
 
 class InstantSearchRequest(BaseModel):

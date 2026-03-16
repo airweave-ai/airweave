@@ -6,6 +6,11 @@ from typing import Callable, Dict, Union
 from airweave.adapters.analytics.protocols import AnalyticsTrackerProtocol
 from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.events.organization import OrganizationLifecycleEvent
+from airweave.core.events.search import (
+    SearchCompletedEvent,
+    SearchFailedEvent,
+    SearchStartedEvent,
+)
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.protocols.event_bus import EventSubscriber
@@ -15,6 +20,9 @@ logger = logging.getLogger(__name__)
 _Event = Union[
     CollectionLifecycleEvent,
     OrganizationLifecycleEvent,
+    SearchCompletedEvent,
+    SearchFailedEvent,
+    SearchStartedEvent,
     SourceConnectionLifecycleEvent,
     SyncLifecycleEvent,
 ]
@@ -31,6 +39,7 @@ class AnalyticsEventSubscriber(EventSubscriber):
     EVENT_PATTERNS = [
         "collection.*",
         "organization.*",
+        "search.*",
         "source_connection.*",
         "sync.*",
     ]
@@ -50,6 +59,9 @@ class AnalyticsEventSubscriber(EventSubscriber):
             "sync.cancelled": self._handle_sync_cancelled,
             "organization.created": self._handle_org_created,
             "organization.deleted": self._handle_org_deleted,
+            "search.started": self._handle_search_started,
+            "search.completed": self._handle_search_completed,
+            "search.failed": self._handle_search_failed,
         }
 
     async def handle(self, event: _Event) -> None:
@@ -232,6 +244,60 @@ class AnalyticsEventSubscriber(EventSubscriber):
                 "organization_id": str(event.organization_id),
                 "organization_name": event.organization_name,
                 "affected_users": len(event.affected_user_emails),
+            },
+            groups={"organization": str(event.organization_id)},
+        )
+
+    # ------------------------------------------------------------------
+    # Search events
+    # ------------------------------------------------------------------
+
+    def _handle_search_started(self, event: SearchStartedEvent) -> None:
+        self._tracker.track(
+            event_name="search_started",
+            distinct_id=str(event.organization_id),
+            properties={
+                "request_id": event.request_id,
+                "tier": event.tier.value,
+                "collection_readable_id": event.collection_readable_id,
+                "query": event.query,
+                "thinking": event.thinking,
+                "filter": (
+                    [f.model_dump(mode="json") for f in event.filter] if event.filter else None
+                ),
+                "limit": event.limit,
+                "offset": event.offset,
+                "retrieval_strategy": (
+                    event.retrieval_strategy.value if event.retrieval_strategy else None
+                ),
+            },
+            groups={"organization": str(event.organization_id)},
+        )
+
+    def _handle_search_completed(self, event: SearchCompletedEvent) -> None:
+        self._tracker.track(
+            event_name="search_completed",
+            distinct_id=str(event.organization_id),
+            properties={
+                "request_id": event.request_id,
+                "tier": event.tier.value,
+                "result_count": len(event.results),
+                "duration_ms": event.duration_ms,
+                "diagnostics": (event.diagnostics.model_dump() if event.diagnostics else None),
+            },
+            groups={"organization": str(event.organization_id)},
+        )
+
+    def _handle_search_failed(self, event: SearchFailedEvent) -> None:
+        self._tracker.track(
+            event_name="search_failed",
+            distinct_id=str(event.organization_id),
+            properties={
+                "request_id": event.request_id,
+                "tier": event.tier.value,
+                "message": event.message,
+                "duration_ms": event.duration_ms,
+                "diagnostics": (event.diagnostics.model_dump() if event.diagnostics else None),
             },
             groups={"organization": str(event.organization_id)},
         )

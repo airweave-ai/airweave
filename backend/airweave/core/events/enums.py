@@ -65,6 +65,17 @@ class OrganizationEventType(str, Enum):
     MEMBER_REMOVED = "organization.member_removed"
 
 
+class SearchEventType(str, Enum):
+    """Search event types (all tiers: instant, classic, agentic)."""
+
+    STARTED = "search.started"
+    COMPLETED = "search.completed"
+    FAILED = "search.failed"
+    RERANKING = "search.reranking"
+    THINKING = "search.thinking"  # agentic only
+    TOOL_CALLED = "search.tool_called"  # agentic only
+
+
 # Union of all known event types.
 # DomainEvent.event_type is typed to this, ensuring only known values are used.
 EventType = (
@@ -75,6 +86,7 @@ EventType = (
     | CollectionEventType
     | SourceConnectionEventType
     | OrganizationEventType
+    | SearchEventType
 )
 
 # Ordered tuple of every event-type enum class.
@@ -87,4 +99,5 @@ ALL_EVENT_TYPE_ENUMS: tuple[type[Enum], ...] = (
     CollectionEventType,
     SourceConnectionEventType,
     OrganizationEventType,
+    SearchEventType,
 )

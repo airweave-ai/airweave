@@ -5,6 +5,7 @@ from typing import List
 
 from airweave.core.events.base import DomainEvent
 from airweave.core.events.enums import SourceConnectionEventType
+from airweave.core.events.search import SearchCompletedEvent
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import (
     EntityBatchProcessedEvent,
@@ -26,7 +27,13 @@ class UsageBillingListener(EventSubscriber):
     a ``ledger.flush()`` for the org to ensure nothing is left pending.
     """
 
-    EVENT_PATTERNS: List[str] = ["entity.*", "query.*", "sync.*", "source_connection.*"]
+    EVENT_PATTERNS: List[str] = [
+        "entity.*",
+        "query.*",
+        "search.completed",
+        "sync.*",
+        "source_connection.*",
+    ]
 
     _TERMINAL_SYNC_TYPES = frozenset({"sync.completed", "sync.failed", "sync.cancelled"})
 
@@ -43,6 +50,8 @@ class UsageBillingListener(EventSubscriber):
                 await self._handle_query(event)
             elif isinstance(event, SyncLifecycleEvent):
                 await self._handle_sync_lifecycle(event)
+            elif isinstance(event, SearchCompletedEvent):
+                await self._handle_search_completed(event)
             elif isinstance(event, SourceConnectionLifecycleEvent):
                 await self._handle_source_connection_lifecycle(event)
         except Exception as e:
@@ -72,6 +81,11 @@ class UsageBillingListener(EventSubscriber):
     async def _handle_sync_lifecycle(self, event: SyncLifecycleEvent) -> None:
         if event.event_type.value in self._TERMINAL_SYNC_TYPES:
             await self._ledger.flush(event.organization_id)
+
+    async def _handle_search_completed(self, event: SearchCompletedEvent) -> None:
+        if not event.billable:
+            return
+        await self._ledger.record(event.organization_id, ActionType.QUERIES, amount=1)
 
     async def _handle_source_connection_lifecycle(
         self, event: SourceConnectionLifecycleEvent

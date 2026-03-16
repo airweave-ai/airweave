@@ -1,6 +1,9 @@
 """Search V2 endpoints — instant, classic, agentic tiers.
 
 New routes alongside old search endpoints. Old endpoints remain untouched.
+
+Design: endpoints emit SearchStartedEvent (they own the request).
+Services emit SearchCompletedEvent/SearchFailedEvent (they own the execution).
 """
 
 import asyncio
@@ -14,7 +17,7 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.events.sync import QueryProcessedEvent
+from airweave.core.events.search import SearchStartedEvent
 from airweave.core.protocols import EventBus, PubSub
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.search.protocols import (
@@ -28,6 +31,7 @@ from airweave.schemas.search_v2 import (
     AgenticSearchRequest,
     ClassicSearchRequest,
     InstantSearchRequest,
+    SearchTier,
     SearchV2Response,
 )
 
@@ -46,8 +50,22 @@ async def instant_search(
 ) -> SearchV2Response:
     """Instant search — embed query, fire at Vespa, return results."""
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+
+    await event_bus.publish(
+        SearchStartedEvent(
+            organization_id=ctx.organization.id,
+            request_id=ctx.request_id,
+            tier=SearchTier.INSTANT,
+            collection_readable_id=readable_id,
+            query=request.query,
+            retrieval_strategy=request.retrieval_strategy,
+            filter=request.filter,
+            limit=request.limit,
+            offset=request.offset,
+        )
+    )
+
     results = await service.search(db, ctx, readable_id, request)
-    await event_bus.publish(QueryProcessedEvent(organization_id=ctx.organization.id))
     return SearchV2Response(results=results.results)
 
 
@@ -63,8 +81,21 @@ async def classic_search(
 ) -> SearchV2Response:
     """Classic search — LLM generates search plan, execute against Vespa."""
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+
+    await event_bus.publish(
+        SearchStartedEvent(
+            organization_id=ctx.organization.id,
+            request_id=ctx.request_id,
+            tier=SearchTier.CLASSIC,
+            collection_readable_id=readable_id,
+            query=request.query,
+            filter=request.filter,
+            limit=request.limit,
+            offset=request.offset,
+        )
+    )
+
     results = await service.search(db, ctx, readable_id, request)
-    await event_bus.publish(QueryProcessedEvent(organization_id=ctx.organization.id))
     return SearchV2Response(results=results.results)
 
 
@@ -85,9 +116,26 @@ async def agentic_search(
             detail="AGENTIC_SEARCH feature not enabled for this organization",
         )
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+
+    await event_bus.publish(
+        SearchStartedEvent(
+            organization_id=ctx.organization.id,
+            request_id=ctx.request_id,
+            tier=SearchTier.AGENTIC,
+            collection_readable_id=readable_id,
+            query=request.query,
+            thinking=request.thinking,
+            filter=request.filter,
+            limit=request.limit,
+        )
+    )
+
+    # Service emits SearchCompletedEvent internally
     results = await service.search(db, ctx, readable_id, request)
-    await event_bus.publish(QueryProcessedEvent(organization_id=ctx.organization.id))
     return SearchV2Response(results=results.results)
+
+
+# ── Streaming agentic search ──────────────────────────────────────────
 
 
 async def _run_agentic_search_v2(
@@ -96,24 +144,25 @@ async def _run_agentic_search_v2(
     readable_id: str,
     request: AgenticSearchRequest,
     pubsub: PubSub,
-    request_id: str,
 ) -> None:
     """Run agentic search in background. All exceptions caught to guarantee error event."""
     try:
         from airweave.db.session import AsyncSessionLocal
 
         async with AsyncSessionLocal() as search_db:
-            await service.search_stream(search_db, ctx, readable_id, request, pubsub, request_id)
+            await service.search_stream(search_db, ctx, readable_id, request)
     except Exception as e:
-        ctx.logger.exception(f"[AgenticSearchV2] Error in stream {request_id}: {e}")
+        ctx.logger.exception(f"[AgenticSearchV2] Error in stream {ctx.request_id}: {e}")
+        # Safety net: if the service crashed before publishing a failed event,
+        # publish error directly to PubSub so the SSE stream can terminate.
         try:
             await pubsub.publish(
                 "agentic_search_v2",
-                request_id,
+                ctx.request_id,
                 json.dumps({"type": "error", "message": str(e)}),
             )
         except Exception:
-            ctx.logger.error(f"[AgenticSearchV2] Failed to emit error for {request_id}")
+            ctx.logger.error(f"[AgenticSearchV2] Failed to emit error for {ctx.request_id}")
 
 
 async def _cleanup_stream(search_task: asyncio.Task, ps: object) -> None:
@@ -142,7 +191,6 @@ def _parse_sse_event(data: str) -> str:
 async def _agentic_event_stream_v2(
     ps: object,
     search_task: asyncio.Task,
-    event_bus: EventBus,
     ctx: ApiContext,
 ):
     """Generate SSE events from PubSub messages for agentic search V2."""
@@ -155,12 +203,6 @@ async def _agentic_event_stream_v2(
             event_type = _parse_sse_event(data)
 
             if event_type == "done":
-                try:
-                    await event_bus.publish(
-                        QueryProcessedEvent(organization_id=ctx.organization.id)
-                    )
-                except Exception:
-                    pass
                 break
 
             if event_type == "error":
@@ -192,16 +234,29 @@ async def stream_agentic_search(
             detail="AGENTIC_SEARCH feature not enabled for this organization",
         )
 
-    request_id = ctx.request_id
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
-    ps = await pubsub.subscribe("agentic_search_v2", request_id)
+    # Emit started event — flows through relay to PubSub as SSE "started"
+    await event_bus.publish(
+        SearchStartedEvent(
+            organization_id=ctx.organization.id,
+            request_id=ctx.request_id,
+            tier=SearchTier.AGENTIC,
+            collection_readable_id=readable_id,
+            query=request.query,
+            thinking=request.thinking,
+            filter=request.filter,
+            limit=request.limit,
+        )
+    )
+
+    ps = await pubsub.subscribe("agentic_search_v2", ctx.request_id)
     search_task = asyncio.create_task(
-        _run_agentic_search_v2(service, ctx, readable_id, request, pubsub, request_id)
+        _run_agentic_search_v2(service, ctx, readable_id, request, pubsub)
     )
 
     return StreamingResponse(
-        _agentic_event_stream_v2(ps, search_task, event_bus, ctx),
+        _agentic_event_stream_v2(ps, search_task, ctx),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

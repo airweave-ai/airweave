@@ -7,8 +7,17 @@ from airweave.core.events.enums import (
     CollectionEventType,
     EntityEventType,
     EventType,
+    SearchEventType,
     SourceConnectionEventType,
     SyncEventType,
+)
+from airweave.core.events.search import (
+    SearchCompletedEvent,
+    SearchFailedEvent,
+    SearchRerankingEvent,
+    SearchStartedEvent,
+    SearchThinkingEvent,
+    SearchToolCalledEvent,
 )
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import (
@@ -27,6 +36,13 @@ __all__ = [
     "EntityBatchProcessedEvent",
     "EntityEventType",
     "EventType",
+    "SearchCompletedEvent",
+    "SearchEventType",
+    "SearchFailedEvent",
+    "SearchRerankingEvent",
+    "SearchStartedEvent",
+    "SearchThinkingEvent",
+    "SearchToolCalledEvent",
     "SourceConnectionEventType",
     "SourceConnectionLifecycleEvent",
     "SyncEventType",
