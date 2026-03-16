@@ -21,6 +21,7 @@ class PrometheusAgenticSearchMetrics(AgenticSearchMetrics):
     """Prometheus-backed agentic search metrics collection."""
 
     def __init__(self, registry: CollectorRegistry | None = None) -> None:
+        """Initialize PrometheusAgenticSearchMetrics with the given registry."""
         self._registry = registry or CollectorRegistry()
 
         self._requests_total = Counter(
@@ -71,21 +72,27 @@ class PrometheusAgenticSearchMetrics(AgenticSearchMetrics):
     # -- AgenticSearchMetrics protocol methods --
 
     def inc_search_requests(self, mode: str, streaming: bool) -> None:
+        """Increment the total search requests counter."""
         self._requests_total.labels(mode=mode, streaming=str(streaming).lower()).inc()
 
     def inc_search_errors(self, mode: str, streaming: bool) -> None:
+        """Increment the total search errors counter."""
         self._errors_total.labels(mode=mode, streaming=str(streaming).lower()).inc()
 
     def observe_iterations(self, mode: str, count: int) -> None:
+        """Record the number of iterations for a search."""
         self._iterations.labels(mode=mode).observe(count)
 
     def observe_step_duration(self, step: str, duration: float) -> None:
+        """Record the duration of a single pipeline step."""
         self._step_duration.labels(step=step).observe(duration)
 
     def observe_results_per_search(self, count: int) -> None:
+        """Record the number of results returned by a search."""
         self._results_per_search.observe(count)
 
     def observe_duration(self, mode: str, duration: float) -> None:
+        """Record the end-to-end search duration."""
         self._duration.labels(mode=mode).observe(duration)
 
 
@@ -106,6 +113,7 @@ class FakeAgenticSearchMetrics(AgenticSearchMetrics):
     """In-memory spy implementing the AgenticSearchMetrics protocol."""
 
     def __init__(self) -> None:
+        """Initialize FakeAgenticSearchMetrics with empty recording lists."""
         self.search_requests: list[tuple[str, bool]] = []
         self.search_errors: list[tuple[str, bool]] = []
         self.iterations: list[tuple[str, int]] = []
@@ -114,21 +122,27 @@ class FakeAgenticSearchMetrics(AgenticSearchMetrics):
         self.durations: list[tuple[str, float]] = []
 
     def inc_search_requests(self, mode: str, streaming: bool) -> None:
+        """Record a search request for later assertion."""
         self.search_requests.append((mode, streaming))
 
     def inc_search_errors(self, mode: str, streaming: bool) -> None:
+        """Record a search error for later assertion."""
         self.search_errors.append((mode, streaming))
 
     def observe_iterations(self, mode: str, count: int) -> None:
+        """Record an iteration count for later assertion."""
         self.iterations.append((mode, count))
 
     def observe_step_duration(self, step: str, duration: float) -> None:
+        """Record a step duration for later assertion."""
         self.step_durations.append(StepDurationRecord(step, duration))
 
     def observe_results_per_search(self, count: int) -> None:
+        """Record a results count for later assertion."""
         self.results_counts.append(count)
 
     def observe_duration(self, mode: str, duration: float) -> None:
+        """Record a search duration for later assertion."""
         self.durations.append((mode, duration))
 
     # -- test helpers --

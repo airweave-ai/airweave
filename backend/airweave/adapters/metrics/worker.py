@@ -14,6 +14,7 @@ class PrometheusWorkerMetrics(WorkerMetrics):
     """Prometheus-backed Temporal worker metrics."""
 
     def __init__(self, registry: CollectorRegistry) -> None:
+        """Initialize PrometheusWorkerMetrics with worker gauges and info."""
         self._registry = registry
         self._previous_connector_labels: dict[str, set[str]] = {}
 
@@ -109,6 +110,7 @@ class PrometheusWorkerMetrics(WorkerMetrics):
     # -- WorkerMetrics protocol method --
 
     def update(self, snapshot: WorkerMetricsSnapshot) -> None:
+        """Update all worker gauges from a metrics snapshot."""
         wid = snapshot.worker_id
 
         # Static info
@@ -174,16 +176,20 @@ class FakeWorkerMetrics(WorkerMetrics):
     """In-memory spy implementing the WorkerMetrics protocol."""
 
     def __init__(self) -> None:
+        """Initialize FakeWorkerMetrics with an empty snapshot list."""
         self.snapshots: list[WorkerMetricsSnapshot] = []
 
     def update(self, snapshot: WorkerMetricsSnapshot) -> None:
+        """Record a worker metrics snapshot for later assertion."""
         self.snapshots.append(snapshot)
 
     # -- test helpers --
 
     @property
     def last_snapshot(self) -> WorkerMetricsSnapshot | None:
+        """Return the most recently recorded snapshot, or None."""
         return self.snapshots[-1] if self.snapshots else None
 
     def clear(self) -> None:
+        """Reset all recorded snapshots."""
         self.snapshots.clear()

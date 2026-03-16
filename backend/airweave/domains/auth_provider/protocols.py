@@ -1,3 +1,5 @@
+"""Auth provider service and registry protocols."""
+
 from typing import Any, Optional, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession

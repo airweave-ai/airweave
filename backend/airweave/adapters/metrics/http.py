@@ -32,6 +32,7 @@ class PrometheusHttpMetrics(HttpMetrics):
     """Prometheus-backed HTTP metrics collection."""
 
     def __init__(self, registry: CollectorRegistry | None = None) -> None:
+        """Initialize PrometheusHttpMetrics with HTTP counters and histograms."""
         self._registry = registry or CollectorRegistry()
 
         self._requests_total = Counter(
@@ -66,9 +67,11 @@ class PrometheusHttpMetrics(HttpMetrics):
     # -- HttpMetrics protocol methods --
 
     def inc_in_progress(self, method: str) -> None:
+        """Increment the in-progress request gauge for the given method."""
         self._in_progress.labels(method=method).inc()
 
     def dec_in_progress(self, method: str) -> None:
+        """Decrement the in-progress request gauge for the given method."""
         self._in_progress.labels(method=method).dec()
 
     def observe_request(
@@ -78,6 +81,7 @@ class PrometheusHttpMetrics(HttpMetrics):
         status_code: str,
         duration: float,
     ) -> None:
+        """Record a completed HTTP request with its status and duration."""
         self._requests_total.labels(
             method=method,
             endpoint=endpoint,
@@ -86,6 +90,7 @@ class PrometheusHttpMetrics(HttpMetrics):
         self._request_duration.labels(method=method, endpoint=endpoint).observe(duration)
 
     def observe_response_size(self, method: str, endpoint: str, size: int) -> None:
+        """Record the response body size for an HTTP request."""
         self._response_size.labels(method=method, endpoint=endpoint).observe(size)
 
 
@@ -117,14 +122,17 @@ class FakeHttpMetrics(HttpMetrics):
     """In-memory spy implementing the HttpMetrics protocol."""
 
     def __init__(self) -> None:
+        """Initialize FakeHttpMetrics with empty recording state."""
         self.in_progress: dict[str, int] = {}
         self.requests: list[RequestRecord] = []
         self.response_sizes: list[ResponseSizeRecord] = []
 
     def inc_in_progress(self, method: str) -> None:
+        """Record an in-progress increment for later assertion."""
         self.in_progress[method] = self.in_progress.get(method, 0) + 1
 
     def dec_in_progress(self, method: str) -> None:
+        """Record an in-progress decrement for later assertion."""
         self.in_progress[method] = self.in_progress.get(method, 0) - 1
 
     def observe_request(
@@ -134,9 +142,11 @@ class FakeHttpMetrics(HttpMetrics):
         status_code: str,
         duration: float,
     ) -> None:
+        """Record a completed request for later assertion."""
         self.requests.append(RequestRecord(method, endpoint, status_code, duration))
 
     def observe_response_size(self, method: str, endpoint: str, size: int) -> None:
+        """Record a response size for later assertion."""
         self.response_sizes.append(ResponseSizeRecord(method, endpoint, size))
 
     # -- test helpers --

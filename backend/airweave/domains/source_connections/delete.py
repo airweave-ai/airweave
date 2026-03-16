@@ -38,6 +38,7 @@ class SourceConnectionDeletionService(SourceConnectionDeletionServiceProtocol):
         response_builder: ResponseBuilderProtocol,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
     ) -> None:
+        """Initialize SourceConnectionDeletionService with its dependencies."""
         self._sc_repo = sc_repo
         self._collection_repo = collection_repo
         self._sync_job_repo = sync_job_repo

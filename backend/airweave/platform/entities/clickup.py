@@ -23,6 +23,7 @@ class ClickUpWorkspaceEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         return f"https://app.clickup.com/{self.workspace_id}"
 
 
@@ -47,6 +48,7 @@ class ClickUpSpaceEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         return f"https://app.clickup.com/{self.workspace_id}/v/b/{self.space_id}"
 
 
@@ -66,6 +68,7 @@ class ClickUpFolderEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         return f"https://app.clickup.com/{self.workspace_id}/v/f/{self.folder_id}"
 
 
@@ -103,6 +106,7 @@ class ClickUpListEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         return f"https://app.clickup.com/{self.workspace_id}/v/li/{self.list_id}"
 
 
@@ -154,6 +158,7 @@ class ClickUpTaskEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         return self.url
 
 
@@ -187,6 +192,7 @@ class ClickUpCommentEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         return f"https://app.clickup.com/t/{self.task_id}"
 
 
@@ -225,6 +231,7 @@ class ClickUpSubtaskEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         return self.url or f"https://app.clickup.com/t/{self.subtask_id}"
 
 
@@ -302,4 +309,5 @@ class ClickUpFileEntity(FileEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         return f"https://app.clickup.com/t/{self.task_id}"

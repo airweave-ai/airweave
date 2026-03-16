@@ -30,18 +30,22 @@ import stripe
 
 
 def log_step(title: str) -> None:
+    """Print a step header to stdout."""
     print(f"\n▶ {title}")
 
 
 def log_ok(message: str) -> None:
+    """Print a success message to stdout."""
     print(f"  ✅ {message}")
 
 
 def log_info(message: str) -> None:
+    """Print an informational message to stdout."""
     print(f"  • {message}")
 
 
 def log_error(message: str) -> None:
+    """Print an error message to stdout."""
     print(f"  ❌ {message}")
 
 
@@ -503,6 +507,7 @@ def _stripe_first_item_price_id(subscription: Any) -> Optional[str]:
 
 
 def assert_stripe_price(subscription_id: str, expected_price_id: str) -> None:
+    """Assert the Stripe subscription's current price matches the expected ID."""
     sub = get_stripe_subscription(subscription_id)
     actual = _stripe_first_item_price_id(sub)
     assert actual == expected_price_id, f"Stripe price mismatch: {actual} != {expected_price_id}"
@@ -547,6 +552,7 @@ def create_stripe_test_clock(
 
 
 def advance_stripe_test_clock(clock_id: str, new_time: int) -> None:
+    """Advance a Stripe test clock to the given epoch timestamp."""
     api_key = os.environ.get("STRIPE_SECRET_KEY")
     if not api_key:
         raise RuntimeError("STRIPE_SECRET_KEY not set in environment")

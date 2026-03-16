@@ -1,3 +1,5 @@
+"""Utilities for sanitizing filenames into filesystem-safe strings."""
+
 import os
 import re
 import unicodedata

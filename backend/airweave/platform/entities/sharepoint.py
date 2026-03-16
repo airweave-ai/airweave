@@ -140,6 +140,7 @@ class SharePointGroupEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://outlook.office.com/groups/{self.id}"
@@ -184,6 +185,7 @@ class SharePointSiteEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://sharepoint.com/sites/{self.id}"
@@ -230,6 +232,7 @@ class SharePointDriveEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         if self.site_id:
@@ -291,6 +294,7 @@ class SharePointDriveItemEntity(FileEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://sharepoint.com/_layouts/15/Doc.aspx?sourcedoc={self.id}"
@@ -340,6 +344,7 @@ class SharePointListEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         if self.site_id:
@@ -399,6 +404,7 @@ class SharePointListItemEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         if self.site_id and self.list_id:
@@ -456,6 +462,7 @@ class SharePointPageEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         if self.site_id:

@@ -1,3 +1,5 @@
+"""Auth provider registry entry and metadata types."""
+
 from airweave.core.protocols.registry import BaseRegistryEntry
 from airweave.platform.configs._base import Fields
 

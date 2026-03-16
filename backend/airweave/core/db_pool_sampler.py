@@ -32,6 +32,7 @@ class DbPoolSampler:
         metrics: DbPoolMetrics,
         interval: float = 5.0,
     ) -> None:
+        """Initialize DbPoolSampler with pool, metrics adapter, and interval."""
         self._pool = pool
         self._metrics = metrics
         self._interval = interval

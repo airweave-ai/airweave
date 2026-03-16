@@ -12,13 +12,16 @@ class RedisHealthProbe(HealthProbe):
     """Probes Redis by sending a ``PING`` command."""
 
     def __init__(self, client: Redis) -> None:
+        """Initialize RedisHealthProbe with the given async Redis client."""
         self._client = client
 
     @property
     def name(self) -> str:
+        """Return the probe name for this health check."""
         return "redis"
 
     async def check(self) -> DependencyCheck:
+        """Send a PING command and return the health status."""
         start = time.perf_counter()
         await self._client.ping()
         latency = (time.perf_counter() - start) * 1000

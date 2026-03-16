@@ -48,6 +48,7 @@ class PrometheusMetricsService(MetricsService):
         host: str,
         port: int,
     ) -> None:
+        """Initialize PrometheusMetricsService with adapters and server config."""
         self.http = http
         self.agentic_search = agentic_search
         self.db_pool = db_pool

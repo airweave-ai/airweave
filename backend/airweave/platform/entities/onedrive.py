@@ -63,6 +63,7 @@ class OneDriveDriveEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://onedrive.live.com/?id={self.id}"
@@ -124,6 +125,7 @@ class OneDriveDriveItemEntity(FileEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://onedrive.live.com/?id={self.id}"

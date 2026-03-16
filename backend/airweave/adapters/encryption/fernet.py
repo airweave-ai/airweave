@@ -12,10 +12,13 @@ class FernetCredentialEncryptor:
     """Encrypt/decrypt credential dicts using Fernet symmetric encryption."""
 
     def __init__(self, encryption_key: str) -> None:
+        """Initialize FernetCredentialEncryptor with the given key."""
         self._fernet = Fernet(encryption_key.encode())
 
     def encrypt(self, data: dict[str, Any]) -> str:
+        """Encrypt a credential dict and return the ciphertext as a string."""
         return self._fernet.encrypt(json.dumps(data).encode()).decode()
 
     def decrypt(self, encrypted: str) -> dict[str, Any]:
+        """Decrypt a ciphertext string and return the credential dict."""
         return json.loads(self._fernet.decrypt(encrypted).decode())

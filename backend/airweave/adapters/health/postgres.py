@@ -13,13 +13,16 @@ class PostgresHealthProbe(HealthProbe):
     """Probes Postgres by executing ``SELECT 1`` on a dedicated engine."""
 
     def __init__(self, engine: AsyncEngine) -> None:
+        """Initialize PostgresHealthProbe with the given async engine."""
         self._engine = engine
 
     @property
     def name(self) -> str:
+        """Return the probe name for this health check."""
         return "postgres"
 
     async def check(self) -> DependencyCheck:
+        """Execute a SELECT 1 query and return the health status."""
         start = time.perf_counter()
         async with self._engine.connect() as conn:
             await conn.execute(text("SELECT 1"))

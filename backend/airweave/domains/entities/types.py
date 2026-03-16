@@ -1,3 +1,5 @@
+"""Entity definition registry entry and metadata types."""
+
 from pydantic import BaseModel
 
 from airweave.core.protocols.registry import BaseRegistryEntry

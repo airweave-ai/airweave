@@ -17,6 +17,7 @@ class PrometheusDbPoolMetrics(DbPoolMetrics):
         registry: CollectorRegistry | None = None,
         max_overflow: int = 0,
     ) -> None:
+        """Initialize PrometheusDbPoolMetrics with pool gauges."""
         self._registry = registry or CollectorRegistry()
 
         self._pool_size = Gauge(
@@ -62,6 +63,7 @@ class PrometheusDbPoolMetrics(DbPoolMetrics):
         checked_in: int,
         overflow: int,
     ) -> None:
+        """Set all pool gauge values from the current pool state."""
         self._pool_size.set(pool_size)
         self._checked_out.set(checked_out)
         self._checked_in.set(checked_in)
@@ -77,6 +79,7 @@ class FakeDbPoolMetrics(DbPoolMetrics):
     """In-memory spy implementing the DbPoolMetrics protocol."""
 
     def __init__(self) -> None:
+        """Initialize FakeDbPoolMetrics with empty state."""
         self.pool_size: int | None = None
         self.checked_out: int | None = None
         self.checked_in: int | None = None
@@ -91,6 +94,7 @@ class FakeDbPoolMetrics(DbPoolMetrics):
         checked_in: int,
         overflow: int,
     ) -> None:
+        """Record pool state for later assertion."""
         self.pool_size = pool_size
         self.checked_out = checked_out
         self.checked_in = checked_in

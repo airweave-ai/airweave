@@ -30,17 +30,21 @@ class PrometheusMetricsRenderer(MetricsRenderer):
     """Render all metrics in a shared CollectorRegistry."""
 
     def __init__(self, registry: CollectorRegistry) -> None:
+        """Initialize PrometheusMetricsRenderer with a shared registry."""
         self._registry = registry
 
     @property
     def content_type(self) -> str:
+        """Return the Prometheus exposition content type."""
         return _CONTENT_TYPE
 
     @property
     def charset(self) -> str:
+        """Return the character set for the rendered output."""
         return _CHARSET
 
     def generate(self) -> bytes:
+        """Serialize all registered collectors into exposition format."""
         return generate_latest(self._registry)
 
 
@@ -53,16 +57,20 @@ class FakeMetricsRenderer(MetricsRenderer):
     """In-memory spy implementing the MetricsRenderer protocol."""
 
     def __init__(self) -> None:
+        """Initialize FakeMetricsRenderer with a zero call count."""
         self.generate_calls: int = 0
 
     @property
     def content_type(self) -> str:
+        """Return a plain text content type for testing."""
         return "text/plain"
 
     @property
     def charset(self) -> str:
+        """Return the character set for the rendered output."""
         return "utf-8"
 
     def generate(self) -> bytes:
+        """Return stub metrics output and increment the call counter."""
         self.generate_calls += 1
         return b"# fake metrics\n"

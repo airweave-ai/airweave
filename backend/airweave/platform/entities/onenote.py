@@ -84,6 +84,7 @@ class OneNoteNotebookEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         if self.links and isinstance(self.links, dict):
@@ -201,6 +202,7 @@ class OneNoteSectionEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         if self.pages_url:
@@ -284,6 +286,7 @@ class OneNotePageFileEntity(FileEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct the web URL for this entity."""
         if self.web_url_override:
             return self.web_url_override
         if self.links and isinstance(self.links, dict):

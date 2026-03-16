@@ -24,6 +24,7 @@ class IntegrationCredentialRepository(IntegrationCredentialRepositoryProtocol):
     async def get(
         self, db: AsyncSession, id: UUID, ctx: ApiContext
     ) -> Optional[IntegrationCredential]:
+        """Get an integration credential by ID."""
         return await crud.integration_credential.get(db, id, ctx)
 
     async def update(
@@ -35,6 +36,7 @@ class IntegrationCredentialRepository(IntegrationCredentialRepositoryProtocol):
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> IntegrationCredential:
+        """Update an existing integration credential."""
         return await crud.integration_credential.update(
             db, db_obj=db_obj, obj_in=obj_in, ctx=ctx, uow=uow
         )
@@ -47,4 +49,5 @@ class IntegrationCredentialRepository(IntegrationCredentialRepositoryProtocol):
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> IntegrationCredential:
+        """Create a new integration credential."""
         return await crud.integration_credential.create(db, obj_in=obj_in, ctx=ctx, uow=uow)
