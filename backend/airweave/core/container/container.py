@@ -24,6 +24,7 @@ from airweave.core.protocols import (
     OcrProvider,
     PubSub,
     RateLimiter,
+    SecretsProvider,
     WebhookAdmin,
     WebhookPublisher,
     WebhookServiceProtocol,
@@ -227,6 +228,9 @@ class Container:
     # OCR provider (with fallback chain + circuit breaking)
     # Optional: None when no OCR backend (Mistral/Docling) is configured
     ocr_provider: Optional[OcrProvider] = None
+
+    # Secrets provider (Azure Key Vault or fake for local/test)
+    secrets_provider: SecretsProvider
 
     # -----------------------------------------------------------------
     # Convenience methods
