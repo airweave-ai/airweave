@@ -129,14 +129,21 @@ class Settings(BaseSettings):
     # Max file size in MB for any single native embed call
     MULTIMODAL_MAX_FILE_SIZE_MB: int = 20
 
-    # Audio: max seconds per segment (Gemini limit = 80s)
+    # Audio: max seconds per segment (Gemini hard limit = 80s)
     MULTIMODAL_AUDIO_MAX_SECONDS: int = 75
-    # Video with audio: max seconds per segment (Gemini limit = 80s)
-    MULTIMODAL_VIDEO_AUDIO_MAX_SECONDS: int = 75
-    # Video without audio: max seconds per segment (Gemini limit = 128s)
+    # Video with audio: max seconds per segment (Gemini hard limit = 128s)
+    MULTIMODAL_VIDEO_AUDIO_MAX_SECONDS: int = 120
+    # Video without audio: max seconds per segment (Gemini hard limit = 128s)
     MULTIMODAL_VIDEO_NOAUDIO_MAX_SECONDS: int = 120
     # Overlap between consecutive audio/video segments in seconds
     MULTIMODAL_MEDIA_OVERLAP_SECONDS: int = 5
+
+    # Video keyframe OCR: scene change threshold (0.0-1.0).
+    # Lower = more sensitive (more frames). 0.3 is good for screen recordings,
+    # 0.1 for slide decks with subtle transitions.
+    MULTIMODAL_VIDEO_SCENE_THRESHOLD: float = 0.3
+    # Maximum keyframes to extract per video (caps OCR cost)
+    MULTIMODAL_VIDEO_MAX_KEYFRAMES: int = 30
 
     # Aggregation mode for multi-part native embeds.
     # Controls whether the Gemini API aggregates multiple parts into one vector

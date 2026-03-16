@@ -16,11 +16,11 @@ search_defaults:
 provider_models:
   openai:
     llm_big:
-      name: "gpt-5"
+      name: "gpt-5.4"
       tokenizer: "cl100k_base"
       context_window: 400000
     llm_small:
-      name: "gpt-5-nano"
+      name: "gpt-5.4"
       tokenizer: "cl100k_base"
       context_window: 400000
     # OpenAI text-embedding-3-* models support dimension reduction via API
@@ -41,7 +41,7 @@ provider_models:
       dimensions: 1536
       max_tokens: 8192
     rerank:
-      name: "gpt-5-nano"
+      name: "gpt-5.4"
       tokenizer: "cl100k_base"
       context_window: 400000
 
