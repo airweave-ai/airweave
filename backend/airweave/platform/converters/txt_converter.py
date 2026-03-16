@@ -71,6 +71,36 @@ class TxtConverter(BaseTextConverter):
 
         return results
 
+    def _try_chardet_decode(
+        self, raw_bytes: bytes, path: str
+    ) -> str | None:
+        """Attempt to decode bytes using chardet-detected encoding.
+
+        Returns:
+            Decoded text if successful with no replacement chars, else None.
+        """
+        try:
+            import chardet
+
+            detection = chardet.detect(raw_bytes[:100000])  # Sample first 100KB
+            if detection and detection.get("confidence", 0) > 0.7:
+                detected_encoding = detection["encoding"]
+                if detected_encoding:
+                    try:
+                        text = raw_bytes.decode(detected_encoding)
+                        if text.count("\ufffd") == 0:
+                            logger.debug(
+                                "Detected encoding %s for %s",
+                                detected_encoding,
+                                os.path.basename(path),
+                            )
+                            return text
+                    except (UnicodeDecodeError, LookupError):
+                        pass
+        except ImportError:
+            logger.debug("chardet not available, falling back to UTF-8 with ignore")
+        return None
+
     async def _convert_plain_text(self, path: str) -> str:
         """Read plain text file with encoding detection.
 
@@ -93,34 +123,15 @@ class TxtConverter(BaseTextConverter):
         # Try UTF-8 first (most common)
         try:
             text = raw_bytes.decode("utf-8")
-            replacement_count = text.count("\ufffd")
-            if replacement_count == 0:
+            if text.count("\ufffd") == 0:
                 return text
         except UnicodeDecodeError:
             pass
 
-        # Try encoding detection
-        try:
-            import chardet
-
-            detection = chardet.detect(raw_bytes[:100000])  # Sample first 100KB
-            if detection and detection.get("confidence", 0) > 0.7:
-                detected_encoding = detection["encoding"]
-                if detected_encoding:
-                    try:
-                        text = raw_bytes.decode(detected_encoding)
-                        replacement_count = text.count("\ufffd")
-                        if replacement_count == 0:
-                            logger.debug(
-                                "Detected encoding %s for %s",
-                                detected_encoding,
-                                os.path.basename(path),
-                            )
-                            return text
-                    except (UnicodeDecodeError, LookupError):
-                        pass
-        except ImportError:
-            logger.debug("chardet not available, falling back to UTF-8 with ignore")
+        # Try encoding detection via chardet
+        chardet_result = self._try_chardet_decode(raw_bytes, path)
+        if chardet_result is not None:
+            return chardet_result
 
         # Fallback: decode with replace to create U+FFFD for validation
         text = raw_bytes.decode("utf-8", errors="replace")

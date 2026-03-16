@@ -177,6 +177,7 @@ convention = "google"
 "**/sources/incremental_stub.py" = ["S311"]
 "**/sources/timed.py" = ["S311"]
 "**/search/providers/mistral.py" = ["S311"]
+"scripts/**" = ["C901"]
 
 [tool.ruff.format]
 quote-style = "double"

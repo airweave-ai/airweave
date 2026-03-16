@@ -471,6 +471,62 @@ class JiraSource(BaseSource):
                 self.logger.info(f"Completed fetching all issues for project {project_key}")
                 break
 
+    async def _generate_zephyr_entities(
+        self,
+        client: httpx.AsyncClient,
+        projects: List[JiraProjectEntity],
+        processed_entities: set,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Generate Zephyr Scale test entities for all projects."""
+        self.logger.info("🧪 Starting Zephyr Scale entity generation")
+        test_case_count = 0
+        test_cycle_count = 0
+        test_plan_count = 0
+
+        for project in projects:
+            async for test_case in self._generate_zephyr_test_case_entities(
+                client, project
+            ):
+                tc_identifier = (test_case.entity_id, test_case.test_case_key)
+                if tc_identifier not in processed_entities:
+                    processed_entities.add(tc_identifier)
+                    test_case_count += 1
+                    self.logger.debug(
+                        f"Yielding test case entity: {test_case.test_case_key}"
+                    )
+                    yield test_case
+
+            async for test_cycle in self._generate_zephyr_test_cycle_entities(
+                client, project
+            ):
+                tcyc_identifier = (test_cycle.entity_id, test_cycle.test_cycle_key)
+                if tcyc_identifier not in processed_entities:
+                    processed_entities.add(tcyc_identifier)
+                    test_cycle_count += 1
+                    self.logger.debug(
+                        f"Yielding test cycle entity: {test_cycle.test_cycle_key}"
+                    )
+                    yield test_cycle
+
+            async for test_plan in self._generate_zephyr_test_plan_entities(
+                client, project
+            ):
+                tp_identifier = (test_plan.entity_id, test_plan.test_plan_key)
+                if tp_identifier not in processed_entities:
+                    processed_entities.add(tp_identifier)
+                    test_plan_count += 1
+                    self.logger.debug(
+                        f"Yielding test plan entity: {test_plan.test_plan_key}"
+                    )
+                    yield test_plan
+
+        self.logger.info(
+            f"✅ Completed Zephyr Scale entity generation: "
+            f"{test_case_count} test cases, "
+            f"{test_cycle_count} test cycles, "
+            f"{test_plan_count} test plans"
+        )
+
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Jira and optionally Zephyr Scale."""
         self.logger.info("Starting Jira entity generation process")
@@ -488,10 +544,6 @@ class JiraSource(BaseSource):
         self.base_url = f"https://api.atlassian.com/ex/jira/{cloud_id}"
         self.logger.debug(f"Base URL set to: {self.base_url}")
 
-        # Check if Zephyr Scale integration is enabled
-        # Token will only be present if:
-        # 1. The ZEPHYR_SCALE feature flag is enabled for the organization
-        # 2. The user provided the API token in the config
         zephyr_enabled = self._is_zephyr_enabled()
         if zephyr_enabled:
             self.logger.info(
@@ -507,23 +559,13 @@ class JiraSource(BaseSource):
         async with httpx.AsyncClient() as client:
             project_count = 0
             issue_count = 0
-            zephyr_test_case_count = 0
-            zephyr_test_cycle_count = 0
-            zephyr_test_plan_count = 0
-
-            # Track already processed entity IDs with their type to avoid duplicates
-            processed_entities = set()  # Will store tuples of (entity_id, key)
-
-            # Store projects for Zephyr integration (need to iterate twice)
+            processed_entities: set = set()
             projects: List[JiraProjectEntity] = []
 
-            # 1) Generate (and yield) all Projects
             async for project_entity in self._generate_project_entities(client):
                 project_count += 1
-                # Create a unique identifier for this project
                 project_identifier = (project_entity.entity_id, project_entity.project_key)
 
-                # Skip if already processed
                 if project_identifier in processed_entities:
                     self.logger.warning(
                         f"Skipping duplicate project: {project_entity.project_key} "
@@ -538,13 +580,10 @@ class JiraSource(BaseSource):
                 )
                 yield project_entity
 
-                # 2) Generate (and yield) all Issues for each Project
                 project_issue_count = 0
                 async for issue_entity in self._generate_issue_entities(client, project_entity):
-                    # Create a unique identifier for this issue
                     issue_identifier = (issue_entity.entity_id, issue_entity.issue_key)
 
-                    # Skip if already processed
                     if issue_identifier in processed_entities:
                         self.logger.warning(
                             f"Skipping duplicate issue: {issue_entity.issue_key} "
@@ -568,56 +607,11 @@ class JiraSource(BaseSource):
                 f"{issue_count} issues total"
             )
 
-            # 3) Zephyr Scale Integration (if configured)
             if zephyr_enabled:
-                self.logger.info("🧪 Starting Zephyr Scale entity generation")
-
-                for project in projects:
-                    # Generate Test Cases
-                    async for test_case in self._generate_zephyr_test_case_entities(
-                        client, project
-                    ):
-                        tc_identifier = (test_case.entity_id, test_case.test_case_key)
-                        if tc_identifier not in processed_entities:
-                            processed_entities.add(tc_identifier)
-                            zephyr_test_case_count += 1
-                            self.logger.debug(
-                                f"Yielding test case entity: {test_case.test_case_key}"
-                            )
-                            yield test_case
-
-                    # Generate Test Cycles
-                    async for test_cycle in self._generate_zephyr_test_cycle_entities(
-                        client, project
-                    ):
-                        tcyc_identifier = (test_cycle.entity_id, test_cycle.test_cycle_key)
-                        if tcyc_identifier not in processed_entities:
-                            processed_entities.add(tcyc_identifier)
-                            zephyr_test_cycle_count += 1
-                            self.logger.debug(
-                                f"Yielding test cycle entity: {test_cycle.test_cycle_key}"
-                            )
-                            yield test_cycle
-
-                    # Generate Test Plans
-                    async for test_plan in self._generate_zephyr_test_plan_entities(
-                        client, project
-                    ):
-                        tp_identifier = (test_plan.entity_id, test_plan.test_plan_key)
-                        if tp_identifier not in processed_entities:
-                            processed_entities.add(tp_identifier)
-                            zephyr_test_plan_count += 1
-                            self.logger.debug(
-                                f"Yielding test plan entity: {test_plan.test_plan_key}"
-                            )
-                            yield test_plan
-
-                self.logger.info(
-                    f"✅ Completed Zephyr Scale entity generation: "
-                    f"{zephyr_test_case_count} test cases, "
-                    f"{zephyr_test_cycle_count} test cycles, "
-                    f"{zephyr_test_plan_count} test plans"
-                )
+                async for entity in self._generate_zephyr_entities(
+                    client, projects, processed_entities
+                ):
+                    yield entity
 
     async def validate(self) -> bool:
         """Verify Jira OAuth2 token by calling accessible-resources endpoint.

@@ -55,7 +55,7 @@ async def get_non_orphaned_syncs(conn) -> List[Dict]:
     - collection_readable_id
     """
     query = """
-        SELECT 
+        SELECT
             s.id AS sync_id,
             s.organization_id,
             o.name AS organization_name,
