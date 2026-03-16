@@ -15,6 +15,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
+from airweave.core.logging import logger
 from airweave.platform.configs.auth import FathomAuthConfig
 from airweave.platform.configs.config import FathomConfig
 from airweave.platform.decorators import source
@@ -257,9 +258,17 @@ class FathomSource(BaseSource):
                         transcript_segments = await self._get_transcript(
                             client, recording_id
                         )
-                    except httpx.HTTPStatusError:
-                        # Skip recordings where transcript is unavailable
-                        transcript_segments = []
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code == 404:
+                            # Transcript not yet available for this recording
+                            logger.info(
+                                "Transcript not available for recording %s, skipping",
+                                recording_id,
+                            )
+                            transcript_segments = []
+                        else:
+                            # Auth, rate-limit, or server errors should not be silenced
+                            raise
 
                     yield self._meeting_to_entity(meeting, transcript_segments)
 
