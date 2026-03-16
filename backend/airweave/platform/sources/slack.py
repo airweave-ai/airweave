@@ -348,6 +348,7 @@ class SlackSource(BaseSource):
         raise NotImplementedError(
             "Slack uses federated search. Use the search() method instead of generate_entities()."
         )
+        yield  # unreachable; makes mypy recognise this as an async generator
 
     async def validate(self) -> bool:
         """Verify OAuth2 token by testing Slack API access."""

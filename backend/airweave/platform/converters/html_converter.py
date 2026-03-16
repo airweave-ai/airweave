@@ -1,7 +1,7 @@
 """HTML to markdown converter."""
 
 import asyncio
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from airweave.core.logging import logger
 from airweave.platform.converters._base import BaseTextConverter
@@ -12,7 +12,7 @@ from airweave.platform.sync.exceptions import EntityProcessingError
 class HtmlConverter(BaseTextConverter):
     """Converts HTML files to markdown text using html-to-markdown."""
 
-    async def convert_batch(self, file_paths: List[str]) -> Dict[str, str]:
+    async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
         """Convert HTML files to markdown text.
 
         Args:

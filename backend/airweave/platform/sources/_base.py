@@ -266,25 +266,23 @@ class BaseSource:
 
     @classmethod
     @abstractmethod
-    async def create(
-        cls, credentials: Optional[Any] = None, config: Optional[Dict[str, Any]] = None
-    ) -> "BaseSource":
+    async def create(cls, *args: Any, **kwargs: Any) -> "BaseSource":
         """Create a new source instance.
 
         Args:
-            credentials: Optional credentials for authenticated sources.
-                       For sources without authentication, this can be None.
-            config: Optional configuration parameters
+            *args: Positional arguments (typically credentials).
+            **kwargs: Keyword arguments (typically config).
 
         Returns:
             A configured source instance
         """
-        pass
+        ...
 
     @abstractmethod
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for the source."""
-        pass
+        yield  # abstract; makes mypy recognise this as an async generator
+        raise NotImplementedError
 
     async def generate_access_control_memberships(
         self,
@@ -362,7 +360,9 @@ class BaseSource:
         """
         pass
 
-    async def search(self, query: str, limit: int) -> AsyncGenerator[BaseEntity, None]:
+    async def search(
+        self, query: str, limit: int
+    ) -> Union[AsyncGenerator[BaseEntity, None], list[BaseEntity]]:
         """Search the source for entities matching the query.
 
         This method is used for federated search where the source provides search
@@ -374,7 +374,7 @@ class BaseSource:
             limit: Maximum number of results to return
 
         Returns:
-            AsyncGenerator yielding BaseEntity objects matching the query
+            AsyncGenerator yielding BaseEntity objects, or a list of BaseEntity objects
 
         Raises:
             NotImplementedError: If source does not support federated search

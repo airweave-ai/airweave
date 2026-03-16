@@ -209,17 +209,17 @@ class SourceConnectionServiceProtocol(Protocol):
 
     async def create(
         self, db: AsyncSession, obj_in: SourceConnectionCreate, ctx: ApiContext
-    ) -> SourceConnection:
+    ) -> SourceConnectionSchema:
         """Create a source connection."""
         ...
 
     async def update(
         self, db: AsyncSession, id: UUID, obj_in: SourceConnectionUpdate, ctx: ApiContext
-    ) -> SourceConnection:
+    ) -> SourceConnectionSchema:
         """Update a source connection."""
         ...
 
-    async def delete(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnection:
+    async def delete(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnectionSchema:
         """Delete a source connection."""
         ...
 

@@ -14,14 +14,14 @@ class BaseTextConverter(ABC):
     """Base class for all text converters."""
 
     @abstractmethod
-    async def convert_batch(self, file_paths: List[str]) -> Dict[str, str]:
+    async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
         """Batch convert files to markdown text.
 
         Args:
             file_paths: List of file paths to convert
 
         Returns:
-            Dict mapping file_path -> markdown text content
+            Dict mapping file_path -> markdown text content (None on failure)
         """
         pass
 

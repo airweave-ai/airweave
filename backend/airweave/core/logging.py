@@ -3,8 +3,9 @@
 import json
 import logging
 import sys
+from collections.abc import MutableMapping
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from airweave.core.context import BaseContext
@@ -172,7 +173,9 @@ class ContextualLogger(logging.LoggerAdapter):
 
         return ContextualLogger(self.logger, self.prefix, new_dimensions)
 
-    def process(self, msg: str, kwargs: dict) -> tuple[str, dict]:
+    def process(
+        self, msg: str, kwargs: MutableMapping[str, Any]
+    ) -> tuple[str, MutableMapping[str, Any]]:
         """Process the log message and keywords.
 
         Args:

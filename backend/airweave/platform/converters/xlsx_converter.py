@@ -1,7 +1,7 @@
 """XLSX to markdown converter using openpyxl."""
 
 import asyncio
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from airweave.core.logging import logger
 from airweave.platform.converters._base import BaseTextConverter
@@ -16,7 +16,7 @@ class XlsxConverter(BaseTextConverter):
     Extracts all sheets as markdown tables with formulas and cell values.
     """
 
-    async def convert_batch(self, file_paths: List[str]) -> Dict[str, str]:
+    async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
         """Convert XLSX files to markdown text using openpyxl.
 
         Args:

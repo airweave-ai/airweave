@@ -68,7 +68,7 @@ class WebConverter(BaseTextConverter):
         except ImportError:
             raise SyncFailureError("firecrawl-py package required but not installed")
 
-    async def convert_batch(self, urls: List[str]) -> Dict[str, str]:
+    async def convert_batch(self, urls: List[str]) -> Dict[str, Optional[str]]:
         """Fetch URLs and convert to markdown using Firecrawl batch scrape.
 
         Args:

@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import xml.dom.minidom
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import aiofiles
 
@@ -23,7 +23,7 @@ class TxtConverter(BaseTextConverter):
     - Others: Returns as plain text
     """
 
-    async def convert_batch(self, file_paths: List[str]) -> Dict[str, str]:
+    async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
         """Convert text files to markdown.
 
         Args:
