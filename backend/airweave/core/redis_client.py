@@ -65,6 +65,9 @@ class RedisClient:
             ssl_kwargs["connection_class"] = redis.SSLConnection
             if settings.REDIS_SSL_CERT_REQS:
                 ssl_kwargs["ssl_cert_reqs"] = settings.REDIS_SSL_CERT_REQS
+                ssl_kwargs["ssl_check_hostname"] = (
+                    settings.REDIS_SSL_CERT_REQS == "required"
+                )
             if settings.REDIS_SSL_CA_CERTS:
                 ssl_kwargs["ssl_ca_certs"] = settings.REDIS_SSL_CA_CERTS
 
