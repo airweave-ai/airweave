@@ -8,19 +8,20 @@ Container_Boundary(worker, "Temporal Worker (Python 3.13 + ffmpeg)") {
     Component(syncWf, "SyncWorkflow", "Temporal Activity", "Orchestrates entity pipeline per sync job")
 
     Component(chunkEmbed, "ChunkEmbedProcessor", "Python", "Entry point: process(entities)")
-    Component(partitioner, "_partition_by_embedding_mode", "Python", "isinstance(MultimodalDenseEmbedderProtocol)")
+    Component(partitioner, "_partition_by_embedding_mode", "Python", "isinstance(MultimodalDenseEmbedderProtocol)\n+ ENABLE_MEDIA_SYNC gate for audio/video")
 
-    Component(nativePipe, "Native Multimodal Pipeline", "Python", "1 chunk/file (img/PDF)\nN chunks/file (audio/video)")
+    Component(nativePipe, "Native Multimodal Pipeline", "Python", "1 chunk/file (img)\nN chunks/file (oversized PDF, audio, video)\nCatches EmbedderInputError + EmbedderProviderError")
+    Component(pdfChunker, "PDF Chunker", "PyMuPDF", "Splits >6-page PDFs\n6-page chunks, 1-page overlap")
     Component(textPipe, "Text Pipeline", "Python", "SemanticChunker + embed_many()")
 
     Component(textBuilder, "TextBuilder", "Python", "Routes to file-type converters")
-    Component(mediaChunker, "MediaChunker", "pydub + ffmpeg", "Splits audio/video into segments")
+    Component(mediaChunker, "MediaChunker", "ffmpeg stream-copy", "Splits audio/video into segments\nSize-aware segment sizing\nNo RAM decode")
 
-    Component(geminiEmbed, "GeminiDenseEmbedder", "google-genai SDK", "embed_many() + embed_file()")
+    Component(geminiEmbed, "GeminiDenseEmbedder", "google-genai SDK", "embed_many() + embed_file()\nSeparate vectors (no aggregation)")
     Component(sparseEmbed, "BM25 Sparse Embedder", "FastEmbed", "Keyword scoring vectors")
 
-    Component(audioConv, "AudioConverter", "Gemini generate_content", "Audio -> transcript text")
-    Component(videoConv, "VideoConverter", "ffmpeg + AudioConverter", "Video -> audio -> text")
+    Component(audioConv, "AudioConverter", "Gemini generate_content", "Audio -> transcript text\nAuto-chunks >19MB files")
+    Component(videoConv, "VideoConverter", "ffmpeg scene detect\n+ Docling/Mistral OCR", "Scene keyframe OCR (threshold=0.3)\n+ audio transcription\nDeduplicates >80% similar frames")
     Component(pdfConv, "PdfConverter", "PyMuPDF + OCR", "PDF -> markdown text")
 }
 
@@ -28,14 +29,17 @@ System_Ext(geminiApi, "Google Gemini API", "embed_content + generate_content")
 System_Ext(vespa, "Vespa", "Hybrid dense + BM25 search")
 
 Rel(syncWf, chunkEmbed, "Processes entity batches")
-Rel(chunkEmbed, partitioner, "Classifies by embedder capability")
-Rel(partitioner, nativePipe, "FileEntity + supported MIME", "native path")
-Rel(partitioner, textPipe, "BaseEntity / unsupported MIME", "text path")
+Rel(chunkEmbed, partitioner, "Classifies by embedder capability + media flag")
+Rel(partitioner, nativePipe, "FileEntity + supported MIME\n(+ ENABLE_MEDIA_SYNC for audio/video)", "native path")
+Rel(partitioner, textPipe, "BaseEntity / unsupported MIME\n/ media without flag", "text path")
 
 Rel(nativePipe, textBuilder, "Step 1: Extract text for BM25")
 Rel(nativePipe, geminiEmbed, "Step 2: embed_file(path, mime)")
 Rel(nativePipe, mediaChunker, "Audio/video: chunk first")
-Rel(nativePipe, sparseEmbed, "Step 3: BM25 from textual_repr")
+Rel(nativePipe, pdfChunker, "Oversized PDF: split into 6-page chunks")
+Rel(nativePipe, sparseEmbed, "Step 3: BM25 from segment-specific text")
+
+Rel(pdfChunker, geminiEmbed, "embed_file() per page chunk")
 
 Rel(textPipe, textBuilder, "Extract text")
 Rel(textPipe, geminiEmbed, "embed_many(texts)")
@@ -47,7 +51,9 @@ Rel(textBuilder, videoConv, ".mp4")
 
 Rel(geminiEmbed, geminiApi, "embed_content API")
 Rel(audioConv, geminiApi, "generate_content (transcription)")
-Rel(videoConv, audioConv, "Delegates after ffmpeg extract")
+Rel(videoConv, audioConv, "Delegates audio track transcription")
+Rel(videoConv, pdfConv, "Keyframe OCR via Docling/Mistral (primary)")
+Rel(videoConv, geminiApi, "generate_content (vision OCR fallback)")
 
 Rel(chunkEmbed, vespa, "Upsert chunks with vectors")
 

@@ -6,22 +6,44 @@ Accepted
 ## Context
 Audio and video embedding adds three operational dependencies:
 1. `ffmpeg` must be installed in all Docker images (API, worker, Temporal)
-2. `pydub` Python library for audio manipulation
+2. `pydub` Python library (fallback only; primary path uses ffmpeg)
 3. Gemini API costs for transcription (via `generate_content`) and embedding
 
 PDF and image multimodal embedding has no new dependencies -- PyMuPDF is already in `pyproject.toml`, and the Gemini embedding API handles images/PDFs without transcription.
 
 ## Decision
-Introduce `ENABLE_MEDIA_SYNC: bool = False` in `settings.py`. When `False` (default):
+Introduce `ENABLE_MEDIA_SYNC: bool = False` in `settings.py`.
 
-- Google Drive connector skips video files (preserving existing behavior)
-- Audio/video file extensions (`.mp3`, `.wav`, `.mp4`) are in `SUPPORTED_FILE_EXTENSIONS` but sources gate ingestion
-- The `MediaChunker`, `AudioConverter`, and `VideoConverter` exist in code but are never invoked
+### Pipeline-Level Enforcement
+
+The flag is enforced **at the pipeline level** in `_partition_by_embedding_mode()`, not at individual sources. This means ANY source that emits audio/video MIME types is gated -- not just Google Drive:
+
+```python
+# In ChunkEmbedProcessor._partition_by_embedding_mode()
+_MEDIA_MIME_TYPES = {"audio/mpeg", "audio/wav", "video/mp4"}
+
+media_enabled = settings.ENABLE_MEDIA_SYNC
+
+for entity in entities:
+    # ... FileEntity + MIME + local_path checks ...
+
+    # Gate audio/video behind ENABLE_MEDIA_SYNC at the pipeline level
+    if entity.mime_type in _MEDIA_MIME_TYPES and not media_enabled:
+        text.append(entity)  # Falls through to text pipeline
+        continue
+
+    native.append(entity)
+```
+
+When `False` (default):
+- Audio/video entities from ANY source fall through to the text pipeline
+- Google Drive connector additionally skips video files at the source level (defense in depth)
+- The `MediaChunker`, `AudioConverter`, and `VideoConverter` exist in code but are never invoked for embedding
 
 When `True`:
-- Google Drive allows video files through
-- Audio/video entities route through `MediaChunker` for segmentation
-- Transcription runs via `AudioConverter`/`VideoConverter` for BM25 text
+- Audio/video entities route through `MediaChunker` for segmentation and native embedding
+- `VideoConverter` extracts keyframe OCR + audio transcription for BM25 text
+- `AudioConverter` transcribes audio for BM25 text
 
 **PDF and image multimodal embedding is always active** when the Gemini embedder is configured. No feature flag needed -- it's a strict improvement over text extraction.
 
@@ -36,8 +58,12 @@ Over-engineering. Audio and video share the same ffmpeg dependency and the same 
 ### C. Auto-detect ffmpeg at startup
 Would silently degrade if ffmpeg is missing. Explicit opt-in is clearer for operators.
 
+### D. Gate only at the source (e.g., Google Drive)
+This was the initial implementation but was found insufficient during cross-validation. If a future source (Slack, Dropbox) emits audio/video entities without its own gate, they would bypass the flag. Pipeline-level enforcement is the correct end-to-end gate. The Google Drive source-level check is retained as defense in depth.
+
 ## Consequences
 - **Positive**: Zero operational impact for existing deployments. Default behavior unchanged.
 - **Positive**: Operators explicitly opt into media processing and its costs.
 - **Positive**: ffmpeg is installed in Dockerfiles regardless (for future use), so enabling is a single env var.
-- **Negative**: Sources must check the flag individually. Currently only Google Drive is gated; other sources that might yield audio/video would need similar guards.
+- **Positive**: Pipeline-level enforcement means new sources that emit audio/video are automatically gated without needing source-specific flag checks.
+- **Negative**: The Google Drive source also checks the flag, creating redundant gating. This is intentional defense-in-depth but could confuse future developers.

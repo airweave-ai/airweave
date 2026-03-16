@@ -32,18 +32,19 @@ workspace "Airweave Gemini Embedding 2" "Multimodal embedding pipeline for PDF, 
 
                 textBuilder = component "TextBuilder" "Routes files to converters"
                 pdfConverter = component "PdfConverter" "Text extraction + OCR fallback"
-                audioConverter = component "AudioConverter" "Gemini transcription"
-                videoConverter = component "VideoConverter" "ffmpeg extract + transcribe"
+                audioConverter = component "AudioConverter" "Gemini transcription; auto-chunks >19MB files"
+                videoConverter = component "VideoConverter" "Scene keyframe OCR (ffmpeg scene detect + Docling/Mistral OCR + dedup) + audio transcription"
 
                 chunkEmbed = component "ChunkEmbedProcessor" "Partition -> Embed -> Store" {
-                    description "Routes entities to text or native multimodal pipeline"
+                    description "Routes entities to text or native multimodal pipeline. Enforces ENABLE_MEDIA_SYNC for audio/video at pipeline level."
                 }
-                partitioner = component "_partition_by_embedding_mode" "isinstance(MultimodalDenseEmbedderProtocol)"
-                nativePipeline = component "_native_multimodal_pipeline" "embed_file() for images/PDFs, MediaChunker for audio/video"
+                partitioner = component "_partition_by_embedding_mode" "isinstance(MultimodalDenseEmbedderProtocol) + ENABLE_MEDIA_SYNC gate"
+                nativePipeline = component "_native_multimodal_pipeline" "embed_file() for images/PDFs, MediaChunker for audio/video. Catches EmbedderInputError + EmbedderProviderError."
+                pdfChunker = component "_embed_oversized_pdf" "PyMuPDF: splits >6-page PDFs with configurable overlap"
                 textPipeline = component "_text_pipeline" "SemanticChunker + embed_many()"
 
-                mediaChunker = component "MediaChunker" "pydub (audio) / ffmpeg (video) segmentation"
-                geminiEmbedder = component "GeminiDenseEmbedder" "embed_many() + embed_file()"
+                mediaChunker = component "MediaChunker" "ffmpeg stream-copy segmentation. Size-aware segment sizing for oversized audio."
+                geminiEmbedder = component "GeminiDenseEmbedder" "embed_many() + embed_file(). Separate vectors (no aggregation)."
                 sparseEmbedder = component "BM25 Sparse Embedder" "FastEmbed Qdrant/BM25"
             }
 
@@ -52,7 +53,7 @@ workspace "Airweave Gemini Embedding 2" "Multimodal embedding pipeline for PDF, 
 
         # --- Relationships: System Context ---
         user -> airweave "Configures sources, queries data"
-        airweave -> geminiApi "Embeds text + files, transcribes audio"
+        airweave -> geminiApi "Embeds text + files, transcribes audio, OCRs keyframes (fallback)"
         airweave -> vespa "Stores/queries vectors + BM25"
         airweave -> sourceApis "Fetches entities + files"
 
@@ -68,13 +69,16 @@ workspace "Airweave Gemini Embedding 2" "Multimodal embedding pipeline for PDF, 
         # --- Relationships: Component ---
         syncWorkflow -> chunkEmbed "Processes entity batches"
         chunkEmbed -> partitioner "Classifies entities"
-        partitioner -> nativePipeline "FileEntity + supported MIME"
-        partitioner -> textPipeline "Everything else"
+        partitioner -> nativePipeline "FileEntity + supported MIME + media flag"
+        partitioner -> textPipeline "Everything else (or media with flag OFF)"
 
         nativePipeline -> textBuilder "Extract text for BM25"
         nativePipeline -> geminiEmbedder "embed_file(path, mime)"
         nativePipeline -> mediaChunker "chunk_audio() / chunk_video()"
+        nativePipeline -> pdfChunker "Oversized PDFs (>6 pages)"
         nativePipeline -> sparseEmbedder "BM25 from textual_representation"
+
+        pdfChunker -> geminiEmbedder "embed_file() per page chunk"
 
         textPipeline -> textBuilder "Extract text"
         textPipeline -> geminiEmbedder "embed_many(texts)"
@@ -85,7 +89,9 @@ workspace "Airweave Gemini Embedding 2" "Multimodal embedding pipeline for PDF, 
         textBuilder -> videoConverter ".mp4"
 
         audioConverter -> geminiApi "generate_content (transcription)"
-        videoConverter -> audioConverter "Delegates after ffmpeg extract"
+        videoConverter -> audioConverter "Delegates audio track transcription"
+        videoConverter -> pdfConverter "Keyframe OCR via Docling/Mistral (primary)"
+        videoConverter -> geminiApi "generate_content (vision OCR fallback)"
         geminiEmbedder -> geminiApi "embed_content (text + files)"
     }
 

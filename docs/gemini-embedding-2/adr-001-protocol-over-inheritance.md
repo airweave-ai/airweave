@@ -19,6 +19,19 @@ The protocol requires three members:
 - `supported_mime_types: set[str]` (property)
 - `embed_file(file_path, mime_type, *, purpose) -> DenseEmbedding` (async method)
 
+## Error Handling at the Pipeline Boundary
+
+The pipeline catches **both** `EmbedderInputError` and `EmbedderProviderError` in all fallback seams:
+
+```python
+except (EmbedderInputError, EmbedderProviderError) as e:
+    # Fall back to text pipeline
+```
+
+This ensures that transient API failures (provider errors) receive the same graceful fallback as validation failures (input errors). Both exception types are part of the embedder's contract and are expected at the protocol boundary.
+
+Catching both is essential for resilience -- a Gemini API 500 error should not crash the sync when the text pipeline can still produce valid embeddings for the entity.
+
 ## Alternatives Considered
 
 ### A. ABC with `embed_file()` on all embedders
@@ -34,4 +47,5 @@ Works but provides no IDE support, no type safety, and no formal contract docume
 - **Positive**: OpenAI, Mistral, and Local embedders are completely unaffected. Zero changes to their code.
 - **Positive**: Future multimodal providers (e.g., if OpenAI adds vision embedding) only need to add 3 members to opt in.
 - **Positive**: `FakeDenseEmbedder` does NOT satisfy the protocol (correctly), while `FakeMultimodalDenseEmbedder` does.
+- **Positive**: Catching both error types at the protocol boundary means the pipeline degrades gracefully on both validation and API failures.
 - **Negative**: `@runtime_checkable` only checks method/property existence, not signatures. This is a known Python limitation.
