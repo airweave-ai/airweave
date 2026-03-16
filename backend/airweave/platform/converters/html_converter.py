@@ -38,11 +38,11 @@ class HtmlConverter(BaseTextConverter):
         results = {}
         semaphore = asyncio.Semaphore(20)  # Limit concurrent conversions
 
-        async def _convert_one(path: str):
+        async def _convert_one(path: str) -> None:
             async with semaphore:
                 try:
 
-                    def _convert():
+                    def _convert() -> str | None:
                         # Read raw bytes for encoding detection
                         with open(path, "rb") as f:
                             raw_bytes = f.read()

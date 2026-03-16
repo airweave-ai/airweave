@@ -10,7 +10,12 @@ Design principles:
 - Testable: can unit test factory logic with mock settings
 """
 
-from typing import Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from airweave.domains.organizations.service import OrganizationService
 
 from prometheus_client import CollectorRegistry
 
@@ -38,14 +43,18 @@ from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
 from airweave.core.metrics_service import PrometheusMetricsService
 from airweave.core.protocols import CircuitBreaker, OcrProvider, PubSub
+from airweave.core.protocols.cache import ContextCache
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
-from airweave.core.protocols.webhooks import WebhookPublisher
+from airweave.core.protocols.rate_limiter import RateLimiter
+from airweave.core.protocols.webhooks import WebhookAdmin, WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.auth_provider.service import AuthProviderService
+from airweave.domains.billing.operations import BillingOperationsProtocol
+from airweave.domains.billing.repository import OrganizationBillingRepositoryProtocol
 from airweave.domains.browse_tree.repository import NodeSelectionRepository
 from airweave.domains.browse_tree.service import BrowseTreeService
 from airweave.domains.collections.repository import CollectionRepository
@@ -549,7 +558,7 @@ def _create_event_bus(
     settings: Settings,
     pubsub: PubSub,
     usage_ledger: UsageLedgerProtocol,
-    context_cache=None,
+    context_cache: Optional[ContextCache] = None,
 ) -> EventBus:
     """Create event bus with subscribers wired up.
 
@@ -962,14 +971,14 @@ def _create_identity_provider(settings: Settings) -> IdentityProvider:
 def _create_organization_service(
     *,
     identity_provider: IdentityProvider,
-    payment_gateway: "PaymentGatewayProtocol",
-    billing_ops,
-    billing_repo,
-    webhook_admin,
-    event_bus,
-    user_org_repo,
-    context_cache,
-):
+    payment_gateway: PaymentGatewayProtocol,
+    billing_ops: BillingOperationsProtocol,
+    billing_repo: OrganizationBillingRepositoryProtocol,
+    webhook_admin: WebhookAdmin,
+    event_bus: EventBus,
+    user_org_repo: UserOrganizationRepositoryProtocol,
+    context_cache: ContextCache,
+) -> "OrganizationService":
     """Build the organization service with lifecycle + provisioning sub-modules."""
     from airweave.domains.organizations.operations import OrganizationLifecycleOperations
     from airweave.domains.organizations.provisioning.operations import ProvisioningOperations
@@ -1038,7 +1047,7 @@ def _create_email_service(settings):  # type: ignore[no-untyped-def]
     return NullEmailService()
 
 
-def _create_rate_limiter(settings: Settings):
+def _create_rate_limiter(settings: Settings) -> RateLimiter:
     """Create rate limiter: Redis if enabled, otherwise null (always allow)."""
     if settings.LOCAL_DEVELOPMENT or settings.DISABLE_RATE_LIMIT:
         from airweave.adapters.rate_limiter.null import NullRateLimiter

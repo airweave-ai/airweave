@@ -1,12 +1,12 @@
 """Base config class."""
 
-from typing import Optional, get_args, get_origin
+from typing import Any, Optional, get_args, get_origin
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_core import PydanticUndefined
 
 
-def RequiredTemplateConfig(*args, **kwargs):
+def RequiredTemplateConfig(*args: Any, **kwargs: Any) -> Any:
     """Create a Field marked as required for OAuth URL templates.
 
     This helper marks config fields that must be provided BEFORE OAuth flow starts.
@@ -223,7 +223,7 @@ class ConfigValues(BaseModel):
     }
 
     @model_validator(mode="after")
-    def validate_config_values(self):
+    def validate_config_values(self) -> "ConfigValues":
         """Validate that no values are dictionaries (depth 0)."""
         for key, value in self.__dict__.items():
             if isinstance(value, dict):

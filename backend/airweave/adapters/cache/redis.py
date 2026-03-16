@@ -7,7 +7,7 @@ removing the dependency on the credentials module.
 import hashlib
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from airweave import schemas
@@ -31,7 +31,7 @@ class RedisContextCache(ContextCache):
     errors are logged and swallowed so the request falls through to DB.
     """
 
-    def __init__(self, redis_client) -> None:
+    def __init__(self, redis_client: Any) -> None:
         """Initialize RedisContextCache."""
         self._redis = redis_client
 

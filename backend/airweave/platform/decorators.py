@@ -123,7 +123,7 @@ def source(
         # Add validation method if not present
         if not hasattr(cls, "validate"):
 
-            async def validate(self) -> bool:
+            async def validate(self: object) -> bool:
                 """Default validation that always passes."""
                 return True
 

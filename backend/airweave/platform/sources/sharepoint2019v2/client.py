@@ -63,7 +63,7 @@ class SharePointClient:
         self._logger = logger
 
     @property
-    def logger(self):
+    def logger(self) -> Any:
         """Get logger, falling back to print if not set."""
         if self._logger:
             return self._logger

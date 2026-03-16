@@ -15,7 +15,7 @@ By placing our wrapper in a module named tiktoken_compat.py, the type string bec
 which contains "tiktoken" and passes Chonkie's backend detection.
 """
 
-from typing import List, Sequence, cast
+from typing import Any, List, Sequence, cast
 
 
 class SafeEncoding:
@@ -30,7 +30,7 @@ class SafeEncoding:
     - <|fim_prefix|>, <|fim_suffix|>, <|fim_middle|> (Codex FIM tokens)
     """
 
-    def __init__(self, encoding):
+    def __init__(self, encoding: Any) -> None:
         """Initialize the wrapper with a tiktoken encoding.
 
         Args:
@@ -40,7 +40,7 @@ class SafeEncoding:
         # Copy attributes that Chonkie might check
         self.name = getattr(encoding, "name", "cl100k_base")
 
-    def encode(self, text: str, **kwargs) -> List[int]:
+    def encode(self, text: str, **kwargs: Any) -> List[int]:
         """Encode text, allowing all special tokens."""
         kwargs.setdefault("allowed_special", "all")
         return cast(List[int], self._encoding.encode(text, **kwargs))
@@ -49,7 +49,7 @@ class SafeEncoding:
         """Decode tokens back to text."""
         return str(self._encoding.decode(list(tokens)))
 
-    def encode_batch(self, texts: List[str], **kwargs) -> List[List[int]]:
+    def encode_batch(self, texts: List[str], **kwargs: Any) -> List[List[int]]:
         """Encode multiple texts."""
         kwargs.setdefault("allowed_special", "all")
         return [self._encoding.encode(text, **kwargs) for text in texts]
@@ -59,6 +59,6 @@ class SafeEncoding:
         return [self._encoding.decode(tokens) for tokens in token_lists]
 
     # Delegate attribute access to underlying encoding for compatibility
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to underlying encoding."""
         return getattr(self._encoding, name)

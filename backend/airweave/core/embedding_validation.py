@@ -140,7 +140,7 @@ class EmbeddingConfigurationError(Exception):
     pass
 
 
-def validate_and_raise():
+def validate_and_raise() -> None:
     """Validate embedding stack and raise if misconfigured.
 
     Raises:

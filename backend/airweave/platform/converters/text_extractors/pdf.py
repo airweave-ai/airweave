@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass, field
+from typing import Any
 
 from airweave.core.logging import logger
 from airweave.platform.sync.exceptions import SyncFailureError
@@ -129,7 +130,7 @@ async def extract_pdf_text(path: str) -> PdfExtractionResult:
     return await asyncio.to_thread(_extract)
 
 
-def _extract_page(page, page_num: int) -> PageExtractionResult:
+def _extract_page(page: Any, page_num: int) -> PageExtractionResult:
     """Extract text from a single PDF page.
 
     Args:

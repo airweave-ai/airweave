@@ -297,7 +297,7 @@ class CRUDSourceConnection(
         self,
         db: AsyncSession,
         ctx: BaseContext,
-        **kwargs,
+        **kwargs: object,
     ) -> Optional[SourceConnection]:
         """Get source connection by arbitrary query within organization scope."""
         query = select(SourceConnection).where(

@@ -68,7 +68,7 @@ class ExtractedFilters(BaseModel):
 
     @field_validator("filters", mode="before")
     @classmethod
-    def convert_none_to_empty_list(cls, v):
+    def convert_none_to_empty_list(cls, v: object) -> list[FilterCondition]:
         """Convert None to empty list for compatibility with providers that return null."""
         if v is None:
             return []

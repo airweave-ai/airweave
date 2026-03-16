@@ -11,7 +11,7 @@ import time
 import uuid
 from datetime import datetime
 from functools import wraps
-from typing import TYPE_CHECKING, Callable, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar, cast
 
 import jwt
 from svix.api import (
@@ -104,7 +104,7 @@ def _auto_create_org(method: Callable[..., T]) -> Callable[..., T]:
     """Decorator to auto-create Svix org if not found."""
 
     @wraps(method)
-    async def wrapper(self: "SvixAdapter", org_id: uuid.UUID, *args, **kwargs) -> T:
+    async def wrapper(self: "SvixAdapter", org_id: uuid.UUID, *args: Any, **kwargs: Any) -> T:
         try:
             return cast(T, await method(self, org_id, *args, **kwargs))
         except Exception as e:
@@ -371,7 +371,7 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
             _raise_from_exception(e, "Failed to get subscription secret")
 
     @_auto_create_org
-    async def _get_secret_internal(self, org_id: uuid.UUID, endpoint_id: str):
+    async def _get_secret_internal(self, org_id: uuid.UUID, endpoint_id: str) -> Any:
         return await self._svix.endpoint.get_secret(str(org_id), endpoint_id)
 
     async def recover_messages(

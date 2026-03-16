@@ -41,7 +41,7 @@ class XlsxConverter(BaseTextConverter):
         results: dict[str, str | None] = {}
         semaphore = asyncio.Semaphore(10)  # Limit concurrent file reads
 
-        async def _convert_one(path: str):
+        async def _convert_one(path: str) -> None:
             async with semaphore:
                 try:
                     markdown = await self._extract_xlsx_to_markdown(path)

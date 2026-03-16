@@ -230,7 +230,7 @@ class JiraSource(BaseSource):
             raise
 
     # Entity Creation Functions
-    def _create_project_entity(self, project_data):
+    def _create_project_entity(self, project_data: Dict[str, Any]) -> JiraProjectEntity:
         """Transform raw project data into a JiraProjectEntity."""
         self.logger.debug(
             f"Creating project entity for: {project_data.get('key')} - {project_data.get('name')}"
@@ -251,11 +251,11 @@ class JiraSource(BaseSource):
             web_url_value=self._build_project_url(project_data["key"]),
         )
 
-    def _extract_text_from_adf(self, adf_data):
+    def _extract_text_from_adf(self, adf_data: Any) -> str:
         """Extract plain text from Atlassian Document Format (ADF)."""
-        text_parts = []
+        text_parts: list[str] = []
 
-        def extract_recursive(node):
+        def extract_recursive(node: Any) -> None:
             if isinstance(node, dict):
                 # Extract text directly from text nodes
                 if node.get("type") == "text":
@@ -278,7 +278,9 @@ class JiraSource(BaseSource):
         extract_recursive(adf_data)
         return " ".join(text_parts)
 
-    def _create_issue_entity(self, issue_data, project):
+    def _create_issue_entity(
+        self, issue_data: Dict[str, Any], project: JiraProjectEntity,
+    ) -> JiraIssueEntity:
         """Transform raw issue data into a JiraIssueEntity."""
         fields = issue_data.get("fields", {})
         issue_key = issue_data.get("key", "unknown")

@@ -1,6 +1,9 @@
 """API endpoints for organizations."""
 
-from typing import List
+from typing import TYPE_CHECKING, List, Optional
+
+if TYPE_CHECKING:
+    from airweave.schemas.user import UserOrganization
 from uuid import UUID
 
 from fastapi import Body, Depends, HTTPException
@@ -512,7 +515,7 @@ async def leave_organization(
 # ---------------------------------------------------------------------------
 
 
-def _find_user_org(ctx: ApiContext, organization_id: UUID):
+def _find_user_org(ctx: ApiContext, organization_id: UUID) -> Optional["UserOrganization"]:
     """Find the user's membership in the given organization from the auth context."""
     for org in ctx.user.user_organizations:
         if org.organization.id == organization_id:

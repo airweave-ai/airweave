@@ -1,7 +1,7 @@
 """Sync model."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy import JSON, DateTime, String, event
 from sqlalchemy.dialects.postgresql import JSONB
@@ -80,7 +80,7 @@ class Sync(OrganizationBase, UserMixin):
 
 # Cancel any running jobs when a Sync is deleted (covers cascades)
 @event.listens_for(Sync, "before_delete")
-def cancel_running_jobs_before_sync_delete(mapper, connection, target):
+def cancel_running_jobs_before_sync_delete(mapper: Any, connection: Any, target: Sync) -> None:
     """Cancel any running or pending jobs when a Sync is deleted."""
     try:
         from airweave.core.shared_models import SyncJobStatus
@@ -113,7 +113,7 @@ def cancel_running_jobs_before_sync_delete(mapper, connection, target):
             try:
                 import asyncio
 
-                async def _cancel_workflow(workflow_job_id):
+                async def _cancel_workflow(workflow_job_id: Any) -> None:
                     from airweave.platform.temporal.client import temporal_client
 
                     client = await temporal_client.get_client()
@@ -141,7 +141,7 @@ def cancel_running_jobs_before_sync_delete(mapper, connection, target):
 
 # Ensure Temporal schedules are deleted when a Sync row is deleted (covers cascades)
 @event.listens_for(Sync, "after_delete")
-def delete_temporal_schedules_after_sync_delete(mapper, connection, target):
+def delete_temporal_schedules_after_sync_delete(mapper: Any, connection: Any, target: Sync) -> None:
     """Delete Temporal schedules when a Sync row is deleted."""
     try:
         import asyncio
@@ -152,7 +152,7 @@ def delete_temporal_schedules_after_sync_delete(mapper, connection, target):
             f"daily-cleanup-{target.id}",  # Daily cleanup schedule
         ]
 
-        async def _cleanup():
+        async def _cleanup() -> None:
             # [code blue] todo: replace ORM listener with EventBus subscriber
             from airweave.core import container as container_mod
 

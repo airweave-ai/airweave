@@ -54,7 +54,7 @@ class S3Backend(StorageBackend):
             f"{f', endpoint={endpoint_url}' if endpoint_url else ''}"
         )
 
-    async def _get_client(self):
+    async def _get_client(self) -> Any:
         """Lazy-load async S3 client."""
         if self._client is None:
             try:

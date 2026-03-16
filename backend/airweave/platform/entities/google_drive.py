@@ -139,13 +139,13 @@ class GoogleDriveFileEntity(FileEntity):
         None, description="Last time the user viewed the file.", embeddable=False
     )
 
-    def __init__(self, **data):
+    def __init__(self, **data: Any) -> None:
         """Initialize the entity and set file_type from mime_type if not provided."""
         super().__init__(**data)
         if not self.file_type or self.file_type == "unknown":
             self.file_type = _determine_file_type_from_mime(self.mime_type)
 
-    def model_dump(self, *args, **kwargs) -> dict[str, Any]:
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Override model_dump to convert size to string."""
         data = super().model_dump(*args, **kwargs)
         if data.get("size") is not None:

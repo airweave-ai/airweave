@@ -17,10 +17,10 @@ class JSONFormatter(logging.Formatter):
     making logs compatible with Azure Log Analytics, Prometheus, and Grafana.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the formatter with a module path cache."""
         super().__init__()
-        self._module_cache = {}
+        self._module_cache: dict[str, str] = {}
 
     def _get_module_path(self, record: logging.LogRecord) -> str:
         """Extract the full module path from the log record.

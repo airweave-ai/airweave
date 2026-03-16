@@ -54,7 +54,7 @@ class CodaSource(BaseSource):
     Auth: Personal API Token or OAuth (via Packs).
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize rate limiting state."""
         super().__init__()
         self._request_times: List[float] = []

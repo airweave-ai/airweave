@@ -50,7 +50,7 @@ class PipedriveSource(BaseSource):
     PIPEDRIVE_API_LIMIT = 100  # Maximum results per page for list endpoints
     BASE_URL = "https://api.pipedrive.com/v1"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Pipedrive source."""
         super().__init__()
         self._company_domain: Optional[str] = None

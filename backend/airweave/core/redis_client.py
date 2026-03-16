@@ -13,7 +13,7 @@ from airweave.core.logging import logger
 class RedisClient:
     """Redis client wrapper with connection pooling."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Redis clients with separate pools."""
         self._client: Optional[redis.Redis] = None
         self._pubsub_client: Optional[redis.Redis] = None

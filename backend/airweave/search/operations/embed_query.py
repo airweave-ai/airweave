@@ -15,6 +15,7 @@ from airweave.search.context import SearchContext
 from ._base import SearchOperation
 
 if TYPE_CHECKING:
+    from airweave.search.emitter import EventEmitter
     from airweave.search.state import SearchState
 
 
@@ -151,7 +152,7 @@ class EmbedQuery(SearchOperation):
         self,
         dense_embeddings: Optional[List[List[float]]],
         sparse_embeddings: Optional[List],
-        emitter,
+        emitter: "EventEmitter",
     ) -> None:
         """Emit embedding_done event with statistics.
 

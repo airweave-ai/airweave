@@ -35,7 +35,7 @@ class OpenAIRateLimiter(BaseRateLimiter):
 
     _instance: Optional["OpenAIRateLimiter"] = None
 
-    def _log_initialization(self):
+    def _log_initialization(self) -> None:
         """Log OpenAI-specific initialization message."""
         logger.debug(
             f"OpenAI rate limiter initialized: {self.RATE_LIMIT_PER_POD_RPS:.1f} RPS per pod "

@@ -146,7 +146,7 @@ class TemporalWorker:
         except Exception as e:
             logger.error(f"Error during worker shutdown: {e}")
 
-    def _get_sandbox_runner(self):
+    def _get_sandbox_runner(self) -> Any:
         """Get the appropriate sandbox configuration."""
         if self._config.disable_sandbox:
             from temporalio.worker import UnsandboxedWorkflowRunner

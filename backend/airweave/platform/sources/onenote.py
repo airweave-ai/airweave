@@ -16,7 +16,7 @@ Reference:
 
 import re
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional, cast
+from typing import Any, AsyncGenerator, Callable, Dict, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -571,8 +571,12 @@ class OneNoteSource(BaseSource):
                         )
 
                         # Use concurrent processing for sections to improve performance
-                        def _create_section_worker(nb_breadcrumb, nb_id):
-                            async def _section_worker(section_data):
+                        def _create_section_worker(
+                            nb_breadcrumb: Breadcrumb, nb_id: str,
+                        ) -> Callable:
+                            async def _section_worker(
+                                section_data: dict,
+                            ) -> AsyncGenerator[BaseEntity, None]:
                                 section_id = section_data.get("id")
                                 section_name = section_data.get("displayName", "Unknown Section")
 

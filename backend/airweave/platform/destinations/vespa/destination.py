@@ -79,7 +79,7 @@ class VespaDestination(VectorDBDestination):
         vector_size: Optional[int] = None,
         logger: Optional[ContextualLogger] = None,
         soft_fail: bool = False,
-        **kwargs,
+        **kwargs: object,
     ) -> "VespaDestination":
         """Create and return a connected Vespa destination.
 

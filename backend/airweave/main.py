@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -50,7 +51,7 @@ from airweave.domains.embedders.config import validate_embedding_config
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager for startup and shutdown events.
 
     Initializes the DI container, runs alembic migrations, and syncs platform components.

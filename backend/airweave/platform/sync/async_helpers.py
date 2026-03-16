@@ -36,7 +36,7 @@ async def get_cpu_executor() -> ThreadPoolExecutor:
     return _cpu_executor
 
 
-async def run_in_thread_pool(func: Callable[..., T], *args, **kwargs) -> T:
+async def run_in_thread_pool(func: Callable[..., T], *args: object, **kwargs: object) -> T:
     """Run a synchronous function in the shared thread pool.
 
     This avoids creating excessive threads by using a controlled thread pool.

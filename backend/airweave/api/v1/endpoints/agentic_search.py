@@ -7,6 +7,7 @@ completely separate from the Airweave API's database connection.
 
 import asyncio
 import json
+from typing import AsyncGenerator
 
 from fastapi import Depends, HTTPException, Path
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,7 +150,7 @@ async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acce
 
     search_task = asyncio.create_task(_run_search())
 
-    async def event_stream():  # noqa: C901 - streaming loop is acceptable
+    async def event_stream() -> AsyncGenerator[str, None]:  # noqa: C901 - streaming loop is acceptable
         """Generate SSE events from PubSub messages."""
         try:
             async for message in ps.listen():

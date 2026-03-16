@@ -1,5 +1,8 @@
 """Unit of work for database transactions."""
 
+from types import TracebackType
+from typing import Optional, Type
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -73,7 +76,12 @@ class UnitOfWork:
         """
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         """Exit the context manager.
 
         Args:

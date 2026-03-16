@@ -37,7 +37,7 @@ class TokenManager:
         ctx: ApiContext,
         initial_credentials: Any,
         is_direct_injection: bool = False,
-        logger_instance=None,
+        logger_instance: Any = None,
         auth_provider_instance: Optional[Any] = None,
     ):
         """Initialize the token manager.

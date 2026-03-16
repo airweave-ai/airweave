@@ -49,7 +49,9 @@ class TodoistSource(BaseSource):
     """
 
     @classmethod
-    async def create(cls, access_token, config: Optional[Dict[str, Any]] = None) -> "TodoistSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None,
+    ) -> "TodoistSource":
         """Create a new Todoist source instance."""
         instance = cls()
         instance.access_token = access_token

@@ -72,7 +72,7 @@ class ZohoCRMSource(BaseSource):
     # Zoho CRM API limits
     ZOHO_API_LIMIT = 200  # Maximum results per page
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Zoho CRM source."""
         super().__init__()
         self._org_id: Optional[str] = None

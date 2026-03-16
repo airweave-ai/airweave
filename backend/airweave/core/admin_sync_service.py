@@ -30,7 +30,7 @@ from airweave.models.sync_job import SyncJob
 class AdminSyncQueryBuilder:
     """Builds complex SQL queries for admin sync listing with multiple filters."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize query builder."""
         self.query = select(Sync)
 
@@ -214,7 +214,7 @@ class AdminSyncQueryBuilder:
         self.query = self.query.order_by(Sync.created_at.desc()).offset(skip).limit(limit)
         return self
 
-    def build(self):
+    def build(self) -> Any:
         """Return the final query."""
         return self.query
 
@@ -539,7 +539,10 @@ class AdminSyncService:
             syncs_by_collection[coll_id].append(sync)
 
         # Process each collection (reuse connection per collection)
-        async def process_collection(collection_id: UUID, collection_syncs: List[Sync]):
+        async def process_collection(
+            collection_id: UUID,
+            collection_syncs: List[Sync],
+        ) -> Dict[UUID, Optional[int]]:
             try:
                 return await self._count_vespa_for_collection(collection_id, collection_syncs, ctx)
             except Exception as e:

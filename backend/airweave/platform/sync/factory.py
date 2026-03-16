@@ -191,8 +191,15 @@ class SyncFactory:
 
     @classmethod
     async def _build_source(
-        cls, db, sync, sync_job, ctx, access_token, force_full_sync, execution_config
-    ):
+        cls,
+        db: AsyncSession,
+        sync: schemas.Sync,
+        sync_job: schemas.SyncJob,
+        ctx: BaseContext,
+        access_token: Optional[str],
+        force_full_sync: bool,
+        execution_config: Optional[SyncConfig],
+    ) -> tuple:
         """Build source and cursor. Returns (source, cursor) tuple."""
         from airweave.core.logging import LoggerConfigurator
         from airweave.platform.builders.source import SourceContextBuilder
@@ -219,7 +226,14 @@ class SyncFactory:
         return source_ctx.source, source_ctx.cursor
 
     @classmethod
-    async def _build_destinations(cls, db, sync, collection, ctx, execution_config):
+    async def _build_destinations(
+        cls,
+        db: AsyncSession,
+        sync: schemas.Sync,
+        collection: schemas.CollectionRecord,
+        ctx: BaseContext,
+        execution_config: Optional[SyncConfig],
+    ) -> tuple:
         """Build destinations and entity map. Returns (destinations, entity_map) tuple."""
         from airweave.core.logging import LoggerConfigurator
         from airweave.platform.builders.destinations import DestinationsContextBuilder

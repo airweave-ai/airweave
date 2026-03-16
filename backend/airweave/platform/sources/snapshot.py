@@ -64,7 +64,7 @@ class SnapshotSource(BaseSource):
     3. Storage-relative path (for blob): uses StorageBackend abstraction
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize snapshot source."""
         super().__init__()
         self.path: str = ""

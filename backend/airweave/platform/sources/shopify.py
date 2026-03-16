@@ -90,7 +90,7 @@ class ShopifySource(BaseSource):
     # Shopify API pagination limits
     SHOPIFY_PAGE_LIMIT = 250  # Maximum results per page
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Shopify source."""
         super().__init__()
         self.shop_domain: Optional[str] = None

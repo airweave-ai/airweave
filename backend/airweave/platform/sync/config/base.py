@@ -68,7 +68,7 @@ class SyncConfig(BaseSettings):
     behavior: BehaviorConfig = Field(default_factory=BehaviorConfig)
 
     @model_validator(mode="after")
-    def validate_config_logic(self):
+    def validate_config_logic(self) -> "SyncConfig":
         """Validate that config combinations make sense."""
         # Vespa must be enabled (sole vector database)
         if self.destinations.skip_vespa:

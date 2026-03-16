@@ -88,7 +88,7 @@ class BoxSource(BaseSource):
 
         return instance
 
-    async def _rate_limit(self):
+    async def _rate_limit(self) -> None:
         """Simple rate limiting to respect Box API limits.
 
         Box allows 1000 requests/minute per user. We use 100ms delay between

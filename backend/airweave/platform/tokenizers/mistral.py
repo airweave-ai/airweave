@@ -8,7 +8,7 @@ from ._base import BaseTokenizer
 _MistralTokenizer = None
 
 
-def _get_mistral_tokenizer_class():
+def _get_mistral_tokenizer_class() -> type:
     """Lazy load MistralTokenizer to avoid import errors if not installed."""
     global _MistralTokenizer
     if _MistralTokenizer is None:
@@ -86,7 +86,7 @@ class MistralTokenizer(BaseTokenizer):
 
         return tokenizer
 
-    def encode(self, text: str, **kwargs) -> List[int]:
+    def encode(self, text: str, **kwargs: Any) -> List[int]:
         """Encode text to token IDs.
 
         Args:

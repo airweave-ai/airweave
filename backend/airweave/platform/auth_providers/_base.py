@@ -10,19 +10,19 @@ from airweave.platform.auth_providers.auth_result import AuthResult
 class BaseAuthProvider(ABC):
     """Base class for all auth providers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the base auth provider."""
         self._logger: Optional[Any] = None  # Store contextual logger as instance variable
 
     @property
-    def logger(self):
+    def logger(self) -> Any:
         """Get the logger for this auth provider, falling back to default if not set."""
         if self._logger is not None:
             return self._logger
         # Fall back to default logger
         return logger
 
-    def set_logger(self, logger) -> None:
+    def set_logger(self, logger: Any) -> None:
         """Set a contextual logger for this auth provider."""
         self._logger = logger
 

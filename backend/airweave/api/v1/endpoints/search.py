@@ -13,7 +13,7 @@ Key features:
 
 import asyncio
 import json
-from typing import Any, Dict, Union
+from typing import Any, AsyncGenerator, Dict, Union
 
 from fastapi import Depends, HTTPException, Path, Query, Response
 from fastapi.responses import StreamingResponse
@@ -334,7 +334,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
 
     search_task = asyncio.create_task(_run_search())
 
-    async def event_stream():  # noqa: C901 - complex loop acceptable
+    async def event_stream() -> AsyncGenerator[str, None]:  # noqa: C901 - complex loop acceptable
         try:
             import datetime as _dt
 

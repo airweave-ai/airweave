@@ -18,12 +18,12 @@ class SafeTiktokenEncoding:
     - <|fim_prefix|>, <|fim_suffix|>, <|fim_middle|> (Codex FIM tokens)
     """
 
-    def __init__(self, encoding):
+    def __init__(self, encoding: Any) -> None:
         self._encoding = encoding
         # Copy attributes that Chonkie's AutoTokenizer checks for backend detection
         self.name = getattr(encoding, "name", "cl100k_base")
 
-    def encode(self, text: str, **kwargs) -> List[int]:
+    def encode(self, text: str, **kwargs: Any) -> List[int]:
         """Encode text, allowing all special tokens."""
         kwargs.setdefault("allowed_special", "all")
         return cast(List[int], self._encoding.encode(text, **kwargs))
@@ -32,7 +32,7 @@ class SafeTiktokenEncoding:
         """Decode tokens back to text."""
         return str(self._encoding.decode(list(tokens)))
 
-    def encode_batch(self, texts: List[str], **kwargs) -> List[List[int]]:
+    def encode_batch(self, texts: List[str], **kwargs: Any) -> List[List[int]]:
         """Encode multiple texts."""
         kwargs.setdefault("allowed_special", "all")
         return [self._encoding.encode(text, **kwargs) for text in texts]
@@ -42,7 +42,7 @@ class SafeTiktokenEncoding:
         return [self._encoding.decode(tokens) for tokens in token_lists]
 
     # Delegate attribute access to underlying encoding for Chonkie compatibility
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._encoding, name)
 
 

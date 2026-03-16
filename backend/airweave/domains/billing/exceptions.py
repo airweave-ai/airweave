@@ -1,6 +1,7 @@
 """Billing domain exceptions."""
 
 import functools
+from typing import Any, Callable
 
 from airweave.core.exceptions import InvalidStateError, NotFoundException
 from airweave.core.protocols.payment import PaymentProviderError
@@ -42,11 +43,11 @@ class PaymentGatewayError(PaymentProviderError):
         super().__init__(message)
 
 
-def wrap_gateway_errors(fn):
+def wrap_gateway_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator: catch PaymentProviderError from payment gateway, wrap as PaymentGatewayError."""
 
     @functools.wraps(fn)
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return await fn(*args, **kwargs)
         except PaymentProviderError as e:

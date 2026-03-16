@@ -18,7 +18,7 @@ class BaseTokenizer(ABC):
         pass
 
     @abstractmethod
-    def encode(self, text: str, **kwargs) -> List[int]:
+    def encode(self, text: str, **kwargs: object) -> List[int]:
         """Encode text to token IDs.
 
         Args:

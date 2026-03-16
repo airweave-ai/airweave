@@ -19,7 +19,7 @@ from airweave.schemas.entity import EntityCreate, EntityUpdate
 class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
     """CRUD operations for entities."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the CRUD object.
 
         Initialize with track_user=False since Entity model doesn't have user tracking fields.

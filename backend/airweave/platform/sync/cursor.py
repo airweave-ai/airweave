@@ -46,7 +46,7 @@ class SyncCursor:
             self._typed_cursor = None
             self._raw_data = cursor_data or {}
 
-    def update(self, **fields) -> None:
+    def update(self, **fields: object) -> None:
         """Update cursor fields.
 
         Args:

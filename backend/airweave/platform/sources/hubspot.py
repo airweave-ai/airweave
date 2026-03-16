@@ -52,7 +52,7 @@ class HubspotSource(BaseSource):
     HUBSPOT_API_LIMIT = 100  # Maximum results per page for list endpoints
     HUBSPOT_BATCH_SIZE = 100  # Maximum items per batch read request
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the HubSpot source."""
         super().__init__()
         # Cache for property names to avoid repeated API calls

@@ -10,7 +10,7 @@ import re
 import socket
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 from uuid import UUID
 
 from airweave.core.protocols.worker_metrics_registry import SyncMetricDetail, SyncWorkerCount
@@ -79,7 +79,7 @@ class WorkerMetricsRegistry:
         organization_id: Optional[UUID] = None,
         metadata: Optional[Dict[str, Any]] = None,
         worker_pool: Optional[Any] = None,
-    ):
+    ) -> AsyncGenerator[None, None]:
         """Context manager to track an active activity.
 
         Args:

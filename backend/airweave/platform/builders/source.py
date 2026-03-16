@@ -222,7 +222,7 @@ class SourceContextBuilder:
     # -------------------------------------------------------------------------
 
     @staticmethod
-    def _validate_not_completed_snapshot(source_connection_obj) -> None:
+    def _validate_not_completed_snapshot(source_connection_obj: object) -> None:
         """Guard: completed snapshots that had their short_name restored cannot re-sync."""
         if source_connection_obj.short_name != "snapshot":
             from pydantic import ValidationError

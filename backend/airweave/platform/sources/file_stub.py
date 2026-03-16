@@ -87,7 +87,7 @@ AUTHORS = [
 ]
 
 
-def _load_truetype_font(size: int):
+def _load_truetype_font(size: int) -> Any:
     """Load a truetype font that works across platforms.
 
     Tries common system font paths for macOS, Linux (Debian/Ubuntu), and
@@ -367,7 +367,7 @@ class FileStubSource(BaseSource):
     PPTX, and DOCX. All files embed the tracking token for search assertions.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize with default seed and no tracking prefix."""
         super().__init__()
         self.seed: int = 42

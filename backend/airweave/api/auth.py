@@ -1,6 +1,7 @@
 """Authentication module for the API."""
 
 import logging
+from typing import Optional
 
 from fastapi_auth0 import Auth0, Auth0User
 from jose import jwt
@@ -9,7 +10,7 @@ from airweave.core.config import settings
 
 
 # Add a method to auth0 instance to verify tokens directly
-async def get_user_from_token(token: str):
+async def get_user_from_token(token: str) -> Optional[Auth0User]:
     """Verify a token and return the Auth0User.
 
     Args:
@@ -74,7 +75,7 @@ else:
     class MockAuth0:
         """A mock Auth0 class that doesn't make network calls for testing/development."""
 
-        def __init__(self):
+        def __init__(self) -> None:
             """Initialize the mock Auth0 instance."""
             self.domain = "mock-domain.auth0.com"
             self.audience = "https://mock-api/"
@@ -82,7 +83,7 @@ else:
             self.jwks: dict[str, list[str]] = {"keys": []}
             self.auth0_user_model = Auth0User
 
-        async def get_user(self):
+        async def get_user(self) -> Auth0User:
             """Always return a mock user in development mode."""
             # For development and testing
             return Auth0User(sub="mock-user-id", email=settings.FIRST_SUPERUSER)

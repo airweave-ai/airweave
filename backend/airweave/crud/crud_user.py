@@ -19,7 +19,7 @@ from airweave.schemas.user import UserCreate, UserUpdate
 class CRUDUser(CRUDBaseUser[User, UserCreate, UserUpdate]):
     """CRUD operations for the User model."""
 
-    def _get_user_query_with_orgs(self):
+    def _get_user_query_with_orgs(self) -> Any:
         """Get a base query for users with organizations loaded."""
         from airweave.models.user_organization import UserOrganization
 

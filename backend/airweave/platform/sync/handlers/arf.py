@@ -34,7 +34,7 @@ class ArfHandler(EntityActionHandler):
         └── files/{entity_id}_{name}.{ext}
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize handler with manifest tracking."""
         self._manifest_initialized = False
 

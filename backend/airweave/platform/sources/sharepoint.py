@@ -324,7 +324,7 @@ class SharePointSource(BaseSource):
             self.logger.error(f"Error generating site entities: {str(e)}")
             raise
 
-    def _parse_datetime(self, dt_str: Optional[str]):
+    def _parse_datetime(self, dt_str: Optional[str]) -> Any:
         """Parse datetime string from Microsoft Graph API format."""
         if not dt_str:
             return None

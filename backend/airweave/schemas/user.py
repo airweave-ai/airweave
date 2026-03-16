@@ -68,7 +68,7 @@ class UserInDBBase(UserBase):
 
     @field_validator("user_organizations", mode="before")
     @classmethod
-    def load_organizations(cls, v):
+    def load_organizations(cls, v: object) -> list["UserOrganization"]:
         """Ensure organizations are always loaded."""
         return v or []
 

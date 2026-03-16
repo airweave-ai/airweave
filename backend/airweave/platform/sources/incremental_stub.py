@@ -77,7 +77,7 @@ class IncrementalStubSource(BaseSource):
     On subsequent syncs, only generates entities beyond the last cursor position.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the incremental stub source."""
         super().__init__()
         self.seed: int = 42

@@ -266,7 +266,7 @@ class LDAPClient:
             f"Reconnects: {stats['reconnects']}"
         )
 
-    async def _execute_with_retry(self, operation_name: str, operation_func):
+    async def _execute_with_retry(self, operation_name: str, operation_func: Any) -> Any:
         """Execute an LDAP operation with automatic retry on connection errors.
 
         Args:
@@ -516,7 +516,7 @@ class LDAPClient:
         collected_memberships: List[MembershipTuple] = [] if len(visited_groups) == 1 else None
 
         # Use retry wrapper for LDAP operations
-        async def query_group(conn: Connection):
+        async def query_group(conn: Connection) -> Optional[Any]:
             self._stats["ldap_queries"] += 1
             search_filter = f"(&(objectClass=group)(sAMAccountName={group_name}))"
             conn.search(

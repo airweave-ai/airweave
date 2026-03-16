@@ -41,7 +41,7 @@ class MistralRateLimiter(BaseRateLimiter):
 
     _instance: Optional["MistralRateLimiter"] = None
 
-    def _log_initialization(self):
+    def _log_initialization(self) -> None:
         """Log Mistral-specific initialization message."""
         logger.debug(
             f"Mistral rate limiter initialized: {self.RATE_LIMIT_PER_POD_RPS} RPS per pod "

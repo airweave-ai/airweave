@@ -32,7 +32,7 @@ class CRUDOrganization:
     implements its own validation logic rather than inheriting from CRUDBaseOrganization.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Organization CRUD."""
         self.model = Organization
 
@@ -378,7 +378,7 @@ class CRUDOrganization:
 
         return db_obj
 
-    async def create(db, obj_in, ctx) -> NotImplementedError:
+    async def create(db: AsyncSession, obj_in: Any, ctx: BaseContext) -> NotImplementedError:
         """Create organization resource with auth context."""
         raise NotImplementedError("This method is not implemented for organizations.")
 

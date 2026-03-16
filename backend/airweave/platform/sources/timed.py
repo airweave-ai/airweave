@@ -79,7 +79,7 @@ class TimedSource(BaseSource):
     state transition tests.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the timed source."""
         super().__init__()
         self.seed: int = 42

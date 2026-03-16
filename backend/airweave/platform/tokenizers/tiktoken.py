@@ -59,7 +59,7 @@ class TikTokenTokenizer(BaseTokenizer):
         """Return the underlying tiktoken Encoding object."""
         return self._encoding
 
-    def encode(self, text: str, **kwargs) -> List[int]:
+    def encode(self, text: str, **kwargs: object) -> List[int]:
         """Encode text to token IDs, allowing all special tokens.
 
         Args:

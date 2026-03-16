@@ -56,12 +56,12 @@ class SlabSource(BaseSource):
     Comments are included via search() results (CommentSearchResult) and synced.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the SlabSource with rate limiting state."""
         super().__init__()
-        self._request_times = []
+        self._request_times: list[float] = []
         self._lock = asyncio.Lock()
-        self._stats = {
+        self._stats: dict[str, int] = {
             "api_calls": 0,
             "rate_limit_waits": 0,
             "topics_found": 0,
@@ -107,7 +107,7 @@ class SlabSource(BaseSource):
         instance.host = (config.get("host") or "app.slab.com").strip()
         return instance
 
-    async def _wait_for_rate_limit(self):
+    async def _wait_for_rate_limit(self) -> None:
         """Implement rate limiting for Slab API requests.
 
         Slab API has rate limits, so we implement basic throttling.

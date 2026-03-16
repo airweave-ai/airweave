@@ -83,7 +83,7 @@ class TextualRepresentationBuilder:
             CodeFileEntity is exempt because code is self-documenting.
         """
 
-        async def build_metadata(entity: BaseEntity):
+        async def build_metadata(entity: BaseEntity) -> None:
             metadata = self.build_metadata_section(entity, source_name)
             if not metadata and not isinstance(entity, CodeFileEntity):
                 raise EntityProcessingError(f"Empty metadata for {entity.entity_id}")

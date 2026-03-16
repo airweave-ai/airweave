@@ -5,7 +5,7 @@ and Airweave's internal rate limiting (via AirweaveHttpClient).
 """
 
 import logging
-from typing import Callable
+from typing import Any, Callable
 
 import httpx
 from tenacity import retry_if_exception, wait_exponential
@@ -113,7 +113,7 @@ def should_retry_on_rate_limit_or_timeout(exception: BaseException) -> bool:
     return should_retry_on_rate_limit(exception) or should_retry_on_timeout(exception)
 
 
-def wait_rate_limit_with_backoff(retry_state) -> float:
+def wait_rate_limit_with_backoff(retry_state: Any) -> float:
     """Wait strategy that respects Retry-After header for 429s, exponential backoff for timeouts.
 
     For 429 errors:
@@ -179,7 +179,7 @@ def log_retry_attempt(logger: logging.Logger, service_name: str = "API") -> Call
         Callable that can be used as before_sleep in @retry decorator
     """
 
-    def before_sleep(retry_state) -> None:
+    def before_sleep(retry_state: Any) -> None:
         exception = retry_state.outcome.exception()
         attempt = retry_state.attempt_number
         wait_time = retry_state.next_action.sleep if retry_state.next_action else 0

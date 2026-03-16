@@ -126,7 +126,7 @@ class DestinationsContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         collection: schemas.CollectionRecord,
-        ctx,
+        ctx: BaseContext,
         logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
     ) -> List[BaseDestination]:
@@ -176,7 +176,7 @@ class DestinationsContextBuilder:
         destination_connection_id: UUID,
         sync: schemas.Sync,
         collection: schemas.CollectionRecord,
-        ctx,
+        ctx: BaseContext,
         logger: ContextualLogger,
     ) -> Optional[BaseDestination]:
         """Create a single destination instance."""

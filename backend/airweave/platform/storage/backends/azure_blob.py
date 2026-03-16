@@ -50,7 +50,7 @@ class AzureBlobBackend(StorageBackend):
             f"{f'/{prefix}' if prefix else ''}"
         )
 
-    async def _get_blob_service_client(self):
+    async def _get_blob_service_client(self) -> Any:
         """Lazy-load async blob service client."""
         if self._blob_service_client is None:
             try:
@@ -70,7 +70,7 @@ class AzureBlobBackend(StorageBackend):
                 ) from e
         return self._blob_service_client
 
-    async def _get_container_client(self):
+    async def _get_container_client(self) -> Any:
         """Lazy-load async container client."""
         if self._container_client is None:
             blob_service_client = await self._get_blob_service_client()

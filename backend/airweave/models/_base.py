@@ -1,6 +1,7 @@
 """Base models for the application."""
 
 import uuid
+from typing import Any
 
 from sqlalchemy import UUID, Column, DateTime, ForeignKey, String
 from sqlalchemy.ext.declarative import declared_attr
@@ -23,7 +24,7 @@ class OrganizationBase(Base):
     __abstract__ = True
 
     @declared_attr
-    def organization_id(cls):
+    def organization_id(cls) -> Any:
         """Organization ID column with index for efficient org-scoped queries."""
         return Column(
             UUID,
@@ -37,9 +38,9 @@ class UserMixin:
     """Mixin for adding nullable user tracking to a model."""
 
     @declared_attr
-    def created_by_email(cls):
+    def created_by_email(cls) -> Any:
         return Column(String, nullable=True)  # Made nullable for API key support
 
     @declared_attr
-    def modified_by_email(cls):
+    def modified_by_email(cls) -> Any:
         return Column(String, nullable=True)  # Made nullable for API key support

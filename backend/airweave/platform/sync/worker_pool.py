@@ -50,7 +50,9 @@ class AsyncWorkerPool:
         """
         return len(self.pending_tasks)
 
-    async def submit(self, coro: Callable, *args, **kwargs) -> asyncio.Task:
+    async def submit(
+        self, coro: Callable[..., Any], *args: Any, **kwargs: Any,
+    ) -> asyncio.Task[Any]:
         """Submit a coroutine to be executed by the worker pool.
 
         Creates a task, adds it to our tracking set, and returns it.
@@ -74,7 +76,10 @@ class AsyncWorkerPool:
         task.add_done_callback(self._handle_task_completion)
         return task
 
-    async def _run_with_semaphore(self, coro: Callable, task_id: str, *args, **kwargs) -> Any:
+    async def _run_with_semaphore(
+        self, coro: Callable[..., Any], task_id: str,
+        *args: Any, **kwargs: Any,
+    ) -> Any:
         """Run a coroutine with semaphore control.
 
         Acquires a semaphore before running the coroutine, limiting concurrency.

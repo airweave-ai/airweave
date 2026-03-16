@@ -100,7 +100,7 @@ def initialize_converters(ocr_provider: "OcrProvider | None" = None) -> None:
         setattr(this_module, _name, _value)
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     """PEP 562 module-level ``__getattr__`` for singleton access."""
     if name in _SINGLETON_NAMES:
         if _singletons is None:

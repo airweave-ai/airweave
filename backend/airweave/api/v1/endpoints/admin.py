@@ -8,7 +8,7 @@ or a dedicated `crud_admin` module for cross-org operations.
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from fastapi import Body, Depends, HTTPException, Path, Query
@@ -192,7 +192,7 @@ async def _build_org_context(
     )
 
 
-def _build_sort_subqueries(query, sort_by: str):
+def _build_sort_subqueries(query: Any, sort_by: str) -> Tuple[Any, Dict[str, Any]]:
     """Build sort subqueries based on sort_by field.
 
     Args:
@@ -284,7 +284,7 @@ def _build_sort_subqueries(query, sort_by: str):
     return query, subqueries
 
 
-def _get_sort_column(sort_by: str, subqueries: dict):
+def _get_sort_column(sort_by: str, subqueries: Dict[str, Any]) -> Any:
     """Get the SQLAlchemy column to sort by."""
     from airweave.models.usage import Usage
 
@@ -332,7 +332,7 @@ async def _update_or_create_membership(
 
 
 async def _update_membership_role(
-    db: AsyncSession, ctx: ApiContext, organization_id: UUID, role: str, existing_user_org
+    db: AsyncSession, ctx: ApiContext, organization_id: UUID, role: str, existing_user_org: Any
 ) -> bool:
     """Update role if different, return True if changed."""
     if existing_user_org.role == role:

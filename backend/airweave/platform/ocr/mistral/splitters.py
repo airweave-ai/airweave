@@ -133,7 +133,7 @@ class PdfSplitter(RecursiveSplitter):
         except ImportError:
             raise SyncFailureError("PyPDF2 required to split large PDFs but not installed")
 
-        def _load():
+        def _load() -> Any:
             with open(path, "rb") as fh:
                 reader = PyPDF2.PdfReader(fh)
                 # Materialize pages so the file handle can close.
@@ -151,7 +151,7 @@ class PdfSplitter(RecursiveSplitter):
         """Write a page range to a temporary PDF file."""
         import PyPDF2
 
-        def _write():
+        def _write() -> str:
             writer = PyPDF2.PdfWriter()
             for i in range(start, end):
                 writer.add_page(source.pages[i])
@@ -182,7 +182,7 @@ class DocxSplitter(RecursiveSplitter):
         except ImportError:
             raise SyncFailureError("python-docx package required but not installed")
 
-        def _load():
+        def _load() -> list:
             doc = Document(path)
             return list(doc.paragraphs)
 
@@ -196,7 +196,7 @@ class DocxSplitter(RecursiveSplitter):
         """Write a paragraph range to a temporary DOCX file."""
         from docx import Document
 
-        def _write():
+        def _write() -> str:
             chunk_doc = Document()
             for i in range(start, end):
                 chunk_doc.add_paragraph(source[i].text, style=source[i].style)

@@ -498,7 +498,7 @@ class StubSource(BaseSource):
     No external API calls are made - all content is generated locally.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the stub source."""
         super().__init__()
         self.seed: int = 42

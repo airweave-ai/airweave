@@ -57,7 +57,7 @@ class NotionDatabaseEntity(BaseEntity):
         """Browser URL for the database."""
         return self.url or ""
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, __context: Any) -> None:
         """Post-init hook to generate properties_text from schema."""
         super().model_post_init(__context)
 
@@ -161,7 +161,7 @@ class NotionPageEntity(BaseEntity):
 
     # Lazy mechanics removed; eager-only entity
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, __context: Any) -> None:
         """Post-init hook to generate properties_text from properties dict."""
         super().model_post_init(__context)
 

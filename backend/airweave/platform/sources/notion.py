@@ -82,7 +82,9 @@ class NotionSource(BaseSource):
             self.url = url
 
     @classmethod
-    async def create(cls, access_token, config: Optional[Dict[str, Any]] = None) -> "NotionSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None,
+    ) -> "NotionSource":
         """Create a new Notion source."""
         logger.debug("Creating new Notion source")
         instance = cls()
@@ -112,7 +114,7 @@ class NotionSource(BaseSource):
             headers={"Notion-Version": "2022-06-28"},
         )
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize rate limiting state and tracking."""
         super().__init__()
         self._request_times = []
@@ -133,7 +135,7 @@ class NotionSource(BaseSource):
         }
         logger.debug("Initialized comprehensive Notion source with content aggregation")
 
-    async def _wait_for_rate_limit(self):
+    async def _wait_for_rate_limit(self) -> None:
         """Implement rate limiting for Notion API requests."""
         async with self._lock:
             current_time = asyncio.get_running_loop().time()

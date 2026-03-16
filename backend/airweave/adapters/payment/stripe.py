@@ -25,7 +25,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
 
     MAX_NETWORK_RETRIES = 3
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Stripe client with automatic retries."""
         stripe.api_key = settings.STRIPE_SECRET_KEY
         stripe.max_network_retries = self.MAX_NETWORK_RETRIES

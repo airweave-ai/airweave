@@ -42,7 +42,7 @@ class FirecrawlRateLimiter(BaseRateLimiter):
 
     _instance: Optional["FirecrawlRateLimiter"] = None
 
-    def _log_initialization(self):
+    def _log_initialization(self) -> None:
         """Log Firecrawl-specific initialization message."""
         logger.debug(
             f"Firecrawl rate limiter initialized: {self.RATE_LIMIT_PER_POD_RPS} RPS per pod "

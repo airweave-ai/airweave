@@ -105,7 +105,7 @@ class OAuth2Settings(BaseAuthSettings):
     backend_url_template: bool = False
 
     @model_validator(mode="after")
-    def validate_oauth_fields(self):
+    def validate_oauth_fields(self) -> "OAuth2Settings":
         """Validate that OAuth integrations have required fields."""
         if not self.url:
             raise ValueError(f"OAuth integration {self.integration_short_name} missing 'url' field")
@@ -119,7 +119,7 @@ class OAuth2Settings(BaseAuthSettings):
             )
         return self
 
-    def render_url(self, **template_vars) -> str:
+    def render_url(self, **template_vars: str) -> str:
         """Render URL with template variables.
 
         Args:
@@ -140,7 +140,7 @@ class OAuth2Settings(BaseAuthSettings):
             return self.url.format(**template_vars)
         return self.url
 
-    def render_backend_url(self, **template_vars) -> str:
+    def render_backend_url(self, **template_vars: str) -> str:
         """Render backend URL with template variables.
 
         Args:
@@ -206,7 +206,7 @@ class OAuth1Settings(BaseAuthSettings):
     expiration: Optional[str] = None
 
     @model_validator(mode="after")
-    def validate_oauth1_fields(self):
+    def validate_oauth1_fields(self) -> "OAuth1Settings":
         """Validate that OAuth1 integrations have required fields."""
         if not self.request_token_url:
             raise ValueError(

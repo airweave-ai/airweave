@@ -382,7 +382,9 @@ class GoogleCalendarSource(BaseSource):
     ) -> AsyncGenerator[BaseEntity, None]:
         """Process calendars concurrently using bounded concurrency."""
 
-        async def _calendar_worker(cal_list_entity: GoogleCalendarListEntity):
+        async def _calendar_worker(
+            cal_list_entity: GoogleCalendarListEntity,
+        ) -> AsyncGenerator[BaseEntity, None]:
             """Emit Calendar resource, its events, then free/busy for a single calendar."""
             # 2) Calendar resource
             async for calendar_entity in self._generate_calendar_entity(

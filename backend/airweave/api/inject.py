@@ -1,7 +1,7 @@
 """Protocol injection for FastAPI endpoints."""
 
 import typing
-from typing import Union, get_type_hints
+from typing import Any, Union, get_type_hints
 
 from fastapi import Depends
 
@@ -37,7 +37,7 @@ def _resolve_field_name(protocol_type: type) -> str:
     return field_name
 
 
-def Inject(protocol_type: type):  # noqa: N802 — uppercase to match FastAPI convention
+def Inject(protocol_type: type) -> Any:  # noqa: N802 — uppercase to match FastAPI convention
     """Resolve a protocol implementation from the DI container.
 
     Works like ``Depends()`` but looks up the implementation by protocol type
@@ -64,7 +64,7 @@ def Inject(protocol_type: type):  # noqa: N802 — uppercase to match FastAPI co
             raise RuntimeError("Container not initialized. Call initialize_container() first.")
         return c
 
-    def _resolve(c: Container = Depends(_resolve_container)):
+    def _resolve(c: Container = Depends(_resolve_container)) -> Any:
         return getattr(c, field_name)
 
     return Depends(_resolve)

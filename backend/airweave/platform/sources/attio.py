@@ -720,7 +720,11 @@ class AttioSource(BaseSource):
 
                         # Create a worker that processes a record and its notes concurrently
                         # Bind loop variables to avoid closure issues
-                        async def _record_worker(record, _obj=obj, _breadcrumb=object_breadcrumb):
+                        async def _record_worker(
+                            record: AttioRecordEntity,
+                            _obj: AttioObjectEntity = obj,
+                            _breadcrumb: Breadcrumb = object_breadcrumb,
+                        ) -> AsyncGenerator[BaseEntity, None]:
                             # Yield the record first
                             yield record
 
@@ -786,8 +790,10 @@ class AttioSource(BaseSource):
                         # Create a worker that processes a record and its notes concurrently
                         # Bind loop variables to avoid closure issues
                         async def _list_record_worker(
-                            record, _list_id=list_id, _breadcrumb=list_breadcrumb
-                        ):
+                            record: AttioRecordEntity,
+                            _list_id: str = list_id,
+                            _breadcrumb: Breadcrumb = list_breadcrumb,
+                        ) -> AsyncGenerator[BaseEntity, None]:
                             # Yield the record first
                             yield record
 

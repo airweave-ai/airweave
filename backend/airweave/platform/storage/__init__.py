@@ -74,7 +74,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     """Lazy import heavy modules on first access."""
     if name in ("FilesystemBackend", "AzureBlobBackend", "S3Backend", "GCSBackend"):
         from airweave.platform.storage.backends import (

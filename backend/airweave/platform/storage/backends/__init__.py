@@ -29,7 +29,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> type:
     """Lazy import backends on first access."""
     if name == "FilesystemBackend":
         from airweave.platform.storage.backends.filesystem import FilesystemBackend

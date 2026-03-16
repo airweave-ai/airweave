@@ -282,7 +282,7 @@ class AuthProviderService(AuthProviderServiceProtocol):
         self,
         *,
         uow: UnitOfWork,
-        connection,
+        connection: Any,
         auth_fields: ConfigValues,
         ctx: ApiContext,
     ) -> None:

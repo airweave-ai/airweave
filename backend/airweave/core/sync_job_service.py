@@ -54,7 +54,9 @@ class SyncJobService:
 
         return update_data
 
-    async def _update_status_in_database(self, db, sync_job_id: UUID, status_value: str) -> None:
+    async def _update_status_in_database(
+        self, db: Any, sync_job_id: UUID, status_value: str,
+    ) -> None:
         """Update status field using raw SQL."""
         from sqlalchemy import text
 

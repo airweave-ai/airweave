@@ -129,7 +129,7 @@ class VespaClient:
         """
         result = FeedResult()
 
-        def track_callback(response, doc_id: str):
+        def track_callback(response: Any, doc_id: str) -> None:
             if response.is_successful():
                 result.success_count += 1
             else:
@@ -145,7 +145,10 @@ class VespaClient:
             # Convert VespaDocument to dict format expected by feed_iterable
             doc_dicts = [{"id": doc.id, "fields": doc.fields} for doc in docs]
 
-            def _feed_sync(docs_iter=doc_dicts, schema_name=schema):
+            def _feed_sync(
+                docs_iter: List[Dict[str, Any]] = doc_dicts,
+                schema_name: str = schema,
+            ) -> None:
                 self.app.feed_iterable(
                     iter=docs_iter,
                     schema=schema_name,

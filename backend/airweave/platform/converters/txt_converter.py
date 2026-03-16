@@ -37,7 +37,7 @@ class TxtConverter(BaseTextConverter):
         results = {}
         semaphore = asyncio.Semaphore(20)  # Limit concurrent file reads
 
-        async def _convert_one(path: str):
+        async def _convert_one(path: str) -> None:
             async with semaphore:
                 try:
                     # Determine format from extension
@@ -168,7 +168,7 @@ class TxtConverter(BaseTextConverter):
             EntityProcessingError: If JSON syntax is invalid or contains corrupted data
         """
 
-        def _read_and_format():
+        def _read_and_format() -> str:
             # Read raw bytes
             with open(path, "rb") as f:
                 raw_bytes = f.read()
@@ -208,7 +208,7 @@ class TxtConverter(BaseTextConverter):
             EntityProcessingError: If XML contains corrupted data
         """
 
-        def _read_and_format():
+        def _read_and_format() -> str:
             # Read raw bytes
             with open(path, "rb") as f:
                 raw_bytes = f.read()

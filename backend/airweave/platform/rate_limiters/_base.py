@@ -22,14 +22,14 @@ class BaseRateLimiter:
 
     _instance: Optional["BaseRateLimiter"] = None
 
-    def __new__(cls):
+    def __new__(cls) -> "BaseRateLimiter":
         """Singleton pattern - one instance per pod per limiter type."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize rate limiter (only once per pod)."""
         if self._initialized:
             return
@@ -42,13 +42,13 @@ class BaseRateLimiter:
         # Log initialization (subclass should provide details)
         self._log_initialization()
 
-    def _log_initialization(self):
+    def _log_initialization(self) -> None:
         """Log rate limiter initialization. Override in subclasses for custom messages."""
         logger.debug(
             f"{self.__class__.__name__} initialized: {self.RATE_LIMIT_PER_POD_RPS:.1f} RPS per pod"
         )
 
-    async def acquire(self):
+    async def acquire(self) -> None:
         """Acquire a rate limit slot (blocks until available).
 
         Uses sliding window algorithm to enforce rate limit.

@@ -3,7 +3,7 @@
 import asyncio
 import re
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -407,7 +407,7 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
         )
 
     async def _resolve_connection(
-        self, db: AsyncSession, source_conn, ctx: ApiContext
+        self, db: AsyncSession, source_conn: Any, ctx: ApiContext
     ) -> schemas.Connection:
         """Resolve the Connection (not SourceConnection!) for a source connection."""
         if not source_conn.connection_id:

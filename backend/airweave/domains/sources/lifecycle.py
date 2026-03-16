@@ -503,7 +503,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             logger.error(f"Failed to get app info from Pipedream: {e}")
             return None
 
-        def create_proxy_client(**httpx_kwargs) -> PipedreamProxyClient:
+        def create_proxy_client(**httpx_kwargs: Any) -> PipedreamProxyClient:
             return PipedreamProxyClient(
                 project_id=auth_provider_instance.project_id,
                 account_id=auth_provider_instance.account_id,
@@ -731,7 +731,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         feature_enabled = ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING)
         original_factory = source._http_client_factory
 
-        def airweave_client_factory(**kwargs):
+        def airweave_client_factory(**kwargs: Any) -> AirweaveHttpClient:
             if original_factory:
                 base_client = original_factory(**kwargs)
             else:

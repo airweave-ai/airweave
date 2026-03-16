@@ -37,7 +37,7 @@ class BaseContext:
 
     logger: ContextualLogger = field(default=None, kw_only=True, repr=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Auto-derive logger from organization identity if not provided."""
         if self.logger is None:
             from airweave.core.logging import logger as base_logger

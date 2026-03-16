@@ -10,6 +10,7 @@ Pattern:
 """
 
 from datetime import datetime, timezone
+from typing import Any, AsyncGenerator
 from uuid import uuid4
 
 import pytest_asyncio
@@ -44,7 +45,7 @@ def _make_fake_context() -> ApiContext:
 
 
 @pytest_asyncio.fixture
-async def client(test_container):
+async def client(test_container: Any) -> AsyncGenerator[AsyncClient, None]:
     """Async HTTP client with faked DI container and auth context."""
     from airweave.core import container as container_mod
     from airweave.main import app

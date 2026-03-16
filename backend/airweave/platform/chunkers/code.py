@@ -32,14 +32,14 @@ class CodeChunker(BaseChunker):
     # Singleton instance
     _instance: Optional["CodeChunker"] = None
 
-    def __new__(cls):
+    def __new__(cls) -> "CodeChunker":
         """Singleton pattern - one instance per pod."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize once per pod (models load lazily on first use)."""
         if self._initialized:
             return
@@ -54,7 +54,7 @@ class CodeChunker(BaseChunker):
             f"(target: {self.CHUNK_SIZE}, hard_limit: {self.MAX_TOKENS_PER_CHUNK})"
         )
 
-    def _ensure_chunkers(self):
+    def _ensure_chunkers(self) -> None:
         """Lazy initialization of chunker models.
 
         Initializes CodeChunker (AST parsing) + TokenChunker (safety net).
@@ -272,7 +272,7 @@ class CodeChunker(BaseChunker):
 
         return code_results
 
-    def _convert_chunk(self, chunk) -> Dict[str, Any]:
+    def _convert_chunk(self, chunk: Any) -> Dict[str, Any]:
         """Convert Chonkie Chunk object to dict format.
 
         Token counts have already been recounted with tiktoken in
