@@ -95,7 +95,6 @@ from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
-from airweave.domains.storage.factory import get_storage_backend
 from airweave.domains.storage.sync_file_manager import SyncFileManager
 from airweave.domains.sync_pipeline.factory import SyncFactory
 from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProcessor
@@ -382,7 +381,7 @@ def create_container(settings: Settings) -> Container:
 
     # Storage domain
     # -----------------------------------------------------------------
-    storage_backend = get_storage_backend()
+    storage_backend = _create_storage_backend(settings)
     sync_file_manager = SyncFileManager(backend=storage_backend)
 
     # ARF domain service (raw entity capture / replay)
