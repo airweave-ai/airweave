@@ -131,10 +131,12 @@ class ComposioBroker(BaseAuthBroker):
             slug = source_short_name
 
         accounts = await self._get_all_accounts()
-        matching = [a for a in accounts if a.get("toolkit", {}).get("slug") == slug]
+        matching = [a for a in accounts if a.get("status", "") == "ACTIVE" and a.get("toolkit", {}).get("slug") == slug]
 
         if not matching:
-            raise RuntimeError(f"No Composio connected accounts for slug '{slug}'")
+            raise RuntimeError(
+                f"No ACTIVE Composio connected accounts for slug '{slug}'"
+            )
 
         selected = None
         if self.auth_config_id and self.account_id:
