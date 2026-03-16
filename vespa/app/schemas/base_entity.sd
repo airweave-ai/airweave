@@ -92,6 +92,11 @@ schema base_entity {
             indexing: attribute | summary
         }
 
+        field airweave_system_metadata_annotations type array<string> {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
         # Original entity ID (before __chunk_{idx} suffix)
         # CRITICAL for entity-level deduplication in search results
         field airweave_system_metadata_original_entity_id type string {

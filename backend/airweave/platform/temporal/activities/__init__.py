@@ -17,6 +17,9 @@ from airweave.platform.temporal.activities.cleanup import (
     CleanupSyncDataActivity,
     SelfDestructOrphanedSyncActivity,
 )
+from airweave.platform.temporal.activities.sce import (
+    ExtractStructuralContextActivity,
+)
 from airweave.platform.temporal.activities.sync import (
     CleanupStuckSyncJobsActivity,
     CreateSyncJobActivity,
@@ -42,6 +45,7 @@ cleanup_stuck_sync_jobs_activity = CleanupStuckSyncJobsActivity.run
 self_destruct_orphaned_sync_activity = SelfDestructOrphanedSyncActivity.run
 cleanup_sync_data_activity = CleanupSyncDataActivity.run
 check_and_notify_expiring_keys_activity = CheckAndNotifyExpiringKeysActivity.run
+extract_structural_context_activity = ExtractStructuralContextActivity.run
 
 __all__ = [
     # Activity classes (for worker.py instantiation)
@@ -52,6 +56,7 @@ __all__ = [
     "SelfDestructOrphanedSyncActivity",
     "CleanupSyncDataActivity",
     "CheckAndNotifyExpiringKeysActivity",
+    "ExtractStructuralContextActivity",
     # Activity method references (for workflow imports)
     "run_sync_activity",
     "mark_sync_job_cancelled_activity",
@@ -60,4 +65,5 @@ __all__ = [
     "self_destruct_orphaned_sync_activity",
     "cleanup_sync_data_activity",
     "check_and_notify_expiring_keys_activity",
+    "extract_structural_context_activity",
 ]

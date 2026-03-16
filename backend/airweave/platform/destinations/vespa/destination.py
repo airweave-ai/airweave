@@ -22,10 +22,11 @@ from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.decorators import destination
-from airweave.platform.destinations._base import VectorDBDestination
-from airweave.platform.destinations.vespa.client import VespaClient
+from airweave.platform.destinations._base import VectorDBDestination, VectorDBUpdate
+from airweave.platform.destinations.vespa.client import VespaClient, VespaQueryOperation
 from airweave.platform.destinations.vespa.query_builder import QueryBuilder
 from airweave.platform.destinations.vespa.transformer import EntityTransformer
+from airweave.platform.destinations.vespa.types import VespaDocument
 from airweave.platform.entities._base import BaseEntity
 from airweave.schemas.search import AirweaveTemporalConfig
 from airweave.schemas.search_result import AirweaveSearchResult
@@ -308,6 +309,99 @@ class VespaDestination(VectorDBDestination):
         self.logger.debug(f"[VespaSearch] Retrieved {len(results)} results")
 
         return results
+
+    async def query_documents(
+        self,
+        airweave_collection_id: UUID,
+        sync_id: UUID,
+        *,
+        limit: int,
+        offset: int,
+    ) -> List[AirweaveSearchResult]:
+        """Query Vespa documents by collection_id and sync_id
+
+        Args:
+            airweave_collection_id: Airweave collection UUID for filtering
+            sync_id: Airweave sync job UUID for filtering
+            limit: Maximum number of results
+            offset: Results to skip (pagination)
+
+        Returns:
+            List of AirweaveSearchResult objects (unified format)
+        """
+        if not self._client:
+            raise RuntimeError("Vespa client not initialized. Call create() first.")
+
+        self.logger.debug(
+            f"[Vespa] Querying points...', "
+            f"collection_id={airweave_collection_id}, sync_id={sync_id}"
+        )
+
+        # Build YQL and params
+        # Not the cleanest way to do this. We need a lower level query builder
+        # that allows for more generic YQL queries
+        yql = self._query_builder.build_yql(
+            queries=[""],
+            collection_id=airweave_collection_id,
+            filter={"must": [{"key": "sync_id", "match": {"value": sync_id}}]},
+            retrieval_strategy="keyword",
+        )
+        query_params = {"yql": yql, "hits": limit, "offset": offset, "timeout": "10s"}
+
+        self.logger.debug(f"[Vespa] YQL: {yql}")
+
+        # Execute query
+        response = await self._client.execute_query(query_params)
+
+        # Convert results (pagination handled server-side via query params)
+        results = self._client.convert_hits_to_results(response.hits)
+
+        self.logger.debug(f"[Vespa] Retrieved {len(results)} results")
+
+        return results
+
+    async def bulk_update(
+        self,
+        updates: List[VectorDBUpdate],
+    ) -> None:
+        """Bulk partial-update metadata fields on existing Vespa documents.
+
+        Args:
+            updates: List of VectorDBUpdate objects with "doc_id", "schema", and "fields" keys.
+                     Each "fields" dict contains field names mapped to their new values.
+        """
+        if not updates:
+            return
+
+        if not self._client:
+            raise RuntimeError("Vespa client not initialized. Call create() first.")
+
+        # Group updates by schema and build VespaDocuments
+        docs_by_schema: Dict[str, List[VespaDocument]] = {}
+        for update in updates:
+            # We want to use VectorDBUpdate and map it to VespaDocument
+            # to keep updates generic across destinations
+            doc = VespaDocument(
+                schema=update.entity_schema,
+                id=update.id,
+                fields=update.fields,
+            )
+            docs_by_schema.setdefault(update.entity_schema, []).append(doc)
+
+        total_docs = sum(len(docs) for docs in docs_by_schema.values())
+        self.logger.info(f"[VespaDestination] Bulk updating {total_docs} documents")
+
+        result = await self._client.feed_documents(
+            docs_by_schema, operation_type=VespaQueryOperation.UPDATE
+        )
+
+        self.logger.info(
+            f"[VespaDestination] Bulk update complete: "
+            f"{result.success_count} success, {len(result.failed_docs)} failed"
+        )
+
+        if result.failed_docs:
+            self._handle_feed_failures(result.failed_docs, total_docs)
 
     # -------------------------------------------------------------------------
     # Filter translation (exposed for external use)

@@ -65,6 +65,7 @@ from airweave.domains.organizations.protocols import (
     OrganizationServiceProtocol,
     UserOrganizationRepositoryProtocol,
 )
+from airweave.domains.sce.protocols import StructuralContextExtractorServiceProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
@@ -221,6 +222,8 @@ class Container:
     dense_embedder: DenseEmbedderProtocol
     sparse_embedder: SparseEmbedderProtocol
 
+    # SCE service (structural context extraction — regex + NER extractors)
+    sce_service: StructuralContextExtractorServiceProtocol
     # Connect domain service (session-based frontend integration flows)
     connect_service: ConnectServiceProtocol
 
