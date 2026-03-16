@@ -117,6 +117,9 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: Optional[str] = None
     REDIS_DB: int = 0
+    REDIS_SSL: bool = False  # Enable TLS for managed Redis (Memorystore, ElastiCache, etc.)
+    REDIS_SSL_CERT_REQS: Optional[str] = None  # "required", "optional", or "none"
+    REDIS_SSL_CA_CERTS: Optional[str] = None  # Path to CA certificate file
 
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
