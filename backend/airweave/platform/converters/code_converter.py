@@ -28,7 +28,7 @@ class CodeConverter(BaseTextConverter):
         """
         logger.debug(f"Converting {len(file_paths)} code files to markdown...")
 
-        results = {}
+        results: dict[str, str | None] = {}
         semaphore = asyncio.Semaphore(20)  # Limit concurrent file reads
 
         async def _convert_one(path: str):

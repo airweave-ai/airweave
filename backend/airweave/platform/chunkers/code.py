@@ -185,7 +185,7 @@ class CodeChunker(BaseChunker):
             Final chunks as dicts, all guaranteed ≤ MAX_TOKENS_PER_CHUNK
         """
         # Collect oversized chunks with position mapping
-        oversized_texts = []
+        oversized_texts: list[str] = []
         oversized_map = {}  # position in oversized_texts → (doc_idx, chunk_idx)
 
         for doc_idx, chunks in enumerate(code_results):

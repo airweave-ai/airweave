@@ -23,7 +23,7 @@ class AsyncWorkerPool:
         """
         self.max_workers = settings.SYNC_MAX_WORKERS
         self.semaphore = asyncio.Semaphore(self.max_workers)
-        self.pending_tasks = set()
+        self.pending_tasks: set[asyncio.Task[Any]] = set()
         self.logger = logger
 
         # Simple flag to prevent submissions after cancellation

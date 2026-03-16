@@ -139,7 +139,7 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         all_connections = result.unique().all()
 
         # Create a mapping of sync_id to its connections
-        sync_connections = {}
+        sync_connections: dict[UUID, dict[str, Any]] = {}
         for connection, sync_connection in all_connections:
             sync_id = sync_connection.sync_id
             if sync_id not in sync_connections:

@@ -124,7 +124,7 @@ class GenerateAnswer(SearchOperation):
 
             return await provider.generate(messages)
 
-        completion = await self._execute_with_provider_fallback(
+        completion: str = await self._execute_with_provider_fallback(
             providers=self.providers,
             operation_call=call_provider,
             operation_name="GenerateAnswer",

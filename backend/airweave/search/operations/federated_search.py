@@ -299,7 +299,7 @@ class FederatedSearch(SearchOperation):
             async def call_provider(provider: BaseProvider) -> BaseModel:
                 return await provider.structured_output(messages, QueryKeywords)
 
-            result = await self._execute_with_provider_fallback(
+            result: QueryKeywords = await self._execute_with_provider_fallback(
                 providers=self.providers,
                 operation_call=call_provider,
                 operation_name="FederatedSearch",

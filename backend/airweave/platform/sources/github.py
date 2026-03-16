@@ -325,8 +325,8 @@ class GitHubSource(BaseSource):
         )
 
         # Track processed paths to avoid duplicates
-        processed_paths = set()
-        processed_files = set()  # Track files separately to prevent duplicates
+        processed_paths: set[str] = set()
+        processed_files: set[str] = set()  # Track files separately to prevent duplicates
 
         # Start DFS traversal from root
         async for entity in self._traverse_directory(

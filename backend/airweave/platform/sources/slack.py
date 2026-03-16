@@ -233,7 +233,7 @@ class SlackSource(BaseSource):
         self, message_matches: List[Dict], limit: int, results_fetched: int
     ) -> List[BaseEntity]:
         """Process message matches and return entities."""
-        entities = []
+        entities: list[BaseEntity] = []
         for message in message_matches:
             # Stop once we've reached the total limit
             if results_fetched + len(entities) >= limit:

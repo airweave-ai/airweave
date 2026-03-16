@@ -79,7 +79,7 @@ else:
             self.domain = "mock-domain.auth0.com"
             self.audience = "https://mock-api/"
             self.algorithms = ["RS256"]
-            self.jwks = {"keys": []}
+            self.jwks: dict[str, list[str]] = {"keys": []}
             self.auth0_user_model = Auth0User
 
         async def get_user(self):

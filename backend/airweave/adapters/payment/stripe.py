@@ -301,7 +301,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
 
     def extract_subscription_items(self, subscription: Any) -> list[str]:
         """Extract price IDs from subscription items."""
-        price_ids = []
+        price_ids: list[str] = []
 
         try:
             # Handle both dict and object formats

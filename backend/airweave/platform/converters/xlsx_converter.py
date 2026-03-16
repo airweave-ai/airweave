@@ -38,7 +38,7 @@ class XlsxConverter(BaseTextConverter):
 
         logger.debug(f"Converting {len(file_paths)} XLSX files to markdown...")
 
-        results = {}
+        results: dict[str, str | None] = {}
         semaphore = asyncio.Semaphore(10)  # Limit concurrent file reads
 
         async def _convert_one(path: str):

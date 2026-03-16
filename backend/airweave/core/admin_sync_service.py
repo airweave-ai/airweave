@@ -436,7 +436,7 @@ class AdminSyncService:
         result = await db.execute(query)
 
         # Aggregate unique tags per sync
-        all_tags_map = {}
+        all_tags_map: dict[UUID, Any] = {}
         for row in result:
             if row.sync_metadata and isinstance(row.sync_metadata, dict):
                 tags = row.sync_metadata.get("tags")
@@ -494,7 +494,7 @@ class AdminSyncService:
         )
         result = await db.execute(query)
 
-        sync_connections = {}
+        sync_connections: dict[UUID, dict[str, Any]] = {}
         for sync_conn, connection in result:
             sync_id = sync_conn.sync_id
             if sync_id not in sync_connections:
@@ -524,7 +524,7 @@ class AdminSyncService:
             return {s.id: None for s in syncs}
 
         start = time.monotonic()
-        count_map = {}
+        count_map: dict[UUID, Optional[int]] = {}
 
         # Group syncs by collection for connection reuse
         syncs_by_collection: Dict[UUID, List[Sync]] = {}

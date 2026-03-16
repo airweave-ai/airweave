@@ -444,7 +444,7 @@ class GitLabSource(BaseSource):
             Directory and file entities
         """
         # Track processed paths to avoid duplicates
-        processed_paths = set()
+        processed_paths: set[str] = set()
 
         # Start DFS traversal from root
         async for entity in self._traverse_directory(

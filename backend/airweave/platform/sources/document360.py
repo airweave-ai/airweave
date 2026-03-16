@@ -246,7 +246,7 @@ class Document360Source(BaseSource):
                 )
                 content = None
                 html_content = None
-                authors = []
+                authors: list[dict[str, Any]] = []
                 created_at = None
                 modified_at = None
                 description = None

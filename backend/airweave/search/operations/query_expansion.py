@@ -105,7 +105,7 @@ class QueryExpansion(SearchOperation):
             self._validate_query_length_for_provider(query, provider, ctx)
             return await provider.structured_output(messages, QueryExpansions)
 
-        result = await self._execute_with_provider_fallback(
+        result: QueryExpansions = await self._execute_with_provider_fallback(
             providers=self.providers,
             operation_call=call_provider,
             operation_name="QueryExpansion",

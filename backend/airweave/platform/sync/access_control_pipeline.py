@@ -305,7 +305,7 @@ class AccessControlPipeline:
             )
             return await self._process_full(source, sync_context, runtime)
 
-        deleted_group_ids = getattr(result, "deleted_group_ids", set())
+        deleted_group_ids: set[str] = getattr(result, "deleted_group_ids", set())
 
         if not result.changes and not deleted_group_ids:
             sync_context.logger.info("No ACL changes detected (DirSync returned 0 changes)")

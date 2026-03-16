@@ -581,7 +581,7 @@ class NotionSource(BaseSource):
         self, client: httpx.AsyncClient, page: dict
     ) -> List[Breadcrumb]:
         """Build breadcrumbs for a page by traversing up the parent hierarchy."""
-        breadcrumbs = []
+        breadcrumbs: List[Breadcrumb] = []
         current_page = page
 
         while True:

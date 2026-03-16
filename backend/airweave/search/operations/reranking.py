@@ -106,7 +106,7 @@ class Reranking(SearchOperation):
 
             return await provider.rerank(context.query, documents, top_n)
 
-        rankings = await self._execute_with_provider_fallback(
+        rankings: List[Dict[str, Any]] = await self._execute_with_provider_fallback(
             providers=self.providers,
             operation_call=call_provider,
             operation_name="Reranking",

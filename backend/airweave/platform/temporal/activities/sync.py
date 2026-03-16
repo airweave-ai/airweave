@@ -250,8 +250,8 @@ class RunSyncActivity:
                             loc = f"{frame.f_code.co_filename}:{frame.f_lineno}"
                             traces.append(f"  at {loc} in {frame.f_code.co_name}")
 
-                thread_parts = []
-                async_parts = []
+                thread_parts: list[str] = []
+                async_parts: list[str] = []
                 in_async = False
                 for trace in traces:
                     if "=== Async Tasks" in trace:

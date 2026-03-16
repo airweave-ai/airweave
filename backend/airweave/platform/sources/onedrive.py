@@ -275,7 +275,7 @@ class OneDriveSource(BaseSource):
         """Recursively list all items in a drive using BFS approach."""
         # Queue of folder IDs to process (None = root folder)
         folder_queue = deque([None])
-        processed_folders = set()  # Avoid infinite loops
+        processed_folders: set[str | None] = set()  # Avoid infinite loops
 
         while folder_queue:
             current_folder_id = folder_queue.popleft()

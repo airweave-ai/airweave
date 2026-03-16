@@ -146,7 +146,7 @@ class QueryInterpretation(SearchOperation):
             self._validate_prompt_length_for_provider(system_prompt, user_prompt, provider)
             return await provider.structured_output(messages, ExtractedFilters)
 
-        result = await self._execute_with_provider_fallback(
+        result: ExtractedFilters = await self._execute_with_provider_fallback(
             providers=self.providers,
             operation_call=call_provider,
             operation_name="QueryInterpretation",
@@ -381,7 +381,7 @@ class QueryInterpretation(SearchOperation):
         self, filters: List[FilterCondition], available_fields: Dict[str, Dict[str, str]]
     ) -> List[Dict[str, Any]]:
         """Validate filter conditions against available fields and convert to Qdrant format."""
-        allowed_keys = set()
+        allowed_keys: set[str] = set()
         allowed_sources = set(available_fields.keys())
 
         for source_fields in available_fields.values():

@@ -467,7 +467,7 @@ class SearchFactory:
 
         Returns dict mapping operation keys to lists of providers in preference order.
         """
-        providers = {}
+        providers: Dict[str, List[BaseProvider]] = {}
 
         # Query expansion
         if params["expand_query"]:

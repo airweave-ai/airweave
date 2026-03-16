@@ -283,7 +283,7 @@ def _calculate_trends(
     prev_usage: Optional[Usage],
 ) -> List[UsageTrend]:
     """Calculate usage trends by comparing current and previous periods."""
-    trends = []
+    trends: List[UsageTrend] = []
     if not prev_usage:
         return trends
 

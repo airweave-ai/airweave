@@ -22,6 +22,7 @@ from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEm
 from airweave.platform.builders import SyncContextBuilder
 from airweave.platform.builders.tracking import TrackingContextBuilder
 from airweave.platform.contexts.runtime import SyncRuntime
+from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.actions import (
     ACActionDispatcher,
@@ -165,7 +166,7 @@ class SyncFactory:
 
         worker_pool = AsyncWorkerPool(logger=sync_context.logger)
 
-        stream = AsyncSourceStream(
+        stream: AsyncSourceStream[BaseEntity] = AsyncSourceStream(
             source_generator=runtime.source.generate_entities(),
             queue_size=10000,
             logger=sync_context.logger,
