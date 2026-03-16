@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
-from airweave.domains.search.types import CollectionMetadata, SearchResults
+from airweave.domains.search.types import (
+    CollectionMetadata,
+    FilterGroup,
+    SearchPlan,
+    SearchResults,
+)
 
 if TYPE_CHECKING:
     from airweave.core.protocols import PubSub
@@ -16,6 +21,24 @@ if TYPE_CHECKING:
         ClassicSearchRequest,
         InstantSearchRequest,
     )
+
+
+@runtime_checkable
+class SearchPlanExecutorProtocol(Protocol):
+    """Executes a search plan against the vector database.
+
+    Shared pipeline: merge filters -> embed -> compile -> execute.
+    Used by all three tiers (instant, classic, agentic).
+    """
+
+    async def execute(
+        self,
+        plan: SearchPlan,
+        user_filter: list[FilterGroup],
+        collection_id: str,
+    ) -> SearchResults:
+        """Execute a search plan and return results."""
+        ...
 
 
 @runtime_checkable

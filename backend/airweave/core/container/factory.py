@@ -94,10 +94,13 @@ from airweave.domains.oauth.repository import (
 from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
 from airweave.domains.organizations.repository import UserOrganizationRepository
+from airweave.domains.search.adapters.vector_db.filter_translator import FilterTranslator
+from airweave.domains.search.adapters.vector_db.vespa_client import VespaVectorDB
 from airweave.domains.search.agentic.service import AgenticSearchService
 from airweave.domains.search.builders.collection_metadata import CollectionMetadataBuilder
 from airweave.domains.search.classic.service import ClassicSearchService
 from airweave.domains.search.config import SearchConfig
+from airweave.domains.search.executor import SearchPlanExecutor
 from airweave.domains.search.instant.service import InstantSearchService
 from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.delete import SourceConnectionDeletionService
@@ -1204,11 +1207,21 @@ def _create_search_services(
         entity_count_repo=EntityCountRepository(),
     )
 
-    # 5. Per-tier services
-    instant_search = InstantSearchService(
+    # 5. Vector DB + shared executor
+    from vespa.application import Vespa
+
+    vespa_app = Vespa(url=settings.VESPA_URL, port=settings.VESPA_PORT)
+    filter_translator = FilterTranslator(logger=logger)
+    vector_db = VespaVectorDB(app=vespa_app, logger=logger, filter_translator=filter_translator)
+
+    executor = SearchPlanExecutor(
         dense_embedder=dense_embedder,
         sparse_embedder=sparse_embedder,
+        vector_db=vector_db,
     )
+
+    # 6. Per-tier services
+    instant_search = InstantSearchService(executor=executor, collection_repo=collection_repo)
     classic_search = ClassicSearchService(
         llm=llm,
         tokenizer=tokenizer,

@@ -24,7 +24,7 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
     const agenticEnabled = useOrganizationStore((state) => state.hasFeature(FeatureFlags.AGENTIC_SEARCH));
 
     // Search tier — defaults to classic (or agentic if feature-flagged)
-    const [tier, setTier] = useState<SearchTier>(agenticEnabled ? "agentic" : "classic");
+    const [tier, setTier] = useState<SearchTier>("classic");
 
     // Response state
     const [searchResponse, setSearchResponse] = useState<any>(null);
@@ -114,6 +114,7 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
                         isSearching={isSearching}
                         responseType={searchResponseType}
                         events={events as any[]}
+                        showTrace={tier !== "instant"}
                     />
                 </div>
             )}

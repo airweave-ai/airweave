@@ -21,7 +21,7 @@ import { SingleActionCheckResponse } from "@/types";
 export type SearchTier = "instant" | "classic" | "agentic";
 
 // Retrieval strategy for instant tier
-type RetrievalStrategy = "hybrid" | "neural" | "keyword";
+type RetrievalStrategy = "hybrid" | "semantic" | "keyword";
 
 // Search configuration interface (for code block)
 export interface SearchConfig {
@@ -693,8 +693,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         "inline-flex items-center rounded-md border p-0.5",
                                         isDark ? "border-border/50 bg-background" : "border-border bg-white"
                                     )}>
-                                        {(["neural", "hybrid", "keyword"] as RetrievalStrategy[]).map((strategy) => {
-                                            const label = strategy === "neural" ? "Semantic" : strategy === "hybrid" ? "Hybrid" : "Keyword";
+                                        {(["semantic", "hybrid", "keyword"] as RetrievalStrategy[]).map((strategy) => {
+                                            const label = strategy === "semantic" ? "Semantic" : strategy === "hybrid" ? "Hybrid" : "Keyword";
                                             const isActive = retrievalStrategy === strategy;
                                             return (
                                                 <button

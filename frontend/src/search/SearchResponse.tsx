@@ -39,6 +39,7 @@ interface SearchResponseProps {
     responseType?: 'raw' | 'completion';
     className?: string;
     events?: SearchEvent[];
+    showTrace?: boolean;
 }
 
 export const SearchResponse: React.FC<SearchResponseProps> = ({
@@ -46,7 +47,8 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     isSearching,
     responseType = 'raw',
     className,
-    events = []
+    events = [],
+    showTrace = true,
 }) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
@@ -66,7 +68,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 
     // State for active tab - default mirrors previous behavior; will be overridden on search start
     const [activeTab, setActiveTab] = useState<'trace' | 'answer' | 'entities' | 'raw'>(
-        responseType === 'completion' ? 'answer' : 'entities'
+        !showTrace ? 'entities' : responseType === 'completion' ? 'answer' : 'entities'
     );
 
     // Track if we've auto-switched tabs after search completion to avoid overriding manual user selection
@@ -1369,10 +1371,10 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     // Tab switching effects
     useEffect(() => {
         if (isSearching) {
-            setActiveTab('trace');
+            setActiveTab(showTrace ? 'trace' : 'entities');
             hasAutoSwitchedRef.current = false; // Reset flag when new search starts
         }
-    }, [isSearching]);
+    }, [isSearching, showTrace]);
 
     useEffect(() => {
         // When completion arrives (not streaming anymore), switch to answer tab
@@ -1503,31 +1505,33 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                             "flex items-center border-t",
                             isDark ? "border-gray-800/50 bg-gray-900/70" : "border-gray-200/50 bg-gray-50"
                         )}>
-                            {/* Trace tab (left) */}
-                            <button
-                                onClick={() => startTransition(() => setActiveTab('trace'))}
-                                className={cn(
-                                    "px-3.5 py-2 text-[13px] font-medium transition-colors relative",
-                                    activeTab === 'trace'
-                                        ? isDark
-                                            ? "text-white bg-gray-800/70"
-                                            : "text-gray-900 bg-white"
-                                        : isDark
-                                            ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/30"
-                                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
-                                )}
-                            >
-                                <div className="flex items-center gap-1.5">
-                                    <Footprints className="h-3 w-3" />
-                                    Trace
-                                </div>
-                                {activeTab === 'trace' && (
-                                    <div className={cn(
-                                        "absolute bottom-0 left-0 right-0 h-0.5",
-                                        isDark ? "bg-blue-400" : "bg-blue-600"
-                                    )} />
-                                )}
-                            </button>
+                            {/* Trace tab (left) — hidden for instant tier */}
+                            {showTrace && (
+                                <button
+                                    onClick={() => startTransition(() => setActiveTab('trace'))}
+                                    className={cn(
+                                        "px-3.5 py-2 text-[13px] font-medium transition-colors relative",
+                                        activeTab === 'trace'
+                                            ? isDark
+                                                ? "text-white bg-gray-800/70"
+                                                : "text-gray-900 bg-white"
+                                            : isDark
+                                                ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/30"
+                                                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
+                                    )}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <Footprints className="h-3 w-3" />
+                                        Trace
+                                    </div>
+                                    {activeTab === 'trace' && (
+                                        <div className={cn(
+                                            "absolute bottom-0 left-0 right-0 h-0.5",
+                                            isDark ? "bg-blue-400" : "bg-blue-600"
+                                        )} />
+                                    )}
+                                </button>
+                            )}
                             {/* Middle + Right depend on responseType */}
                             {responseType === 'raw' ? (
                                 <>
@@ -1714,7 +1718,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                         isDark ? "border-gray-800/50" : "border-gray-200/50"
                     )}>
                         {/* Trace Tab Content */}
-                        {activeTab === 'trace' && (
+                        {showTrace && activeTab === 'trace' && (
                             <div ref={traceContainerRef} onScroll={handleTraceScroll} className={cn(
                                 "overflow-auto max-h-[700px] raw-data-scrollbar",
                                 DESIGN_SYSTEM.spacing.padding.compact,
