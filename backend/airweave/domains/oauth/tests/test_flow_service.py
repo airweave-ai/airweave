@@ -25,8 +25,9 @@ from airweave.domains.oauth.fakes.repository import (
 )
 from airweave.domains.oauth.flow_service import OAuthFlowService
 from airweave.domains.oauth.types import OAuth1TokenResponse
-from airweave.models.connection_init_session import ConnectionInitStatus
-from airweave.platform.auth.schemas import OAuth1Settings, OAuth2TokenResponse
+from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
+from airweave.models.redirect_session import RedirectSession
+from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings, OAuth2TokenResponse
 from airweave.schemas.organization import Organization
 
 NOW = datetime.now(timezone.utc)
@@ -49,15 +50,20 @@ def _ctx() -> ApiContext:
 
 
 def _settings(**overrides):
-    defaults = dict(api_url="https://api.test.com", app_url="https://app.test.com")
+    defaults = {"api_url": "https://api.test.com", "app_url": "https://app.test.com"}
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
 
 def _oauth2_settings():
-    return SimpleNamespace(
-        authorization_url="https://provider.com/auth",
-        token_url="https://provider.com/token",
+    return OAuth2Settings(
+        integration_short_name="github",
+        url="https://provider.com/auth",
+        backend_url="https://provider.com/token",
+        grant_type="authorization_code",
+        client_id="test-client-id",
+        content_type="application/json",
+        client_credential_location="body",
         scope="read",
     )
 
@@ -176,7 +182,10 @@ class TestInitiateOAuth2:
         await svc.initiate_oauth2("github", "state", ctx=_ctx())
 
         call_kwargs = oauth2_svc.generate_auth_url_with_redirect.call_args
-        assert call_kwargs.kwargs["redirect_uri"] == "https://custom-api.com/source-connections/callback"
+        assert (
+            call_kwargs.kwargs["redirect_uri"]
+            == "https://custom-api.com/source-connections/callback"
+        )
 
     async def test_value_error_from_oauth2_service_maps_to_422(self):
         oauth2_svc = AsyncMock()
@@ -204,7 +213,9 @@ class TestInitiateOAuth1:
         oauth1_svc.get_request_token = AsyncMock(
             return_value=OAuth1TokenResponse(oauth_token="req_tok", oauth_token_secret="req_sec")
         )
-        oauth1_svc.build_authorization_url = MagicMock(return_value="https://provider.com/auth?oauth_token=req_tok")
+        oauth1_svc.build_authorization_url = MagicMock(
+            return_value="https://provider.com/auth?oauth_token=req_tok"
+        )
 
         int_settings = AsyncMock()
         int_settings.get_by_short_name = AsyncMock(return_value=_oauth1_settings())
@@ -237,9 +248,7 @@ class TestInitiateOAuth1:
 
         svc = _service(integration_settings=int_settings)
         with pytest.raises(HTTPException) as exc_info:
-            await svc.initiate_oauth1(
-                "github", consumer_key="ck", consumer_secret="cs", ctx=_ctx()
-            )
+            await svc.initiate_oauth1("github", consumer_key="ck", consumer_secret="cs", ctx=_ctx())
         assert exc_info.value.status_code == 400
         assert "not configured for OAuth1" in exc_info.value.detail
 
@@ -341,7 +350,8 @@ class TestCompleteOAuth2Callback:
         )
 
         assert result.access_token == "at"
-        call_kwargs = oauth2_svc.exchange_authorization_code_for_token_with_redirect.call_args.kwargs
+        exchange = oauth2_svc.exchange_authorization_code_for_token_with_redirect
+        call_kwargs = exchange.call_args.kwargs
         assert call_kwargs["redirect_uri"] == "https://custom/cb"
         assert call_kwargs["code"] == "code123"
 
@@ -357,7 +367,8 @@ class TestCompleteOAuth2Callback:
         )
         await svc.complete_oauth2_callback("github", "code123", {}, _ctx())
 
-        call_kwargs = oauth2_svc.exchange_authorization_code_for_token_with_redirect.call_args.kwargs
+        exchange = oauth2_svc.exchange_authorization_code_for_token_with_redirect
+        call_kwargs = exchange.call_args.kwargs
         assert call_kwargs["redirect_uri"] == "https://fallback-api.com/source-connections/callback"
 
     async def test_passes_pkce_verifier_and_template_configs(self):
@@ -375,7 +386,8 @@ class TestCompleteOAuth2Callback:
         }
         await svc.complete_oauth2_callback("github", "code123", overrides, _ctx())
 
-        call_kwargs = oauth2_svc.exchange_authorization_code_for_token_with_redirect.call_args.kwargs
+        exchange = oauth2_svc.exchange_authorization_code_for_token_with_redirect
+        call_kwargs = exchange.call_args.kwargs
         assert call_kwargs["code_verifier"] == "pkce_v"
         assert call_kwargs["template_configs"] == {"domain": "acme"}
         assert call_kwargs["client_id"] == "cid"
@@ -397,7 +409,9 @@ class TestCompleteOAuth1Callback:
         settings = _oauth1_settings()
         overrides = {"oauth_token": "req_tok", "oauth_token_secret": "req_sec"}
 
-        result = await svc.complete_oauth1_callback("twitter", "verifier", overrides, settings, _ctx())
+        result = await svc.complete_oauth1_callback(
+            "twitter", "verifier", overrides, settings, _ctx()
+        )
 
         assert result.oauth_token == "access_tok"
         assert result.oauth_token_secret == "access_sec"
@@ -512,6 +526,27 @@ class TestCreateInitSession:
         _, obj_in = init_repo._calls[0]
         assert obj_in["overrides"]["redirect_url"] is None
 
+    async def test_expires_at_within_five_minutes(self):
+        init_repo = FakeOAuthInitSessionRepository()
+        svc = _service(init_session_repo=init_repo)
+        db = AsyncMock()
+        uow = MagicMock()
+
+        before = datetime.now(timezone.utc)
+        await svc.create_init_session(
+            db,
+            short_name="github",
+            state="state-1",
+            payload={},
+            ctx=_ctx(),
+            uow=uow,
+        )
+        after = datetime.now(timezone.utc)
+
+        _, obj_in = init_repo._calls[0]
+        expires_at = obj_in["expires_at"]
+        assert before + timedelta(minutes=5) <= expires_at <= after + timedelta(minutes=5)
+
 
 # ---------------------------------------------------------------------------
 # create_proxy_url
@@ -534,3 +569,52 @@ class TestCreateProxyUrl:
         assert proxy_url.startswith("https://api.test.com/source-connections/authorize/")
         assert expires > datetime.now(timezone.utc)
         assert session_id is not None
+
+    async def test_proxy_expires_within_five_minutes(self):
+        redirect_repo = FakeOAuthRedirectSessionRepository()
+        svc = _service(
+            redirect_session_repo=redirect_repo,
+            settings=_settings(api_url="https://api.test.com"),
+        )
+        db = AsyncMock()
+
+        before = datetime.now(timezone.utc)
+        _, expires, _ = await svc.create_proxy_url(db, "https://provider.com/auth?tok=1", _ctx())
+        after = datetime.now(timezone.utc)
+
+        assert before + timedelta(minutes=5) <= expires <= after + timedelta(minutes=5)
+
+
+# ---------------------------------------------------------------------------
+# default_expires_at model methods
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultExpiresAt:
+    def test_connection_init_session_defaults_to_five_minutes(self):
+        before = datetime.now(timezone.utc)
+        result = ConnectionInitSession.default_expires_at()
+        after = datetime.now(timezone.utc)
+
+        assert before + timedelta(minutes=5) <= result <= after + timedelta(minutes=5)
+
+    def test_redirect_session_defaults_to_five_minutes(self):
+        before = datetime.now(timezone.utc)
+        result = RedirectSession.default_expires_at()
+        after = datetime.now(timezone.utc)
+
+        assert before + timedelta(minutes=5) <= result <= after + timedelta(minutes=5)
+
+    def test_custom_override_minutes(self):
+        before = datetime.now(timezone.utc)
+        result = ConnectionInitSession.default_expires_at(minutes=10)
+        after = datetime.now(timezone.utc)
+
+        assert before + timedelta(minutes=10) <= result <= after + timedelta(minutes=10)
+
+    def test_returns_utc_aware_datetime(self):
+        init_result = ConnectionInitSession.default_expires_at()
+        redirect_result = RedirectSession.default_expires_at()
+
+        assert init_result.tzinfo is timezone.utc
+        assert redirect_result.tzinfo is timezone.utc

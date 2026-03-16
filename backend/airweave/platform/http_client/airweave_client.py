@@ -15,6 +15,7 @@ import httpx
 from airweave.core.exceptions import SourceRateLimitExceededException
 from airweave.core.logging import ContextualLogger
 from airweave.core.source_rate_limiter_service import source_rate_limiter
+from airweave.platform.utils.ssrf import SSRFViolation, validate_url
 
 if TYPE_CHECKING:
     from airweave.platform.http_client.pipedream_proxy import PipedreamProxyClient
@@ -62,6 +63,34 @@ class AirweaveHttpClient:
         self._source_connection_id = source_connection_id
         self._feature_flag_enabled = feature_flag_enabled
         self._logger = logger
+
+        # Install SSRF redirect hook on httpx clients
+        if isinstance(wrapped_client, httpx.AsyncClient):
+            self._install_ssrf_hook(wrapped_client)
+
+    def _check_ssrf(self, url: str) -> None:
+        """Validate URL against SSRF blocklist before making a request."""
+        try:
+            validate_url(url)
+        except SSRFViolation as exc:
+            if self._logger:
+                self._logger.warning(f"[SSRF] Blocked: {exc} (source={self._source_short_name})")
+            raise
+
+    def _install_ssrf_hook(self, client: httpx.AsyncClient) -> None:
+        """Install an httpx event hook that validates redirect targets."""
+        logger = self._logger
+        source = self._source_short_name
+
+        async def ssrf_hook(request: httpx.Request) -> None:
+            try:
+                validate_url(str(request.url))
+            except SSRFViolation as exc:
+                if logger:
+                    logger.warning(f"[SSRF] Blocked redirect: {exc} (source={source})")
+                raise
+
+        client.event_hooks.setdefault("request", []).append(ssrf_hook)
 
     async def _check_rate_limit_and_convert_to_429(self, method: str, url: str) -> None:
         """Check rate limits and convert exceptions to HTTP 429 if exceeded.
@@ -137,6 +166,9 @@ class AirweaveHttpClient:
         Raises:
             httpx.HTTPStatusError: With 429 status if rate limit exceeded
         """
+        # SSRF check BEFORE anything else
+        self._check_ssrf(url)
+
         # Check rate limit BEFORE request
         await self._check_rate_limit_and_convert_to_429(method, url)
 
@@ -217,8 +249,11 @@ class AirweaveHttpClient:
     async def _stream_context_manager(self, method: str, url: str, **kwargs):
         """Internal async context manager for streaming requests.
 
-        Checks rate limit before creating the stream.
+        Checks SSRF and rate limit before creating the stream.
         """
+        # SSRF check before streaming
+        self._check_ssrf(url)
+
         # Check rate limit before streaming
         await self._check_rate_limit_and_convert_to_429(method, url)
 

@@ -114,3 +114,12 @@ If necessary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sy
 - **Comprehensive Data**: Database + PostHog contain all search metadata, performance metrics, and feature usage data
 - **Non-blocking**: Both persistence methods fail gracefully without affecting search functionality
 - **Automatic Tracking**: All search operations (regular, streaming, legacy) tracked uniformly via `SearchService`
+
+### Security
+
+- Never use `random.*` for security-sensitive values — ruff
+  rule `S311` bans it
+- Use `secrets.choice()`, `secrets.randbelow()`,
+  `secrets.token_bytes()`, or `secrets.token_urlsafe()` instead
+- Seeded `random.Random(seed)` is acceptable **only** for
+  deterministic test-data generation (stub sources)

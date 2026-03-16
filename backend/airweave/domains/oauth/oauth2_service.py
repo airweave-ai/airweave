@@ -3,7 +3,6 @@
 import asyncio
 import base64
 import hashlib
-import random
 import secrets
 from typing import Any, Optional, Tuple
 from urllib.parse import urlencode
@@ -32,6 +31,7 @@ from airweave.platform.auth.schemas import (
     OAuth2TokenResponse,
 )
 from airweave.platform.auth.settings import integration_settings
+from airweave.platform.utils.ssrf import validate_url
 
 
 class OAuth2Service(OAuth2ServiceProtocol):
@@ -573,7 +573,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
                     logger.info(f"Received response: Status {response.status_code}, ")
 
                     if self._is_oauth_rate_limit_error(response):
-                        delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                        delay = base_delay * (2**attempt) + secrets.randbelow(2001) / 1000
                         logger.warning(
                             f"OAuth rate limit hit, waiting {delay:.1f}s before retry "
                             f"(attempt {attempt + 1}/{max_retries})"
@@ -586,7 +586,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
             except httpx.HTTPStatusError as e:
                 if self._is_oauth_rate_limit_error(e.response):
-                    delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                    delay = base_delay * (2**attempt) + secrets.randbelow(2001) / 1000
                     logger.warning(
                         f"OAuth rate limit hit (exception), waiting {delay:.1f}s before retry "
                         f"(attempt {attempt + 1}/{max_retries})"
@@ -719,6 +719,8 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
         Supports both standard OAuth 2.0 and PKCE (Proof Key for Code Exchange).
         """
+        validate_url(backend_url)
+
         headers = {
             "Content-Type": integration_config.content_type,
         }

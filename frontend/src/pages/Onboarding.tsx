@@ -584,7 +584,7 @@ export const Onboarding = () => {
       ...getStepData(currentStep),
     });
 
-    // Clear token from localStorage
+    // Clear in-memory token
     apiClient.clearToken();
 
     // Use the logout from our auth context which handles both Auth0 and non-Auth0 cases

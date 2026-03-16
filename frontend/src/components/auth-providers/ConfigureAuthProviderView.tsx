@@ -5,6 +5,7 @@ import * as z from "zod";
 import type { DialogViewProps } from "@/components/types/dialog";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
+import { generateRandomSuffix, generateReadableIdBase } from "@/lib/readable-id";
 import { apiClient } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -18,49 +19,6 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-/**
- * Generates a random suffix for the readable ID
- * This ensures uniqueness for similar connection names
- *
- * @returns Random alphanumeric string of length 6
- */
-const generateRandomSuffix = () => {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-};
-
-/**
- * Helper to generate the base readable ID from a name
- * Transforms name to lowercase, replaces spaces with hyphens, and removes special characters
- *
- * @param name Connection name to transform
- * @returns Sanitized base readable ID (without suffix)
- */
-const generateReadableIdBase = (name: string): string => {
-    if (!name || name.trim() === "") return "";
-
-    // Convert to lowercase and replace spaces with hyphens
-    let readable_id = name.toLowerCase().trim();
-
-    // Replace any character that's not a letter, number, or space with nothing
-    readable_id = readable_id.replace(/[^a-z0-9\s]/g, "");
-
-    // Replace spaces with hyphens
-    readable_id = readable_id.replace(/\s+/g, "-");
-
-    // Ensure no consecutive hyphens
-    readable_id = readable_id.replace(/-+/g, "-");
-
-    // Trim hyphens from start and end
-    readable_id = readable_id.replace(/^-|-$/g, "");
-
-    return readable_id;
-};
 
 export interface ConfigureAuthProviderViewProps extends DialogViewProps {
     viewData?: {

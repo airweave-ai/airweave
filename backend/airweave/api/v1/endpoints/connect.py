@@ -40,6 +40,7 @@ from airweave.schemas.connect_session import (
     ConnectSessionCreate,
     ConnectSessionResponse,
 )
+from airweave.schemas.source_connection import VerifyOAuthRequest
 
 router = TrailingSlashRouter()
 
@@ -172,6 +173,24 @@ async def create_source_connection(
     """
     session_token = deps._extract_bearer_token(authorization)
     return await svc.create_source_connection(db, source_connection_in, session, session_token)
+
+
+@router.post(
+    "/source-connections/{connection_id}/verify-oauth",
+    response_model=schemas.SourceConnection,
+)
+async def verify_oauth(
+    connection_id: UUID,
+    body: VerifyOAuthRequest,
+    db: AsyncSession = Depends(get_db),
+    session: ConnectSessionContext = Depends(deps.get_connect_session),
+    svc: ConnectServiceProtocol = Inject(ConnectServiceProtocol),
+) -> schemas.SourceConnection:
+    """Verify OAuth flow ownership via Connect session.
+
+    Authentication: Bearer <session_token>
+    """
+    return await svc.verify_oauth(db, connection_id, body.claim_token, session)
 
 
 # =============================================================================

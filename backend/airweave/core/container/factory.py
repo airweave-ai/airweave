@@ -343,20 +343,6 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
-    # Connect domain service
-    # -----------------------------------------------------------------
-    from airweave.domains.connect.service import ConnectService
-    from airweave.domains.organizations.repository import OrganizationRepository as ConnectOrgRepo
-
-    connect_service = ConnectService(
-        source_connection_service=source_connection_service,
-        source_service=source_deps["source_service"],
-        org_repo=ConnectOrgRepo(),
-        collection_repo=source_deps["collection_repo"],
-        sync_job_repo=source_deps["sync_job_repo"],
-    )
-
-    # -----------------------------------------------------------------
     # Embedder registries + instances (deployment-wide singletons)
     # -----------------------------------------------------------------
     dense_embedder_registry = DenseEmbedderRegistry()
@@ -408,6 +394,21 @@ def create_container(settings: Settings) -> Container:
         sync_repo=source_deps["sync_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
         credential_encryptor=encryptor,
+    )
+
+    # -----------------------------------------------------------------
+    # Connect domain service (after oauth_callback_svc for DI)
+    # -----------------------------------------------------------------
+    from airweave.domains.connect.service import ConnectService
+    from airweave.domains.organizations.repository import OrganizationRepository as ConnectOrgRepo
+
+    connect_service = ConnectService(
+        source_connection_service=source_connection_service,
+        source_service=source_deps["source_service"],
+        org_repo=ConnectOrgRepo(),
+        collection_repo=source_deps["collection_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+        oauth_callback_service=oauth_callback_svc,
     )
 
     # -----------------------------------------------------------------

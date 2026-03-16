@@ -29,6 +29,8 @@ navigation:
     path: docs/pages/search.mdx
   - page: MCP Server
     path: docs/pages/mcp-server.mdx
+  - page: CLI
+    path: docs/pages/cli.mdx
   - page: Agent Skills
     path: docs/pages/skills.mdx
   - section: Webhooks

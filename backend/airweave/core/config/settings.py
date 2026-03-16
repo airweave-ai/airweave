@@ -227,6 +227,9 @@ class Settings(BaseSettings):
     OPENAI_MAX_CONCURRENT: int = 20  # Max concurrent OpenAI API requests
     CTTI_MAX_CONCURRENT: int = 3  # Max concurrent CTTI (ClinicalTrials.gov) requests
 
+    # SSRF protection
+    SSRF_ALLOW_PRIVATE_NETWORKS: bool = False
+
     API_REQUEST_BODY_SIZE_LIMIT: int = 10 * 1024 * 1024  # 10MB default
     API_REQUEST_TIMEOUT_SECONDS: int = 60
 

@@ -3,7 +3,7 @@
 import asyncio
 import hashlib
 import os
-import random
+import secrets
 from typing import List
 from uuid import uuid4
 
@@ -15,6 +15,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.platform.entities._base import WebEntity
 from airweave.platform.entities.web import WebFileEntity
 from airweave.platform.sync.async_helpers import run_in_thread_pool
+from airweave.platform.utils.ssrf import validate_url
 
 # Improved connection management
 _shared_firecrawl_client = None
@@ -217,7 +218,7 @@ async def _retry_with_backoff(
                 if is_connection_error:
                     # Longer delays for connection issues
                     base_delay = 5 * (attempt + 1)  # 5, 10, 15 seconds
-                    jitter = random.uniform(1.0, 2.0)
+                    jitter = 1.0 + secrets.randbelow(1001) / 1000
                     delay = base_delay + jitter
 
                     logger.warning(
@@ -227,7 +228,7 @@ async def _retry_with_backoff(
                 elif is_rate_limited:
                     # Medium delay for rate limiting
                     base_delay = 3 ** (attempt + 1)  # 3, 9, 27 seconds
-                    jitter = random.uniform(0.5, 1.0)
+                    jitter = 0.5 + secrets.randbelow(501) / 1000
                     delay = base_delay + jitter
 
                     logger.warning(
@@ -237,7 +238,7 @@ async def _retry_with_backoff(
                 else:
                     # Standard exponential backoff
                     base_delay = 2 * (attempt + 1)  # 2, 4, 6 seconds
-                    jitter = random.uniform(0.1, 0.5)
+                    jitter = 0.1 + secrets.randbelow(401) / 1000
                     delay = base_delay + jitter
 
                     logger.warning(
@@ -281,6 +282,9 @@ async def web_fetcher(web_entity: WebEntity, logger: ContextualLogger) -> List[W
         content as markdown and local_path set
     """
     entity_context = f"Entity({web_entity.entity_id})"
+
+    # Validate URL before passing to Firecrawl
+    validate_url(web_entity.url)
 
     logger.debug(f"🌐 WEB_START [{entity_context}] Starting web fetch for URL: {web_entity.url}")
 
