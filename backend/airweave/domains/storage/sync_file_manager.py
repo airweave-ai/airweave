@@ -18,80 +18,51 @@ import aiofiles
 
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import ContextualLogger
-from airweave.platform.storage.exceptions import StorageNotFoundError
-from airweave.platform.storage.protocol import StorageBackend
+from airweave.domains.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.paths import StoragePaths
+from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
 
 if TYPE_CHECKING:
     from airweave.platform.entities._base import FileEntity
 
 
-class SyncFileManager:
+class SyncFileManager(SyncFileManagerProtocol):
     """Manages file storage with sync-aware folder structure and caching.
 
-    Storage layout (unified with raw_data.py):
-        raw/{sync_id}/files/{entity_id}_{name}.{ext} # File with name and extension
-        raw/{sync_id}/metadata/{entity_id}.json      # File metadata
-        aactmarkdowns/{entity_id}.md                 # CTTI global storage (legacy)
+    Implements SyncFileManagerProtocol.
+
+    Storage layout (unified with raw_data.py)::
+
+        raw/{sync_id}/files/{entity_id}_{name}.{ext}
+        raw/{sync_id}/metadata/{entity_id}.json
+        aactmarkdowns/{entity_id}.md  (CTTI global, legacy)
+
+    Constructed by the Container factory with an injected StorageBackend.
     """
 
-    # Container/directory names - unified with raw_data.py
-    RAW_DIR = "raw"
-    CTTI_GLOBAL_DIR = "aactmarkdowns"
-
-    def __init__(self, backend: Optional[StorageBackend] = None):
-        """Initialize sync file manager.
-
-        Args:
-            backend: Storage backend. Uses singleton if not provided.
-        """
-        self._backend = backend
-
-        # Local cache directory for temporary files during processing
-        self.temp_cache_dir = Path("/tmp/airweave/cache")
+    def __init__(
+        self,
+        backend: StorageBackend,
+        temp_cache_dir: Optional[Path] = None,
+    ) -> None:
+        """Initialize with an injected storage backend."""
+        self.backend = backend
+        self.temp_cache_dir = temp_cache_dir or Path(StoragePaths.TEMP_CACHE)
         self.temp_cache_dir.mkdir(parents=True, exist_ok=True)
-
-    @property
-    def backend(self) -> StorageBackend:
-        """Get storage backend (lazy to avoid circular import at module load)."""
-        if self._backend is None:
-            from airweave.platform.storage import storage_backend
-
-            self._backend = storage_backend
-        return self._backend
 
     def _get_file_path(self, sync_id: UUID, entity_id: str, filename: str = "") -> str:
         """Get storage path for a file: raw/{sync_id}/files/{entity_id}_{name}.{ext}."""
-        safe_id = self._safe_entity_id(entity_id)
-        if filename:
-            safe_name = self._safe_entity_id(Path(filename).stem)
-            ext = Path(filename).suffix or ""
-            return f"{self.RAW_DIR}/{sync_id}/files/{safe_id}_{safe_name}{ext}"
-        return f"{self.RAW_DIR}/{sync_id}/files/{safe_id}"
+        return StoragePaths.arf_file_path(sync_id, entity_id, filename or None)
 
     def _get_metadata_path(self, sync_id: UUID, entity_id: str) -> str:
         """Get storage path for metadata: raw/{sync_id}/metadata/{entity_id}.json."""
-        safe_id = self._safe_entity_id(entity_id)
-        return f"{self.RAW_DIR}/{sync_id}/metadata/{safe_id}.json"
-
-    def _safe_entity_id(self, value: str, max_length: int = 200) -> str:
-        """Convert entity_id or filename to safe storage path."""
-        import hashlib
-        import re
-
-        safe = re.sub(r'[/\\:*?"<>|]', "_", str(value))
-        safe = re.sub(r"_+", "_", safe).strip("_")
-
-        if len(safe) > max_length or safe != value:
-            prefix = safe[:50] if len(safe) > 50 else safe
-            hash_suffix = hashlib.md5(value.encode()).hexdigest()[:12]
-            safe = f"{prefix}_{hash_suffix}"
-
-        return safe[:max_length]
+        safe_id = StoragePaths.safe_filename(entity_id)
+        return f"{StoragePaths.ARF_PREFIX}/{sync_id}/metadata/{safe_id}.json"
 
     def _get_ctti_path(self, entity_id: str) -> str:
         """Get CTTI global storage path."""
         safe_filename = entity_id.replace(":", "_").replace("/", "_") + ".md"
-        return f"{self.CTTI_GLOBAL_DIR}/{safe_filename}"
+        return f"{StoragePaths.CTTI_GLOBAL_DIR}/{safe_filename}"
 
     # =========================================================================
     # Sync-scoped file operations
@@ -381,7 +352,7 @@ class SyncFileManager:
 
         if not hasattr(entity, "metadata") or entity.metadata is None:
             entity.metadata = {}
-        entity.metadata["ctti_container"] = self.CTTI_GLOBAL_DIR
+        entity.metadata["ctti_container"] = StoragePaths.CTTI_GLOBAL_DIR
         entity.metadata["ctti_global_storage"] = True
 
         # Store metadata alongside
@@ -526,7 +497,3 @@ class SyncFileManager:
         logger.info(f"Batch download completed: {successful}/{len(entity_ids)} successful")
 
         return results
-
-
-# Global instance for convenience
-sync_file_manager = SyncFileManager()

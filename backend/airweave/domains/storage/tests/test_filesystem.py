@@ -9,8 +9,8 @@ import os
 
 import pytest
 
-from airweave.platform.storage.backends.filesystem import FilesystemBackend
-from airweave.platform.storage.exceptions import (
+from airweave.adapters.storage.filesystem import FilesystemBackend
+from airweave.domains.storage.exceptions import (
     StorageException,
     StorageNotFoundError,
 )
@@ -465,7 +465,7 @@ class TestFilesystemBackendProtocolCompliance:
 
     def test_implements_protocol(self, backend):
         """Test that FilesystemBackend is instance of StorageBackend protocol."""
-        from airweave.platform.storage.protocol import StorageBackend
+        from airweave.domains.storage.protocols import StorageBackend
 
         assert isinstance(backend, StorageBackend)
 

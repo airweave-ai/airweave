@@ -1,8 +1,10 @@
-"""ARF (Airweave Raw Format) schemas.
+"""ARF (Airweave Raw Format) value types.
 
-Pydantic models for ARF data structures.
+Defines the manifest schema and serialization metadata used for
+entity capture and replay.
 """
 
+from dataclasses import dataclass
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -13,7 +15,7 @@ class SyncManifest(BaseModel):
 
     Stored at: raw/{sync_id}/manifest.json
 
-    Note: Entity and file counts are computed on-demand via get_entity_count()
+    Entity and file counts are computed on-demand via get_entity_count()
     to avoid inconsistencies from incremental updates.
     """
 
@@ -24,8 +26,16 @@ class SyncManifest(BaseModel):
     organization_id: str
     created_at: str
     updated_at: str
-    # Track sync jobs that have written to this store
     sync_jobs: List[str] = Field(default_factory=list)
-    # Optional config reference
     vector_size: Optional[int] = None
     embedding_model_name: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class EntitySerializationMeta:
+    """Metadata attached to each serialized entity for reconstruction."""
+
+    entity_class: str
+    entity_module: str
+    captured_at: str
+    stored_file: Optional[str] = None

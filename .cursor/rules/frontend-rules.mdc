@@ -75,10 +75,11 @@ setTokenProvider({
 - Clears org-specific data on switch (collections, API keys)
 
 ### 2. **Collections Store** (`stores/collections.ts`)
-- Caches collections and source connections
+- Caches collections (with API-provided `source_connection_summaries` for list views)
 - Implements event-driven updates via custom event bus
 - Smart caching with force refresh option
 - Handles collection CRUD events automatically
+- Source connection details for list pages come from `GET /collections` response (no per-card fetching)
 
 ### 3. **Sync State Store** (`stores/syncStateStore.ts`)
 - Real-time sync progress via SSE

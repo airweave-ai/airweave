@@ -20,7 +20,7 @@ def storage_not_found_error():
     Import lazily to avoid triggering the full airweave import chain
     (which requires env vars like POSTGRES_HOST to be set).
     """
-    from airweave.platform.storage.exceptions import StorageNotFoundError
+    from airweave.domains.storage.exceptions import StorageNotFoundError
 
     return StorageNotFoundError
 
@@ -74,7 +74,7 @@ def large_binary() -> bytes:
 @pytest_asyncio.fixture
 async def filesystem_backend(tmp_path, test_prefix) -> AsyncGenerator:
     """Create a FilesystemBackend for testing."""
-    from airweave.platform.storage.backends.filesystem import FilesystemBackend
+    from airweave.adapters.storage.filesystem import FilesystemBackend
 
     backend = FilesystemBackend(base_path=tmp_path)
     yield backend
@@ -111,7 +111,7 @@ live_azure = pytest.mark.usefixtures()  # Combines with requires_azure in test c
 @pytest_asyncio.fixture
 async def azure_backend(test_prefix) -> AsyncGenerator:
     """Create an AzureBlobBackend for testing."""
-    from airweave.platform.storage.backends.azure_blob import AzureBlobBackend
+    from airweave.adapters.storage.azure_blob import AzureBlobBackend
 
     backend = AzureBlobBackend(
         storage_account=TEST_AZURE_ACCOUNT,
@@ -156,7 +156,7 @@ live_aws = pytest.mark.usefixtures()  # Combines with requires_aws in test class
 @pytest_asyncio.fixture
 async def s3_backend(test_prefix) -> AsyncGenerator:
     """Create an S3Backend for testing."""
-    from airweave.platform.storage.backends.aws_s3 import S3Backend
+    from airweave.adapters.storage.aws_s3 import S3Backend
 
     backend = S3Backend(
         bucket=TEST_AWS_BUCKET,
@@ -200,7 +200,7 @@ live_gcp = pytest.mark.usefixtures()  # Combines with requires_gcp in test class
 @pytest_asyncio.fixture
 async def gcs_backend(test_prefix) -> AsyncGenerator:
     """Create a GCSBackend for testing."""
-    from airweave.platform.storage.backends.gcp_gcs import GCSBackend
+    from airweave.adapters.storage.gcp_gcs import GCSBackend
 
     backend = GCSBackend(
         bucket=TEST_GCP_BUCKET,

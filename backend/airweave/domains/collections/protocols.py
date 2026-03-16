@@ -1,6 +1,7 @@
 """Protocols for collection domain."""
 
-from typing import List, Optional, Protocol
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,15 @@ from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.collection import Collection
 from airweave.models.vector_db_deployment_metadata import VectorDbDeploymentMetadata
+from airweave.schemas.collection import SourceConnectionSummary
+
+
+@dataclass(frozen=True)
+class CollectionListResult:
+    """Result of listing collections with their source connection summaries."""
+
+    collections: List[Collection]
+    summaries_by_collection: Dict[str, List[SourceConnectionSummary]] = field(default_factory=dict)
 
 
 class CollectionRepositoryProtocol(Protocol):
@@ -33,7 +43,7 @@ class CollectionRepositoryProtocol(Protocol):
         skip: int = 0,
         limit: int = 100,
         search_query: Optional[str] = None,
-    ) -> List[Collection]:
+    ) -> CollectionListResult:
         """Get multiple collections with pagination and optional search."""
         ...
 

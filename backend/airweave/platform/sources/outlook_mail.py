@@ -30,7 +30,7 @@ from airweave.platform.entities.outlook_mail import (
 )
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import wait_rate_limit_with_backoff
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 from airweave.platform.utils.filename_utils import safe_filename
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 

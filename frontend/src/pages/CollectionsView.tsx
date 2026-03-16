@@ -267,6 +267,7 @@ const CollectionsView = () => {
                 name={collection.name}
                 readableId={collection.readable_id}
                 status={collection.status}
+                sourceConnectionSummaries={collection.source_connection_summaries}
                 onClick={() => navigate(`/collections/${collection.readable_id}`)}
               />
             ))

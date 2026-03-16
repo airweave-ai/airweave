@@ -173,6 +173,7 @@ convention = "google"
 "__init__.py" = ["D104"]
 "**/tests/**" = ["D100", "D101", "D102", "D103", "D107"]
 "**/fakes/**" = ["D102", "D107"]
+"**/handlers/**" = ["D102"]
 "**/fake.py" = ["D102", "D107"]
 "**/sources/stub.py" = ["S311"]
 "**/sources/file_stub.py" = ["S311"]
