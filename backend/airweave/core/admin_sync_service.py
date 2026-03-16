@@ -592,7 +592,8 @@ class AdminSyncService:
                         yql = (
                             f"select * from sources {schemas} "
                             f"where airweave_system_metadata_sync_id contains '{sync.id}' "
-                            f"and airweave_system_metadata_collection_id contains '{collection_id}' "
+                            "and airweave_system_metadata_collection_id "
+                            f"contains '{collection_id}' "
                             f"limit 0"
                         )
 

@@ -221,7 +221,10 @@ class ConfluenceCommentEntity(BaseEntity):
     def web_url(self) -> str:
         """Construct clickable web URL for the parent page (comments don't have direct URLs)."""
         if self.site_url and self.parent_space_key and self.parent_content_id:
-            return f"{self.site_url}/wiki/spaces/{self.parent_space_key}/pages/{self.parent_content_id}#comment-{self.comment_id}"
+            return (
+                f"{self.site_url}/wiki/spaces/{self.parent_space_key}"
+                f"/pages/{self.parent_content_id}#comment-{self.comment_id}"
+            )
         return f"https://your-domain.atlassian.net/wiki/spaces/SPACE/pages/PAGE#comment-{self.comment_id}"
 
 

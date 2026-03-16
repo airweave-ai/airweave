@@ -31,12 +31,18 @@ class UsageBase(BaseModel):
     source_connections: Optional[int] = Field(
         None,
         ge=0,
-        description="Number of source connections configured. Computed dynamically from source_connection table.",
+        description=(
+            "Number of source connections configured."
+            " Computed dynamically from source_connection table."
+        ),
     )
     team_members: Optional[int] = Field(
         None,
         ge=0,
-        description="Current number of team members in the organization. Computed dynamically from user_organization table.",
+        description=(
+            "Current number of team members in the organization."
+            " Computed dynamically from user_organization table."
+        ),
     )
 
     model_config = ConfigDict(from_attributes=True)

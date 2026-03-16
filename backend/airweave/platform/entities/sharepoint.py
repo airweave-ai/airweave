@@ -466,5 +466,8 @@ class SharePointPageEntity(BaseEntity):
         if self.web_url_override:
             return self.web_url_override
         if self.site_id:
-            return f"https://sharepoint.com/sites/{self.site_id}/SitePages/{self.page_name or self.id}.aspx"
+            return (
+                f"https://sharepoint.com/sites/{self.site_id}"
+                f"/SitePages/{self.page_name or self.id}.aspx"
+            )
         return "https://sharepoint.com/"

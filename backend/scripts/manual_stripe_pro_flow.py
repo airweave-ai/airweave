@@ -533,7 +533,8 @@ def assert_stripe_downgrade_scheduled(
     if expected_dev_price_id:
         current_price_id = _stripe_first_item_price_id(sub)
         assert current_price_id == expected_dev_price_id, (
-            f"Stripe: subscription item price {current_price_id} != developer {expected_dev_price_id}"
+            f"Stripe: subscription item price {current_price_id}"
+            f" != developer {expected_dev_price_id}"
         )
 
 
@@ -774,7 +775,8 @@ def main() -> None:
     assert current_sub_id, "Missing current Stripe subscription id in snapshot"
     upgrade_existing_subscription_price(current_sub_id, new_price_id=pro_price, plan="pro")
     print(
-        "\n> Upgraded existing Stripe subscription via API (developer → pro). Webhooks should follow..."
+        "\n> Upgraded existing Stripe subscription via API "
+        "(developer → pro). Webhooks should follow..."
     )
 
     # 4) Poll until Pro is active
@@ -948,7 +950,8 @@ def main() -> None:
                 "stripe_subscription_id"
             )
         if sub_id_team2:
-            # If you have STRIPE_DEVELOPER_MONTHLY configured, enforce price swap as proof of scheduling
+            # If STRIPE_DEVELOPER_MONTHLY is configured,
+            # enforce price swap as proof of scheduling
             dev_price_id = os.environ.get("STRIPE_DEVELOPER_MONTHLY")
             assert_stripe_downgrade_scheduled(sub_id_team2, expected_dev_price_id=dev_price_id)
             log_ok("Stripe: downgrade scheduled (active, price set for next period)")

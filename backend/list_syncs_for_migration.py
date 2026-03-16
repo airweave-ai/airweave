@@ -258,7 +258,8 @@ async def main():
             if bucket_syncs:
                 total_entities = sum(s["pg_entity_count"] for s in bucket_syncs)
                 print(
-                    f"\n{label}: {len(bucket_syncs)} syncs, {format_number(total_entities)} total entities"
+                    f"\n{label}: {len(bucket_syncs)} syncs, "
+                    f"{format_number(total_entities)} total entities"
                 )
                 print("-" * 80)
                 for sync in bucket_syncs:

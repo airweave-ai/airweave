@@ -112,7 +112,9 @@ class TxtConverter(BaseTextConverter):
                         replacement_count = text.count("\ufffd")
                         if replacement_count == 0:
                             logger.debug(
-                                f"Detected encoding {detected_encoding} for {os.path.basename(path)}"
+                                "Detected encoding %s for %s",
+                                detected_encoding,
+                                os.path.basename(path),
                             )
                             return text
                     except (UnicodeDecodeError, LookupError):
@@ -233,7 +235,8 @@ class TxtConverter(BaseTextConverter):
                 replacement_count = raw.count("\ufffd")
                 if replacement_count > 100:  # More lenient for fallback
                     raise EntityProcessingError(
-                        f"XML contains excessive binary data ({replacement_count} replacement chars)"
+                        f"XML contains excessive binary data "
+                        f"({replacement_count} replacement chars)"
                     )
 
             return f"```xml\n{raw}\n```" if raw.strip() else None
