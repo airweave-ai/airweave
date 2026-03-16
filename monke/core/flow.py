@@ -43,6 +43,7 @@ class TestFlow:
         step_descriptions = {
             "cleanup": "Clean up any leftover test data",
             "create": "Create test entities in source system",
+            "fetch": "Fetch existing entities from source (no creation)",
             "sync": "Sync data from source to vector database",
             "force_full_sync": "Force full sync (ignore cursor, fetch all entities)",
             "verify": "Verify entities appear in vector database",

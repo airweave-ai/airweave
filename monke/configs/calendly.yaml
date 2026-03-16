@@ -1,0 +1,45 @@
+name: calendly_test
+description: End-to-end test for Calendly source using Monke
+
+connector:
+  name: Calendly
+  type: calendly
+  auth_mode: composio
+  composio_config:
+    account_id: ca_Hmh72HRbXzw2 # Replace with actual Composio account ID
+    auth_config_id: ac_c2AkhzmgABSi # Replace with actual Composio auth config ID
+  config_fields:
+    openai_model: "gpt-4.1-mini" # Model for content generation
+    rate_limit_delay_ms: 500 # Delay between API calls for Calendly
+    max_concurrency: 1 # Calendly API rate limits are conservative
+
+# Creation and deletion are skipped. Exactly one active event type is fetched in the fetch step.
+test_flow:
+  steps:
+    - cleanup
+    - fetch    # Fetch the single existing event type (no creation)
+    - sync
+    - verify
+    - update   # Can update the existing event type for verification
+    - sync
+    - verify
+    - cleanup
+    - collection_cleanup
+
+entity_count: 1 # Exactly one (existing) event type
+
+collection:
+  name: Calendly Test Collection
+
+verification:
+  retry_attempts: 5
+  retry_delay_seconds: 10
+  score_threshold: 0.0
+  expected_fields:
+    - name
+    - uri
+    - description_plain
+
+# Note: Creation and deletion phases are skipped. There is always exactly one
+# active event type, which is fetched in the fetch step. Ensure one event type
+# exists in your Calendly account before running.

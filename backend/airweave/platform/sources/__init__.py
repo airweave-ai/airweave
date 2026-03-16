@@ -7,6 +7,7 @@ from .attio import AttioSource
 from .bitbucket import BitbucketSource
 from .box import BoxSource
 from .calcom import CalSource
+from .calendly import CalendlySource
 from .clickup import ClickUpSource
 from .coda import CodaSource
 from .confluence import ConfluenceSource
@@ -65,6 +66,7 @@ ALL_SOURCES: list[type] = [
     BitbucketSource,
     BoxSource,
     CalSource,
+    CalendlySource,
     ClickUpSource,
     CodaSource,
     ConfluenceSource,
