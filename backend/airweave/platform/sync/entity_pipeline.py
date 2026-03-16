@@ -222,17 +222,17 @@ class EntityPipeline:
         deletes_by_def: Dict[str, int] = defaultdict(int)
         entity_names: Dict[str, str] = {}
 
-        for action in batch.inserts:
-            inserts_by_def[action.entity_definition_short_name] += 1
-            entity_names[action.entity_definition_short_name] = action.entity_type
+        for insert_action in batch.inserts:
+            inserts_by_def[insert_action.entity_definition_short_name] += 1
+            entity_names[insert_action.entity_definition_short_name] = insert_action.entity_type
 
-        for action in batch.updates:
-            updates_by_def[action.entity_definition_short_name] += 1
-            entity_names[action.entity_definition_short_name] = action.entity_type
+        for update_action in batch.updates:
+            updates_by_def[update_action.entity_definition_short_name] += 1
+            entity_names[update_action.entity_definition_short_name] = update_action.entity_type
 
-        for action in batch.deletes:
-            deletes_by_def[action.entity_definition_short_name] += 1
-            entity_names[action.entity_definition_short_name] = action.entity_type
+        for delete_action in batch.deletes:
+            deletes_by_def[delete_action.entity_definition_short_name] += 1
+            entity_names[delete_action.entity_definition_short_name] = delete_action.entity_type
 
         await self._tracker.record_batch_results(
             inserts_by_def=inserts_by_def,
@@ -289,14 +289,14 @@ class EntityPipeline:
         """Build per-entity-type action counts from a resolved batch."""
         counts: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
-        for action in batch.inserts:
-            counts[action.entity_type]["inserted"] += 1
-        for action in batch.updates:
-            counts[action.entity_type]["updated"] += 1
-        for action in batch.deletes:
-            counts[action.entity_type]["deleted"] += 1
-        for action in batch.keeps:
-            counts[action.entity_type]["kept"] += 1
+        for insert_action in batch.inserts:
+            counts[insert_action.entity_type]["inserted"] += 1
+        for update_action in batch.updates:
+            counts[update_action.entity_type]["updated"] += 1
+        for delete_action in batch.deletes:
+            counts[delete_action.entity_type]["deleted"] += 1
+        for keep_action in batch.keeps:
+            counts[keep_action.entity_type]["kept"] += 1
 
         return {
             entity_type: TypeActionCounts(**action_counts)

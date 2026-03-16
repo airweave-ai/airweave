@@ -191,7 +191,7 @@ class ConfluenceSource(BaseSource):
                 ConfluenceSpaceEntity objects
         """
         limit = 50
-        url = f"{self.base_url}/wiki/api/v2/spaces?limit={limit}"
+        url: Optional[str] = f"{self.base_url}/wiki/api/v2/spaces?limit={limit}"
         while url:
             data = await self._get_with_auth(client, url)
             for space in data.get("results", []):
@@ -227,7 +227,7 @@ class ConfluenceSource(BaseSource):
     ) -> AsyncGenerator[ConfluencePageEntity, None]:
         """Generate ConfluencePageEntity objects for a space."""
         limit = 50
-        url = f"{self.base_url}/wiki/api/v2/spaces/{space_id}/pages?limit={limit}"
+        url: Optional[str] = f"{self.base_url}/wiki/api/v2/spaces/{space_id}/pages?limit={limit}"
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -323,7 +323,9 @@ class ConfluenceSource(BaseSource):
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceBlogPostEntity objects."""
         limit = 50
-        url = f"{self.base_url}/wiki/api/v2/spaces/{space_id}/blogposts?limit={limit}"
+        url: Optional[str] = (
+            f"{self.base_url}/wiki/api/v2/spaces/{space_id}/blogposts?limit={limit}"
+        )
         while url:
             data = await self._get_with_auth(client, url)
             for blog in data.get("results", []):
@@ -364,7 +366,9 @@ class ConfluenceSource(BaseSource):
         """
         # Example: retrieving comments for a page
         limit = 50
-        url = f"{self.base_url}/wiki/api/v2/pages/{page_id}/inline-comments?limit={limit}"
+        url: Optional[str] = (
+            f"{self.base_url}/wiki/api/v2/pages/{page_id}/inline-comments?limit={limit}"
+        )
         while url:
             data = await self._get_with_auth(client, url)
             for comment in data.get("results", []):
@@ -402,7 +406,7 @@ class ConfluenceSource(BaseSource):
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceLabelEntity objects."""
         # The Confluence v2 REST API for labels is still evolving; example endpoint:
-        url = "https://your-domain.atlassian.net/wiki/api/v2/labels?limit=50"
+        url: Optional[str] = "https://your-domain.atlassian.net/wiki/api/v2/labels?limit=50"
         while url:
             data = await self._get_with_auth(client, url)
             for label_obj in data.get("results", []):
@@ -429,7 +433,7 @@ class ConfluenceSource(BaseSource):
         self, client: httpx.AsyncClient, space_key: str, space_breadcrumb: Breadcrumb
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceDatabaseEntity objects for a given space."""
-        url = f"https://your-domain.atlassian.net/wiki/api/v2/spaces/{space_key}/databases?limit=50"
+        url: Optional[str] = f"https://your-domain.atlassian.net/wiki/api/v2/spaces/{space_key}/databases?limit=50"
         while url:
             data = await self._get_with_auth(client, url)
             for database in data.get("results", []):
@@ -454,7 +458,9 @@ class ConfluenceSource(BaseSource):
         self, client: httpx.AsyncClient, space_id: str, space_breadcrumb: Breadcrumb
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceFolderEntity objects for a given space."""
-        url = f"{self.base_url}/wiki/api/v2/spaces/{space_id}/content/folder?limit=50"
+        url: Optional[str] = (
+            f"{self.base_url}/wiki/api/v2/spaces/{space_id}/content/folder?limit=50"
+        )
         while url:
             data = await self._get_with_auth(client, url)
             for folder in data.get("results", []):

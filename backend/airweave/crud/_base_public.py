@@ -123,9 +123,11 @@ class CRUDPublic(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             ModelType: The created object.
         """
         if not isinstance(obj_in, dict):
-            obj_in = obj_in.model_dump(exclude_unset=True)
+            obj_in_data = obj_in.model_dump(exclude_unset=True)
+        else:
+            obj_in_data = obj_in
 
-        db_obj = self.model(**obj_in)
+        db_obj = self.model(**obj_in_data)
         db.add(db_obj)
 
         if not uow:
@@ -224,7 +226,7 @@ class CRUDPublic(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         return list(result.unique().scalars().all())
 
     async def create_many(
-        self, db: AsyncSession, objs_in: list[CreateSchemaType], uow: UnitOfWork = None
+        self, db: AsyncSession, objs_in: list[CreateSchemaType], uow: Optional[UnitOfWork] = None
     ) -> list[ModelType]:
         """Create multiple objects.
 

@@ -210,7 +210,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
                     )
 
                 if billing_model:
-                    organization_id = billing_model.organization_id
+                    organization_id = UUID(str(billing_model.organization_id))
 
         except Exception as e:
             logger.error(f"Failed to get organization context: {e}")
@@ -447,7 +447,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         final_plan_for_period = inferred.plan
         if is_renewal and inferred.changed and inferred.should_clear_pending:
             if not stripe_update_successful:
-                final_plan_for_period = billing_plan
+                final_plan_for_period = BillingPlan(billing_plan)
 
         change_type = compare_plans(billing_plan, final_plan_for_period)
         if self._should_create_new_period(
@@ -494,7 +494,7 @@ class BillingWebhookProcessor(BillingWebhookProtocol):
         final_plan = inferred.plan
         if is_renewal and inferred.changed and inferred.should_clear_pending:
             if not stripe_update_successful:
-                final_plan = billing_plan
+                final_plan = BillingPlan(billing_plan)
                 log.warning(f"Keeping plan as {final_plan} due to Stripe update failure")
 
         updates = OrganizationBillingUpdate(

@@ -268,7 +268,7 @@ class AsanaSource(BaseSource):
         client: httpx.AsyncClient,
         project: Dict,
         section: Optional[Dict] = None,
-        breadcrumbs: List[Breadcrumb] = None,
+        breadcrumbs: Optional[List[Breadcrumb]] = None,
     ) -> AsyncGenerator[AsanaTaskEntity, None]:
         """Generate task entities for a project or section with pagination."""
         url = (

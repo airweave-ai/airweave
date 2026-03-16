@@ -89,7 +89,7 @@ class DropboxSource(BaseSource):
         reraise=True,
     )
     async def _post_with_auth(
-        self, client: httpx.AsyncClient, url: str, json_data: Dict = None
+        self, client: httpx.AsyncClient, url: str, json_data: Optional[Dict] = None
     ) -> Dict:
         """Make an authenticated POST request to the Dropbox API."""
         access_token = await self.get_access_token()
@@ -224,7 +224,11 @@ class DropboxSource(BaseSource):
         return folder_entity, folder_path
 
     async def _get_paginated_entries(
-        self, client: httpx.AsyncClient, url: str, initial_data: Dict, continuation_url: str = None
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        initial_data: Dict,
+        continuation_url: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
         """Fetch all entries from a paginated Dropbox API endpoint.
 

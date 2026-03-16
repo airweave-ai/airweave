@@ -254,9 +254,9 @@ class OneNoteSource(BaseSource):
             Tuple of (OneNoteNotebookEntity, sections_data_list)
         """
         self.logger.debug("Starting notebook entity generation with sections")
-        url = f"{self.GRAPH_BASE_URL}/me/onenote/notebooks"
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/onenote/notebooks"
         # Use $expand to get sections in the same call, and $select to reduce payload
-        params = {
+        params: Optional[dict] = {
             "$top": 100,
             "$expand": "sections",
             "$select": (
@@ -335,8 +335,8 @@ class OneNoteSource(BaseSource):
             OneNoteSectionEntity objects
         """
         self.logger.debug(f"Starting section entity generation for notebook: {notebook_name}")
-        url = f"{self.GRAPH_BASE_URL}/me/onenote/notebooks/{notebook_id}/sections"
-        params = {"$top": 100}
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/onenote/notebooks/{notebook_id}/sections"
+        params: Optional[dict] = {"$top": 100}
 
         try:
             section_count = 0
@@ -412,9 +412,9 @@ class OneNoteSource(BaseSource):
             Processed BaseEntity objects (HTML content converted to text)
         """
         self.logger.debug(f"Starting page generation for section: {section_name}")
-        url = f"{self.GRAPH_BASE_URL}/me/onenote/sections/{section_id}/pages"
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/onenote/sections/{section_id}/pages"
         # Use $select to reduce payload size and improve performance
-        params = {
+        params: Optional[dict] = {
             "$top": 50,
             "$select": "id,title,contentUrl,level,order,createdDateTime,lastModifiedDateTime",
         }

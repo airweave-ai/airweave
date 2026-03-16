@@ -124,7 +124,7 @@ class OutlookCalendarSource(BaseSource):
         Endpoint: GET /me/calendars
         """
         self.logger.info("Starting calendar entity generation")
-        url = f"{self.GRAPH_BASE_URL}/me/calendars"
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/calendars"
         calendar_count = 0
 
         try:
@@ -191,8 +191,8 @@ class OutlookCalendarSource(BaseSource):
         calendar_name = calendar.name
         self.logger.info(f"Starting event generation for calendar: {calendar_name}")
 
-        url = f"{self.GRAPH_BASE_URL}/me/calendars/{calendar_id}/events"
-        params = {"$top": 50}
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/calendars/{calendar_id}/events"
+        params: Optional[Dict[str, int]] = {"$top": 50}
         event_count = 0
 
         # Create breadcrumb for this calendar
@@ -390,7 +390,7 @@ class OutlookCalendarSource(BaseSource):
         """Process event attachments using the standard file processing pipeline."""
         self.logger.debug(f"Processing attachments for event {event_id}")
 
-        url = f"{self.GRAPH_BASE_URL}/me/events/{event_id}/attachments"
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/events/{event_id}/attachments"
 
         try:
             while url:

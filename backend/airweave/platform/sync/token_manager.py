@@ -87,7 +87,7 @@ class TokenManager:
         # Set last refresh time to 0 to force an immediate refresh on first use
         # This ensures we always start a sync with a fresh token, even if the stored
         # token was issued hours/days ago and has since expired
-        self._last_refresh_time = 0
+        self._last_refresh_time: float = 0
         self._refresh_lock = asyncio.Lock()
 
         # Cache for tokens obtained for alternative resource scopes
@@ -222,7 +222,7 @@ class TokenManager:
             try:
                 new_token = await self._refresh_token()
                 self._current_token = new_token
-                self._last_refresh_time = time.time()
+                self._last_refresh_time: float = time.time()
                 self._resource_tokens.clear()
 
                 self.logger.debug(

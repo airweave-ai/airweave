@@ -184,7 +184,7 @@ class ZendeskSource(BaseSource):
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate organization entities."""
-        url = f"https://{self.subdomain}.zendesk.com/api/v2/organizations.json"
+        url: Optional[str] = f"https://{self.subdomain}.zendesk.com/api/v2/organizations.json"
 
         # Handle pagination
         while url:
@@ -224,7 +224,7 @@ class ZendeskSource(BaseSource):
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate user entities."""
-        url = f"https://{self.subdomain}.zendesk.com/api/v2/users.json"
+        url: Optional[str] = f"https://{self.subdomain}.zendesk.com/api/v2/users.json"
 
         # Handle pagination
         while url:
@@ -274,7 +274,7 @@ class ZendeskSource(BaseSource):
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ticket entities."""
-        url = f"https://{self.subdomain}.zendesk.com/api/v2/tickets.json"
+        url: Optional[str] = f"https://{self.subdomain}.zendesk.com/api/v2/tickets.json"
 
         # Handle pagination
         while url:

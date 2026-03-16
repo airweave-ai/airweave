@@ -22,7 +22,7 @@ Incremental sync:
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -35,6 +35,7 @@ from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.sharepoint_online import (
     SharePointOnlineFileDeletionEntity,
+    SharePointOnlineFileEntity,
 )
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.sharepoint_online.builders import (
@@ -86,6 +87,8 @@ class SharePointOnlineSource(BaseSource):
     Syncs sites, drives, files, lists, and pages with full ACL support.
     Uses Entra ID for group membership expansion.
     """
+
+    _node_selections: Optional[List[NodeSelectionData]]
 
     @classmethod
     async def create(
@@ -758,11 +761,14 @@ class SharePointOnlineSource(BaseSource):
                                 file_entity, client, graph_client
                             )
                             self._track_entity_groups(file_entity)
-                            file_entity = await self._download_and_save_file(
-                                file_entity,
-                                client,
-                                drive_id,
-                                item_id,
+                            file_entity = cast(
+                                SharePointOnlineFileEntity,
+                                await self._download_and_save_file(
+                                    file_entity,
+                                    client,
+                                    drive_id,
+                                    item_id,
+                                ),
                             )
                             yield file_entity
                             changes_processed += 1
@@ -889,8 +895,11 @@ class SharePointOnlineSource(BaseSource):
                                 file_entity, client, graph_client
                             )
                             self._track_entity_groups(file_entity)
-                            file_entity = await self._download_and_save_file(
-                                file_entity, client, drive_id, item_id
+                            file_entity = cast(
+                                SharePointOnlineFileEntity,
+                                await self._download_and_save_file(
+                                    file_entity, client, drive_id, item_id
+                                ),
                             )
                             yield file_entity
                             entity_count += 1

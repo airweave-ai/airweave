@@ -366,6 +366,7 @@ class OutlookMailSource(BaseSource):
             parent_breadcrumbs = []
 
         # Decide the endpoint: top-level vs. child folders
+        url: Optional[str]
         if folder_id:
             url = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_id}/childFolders"
             self.logger.debug(f"Fetching child folders for folder ID: {folder_id}")
@@ -414,8 +415,8 @@ class OutlookMailSource(BaseSource):
             f"({folder_entity.total_item_count} items)"
         )
 
-        url = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_entity.id}/messages"
-        params = {"$top": 50}  # Fetch 50 messages at a time
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_entity.id}/messages"
+        params: Optional[dict] = {"$top": 50}  # Fetch 50 messages at a time
 
         page_count = 0
         message_count = 0
@@ -757,7 +758,7 @@ class OutlookMailSource(BaseSource):
         """Process message attachments using the standard file processing pipeline."""
         self.logger.debug(f"Processing attachments for message {message_id}")
 
-        url = f"{self.GRAPH_BASE_URL}/me/messages/{message_id}/attachments"
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/messages/{message_id}/attachments"
 
         try:
             while url:
@@ -812,8 +813,8 @@ class OutlookMailSource(BaseSource):
 
         try:
             # Construct the delta URL using the token (pass via params to ensure proper encoding)
-            url = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_id}/messages/delta"
-            params = {"$deltatoken": delta_token}
+            url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_id}/messages/delta"
+            params: Optional[dict] = {"$deltatoken": delta_token}
             while url:
                 self.logger.debug(f"Fetching delta changes from: {url}")
                 data = await self._get_with_auth(client, url, params=params)
@@ -953,7 +954,7 @@ class OutlookMailSource(BaseSource):
         self, client: httpx.AsyncClient, start_url: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Iterate delta/next pages starting from a delta or nextLink URL."""
-        url = start_url
+        url: Optional[str] = start_url
         while url:
             self.logger.debug(f"Fetching folders delta changes from: {url}")
             data = await self._get_with_auth(client, url)

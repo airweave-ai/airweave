@@ -49,9 +49,9 @@ class AsyncSourceStream(Generic[T]):
         self.source_generator = source_generator
         # Queue is used to buffer entities and implement backpressure
         self.queue: asyncio.Queue[Optional[T]] = asyncio.Queue(maxsize=queue_size)
-        self.producer_task = None
+        self.producer_task: Optional[asyncio.Task[None]] = None
         self.producer_done = asyncio.Event()
-        self.producer_exception = None
+        self.producer_exception: Optional[Exception] = None
         self.logger = logger
 
         # State management
@@ -110,7 +110,7 @@ class AsyncSourceStream(Generic[T]):
             raise
         except Exception as e:
             self.logger.warning(f"Error in producer: {get_error_message(e)}")
-            self.producer_exception = e
+            self.producer_exception: Optional[Exception] = e
             async with self._state_lock:
                 self._state = StreamState.FAILED
             raise

@@ -116,7 +116,7 @@ class LinearSource(BaseSource):
             hourly_count = len(self._request_times)
 
             # Adaptive throttling based on usage
-            wait_time = 0
+            wait_time: float = 0
             if hourly_count >= 1000:  # >83% of quota - heavy throttling
                 wait_time = 3.0
             elif hourly_count >= 900:  # 75-83% of quota - medium throttling

@@ -44,8 +44,8 @@ class S3Backend(StorageBackend):
         self.region = region
         self.prefix = prefix.rstrip("/") + "/" if prefix else ""
         self.endpoint_url = endpoint_url
-        self._session = None
-        self._client = None
+        self._session: Any = None
+        self._client: Any = None
 
         logger.debug(
             f"S3Backend initialized: s3://{bucket}"

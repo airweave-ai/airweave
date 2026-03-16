@@ -581,8 +581,8 @@ class BitbucketSource(BaseSource):
                 # Process all repositories in the workspace
                 repositories = await self._get_repositories(client, self.workspace)
 
-                for repo_data in repositories:
-                    repo_slug = repo_data["slug"]
+                for repo_dict in repositories:
+                    repo_slug = repo_dict["slug"]
 
                     # Get detailed repo info to get default branch
                     repo_entity = await self._get_repository_info(client, self.workspace, repo_slug)

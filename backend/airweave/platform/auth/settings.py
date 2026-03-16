@@ -65,6 +65,7 @@ class IntegrationSettings:
         config["integration_short_name"] = name
 
         # Handle OAuth1
+        model: type[BaseAuthSettings]
         if oauth_type_str == "oauth1":
             config["authentication_method"] = AuthenticationMethod.OAUTH_BROWSER.value
             model = OAuth1Settings

@@ -176,8 +176,8 @@ class TeamsSource(BaseSource):
             TeamsUserEntity objects
         """
         self.logger.info("Starting user entity generation")
-        url = f"{self.GRAPH_BASE_URL}/users"
-        params = {
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/users"
+        params: Optional[dict] = {
             "$top": 100,
             "$select": ("id,displayName,userPrincipalName,mail,jobTitle,department,officeLocation"),
         }
@@ -236,7 +236,7 @@ class TeamsSource(BaseSource):
             TeamsTeamEntity objects
         """
         self.logger.info("Starting team entity generation")
-        url = f"{self.GRAPH_BASE_URL}/me/joinedTeams"
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/joinedTeams"
 
         try:
             team_count = 0
@@ -296,7 +296,7 @@ class TeamsSource(BaseSource):
             TeamsChannelEntity objects
         """
         self.logger.info(f"Starting channel entity generation for team: {team_name}")
-        url = f"{self.GRAPH_BASE_URL}/teams/{team_id}/channels"
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/teams/{team_id}/channels"
 
         try:
             channel_count = 0
@@ -375,8 +375,8 @@ class TeamsSource(BaseSource):
             TeamsMessageEntity objects
         """
         self.logger.info(f"Starting message generation for channel: {channel_name}")
-        url = f"{self.GRAPH_BASE_URL}/teams/{team_id}/channels/{channel_id}/messages"
-        params = {"$top": 50}  # Max allowed by Graph API
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/teams/{team_id}/channels/{channel_id}/messages"
+        params: Optional[dict] = {"$top": 50}  # Max allowed by Graph API
 
         try:
             message_count = 0
@@ -467,8 +467,8 @@ class TeamsSource(BaseSource):
             TeamsChatEntity objects
         """
         self.logger.info("Starting chat entity generation")
-        url = f"{self.GRAPH_BASE_URL}/me/chats"
-        params = {"$top": 50}
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/me/chats"
+        params: Optional[dict] = {"$top": 50}
 
         try:
             chat_count = 0
@@ -534,8 +534,8 @@ class TeamsSource(BaseSource):
         """
         display_chat = chat_topic if chat_topic else chat_id[:8]
         self.logger.info(f"Starting message generation for chat: {display_chat}")
-        url = f"{self.GRAPH_BASE_URL}/chats/{chat_id}/messages"
-        params = {"$top": 50}
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/chats/{chat_id}/messages"
+        params: Optional[dict] = {"$top": 50}
 
         try:
             message_count = 0

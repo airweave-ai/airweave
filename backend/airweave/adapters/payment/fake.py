@@ -39,9 +39,9 @@ class FakePaymentGateway(PaymentGatewayProtocol):
         self._calls: list[tuple[str, tuple, dict]] = []
 
         # In-memory state
-        self._customers: dict[str, dict] = {}
-        self._subscriptions: dict[str, dict] = {}
-        self._coupons: dict[str, dict] = {}
+        self._customers: dict[str, Any] = {}
+        self._subscriptions: dict[str, Any] = {}
+        self._coupons: dict[str, Any] = {}
         self._balances: dict[str, int] = {}  # customer_id -> balance cents
 
     def _record(self, method: str, *args: Any, **kwargs: Any) -> None:

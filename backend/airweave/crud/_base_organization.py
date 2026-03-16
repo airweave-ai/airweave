@@ -132,21 +132,23 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
             await self._validate_organization_access(ctx, ctx.organization.id)
 
         if not isinstance(obj_in, dict):
-            obj_in = obj_in.model_dump(exclude_unset=True)
+            obj_in_data: dict[str, Any] = obj_in.model_dump(exclude_unset=True)
+        else:
+            obj_in_data = obj_in
 
-        obj_in["organization_id"] = ctx.organization.id
+        obj_in_data["organization_id"] = ctx.organization.id
 
         if self.track_user:
             if ctx.has_user_context:
                 # Human user: track directly
-                obj_in["created_by_email"] = ctx.tracking_email
-                obj_in["modified_by_email"] = ctx.tracking_email
+                obj_in_data["created_by_email"] = ctx.tracking_email
+                obj_in_data["modified_by_email"] = ctx.tracking_email
             else:
                 # API key/system: nullable tracking
-                obj_in["created_by_email"] = None
-                obj_in["modified_by_email"] = None
+                obj_in_data["created_by_email"] = None
+                obj_in_data["modified_by_email"] = None
 
-        db_obj = self.model(**obj_in)
+        db_obj = self.model(**obj_in_data)
         db.add(db_obj)
 
         if not uow:

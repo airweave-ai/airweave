@@ -1330,11 +1330,12 @@ class GoogleDriveSource(BaseSource):
                                             filename_glob=fname_glob,
                                             context=f"drive {drive_id}",
                                         ):
-                                            file_entity = self._build_file_entity(
+                                            maybe_file = self._build_file_entity(
                                                 file_obj, drive_breadcrumb
                                             )
-                                            if not file_entity:
+                                            if not maybe_file:
                                                 continue
+                                            file_entity = maybe_file
 
                                             # Download file using downloader
                                             try:
@@ -1412,11 +1413,12 @@ class GoogleDriveSource(BaseSource):
                                     ):
                                         name = file_obj.get("name", "")
                                         if _fn.fnmatch(name, pat):
-                                            file_entity = self._build_file_entity(
+                                            maybe_file = self._build_file_entity(
                                                 file_obj, drive_breadcrumb
                                             )
-                                            if not file_entity:
+                                            if not maybe_file:
                                                 continue
+                                            file_entity = maybe_file
 
                                             # Download file using downloader
                                             try:
@@ -1504,11 +1506,12 @@ class GoogleDriveSource(BaseSource):
                                         filename_glob=fname_glob,
                                         context="MY DRIVE",
                                     ):
-                                        file_entity = self._build_file_entity(
+                                        maybe_file = self._build_file_entity(
                                             file_obj, self._my_drive_breadcrumb
                                         )
-                                        if not file_entity:
+                                        if not maybe_file:
                                             continue
+                                        file_entity = maybe_file
 
                                         # Download file using downloader
                                         try:
@@ -1583,11 +1586,12 @@ class GoogleDriveSource(BaseSource):
                                 ):
                                     name = file_obj.get("name", "")
                                     if _fn.fnmatch(name, pat):
-                                        file_entity = self._build_file_entity(
+                                        maybe_file = self._build_file_entity(
                                             file_obj, self._my_drive_breadcrumb
                                         )
-                                        if not file_entity:
+                                        if not maybe_file:
                                             continue
+                                        file_entity = maybe_file
 
                                         # Download file using downloader
                                         try:

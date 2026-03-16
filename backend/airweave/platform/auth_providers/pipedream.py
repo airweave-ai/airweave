@@ -22,7 +22,7 @@ class PipedreamDefaultOAuthException(Exception):
     directly and the proxy must be used.
     """
 
-    def __init__(self, source_short_name: str, message: str = None):
+    def __init__(self, source_short_name: str, message: Optional[str] = None):
         """Initialize the exception."""
         self.source_short_name = source_short_name
         if message is None:

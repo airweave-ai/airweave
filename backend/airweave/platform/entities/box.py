@@ -15,10 +15,10 @@ class BoxUserEntity(BaseEntity):
     name: str = AirweaveField(
         ..., description="Display name of the user", is_name=True, embeddable=True
     )
-    created_at: Optional[str] = AirweaveField(
+    created_at: Optional[Any] = AirweaveField(
         None, description="When the user was created", is_created_at=True
     )
-    updated_at: Optional[str] = AirweaveField(
+    updated_at: Optional[Any] = AirweaveField(
         None, description="When the user was last modified", is_updated_at=True
     )
 
@@ -65,10 +65,10 @@ class BoxFolderEntity(BaseEntity):
 
     folder_id: str = AirweaveField(..., description="Box folder ID", is_entity_id=True)
     name: str = AirweaveField(..., description="Folder name", is_name=True, embeddable=True)
-    created_at: Optional[str] = AirweaveField(
+    created_at: Optional[Any] = AirweaveField(
         None, description="When the folder was created", is_created_at=True
     )
-    updated_at: Optional[str] = AirweaveField(
+    updated_at: Optional[Any] = AirweaveField(
         None, description="When the folder was last modified", is_updated_at=True
     )
 
@@ -156,10 +156,10 @@ class BoxFileEntity(FileEntity):
 
     file_id: str = AirweaveField(..., description="Box file ID", is_entity_id=True)
     name: str = AirweaveField(..., description="File name", is_name=True, embeddable=True)
-    created_at: Optional[str] = AirweaveField(
+    created_at: Optional[Any] = AirweaveField(
         None, description="When the file was created", is_created_at=True
     )
-    updated_at: Optional[str] = AirweaveField(
+    updated_at: Optional[Any] = AirweaveField(
         None, description="When the file was last modified", is_updated_at=True
     )
 
@@ -252,10 +252,10 @@ class BoxCommentEntity(BaseEntity):
     name: str = AirweaveField(
         ..., description="Comment preview or identifier", is_name=True, embeddable=True
     )
-    created_at: Optional[str] = AirweaveField(
+    created_at: Optional[Any] = AirweaveField(
         None, description="When the comment was created", is_created_at=True
     )
-    updated_at: Optional[str] = AirweaveField(
+    updated_at: Optional[Any] = AirweaveField(
         None, description="When the comment was last modified", is_updated_at=True
     )
 
@@ -291,10 +291,10 @@ class BoxCollaborationEntity(BaseEntity):
     name: str = AirweaveField(
         ..., description="Collaboration display label", is_name=True, embeddable=True
     )
-    created_at: Optional[str] = AirweaveField(
+    created_at: Optional[Any] = AirweaveField(
         None, description="When the collaboration was created", is_created_at=True
     )
-    updated_at: Optional[str] = AirweaveField(
+    updated_at: Optional[Any] = AirweaveField(
         None, description="When the collaboration was last modified", is_updated_at=True
     )
 

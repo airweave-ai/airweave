@@ -513,7 +513,9 @@ class LDAPClient:
             self._stats["group_cache_misses"] += 1
 
         # Collect memberships for caching (only at top level)
-        collected_memberships: List[MembershipTuple] = [] if len(visited_groups) == 1 else None
+        collected_memberships: Optional[List[MembershipTuple]] = (
+            [] if len(visited_groups) == 1 else None
+        )
 
         # Use retry wrapper for LDAP operations
         async def query_group(conn: Connection) -> Optional[Any]:

@@ -253,8 +253,8 @@ class EntityActionResolver:
 
         # Process delete entities
         for entity in delete_entities:
-            action = self._create_delete_action(entity, existing_map, sync_context)
-            deletes.append(action)
+            delete_action = self._create_delete_action(entity, existing_map, sync_context)
+            deletes.append(delete_action)
 
         return EntityActionBatch(
             inserts=inserts,

@@ -349,7 +349,7 @@ class HubspotSource(BaseSource):
         fetch_start = time.time()
         self.logger.info("🔍 [HUBSPOT] Fetching all contact IDs (paginated)...")
 
-        url = f"https://api.hubapi.com/crm/v3/objects/contacts?limit={self.HUBSPOT_API_LIMIT}"
+        url: Optional[str] = f"https://api.hubapi.com/crm/v3/objects/contacts?limit={self.HUBSPOT_API_LIMIT}"
         contact_ids = []
         while url:
             data = await self._get_with_auth(client, url)
@@ -438,7 +438,7 @@ class HubspotSource(BaseSource):
         fetch_start = time.time()
         self.logger.info("🔍 [HUBSPOT] Fetching all company IDs (paginated)...")
 
-        url = f"https://api.hubapi.com/crm/v3/objects/companies?limit={self.HUBSPOT_API_LIMIT}"
+        url: Optional[str] = f"https://api.hubapi.com/crm/v3/objects/companies?limit={self.HUBSPOT_API_LIMIT}"
         company_ids = []
         while url:
             data = await self._get_with_auth(client, url)
@@ -512,7 +512,7 @@ class HubspotSource(BaseSource):
         fetch_start = time.time()
         self.logger.info("🔍 [HUBSPOT] Fetching all deal IDs (paginated)...")
 
-        url = f"https://api.hubapi.com/crm/v3/objects/deals?limit={self.HUBSPOT_API_LIMIT}"
+        url: Optional[str] = f"https://api.hubapi.com/crm/v3/objects/deals?limit={self.HUBSPOT_API_LIMIT}"
         deal_ids = []
         while url:
             data = await self._get_with_auth(client, url)
@@ -582,7 +582,7 @@ class HubspotSource(BaseSource):
         fetch_start = time.time()
         self.logger.info("🔍 [HUBSPOT] Fetching all ticket IDs (paginated)...")
 
-        url = f"https://api.hubapi.com/crm/v3/objects/tickets?limit={self.HUBSPOT_API_LIMIT}"
+        url: Optional[str] = f"https://api.hubapi.com/crm/v3/objects/tickets?limit={self.HUBSPOT_API_LIMIT}"
         ticket_ids = []
         while url:
             data = await self._get_with_auth(client, url)

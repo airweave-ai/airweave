@@ -77,12 +77,14 @@ class CRUDBaseUser(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             ModelType: The created object.
         """
         if not isinstance(obj_in, dict):
-            obj_in = obj_in.model_dump(exclude_unset=True)
+            obj_in_data = obj_in.model_dump(exclude_unset=True)
+        else:
+            obj_in_data = obj_in
 
         # Ensure the object belongs to the current user
-        obj_in["id"] = current_user.id
+        obj_in_data["id"] = current_user.id
 
-        db_obj = self.model(**obj_in)
+        db_obj = self.model(**obj_in_data)
         db.add(db_obj)
 
         if not uow:

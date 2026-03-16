@@ -176,7 +176,7 @@ class StripeSource(BaseSource):
         Yields StripeBalanceTransactionEntity objects.
         """
         base_url = "https://api.stripe.com/v1/balance_transactions?limit=100"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -231,7 +231,7 @@ class StripeSource(BaseSource):
         Paginated, yields StripeChargeEntity objects.
         """
         base_url = "https://api.stripe.com/v1/charges?limit=100"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -297,7 +297,7 @@ class StripeSource(BaseSource):
         Paginated, yields StripeCustomerEntity objects.
         """
         base_url = "https://api.stripe.com/v1/customers?limit=100"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -349,7 +349,7 @@ class StripeSource(BaseSource):
         Paginated, yields StripeEventEntity objects.
         """
         base_url = "https://api.stripe.com/v1/events?limit=100"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -398,7 +398,7 @@ class StripeSource(BaseSource):
         Paginated, yields StripeInvoiceEntity objects.
         """
         base_url = "https://api.stripe.com/v1/invoices?limit=100"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -467,7 +467,7 @@ class StripeSource(BaseSource):
         Paginated, yields StripePaymentIntentEntity objects.
         """
         base_url = "https://api.stripe.com/v1/payment_intents?limit=100"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -531,7 +531,7 @@ class StripeSource(BaseSource):
         """
         # Adjust as needed to retrieve the correct PaymentMethods.
         base_url = "https://api.stripe.com/v1/payment_methods?limit=100&type=card"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -591,7 +591,7 @@ class StripeSource(BaseSource):
         Paginated, yields StripePayoutEntity objects.
         """
         base_url = "https://api.stripe.com/v1/payouts?limit=100"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -652,7 +652,7 @@ class StripeSource(BaseSource):
         Paginated, yields StripeRefundEntity objects.
         """
         base_url = "https://api.stripe.com/v1/refunds?limit=100"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)
@@ -704,7 +704,7 @@ class StripeSource(BaseSource):
         Paginated, yields StripeSubscriptionEntity objects.
         """
         base_url = "https://api.stripe.com/v1/subscriptions?limit=100"
-        url = base_url
+        url: Optional[str] = base_url
 
         while url:
             data = await self._get_with_auth(client, url)

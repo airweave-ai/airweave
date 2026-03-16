@@ -334,7 +334,7 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
     ) -> Subscription:
         """Update a subscription."""
         try:
-            patch_data = {}
+            patch_data: dict[str, Any] = {}
             if url is not None:
                 patch_data["url"] = url
             if event_types is not None:

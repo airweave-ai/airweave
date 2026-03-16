@@ -299,7 +299,7 @@ class GmailSource(BaseSource):
     async def _list_threads(self, client: httpx.AsyncClient) -> AsyncGenerator[Dict, None]:
         """Yield thread summary objects across all pages."""
         base_url = "https://gmail.googleapis.com/gmail/v1/users/me/threads"
-        params = {"maxResults": 100}
+        params: Dict[str, Any] = {"maxResults": 100}
 
         # Add query filter if configured
         query = self._build_gmail_query()

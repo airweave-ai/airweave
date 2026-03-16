@@ -35,7 +35,7 @@ class HtmlConverter(BaseTextConverter):
 
         logger.info(f"Converting {len(file_paths)} HTML files to markdown...")
 
-        results = {}
+        results: Dict[str, Optional[str]] = {}
         semaphore = asyncio.Semaphore(20)  # Limit concurrent conversions
 
         async def _convert_one(path: str) -> None:

@@ -234,8 +234,8 @@ class SalesforceSource(BaseSource):
         fields_str = ", ".join(all_fields)
         soql_query = f"SELECT {fields_str} FROM Account"
 
-        url = f"{self._get_base_url()}/query"
-        params = {"q": soql_query.strip()}
+        url: Optional[str] = f"{self._get_base_url()}/query"
+        params: Optional[Dict[str, Any]] = {"q": soql_query.strip()}
 
         while url:
             data = await self._get_with_auth(client, url, params)
@@ -324,8 +324,8 @@ class SalesforceSource(BaseSource):
         fields_str = ", ".join(all_fields)
         soql_query = f"SELECT {fields_str} FROM Contact"
 
-        url = f"{self._get_base_url()}/query"
-        params = {"q": soql_query.strip()}
+        url: Optional[str] = f"{self._get_base_url()}/query"
+        params: Optional[Dict[str, Any]] = {"q": soql_query.strip()}
 
         while url:
             data = await self._get_with_auth(client, url, params)
@@ -431,8 +431,8 @@ class SalesforceSource(BaseSource):
         fields_str = ", ".join(all_fields)
         soql_query = f"SELECT {fields_str} FROM Opportunity"
 
-        url = f"{self._get_base_url()}/query"
-        params = {"q": soql_query.strip()}
+        url: Optional[str] = f"{self._get_base_url()}/query"
+        params: Optional[Dict[str, Any]] = {"q": soql_query.strip()}
 
         while url:
             data = await self._get_with_auth(client, url, params)

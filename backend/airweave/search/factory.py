@@ -683,7 +683,7 @@ class SearchFactory:
 
             # Initialize provider with complete model spec
             try:
-                provider = None
+                provider: Optional[BaseProvider] = None
                 if provider_name == "cerebras":
                     ctx.logger.debug(
                         f"[Factory] Attempting to initialize CerebrasProvider for {operation_name}"

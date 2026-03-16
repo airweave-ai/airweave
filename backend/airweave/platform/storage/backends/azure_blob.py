@@ -41,9 +41,9 @@ class AzureBlobBackend(StorageBackend):
         self.storage_account = storage_account
         self.container_name = container
         self.prefix = prefix.rstrip("/") + "/" if prefix else ""
-        self._blob_service_client = None
-        self._container_client = None
-        self._credential = None
+        self._blob_service_client: Any = None
+        self._container_client: Any = None
+        self._credential: Any = None
 
         logger.debug(
             f"AzureBlobBackend initialized: {storage_account}/{container}"

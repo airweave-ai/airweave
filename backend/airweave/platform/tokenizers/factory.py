@@ -23,6 +23,7 @@ def get_tokenizer(name: str) -> BaseTokenizer:
     if name in _cache:
         return _cache[name]
 
+    tokenizer: BaseTokenizer
     if is_tiktoken_encoding(name):
         tokenizer = TikTokenTokenizer(name)
     elif is_mistral_tokenizer(name):

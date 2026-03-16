@@ -212,7 +212,7 @@ def _build_sort_subqueries(query: Any, sort_by: str) -> Tuple[Any, Dict[str, Any
     from airweave.models.user import User
     from airweave.schemas.billing_period import BillingPeriodStatus
 
-    subqueries = {}
+    subqueries: Dict[str, Any] = {}
 
     # For usage-based sorting, join Usage and BillingPeriod
     if sort_by in ["entity_count", "query_count"]:
@@ -706,8 +706,8 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
         if owner_user_org:
             from airweave.models.user import User
 
-            stmt = select(User).where(User.id == owner_user_org.user_id)
-            result = await db.execute(stmt)
+            user_stmt = select(User).where(User.id == owner_user_org.user_id)
+            result = await db.execute(user_stmt)
             owner_user = result.scalar_one_or_none()
             if owner_user:
                 owner_email = owner_user.email

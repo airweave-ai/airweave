@@ -158,8 +158,8 @@ class SharePointSource(BaseSource):
     ) -> AsyncGenerator[SharePointUserEntity, None]:
         """Generate SharePointUserEntity objects for users in the organization."""
         self.logger.debug("Starting user entity generation")
-        url = f"{self.GRAPH_BASE_URL}/users"
-        params = {
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/users"
+        params: Optional[dict] = {
             "$top": 100,
             "$select": (
                 "id,displayName,userPrincipalName,mail,jobTitle,department,"
@@ -217,8 +217,8 @@ class SharePointSource(BaseSource):
     ) -> AsyncGenerator[SharePointGroupEntity, None]:
         """Generate SharePointGroupEntity objects for groups in the organization."""
         self.logger.debug("Starting group entity generation")
-        url = f"{self.GRAPH_BASE_URL}/groups"
-        params = {
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/groups"
+        params: Optional[dict] = {
             "$top": 100,
             "$select": (
                 "id,displayName,description,mail,mailEnabled,securityEnabled,"
@@ -343,8 +343,8 @@ class SharePointSource(BaseSource):
     ) -> AsyncGenerator[SharePointDriveEntity, None]:
         """Generate SharePointDriveEntity objects for drives in a site."""
         self.logger.debug(f"Starting drive entity generation for site: {site_name}")
-        url = f"{self.GRAPH_BASE_URL}/sites/{site_id}/drives"
-        params = {"$top": 100}
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/sites/{site_id}/drives"
+        params: Optional[dict] = {"$top": 100}
         drive_count = 0
 
         try:
@@ -410,12 +410,13 @@ class SharePointSource(BaseSource):
             drive_id: ID of the drive
             folder_id: ID of specific folder, or None for root
         """
+        url: Optional[str]
         if folder_id:
             url = f"{self.GRAPH_BASE_URL}/drives/{drive_id}/items/{folder_id}/children"
         else:
             url = f"{self.GRAPH_BASE_URL}/drives/{drive_id}/root/children"
 
-        params = {
+        params: Optional[dict] = {
             "$top": 100,
             "$select": (
                 "id,name,size,createdDateTime,lastModifiedDateTime,webUrl,"
@@ -639,8 +640,8 @@ class SharePointSource(BaseSource):
     ) -> AsyncGenerator[SharePointListEntity, None]:
         """Generate SharePointListEntity objects for lists in a site."""
         self.logger.debug(f"Starting list entity generation for site: {site_name}")
-        url = f"{self.GRAPH_BASE_URL}/sites/{site_id}/lists"
-        params = {"$top": 100, "$expand": "columns"}
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/sites/{site_id}/lists"
+        params: Optional[dict] = {"$top": 100, "$expand": "columns"}
         list_count = 0
 
         try:
@@ -702,8 +703,10 @@ class SharePointSource(BaseSource):
         list_name = list_entity.display_name or "Unknown List"
         self.logger.debug(f"Starting list item generation for list: {list_name}")
 
-        url = f"{self.GRAPH_BASE_URL}/sites/{list_entity.site_id}/lists/{list_id}/items"
-        params = {"$top": 100, "$expand": "fields"}
+        url: Optional[str] = (
+            f"{self.GRAPH_BASE_URL}/sites/{list_entity.site_id}/lists/{list_id}/items"
+        )
+        params: Optional[dict] = {"$top": 100, "$expand": "fields"}
         item_count = 0
 
         try:
@@ -842,8 +845,8 @@ class SharePointSource(BaseSource):
     ) -> AsyncGenerator[SharePointPageEntity, None]:
         """Generate SharePointPageEntity objects for pages in a site."""
         self.logger.debug(f"Starting page entity generation for site: {site_name}")
-        url = f"{self.GRAPH_BASE_URL}/sites/{site_id}/pages"
-        params = {"$top": 100}
+        url: Optional[str] = f"{self.GRAPH_BASE_URL}/sites/{site_id}/pages"
+        params: Optional[dict] = {"$top": 100}
         page_count = 0
 
         try:

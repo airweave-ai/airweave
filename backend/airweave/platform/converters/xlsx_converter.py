@@ -142,9 +142,9 @@ class XlsxConverter(BaseTextConverter):
                     markdown_parts.append("| " + " | ".join(["---"] * len(header)) + " |")
 
                     # Data rows
-                    for row in data_rows:
+                    for data_row in data_rows:
                         # Pad row if shorter than header
-                        padded_row = row + [""] * (len(header) - len(row))
+                        padded_row = data_row + [""] * (len(header) - len(data_row))
                         markdown_parts.append("| " + " | ".join(padded_row[: len(header)]) + " |")
                 else:
                     # Single row - just show as list

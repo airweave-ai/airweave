@@ -34,6 +34,7 @@ class SyncCursor:
         self._loaded_from_db = cursor_data is not None
 
         # Instantiate typed cursor if schema provided
+        self._typed_cursor: Optional[BaseModel] = None
         if cursor_schema:
             if cursor_data:
                 # Use Pydantic's model_validate for deserialization
@@ -43,7 +44,6 @@ class SyncCursor:
                 self._typed_cursor = cursor_schema()
         else:
             # Fallback for sources without typed cursors
-            self._typed_cursor = None
             self._raw_data = cursor_data or {}
 
     def update(self, **fields: object) -> None:

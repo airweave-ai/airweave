@@ -142,8 +142,8 @@ class EntityActionBatch:
     def get_entities_to_process(self) -> List["BaseEntity"]:
         """Get entities that need content processing (INSERT + UPDATE)."""
         entities = []
-        for action in self.inserts:
-            entities.append(action.entity)
-        for action in self.updates:
-            entities.append(action.entity)
+        for insert_action in self.inserts:
+            entities.append(insert_action.entity)
+        for update_action in self.updates:
+            entities.append(update_action.entity)
         return entities

@@ -7,7 +7,7 @@ from airweave.platform.chunkers._base import BaseChunker
 from airweave.platform.chunkers.tiktoken_compat import SafeEncoding
 from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.sync.exceptions import SyncFailureError
-from airweave.platform.tokenizers import TikTokenTokenizer, get_tokenizer
+from airweave.platform.tokenizers import BaseTokenizer, TikTokenTokenizer, get_tokenizer
 
 
 class SemanticChunker(BaseChunker):
@@ -76,9 +76,9 @@ class SemanticChunker(BaseChunker):
         if self._initialized:
             return
 
-        self._semantic_chunker = None  # Lazy init
-        self._token_chunker = None  # Lazy init (emergency fallback)
-        self._tiktoken_tokenizer = None  # Lazy init
+        self._semantic_chunker: Any = None  # Lazy init
+        self._token_chunker: Any = None  # Lazy init (emergency fallback)
+        self._tiktoken_tokenizer: Optional[BaseTokenizer] = None  # Lazy init
         self._initialized = True
 
         logger.debug(
