@@ -94,8 +94,7 @@ class SourceLifecycleServiceProtocol(Protocol):
         credentials: Union[dict, BaseModel, str],
         config: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Validate credentials by creating a lightweight source and
-        calling .validate().
+        """Validate credentials by creating and calling .validate() on a source.
 
         No token manager, no HTTP wrapping, no rate limiting.
         Used during source connection creation to verify credentials

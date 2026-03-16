@@ -25,7 +25,7 @@ from airweave.platform.entities._base import (
 
 
 def _sanitize_for_vespa(text: str) -> str:
-    """Sanitize text for Vespa by removing illegal characters.
+    r"""Sanitize text for Vespa by removing illegal characters.
 
     Vespa strictly rejects:
     1. Control characters (code points < 32) except \n (0x0A), \r (0x0D), \t (0x09)

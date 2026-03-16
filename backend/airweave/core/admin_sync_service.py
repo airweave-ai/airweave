@@ -446,7 +446,7 @@ class AdminSyncService:
                     all_tags_map[row.sync_id].update(tags)
 
         # Convert to sorted lists
-        all_tags_map = {sync_id: sorted(list(tag_set)) for sync_id, tag_set in all_tags_map.items()}
+        all_tags_map = {sync_id: sorted(tag_set) for sync_id, tag_set in all_tags_map.items()}
         timings["all_tags"] = (time.monotonic() - start) * 1000
         return all_tags_map
 
