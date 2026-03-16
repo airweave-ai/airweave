@@ -232,7 +232,7 @@ class RunSyncActivity:
             stall_dump_emitted = False
             stall_threshold = 300  # 5 minutes without progress
 
-            def _emit_stack_dump(reason: str, elapsed_s: int):
+            def _emit_stack_dump(reason: str, elapsed_s: int) -> None:
                 """Collect and emit a chunked stack trace dump."""
                 traces = []
                 for thread_id, frame in sys._current_frames().items():
@@ -418,7 +418,7 @@ class RunSyncActivity:
         ctx: BaseContext,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
-    ):
+    ) -> Any:
         """Run the actual sync service."""
         from airweave import crud
         from airweave.core.exceptions import NotFoundException
@@ -461,15 +461,15 @@ class RunSyncActivity:
 
     async def _handle_cancellation(
         self,
-        sync,
-        sync_job,
-        collection,
-        connection,
-        organization,
-        ctx,
-        sync_task,
-        source_connection_id=None,
-    ):
+        sync: schemas.Sync,
+        sync_job: schemas.SyncJob,
+        collection: schemas.Collection,
+        connection: schemas.Connection,
+        organization: schemas.Organization,
+        ctx: BaseContext,
+        sync_task: "asyncio.Task[None]",
+        source_connection_id: Optional[UUID] = None,
+    ) -> None:
         """Handle activity cancellation."""
         from airweave.core.datetime_utils import utc_now_naive
         from airweave.core.shared_models import SyncJobStatus
@@ -686,7 +686,13 @@ class CreateSyncJobActivity:
             sync_job_schema = schemas.SyncJob.model_validate(sync_job)
             return sync_job_schema.model_dump(mode="json")
 
-    async def _wait_for_running_jobs(self, db, sync_id, ctx, running_jobs):
+    async def _wait_for_running_jobs(
+        self,
+        db: Any,
+        sync_id: str,
+        ctx: BaseContext,
+        running_jobs: Any,
+    ) -> None:
         """Wait for running jobs to complete before daily cleanup."""
         from airweave.db.session import get_db_context
 
@@ -724,7 +730,14 @@ class CreateSyncJobActivity:
         )
         raise Exception(f"Timeout waiting for running jobs to complete after {max_wait_time}s")
 
-    async def _publish_pending_event(self, db, sync_id, organization, sync_job, ctx):
+    async def _publish_pending_event(
+        self,
+        db: Any,
+        sync_id: str,
+        organization: schemas.Organization,
+        sync_job: Any,
+        ctx: BaseContext,
+    ) -> None:
         """Publish PENDING lifecycle event."""
         from airweave.core.events.sync import SyncLifecycleEvent
 
@@ -872,7 +885,7 @@ class CleanupStuckSyncJobsActivity:
             raise
 
     async def _is_running_job_stuck(
-        self, job, running_cutoff, db, redis_client, crud, logger
+        self, job: Any, running_cutoff: Any, db: Any, redis_client: Any, crud: Any, logger: Any
     ) -> bool:
         """Check if a running job is stuck (no recent activity)."""
         import json
@@ -935,7 +948,7 @@ class CleanupStuckSyncJobsActivity:
             )
             return latest_entity_time is None or latest_entity_time < running_cutoff
 
-    async def _cancel_stuck_job(self, job, now, db, crud, logger) -> bool:
+    async def _cancel_stuck_job(self, job: Any, now: Any, db: Any, crud: Any, logger: Any) -> bool:
         """Cancel a single stuck job via Temporal and update database."""
         from airweave import schemas
         from airweave.core.context import BaseContext

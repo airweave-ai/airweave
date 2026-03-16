@@ -6,8 +6,8 @@ and adds source rate limiting to prevent exhausting customer API quotas.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Optional, Union
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, Union
 from uuid import UUID
 
 import httpx
@@ -152,7 +152,7 @@ class AirweaveHttpClient:
                 response=fake_response,
             )
 
-    async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+    async def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """Make HTTP request with rate limiting check.
 
         Args:
@@ -208,35 +208,37 @@ class AirweaveHttpClient:
         )
 
     # Mimic httpx.AsyncClient methods
-    async def get(self, url: str, **kwargs) -> httpx.Response:
+    async def get(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make GET request through wrapper."""
         return await self.request("GET", url, **kwargs)
 
-    async def post(self, url: str, **kwargs) -> httpx.Response:
+    async def post(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make POST request through wrapper."""
         return await self.request("POST", url, **kwargs)
 
-    async def put(self, url: str, **kwargs) -> httpx.Response:
+    async def put(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make PUT request through wrapper."""
         return await self.request("PUT", url, **kwargs)
 
-    async def delete(self, url: str, **kwargs) -> httpx.Response:
+    async def delete(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make DELETE request through wrapper."""
         return await self.request("DELETE", url, **kwargs)
 
-    async def patch(self, url: str, **kwargs) -> httpx.Response:
+    async def patch(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make PATCH request through wrapper."""
         return await self.request("PATCH", url, **kwargs)
 
-    async def head(self, url: str, **kwargs) -> httpx.Response:
+    async def head(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make HEAD request through wrapper."""
         return await self.request("HEAD", url, **kwargs)
 
-    async def options(self, url: str, **kwargs) -> httpx.Response:
+    async def options(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make OPTIONS request through wrapper."""
         return await self.request("OPTIONS", url, **kwargs)
 
-    def stream(self, method: str, url: str, **kwargs):
+    def stream(
+        self, method: str, url: str, **kwargs: Any,
+    ) -> AbstractAsyncContextManager[httpx.Response]:
         """Stream request through wrapper (returns async context manager).
 
         This mimics httpx.AsyncClient.stream() for compatibility.
@@ -246,7 +248,9 @@ class AirweaveHttpClient:
         return self._stream_context_manager(method, url, **kwargs)
 
     @asynccontextmanager
-    async def _stream_context_manager(self, method: str, url: str, **kwargs):
+    async def _stream_context_manager(
+        self, method: str, url: str, **kwargs: Any
+    ) -> AsyncIterator[httpx.Response]:
         """Internal async context manager for streaming requests.
 
         Checks SSRF and rate limit before creating the stream.
@@ -265,17 +269,17 @@ class AirweaveHttpClient:
             yield response
 
     # Context manager support (delegate to wrapped client)
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AirweaveHttpClient":
         """Enter async context manager."""
         await self._client.__aenter__()
         return self
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *args: Any) -> None:
         """Exit async context manager."""
         await self._client.__aexit__(*args)
 
     # Additional httpx compatibility methods
-    async def aclose(self):
+    async def aclose(self) -> None:
         """Close the underlying HTTP client."""
         await self._client.aclose()
 
@@ -285,11 +289,11 @@ class AirweaveHttpClient:
         return self._client.is_closed
 
     @property
-    def timeout(self):
+    def timeout(self) -> httpx.Timeout:
         """Get timeout configuration."""
         return self._client.timeout
 
     @timeout.setter
-    def timeout(self, value):
+    def timeout(self, value: httpx.Timeout) -> None:
         """Set timeout configuration."""
         self._client.timeout = value

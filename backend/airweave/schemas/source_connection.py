@@ -59,7 +59,7 @@ class DirectAuthentication(BaseModel):
     credentials: Dict[str, Any] = Field(..., description="Authentication credentials")
 
     @model_validator(mode="after")
-    def validate_credentials(self):
+    def validate_credentials(self) -> "DirectAuthentication":
         """Ensure credentials are not empty."""
         if not self.credentials:
             raise ValueError("Credentials cannot be empty")
@@ -74,7 +74,7 @@ class OAuthTokenAuthentication(BaseModel):
     expires_at: Optional[datetime] = Field(None, description="Token expiry time")
 
     @model_validator(mode="after")
-    def validate_token(self):
+    def validate_token(self) -> "OAuthTokenAuthentication":
         """Validate token is not expired."""
         if self.expires_at and self.expires_at < datetime.now(timezone.utc):
             raise ValueError("Token has already expired")
@@ -102,7 +102,7 @@ class OAuthBrowserAuthentication(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_byoc_credentials(self):
+    def validate_byoc_credentials(self) -> "OAuthBrowserAuthentication":
         """Validate BYOC credentials are both provided or neither.
 
         OAuth2: client_id + client_secret
@@ -216,7 +216,7 @@ class SourceConnectionCreate(BaseModel):
     )
 
     @model_validator(mode="after")
-    def set_sync_immediately_default(self):
+    def set_sync_immediately_default(self) -> "SourceConnectionCreate":
         """Set sync_immediately default based on authentication type."""
         if self.sync_immediately is None and self.authentication is not None:
             # OAuth browser or BYOC should NOT sync immediately
@@ -303,7 +303,7 @@ class SourceConnectionUpdate(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_minimal_change(self):
+    def validate_minimal_change(self) -> "SourceConnectionUpdate":
         """Ensure at least one field is being updated."""
         # Check which fields were explicitly provided (even if None)
         provided_fields = self.model_fields_set
@@ -312,7 +312,7 @@ class SourceConnectionUpdate(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_direct_auth(self):
+    def validate_direct_auth(self) -> "SourceConnectionUpdate":
         """Ensure only direct auth can be updated with authentication."""
         if self.authentication and not isinstance(self.authentication, DirectAuthentication):
             raise ValueError("Direct auth can only be updated with authentication")

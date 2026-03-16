@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from enum import Enum
-from typing import AsyncGenerator, Generic, Optional, TypeVar
+from typing import Any, AsyncGenerator, Generic, Optional, TypeVar
 
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.utils.error_utils import get_error_message
@@ -67,18 +67,18 @@ class AsyncSourceStream(Generic[T]):
         """Check if stream is in an active state."""
         return self._state in (StreamState.RUNNING, StreamState.STARTING)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AsyncSourceStream[T]":
         """Context manager entry point."""
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
         """Context manager exit point."""
         await self.stop()
         # Don't suppress exceptions
         return False
 
-    async def _producer(self):
+    async def _producer(self) -> None:
         """Producer task that fills the queue from the source generator."""
         try:
             items_produced = 0
@@ -119,7 +119,7 @@ class AsyncSourceStream(Generic[T]):
             await self.queue.put(None)
             self.producer_done.set()
 
-    async def start(self):
+    async def start(self) -> None:
         """Start the background producer task.
 
         Runs the producer in a separate task so that it can run independently of the consumer.
@@ -136,7 +136,7 @@ class AsyncSourceStream(Generic[T]):
             if self._state == StreamState.STARTING:
                 self._state = StreamState.RUNNING
 
-    async def cancel(self):
+    async def cancel(self) -> None:
         """Cancel the stream immediately."""
         async with self._state_lock:
             if self._state in (StreamState.FINISHED, StreamState.CANCELLED):
@@ -158,7 +158,7 @@ class AsyncSourceStream(Generic[T]):
         # Drain queue to prevent deadlock
         await self._drain_queue()
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the producer gracefully and clean up resources."""
         async with self._state_lock:
             if self._state in (StreamState.FINISHED, StreamState.CANCELLED):

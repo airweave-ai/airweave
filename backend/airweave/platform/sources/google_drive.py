@@ -1126,7 +1126,9 @@ class GoogleDriveSource(BaseSource):
         try:
             if getattr(self, "batch_generation", False):
                 # Concurrent flow
-                async def _worker(file_obj: Dict):
+                async def _worker(
+                    file_obj: Dict[str, Any],
+                ) -> AsyncGenerator[GoogleDriveFileEntity, None]:
                     ent = await self._process_file_batch(file_obj, parent_breadcrumb)
                     if ent is not None:
                         yield ent
@@ -1289,8 +1291,9 @@ class GoogleDriveSource(BaseSource):
                                     if getattr(self, "batch_generation", False):
                                         # Concurrent traversal
                                         async def _worker_traverse(
-                                            file_obj: Dict, breadcrumb=drive_breadcrumb
-                                        ):
+                                            file_obj: Dict[str, Any],
+                                            breadcrumb: Optional[Breadcrumb] = drive_breadcrumb,
+                                        ) -> AsyncGenerator[GoogleDriveFileEntity, None]:
                                             ent = await self._process_file_batch(
                                                 file_obj, breadcrumb
                                             )
@@ -1372,10 +1375,10 @@ class GoogleDriveSource(BaseSource):
                                 if getattr(self, "batch_generation", False):
 
                                     async def _worker_match(
-                                        file_obj: Dict,
-                                        pattern=pat,
-                                        breadcrumb=drive_breadcrumb,
-                                    ):
+                                        file_obj: Dict[str, Any],
+                                        pattern: str = pat,
+                                        breadcrumb: Optional[Breadcrumb] = drive_breadcrumb,
+                                    ) -> AsyncGenerator[GoogleDriveFileEntity, None]:
                                         name = file_obj.get("name", "")
                                         if _fn.fnmatch(name, pattern):
                                             ent = await self._process_file_batch(
@@ -1463,8 +1466,11 @@ class GoogleDriveSource(BaseSource):
                                 if getattr(self, "batch_generation", False):
 
                                     async def _worker_traverse_user(
-                                        file_obj: Dict, breadcrumb=self._my_drive_breadcrumb
-                                    ):
+                                        file_obj: Dict[str, Any],
+                                        breadcrumb: Optional[Breadcrumb] = (
+                                            self._my_drive_breadcrumb
+                                        ),
+                                    ) -> AsyncGenerator[GoogleDriveFileEntity, None]:
                                         ent = await self._process_file_batch(file_obj, breadcrumb)
                                         if ent is not None:
                                             yield ent
@@ -1542,10 +1548,10 @@ class GoogleDriveSource(BaseSource):
                             if getattr(self, "batch_generation", False):
 
                                 async def _worker_match_user(
-                                    file_obj: Dict,
-                                    pattern=pat,
-                                    breadcrumb=self._my_drive_breadcrumb,
-                                ):
+                                    file_obj: Dict[str, Any],
+                                    pattern: str = pat,
+                                    breadcrumb: Optional[Breadcrumb] = self._my_drive_breadcrumb,
+                                ) -> AsyncGenerator[GoogleDriveFileEntity, None]:
                                     name = file_obj.get("name", "")
                                     if _fn.fnmatch(name, pattern):
                                         ent = await self._process_file_batch(file_obj, breadcrumb)

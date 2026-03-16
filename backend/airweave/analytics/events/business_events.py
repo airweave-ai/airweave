@@ -1,6 +1,6 @@
 """High-level business metrics tracking."""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from airweave.analytics.service import analytics
@@ -17,7 +17,7 @@ class BusinessEventTracker:
     @staticmethod
     def track_webhook_subscription_created(
         ctx: BaseContext, endpoint_id: str, url: str, event_types: List[str]
-    ):
+    ) -> None:
         """Track when a user creates a webhook subscription.
 
         Args:
@@ -57,7 +57,7 @@ class BusinessEventTracker:
         url_changed: bool,
         event_types_changed: bool,
         new_event_types: Optional[List[str]] = None,
-    ):
+    ) -> None:
         """Track when a user updates a webhook subscription.
 
         Args:
@@ -87,7 +87,7 @@ class BusinessEventTracker:
         )
 
     @staticmethod
-    def track_webhook_subscription_deleted(ctx: BaseContext, endpoint_id: str):
+    def track_webhook_subscription_deleted(ctx: BaseContext, endpoint_id: str) -> None:
         """Track when a user deletes a webhook subscription.
 
         Args:
@@ -108,7 +108,7 @@ class BusinessEventTracker:
         )
 
     @staticmethod
-    def track_webhook_secret_viewed(ctx: BaseContext, endpoint_id: str):
+    def track_webhook_secret_viewed(ctx: BaseContext, endpoint_id: str) -> None:
         """Track when a user views their webhook signing secret.
 
         This is useful for security auditing - knowing when secrets are accessed.
@@ -137,7 +137,7 @@ class BusinessEventTracker:
     @staticmethod
     def track_source_connection_created(
         ctx: BaseContext, connection_id: UUID, source_short_name: str
-    ):
+    ) -> None:
         """Track when a new source connection is created.
 
         Args:
@@ -165,9 +165,9 @@ class BusinessEventTracker:
         sync_id: UUID,
         entities_processed: int,
         entities_synced: int,
-        stats,
+        stats: Any,
         duration_ms: int,
-    ):
+    ) -> None:
         """Track when a sync operation completes successfully.
 
         Args:
@@ -204,7 +204,7 @@ class BusinessEventTracker:
         )
 
     @staticmethod
-    def track_sync_failed(ctx: BaseContext, sync_id: UUID, error: str, duration_ms: int):
+    def track_sync_failed(ctx: BaseContext, sync_id: UUID, error: str, duration_ms: int) -> None:
         """Track when a sync operation fails.
 
         Args:
@@ -231,7 +231,7 @@ class BusinessEventTracker:
     @staticmethod
     def track_sync_cancelled(
         ctx: BaseContext, source_short_name: str, source_connection_id: UUID, duration_ms: int
-    ):
+    ) -> None:
         """Track when a sync operation is cancelled.
 
         Args:
@@ -256,7 +256,7 @@ class BusinessEventTracker:
         )
 
     @staticmethod
-    def set_organization_properties(organization_id: UUID, properties: dict):
+    def set_organization_properties(organization_id: UUID, properties: dict) -> None:
         """Set properties for an organization group in PostHog.
 
         Args:
@@ -274,7 +274,7 @@ class BusinessEventTracker:
     @staticmethod
     def track_user_created(
         user_id: UUID, email: str, full_name: str, auth0_id: str, signup_source: str = "auth0"
-    ):
+    ) -> None:
         """Track when a new user is created during signup.
 
         Args:

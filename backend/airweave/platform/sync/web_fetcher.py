@@ -4,10 +4,11 @@ import asyncio
 import hashlib
 import os
 import secrets
-from typing import List
-from uuid import uuid4
+from typing import Any, Callable, List, Optional
+from uuid import UUID, uuid4
 
 import aiofiles
+import httpx
 from firecrawl import AsyncFirecrawlApp
 
 from airweave.core.config import settings
@@ -29,13 +30,11 @@ _ctti_semaphore = None
 _ctti_semaphore_lock = asyncio.Lock()
 
 
-async def get_httpx_client(logger: ContextualLogger):
+async def get_httpx_client(logger: ContextualLogger) -> httpx.AsyncClient:
     """Get or create shared httpx client with proper connection pooling."""
     global _httpx_client
 
     if _httpx_client is None:
-        import httpx
-
         # Optimized connection limits for high concurrency
         max_connections = getattr(settings, "WEB_FETCHER_MAX_CONNECTIONS", 200)
         keepalive_connections = getattr(settings, "WEB_FETCHER_KEEPALIVE_CONNECTIONS", 100)
@@ -69,7 +68,7 @@ async def get_httpx_client(logger: ContextualLogger):
     return _httpx_client
 
 
-async def cleanup_httpx_client(logger: ContextualLogger):
+async def cleanup_httpx_client(logger: ContextualLogger) -> None:
     """Clean up the httpx client when done."""
     global _httpx_client
     if _httpx_client:
@@ -88,7 +87,7 @@ async def cleanup_httpx_client(logger: ContextualLogger):
         logger.debug("🌐 HTTPX_CLIENT_CLEANUP Closed httpx client")
 
 
-async def ensure_temp_dir(logger: ContextualLogger):
+async def ensure_temp_dir(logger: ContextualLogger) -> str:
     """Ensure the temp directory exists (create once)."""
     global _temp_dir_created
     if not _temp_dir_created:
@@ -99,7 +98,9 @@ async def ensure_temp_dir(logger: ContextualLogger):
     return "/tmp/airweave"
 
 
-async def get_firecrawl_client(logger: ContextualLogger):
+async def get_firecrawl_client(
+    logger: ContextualLogger,
+) -> tuple[AsyncFirecrawlApp, asyncio.Semaphore]:
     """Get or create the shared Firecrawl client instance with connection pooling."""
     global _shared_firecrawl_client, _client_semaphore
 
@@ -140,7 +141,7 @@ async def get_firecrawl_client(logger: ContextualLogger):
     return _shared_firecrawl_client, _client_semaphore
 
 
-async def get_ctti_semaphore(logger: ContextualLogger):
+async def get_ctti_semaphore(logger: ContextualLogger) -> asyncio.Semaphore:
     """Get or create a special semaphore for CTTI entities with lower concurrency."""
     global _ctti_semaphore
 
@@ -159,8 +160,13 @@ async def get_ctti_semaphore(logger: ContextualLogger):
 
 
 async def _retry_with_backoff(
-    func, *args, max_retries=3, entity_context="", logger: ContextualLogger, **kwargs
-):
+    func: Callable[..., Any],
+    *args: Any,
+    max_retries: int = 3,
+    entity_context: str = "",
+    logger: ContextualLogger,
+    **kwargs: Any,
+) -> Any:
     """Retry a function with exponential backoff and improved error handling."""
     last_exception = None
     context_prefix = f"{entity_context} " if entity_context else ""
@@ -332,7 +338,7 @@ async def _is_entity_already_processed(
 
 async def _get_ctti_cached_content(
     web_entity: WebEntity, entity_context: str, logger: ContextualLogger
-):
+) -> Optional[Any]:
     """Check for and retrieve CTTI content from global storage."""
     from airweave.platform.storage import sync_file_manager
 
@@ -352,7 +358,7 @@ async def _get_ctti_cached_content(
     return None
 
 
-def _create_mock_scrape_result(markdown_content: str, web_entity: WebEntity):
+def _create_mock_scrape_result(markdown_content: str, web_entity: WebEntity) -> Any:
     """Create a mock scrape result object that mimics Firecrawl's response."""
 
     class MockScrapeResult:
@@ -378,7 +384,7 @@ def _create_mock_scrape_result(markdown_content: str, web_entity: WebEntity):
 
 async def _scrape_with_firecrawl_internal(
     web_entity: WebEntity, entity_context: str, logger: ContextualLogger
-):
+) -> Any:
     """Internal function to handle the actual scraping with connection limiting."""
     app, semaphore = await get_firecrawl_client(logger)
 
@@ -422,7 +428,7 @@ async def _scrape_with_firecrawl_internal(
 
 async def _perform_firecrawl_scrape(
     web_entity: WebEntity, entity_context: str, logger: ContextualLogger
-):
+) -> Any:
     """Perform the actual Firecrawl scrape with timeout handling."""
     app, _ = await get_firecrawl_client(logger)
 
@@ -464,8 +470,12 @@ async def _perform_firecrawl_scrape(
 
 
 async def _try_scrape_with_timeouts(
-    app, web_entity: WebEntity, timeouts: list, entity_context: str, logger: ContextualLogger
-):
+    app: AsyncFirecrawlApp,
+    web_entity: WebEntity,
+    timeouts: list[float],
+    entity_context: str,
+    logger: ContextualLogger,
+) -> Any:
     """Try scraping with progressively longer timeouts."""
     # Check if this is a CTTI entity for special timeout handling
     from airweave.platform.storage import sync_file_manager
@@ -500,7 +510,11 @@ async def _try_scrape_with_timeouts(
             )
 
 
-async def _scrape_web_content(web_entity: WebEntity, entity_context: str, logger: ContextualLogger):
+async def _scrape_web_content(
+    web_entity: WebEntity,
+    entity_context: str,
+    logger: ContextualLogger,
+) -> Any:
     """Scrape web content using Firecrawl or retrieve from storage for CTTI entities."""
     # Import storage manager here to avoid circular imports
     from airweave.platform.storage import sync_file_manager
@@ -524,7 +538,7 @@ async def _scrape_web_content(web_entity: WebEntity, entity_context: str, logger
 
 async def _create_and_store_file_entity(
     web_entity: WebEntity,
-    scrape_result,
+    scrape_result: Any,
     is_ctti: bool,
     entity_context: str,
     logger: ContextualLogger,
@@ -558,7 +572,7 @@ async def _create_and_store_file_entity(
         await f.write(markdown_content)
 
     # Calculate file size and checksum in parallel with file write
-    def _calculate_file_metrics(content: str):
+    def _calculate_file_metrics(content: str) -> tuple[int, str]:
         encoded_content = content.encode("utf-8")
         file_size = len(encoded_content)
         checksum = hashlib.sha256(encoded_content).hexdigest()
@@ -636,10 +650,10 @@ def _create_web_file_entity(
     title: str,
     file_size: int,
     temp_file_path: str,
-    file_uuid,
+    file_uuid: UUID,
     checksum: str,
-    metadata,
-    enhanced_metadata: dict,
+    metadata: Any,
+    enhanced_metadata: dict[str, Any],
 ) -> WebFileEntity:
     """Create WebFileEntity with optimized field copying."""
     return WebFileEntity(

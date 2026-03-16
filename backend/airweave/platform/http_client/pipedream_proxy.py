@@ -2,8 +2,8 @@
 
 import base64
 import urllib
-from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from typing import Any, AsyncIterator, Dict, Optional
 
 import httpx
 
@@ -37,9 +37,9 @@ class PipedreamProxyClient:
         environment: str,
         pipedream_token: Optional[str] = None,  # Can be None, will fetch dynamically
         token_provider: Optional[Any] = None,  # Callable that returns fresh token
-        app_info: Dict[str, Any] = None,
-        **httpx_kwargs,  # Accept standard httpx params for compatibility
-    ):
+        app_info: Optional[Dict[str, Any]] = None,
+        **httpx_kwargs: Any,  # Accept standard httpx params for compatibility
+    ) -> None:
         """Initialize Pipedream proxy client.
 
         Args:
@@ -63,45 +63,45 @@ class PipedreamProxyClient:
         self._app_info = app_info or {}
         self._client = httpx.AsyncClient(**httpx_kwargs)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "PipedreamProxyClient":
         """Enter async context manager."""
         await self._client.__aenter__()
         return self
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *args: Any) -> None:
         """Exit async context manager."""
         await self._client.__aexit__(*args)
 
     # Mimic httpx.AsyncClient methods
-    async def get(self, url: str, **kwargs) -> httpx.Response:
+    async def get(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make GET request through proxy."""
         return await self.request("GET", url, **kwargs)
 
-    async def post(self, url: str, **kwargs) -> httpx.Response:
+    async def post(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make POST request through proxy."""
         return await self.request("POST", url, **kwargs)
 
-    async def put(self, url: str, **kwargs) -> httpx.Response:
+    async def put(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make PUT request through proxy."""
         return await self.request("PUT", url, **kwargs)
 
-    async def delete(self, url: str, **kwargs) -> httpx.Response:
+    async def delete(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make DELETE request through proxy."""
         return await self.request("DELETE", url, **kwargs)
 
-    async def patch(self, url: str, **kwargs) -> httpx.Response:
+    async def patch(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make PATCH request through proxy."""
         return await self.request("PATCH", url, **kwargs)
 
-    async def head(self, url: str, **kwargs) -> httpx.Response:
+    async def head(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make HEAD request through proxy."""
         return await self.request("HEAD", url, **kwargs)
 
-    async def options(self, url: str, **kwargs) -> httpx.Response:
+    async def options(self, url: str, **kwargs: Any) -> httpx.Response:
         """Make OPTIONS request through proxy."""
         return await self.request("OPTIONS", url, **kwargs)
 
-    async def _prepare_proxy_request(self, url: str, **kwargs) -> tuple[str, dict]:
+    async def _prepare_proxy_request(self, url: str, **kwargs: Any) -> tuple[str, dict[str, Any]]:
         """Prepare URL and kwargs for proxy request.
 
         Handles:
@@ -144,7 +144,7 @@ class PipedreamProxyClient:
 
         return proxy_url, kwargs
 
-    async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+    async def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """Route request through Pipedream proxy.
 
         Args:
@@ -220,7 +220,9 @@ class PipedreamProxyClient:
 
         return proxy_url
 
-    def stream(self, method: str, url: str, **kwargs):
+    def stream(
+        self, method: str, url: str, **kwargs: Any,
+    ) -> AbstractAsyncContextManager[httpx.Response]:
         """Stream request through proxy (returns async context manager).
 
         This mimics httpx.AsyncClient.stream() for compatibility.
@@ -230,7 +232,9 @@ class PipedreamProxyClient:
         return self._stream_context_manager(method, url, **kwargs)
 
     @asynccontextmanager
-    async def _stream_context_manager(self, method: str, url: str, **kwargs):
+    async def _stream_context_manager(
+        self, method: str, url: str, **kwargs: Any
+    ) -> AsyncIterator[httpx.Response]:
         """Internal async context manager for streaming requests.
 
         This allows us to do async preparation (like getting fresh tokens)
@@ -245,7 +249,7 @@ class PipedreamProxyClient:
             yield response
 
     # Additional httpx compatibility methods
-    async def aclose(self):
+    async def aclose(self) -> None:
         """Close the underlying HTTP client."""
         await self._client.aclose()
 
@@ -255,11 +259,11 @@ class PipedreamProxyClient:
         return self._client.is_closed
 
     @property
-    def timeout(self):
+    def timeout(self) -> httpx.Timeout:
         """Get timeout configuration."""
         return self._client.timeout
 
     @timeout.setter
-    def timeout(self, value):
+    def timeout(self, value: httpx.Timeout) -> None:
         """Set timeout configuration."""
         self._client.timeout = value

@@ -54,7 +54,7 @@ class GCSBackend(StorageBackend):
             f"{f' (project={project})' if project else ''}"
         )
 
-    def _get_client(self):
+    def _get_client(self) -> Any:
         """Lazy-load GCS client (sync)."""
         if self._client is None:
             try:
@@ -69,7 +69,7 @@ class GCSBackend(StorageBackend):
                 ) from e
         return self._client
 
-    def _get_bucket(self):
+    def _get_bucket(self) -> Any:
         """Get bucket object."""
         self._get_client()
         return self._bucket
@@ -89,7 +89,7 @@ class GCSBackend(StorageBackend):
 
         blob_name = self._resolve(path)
 
-        def _write():
+        def _write() -> None:
             bucket = self._get_bucket()
             blob = bucket.blob(blob_name)
             content = json.dumps(data, indent=2, default=str)
@@ -106,14 +106,15 @@ class GCSBackend(StorageBackend):
 
         blob_name = self._resolve(path)
 
-        def _read():
+        def _read() -> Dict[str, Any]:
             from google.cloud.exceptions import NotFound
 
             bucket = self._get_bucket()
             blob = bucket.blob(blob_name)
             try:
                 content = blob.download_as_text()
-                return json.loads(content)
+                result: Dict[str, Any] = json.loads(content)
+                return result
             except NotFound:
                 raise StorageNotFoundError(f"Path not found: {path}")
 
@@ -132,7 +133,7 @@ class GCSBackend(StorageBackend):
 
         blob_name = self._resolve(path)
 
-        def _write():
+        def _write() -> None:
             bucket = self._get_bucket()
             blob = bucket.blob(blob_name)
             blob.upload_from_string(content)
@@ -148,13 +149,14 @@ class GCSBackend(StorageBackend):
 
         blob_name = self._resolve(path)
 
-        def _read():
+        def _read() -> bytes:
             from google.cloud.exceptions import NotFound
 
             bucket = self._get_bucket()
             blob = bucket.blob(blob_name)
             try:
-                return blob.download_as_bytes()
+                data: bytes = blob.download_as_bytes()
+                return data
             except NotFound:
                 raise StorageNotFoundError(f"Path not found: {path}")
 
@@ -171,10 +173,11 @@ class GCSBackend(StorageBackend):
 
         blob_name = self._resolve(path)
 
-        def _exists():
+        def _exists() -> bool:
             bucket = self._get_bucket()
             blob = bucket.blob(blob_name)
-            return blob.exists()
+            result: bool = blob.exists()
+            return result
 
         try:
             return await asyncio.to_thread(_exists)
@@ -187,7 +190,7 @@ class GCSBackend(StorageBackend):
 
         blob_name = self._resolve(path)
 
-        def _delete():
+        def _delete() -> bool:
             from google.cloud.exceptions import NotFound
 
             bucket = self._get_bucket()
@@ -224,7 +227,7 @@ class GCSBackend(StorageBackend):
         if prefix and not full_prefix.endswith("/"):
             full_prefix += "/"
 
-        def _list():
+        def _list() -> List[str]:
             bucket = self._get_bucket()
             files = []
             for blob in bucket.list_blobs(prefix=full_prefix):
@@ -249,7 +252,7 @@ class GCSBackend(StorageBackend):
         if not full_prefix.endswith("/"):
             full_prefix += "/"
 
-        def _list_dirs():
+        def _list_dirs() -> List[str]:
             bucket = self._get_bucket()
             dirs = set()
 
@@ -280,7 +283,7 @@ class GCSBackend(StorageBackend):
         if prefix and not full_prefix.endswith("/"):
             full_prefix += "/"
 
-        def _count():
+        def _count() -> int:
             bucket = self._get_bucket()
             count = 0
             for blob in bucket.list_blobs(prefix=full_prefix):

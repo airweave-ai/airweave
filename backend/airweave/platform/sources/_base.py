@@ -60,7 +60,7 @@ class BaseSource:
     feature_flag: ClassVar[Optional[str]] = None
     internal: ClassVar[bool] = False
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the base source."""
         self._logger: Optional[Any] = None  # Store contextual logger as instance variable
         self._token_manager: Optional[Any] = None  # Store token manager for OAuth sources
@@ -71,14 +71,14 @@ class BaseSource:
         self._source_connection_id: Optional[str] = None
 
     @property
-    def logger(self):
+    def logger(self) -> Any:
         """Get the logger for this source, falling back to default if not set."""
         if self._logger is not None:
             return self._logger
         # Fall back to default logger
         return logger
 
-    def set_logger(self, logger) -> None:
+    def set_logger(self, logger: Any) -> None:
         """Set a contextual logger for this source."""
         self._logger = logger
 
@@ -92,11 +92,11 @@ class BaseSource:
         self._source_connection_id = source_connection_id
 
     @property
-    def token_manager(self):
+    def token_manager(self) -> Optional[Any]:
         """Get the token manager for this source."""
         return self._token_manager
 
-    def set_token_manager(self, token_manager) -> None:
+    def set_token_manager(self, token_manager: Any) -> None:
         """Set a token manager for this source.
 
         Args:
@@ -115,11 +115,11 @@ class BaseSource:
             self.logger.debug("HTTP client factory configured")
 
     @property
-    def file_downloader(self):
+    def file_downloader(self) -> Optional[Any]:
         """Get the file downloader for this source."""
         return self._file_downloader
 
-    def set_file_downloader(self, downloader) -> None:
+    def set_file_downloader(self, downloader: Any) -> None:
         """Set file downloader service for this source.
 
         Args:
@@ -128,7 +128,7 @@ class BaseSource:
         self._file_downloader = downloader
 
     @asynccontextmanager
-    async def http_client(self, **kwargs):
+    async def http_client(self, **kwargs: Any) -> AsyncGenerator[Any, None]:
         """Get HTTP client with proper lifecycle management.
 
         Args:
@@ -160,7 +160,7 @@ class BaseSource:
             async with httpx.AsyncClient(**kwargs) as client:
                 yield client
 
-    def set_cursor(self, cursor) -> None:
+    def set_cursor(self, cursor: Any) -> None:
         """Set the cursor for this source.
 
         Args:
@@ -169,7 +169,7 @@ class BaseSource:
         self._cursor = cursor
 
     @property
-    def cursor(self):
+    def cursor(self) -> Optional[Any]:
         """Get the cursor for this source."""
         return getattr(self, "_cursor", None)
 
@@ -720,9 +720,9 @@ class BaseSource:
 
     async def _drain_results_unordered(
         self,
-        results,
-        tasks,
-        producer_finished,
+        results: Any,
+        tasks: list[Any],
+        producer_finished: Any,
         get_total_items: Callable[[], int],
         stop_on_error: bool,
         sentinel: object,
@@ -750,9 +750,9 @@ class BaseSource:
 
     async def _drain_results_preserve_order(
         self,
-        results,
-        tasks,
-        producer_finished,
+        results: Any,
+        tasks: list[Any],
+        producer_finished: Any,
         get_total_items: Callable[[], int],
         stop_on_error: bool,
         sentinel: object,

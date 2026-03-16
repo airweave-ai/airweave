@@ -249,7 +249,12 @@ class SearchFactory:
             "generate_answer": generate_answer,
         }
 
-    def _log_source_modes(self, ctx: ApiContext, federated_sources: List, has_vector_sources: bool):
+    def _log_source_modes(
+        self,
+        ctx: ApiContext,
+        federated_sources: List,
+        has_vector_sources: bool,
+    ) -> None:
         """Log information about source modes."""
         try:
             federated_classes = [s.__class__.__name__ for s in federated_sources]
@@ -267,7 +272,7 @@ class SearchFactory:
         has_vector_sources: bool,
         params: Dict[str, Any],
         search_request: SearchRequest,
-    ):
+    ) -> None:
         """Emit skip notices for Qdrant-only features when no vector sources exist."""
         if has_vector_sources:
             return
@@ -423,7 +428,7 @@ class SearchFactory:
         stream: bool,
         search_request: SearchRequest,
         params: Dict[str, Any],
-    ):
+    ) -> None:
         """Log search context configuration."""
         ctx.logger.debug(
             f"[SearchFactory] Built search context: \n"
@@ -535,7 +540,7 @@ class SearchFactory:
         api_keys: Dict[str, Optional[str]],
         ctx: ApiContext,
         error_message: str,
-    ):
+    ) -> None:
         """Add a provider list to the dict or raise an error if none available."""
         provider_list = self._init_all_providers_for_operation(operation_name, api_keys, ctx)
         if not provider_list:
@@ -545,7 +550,7 @@ class SearchFactory:
             f"[SearchFactory] Initialized {len(provider_list)} provider(s) for {operation_name}"
         )
 
-    async def _has_vector_sources(self, db: AsyncSession, collection, ctx: ApiContext) -> bool:
+    async def _has_vector_sources(self, db: AsyncSession, collection: Any, ctx: ApiContext) -> bool:
         """Return True if collection has any non-federated (vector-backed) sources."""
         try:
             source_connections = await crud.source_connection.get_for_collection(
@@ -571,7 +576,7 @@ class SearchFactory:
     async def _resolve_destination(
         self,
         db: AsyncSession,
-        collection,
+        collection: Any,
         ctx: ApiContext,
         destination_override: Optional[DestinationOverride] = None,
     ) -> BaseDestination:
@@ -606,7 +611,7 @@ class SearchFactory:
             return await self._get_destination_for_collection(db, collection, ctx)
 
     async def _get_destination_for_collection(
-        self, db: AsyncSession, collection, ctx: ApiContext
+        self, db: AsyncSession, collection: Any, ctx: ApiContext
     ) -> BaseDestination:
         """Get the default destination instance for a collection.
 
@@ -810,7 +815,7 @@ class SearchFactory:
         return RerankModelConfig(**model_dict)
 
     async def get_federated_sources(
-        self, db: AsyncSession, collection, ctx: ApiContext
+        self, db: AsyncSession, collection: Any, ctx: ApiContext
     ) -> List[BaseSource]:
         """Get instantiated federated sources for a collection.
 
@@ -845,7 +850,7 @@ class SearchFactory:
 
     # [code blue] replace with SourceLifecycleService.create()
     async def _instantiate_federated_source(
-        self, db: AsyncSession, source_connection, ctx: ApiContext
+        self, db: AsyncSession, source_connection: Any, ctx: ApiContext
     ) -> Optional[BaseSource]:
         """Instantiate federated source - mirrors sync factory pattern.
 

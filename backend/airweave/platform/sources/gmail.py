@@ -10,7 +10,7 @@ Uses concurrent/batching processing for optimal performance:
 import asyncio
 import base64
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional, Set
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -352,7 +352,7 @@ class GmailSource(BaseSource):
         """
         lock = asyncio.Lock()
 
-        async def _thread_worker(thread_info: Dict):
+        async def _thread_worker(thread_info: Dict[str, Any]) -> AsyncGenerator[BaseEntity, None]:
             thread_id = thread_info.get("id")
             if not thread_id:
                 return
@@ -423,7 +423,7 @@ class GmailSource(BaseSource):
     ) -> AsyncGenerator[BaseEntity, None]:
         """Process messages in a thread concurrently."""
 
-        async def _message_worker(message_data: Dict):
+        async def _message_worker(message_data: Dict[str, Any]) -> AsyncGenerator[BaseEntity, None]:
             msg_id = message_data.get("id", "unknown")
             if await self._should_skip_message(msg_id, processed_message_ids, lock=lock):
                 return
@@ -653,7 +653,10 @@ class GmailSource(BaseSource):
         body_html = None
 
         # Function to recursively extract body parts
-        def extract_from_parts(parts, depth=0):
+        def extract_from_parts(
+            parts: List[Dict[str, Any]],
+            depth: int = 0,
+        ) -> Tuple[Optional[str], Optional[str]]:
             p_txt, p_html = None, None
 
             for part in parts:
@@ -720,7 +723,11 @@ class GmailSource(BaseSource):
         """Process message attachments concurrently using bounded concurrency driver."""
 
         # Helper: recursively collect candidate attachment descriptors (no network yet)
-        def collect_attachment_descriptors(part, out: List[Dict], depth=0):
+        def collect_attachment_descriptors(
+            part: Dict[str, Any],
+            out: List[Dict[str, Any]],
+            depth: int = 0,
+        ) -> None:
             mime_type = part.get("mimeType", "")
             filename = part.get("filename", "")
             body = part.get("body", {}) or {}
@@ -753,7 +760,9 @@ class GmailSource(BaseSource):
         if not descriptors:
             return
 
-        async def _attachment_worker(descriptor: Dict):
+        async def _attachment_worker(
+            descriptor: Dict[str, Any],
+        ) -> AsyncGenerator[GmailAttachmentEntity, None]:
             mime_type = descriptor["mime_type"]
             filename = descriptor["filename"]
             attachment_id = descriptor["attachment_id"]
@@ -931,7 +940,7 @@ class GmailSource(BaseSource):
         if not items:
             return
 
-        async def _added_worker(item: Dict[str, str]):
+        async def _added_worker(item: Dict[str, str]) -> AsyncGenerator[BaseEntity, None]:
             msg_id = item["msg_id"]
             thread_id = item.get("thread_id") or "unknown"
             try:

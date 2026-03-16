@@ -417,10 +417,10 @@ class SharePoint2019V2Source(BaseSource):
 
     async def _download_and_save_file(
         self,
-        entity,
-        client,
+        entity: BaseEntity,
+        client: Any,
         site_url: str,
-    ):
+    ) -> BaseEntity:
         """Download file content and save using file downloader.
 
         Args:
@@ -462,7 +462,7 @@ class SharePoint2019V2Source(BaseSource):
     async def _download_files_parallel(
         self,
         pending: List[PendingFileDownload],
-        client,
+        client: Any,
     ) -> List[BaseEntity]:
         """Download file contents in parallel with bounded concurrency.
 
@@ -476,7 +476,7 @@ class SharePoint2019V2Source(BaseSource):
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_FILE_DOWNLOADS)
         results: List[BaseEntity] = []
 
-        async def download_one(item: PendingFileDownload):
+        async def download_one(item: PendingFileDownload) -> None:
             async with semaphore:
                 try:
                     entity = await self._download_and_save_file(item.entity, client, item.site_url)
@@ -497,8 +497,8 @@ class SharePoint2019V2Source(BaseSource):
         list_id: str,
         breadcrumbs: List[Breadcrumb],
         is_doc_lib: bool,
-        client,
-        ldap_client,
+        client: Any,
+        ldap_client: Any,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Process a batch of items, downloading files in parallel.
 
@@ -1009,7 +1009,7 @@ class SharePoint2019V2Source(BaseSource):
             ldap_client.close()
 
     async def _targeted_sync_site(
-        self, sp_client, client, ldap_client, site_url: str
+        self, sp_client: Any, client: Any, ldap_client: Any, site_url: str
     ) -> AsyncGenerator[BaseEntity, None]:
         """Fetch a site and all its lists + items for targeted sync."""
         # Fetch site entity
@@ -1038,9 +1038,9 @@ class SharePoint2019V2Source(BaseSource):
 
     async def _targeted_sync_list(
         self,
-        sp_client,
-        client,
-        ldap_client,
+        sp_client: Any,
+        client: Any,
+        ldap_client: Any,
         site_url: str,
         list_id: str,
         parent_breadcrumbs: Optional[List[Breadcrumb]] = None,
@@ -1108,8 +1108,8 @@ class SharePoint2019V2Source(BaseSource):
         list_id: str,
         breadcrumbs: List[Breadcrumb],
         is_doc_lib: bool,
-        client,
-        ldap_client,
+        client: Any,
+        ldap_client: Any,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Process a single list item, yielding appropriate entity.
 
@@ -1360,8 +1360,8 @@ class SharePoint2019V2Source(BaseSource):
 
     async def _expand_item_level_ad_groups(
         self,
-        ldap_client,
-        expanded_ad_groups: set,
+        ldap_client: Any,
+        expanded_ad_groups: set[str],
     ) -> AsyncGenerator[MembershipTuple, None]:
         """Expand AD groups directly assigned to items (not via SP site groups).
 
@@ -1417,7 +1417,7 @@ class SharePoint2019V2Source(BaseSource):
 
         return False, "incremental ACL sync (valid cookie)"
 
-    async def get_acl_changes(self, dirsync_cookie: str = ""):
+    async def get_acl_changes(self, dirsync_cookie: str = "") -> Any:
         """Get incremental ACL membership changes via AD DirSync.
 
         Called by the ACL pipeline when incremental ACL sync is possible.

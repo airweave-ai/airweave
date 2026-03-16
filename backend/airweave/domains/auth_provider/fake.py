@@ -1,8 +1,12 @@
 """Fake auth provider domain objects for testing."""
 
+from typing import Any, Optional
+
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
+from airweave.api.context import ApiContext
 from airweave.domains.auth_provider.types import AuthProviderMetadata, AuthProviderRegistryEntry
 
 
@@ -55,11 +59,11 @@ class FakeAuthProviderService:
         """Seed auth provider metadata by short_name."""
         self._metadata[metadata.short_name] = metadata
 
-    async def list_metadata(self, *, ctx):
+    async def list_metadata(self, *, ctx: ApiContext) -> list[AuthProviderMetadata]:
         self._calls.append(("list_metadata", ctx))
         return list(self._metadata.values())
 
-    async def get_metadata(self, *, short_name: str, ctx):
+    async def get_metadata(self, *, short_name: str, ctx: ApiContext) -> AuthProviderMetadata:
         self._calls.append(("get_metadata", short_name, ctx))
         if short_name not in self._metadata:
             raise HTTPException(status_code=404, detail=f"Auth provider not found: {short_name}")
@@ -69,12 +73,16 @@ class FakeAuthProviderService:
         """Seed a connection response object by readable_id."""
         self._connections[connection.readable_id] = connection
 
-    async def list_connections(self, db, *, ctx, skip: int = 0, limit: int = 100):
+    async def list_connections(
+        self, db: AsyncSession, *, ctx: ApiContext, skip: int = 0, limit: int = 100
+    ) -> list[schemas.AuthProviderConnection]:
         self._calls.append(("list_connections", db, ctx, skip, limit))
         values = list(self._connections.values())
         return values[skip : skip + limit]
 
-    async def get_connection(self, db, *, readable_id: str, ctx):
+    async def get_connection(
+        self, db: AsyncSession, *, readable_id: str, ctx: ApiContext
+    ) -> schemas.AuthProviderConnection:
         self._calls.append(("get_connection", db, readable_id, ctx))
         if readable_id not in self._connections:
             raise HTTPException(
@@ -82,21 +90,29 @@ class FakeAuthProviderService:
             )
         return self._connections[readable_id]
 
-    async def create_connection(self, db, *, obj_in, ctx):
+    async def create_connection(
+        self, db: AsyncSession, *, obj_in: Any, ctx: ApiContext
+    ) -> schemas.AuthProviderConnection:
         self._calls.append(("create_connection", db, obj_in, ctx))
         return await self.get_connection(db, readable_id=obj_in.readable_id, ctx=ctx)
 
-    async def update_connection(self, db, *, readable_id: str, obj_in, ctx):
+    async def update_connection(
+        self, db: AsyncSession, *, readable_id: str, obj_in: Any, ctx: ApiContext
+    ) -> schemas.AuthProviderConnection:
         self._calls.append(("update_connection", db, readable_id, obj_in, ctx))
         return await self.get_connection(db, readable_id=readable_id, ctx=ctx)
 
-    async def delete_connection(self, db, *, readable_id: str, ctx):
+    async def delete_connection(
+        self, db: AsyncSession, *, readable_id: str, ctx: ApiContext
+    ) -> schemas.AuthProviderConnection:
         self._calls.append(("delete_connection", db, readable_id, ctx))
         connection = await self.get_connection(db, readable_id=readable_id, ctx=ctx)
         self._connections.pop(readable_id, None)
         return connection
 
-    def validate_provider_config(self, short_name, provider_config=None):
+    def validate_provider_config(
+        self, short_name: str, provider_config: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         self._calls.append(("validate_provider_config", short_name, provider_config))
         if provider_config is None:
             return {}

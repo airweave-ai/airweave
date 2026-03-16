@@ -6,7 +6,7 @@ from the studies table, and creates WebEntity instances with ClinicalTrials.gov 
 
 import asyncio
 import secrets
-from typing import Any, AsyncGenerator, Dict, Optional, Union
+from typing import Any, AsyncGenerator, Callable, Coroutine, Dict, Optional, Union
 
 import asyncpg
 
@@ -44,7 +44,7 @@ class CTTISource(BaseSource):
     AACT_SCHEMA = "ctgov"
     AACT_TABLE = "studies"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the CTTI source."""
         super().__init__()
         self.pool: Optional[asyncpg.Pool] = None
@@ -101,7 +101,13 @@ class CTTISource(BaseSource):
 
         return value
 
-    async def _retry_with_backoff(self, func, *args, max_retries: int = 3, **kwargs):
+    async def _retry_with_backoff(
+        self,
+        func: Callable[..., Coroutine[Any, Any, Any]],
+        *args: Any,
+        max_retries: int = 3,
+        **kwargs: Any,
+    ) -> Any:
         """Retry a function with exponential backoff.
 
         Args:
@@ -189,7 +195,13 @@ class CTTISource(BaseSource):
             await self.pool.close()
             self.pool = None
 
-    async def _fetch_records(self, last_nct_id: str, remaining: int, total_synced: int, limit: int):
+    async def _fetch_records(
+        self,
+        last_nct_id: str,
+        remaining: int,
+        total_synced: int,
+        limit: int,
+    ) -> Any:
         """Fetch clinical trial records from the AACT database.
 
         Handles sync-mode logging, query construction, and query execution
@@ -224,7 +236,7 @@ class CTTISource(BaseSource):
             """
             query_args = []
 
-        async def _execute_query():
+        async def _execute_query() -> Any:
             async with pool.acquire() as conn:
                 if last_nct_id:
                     self.logger.debug(
@@ -325,7 +337,7 @@ class CTTISource(BaseSource):
         try:
             pool = await self._ensure_pool()
 
-            async def _ping():
+            async def _ping() -> None:
                 async with pool.acquire() as conn:
                     await conn.fetchval(
                         f'SELECT 1 FROM "{self.AACT_SCHEMA}"."{self.AACT_TABLE}" LIMIT 1'

@@ -162,7 +162,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         return result
 
     async def _create_with_direct_auth(
-        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext
+        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry: Any, ctx: ApiContext
     ) -> SourceConnectionSchema:
         if not obj_in.authentication or not isinstance(obj_in.authentication, DirectAuthentication):
             raise HTTPException(
@@ -196,7 +196,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         )
 
     async def _create_with_oauth_token(
-        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext
+        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry: Any, ctx: ApiContext
     ) -> SourceConnectionSchema:
         if not obj_in.authentication or not isinstance(
             obj_in.authentication, OAuthTokenAuthentication
@@ -234,7 +234,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         )
 
     async def _create_with_auth_provider(
-        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext
+        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry: Any, ctx: ApiContext
     ) -> SourceConnectionSchema:
         if not obj_in.authentication or not isinstance(
             obj_in.authentication, AuthProviderAuthentication
@@ -344,7 +344,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         return response
 
     async def _create_with_oauth_browser(
-        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext
+        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry: Any, ctx: ApiContext
     ) -> SourceConnectionSchema:
         auth = obj_in.authentication
         if auth is not None and not isinstance(auth, OAuthBrowserAuthentication):
@@ -463,7 +463,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         db: AsyncSession,
         *,
         obj_in: SourceConnectionCreate,
-        entry,
+        entry: Any,
         validated_config: dict[str, Any],
         credential_payload: dict[str, Any],
         auth_method: AuthenticationMethod,
@@ -559,7 +559,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         auth_config_name: Optional[str],
         ctx: ApiContext,
         uow: UnitOfWork,
-    ):
+    ) -> Any:
         oauth_type_value: Optional[SourceOAuthType] = None
         if oauth_type:
             try:
@@ -588,7 +588,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         credential_id: Optional[UUID],
         ctx: ApiContext,
         uow: UnitOfWork,
-    ):
+    ) -> Any:
         connection_in = ConnectionCreate(
             name=name,
             integration_type=IntegrationType.SOURCE,
@@ -598,7 +598,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         )
         return await self._connection_repo.create(db, obj_in=connection_in, ctx=ctx, uow=uow)
 
-    async def _get_collection(self, db: AsyncSession, readable_id: str, ctx: ApiContext):
+    async def _get_collection(self, db: AsyncSession, readable_id: str, ctx: ApiContext) -> Any:
         collection = await self._collection_repo.get_by_readable_id(
             db, readable_id=readable_id, ctx=ctx
         )
@@ -606,7 +606,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             raise NotFoundException("Collection not found")
         return collection
 
-    def _get_source_entry(self, short_name: str):
+    def _get_source_entry(self, short_name: str) -> Any:
         try:
             return self._source_registry.get(short_name)
         except KeyError as exc:
@@ -635,7 +635,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
 
     @staticmethod
     def _validate_auth_compatibility(
-        source_class, short_name: str, auth_method: AuthenticationMethod
+        source_class: Any, short_name: str, auth_method: AuthenticationMethod
     ) -> None:
         if source_class.supports_auth_method(auth_method):
             return
@@ -650,7 +650,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
 
     @staticmethod
     def _extract_template_configs(
-        entry, validated_config: dict[str, Any]
+        entry: Any, validated_config: dict[str, Any]
     ) -> Optional[dict[str, Any]]:
         config_class = entry.config_ref
         if not config_class:
@@ -668,7 +668,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         self,
         *,
         connection: schemas.Connection,
-        sync_result,
+        sync_result: Any,
         collection: schemas.CollectionRecord,
         source_connection_id: UUID,
         ctx: ApiContext,

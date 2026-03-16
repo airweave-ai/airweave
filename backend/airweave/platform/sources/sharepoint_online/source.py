@@ -294,7 +294,7 @@ class SharePointOnlineSource(BaseSource):
 
     async def _browse_drive_children(
         self,
-        client,
+        client: httpx.AsyncClient,
         graph_client: GraphClient,
         drive_id: str,
         folder_id: str,
@@ -344,7 +344,9 @@ class SharePointOnlineSource(BaseSource):
 
     # -- File Download --
 
-    async def _download_and_save_file(self, entity, client, drive_id: str, item_id: str):
+    async def _download_and_save_file(
+        self, entity: BaseEntity, client: httpx.AsyncClient, drive_id: str, item_id: str
+    ) -> BaseEntity:
         """Download file content and save via file_downloader."""
         graph_client = self._create_graph_client()
         try:
@@ -373,12 +375,12 @@ class SharePointOnlineSource(BaseSource):
             raise EntityProcessingError(f"Failed to download file {entity.file_name}: {e}") from e
 
     async def _download_files_parallel(
-        self, pending: List[PendingFileDownload], client
+        self, pending: List[PendingFileDownload], client: httpx.AsyncClient
     ) -> List[BaseEntity]:
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_FILE_DOWNLOADS)
         results: List[BaseEntity] = []
 
-        async def download_one(item: PendingFileDownload):
+        async def download_one(item: PendingFileDownload) -> None:
             async with semaphore:
                 try:
                     entity = await self._download_and_save_file(
@@ -441,7 +443,9 @@ class SharePointOnlineSource(BaseSource):
             async for entity in self._incremental_sync():
                 yield entity
 
-    async def _discover_sites(self, client, graph_client: GraphClient) -> List[Dict[str, Any]]:
+    async def _discover_sites(
+        self, client: httpx.AsyncClient, graph_client: GraphClient
+    ) -> List[Dict[str, Any]]:
         """Discover sites to sync based on config.
 
         Supports:
@@ -473,7 +477,7 @@ class SharePointOnlineSource(BaseSource):
         return sites
 
     async def _resolve_unresolved_viewers(
-        self, entity: BaseEntity, client, graph_client: "GraphClient"
+        self, entity: BaseEntity, client: httpx.AsyncClient, graph_client: "GraphClient"
     ) -> None:
         """Resolve any user:id:{uuid} viewers to user:{email}."""
         if not hasattr(entity, "access") or entity.access is None:
@@ -897,7 +901,7 @@ class SharePointOnlineSource(BaseSource):
 
     async def _sync_drive(
         self,
-        client,
+        client: httpx.AsyncClient,
         graph_client: GraphClient,
         drive_id: str,
         site_id: str,
@@ -956,7 +960,7 @@ class SharePointOnlineSource(BaseSource):
 
     async def _sync_folder_recursive(
         self,
-        client,
+        client: httpx.AsyncClient,
         graph_client: GraphClient,
         drive_id: str,
         folder_id: str,
@@ -1015,7 +1019,7 @@ class SharePointOnlineSource(BaseSource):
     # -- Access Control Memberships --
 
     async def _expand_entra_groups(
-        self, client, group_expander: EntraGroupExpander
+        self, client: httpx.AsyncClient, group_expander: EntraGroupExpander
     ) -> AsyncGenerator[MembershipTuple, None]:
         """Expand tracked Entra ID groups into user memberships."""
         entra_group_ids = list(self._item_level_entra_groups)

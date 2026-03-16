@@ -62,12 +62,12 @@ class LinearSource(BaseSource):
     RATE_LIMIT_PERIOD = 1.0
     MAX_RETRIES = 3
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the LinearSource with rate limiting state."""
         super().__init__()
-        self._request_times = []
+        self._request_times: List[float] = []
         self._lock = asyncio.Lock()
-        self._stats = {
+        self._stats: Dict[str, int] = {
             "api_calls": 0,
             "rate_limit_waits": 0,
         }
@@ -101,7 +101,7 @@ class LinearSource(BaseSource):
         cursor_data = self.cursor.data if self.cursor else {}
         return cursor_data.get("last_synced_at") or None
 
-    async def _wait_for_rate_limit(self):
+    async def _wait_for_rate_limit(self) -> None:
         """Implement adaptive rate limiting for Linear API requests.
 
         Manages request timing to stay within API limits by dynamically
@@ -437,7 +437,16 @@ class LinearSource(BaseSource):
         )
 
         # Define processor function for issue nodes
-        async def process_issue(issue):
+        async def process_issue(
+            issue: Dict[str, Any],
+        ) -> AsyncGenerator[
+            Union[
+                LinearIssueEntity,
+                LinearCommentEntity,
+                LinearAttachmentEntity,
+            ],
+            None,
+        ]:
             issue_identifier = issue.get("identifier")
 
             # Skip issues matching exclude_path
@@ -596,7 +605,9 @@ class LinearSource(BaseSource):
         )
 
         # Define processor function for project nodes
-        async def process_project(project):
+        async def process_project(
+            project: Dict[str, Any],
+        ) -> AsyncGenerator[LinearProjectEntity, None]:
             project_id = project.get("id")
             project_name = project.get("name")
 
@@ -712,7 +723,7 @@ class LinearSource(BaseSource):
         )
 
         # Define a processor function for team nodes
-        async def process_team(team):
+        async def process_team(team: Dict[str, Any]) -> AsyncGenerator[LinearTeamEntity, None]:
             team_id = team.get("id")
             team_name = team.get("name")
             team_key = team.get("key")
@@ -825,7 +836,7 @@ class LinearSource(BaseSource):
         )
 
         # Define processor function for user nodes
-        async def process_user(user):
+        async def process_user(user: Dict[str, Any]) -> AsyncGenerator[LinearUserEntity, None]:
             user_id = user.get("id")
             user_name = user.get("name")
             display_name = user.get("displayName")
@@ -942,10 +953,10 @@ class LinearSource(BaseSource):
         self,
         client: httpx.AsyncClient,
         query_template: str,
-        process_node_func,
+        process_node_func: Any,
         page_size: int = 50,
         entity_type: str = "items",
-    ) -> AsyncGenerator:
+    ) -> AsyncGenerator[Any, None]:
         """Execute a paginated GraphQL query against the Linear API.
 
         Args:

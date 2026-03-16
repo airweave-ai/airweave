@@ -8,6 +8,7 @@ import time
 import traceback
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 from fastapi import Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -229,7 +230,7 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
     Simple CORS handling that permits OPTIONS preflight requests and adds appropriate headers.
     """
 
-    def __init__(self, app, default_origins: list[str]):
+    def __init__(self, app: Any, default_origins: list[str]) -> None:
         """Initialize the middleware.
 
         Args:
@@ -252,7 +253,11 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
             return False
         return True
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         """Process the request and add dynamic CORS headers.
 
         Args:
@@ -654,7 +659,10 @@ class _StreamingMetricsIterator:
             await inner_close()
 
 
-async def analytics_middleware(request: Request, call_next):
+async def analytics_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     """Track API calls automatically via middleware.
 
     Extracts context from request.state.api_context (set by deps.py) and tracks
@@ -715,7 +723,7 @@ def _should_skip_analytics(request: Request) -> bool:
 
 async def _track_api_call_async(
     context: ApiContext, response: Response, duration_ms: float, request: Request
-):
+) -> None:
     """Track API call asynchronously.
 
     Uses the contextual analytics service from ApiContext which already has

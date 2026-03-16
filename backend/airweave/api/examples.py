@@ -438,7 +438,7 @@ SEARCH_REQUEST_EXAMPLES = {
 
 
 # Helper functions to generate response examples
-def create_single_job_response(status: str, summary: str):
+def create_single_job_response(status: str, summary: str) -> dict:
     """Create a single job response example."""
     return {
         "200": {
@@ -457,7 +457,7 @@ def create_single_job_response(status: str, summary: str):
     }
 
 
-def create_job_list_response(job_statuses: list, summary: str):
+def create_job_list_response(job_statuses: list, summary: str) -> dict:
     """Create a job list response example with multiple jobs."""
     return {
         "200": {
@@ -478,7 +478,7 @@ def create_job_list_response(job_statuses: list, summary: str):
     }
 
 
-def create_source_connection_list_response(connection_types: list, summary: str):
+def create_source_connection_list_response(connection_types: list, summary: str) -> dict:
     """Create a source connection list response example."""
     return {
         "200": {
@@ -500,7 +500,7 @@ def create_source_connection_list_response(connection_types: list, summary: str)
     }
 
 
-def create_single_source_response(source_type: str, summary: str):
+def create_single_source_response(source_type: str, summary: str) -> dict:
     """Create a single source response example."""
     return {
         "200": {
@@ -519,7 +519,7 @@ def create_single_source_response(source_type: str, summary: str):
     }
 
 
-def create_source_list_response(source_types: list, summary: str):
+def create_source_list_response(source_types: list, summary: str) -> dict:
     """Create a source list response example with multiple sources."""
     return {
         "200": {
@@ -538,7 +538,7 @@ def create_source_list_response(source_types: list, summary: str):
     }
 
 
-def create_collection_list_response(collection_types: list, summary: str):
+def create_collection_list_response(collection_types: list, summary: str) -> dict:
     """Create a collection list response example with multiple collections."""
     return {
         "200": {
@@ -560,7 +560,7 @@ def create_collection_list_response(collection_types: list, summary: str):
     }
 
 
-def create_search_response(response_type: str, summary: str):
+def create_search_response(response_type: str, summary: str) -> dict:
     """Create a search response example."""
     return {
         "200": {
@@ -579,7 +579,7 @@ def create_search_response(response_type: str, summary: str):
     }
 
 
-def create_source_connection_create_examples():
+def create_source_connection_create_examples() -> dict:
     """Create source connection creation request examples."""
     return {
         "oauth_flow": {
@@ -600,7 +600,7 @@ def create_source_connection_create_examples():
     }
 
 
-def create_oauth_response_examples():
+def create_oauth_response_examples() -> dict:
     """Create OAuth flow response examples."""
     return {
         "oauth_init": {

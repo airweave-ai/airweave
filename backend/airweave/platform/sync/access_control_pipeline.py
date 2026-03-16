@@ -9,7 +9,7 @@ After a full sync, it seeds a DirSync cookie for future incremental syncs.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Set, Tuple
+from typing import TYPE_CHECKING, Any, List, Set, Tuple
 
 from airweave import crud
 from airweave.db.session import get_db_context
@@ -54,7 +54,7 @@ class AccessControlPipeline:
 
     async def process(
         self,
-        source,
+        source: Any,
         sync_context: "SyncContext",
         runtime: "SyncRuntime",
     ) -> int:
@@ -81,7 +81,7 @@ class AccessControlPipeline:
     # -------------------------------------------------------------------------
 
     def _should_do_incremental_sync(
-        self, source, sync_context: "SyncContext", runtime: "SyncRuntime"
+        self, source: Any, sync_context: "SyncContext", runtime: "SyncRuntime"
     ) -> bool:
         """Determine if incremental ACL sync is possible.
 
@@ -114,7 +114,7 @@ class AccessControlPipeline:
     # -------------------------------------------------------------------------
 
     async def _process_full(  # noqa: C901
-        self, source, sync_context: "SyncContext", runtime: "SyncRuntime"
+        self, source: Any, sync_context: "SyncContext", runtime: "SyncRuntime"
     ) -> int:
         """Full ACL sync: stream memberships to DB in batches, then cleanup orphans.
 
@@ -268,7 +268,7 @@ class AccessControlPipeline:
     # -------------------------------------------------------------------------
 
     async def _process_incremental(
-        self, source, sync_context: "SyncContext", runtime: "SyncRuntime"
+        self, source: Any, sync_context: "SyncContext", runtime: "SyncRuntime"
     ) -> int:
         """Incremental ACL sync: apply DirSync delta changes.
 
@@ -355,9 +355,9 @@ class AccessControlPipeline:
 
     async def _apply_membership_changes(
         self,
-        db,
-        result,
-        source,
+        db: Any,
+        result: Any,
+        source: Any,
         sync_context: "SyncContext",
     ) -> Tuple[int, int]:
         """Apply ADD and REMOVE membership changes from DirSync results.
@@ -400,7 +400,7 @@ class AccessControlPipeline:
     # -------------------------------------------------------------------------
 
     def _update_cursor_after_incremental(
-        self, sync_context: "SyncContext", runtime: "SyncRuntime", result
+        self, sync_context: "SyncContext", runtime: "SyncRuntime", result: Any
     ) -> None:
         """Update cursor with new DirSync cookie after incremental sync."""
         if not runtime.cursor:
@@ -414,7 +414,7 @@ class AccessControlPipeline:
         )
 
     async def _store_dirsync_cookie_after_full(
-        self, source, sync_context: "SyncContext", runtime: "SyncRuntime"
+        self, source: Any, sync_context: "SyncContext", runtime: "SyncRuntime"
     ) -> None:
         """After a full sync, obtain and store an initial DirSync cookie.
 

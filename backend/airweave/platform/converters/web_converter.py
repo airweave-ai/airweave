@@ -40,13 +40,13 @@ class WebConverter(BaseTextConverter):
     # Batch size from Firecrawl Growth plan (100 concurrent browsers)
     BATCH_SIZE = FirecrawlRateLimiter.FIRECRAWL_CONCURRENT_BROWSERS
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the web converter with lazy Firecrawl client."""
         self.rate_limiter = FirecrawlRateLimiter()  # Singleton - shared across pod
         self._firecrawl_client: Optional[Any] = None
         self._initialized = False
 
-    def _ensure_client(self):
+    def _ensure_client(self) -> None:
         """Ensure Firecrawl client is initialized (lazy initialization).
 
         Raises:
@@ -135,7 +135,7 @@ class WebConverter(BaseTextConverter):
             # Return partial results - URLs with None will be skipped by entity pipeline
             return results
 
-    async def _batch_scrape_with_retry(self, urls: List[str]):
+    async def _batch_scrape_with_retry(self, urls: List[str]) -> Any:
         """Execute batch scrape with retry logic.
 
         Args:
@@ -158,7 +158,7 @@ class WebConverter(BaseTextConverter):
             ),
             reraise=True,
         )
-        async def _call():
+        async def _call() -> Any:
             # batch_scrape polls internally until complete
             return await self._firecrawl_client.batch_scrape(
                 urls,
@@ -169,7 +169,7 @@ class WebConverter(BaseTextConverter):
 
         return await _call()
 
-    def _extract_results(self, urls: List[str], batch_result, results: Dict[str, str]) -> None:
+    def _extract_results(self, urls: List[str], batch_result: Any, results: Dict[str, str]) -> None:
         """Extract markdown content from batch scrape result.
 
         Updates results dict in-place with successful conversions.
@@ -224,7 +224,7 @@ class WebConverter(BaseTextConverter):
         else:
             logger.debug(f"Firecrawl: all {successful} URLs converted successfully")
 
-    def _get_source_url(self, doc) -> Optional[str]:
+    def _get_source_url(self, doc: Any) -> Optional[str]:
         """Extract source URL from Firecrawl document metadata.
 
         Args:
