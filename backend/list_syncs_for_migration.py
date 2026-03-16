@@ -10,7 +10,7 @@ Usage:
 import asyncio
 import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from uuid import UUID
 
 import asyncpg
@@ -102,8 +102,8 @@ async def get_postgres_entity_count(conn, sync_id: UUID) -> int:
 async def get_arf_entity_count(sync_id: UUID) -> int:
     """Get entity count from ARF storage."""
     try:
-        from airweave.platform.sync.arf.service import ArfService
         from airweave.platform.storage import storage_backend
+        from airweave.platform.sync.arf.service import ArfService
 
         arf_service = ArfService(storage=storage_backend)
         count = await arf_service.get_entity_count(str(sync_id))
