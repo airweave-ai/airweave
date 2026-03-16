@@ -102,6 +102,17 @@ vulture = "^2.10"
 watchfiles = "^1.1.0"
 debugpy = "^1.8.16"
 import-linter = "^2.1"
+types-aiofiles = "^25.1.0.20251011"
+types-pyyaml = "^6.0.12.20250915"
+types-openpyxl = "^3.1.5.20260316"
+types-psutil = "^7.2.2.20260130"
+types-croniter = "^6.2.2.20260316"
+types-redis = "^4.6.0.20241004"
+types-ldap3 = "^2.9.13.20251121"
+asyncpg-stubs = "^0.31.2"
+types-aiobotocore = "^3.2.1"
+types-fpdf2 = "^2.8.4.20260221"
+pymupdf-stubs = "^1.26.7.post4"
 
 [build-system]
 requires = ["poetry-core"]
