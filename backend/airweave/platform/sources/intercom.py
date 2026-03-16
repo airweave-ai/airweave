@@ -5,7 +5,7 @@ API reference: https://developers.intercom.com/docs/build-an-integration/learn-m
 """
 
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -176,7 +176,7 @@ class IntercomSource(BaseSource):
                     self.logger.error(f"Failed to refresh token: {str(e)}")
                     response.raise_for_status()
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from Intercom API: {e.response.status_code} for {url}")
             raise
@@ -204,7 +204,7 @@ class IntercomSource(BaseSource):
                     self.logger.error(f"Failed to refresh token: {str(e)}")
                     response.raise_for_status()
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from Intercom API: {e.response.status_code} for {url}")
             raise

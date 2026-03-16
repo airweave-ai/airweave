@@ -181,4 +181,4 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         redirect_info = await self._redirect_session_repo.get_by_code(db, code=code)
         if not redirect_info:
             raise NotFoundException("Authorization link expired or invalid")
-        return redirect_info.final_url
+        return str(redirect_info.final_url)

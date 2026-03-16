@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from airweave.core.logging import logger
 from airweave.platform.sync.exceptions import SyncFailureError
@@ -48,7 +48,7 @@ def _format_paragraph(para: Any) -> Optional[str]:
     if "list" in style_name:
         return f"- {text}"
 
-    return text
+    return str(text)
 
 
 def _format_table(table: Any) -> str:
@@ -121,4 +121,4 @@ async def extract_docx_text(path: str) -> Optional[str]:
         logger.debug(f"DOCX {name}: extracted {total_chars} chars")
         return markdown
 
-    return await asyncio.to_thread(_extract)
+    return cast("str | None", await asyncio.to_thread(_extract))

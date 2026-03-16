@@ -5,7 +5,7 @@ import hmac
 import secrets
 import time
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 from urllib.parse import quote
 
 import httpx
@@ -249,7 +249,7 @@ class TrelloSource(BaseSource):
                 params=query_params,
             )
             response.raise_for_status()
-            return response.json()
+            return cast(Dict, response.json())
 
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from Trello API: {e.response.status_code} for {url}")

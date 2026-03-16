@@ -37,7 +37,7 @@ class JSONFormatter(logging.Formatter):
         # Check cache first
         pathname = record.pathname
         if pathname in self._module_cache:
-            return self._module_cache[pathname]
+            return str(self._module_cache[pathname])
 
         try:
             # Simple string manipulation - find "airweave" in the path

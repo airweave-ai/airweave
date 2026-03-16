@@ -17,7 +17,7 @@ References:
     https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-spaces/
 """
 
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -97,7 +97,7 @@ class ConfluenceSource(BaseSource):
                 resources = response.json()
                 self.logger.debug(f"Found {len(resources)} accessible Atlassian resources")
                 self.logger.debug(f"Resources: {resources}")
-                return resources
+                return cast(list[dict[Any, Any]], resources)
             except httpx.HTTPStatusError as e:
                 self.logger.error(
                     f"HTTP error getting accessible resources: "

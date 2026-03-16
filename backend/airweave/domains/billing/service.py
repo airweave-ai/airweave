@@ -299,11 +299,11 @@ class BillingService(BillingServiceProtocol):
         if billing.stripe_subscription_id and not needs_checkout:
             if billing.billing_plan != billing_plan:
                 ctx.logger.info(f"Updating existing subscription to {plan}")
-                return await self.update_subscription_plan(db, ctx, plan)
+                return str(await self.update_subscription_plan(db, ctx, plan))
 
             if billing.cancel_at_period_end:
                 ctx.logger.info(f"Reactivating canceled {plan} subscription")
-                return await self.update_subscription_plan(db, ctx, plan)
+                return str(await self.update_subscription_plan(db, ctx, plan))
 
             raise BillingStateError(f"Already has active {plan} subscription")
 
@@ -324,7 +324,7 @@ class BillingService(BillingServiceProtocol):
             metadata=metadata,
         )
 
-        return session.url
+        return str(session.url)
 
     # ------------------------------ Yearly Prepay ------------------------------ #
 
@@ -398,7 +398,7 @@ class BillingService(BillingServiceProtocol):
         )
         await self._billing_repo.update(db, db_obj=billing, obj_in=updates, ctx=ctx)
 
-        return session.url
+        return str(session.url)
 
     @wrap_gateway_errors
     async def update_subscription_plan(  # noqa: C901
@@ -750,7 +750,7 @@ class BillingService(BillingServiceProtocol):
             return_url=return_url,
         )
 
-        return session.url
+        return str(session.url)
 
     # Subscription information
 

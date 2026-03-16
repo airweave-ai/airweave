@@ -9,7 +9,7 @@ Graph permission model:
 - link with scope "organization" → is_public (org-wide access)
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from airweave.platform.entities._base import AccessControl
 
@@ -81,7 +81,7 @@ def is_org_wide_link(permission: Dict[str, Any]) -> bool:
     link = permission.get("link")
     if not link:
         return False
-    return link.get("scope", "") == "organization"
+    return cast(bool, link.get("scope", "") == "organization")
 
 
 def is_anonymous_link(permission: Dict[str, Any]) -> bool:
@@ -89,7 +89,7 @@ def is_anonymous_link(permission: Dict[str, Any]) -> bool:
     link = permission.get("link")
     if not link:
         return False
-    return link.get("scope", "") == "anonymous"
+    return cast(bool, link.get("scope", "") == "anonymous")
 
 
 def _extract_identity_principals(perm: Dict[str, Any], viewers: List[str]) -> None:

@@ -14,7 +14,7 @@ are still synced.
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -199,7 +199,7 @@ class SlabSource(BaseSource):
                     response=response,
                 )
 
-            return result.get("data", {})
+            return cast(Dict, result.get("data", {}))
         except httpx.HTTPStatusError as e:
             # Log error details
             try:

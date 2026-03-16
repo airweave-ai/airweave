@@ -1,7 +1,7 @@
 """CRUD operations for entities."""
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, cast
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -86,7 +86,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
 
         # Execute the upsert
         result = await db.execute(stmt)
-        db_obj = result.scalar_one()
+        db_obj = cast(Entity, result.scalar_one())
 
         # Add to session for tracking
         db.add(db_obj)
@@ -194,13 +194,13 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         # 1) Direct attributes
         for attr in ("organization_id", "org_id"):
             if org_id := getattr(ctx, attr, None):
-                return org_id
+                return cast(UUID, org_id)
 
         # 2) Nested objects
         for holder_name in ("organization", "org", "tenant"):
             if holder_obj := getattr(ctx, holder_name, None):
                 if org_id := getattr(holder_obj, "id", None):
-                    return org_id
+                    return cast(UUID, org_id)
         return None
 
     async def bulk_create(

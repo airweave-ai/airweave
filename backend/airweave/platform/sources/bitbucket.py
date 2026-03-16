@@ -3,7 +3,7 @@
 import mimetypes
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -129,7 +129,7 @@ class BitbucketSource(BaseSource):
         headers = {"Accept": "application/json"}
         response = await client.get(url, auth=auth, headers=headers, params=params)
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     async def _get_paginated_results(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None

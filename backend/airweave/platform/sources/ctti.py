@@ -99,7 +99,7 @@ class CTTISource(BaseSource):
         if not value:
             raise ValueError(f"Missing or empty credential: {key}")
 
-        return value
+        return str(value)
 
     async def _retry_with_backoff(
         self,

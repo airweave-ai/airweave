@@ -6,7 +6,7 @@ Authentication: API token (header api_token).
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -110,7 +110,7 @@ class Document360Source(BaseSource):
                 or "Unknown API error"
             )
             raise ValueError(f"Document360 API error: {msg}")
-        return data
+        return cast(Dict[str, Any], data)
 
     async def _fetch_project_versions(self, client: httpx.AsyncClient) -> List[Dict[str, Any]]:
         """Fetch list of project versions."""

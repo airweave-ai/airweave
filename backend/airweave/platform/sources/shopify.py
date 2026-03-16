@@ -22,7 +22,7 @@ Auth Reference: https://shopify.dev/docs/apps/build/authentication-authorization
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -173,7 +173,7 @@ class ShopifySource(BaseSource):
                 )
 
             data = response.json()
-            return data["access_token"]
+            return str(data["access_token"])
 
     @staticmethod
     def _normalize_shop_domain(domain: Optional[str]) -> Optional[str]:
@@ -239,7 +239,7 @@ class ShopifySource(BaseSource):
         """
         response = await client.get(url, headers=self._get_headers(), timeout=30.0)
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[Any, Any], response.json())
 
     @retry(
         stop=stop_after_attempt(5),

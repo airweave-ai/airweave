@@ -135,6 +135,6 @@ class MistralTokenizer(BaseTokenizer):
         inner = self._get_inner_tokenizer()
 
         if hasattr(inner, "decode"):
-            return inner.decode(list(tokens))
+            return str(inner.decode(list(tokens)))
 
         raise NotImplementedError(f"Decode not supported for {self._name}")

@@ -62,7 +62,7 @@ class CerebrasProvider(BaseProvider):
         if not content:
             raise ProviderError("Cerebras returned empty completion content")
 
-        return content
+        return str(content)
 
     async def structured_output(
         self, messages: List[Dict[str, str]], schema: type[BaseModel]

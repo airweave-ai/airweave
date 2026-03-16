@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, List, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, List, TypeVar, cast
 
 from airweave.api.context import ApiContext
 from airweave.search.context import SearchContext
@@ -98,7 +98,7 @@ class SearchOperation(ABC):
                         f"[{operation_name}] ✓ Succeeded with fallback provider "
                         f"{provider.__class__.__name__}"
                     )
-                return result
+                return cast(T, result)
             except Exception as e:
                 last_error = e
                 if BaseProvider.is_retryable_error(e) and i < len(providers) - 1:

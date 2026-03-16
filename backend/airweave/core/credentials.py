@@ -1,6 +1,7 @@
 """The module that contains the logic for credentials."""
 
 import json
+from typing import Any, cast
 
 from cryptography.fernet import Fernet
 
@@ -51,4 +52,4 @@ def decrypt(data: str) -> dict:
     f = get_encryption_fernet()
     # Get encrypted data, decrypt it, decode to string, parse JSON
     decrypted_bytes = f.decrypt(data)
-    return json.loads(decrypted_bytes.decode())
+    return cast("dict[Any, Any]", json.loads(decrypted_bytes.decode()))

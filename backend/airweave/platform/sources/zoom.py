@@ -14,7 +14,7 @@ Reference:
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -137,7 +137,7 @@ class ZoomSource(BaseSource):
                 response = await client.get(url, headers=headers, params=params)
 
             response.raise_for_status()
-            return response.json()
+            return cast(dict[Any, Any], response.json())
         except Exception as e:
             self.logger.error(f"Error in API request to {url}: {str(e)}")
             raise

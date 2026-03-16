@@ -11,7 +11,7 @@ import time
 import uuid
 from datetime import datetime
 from functools import wraps
-from typing import TYPE_CHECKING, Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Callable, Optional, TypeVar, cast
 
 import jwt
 from svix.api import (
@@ -106,7 +106,7 @@ def _auto_create_org(method: Callable[..., T]) -> Callable[..., T]:
     @wraps(method)
     async def wrapper(self: "SvixAdapter", org_id: uuid.UUID, *args, **kwargs) -> T:
         try:
-            return await method(self, org_id, *args, **kwargs)
+            return cast(T, await method(self, org_id, *args, **kwargs))
         except Exception as e:
             if hasattr(e, "code") and e.code == "not_found":
                 try:
@@ -114,7 +114,7 @@ def _auto_create_org(method: Callable[..., T]) -> Callable[..., T]:
                 except Exception as e2:
                     if not (hasattr(e2, "code") and e2.code == "conflict"):
                         raise e
-                return await method(self, org_id, *args, **kwargs)
+                return cast(T, await method(self, org_id, *args, **kwargs))
             raise
 
     return wrapper
@@ -364,7 +364,7 @@ class SvixAdapter(WebhookPublisher, WebhookAdmin):
         """Get the signing secret for a subscription."""
         try:
             secret = await self._get_secret_internal(org_id, subscription_id)
-            return secret.key
+            return str(secret.key)
         except WebhooksError:
             raise
         except Exception as e:

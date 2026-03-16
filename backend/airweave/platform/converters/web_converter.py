@@ -1,7 +1,7 @@
 """Web converter for fetching URLs and converting to markdown using Firecrawl."""
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from httpx import HTTPStatusError, ReadTimeout, TimeoutException
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -240,12 +240,12 @@ class WebConverter(BaseTextConverter):
         # Try attribute access first (for typed objects)
         source_url = getattr(doc.metadata, "source_url", None)
         if source_url:
-            return source_url
+            return cast(str, source_url)
 
         # Fallback: try camelCase for older SDK versions
         source_url = getattr(doc.metadata, "sourceURL", None)
         if source_url:
-            return source_url
+            return cast(str, source_url)
 
         # Try dict access (for untyped dicts)
         if isinstance(doc.metadata, dict):

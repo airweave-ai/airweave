@@ -1,7 +1,7 @@
 """Pipedream Auth Provider - provides authentication services for other integrations."""
 
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, cast
 
 import httpx
 from fastapi import HTTPException
@@ -181,7 +181,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
         if self._access_token and self._token_expires_at > (
             current_time + self.TOKEN_EXPIRY_BUFFER
         ):
-            return self._access_token
+            return str(self._access_token)
 
         # Need to refresh token
         self.logger.info("🔄 [Pipedream] Refreshing access token...")
@@ -207,7 +207,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
                     f"✅ [Pipedream] Successfully refreshed token (expires in {expires_in}s)"
                 )
 
-                return self._access_token
+                return str(self._access_token)
 
             except httpx.HTTPStatusError as e:
                 self.logger.error(
@@ -246,7 +246,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
         try:
             response = await client.get(url, headers=headers, params=params)
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except httpx.HTTPStatusError as e:
             self.logger.error(
                 f"❌ [Pipedream] API request failed: {e.response.status_code} - {e.response.text}"

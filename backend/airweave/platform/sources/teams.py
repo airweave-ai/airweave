@@ -15,7 +15,7 @@ Reference:
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -140,7 +140,7 @@ class TeamsSource(BaseSource):
 
             response.raise_for_status()
             data = response.json()
-            return data
+            return cast(dict[Any, Any], data)
         except Exception as e:
             self.logger.error(f"Error in API request to {url}: {str(e)}")
             raise

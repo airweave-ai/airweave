@@ -18,7 +18,7 @@ import hmac
 import json
 import secrets
 import time
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 from airweave.core.config import settings
 
@@ -91,7 +91,7 @@ def verify_state(token: str, max_age_seconds: int = 10 * 60) -> Dict[str, Any]:
     if not hmac.compare_digest(expected, got):
         raise ValueError("Bad state signature")
 
-    payload = json.loads(body.decode())
+    payload = cast(Dict[str, Any], json.loads(body.decode()))
 
     if time.time() - payload.get("ts", 0) > max_age_seconds:
         raise ValueError("State expired")

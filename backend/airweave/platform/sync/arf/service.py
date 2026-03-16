@@ -34,7 +34,7 @@ import hashlib
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, cast
 
 import aiofiles
 
@@ -520,7 +520,7 @@ class ArfService:
             except Exception:
                 pass
 
-        return entity_class(**entity_dict)
+        return cast("BaseEntity", entity_class(**entity_dict))
 
     # =========================================================================
     # Store management

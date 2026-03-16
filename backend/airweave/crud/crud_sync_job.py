@@ -1,7 +1,7 @@
 """CRUD operations for sync jobs."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, cast
 from uuid import UUID
 
 from sqlalchemy import select
@@ -32,7 +32,7 @@ class CRUDSyncJob(CRUDBaseOrganization[SyncJob, SyncJobCreate, SyncJobUpdate]):
         job, sync_name = row
         # Add the sync name to the job object
         job.sync_name = sync_name
-        return job
+        return cast(SyncJob, job)
 
     async def get_all_by_sync_id(
         self,
@@ -103,7 +103,7 @@ class CRUDSyncJob(CRUDBaseOrganization[SyncJob, SyncJobCreate, SyncJobUpdate]):
         job, sync_name = row
         # Add the sync name to the job object
         job.sync_name = sync_name
-        return job
+        return cast(SyncJob, job)
 
     async def get_stuck_jobs_by_status(
         self,

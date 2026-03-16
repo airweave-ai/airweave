@@ -29,7 +29,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union, cast
 
 from airweave.platform.configs.auth import SnapshotAuthConfig
 from airweave.platform.configs.config import SnapshotConfig
@@ -148,7 +148,7 @@ class SnapshotSource(BaseSource):
         """Read JSON from local filesystem."""
         file_path = self._local_path(relative_path)
         with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return cast(Dict[str, Any], json.load(f))
 
     async def _list_entity_files_local(self) -> List[str]:
         """List entity files from local filesystem."""
@@ -244,7 +244,7 @@ class SnapshotSource(BaseSource):
         try:
             download = await blob_client.download_blob()
             content = await download.readall()
-            return json.loads(content.decode("utf-8"))
+            return cast(Dict[str, Any], json.loads(content.decode("utf-8")))
         except Exception as e:
             raise ValueError(f"Failed to read {blob_path} from Azure: {e}")
 
@@ -441,7 +441,7 @@ class SnapshotSource(BaseSource):
         if restored_file_path:
             entity_dict["local_path"] = restored_file_path
 
-        return entity_class(**entity_dict)
+        return cast(BaseEntity, entity_class(**entity_dict))
 
     # =========================================================================
     # Main interface

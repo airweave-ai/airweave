@@ -6,7 +6,7 @@ Implements StorageBackend protocol for AWS S3 and S3-compatible storage
 
 import fnmatch
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from airweave.core.logging import logger
 from airweave.platform.storage.exceptions import (
@@ -106,7 +106,7 @@ class S3Backend(StorageBackend):
             response = await client.get_object(Bucket=self.bucket, Key=key)
             async with response["Body"] as stream:
                 content = await stream.read()
-            return json.loads(content.decode("utf-8"))
+            return cast(Dict[str, Any], json.loads(content.decode("utf-8")))
         except client.exceptions.NoSuchKey:
             raise StorageNotFoundError(f"Path not found: {path}")
         except Exception as e:
@@ -134,7 +134,7 @@ class S3Backend(StorageBackend):
             client = await self._get_client()
             response = await client.get_object(Bucket=self.bucket, Key=key)
             async with response["Body"] as stream:
-                return await stream.read()
+                return cast(bytes, await stream.read())
         except Exception as e:
             if "NoSuchKey" in str(e) or "404" in str(e):
                 raise StorageNotFoundError(f"Path not found: {path}")

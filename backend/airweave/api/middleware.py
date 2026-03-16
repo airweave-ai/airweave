@@ -8,7 +8,7 @@ import time
 import traceback
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -47,7 +47,7 @@ async def add_request_id(request: Request, call_next: callable) -> Response:
 
     """
     request.state.request_id = str(uuid.uuid4())
-    return await call_next(request)
+    return cast(Response, await call_next(request))
 
 
 async def log_requests(request: Request, call_next: callable) -> Response:
@@ -64,7 +64,7 @@ async def log_requests(request: Request, call_next: callable) -> Response:
 
     """
     start_time = time.time()
-    response = await call_next(request)
+    response = cast(Response, await call_next(request))
     duration = time.time() - start_time
     logger.info(
         (
@@ -89,7 +89,7 @@ async def exception_logging_middleware(request: Request, call_next: callable) ->
 
     """
     try:
-        response = await call_next(request)
+        response = cast(Response, await call_next(request))
         return response
     except Exception as exc:
         # Always log the full exception details
@@ -134,11 +134,14 @@ async def request_timeout_middleware(request: Request, call_next: callable) -> R
     path = request.url.path
     for exempt_path in TIMEOUT_EXEMPT_PATHS:
         if exempt_path in path:
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
     try:
-        response = await asyncio.wait_for(
-            call_next(request), timeout=settings.API_REQUEST_TIMEOUT_SECONDS
+        response = cast(
+            Response,
+            await asyncio.wait_for(
+                call_next(request), timeout=settings.API_REQUEST_TIMEOUT_SECONDS
+            ),
         )
         return response
     except asyncio.TimeoutError:
@@ -194,7 +197,7 @@ async def request_body_size_middleware(request: Request, call_next: callable) ->
         except ValueError:
             logger.warning(f"Invalid Content-Length header: {content_length}")
 
-    return await call_next(request)
+    return cast(Response, await call_next(request))
 
 
 async def rate_limit_headers_middleware(request: Request, call_next: callable) -> Response:
@@ -212,7 +215,7 @@ async def rate_limit_headers_middleware(request: Request, call_next: callable) -
         Response: The response with rate limit headers added.
 
     """
-    response = await call_next(request)
+    response = cast(Response, await call_next(request))
 
     # Add rate limit headers if available from request state
     rate_limit_result = getattr(request.state, "rate_limit_result", None)
@@ -709,7 +712,7 @@ def _build_endpoint_name(request: Request, *, fallback: str | None = None) -> st
     if route and hasattr(route, "path"):
         # FastAPI provides the path template with {param} placeholders
         # e.g., "/collections/{readable_id}/sources/{source_short_name}"
-        return route.path
+        return str(route.path)
 
     # Fallback to raw path if route not available (shouldn't happen in normal operation)
     return fallback if fallback is not None else request.url.path.rstrip("/")

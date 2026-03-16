@@ -16,7 +16,7 @@ Reference:
 
 import re
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -142,7 +142,7 @@ class OneNoteSource(BaseSource):
                 response = await client.get(url, headers=headers, params=params)
 
             response.raise_for_status()
-            return response.json()
+            return cast(dict[Any, Any], response.json())
         except Exception as e:
             # Provide more descriptive error messages for common OAuth scope issues
             error_msg = self._get_descriptive_error_message(url, str(e))

@@ -4,7 +4,7 @@ import base64
 import mimetypes
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -155,7 +155,7 @@ class GitHubSource(BaseSource):
         }
         response = await client.get(url, headers=headers, params=params)
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     async def _get_paginated_results(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
@@ -470,7 +470,7 @@ class GitHubSource(BaseSource):
             commit_data = await self._get_with_auth(client, url)
             files = commit_data.get("files", [])
             self.logger.debug(f"Commit {commit_sha[:8]} changed {len(files)} files")
-            return files
+            return cast(List[Dict[str, Any]], files)
         except Exception as e:
             self.logger.error(f"Error getting files for commit {commit_sha}: {e}")
             return []

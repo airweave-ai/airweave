@@ -194,7 +194,7 @@ class FilterTranslator:
             AgenticSearchFilterOperator.NOT_IN: self._build_not_in,
         }
         if operator in method_map:
-            return method_map[operator](field, value)
+            return str(method_map[operator](field, value))
 
         raise FilterTranslationError(f"Unknown operator: {operator}")
 

@@ -9,7 +9,7 @@ Handles all HTTP communication with the Graph API:
 - File content download
 """
 
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Tuple, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -81,7 +81,7 @@ class GraphClient:
                 self.logger.error(f"Graph API error {response.status_code}: {response.text[:500]}")
 
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     async def get_paginated(
         self,
@@ -284,7 +284,7 @@ class GraphClient:
         url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/permissions"
         try:
             data = await self.get(client, url)
-            return data.get("value", [])
+            return cast(List[Dict[str, Any]], data.get("value", []))
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return []
@@ -385,7 +385,7 @@ class GraphClient:
         try:
             response = await self._sp_get_with_retry(client, url, headers)
             data = response.json()
-            return data.get("d", {}).get("results", [])
+            return cast(List[Dict[str, Any]], data.get("d", {}).get("results", []))
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"SP site groups not available: {e}")
             return []
@@ -410,7 +410,7 @@ class GraphClient:
         try:
             response = await self._sp_get_with_retry(client, url, headers)
             data = response.json()
-            return data.get("d", {}).get("results", [])
+            return cast(List[Dict[str, Any]], data.get("d", {}).get("results", []))
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"SP group {group_id} users not available: {e}")
             return []
@@ -464,7 +464,7 @@ class GraphClient:
         url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}"
         params = {"$select": "@microsoft.graph.downloadUrl"}
         data = await self.get(client, url, params)
-        return data.get("@microsoft.graph.downloadUrl", "")
+        return str(data.get("@microsoft.graph.downloadUrl", ""))
 
     # -- Groups (Entra ID) --
 

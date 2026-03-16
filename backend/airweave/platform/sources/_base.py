@@ -229,10 +229,12 @@ class BaseSource:
             None otherwise
         """
         if self._token_manager:
-            return await self._token_manager.get_valid_token()
+            token = await self._token_manager.get_valid_token()
+            return str(token) if token is not None else None
 
         # Fallback to instance access_token if no token manager
-        return getattr(self, "access_token", None)
+        token = getattr(self, "access_token", None)
+        return str(token) if token is not None else None
 
     async def refresh_on_unauthorized(self) -> Optional[str]:
         """Refresh token after receiving a 401 error.
@@ -241,7 +243,8 @@ class BaseSource:
             New access token if refresh was successful, None otherwise
         """
         if self._token_manager:
-            return await self._token_manager.refresh_on_unauthorized()
+            token = await self._token_manager.refresh_on_unauthorized()
+            return str(token) if token is not None else None
         return None
 
     async def get_token_for_resource(self, resource_scope: str) -> Optional[str]:
@@ -258,7 +261,8 @@ class BaseSource:
         """
         if not self._token_manager:
             return None
-        return await self._token_manager.get_token_for_resource(resource_scope)
+        token = await self._token_manager.get_token_for_resource(resource_scope)
+        return str(token) if token is not None else None
 
     @classmethod
     @abstractmethod

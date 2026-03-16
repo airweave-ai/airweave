@@ -11,7 +11,7 @@ in entities/zoho_crm.py.
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -204,7 +204,7 @@ class ZohoCRMSource(BaseSource):
         if response.status_code == 204 or not response.content:
             return {"data": []}
 
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     async def _ensure_org_id(self, client: httpx.AsyncClient) -> Optional[str]:
         """Fetch and cache the Zoho CRM org ID for building record URLs."""

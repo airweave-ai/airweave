@@ -7,7 +7,7 @@ API reference: https://coda.io/developers/apis/v1
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt
@@ -142,7 +142,7 @@ class CodaSource(BaseSource):
             self.logger.warning("Coda API rate limit (429); retrying after backoff")
             response.raise_for_status()
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     def _parse_datetime(self, value: Optional[str]) -> Optional[datetime]:
         """Parse ISO datetime string to timezone-naive UTC datetime."""

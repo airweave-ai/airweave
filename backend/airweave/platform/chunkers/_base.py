@@ -1,7 +1,7 @@
 """Base chunker interface for all chunker implementations."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, cast
 
 __all__ = ["BaseChunker", "SafeTiktokenEncoding"]
 
@@ -26,11 +26,11 @@ class SafeTiktokenEncoding:
     def encode(self, text: str, **kwargs) -> List[int]:
         """Encode text, allowing all special tokens."""
         kwargs.setdefault("allowed_special", "all")
-        return self._encoding.encode(text, **kwargs)
+        return cast(List[int], self._encoding.encode(text, **kwargs))
 
     def decode(self, tokens: Sequence[int]) -> str:
         """Decode tokens back to text."""
-        return self._encoding.decode(list(tokens))
+        return str(self._encoding.decode(list(tokens)))
 
     def encode_batch(self, texts: List[str], **kwargs) -> List[List[int]]:
         """Encode multiple texts."""

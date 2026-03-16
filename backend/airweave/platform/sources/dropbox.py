@@ -1,6 +1,6 @@
 """Dropbox source implementation."""
 
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -104,7 +104,7 @@ class DropboxSource(BaseSource):
                 response = await client.post(url, headers=headers)
             response.raise_for_status()
             json_response = response.json()
-            return json_response
+            return cast(Dict, json_response)
 
         except httpx.HTTPStatusError as e:
             # Handle 401 Unauthorized - try refreshing token

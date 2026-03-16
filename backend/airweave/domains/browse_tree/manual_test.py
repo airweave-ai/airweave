@@ -16,7 +16,7 @@ import asyncio
 import json
 import os
 import time
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -290,7 +290,7 @@ async def search_as_user(
             "generate_answer": False,
         },
     )
-    return data.get("results", [])
+    return cast(list[dict[str, Any]], data.get("results", []))
 
 
 async def step5_search(client: httpx.AsyncClient, collection_id: str) -> None:

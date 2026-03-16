@@ -3,7 +3,7 @@
 import asyncio
 import re
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union, cast
 from uuid import uuid4
 
 import httpx
@@ -177,7 +177,7 @@ class LinearSource(BaseSource):
                 remaining = int(response.headers.get("X-RateLimit-Requests-Remaining", "0"))
                 self.logger.debug(f"Rate limit remaining: {remaining}")
 
-            return response.json()
+            return cast(Dict, response.json())
         except httpx.HTTPStatusError as e:
             # Log error details
             try:

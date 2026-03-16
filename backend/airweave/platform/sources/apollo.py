@@ -4,7 +4,7 @@ Syncs Contacts, Accounts, Sequences, and Email Activities from Apollo.
 API reference: https://docs.apollo.io/
 """
 
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -96,7 +96,7 @@ class ApolloSource(BaseSource):
                 timeout=30.0,
             )
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from Apollo API: {e.response.status_code} for {url}")
             raise
@@ -124,7 +124,7 @@ class ApolloSource(BaseSource):
                 timeout=30.0,
             )
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from Apollo API: {e.response.status_code} for {url}")
             raise

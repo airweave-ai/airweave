@@ -11,7 +11,7 @@ Features:
 - File content download
 """
 
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 import httpx
 from httpx_ntlm import HttpNtlmAuth
@@ -108,7 +108,7 @@ class SharePointClient:
             url, auth=auth, headers=self.ODATA_HEADERS, params=params, timeout=30.0
         )
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     async def get_paginated(
         self,
@@ -165,7 +165,7 @@ class SharePointClient:
         endpoint = f"{site_url}/_api/web"
         params = {"$expand": self.ROLE_EXPAND}
         data = await self.get(client, endpoint, params)
-        return data.get("d", data)
+        return cast(Dict[str, Any], data.get("d", data))
 
     async def discover_subsites(
         self,
@@ -321,7 +321,7 @@ class SharePointClient:
         )
         response.raise_for_status()
         data = response.json()
-        return data["d"]["GetContextWebInformation"]["FormDigestValue"]
+        return str(data["d"]["GetContextWebInformation"]["FormDigestValue"])
 
     @retry(
         stop=stop_after_attempt(3),
@@ -368,7 +368,7 @@ class SharePointClient:
             timeout=60.0,
         )
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     async def get_current_change_token(
         self,
@@ -394,7 +394,7 @@ class SharePointClient:
         if not token:
             raise ValueError("Could not retrieve current change token from site collection")
         self.logger.debug(f"Current change token: {token[:40]}...")
-        return token
+        return str(token)
 
     async def get_site_collection_changes(
         self,
@@ -494,7 +494,7 @@ class SharePointClient:
 
         try:
             data = await self.get(client, endpoint, params)
-            return data.get("d", data)
+            return cast(Optional[Dict[str, Any]], data.get("d", data))
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 self.logger.debug(f"Item {item_id} not found in list {list_id}")
@@ -524,7 +524,7 @@ class SharePointClient:
 
         try:
             data = await self.get(client, endpoint, params)
-            return data.get("d", data)
+            return cast(Optional[Dict[str, Any]], data.get("d", data))
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 self.logger.debug(f"List {list_id} not found")

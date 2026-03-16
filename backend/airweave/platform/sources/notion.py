@@ -7,7 +7,7 @@ responses to entity objects.
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -223,7 +223,7 @@ class NotionSource(BaseSource):
 
             # Fallback to standard behavior (lets tenacity retry on HTTPStatusError)
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[Any, Any], response.json())
         except NotionSource.NotionAccessError as e:
             # Known inaccessibility: log as warning (no retry by design)
             self.logger.warning(f"Error during GET request to {url}: {str(e)}")
@@ -262,7 +262,7 @@ class NotionSource(BaseSource):
                 self.logger.debug(f"Response body: {response.text[:200]}...")
 
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[Any, Any], response.json())
         except NotionSource.NotionAccessError as e:
             # Not used in POST flow currently, keep symmetry if added later
             self.logger.warning(f"Error during POST request to {url}: {str(e)}")

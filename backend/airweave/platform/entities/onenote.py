@@ -86,11 +86,11 @@ class OneNoteNotebookEntity(BaseEntity):
     def web_url(self) -> str:
         """Construct the web URL for this entity."""
         if self.web_url_override:
-            return self.web_url_override
+            return str(self.web_url_override)
         if self.links and isinstance(self.links, dict):
             web_link = self.links.get("oneNoteWebUrl", {}).get("href")
             if web_link:
-                return web_link
+                return str(web_link)
         return f"https://www.onenote.com/notebooks/{self.id}"
 
 
@@ -288,11 +288,11 @@ class OneNotePageFileEntity(FileEntity):
     def web_url(self) -> str:
         """Construct the web URL for this entity."""
         if self.web_url_override:
-            return self.web_url_override
+            return str(self.web_url_override)
         if self.links and isinstance(self.links, dict):
             web_link = self.links.get("oneNoteWebUrl", {}).get("href")
             if web_link:
-                return web_link
+                return str(web_link)
         if self.content_url:
-            return self.content_url
+            return str(self.content_url)
         return f"https://www.onenote.com/page/{self.id}"

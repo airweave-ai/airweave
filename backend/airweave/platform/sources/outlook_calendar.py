@@ -10,7 +10,7 @@ Follows the same structure as the Gmail and Outlook Mail implementations.
 
 import base64
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -111,7 +111,7 @@ class OutlookCalendarSource(BaseSource):
             response.raise_for_status()
             data = response.json()
             self.logger.debug(f"Received response from {url} - Status: {response.status_code}")
-            return data
+            return cast(dict[Any, Any], data)
         except Exception as e:
             self.logger.error(f"Error in API request to {url}: {str(e)}")
             raise

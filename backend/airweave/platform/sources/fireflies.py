@@ -6,7 +6,7 @@ https://docs.fireflies.ai/schema/transcript.
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 
@@ -110,7 +110,7 @@ class FirefliesSource(BaseSource):
         if "errors" in data and data["errors"]:
             msg = "; ".join(e.get("message", str(e)) for e in data["errors"])
             raise ValueError(f"Fireflies GraphQL errors: {msg}")
-        return data
+        return cast(Dict[str, Any], data)
 
     @staticmethod
     def _parse_date(ms: Optional[float]) -> Optional[datetime]:

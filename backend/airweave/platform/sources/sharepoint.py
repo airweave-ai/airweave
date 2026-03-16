@@ -14,7 +14,7 @@ Reference:
 """
 
 from collections import deque
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -131,7 +131,7 @@ class SharePointSource(BaseSource):
                 resp = await client.get(url, headers=headers, params=params, timeout=30.0)
 
             resp.raise_for_status()
-            return resp.json()
+            return cast(Dict, resp.json())
         except httpx.ConnectTimeout:
             self.logger.error(f"Connection timeout accessing Microsoft Graph API: {url}")
             raise

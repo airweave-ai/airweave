@@ -14,7 +14,7 @@ Storage structure:
 
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, cast
 from uuid import UUID
 
 import aiofiles
@@ -222,7 +222,7 @@ class ArfReader:
             if restored_path:
                 entity_dict["local_path"] = restored_path
 
-        return entity_class(**entity_dict)
+        return cast("BaseEntity", entity_class(**entity_dict))
 
     async def _restore_file(self, stored_file_path: str) -> Optional[str]:
         """Restore a file attachment to temp directory.

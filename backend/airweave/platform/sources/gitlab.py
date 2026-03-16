@@ -4,7 +4,7 @@ import base64
 import mimetypes
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -159,7 +159,7 @@ class GitLabSource(BaseSource):
                     response.raise_for_status()
 
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
 
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from GitLab API: {e.response.status_code} for {url}")

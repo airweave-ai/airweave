@@ -1,6 +1,6 @@
 """AirweaveField - Extended Pydantic Field with metadata for entity processing."""
 
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from pydantic import Field as PydanticField
 from pydantic.fields import FieldInfo
@@ -109,7 +109,7 @@ def AirweaveField(  # noqa: D417
         json_schema_extra = airweave_metadata if airweave_metadata else None
 
     # Create the standard Pydantic Field with our enhanced metadata
-    return PydanticField(
+    return cast(FieldInfo, PydanticField(
         default=default,
         default_factory=default_factory,
         alias=alias,
@@ -137,4 +137,4 @@ def AirweaveField(  # noqa: D417
         init_var=init_var,
         kw_only=kw_only,
         **extra,
-    )
+    ))

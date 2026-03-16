@@ -10,7 +10,7 @@ Follows the same structure as the Gmail connector implementation.
 
 import base64
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt
@@ -211,7 +211,7 @@ class OutlookMailSource(BaseSource):
             response.raise_for_status()
             data = response.json()
             self.logger.debug(f"Received response from {url} - Status: {response.status_code}")
-            return data
+            return cast(dict[Any, Any], data)
         except Exception as e:
             self.logger.error(f"Error in API request to {url}: {str(e)}")
             raise

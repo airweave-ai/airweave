@@ -173,7 +173,7 @@ class SharePoint2019V2Source(BaseSource):
     @property
     def site_url(self) -> str:
         """Get the configured site URL."""
-        return self._site_url
+        return str(self._site_url)
 
     @property
     def has_ad_config(self) -> bool:

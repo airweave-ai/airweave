@@ -1,7 +1,7 @@
 """Zendesk source implementation for syncing tickets, comments, users, orgs, and attachments."""
 
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -129,7 +129,7 @@ class ZendeskSource(BaseSource):
 
             # Raise for other HTTP errors
             response.raise_for_status()
-            return response.json()
+            return cast(Dict, response.json())
 
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from Zendesk API: {e.response.status_code} for {url}")

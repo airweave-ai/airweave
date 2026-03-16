@@ -1,6 +1,7 @@
 """Temporal workflow for API key expiration notifications."""
 
 from datetime import timedelta
+from typing import cast
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -24,7 +25,7 @@ class APIKeyExpirationCheckWorkflow:
             dict[str, int]: Counts of notifications sent by type
 
         """
-        return await workflow.execute_activity(
+        return cast(dict[str, int], await workflow.execute_activity(
             check_and_notify_expiring_keys_activity,
             start_to_close_timeout=timedelta(minutes=10),
             retry_policy=RetryPolicy(
@@ -33,4 +34,4 @@ class APIKeyExpirationCheckWorkflow:
                 maximum_interval=timedelta(minutes=1),
                 backoff_coefficient=2.0,
             ),
-        )
+        ))

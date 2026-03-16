@@ -426,7 +426,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
             error_message = "No refresh token found"
             logger.error(error_message)
             raise TokenRefreshError(error_message)
-        return refresh_token
+        return str(refresh_token)
 
     async def _get_integration_config(
         self,

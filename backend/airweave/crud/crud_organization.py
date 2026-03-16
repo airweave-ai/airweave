@@ -1,6 +1,6 @@
 """CRUD operations for the organization model."""
 
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Union, cast
 from uuid import UUID
 
 from sqlalchemy import delete, select, update
@@ -481,7 +481,7 @@ class CRUDOrganization:
                 detail="You must be an admin or owner to perform this action",
             )
 
-        return user_org
+        return cast(UserOrganization, user_org)
 
     async def get_user_membership(
         self, db: AsyncSession, organization_id: UUID, user_id: UUID, ctx: BaseContext
@@ -616,7 +616,7 @@ class CRUDOrganization:
         result = await db.execute(stmt)
         await db.commit()
 
-        return result.rowcount > 0
+        return bool(result.rowcount > 0)
 
     async def add_member(
         self,

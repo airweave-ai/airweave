@@ -6,7 +6,7 @@ Authentication: API key via x-slite-api-key header.
 """
 
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -106,7 +106,7 @@ class SliteSource(BaseSource):
                 timeout=30.0,
             )
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from Slite API: {e.response.status_code} for {url}")
             raise

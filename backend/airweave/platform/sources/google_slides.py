@@ -16,7 +16,7 @@ Reference:
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -123,7 +123,7 @@ class GoogleSlidesSource(BaseSource):
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url, headers=headers, params=params or {})
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
 
     # -----------------------
     # Validation

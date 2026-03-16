@@ -1,6 +1,6 @@
 """The CRUD operations for the User model."""
 
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import UUID
 
 from sqlalchemy import select
@@ -49,7 +49,7 @@ class CRUDUser(CRUDBaseUser[User, UserCreate, UserUpdate]):
         db_obj = result.unique().scalar_one_or_none()
         if not db_obj:
             raise NotFoundException(f"User with email {email} not found")
-        return db_obj
+        return cast(Optional[User], db_obj)
 
     async def update_user_no_auth(self, db: AsyncSession, *, id: UUID, obj_in: UserUpdate) -> User:
         """Update a user without authentication.
@@ -82,7 +82,7 @@ class CRUDUser(CRUDBaseUser[User, UserCreate, UserUpdate]):
         await db.flush()
         await db.refresh(user)
 
-        return user
+        return cast(User, user)
 
     async def get(self, db: AsyncSession, id: UUID, current_user: User) -> Optional[User]:
         """Get a single object by ID.
@@ -101,7 +101,7 @@ class CRUDUser(CRUDBaseUser[User, UserCreate, UserUpdate]):
         db_obj = result.unique().scalar_one_or_none()
         if not db_obj:
             raise NotFoundException(f"User with ID {id} not found")
-        return db_obj
+        return cast(Optional[User], db_obj)
 
     async def get_multi(self, db: AsyncSession, skip: int = 0, limit: int = 100) -> list[User]:
         """Get multiple objects.

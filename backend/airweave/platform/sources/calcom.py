@@ -14,7 +14,7 @@ Data model reference:
 """
 
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -162,7 +162,7 @@ class CalSource(BaseSource):
 
         response = await client.get(url, headers=request_headers, params=params or {})
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     async def _list_bookings(
         self,

@@ -12,7 +12,7 @@ Note: Comments are not supported as the Attio API does not expose them via REST 
 import asyncio
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -104,7 +104,7 @@ class AttioSource(BaseSource):
             try:
                 response = await client.get(url, headers=headers, params=params, timeout=20.0)
                 response.raise_for_status()
-                return response.json()
+                return cast(Dict[Any, Any], response.json())
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:
                     # Rate limited - respect Retry-After header
@@ -179,7 +179,7 @@ class AttioSource(BaseSource):
         try:
             response = await client.post(url, headers=headers, json=json_data or {}, timeout=20.0)
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[Any, Any], response.json())
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from Attio API: {e.response.status_code} for {url}")
             raise

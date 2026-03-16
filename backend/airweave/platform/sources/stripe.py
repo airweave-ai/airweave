@@ -17,7 +17,7 @@ Then, we yield them as entities using the respective entity schemas defined in e
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -96,7 +96,7 @@ class StripeSource(BaseSource):
         # Use a per-request timeout generous enough for Stripe pagination, but bounded
         response = await client.get(url, auth=auth, timeout=20.0)
         response.raise_for_status()
-        return response.json()
+        return cast(dict[Any, Any], response.json())
 
     @staticmethod
     def _parse_unix_timestamp(value: Optional[int]) -> Optional[datetime]:

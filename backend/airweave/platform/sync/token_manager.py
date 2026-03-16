@@ -255,7 +255,7 @@ class TokenManager:
         if cache_key in self._resource_tokens:
             cached_token, fetch_time = self._resource_tokens[cache_key]
             if (time.time() - fetch_time) < self.REFRESH_INTERVAL_SECONDS:
-                return cached_token
+                return str(cached_token)
             self.logger.debug(f"Resource token for {resource_scope} expired, refreshing")
             del self._resource_tokens[cache_key]
 
@@ -308,7 +308,7 @@ class TokenManager:
                 f"Obtained token for resource scope {resource_scope} "
                 f"(source: {self.source_short_name})"
             )
-            return token
+            return str(token)
 
         except TokenRefreshError:
             raise
@@ -395,7 +395,7 @@ class TokenManager:
                     self.logger.error(f"Failed to update credentials in database: {str(db_error)}")
                     # Continue anyway - we have the token, just couldn't persist it
 
-            return access_token
+            return str(access_token)
 
         except Exception as e:
             # Ensure the main session is rolled back if it's in a bad state
@@ -471,10 +471,12 @@ class TokenManager:
 
         # If it's a dict, look for access_token (OAuth standard)
         if isinstance(credentials, dict):
-            return credentials.get("access_token")
+            token = credentials.get("access_token")
+            return str(token) if token is not None else None
 
         # If it's an object with attributes, try to get access_token
         if hasattr(credentials, "access_token"):
-            return credentials.access_token
+            token = credentials.access_token
+            return str(token) if token is not None else None
 
         return None

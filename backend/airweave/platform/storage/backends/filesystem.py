@@ -11,7 +11,7 @@ import os
 import shutil
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, cast
 
 import aiofiles
 import aiofiles.os
@@ -78,7 +78,7 @@ class FilesystemBackend(StorageBackend):
         try:
             async with aiofiles.open(full_path, "r", encoding="utf-8") as f:
                 content = await f.read()
-            return json.loads(content)
+            return cast(Dict[str, Any], json.loads(content))
         except json.JSONDecodeError as e:
             raise StorageException(f"Invalid JSON at {path}: {e}")
         except Exception as e:

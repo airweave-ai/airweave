@@ -1,6 +1,6 @@
 """Composio Test Auth Provider - provides authentication services for other integrations."""
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, cast
 
 import httpx
 from fastapi import HTTPException
@@ -127,7 +127,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         try:
             response = await client.get(url, headers=headers, params=params)
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from Composio API: {e.response.status_code} for {url}")
             raise
@@ -360,7 +360,7 @@ class ComposioAuthProvider(BaseAuthProvider):
                 f"for source '{source_short_name}'.",
             )
 
-        return source_creds_dict
+        return cast(Dict[str, Any], source_creds_dict)
 
     def _map_and_validate_fields(
         self,

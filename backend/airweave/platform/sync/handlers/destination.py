@@ -204,14 +204,14 @@ class DestinationHandler(EntityActionHandler):
         for attempt in range(max_retries + 1):
             try:
                 start = asyncio.get_running_loop().time()
-                result = await operation()
+                await operation()
                 elapsed = asyncio.get_running_loop().time() - start
                 if elapsed > 10:
                     sync_context.logger.warning(
                         f"[{self.name}] {operation_name} slow: {elapsed:.1f}s "
                         f"(attempt {attempt + 1}/{max_retries + 1})"
                     )
-                return result
+                return None
             except _RETRYABLE_EXCEPTIONS as e:
                 error_msg = str(e) or "(empty error message)"
                 if attempt < max_retries:

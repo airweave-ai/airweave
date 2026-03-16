@@ -6,7 +6,7 @@ Uses DefaultAzureCredential for authentication (managed identity, CLI, env vars)
 
 import fnmatch
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 from airweave.core.logging import logger
 from airweave.platform.storage.exceptions import (
@@ -115,7 +115,7 @@ class AzureBlobBackend(StorageBackend):
                 raise StorageNotFoundError(f"Path not found: {path}")
             download_stream = await blob_client.download_blob()
             content = (await download_stream.readall()).decode("utf-8")
-            return json.loads(content)
+            return cast(Dict[str, Any], json.loads(content))
         except StorageNotFoundError:
             raise
         except json.JSONDecodeError as e:
@@ -142,7 +142,7 @@ class AzureBlobBackend(StorageBackend):
             if not await blob_client.exists():
                 raise StorageNotFoundError(f"Path not found: {path}")
             download_stream = await blob_client.download_blob()
-            return await download_stream.readall()
+            return bytes(await download_stream.readall())
         except StorageNotFoundError:
             raise
         except Exception as e:
@@ -154,7 +154,7 @@ class AzureBlobBackend(StorageBackend):
         try:
             container_client = await self._get_container_client()
             blob_client = container_client.get_blob_client(blob_path)
-            return await blob_client.exists()
+            return bool(await blob_client.exists())
         except Exception:
             return False
 

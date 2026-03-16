@@ -6,7 +6,7 @@ GraphQL queries for retrieving these objects.
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -132,7 +132,7 @@ class MondaySource(BaseSource):
                 if variables:
                     self.logger.error(f"Variables: {variables}")
 
-            return data.get("data", {})
+            return cast(Dict[str, Any], data.get("data", {}))
 
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error in Monday.com API: {e.response.status_code}")

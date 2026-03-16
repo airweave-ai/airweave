@@ -1,7 +1,7 @@
 """Pipedrive source implementation."""
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -118,7 +118,7 @@ class PipedriveSource(BaseSource):
                 )
 
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[Any, Any], response.json())
 
     def _clean_properties(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Remove null, empty string, and internal fields from properties.
@@ -823,7 +823,7 @@ class PipedriveSource(BaseSource):
                 response = await client.get(url)
                 if response.status_code == 200:
                     data = response.json()
-                    return data.get("success", False)
+                    return bool(data.get("success", False))
                 return False
         except Exception as e:
             self.logger.error(f"Pipedrive API token validation failed: {e}")

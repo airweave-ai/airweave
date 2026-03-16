@@ -197,7 +197,7 @@ class CRUDAccessControlMembership(
         result = await db.execute(stmt)
         await db.commit()
 
-        return result.rowcount
+        return int(result.rowcount)
 
     async def delete_by_source_connection(
         self,
@@ -226,7 +226,7 @@ class CRUDAccessControlMembership(
         result = await db.execute(stmt)
         await db.commit()
 
-        return result.rowcount
+        return int(result.rowcount)
 
     # -------------------------------------------------------------------------
     # Incremental ACL sync methods
@@ -320,7 +320,7 @@ class CRUDAccessControlMembership(
         )
         result = await db.execute(stmt)
         await db.commit()
-        return result.rowcount
+        return int(result.rowcount)
 
     async def delete_by_group(
         self,
@@ -353,7 +353,7 @@ class CRUDAccessControlMembership(
         )
         result = await db.execute(stmt)
         await db.commit()
-        return result.rowcount
+        return int(result.rowcount)
 
     async def get_memberships_by_groups(
         self,

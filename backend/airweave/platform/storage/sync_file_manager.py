@@ -204,7 +204,7 @@ class SyncFileManager:
 
             try:
                 metadata = await self.backend.read_json(path)
-                return metadata.get("fully_processed", False)
+                return bool(metadata.get("fully_processed", False))
             except StorageNotFoundError:
                 return False
 

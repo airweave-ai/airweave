@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from cryptography.fernet import Fernet
 
@@ -21,4 +21,4 @@ class FernetCredentialEncryptor:
 
     def decrypt(self, encrypted: str) -> dict[str, Any]:
         """Decrypt a ciphertext string and return the credential dict."""
-        return json.loads(self._fernet.decrypt(encrypted).decode())
+        return cast(dict[str, Any], json.loads(self._fernet.decrypt(encrypted).decode()))

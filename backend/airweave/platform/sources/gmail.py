@@ -10,7 +10,7 @@ Uses concurrent/batching processing for optimal performance:
 import asyncio
 import base64
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -116,7 +116,7 @@ class GmailSource(BaseSource):
         # If custom query provided, use it directly
         if getattr(self, "gmail_query", None):
             self.logger.debug(f"Using custom Gmail query: {self.gmail_query}")
-            return self.gmail_query
+            return str(self.gmail_query)
 
         query_parts = self._build_query_parts()
 
@@ -283,7 +283,7 @@ class GmailSource(BaseSource):
         data = response.json()
         self.logger.debug(f"Received response from {url} - Status: {response.status_code}")
         self.logger.debug(f"Response data keys: {list(data.keys())}")
-        return data
+        return cast(Dict[Any, Any], data)
 
     # -----------------------
     # Cursor helper

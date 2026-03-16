@@ -9,7 +9,7 @@ Reference:
 
 import base64
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -150,7 +150,7 @@ class ServiceNowSource(BaseSource):
         }
         response = await client.get(url, headers=headers, params=params, timeout=60.0)
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     async def _fetch_table_paginated(
         self,

@@ -15,7 +15,7 @@ Reference (Microsoft Graph API):
 """
 
 from collections import deque
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -94,7 +94,7 @@ class OneDriveSource(BaseSource):
 
             self.logger.debug(f"Request URL: {url}")
             resp.raise_for_status()
-            return resp.json()
+            return cast(Dict[Any, Any], resp.json())
         except httpx.ConnectTimeout:
             self.logger.error(f"Connection timeout accessing Microsoft Graph API: {url}")
             raise
@@ -124,7 +124,7 @@ class OneDriveSource(BaseSource):
         try:
             url = "https://graph.microsoft.com/v1.0/me/drives"
             data = await self._get_with_auth(client, url)
-            return data.get("value", [])
+            return cast(List[Dict[Any, Any]], data.get("value", []))
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 400:
                 self.logger.warning("Cannot access /me/drives, will try app folder access")

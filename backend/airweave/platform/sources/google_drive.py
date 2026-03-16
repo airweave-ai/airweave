@@ -15,7 +15,7 @@ References:
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -165,7 +165,7 @@ class GoogleDriveSource(BaseSource):
 
             # Raise for other HTTP errors
             resp.raise_for_status()
-            return resp.json()
+            return cast(Dict[Any, Any], resp.json())
 
         except httpx.ConnectTimeout:
             self.logger.error(f"Connection timeout accessing Google Drive API: {url}")
@@ -257,7 +257,7 @@ class GoogleDriveSource(BaseSource):
         token = data.get("startPageToken")
         if not token:
             raise ValueError("Failed to retrieve startPageToken from Drive API")
-        return token
+        return str(token)
 
     async def _iterate_changes(
         self, client: httpx.AsyncClient, start_token: str
@@ -308,7 +308,7 @@ class GoogleDriveSource(BaseSource):
         token = self.cursor.data.get("start_page_token")
         if not token:
             return None
-        return token
+        return str(token)
 
     def _has_file_changed(self, file_obj: Dict) -> bool:
         """Check if file metadata indicates change without downloading.

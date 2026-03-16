@@ -6,7 +6,7 @@ and connection-level (e.g., Notion per-user) rate limiting.
 """
 
 import time
-from typing import Optional
+from typing import Any, Optional, cast
 from uuid import UUID
 
 from airweave.core.exceptions import SourceRateLimitExceededException
@@ -187,7 +187,7 @@ return {current_count + 1, 0}  -- Success, return new count
             if cached:
                 import json
 
-                return json.loads(cached)
+                return cast("dict[Any, Any] | None", json.loads(cached))
         except Exception as e:
             logger.warning(f"Failed to get rate limit config from cache: {e}")
 

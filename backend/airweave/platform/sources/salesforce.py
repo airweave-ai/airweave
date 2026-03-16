@@ -11,7 +11,7 @@ in entities/salesforce.py.
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -165,7 +165,7 @@ class SalesforceSource(BaseSource):
         headers = {"Authorization": f"Bearer {access_token}"}
         response = await client.get(url, headers=headers, params=params)
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[str, Any], response.json())
 
     async def _get_object_fields(self, client: httpx.AsyncClient, sobject_name: str) -> List[str]:
         """Get all queryable fields for a Salesforce object.

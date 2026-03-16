@@ -1,7 +1,7 @@
 """ClickUp source implementation for syncing workspaces, spaces, folders, lists, tasks, comments."""
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -157,7 +157,7 @@ class ClickUpSource(BaseSource):
 
             # Raise for other HTTP errors
             response.raise_for_status()
-            return response.json()
+            return cast(Dict, response.json())
 
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error from ClickUp API: {e.response.status_code} for {url}")

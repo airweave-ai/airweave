@@ -2,7 +2,7 @@
 
 import hashlib
 import secrets
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -662,7 +662,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             config_class.validate_template_configs(validated_config)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return config_class.extract_template_configs(validated_config)
+        return cast(
+            "dict[str, Any] | None",
+            config_class.extract_template_configs(validated_config),
+        )
 
     async def _trigger_sync_workflow(
         self,

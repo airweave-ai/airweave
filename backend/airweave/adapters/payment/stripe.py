@@ -4,7 +4,7 @@ Implements PaymentGatewayProtocol by wrapping the Stripe API.
 Moved from integrations/stripe_client.py.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import stripe
 from stripe.error import StripeError
@@ -191,7 +191,9 @@ class StripePaymentGateway(PaymentGatewayProtocol):
                     subscription_id, cancel_at_period_end=True
                 )
             else:
-                return await stripe.Subscription.delete_async(subscription_id)
+                return cast(
+                    stripe.Subscription, await stripe.Subscription.delete_async(subscription_id)
+                )
         except StripeError as e:
             raise self._map_stripe_error(e, "Failed to cancel subscription") from e
 
@@ -286,7 +288,10 @@ class StripePaymentGateway(PaymentGatewayProtocol):
     def verify_webhook_signature(self, payload: bytes, signature: str) -> stripe.Event:
         """Verify and construct webhook event."""
         try:
-            return stripe.Webhook.construct_event(payload, signature, self.webhook_secret)
+            return cast(
+                stripe.Event,
+                stripe.Webhook.construct_event(payload, signature, self.webhook_secret),
+            )
         except ValueError as e:
             raise ValueError(f"Invalid webhook payload: {e}") from e
         except stripe.error.SignatureVerificationError as e:
@@ -415,7 +420,7 @@ class StripePaymentGateway(PaymentGatewayProtocol):
                         query=f"metadata['idempotency_key']:'{idempotency_key}'"
                     )
                     if getattr(coupons, "data", []):
-                        return coupons.data[0]
+                        return cast(stripe.Coupon, coupons.data[0])
                 except Exception:
                     pass
 

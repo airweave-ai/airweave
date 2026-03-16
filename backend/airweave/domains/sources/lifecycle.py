@@ -128,7 +128,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         )
 
         # 4. Create source instance
-        source = await source_connection_data.source_class.create(
+        source: BaseSource = await source_connection_data.source_class.create(
             source_credentials, config=source_connection_data.config_fields
         )
 
@@ -453,7 +453,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             raise NotFoundException(f"Auth provider '{provider_short_name}' not found in registry")
 
         auth_provider_class = registry_entry.provider_class_ref
-        auth_provider_instance = await auth_provider_class.create(
+        auth_provider_instance: BaseAuthProvider = await auth_provider_class.create(
             credentials=decrypted_credentials,
             config=auth_provider_config,
         )
@@ -582,7 +582,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if not auth_config_ref and oauth_type:
             if isinstance(raw_credentials, dict) and "access_token" in raw_credentials:
                 logger.debug(f"Extracting access_token for OAuth source {short_name}")
-                return raw_credentials["access_token"]
+                return str(raw_credentials["access_token"])
             elif isinstance(raw_credentials, str):
                 logger.debug(f"OAuth source {short_name} credentials already a string token")
                 return raw_credentials

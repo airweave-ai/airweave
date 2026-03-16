@@ -100,7 +100,7 @@ class DoclingOcrAdapter:
             data = response.json()
             md_content = data.get("document", {}).get("md_content")
             if md_content:
-                return md_content
+                return str(md_content)
 
             logger.warning(f"[DoclingOCR] Empty markdown for {file_path}")
             return None

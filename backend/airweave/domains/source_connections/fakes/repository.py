@@ -1,6 +1,6 @@
 """Fake source connection repository for testing."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -80,7 +80,7 @@ class FakeSourceConnectionRepository(SourceConnectionRepositoryProtocol):
     ) -> Optional[ScheduleInfo]:
         """Return seeded schedule info."""
         self._calls.append(("get_schedule_info", db, source_connection))
-        return self._schedule_info.get(source_connection.id)
+        return cast("ScheduleInfo | None", self._schedule_info.get(source_connection.id))
 
     async def get_by_init_session(
         self, db: AsyncSession, *, init_session_id: UUID, ctx: ApiContext

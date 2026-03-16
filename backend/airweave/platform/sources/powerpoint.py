@@ -16,7 +16,7 @@ Reference:
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -124,7 +124,7 @@ class PowerPointSource(BaseSource):
 
             # 429 is left to raise_for_status(); tenacity retries with wait_rate_limit_with_backoff
             response.raise_for_status()
-            return response.json()
+            return cast(dict[Any, Any], response.json())
         except Exception as e:
             error_msg = self._get_descriptive_error_message(url, str(e))
             self.logger.error(f"Error in API request to {url}: {error_msg}")

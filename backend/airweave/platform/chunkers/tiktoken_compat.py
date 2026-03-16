@@ -15,7 +15,7 @@ By placing our wrapper in a module named tiktoken_compat.py, the type string bec
 which contains "tiktoken" and passes Chonkie's backend detection.
 """
 
-from typing import List, Sequence
+from typing import List, Sequence, cast
 
 
 class SafeEncoding:
@@ -43,11 +43,11 @@ class SafeEncoding:
     def encode(self, text: str, **kwargs) -> List[int]:
         """Encode text, allowing all special tokens."""
         kwargs.setdefault("allowed_special", "all")
-        return self._encoding.encode(text, **kwargs)
+        return cast(List[int], self._encoding.encode(text, **kwargs))
 
     def decode(self, tokens: Sequence[int]) -> str:
         """Decode tokens back to text."""
-        return self._encoding.decode(list(tokens))
+        return str(self._encoding.decode(list(tokens)))
 
     def encode_batch(self, texts: List[str], **kwargs) -> List[List[int]]:
         """Encode multiple texts."""

@@ -1,6 +1,6 @@
 """Domain service for auth provider connections."""
 
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -198,7 +198,7 @@ class AuthProviderService(AuthProviderServiceProtocol):
 
         if provider_config is None:
             try:
-                return config_class().model_dump()
+                return cast(dict[str, Any], config_class().model_dump())
             except Exception:
                 raise InvalidInputError(
                     f"Auth provider '{entry.name}' requires config fields but none were provided."
@@ -206,7 +206,7 @@ class AuthProviderService(AuthProviderServiceProtocol):
 
         try:
             config = config_class(**provider_config)
-            return config.model_dump()
+            return cast(dict[str, Any], config.model_dump())
         except ValidationError as exc:
             error_messages: list[str] = []
             for error in exc.errors():
@@ -240,7 +240,7 @@ class AuthProviderService(AuthProviderServiceProtocol):
 
         try:
             auth_config = entry.auth_config_ref(**auth_fields_dict)
-            return auth_config.model_dump()
+            return cast(dict[str, object], auth_config.model_dump())
         except ValidationError as exc:
             error_messages: list[str] = []
             for error in exc.errors():

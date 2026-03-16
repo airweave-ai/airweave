@@ -9,7 +9,7 @@ import asyncio
 import json
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
@@ -513,6 +513,6 @@ class VespaVectorDB:
         if not payload_str or not isinstance(payload_str, str):
             return {}
         try:
-            return json.loads(payload_str)
+            return cast(Dict[str, Any], json.loads(payload_str))
         except json.JSONDecodeError:
             return {}

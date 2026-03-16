@@ -33,7 +33,7 @@ Config (all optional, shown with defaults):
 
 import urllib.parse
 from datetime import datetime, timedelta
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -134,7 +134,7 @@ class GoogleCalendarSource(BaseSource):
             response = await client.get(url, headers=headers, params=params)
 
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[Any, Any], response.json())
 
     @retry(
         stop=stop_after_attempt(5),
@@ -169,7 +169,7 @@ class GoogleCalendarSource(BaseSource):
             response = await client.post(url, headers=headers, json=json_data)
 
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[Any, Any], response.json())
 
     @staticmethod
     def _parse_datetime(value: Optional[str]) -> Optional[datetime]:

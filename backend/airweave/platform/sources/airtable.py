@@ -1,6 +1,6 @@
 """Airtable source implementation for syncing bases, tables, records, and comments."""
 
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -156,7 +156,7 @@ class AirtableSource(BaseSource):
 
             # Raise for other HTTP errors
             response.raise_for_status()
-            return response.json()
+            return cast(Dict, response.json())
 
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e, url)
