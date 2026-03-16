@@ -1,9 +1,8 @@
 """AirweaveField - Extended Pydantic Field with metadata for entity processing."""
 
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from pydantic import Field as PydanticField
-from pydantic.fields import FieldInfo
 
 
 def AirweaveField(  # noqa: D417
@@ -43,7 +42,7 @@ def AirweaveField(  # noqa: D417
     is_updated_at: bool = False,
     unhashable: bool = False,
     **extra: Any,
-) -> FieldInfo:
+) -> Any:
     """Create a Pydantic Field with Airweave-specific metadata.
 
     This extends the standard Pydantic Field to include metadata for:
@@ -65,7 +64,7 @@ def AirweaveField(  # noqa: D417
         **extra: Any additional metadata to be added to the field
 
     Returns:
-        FieldInfo object with Airweave metadata in json_schema_extra
+        Pydantic FieldInfo with Airweave metadata in json_schema_extra
 
     Example:
         >>> class AsanaTaskEntity(BaseEntity):
@@ -109,7 +108,7 @@ def AirweaveField(  # noqa: D417
         json_schema_extra = airweave_metadata if airweave_metadata else None
 
     # Create the standard Pydantic Field with our enhanced metadata
-    return cast(FieldInfo, PydanticField(
+    return PydanticField(
         default=default,
         default_factory=default_factory,
         alias=alias,
@@ -137,4 +136,4 @@ def AirweaveField(  # noqa: D417
         init_var=init_var,
         kw_only=kw_only,
         **extra,
-    ))
+    )
