@@ -1,0 +1,34 @@
+meta {
+  name: 4. Create HERB Meetings Source
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/source-connections/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "HERB Meetings",
+    "short_name": "herb_meetings",
+    "readable_collection_id": "{{readableCollectionId}}",
+    "authentication": {
+      "credentials": {
+        "placeholder": "herb"
+      }
+    },
+    "config": {
+      "data_dir": "/Users/laurensvm/Downloads/HERB-main/data"
+    },
+    "sync_immediately": true
+  }
+}
+
+script:post-response {
+  if (res.status === 200 || res.status === 201) {
+    bru.setVar("meetingsSourceConnectionId", res.body.id);
+  }
+}

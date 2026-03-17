@@ -1,0 +1,10 @@
+meta {
+  name: 5. Get Job Status
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/source-connections/{{sourceConnectionId}}/jobs
+  auth: none
+}

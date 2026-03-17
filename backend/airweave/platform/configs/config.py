@@ -1048,3 +1048,17 @@ class SharePointOnlineConfig(SourceConfig):
         title="Include Site Pages",
         description="Whether to sync SharePoint site pages.",
     )
+
+
+class HerbConfig(SourceConfig):
+    """Configuration for HERB benchmark sources.
+
+    Points to the HERB /data directory containing product JSON files and metadata/.
+    """
+
+    data_dir: str = Field(
+        ...,
+        title="HERB Data Directory",
+        description="Path to the HERB /data directory (e.g. '/tmp/HERB/data')",
+        min_length=1,
+    )

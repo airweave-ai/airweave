@@ -1,0 +1,34 @@
+meta {
+  name: 3. Create HERB Documents Source
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/source-connections/
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "HERB Documents",
+    "short_name": "herb_documents",
+    "readable_collection_id": "{{readableCollectionId}}",
+    "authentication": {
+      "credentials": {
+        "placeholder": "herb"
+      }
+    },
+    "config": {
+      "data_dir": "/Users/laurensvm/Downloads/HERB-main/data"
+    },
+    "sync_immediately": true
+  }
+}
+
+script:post-response {
+  if (res.status === 200 || res.status === 201) {
+    bru.setVar("documentsSourceConnectionId", res.body.id);
+  }
+}

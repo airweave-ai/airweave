@@ -23,6 +23,14 @@ from .google_calendar import GoogleCalendarSource
 from .google_docs import GoogleDocsSource
 from .google_drive import GoogleDriveSource
 from .google_slides import GoogleSlidesSource
+from .herb import (
+    HerbCodeReviewSource,
+    HerbDocumentsSource,
+    HerbMeetingsSource,
+    HerbMessagingSource,
+    HerbPeopleSource,
+    HerbResourcesSource,
+)
 from .hubspot import HubspotSource
 from .incremental_stub import IncrementalStubSource
 from .intercom import IntercomSource
@@ -76,6 +84,12 @@ ALL_SOURCES: list[type] = [
     FreshdeskSource,
     GitHubSource,
     GitLabSource,
+    HerbCodeReviewSource,
+    HerbDocumentsSource,
+    HerbMeetingsSource,
+    HerbMessagingSource,
+    HerbPeopleSource,
+    HerbResourcesSource,
     GmailSource,
     GoogleCalendarSource,
     GoogleDocsSource,
