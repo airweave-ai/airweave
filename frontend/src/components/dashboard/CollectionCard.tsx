@@ -1,18 +1,18 @@
-import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Eye, ExternalLink, Plus, Loader2 } from "lucide-react";
+import { Eye, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getAppIconUrl } from "@/lib/utils/icons";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { useCollectionsStore, SourceConnection } from "@/lib/stores";
+import type { SourceConnectionSummary } from "@/lib/stores/collections";
 
 interface CollectionCardProps {
   id: string;
   name: string;
   readableId: string;
   status?: string;
+  sourceConnectionSummaries?: SourceConnectionSummary[];
   onClick?: () => void;
 }
 
@@ -21,39 +21,11 @@ export const CollectionCard = ({
   name,
   readableId,
   status = "active",
+  sourceConnectionSummaries = [],
   onClick,
 }: CollectionCardProps) => {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
-  const { fetchSourceConnections, sourceConnections } = useCollectionsStore();
-  const [isLoadingConnections, setIsLoadingConnections] = useState(false);
-
-  // Fetch source connections for this collection when the component mounts
-  useEffect(() => {
-    const loadSourceConnections = async () => {
-      if (sourceConnections[readableId]) {
-        // Already have the source connections in the store
-        return;
-      }
-
-      // Set loading state
-      setIsLoadingConnections(true);
-
-      try {
-        // Fetch source connections from the store (which will cache them)
-        await fetchSourceConnections(readableId);
-      } catch (error) {
-        console.error(`Error fetching source connections for ${readableId}:`, error);
-      } finally {
-        setIsLoadingConnections(false);
-      }
-    };
-
-    loadSourceConnections();
-  }, [readableId, fetchSourceConnections, sourceConnections]);
-
-  // Get connections for this collection from the store
-  const collectionSourceConnections = sourceConnections[readableId] || [];
 
   const handleClick = () => {
     if (onClick) {
@@ -109,17 +81,13 @@ export const CollectionCard = ({
           </Button>
 
           {/* Source connection icons */}
-          {isLoadingConnections ? (
-            <div className="h-10 w-10 rounded-lg flex items-center justify-center">
-              <Loader2 className="h-5 w-5 text-slate-400 animate-spin" />
-            </div>
-          ) : collectionSourceConnections.length > 0 ? (
-            collectionSourceConnections.length === 1 ? (
+          {sourceConnectionSummaries.length > 0 ? (
+            sourceConnectionSummaries.length === 1 ? (
               <div className="flex items-center justify-center">
                 <div className="h-10 w-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1 flex items-center justify-center overflow-hidden">
                   <img
-                    src={getAppIconUrl(collectionSourceConnections[0].short_name, resolvedTheme)}
-                    alt={collectionSourceConnections[0].name}
+                    src={getAppIconUrl(sourceConnectionSummaries[0].short_name, resolvedTheme)}
+                    alt={sourceConnectionSummaries[0].name}
                     className="h-full w-full object-contain"
                   />
                 </div>
@@ -127,9 +95,9 @@ export const CollectionCard = ({
             ) : (
               <div className="flex items-center">
                 <div className="flex -space-x-2">
-                  {collectionSourceConnections.slice(0, 2).map((connection, index) => (
+                  {sourceConnectionSummaries.slice(0, 2).map((connection, index) => (
                     <div
-                      key={connection.id}
+                      key={`${connection.short_name}-${index}`}
                       className="h-10 w-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1.5 flex items-center justify-center overflow-hidden"
                       style={{ zIndex: 2 - index }}
                     >
@@ -141,9 +109,9 @@ export const CollectionCard = ({
                     </div>
                   ))}
                 </div>
-                {collectionSourceConnections.length > 2 && (
+                {sourceConnectionSummaries.length > 2 && (
                   <div className="ml-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                    +{collectionSourceConnections.length - 2}
+                    +{sourceConnectionSummaries.length - 2}
                   </div>
                 )}
               </div>

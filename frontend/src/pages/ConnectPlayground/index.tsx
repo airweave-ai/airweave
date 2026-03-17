@@ -9,7 +9,18 @@ import { SandboxShell } from "./sandbox/SandboxShell";
 import { ConnectPreview } from "./preview/ConnectPreview";
 import { CodePreview } from "./code/CodePreview";
 
-const CONNECT_URL = import.meta.env.VITE_CONNECT_URL || "http://localhost:8082";
+function getConnectUrl(): string {
+  if (import.meta.env.VITE_CONNECT_URL) {
+    return import.meta.env.VITE_CONNECT_URL as string;
+  }
+  const { hostname, protocol } = window.location;
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return "http://localhost:8082";
+  }
+  return `${protocol}//connect.${hostname.replace(/^app\./, "")}`;
+}
+
+const CONNECT_URL = getConnectUrl();
 
 export default function ConnectPlayground() {
   const state = usePlaygroundState();

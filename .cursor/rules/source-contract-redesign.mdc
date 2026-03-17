@@ -1,0 +1,187 @@
+---
+description: Source contract v2 redesign — handover context for continuing the refactor
+alwaysApply: false
+---
+
+# Source Contract v2 Redesign — Handover
+
+## The problem
+
+The `BaseSource` contract was designed 14 months ago for OSS contributors to build sources easily. The system grew complex, but the contract didn't evolve. Result:
+
+- **Setter soup**: 7 `set_*()` calls across 2 files after construction. Source is never "fully configured" at any point.
+- **Untyped creation**: `create(credentials: Optional[Any], config: Optional[Dict])` — nobody knows what credentials actually is.
+- **No exceptions**: Sources catch bare `httpx.HTTPStatusError`, pipeline can't distinguish "skip entity" from "abort sync".
+- **Token tangle**: `self.access_token` dynamic attribute + `TokenManager` + `get_access_token()` fallback with `getattr`.
+- **Hidden deps**: `generate_entities()` takes no params but relies on cursor, file_downloader, node_selections stored on self.
+- **God class**: BaseSource is 800 lines mixing auth, HTTP, content cleaning, concurrency, and OAuth validation.
+
+## The target contract
+
+```python
+class BaseSource:
+    # Construction: typed deps, no setters
+    @classmethod
+    async def create(cls, *, auth: TokenProvider | AuthConfig, config: Optional[BaseModel],
+                     logger: ContextualLogger) -> "BaseSource": ...
+
+    # Methods carry their operation context
+    async def generate_entities(self, *, cursor: SyncCursor, files: FileService) -> AsyncGenerator[BaseEntity, None]: ...
+    async def validate(self) -> bool: ...
+    async def search(self, *, query: str, limit: int) -> AsyncGenerator[BaseEntity, None]: ...
+    async def get_browse_children(self, *, parent_node_id: str | None = None) -> list[BrowseNode]: ...
+    async def execute_tool(self, *, tool_name: str, parameters: dict) -> ToolResult: ...  # future
+```
+
+One factory (`SourceLifecycleService`) for ALL creation contexts: sync, search, browse, validation, tool calls.
+
+## What's done
+
+### Exception hierarchy (`domains/sources/exceptions.py`)
+Full typed hierarchy under `SourceError(AirweaveException)`:
+- `SourceAuthError` > `SourceTokenRefreshError` — 401 / refresh failure
+- `SourceRateLimitError(retry_after)` — 429
+- `SourceServerError(status_code)` — 5xx, timeout, connection errors (canonical upstream-failure exception)
+  - `SourceTemporaryError` / `SourcePermanentError` are **aliases** for `SourceServerError` (backward compat)
+- `SourceEntityError(entity_id)` > `SourceEntityForbiddenError`, `SourceEntityNotFoundError`, `SourceEntitySkippedError`
+- `SourceFileDownloadError(file_url)`
+- `SourceCreationError`, `SourceValidationError`
+
+Token provider exceptions (`domains/sources/token_providers/exceptions.py`):
+- `TokenProviderError(SourceError)` — base for all token-provider failures
+  - `TokenCredentialsInvalidError` — expired/revoked token or refresh_token
+  - `TokenProviderAccountGoneError` — external account deleted (Composio/Pipedream)
+  - `TokenProviderConfigError` — fundamental misconfiguration
+  - `TokenProviderMissingCredsError` — response lacks required fields
+  - `TokenProviderRateLimitError` — upstream rate-limiting
+  - `TokenProviderServerError` — server error (5xx / timeout)
+  - `TokenRefreshNotSupportedError` — static token / no refresh_token
+
+OAuth refresh exceptions (`domains/oauth/exceptions.py`):
+- `OAuthRefreshError` — base for all token-refresh failures
+  - `OAuthRefreshTokenRevokedError` — 401 (refresh_token dead)
+  - `OAuthRefreshBadRequestError` — 400 / invalid_grant
+  - `OAuthRefreshRateLimitError` — 429 / exhausted retries
+  - `OAuthRefreshServerError` — 5xx / timeout / connection error
+  - `OAuthRefreshCredentialMissingError` — no connection or credential in DB
+
+Auth provider exceptions (`platform/auth_providers/exceptions.py`):
+- `AuthProviderError` — base for all auth-provider failures
+  - `AuthProviderAuthError` → `TokenCredentialsInvalidError`
+  - `AuthProviderAccountNotFoundError` → `TokenProviderAccountGoneError`
+  - `AuthProviderMissingFieldsError` → `TokenProviderMissingCredsError`
+  - `AuthProviderConfigError` → `TokenProviderConfigError`
+  - `AuthProviderRateLimitError` → `TokenProviderRateLimitError`
+  - `AuthProviderServerError` → `TokenProviderServerError`
+
+Each token provider translates its upstream exceptions into `TokenProviderError` subtypes.
+Sources should raise `SourceError` subtypes. Pipeline routes by type (skip entity, retry, abort).
+
+### TokenProvider protocol (`domains/sources/token_providers/`)
+Protocol with `get_token()` / `force_refresh()`. Three implementations:
+- `OAuthTokenProvider` — expiry-aware refresh (80% of `expires_in`, clamped [60s, 50min]) + asyncio.Lock + tenacity retries (3× on 5xx/429) + delegates to `oauth2_service.refresh_and_persist()`
+- `StaticTokenProvider` — raw string, raises `TokenRefreshNotSupportedError` (with `provider_kind` metadata) on `force_refresh()`
+- `AuthProviderTokenProvider` — delegates to Pipedream/Composio `BaseAuthProvider.get_creds_for_source()` with tenacity retries (3× on server/rate-limit errors)
+
+`OAuthTokenProvider` constructor: `(credentials, *, oauth_type, oauth2_service, source_short_name, connection_id, ctx, logger, config_fields)`. `can_refresh` is derived internally from `oauth_type ∈ {with_refresh, with_rotating_refresh}` AND `_has_refresh_token(credentials)` (module-level helper).
+
+All providers translate upstream errors into `TokenProviderError` subtypes (see exception hierarchy above).
+
+**Resolution matrix** (`_configure_token_provider` in lifecycle.py):
+| Situation | Provider | `can_refresh` |
+|-----------|----------|---------------|
+| Direct token injection (`access_token` param) | `StaticTokenProvider` | n/a |
+| `oauth_type=None` (GitHub, Slab, Stripe, SharePoint2019) | None — source manages its own auth | n/a |
+| `ACCESS_ONLY` (Linear, Slack, Notion, Monday, ClickUp, Todoist, Intercom) | `OAuthTokenProvider` | `False` |
+| `WITH_REFRESH` (Airtable, Asana, Google Drive, Salesforce, etc.) | `OAuthTokenProvider` | `True` |
+| `WITH_ROTATING_REFRESH` (Confluence, Jira) | `OAuthTokenProvider` | `True` |
+| Auth provider (Pipedream/Composio, any source) | `AuthProviderTokenProvider` | n/a |
+| Proxy mode | None (HTTP client handles auth) | n/a |
+
+### BaseSource token cleanup
+- `_token_manager` removed. `_token_provider` is the single path.
+- `get_access_token()` → `_token_provider.get_token()`
+- `refresh_on_unauthorized()` → `_token_provider.force_refresh()`
+- All ~25 source files migrated. Zero `token_manager` references remain.
+
+### oauth2_service
+Added `refresh_and_persist()` — full load + decrypt + refresh + persist-rotation cycle in one call. OAuthTokenProvider is thin (~185 lines, zero infra deps).
+
+## What's remaining (prioritized)
+
+### Phase 1: Stop the bleeding (URGENT — production bug)
+Sources `except Exception` and swallow everything. A 401 on every API call results in a "successful" sync with 0 entities (observed in Linear sync). ~186 `except Exception` instances across ~30 source files.
+
+**1a. Sources raise typed exceptions:**
+- 401 after refresh attempt → `SourceAuthError` (abort sync)
+- 429 → `SourceRateLimitError` (retry)
+- 403 on single entity → `SourceEntityForbiddenError` (skip entity)
+- 5xx / timeout → `SourceServerError` (retry)
+- File download failure → `SourceFileDownloadError` (skip entity)
+
+**1b. Pipeline routes exceptions:**
+- `SourceAuthError` → mark sync as auth_failed, abort
+- `SourceEntityError` subtypes → skip entity, increment skipped counter
+- `SourceRateLimitError` / `SourceServerError` → retry or abort after N retries
+- Orchestrator (`platform/sync/orchestrator.py`), stream (`platform/sync/stream.py`) need updates
+
+### Phase 2: Kill setters, make construction explicit
+**2a. Construction-time deps into `create()` params** — `logger`, `token_provider`, `http_client_factory` passed at creation, not via `set_*()` after.
+
+**2b. Operation-time deps into method params** — `generate_entities(*, cursor, files, node_selections)` instead of `self._cursor` / `self._file_downloader` stored on self.
+
+**2c. Update SourceLifecycleService** — passes deps at construction.
+
+**2d. Update SourceContextBuilder** — passes cursor/files/selections as method params.
+
+### Phase 3: Make `create()` typed
+**3a. New `create()` signature** — Token sources: `create(*, auth: TokenProvider, config: Optional[BaseModel])`. Structured-credential sources: `create(*, auth: AuthConfig, config: Optional[BaseModel])`.
+
+**3b. Update all ~30 source implementations.**
+
+### Phase 4: Extract utilities from BaseSource
+- `_validate_oauth2` (~150 lines) → standalone or on TokenProvider
+- `clean_content_for_embedding` (~40 lines) → standalone utility
+- `process_entities_concurrent` → stays (used by 5+ sources, only needs self.logger)
+
+### Phase 5: Lifecycle consolidation
+- Validation path currently bypasses lifecycle service (direct `source_cls.create()`) — bring it in
+- Absorb `SourceContextBuilder` sync-specific concerns into lifecycle service
+
+## Design decisions
+
+**HTTP client**: NOT abstracting auth into the HTTP layer. Auth header format is too diverse across sources (Bearer, `token`, NTLM, custom headers like `Notion-Version`). AirweaveHttpClient stays as transport + rate limiting only. Sources own their auth headers.
+
+**`get_token_for_resource`**: NOT on the TokenProvider protocol. Only SharePoint Online uses it. Accessed via `hasattr` check on _token_provider. The method exists on OAuthTokenProvider but not on the protocol.
+
+**No backwards compat**: We refactor thoroughly. No shims, no dual support.
+
+**No lazy imports**: Dependencies injected explicitly at construction. No `import` inside methods to avoid circular deps — fix the architecture instead.
+
+**No `Any` types**: Use protocols, typed params, `ContextualLogger` not `Any`.
+
+**Exceptions propagate**: Token providers throw `TokenProviderError` subtypes (which inherit from `SourceError`), not swallow errors. Pipeline/orchestrator decides what to do.
+
+**FileService concern**: When `generate_entities` receives `files: FileService` as param, FileService.download_from_url still needs the source's HTTP client and token provider. Either the pipeline pre-wires FileService with the source's auth, or the source passes them. This needs design thought.
+
+## Key files
+
+| File | Role |
+|------|------|
+| `platform/sources/_base.py` | BaseSource contract (setters still exist, needs `create()` rewrite) |
+| `domains/sources/exceptions.py` | Full exception hierarchy (done) |
+| `domains/sources/token_providers/` | Protocol + 3 implementations (done) |
+| `domains/sources/lifecycle.py` | Creates + configures sources. Has `_configure_token_provider`. |
+| `platform/builders/source.py` | Sync-specific: cursor, file_downloader, node_selections (to be absorbed) |
+| `domains/oauth/oauth2_service.py` | `refresh_and_persist()` (done) |
+| `tests/unit/platform/sync/test_token_providers.py` | 21 tests covering all 3 providers |
+
+## Source auth patterns (reference)
+
+| Pattern | Sources | How token is obtained |
+|---------|---------|----------------------|
+| Bearer OAuth | asana, slack, google_drive, hubspot, airtable, zendesk, sharepoint_online, notion, linear, jira | `get_access_token()` → TokenProvider |
+| Bearer API key | attio, slab | `self.api_key` (static, no refresh) |
+| `token` header (PAT) | github | `self.personal_access_token` |
+| NTLM | sharepoint2019v2 | username/password/domain from auth config |
+| Cross-resource | sharepoint_online | `get_token_for_resource(scope)` on OAuthTokenProvider |

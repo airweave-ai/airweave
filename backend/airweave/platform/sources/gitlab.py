@@ -27,7 +27,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 from airweave.platform.utils.file_extensions import (
     get_language_for_extension,
     is_text_file,
@@ -139,12 +139,12 @@ class GitLabSource(BaseSource):
             if response.status_code == 401:
                 self.logger.warning(f"Received 401 Unauthorized for {url}, refreshing token...")
 
-                if self.token_manager:
+                if self.token_provider:
                     try:
                         # Force refresh the token
                         from airweave.core.exceptions import TokenRefreshError
 
-                        new_token = await self.token_manager.refresh_on_unauthorized()
+                        new_token = await self.token_provider.force_refresh()
                         headers = {"Authorization": f"Bearer {new_token}"}
 
                         # Retry with new token
@@ -205,12 +205,12 @@ class GitLabSource(BaseSource):
                 if response.status_code == 401:
                     self.logger.warning(f"Received 401 Unauthorized for {url}, refreshing token...")
 
-                    if self.token_manager:
+                    if self.token_provider:
                         try:
                             # Force refresh the token
                             from airweave.core.exceptions import TokenRefreshError
 
-                            new_token = await self.token_manager.refresh_on_unauthorized()
+                            new_token = await self.token_provider.force_refresh()
                             headers = {
                                 "Authorization": f"Bearer {new_token}",
                                 "Accept": "application/json",

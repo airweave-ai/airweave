@@ -27,3 +27,15 @@ class OAuthBrowserInitiationResult:
     client_secret: Optional[str]
     oauth_client_mode: str
     additional_overrides: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshResult:
+    """Result of an OAuth2 token refresh.
+
+    Carries the new access token alongside the provider-reported lifetime
+    so callers can schedule the next refresh accurately.
+    """
+
+    access_token: str
+    expires_in: Optional[int] = None

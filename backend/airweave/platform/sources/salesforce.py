@@ -535,7 +535,8 @@ class SalesforceSource(BaseSource):
             # Just validate that we have an access token
             return bool(getattr(self, "access_token", None))
 
-        if not getattr(self, "access_token", None):
+        access_token = await self.get_access_token()
+        if not access_token:
             self.logger.error("Salesforce validation failed: missing access token.")
             return False
 
@@ -544,11 +545,9 @@ class SalesforceSource(BaseSource):
             return False
 
         try:
-            # Use the OAuth2 validation helper with Salesforce's identity endpoint
-            # instance_url is normalized (no protocol), so we need to add https://
             return await self._validate_oauth2(
                 ping_url=f"https://{self.instance_url}/services/oauth2/userinfo",
-                access_token=self.access_token,
+                access_token=access_token,
                 timeout=10.0,
             )
         except Exception as e:

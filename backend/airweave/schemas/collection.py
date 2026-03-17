@@ -4,7 +4,7 @@ A collection is a group of different data sources that you can search using a si
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
@@ -12,6 +12,15 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 from airweave.core.readable_id import generate_readable_id
 from airweave.core.shared_models import CollectionStatus
 from airweave.platform.sync.config.base import SyncConfig
+
+
+class SourceConnectionSummary(BaseModel):
+    """Lightweight summary of a source connection for collection list display."""
+
+    short_name: str
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CollectionBase(BaseModel):
@@ -243,6 +252,13 @@ class Collection(CollectionRecord):
             "(derived from deployment metadata)."
         ),
     )
+    source_connection_summaries: List[SourceConnectionSummary] = Field(
+        default_factory=list,
+        description=(
+            "Lightweight list of source connections attached to this collection. "
+            "Contains only short_name and name, suitable for rendering icons in list views."
+        ),
+    )
 
     model_config = {
         "from_attributes": True,
@@ -260,6 +276,10 @@ class Collection(CollectionRecord):
                 "created_by_email": "admin@company.com",
                 "modified_by_email": "finance@company.com",
                 "status": "ACTIVE",
+                "source_connection_summaries": [
+                    {"short_name": "slack", "name": "Slack"},
+                    {"short_name": "github", "name": "GitHub"},
+                ],
             }
         },
     }

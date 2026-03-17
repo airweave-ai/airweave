@@ -225,7 +225,7 @@ class VespaDestination(VectorDBDestination):
         if not parent_ids or not self._client:
             return
 
-        await self._client.delete_by_parent_ids(parent_ids, self.collection_id)
+        await self._client.delete_by_original_entity_ids(parent_ids, self.collection_id)
 
     async def search(
         self,

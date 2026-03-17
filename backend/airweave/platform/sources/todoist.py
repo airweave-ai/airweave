@@ -69,7 +69,8 @@ class TodoistSource(BaseSource):
         Returns the JSON response (dict or list).
         If a 404 error is encountered, returns None instead of raising an exception.
         """
-        headers = {"Authorization": f"Bearer {self.access_token}"}
+        access_token = await self.get_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
         try:
             response = await client.get(url, headers=headers, params=params)
             response.raise_for_status()

@@ -75,10 +75,11 @@ setTokenProvider({
 - Clears org-specific data on switch (collections, API keys)
 
 ### 2. **Collections Store** (`stores/collections.ts`)
-- Caches collections and source connections
+- Caches collections (with API-provided `source_connection_summaries` for list views)
 - Implements event-driven updates via custom event bus
 - Smart caching with force refresh option
 - Handles collection CRUD events automatically
+- Source connection details for list pages come from `GET /collections` response (no per-card fetching)
 
 ### 3. **Sync State Store** (`stores/syncStateStore.ts`)
 - Real-time sync progress via SSE
@@ -127,6 +128,15 @@ setTokenProvider({
 - State preserved in sessionStorage during redirect
 - Handles both standard and SemanticMcp flows
 - Error recovery with detailed user feedback
+
+#### Browser OAuth Claim-Token Contract
+All browser OAuth flows use a two-step handoff to trigger the initial sync:
+
+1. **Before redirect**: `POST /source-connections` returns `auth.claim_token`. Store it in `sessionStorage` keyed as `oauth_claim_token:{source_connection_id}` before navigating to `auth.auth_url`.
+2. **After redirect**: The backend callback 303-redirects to the frontend with `?status=success&source_connection_id=...`. On landing, retrieve the stored claim token and call `POST /source-connections/{id}/verify-oauth` with `{ claim_token }` to trigger the deferred sync workflow.
+3. **Cleanup**: Only remove the `oauth_claim_token:*` entry from `sessionStorage` after `verify-oauth` returns a successful (`response.ok`) response — this preserves the token for retry on failure.
+
+Skipping the `verify-oauth` call leaves the sync job stuck in `PENDING` indefinitely.
 
 ## Component Patterns
 

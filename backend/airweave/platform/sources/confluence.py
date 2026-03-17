@@ -41,7 +41,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -142,12 +142,12 @@ class ConfluenceSource(BaseSource):
             return response.json()
         except httpx.HTTPStatusError as e:
             # Handle 401 Unauthorized - try refreshing token
-            if e.response.status_code == 401 and self._token_manager:
+            if e.response.status_code == 401 and self._token_provider:
                 self.logger.warning(
                     "🔐 Received 401 Unauthorized from Confluence - attempting token refresh"
                 )
                 try:
-                    refreshed = await self._token_manager.refresh_on_unauthorized()
+                    refreshed = await self._token_provider.force_refresh()
 
                     if refreshed:
                         # Retry with new token (the retry decorator will handle this)

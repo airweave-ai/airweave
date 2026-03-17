@@ -1,0 +1,282 @@
+---
+title: CLI
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/cli.mdx
+subtitle: Search your Airweave collections, manage sources, and trigger syncs, all from the terminal.
+slug: cli
+---
+
+The Airweave CLI lets you interact with your collections from the command line. It's designed for both developers and AI agents: interactive mode gives you rich output with spinners and prompts, while piped or non-TTY mode outputs clean JSON for scripting.
+
+## Installation
+
+<Tabs>
+  <Tab title="pip (recommended)">
+    ```bash
+    pip install airweave-cli
+    ```
+  </Tab>
+
+  <Tab title="npm">
+    ```bash
+    npm install -g @airweave/cli
+    ```
+
+    The npm package automatically installs the Python CLI under the hood using pipx, uv, or pip.
+  </Tab>
+
+  <Tab title="From source">
+    ```bash
+    git clone https://github.com/airweave-ai/cli.git
+    cd cli
+    poetry install
+    poetry run airweave --help
+    ```
+  </Tab>
+</Tabs>
+
+Verify the installation:
+
+```bash
+airweave --version
+```
+
+---
+
+## Authentication
+
+Before using the CLI, authenticate with your Airweave account. There are two methods: browser-based login (OAuth) and API key.
+
+### Browser login
+
+```bash
+airweave auth login
+```
+
+This opens a browser window where you sign in via Auth0. The CLI stores the access token and organization ID in `~/.airweave/config.json`.
+
+### API key login
+
+```bash
+airweave auth login --api-key
+```
+
+You'll be prompted for your API key, base URL, and an optional default collection. The key is validated before being saved.
+
+### Check auth status
+
+```bash
+airweave auth status
+```
+
+### Log out
+
+```bash
+airweave auth logout
+```
+
+---
+
+## Searching
+
+The primary use case — search any collection from your terminal:
+
+```bash
+airweave search "quarterly revenue figures" --collection finance-data
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--collection` | `-c` | Collection readable ID to search |
+| `--top-k` | `-k` | Number of results to return (default: 10) |
+
+If you've set a default collection (via login or environment variable), you can omit `--collection`:
+
+```bash
+airweave search "how does authentication work?"
+```
+
+### Piping results
+
+When stdout is not a TTY (e.g. piped to another command), the CLI automatically outputs JSON:
+
+```bash
+airweave search "refund policy" | jq -r '.results[0].md_content'
+```
+
+You can also force JSON output in interactive mode:
+
+```bash
+airweave search "deploy steps" --json | jq '.results[0]'
+```
+
+---
+
+## Collections
+
+### List collections
+
+```bash
+airweave collections list
+```
+
+### Create a collection
+
+```bash
+airweave collections create --name "My Data" --readable-id my-data
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--name` | `-n` | Display name for the collection (required) |
+| `--readable-id` | `-r` | Custom readable ID (optional, auto-generated if omitted) |
+
+### Get collection details
+
+```bash
+airweave collections get my-data-x7k9m
+```
+
+---
+
+## Sources
+
+### List source connections
+
+```bash
+airweave sources list --collection my-data
+```
+
+### Add a source connection
+
+```bash
+airweave sources add slack --collection my-data --name "Team Slack"
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--collection` | `-c` | Collection readable ID |
+| `--name` | `-n` | Display name for the connection |
+| `--credentials` | | JSON string with authentication credentials |
+| `--config` | | JSON string with source-specific configuration |
+| `--sync` / `--no-sync` | | Whether to trigger a sync after creation (default: sync) |
+
+### Trigger a sync
+
+```bash
+airweave sources sync <source-connection-id>
+```
+
+Use `--force` for a full re-sync instead of incremental:
+
+```bash
+airweave sources sync <source-connection-id> --force
+```
+
+---
+
+## Global flags
+
+These flags work with any command:
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--version` | `-v` | Print version and exit |
+| `--json` | | Force JSON output |
+| `--quiet` | `-q` | Suppress spinners and interactive output (implies `--json`) |
+
+---
+
+## Configuration
+
+The CLI resolves configuration in this order: **CLI flags** → **environment variables** → **config file** → **defaults**.
+
+### Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `AIRWEAVE_API_KEY` | API key (overrides config file) |
+| `AIRWEAVE_BASE_URL` | API base URL (default: `https://api.airweave.ai`) |
+| `AIRWEAVE_COLLECTION` | Default collection readable ID |
+
+### Config file
+
+Stored at `~/.airweave/config.json`:
+
+```json
+{
+  "api_key": "sk-...",
+  "base_url": "https://api.airweave.ai",
+  "collection": "my-default-collection"
+}
+```
+
+### Self-hosted instances
+
+Point the CLI at your own Airweave deployment:
+
+```bash
+airweave auth login --api-key --base-url https://your-airweave-instance.com
+```
+
+Or set the environment variable:
+
+```bash
+export AIRWEAVE_BASE_URL="https://your-airweave-instance.com"
+```
+
+For custom Auth0 configurations, set these additional variables:
+
+| Variable | Description |
+|----------|-------------|
+| `AIRWEAVE_AUTH0_DOMAIN` | Auth0 domain for browser login |
+| `AIRWEAVE_AUTH0_CLIENT_ID` | Auth0 client ID |
+| `AIRWEAVE_AUTH0_AUDIENCE` | Auth0 audience |
+
+---
+
+## Output behavior
+
+The CLI adapts its output based on context:
+
+| Context | Behavior |
+|---------|----------|
+| Interactive terminal | Rich output with colors, spinners, and tables |
+| Piped or redirected | Clean JSON on stdout |
+| `--json` flag | Forces JSON output |
+| `--quiet` flag | Suppresses all interactive elements, implies `--json` |
+
+Errors always go to stderr. In JSON mode, errors are formatted as:
+
+```json
+{
+  "error": {
+    "message": "Collection not found",
+    "code": "not_found"
+  }
+}
+```
+
+Exit codes: `0` for success, `1` for failure.
+
+---
+
+## Command reference
+
+```
+airweave [--version] [--json] [--quiet] <command>
+
+Commands:
+  search          Search a collection
+  auth            Authentication management
+    login         Authenticate (browser or API key)
+    status        Print current auth state
+    logout        Clear stored credentials
+  collections     Collection management
+    list          List all collections
+    create        Create a new collection
+    get           Get collection details
+  sources         Source connection management
+    list          List source connections
+    add           Add a new source connection
+    sync          Trigger a sync
+```
