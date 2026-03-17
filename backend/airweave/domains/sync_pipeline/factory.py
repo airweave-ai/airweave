@@ -49,6 +49,7 @@ from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.usage.protocols import UsageLedgerProtocol, UsageLimitCheckerProtocol
+from airweave.models.source_connection import SourceConnection
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
 
@@ -124,7 +125,7 @@ class SyncFactory:
         sc = await self._sc_repo.get_by_sync_id(db, sync_id=sync.id, ctx=ctx)
         if not sc:
             raise NotFoundException(f"Source connection record not found for sync {sync.id}")
-        source_connection_id = sc.id
+        source_connection_id = UUID(str(sc.id))
 
         sync_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.source_build",
@@ -347,7 +348,7 @@ class SyncFactory:
         return source, cursor
 
     @staticmethod
-    def _validate_not_completed_snapshot(source_connection_obj) -> None:
+    def _validate_not_completed_snapshot(source_connection_obj: SourceConnection) -> None:
         """Guard: completed snapshots that had their short_name restored cannot re-sync."""
         if source_connection_obj.short_name != "snapshot":
             from pydantic import ValidationError

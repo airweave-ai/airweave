@@ -282,6 +282,11 @@ class TextualRepresentationBuilder:
 
     def _get_converter_and_key(self, entity: BaseEntity) -> Tuple[Any, Optional[str]]:
         """Get the appropriate converter and key for an entity."""
+        if self._registry is None:
+            raise EntityProcessingError(
+                f"Converter registry required for {entity.__class__.__name__} but not configured"
+            )
+
         if isinstance(entity, WebEntity):
             if not entity.crawl_url:
                 raise EntityProcessingError(f"WebEntity {entity.entity_id} missing crawl_url")

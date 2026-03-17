@@ -26,7 +26,6 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.domains.sync_pipeline.file_types import SUPPORTED_FILE_EXTENSIONS
 from airweave.platform.utils.ssrf import validate_url
 
 

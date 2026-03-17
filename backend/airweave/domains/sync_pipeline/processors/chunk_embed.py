@@ -226,7 +226,13 @@ class ChunkEmbedProcessor:
         expected_dims = self._dense_embedder.dimensions
 
         # Dense embeddings (provider-specific dimensions for neural search)
-        dense_texts = [e.textual_representation or "" for e in chunk_entities]
+        dense_texts: list[str] = []
+        for e in chunk_entities:
+            if e.textual_representation is None:
+                raise SyncFailureError(
+                    f"[ChunkEmbedProcessor] ChunkEntity {e.entity_id} has no textual_representation"
+                )
+            dense_texts.append(e.textual_representation)
         entity_ids = [e.entity_id for e in chunk_entities]
         sync_context.logger.info(
             "[ChunkEmbedProcessor] Embedding %d chunk entities. Entity IDs: %s",

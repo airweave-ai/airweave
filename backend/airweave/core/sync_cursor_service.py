@@ -7,13 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.logging import logger
 
 
 class SyncCursorService:
     """Service for managing sync cursor operations."""
 
-    async def get_cursor_data(self, db: AsyncSession, sync_id: UUID, ctx: ApiContext) -> dict:
+    async def get_cursor_data(self, db: AsyncSession, sync_id: UUID, ctx: BaseContext) -> dict:
         """Get cursor data for a sync.
 
         Args:

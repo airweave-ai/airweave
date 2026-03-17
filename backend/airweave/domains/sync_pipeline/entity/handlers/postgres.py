@@ -6,6 +6,7 @@ This handler runs AFTER destination handlers to ensure consistency.
 
 import asyncio
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -258,7 +259,7 @@ class EntityPostgresHandler(EntityActionHandler):
                 sync_context.logger.debug("[EntityPostgres] No orphans found in DB")
                 return
 
-            db_ids = [e.id for e in entity_map.values()]
+            db_ids = [UUID(str(e.id)) for e in entity_map.values()]
             await self._entity_repo.bulk_remove(db=db, ids=db_ids, ctx=sync_context)
             await db.commit()
 

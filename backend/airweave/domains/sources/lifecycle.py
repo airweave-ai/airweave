@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
@@ -90,7 +91,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         self,
         db: AsyncSession,
         source_connection_id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
         *,
         access_token: Optional[str] = None,
     ) -> BaseSource:

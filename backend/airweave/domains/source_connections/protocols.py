@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
 from airweave.models.connection_init_session import ConnectionInitSession
@@ -34,7 +35,7 @@ class SourceConnectionRepositoryProtocol(Protocol):
         ...
 
     async def get_by_sync_id(
-        self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, sync_id: UUID, ctx: BaseContext
     ) -> Optional[SourceConnection]:
         """Get a source connection by sync ID within org scope."""
         ...

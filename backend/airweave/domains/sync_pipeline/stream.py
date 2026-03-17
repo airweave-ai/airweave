@@ -1,10 +1,10 @@
 """Module for async data streaming with backpressure."""
 
 import asyncio
-import logging
 from enum import Enum
 from typing import AsyncGenerator, Generic, Optional, TypeVar
 
+from airweave.core.logging import ContextualLogger
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.utils.error_utils import get_error_message
 
@@ -37,7 +37,7 @@ class AsyncSourceStream(Generic[T]):
         self,
         source_generator: AsyncGenerator[T, None],
         queue_size: int = 10000,
-        logger: Optional[logging.Logger] = None,
+        logger: Optional[ContextualLogger] = None,
     ):
         """Initialize the async source stream.
 

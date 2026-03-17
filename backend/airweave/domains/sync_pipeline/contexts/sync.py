@@ -41,7 +41,7 @@ class SyncContext(BaseContext):
     max_batch_latency_ms: int = 200
 
     # --- Lookups ---
-    entity_map: Dict[type[BaseEntity], UUID] = field(default_factory=dict)
+    entity_map: Dict[type[BaseEntity], str] = field(default_factory=dict)
 
     # --- Derived data (extracted from source at build time) ---
     source_short_name: str = ""
