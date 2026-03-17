@@ -21,7 +21,7 @@ class TestAudioConverter:
         mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
 
         converter = AudioConverter(gemini_api_key="test-key")
-        with patch.object(converter, "_get_client", return_value=mock_client):
+        with patch.object(converter, "_get_gemini_client", return_value=mock_client):
             results = await converter.convert_batch([str(audio)])
 
         assert results[str(audio)] == "Hello, this is a transcript."
@@ -38,7 +38,7 @@ class TestAudioConverter:
         mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
 
         converter = AudioConverter(gemini_api_key="test-key")
-        with patch.object(converter, "_get_client", return_value=mock_client):
+        with patch.object(converter, "_get_gemini_client", return_value=mock_client):
             results = await converter.convert_batch([str(audio)])
 
         assert results[str(audio)] is None
@@ -54,7 +54,7 @@ class TestAudioConverter:
         )
 
         converter = AudioConverter(gemini_api_key="test-key")
-        with patch.object(converter, "_get_client", return_value=mock_client):
+        with patch.object(converter, "_get_gemini_client", return_value=mock_client):
             results = await converter.convert_batch([str(audio)])
 
         assert results[str(audio)] is None
@@ -71,7 +71,7 @@ class TestAudioConverter:
         mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
 
         converter = AudioConverter(gemini_api_key="test-key")
-        with patch.object(converter, "_get_client", return_value=mock_client):
+        with patch.object(converter, "_get_gemini_client", return_value=mock_client):
             results = await converter.convert_batch([str(audio)])
 
         assert results[str(audio)] == "Wav transcript"

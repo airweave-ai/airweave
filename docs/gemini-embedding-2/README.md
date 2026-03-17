@@ -390,9 +390,11 @@ sequenceDiagram
 
 6. **Scene-based keyframe OCR for video** -- VideoConverter uses ffmpeg scene detection to extract keyframes only when screen content changes, then OCRs each via Docling/Mistral (or Gemini vision fallback). Consecutive frames >80% similar are deduplicated. This captures slide text and UI content without fixed-interval waste. ([ADR-004](./adr-004-scene-keyframe-ocr.md))
 
-7. **Segment-specific textual_representation** -- Media chunks get `[Segment N: Xs - Ys] parent_text` as their textual_representation, not the full parent transcript duplicated across all chunks. This gives each chunk its own sparse embedding and answer context.
+7. **Segment-specific textual_representation** -- Media chunks get a segment identifier as their textual_representation (not the full parent transcript duplicated). PDF chunks get page-aligned text extracted via PyMuPDF. This ensures dense and sparse representations are aligned per chunk.
 
-8. **No mean-pooling or aggregation** -- Gemini limits document parts to 1 per `embed_content` call. Each chunk/segment is embedded independently, producing separate vectors in Vespa. This matches the existing text chunking model. The `MULTIMODAL_AGGREGATION` setting exists but only `"separate"` is the supported mode.
+8. **No mean-pooling or aggregation** -- Gemini limits document parts to 1 per `embed_content` call. Each chunk/segment is embedded independently, producing separate vectors in Vespa. This matches the existing text chunking model.
+
+9. **Pluggable transcription backend** -- Audio transcription supports Gemini (cloud), OpenAI Whisper (local CPU/CUDA), MLX Whisper (Apple Silicon), and NVIDIA Parakeet TDT v3 (local CUDA). Configured via `MULTIMODAL_TRANSCRIPTION_BACKEND`.
 
 ## File Inventory
 
@@ -457,7 +459,7 @@ sequenceDiagram
 
 ## Configuration Reference
 
-All settings are via environment variables with sensible defaults. Only active when `DENSE_EMBEDDER=gemini-embedding-2-preview`.
+All settings are via environment variables with sensible defaults. Only active when `DENSE_EMBEDDER=gemini_embedding_2`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -471,13 +473,17 @@ All settings are via environment variables with sensible defaults. Only active w
 | `MULTIMODAL_MEDIA_OVERLAP_SECONDS` | `5` | Overlap between consecutive audio/video segments |
 | `MULTIMODAL_VIDEO_SCENE_THRESHOLD` | `0.3` | ffmpeg scene detection sensitivity (0.0-1.0). Lower = more frames. |
 | `MULTIMODAL_VIDEO_MAX_KEYFRAMES` | `30` | Cap on keyframes extracted per video (limits OCR cost) |
-| `MULTIMODAL_AGGREGATION` | `separate` | Aggregation mode. Only `"separate"` is supported (separate vectors in Vespa). Gemini limits PDFs to 1 per content entry. |
+| `MULTIMODAL_TRANSCRIPTION_BACKEND` | `gemini` | Transcription backend: `gemini`, `whisper`, `mlx_whisper`, `parakeet` |
+| `MULTIMODAL_TRANSCRIPTION_MODEL` | `gemini-3-flash-preview` | Gemini model for transcription/OCR (only when backend=gemini) |
+| `MULTIMODAL_WHISPER_MODEL` | `turbo` | Whisper model size: `turbo`, `large`, `medium`, `small`, `base`, `tiny` |
+| `MULTIMODAL_PARAKEET_MODEL` | `nvidia/parakeet-tdt-0.6b-v3` | Parakeet HuggingFace model name |
+| `MULTIMODAL_TRANSCRIPTION_DEVICE` | `auto` | Device for local transcription: `auto`, `cpu`, `cuda`, `mps` |
 
 ## Gemini Embedding 2 Limits
 
 | Input Type | Gemini Hard Limit | Our Conservative Limit | Notes |
 |-----------|-------------------|----------------------|-------|
-| Text | 8,192 tokens | 40,000 chars (~10K tokens) | |
+| Text | 10,000 tokens | 40,000 chars (~10K tokens) | |
 | PDF | 6 pages | 6 pages per chunk | >6 pages auto-split with overlap |
 | Image | 6 per request | 1 per request (native embed) | |
 | Audio | 80 seconds | 75 seconds per segment | With 5s overlap between segments |
@@ -496,7 +502,7 @@ Six rounds of cross-validation across Codex, Gemini, and Amp Oracle:
 
 ## Quick Start
 
-No configuration change needed for PDF/image multimodal -- it activates automatically when `DENSE_EMBEDDER=gemini-embedding-2-preview` is set.
+No configuration change needed for PDF/image multimodal -- it activates automatically when `DENSE_EMBEDDER=gemini_embedding_2` is set.
 
 For audio/video:
 ```env

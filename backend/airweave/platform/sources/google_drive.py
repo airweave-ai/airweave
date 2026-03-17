@@ -913,16 +913,7 @@ class GoogleDriveSource(BaseSource):
 
         Returns None for files that should be skipped (e.g., trashed files, videos).
         """
-        # Skip audio/video files unless ENABLE_MEDIA_SYNC is active
-        from airweave.core.config import settings
-
         mime_type = file_obj.get("mimeType", "")
-        if (
-            mime_type.startswith("video/") or mime_type.startswith("audio/")
-        ) and not settings.ENABLE_MEDIA_SYNC:
-            file_name = file_obj.get("name", "unknown")
-            self.logger.debug(f"Skipping media file ({mime_type}): {file_name}")
-            return None
 
         # Skip files larger than 200MB using metadata from the listing API
         MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024

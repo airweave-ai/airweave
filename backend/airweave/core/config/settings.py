@@ -145,20 +145,26 @@ class Settings(BaseSettings):
     # Maximum keyframes to extract per video (caps OCR cost)
     MULTIMODAL_VIDEO_MAX_KEYFRAMES: int = 30
 
-    # Aggregation mode for multi-part native embeds.
-    # Controls whether the Gemini API aggregates multiple parts into one vector
-    # or each part produces its own vector.
-    #
-    # "separate" (default): Each chunk/part is embedded independently via its own
-    #   embed_content call. N chunks = N vectors in Vespa. Matches the text
-    #   pipeline model. Works for all modalities.
-    #
-    # "aggregate": Multiple parts are sent in a single embed_content call.
-    #   The API natively aggregates them into one vector. Only works where
-    #   the API supports it (e.g., text+images). PDFs are limited to 1 per
-    #   content entry by the API, so oversized PDFs always use separate mode
-    #   regardless of this setting.
-    MULTIMODAL_AGGREGATION: str = "separate"
+    # Transcription backend: "gemini" | "whisper" | "mlx_whisper" | "parakeet"
+    # - gemini: Cloud API, requires GEMINI_API_KEY (also used for video OCR)
+    # - whisper: OpenAI Whisper, local, CPU or CUDA (pip install openai-whisper)
+    # - mlx_whisper: MLX Whisper for Apple Silicon (pip install mlx-whisper)
+    # - parakeet: NVIDIA Parakeet TDT v3, local, CUDA (pip install nemo_toolkit[asr])
+    MULTIMODAL_TRANSCRIPTION_BACKEND: str = "gemini"
+
+    # Gemini model for transcription/OCR (only used when backend=gemini)
+    MULTIMODAL_TRANSCRIPTION_MODEL: str = "gemini-3-flash-preview"
+
+    # Whisper model size: "turbo" | "large" | "medium" | "small" | "base" | "tiny"
+    # "turbo" is recommended (fastest large-class, ~6GB VRAM)
+    MULTIMODAL_WHISPER_MODEL: str = "turbo"
+
+    # Parakeet model name on HuggingFace
+    MULTIMODAL_PARAKEET_MODEL: str = "nvidia/parakeet-tdt-0.6b-v3"
+
+    # Device for local transcription: "auto" | "cpu" | "cuda" | "mps"
+    # "auto" detects best available (CUDA > MPS > CPU)
+    MULTIMODAL_TRANSCRIPTION_DEVICE: str = "auto"
 
     # Redis configuration
     REDIS_HOST: str = "localhost"

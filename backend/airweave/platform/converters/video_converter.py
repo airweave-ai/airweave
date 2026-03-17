@@ -39,11 +39,15 @@ def _get_max_keyframes() -> int:
         return 30
 
 
+# Timeout for Gemini generate_content calls (seconds)
+_OCR_TIMEOUT: float = 60.0
+
+
 class VideoConverter(BaseTextConverter):
     """Convert video to text via scene-based keyframe OCR + audio transcription.
 
     For each video:
-    1. Extract keyframes at scene changes via ffmpeg (not fixed intervals)
+    1. Extract keyframes at scene changes via ffmpeg (plus first frame)
     2. OCR each keyframe via the existing OCR provider (Docling/Mistral)
     3. Deduplicate consecutive OCR text
     4. Transcribe audio track
@@ -54,6 +58,7 @@ class VideoConverter(BaseTextConverter):
 
     def __init__(self, *, gemini_api_key: str | None = None) -> None:
         self._api_key = gemini_api_key
+        self._client = None
 
     async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
         """Convert videos to text via keyframe OCR + audio."""
@@ -111,11 +116,13 @@ class VideoConverter(BaseTextConverter):
         tmpdir = tempfile.mkdtemp(prefix="airweave_keyframes_")
 
         try:
-            # Extract keyframes at scene changes
+            # Extract first frame + keyframes at scene changes.
+            # eq(n,0) ensures frame 0 is always included (static videos
+            # would otherwise yield zero keyframes).
             cmd = [
                 "ffmpeg", "-y",
                 "-i", video_path,
-                "-vf", f"select='gt(scene\\,{threshold})',showinfo",
+                "-vf", f"select='eq(n\\,0)+gt(scene\\,{threshold})',showinfo",
                 "-vsync", "vfr",
                 "-frames:v", str(max_frames),
                 "-q:v", "2",  # High quality JPEG
@@ -200,6 +207,35 @@ class VideoConverter(BaseTextConverter):
 
         return texts
 
+    def _get_client(self):
+        """Lazily create and cache the Gemini client."""
+        if self._client is not None:
+            return self._client
+
+        from google import genai
+
+        api_key = self._api_key
+        if not api_key:
+            from airweave.core.config import settings
+
+            api_key = settings.GEMINI_API_KEY
+
+        if not api_key:
+            return None
+
+        self._client = genai.Client(api_key=api_key)
+        return self._client
+
+    @staticmethod
+    def _get_transcription_model() -> str:
+        """Read configurable transcription model from settings."""
+        try:
+            from airweave.core.config import settings
+
+            return getattr(settings, "MULTIMODAL_TRANSCRIPTION_MODEL", "gemini-3-flash-preview")
+        except Exception:
+            return "gemini-3-flash-preview"
+
     async def _gemini_ocr_frame(self, frame_path: str) -> Optional[str]:
         """OCR a single frame using Gemini generate_content."""
         try:
@@ -209,29 +245,25 @@ class VideoConverter(BaseTextConverter):
             async with aiofiles.open(frame_path, "rb") as f:
                 img_bytes = await f.read()
 
-            from google import genai
-
-            api_key = self._api_key
-            if not api_key:
-                from airweave.core.config import settings
-
-                api_key = settings.GEMINI_API_KEY
-
-            if not api_key:
+            client = self._get_client()
+            if not client:
                 return None
 
-            client = genai.Client(api_key=api_key)
             part = Part(inline_data=Blob(data=img_bytes, mime_type="image/jpeg"))
+            model = self._get_transcription_model()
 
-            response = await client.aio.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=[
-                    "Extract ALL text visible in this screenshot. "
-                    "Include UI labels, button text, chat messages, "
-                    "names, and any other readable text. "
-                    "Return only the extracted text, no commentary.",
-                    part,
-                ],
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model,
+                    contents=[
+                        "Extract ALL text visible in this screenshot. "
+                        "Include UI labels, button text, chat messages, "
+                        "names, and any other readable text. "
+                        "Return only the extracted text, no commentary.",
+                        part,
+                    ],
+                ),
+                timeout=_OCR_TIMEOUT,
             )
 
             if response and response.text:

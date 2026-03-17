@@ -180,22 +180,25 @@ class ChunkEmbedProcessor:
         For audio/video: MediaChunker splits into segments, N chunks per entity.
 
         Steps:
-        1. Run text extraction for textual_representation (BM25, answer gen)
-        2. For each entity: embed file directly or chunk media first
+        1. Run text extraction as best-effort (BM25, answer gen)
+        2. For each entity: embed file directly via embed_file() or chunk media
         3. Compute sparse embedding from textual_representation
         4. Falls back to text pipeline on EmbedderInputError
 
-        Falls back to the text pipeline for entities where embed_file() fails.
+        Native dense embedding is NOT gated on text extraction success.
+        An entity with empty text still gets a dense vector from the raw file.
+        Text is best-effort for sparse/BM25 scoring.
         """
-        # Step 1: Build textual representations (reuses existing text pipeline)
+        # Step 1: Build textual representations as best-effort (not a gate)
         processed = await text_builder.build_for_batch(entities, sync_context, runtime)
 
-        # Filter entities that failed text building
-        processed = await filter_empty_representations(
-            processed, sync_context, runtime, "ChunkEmbed-Multimodal"
-        )
-        if not processed:
-            return []
+        # Do NOT filter by empty text — native embedding works on raw files.
+        # Entities with empty text will get a placeholder for sparse scoring.
+        for entity in processed:
+            if not entity.textual_representation or not entity.textual_representation.strip():
+                # Provide a minimal placeholder so sparse embedding has something
+                name = getattr(entity, "local_path", None) or entity.entity_id
+                entity.textual_representation = f"[{os.path.basename(str(name))}]"
 
         embedder = runtime.dense_embedder
         expected_dims = embedder.dimensions
@@ -334,13 +337,13 @@ class ChunkEmbedProcessor:
                     chunk.airweave_system_metadata.original_entity_id = original_id
                     chunk.airweave_system_metadata.dense_embedding = dense_result.vector
 
-                    # Assign segment-specific textual_representation so each
-                    # chunk gets its own sparse embedding and answer context,
-                    # not the full parent transcript duplicated across all chunks.
-                    parent_text = entity.textual_representation or ""
+                    # Segment-specific text for sparse/BM25 alignment.
+                    # Only include a segment identifier, not the full parent text,
+                    # so dense and sparse representations are aligned.
+                    name = os.path.basename(str(entity.local_path or entity.entity_id))
                     chunk.textual_representation = (
-                        f"[Segment {idx}: {segment.start_seconds:.1f}s - "
-                        f"{segment.end_seconds:.1f}s] {parent_text}"
+                        f"[{name} — Segment {idx}: "
+                        f"{segment.start_seconds:.1f}s - {segment.end_seconds:.1f}s]"
                     )
 
                     chunks.append(chunk)
@@ -392,10 +395,11 @@ class ChunkEmbedProcessor:
 
         total_pages = len(doc)
         temp_files: list[str] = []
+        page_ranges: list[tuple[int, int]] = []
         step = max(1, max_pages - overlap_pages)
 
         try:
-            # Step 1: Split PDF into chunk files
+            # Step 1: Split PDF into chunk files and extract page text
             start_page = 0
             while start_page < total_pages:
                 end_page = min(start_page + max_pages, total_pages)
@@ -412,8 +416,18 @@ class ChunkEmbedProcessor:
                 chunk_doc.save(chunk_path)
                 chunk_doc.close()
                 temp_files.append(chunk_path)
+                page_ranges.append((start_page, end_page))
 
                 start_page += step
+
+            # Extract per-page text for chunk-aligned sparse representations
+            page_texts: list[str] = []
+            for start_pg, end_pg in page_ranges:
+                texts = []
+                for pg_num in range(start_pg, end_pg):
+                    page = doc[pg_num]
+                    texts.append(page.get_text().strip())
+                page_texts.append("\n".join(t for t in texts if t))
 
             doc.close()
 
@@ -440,6 +454,13 @@ class ChunkEmbedProcessor:
                     chunk.airweave_system_metadata.chunk_index = idx
                     chunk.airweave_system_metadata.original_entity_id = original_id
                     chunk.airweave_system_metadata.dense_embedding = dense_result.vector
+
+                    # Page-aligned text for sparse/BM25 (not full parent text)
+                    start_pg, end_pg = page_ranges[idx]
+                    chunk.textual_representation = (
+                        page_texts[idx]
+                        or f"[PDF pages {start_pg + 1}-{end_pg}]"
+                    )
                     chunks.append(chunk)
 
                 except (EmbedderInputError, EmbedderProviderError) as e:

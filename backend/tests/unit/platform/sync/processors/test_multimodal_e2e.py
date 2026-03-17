@@ -225,8 +225,6 @@ class TestPdfE2E:
             MagicMock(
                 MULTIMODAL_PDF_MAX_PAGES=6,
                 MULTIMODAL_PDF_OVERLAP_PAGES=1,
-                MULTIMODAL_AGGREGATION="separate",
-                MULTIMODAL_AGGREGATION_PDF="",
             ),
         ):
             chunks = await processor._embed_oversized_pdf(

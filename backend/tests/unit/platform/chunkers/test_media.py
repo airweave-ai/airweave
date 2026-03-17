@@ -193,7 +193,7 @@ class TestChunkVideo:
         chunker = MediaChunker()
 
         with patch("shutil.which", return_value=None):
-            with pytest.raises(RuntimeError, match="ffmpeg is required"):
+            with pytest.raises(RuntimeError, match="ffmpeg and ffprobe are both required"):
                 await chunker.chunk_video(str(video_file))
 
 

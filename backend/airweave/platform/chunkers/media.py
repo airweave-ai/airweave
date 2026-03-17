@@ -43,6 +43,21 @@ def _load_media_config() -> tuple[int, int, int, int]:
         )
 
 
+def _get_max_single_file_bytes() -> int:
+    """Centralized file size limit from settings, fallback to 19MB.
+
+    Used by both audio and video chunkers to stay under Gemini's 20MB
+    inline_data limit. Reads MULTIMODAL_MAX_FILE_SIZE_MB from settings
+    and applies a 1MB safety margin.
+    """
+    try:
+        from airweave.core.config import settings
+
+        return (settings.MULTIMODAL_MAX_FILE_SIZE_MB - 1) * 1024 * 1024
+    except Exception:
+        return 19 * 1024 * 1024
+
+
 @dataclass
 class MediaSegment:
     """A chunk of a media file within Gemini's embedding duration limits."""
@@ -110,24 +125,21 @@ class MediaChunker:
         ext = os.path.splitext(file_path)[1] or ".mp3"
         mime = "audio/mpeg" if ext == ".mp3" else "audio/wav"
 
-        # Use ffprobe for duration (no memory decode)
-        if shutil.which("ffprobe"):
-            duration_seconds = await self._probe_duration(file_path)
-        else:
-            # Fallback: use pydub (decodes into memory)
-            from pydub import AudioSegment as PydubAudioSegment
+        if not shutil.which("ffprobe") or not shutil.which("ffmpeg"):
+            raise RuntimeError(
+                "ffmpeg and ffprobe are both required for audio chunking "
+                "but not found on PATH"
+            )
 
-            audio = await asyncio.to_thread(PydubAudioSegment.from_file, file_path)
-            duration_seconds = len(audio) / 1000.0
-            del audio  # Free memory immediately
+        duration_seconds = await self._probe_duration(file_path)
 
         # Return as single segment only if BOTH duration and file size are safe.
         # A short but large file (e.g., 40s uncompressed WAV at 23MB) must still
         # be split because Gemini rejects inline_data > 20MB.
-        _MAX_SINGLE_FILE_BYTES = 19 * 1024 * 1024  # 19MB, conservative under 20MB limit
+        max_file_bytes = _get_max_single_file_bytes()
         file_size = os.path.getsize(file_path)
 
-        if duration_seconds <= audio_max and file_size <= _MAX_SINGLE_FILE_BYTES:
+        if duration_seconds <= audio_max and file_size <= max_file_bytes:
             return [
                 MediaSegment(
                     file_path=file_path,
@@ -140,18 +152,14 @@ class MediaChunker:
 
         # If file is oversized but short, reduce segment duration to fit
         # within the size limit. Calculate from bitrate.
-        if file_size > _MAX_SINGLE_FILE_BYTES and duration_seconds > 0:
+        if file_size > max_file_bytes and duration_seconds > 0:
             bytes_per_second = file_size / duration_seconds
             # 5% safety margin for container/header overhead (e.g., WAV headers)
-            size_limited_max = (_MAX_SINGLE_FILE_BYTES * 0.95) / bytes_per_second
+            size_limited_max = (max_file_bytes * 0.95) / bytes_per_second
             # Use the smaller of duration limit and size limit
             audio_max = min(audio_max, size_limited_max)
             # Ensure at least 1 second segments
             audio_max = max(1.0, audio_max)
-
-        # Split using ffmpeg (stream copy, no decode/re-encode)
-        if not shutil.which("ffmpeg"):
-            raise RuntimeError("ffmpeg is required for audio chunking but not found on PATH")
 
         temp_dir = self._get_temp_dir()
         segments: list[MediaSegment] = []
@@ -215,8 +223,11 @@ class MediaChunker:
         Returns:
             List of MediaSegment objects, one per chunk.
         """
-        if not shutil.which("ffmpeg"):
-            raise RuntimeError("ffmpeg is required for video chunking but not found on PATH")
+        if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+            raise RuntimeError(
+                "ffmpeg and ffprobe are both required for video chunking "
+                "but not found on PATH"
+            )
 
         _, vid_audio_max, vid_noaudio_max, overlap = _load_media_config()
 
@@ -224,7 +235,11 @@ class MediaChunker:
         has_audio = await self._probe_has_audio(file_path)
         max_seconds = vid_audio_max if has_audio else vid_noaudio_max
 
-        if duration <= max_seconds:
+        # Size-aware: short high-bitrate video can exceed Gemini's inline_data limit
+        max_file_bytes = _get_max_single_file_bytes()
+        file_size = os.path.getsize(file_path)
+
+        if duration <= max_seconds and file_size <= max_file_bytes:
             return [
                 MediaSegment(
                     file_path=file_path,
@@ -234,6 +249,13 @@ class MediaChunker:
                     mime_type="video/mp4",
                 )
             ]
+
+        # If file is oversized but short, reduce segment duration to fit
+        if file_size > max_file_bytes and duration > 0:
+            bytes_per_second = file_size / duration
+            size_limited_max = (max_file_bytes * 0.95) / bytes_per_second
+            max_seconds = min(max_seconds, size_limited_max)
+            max_seconds = max(1.0, max_seconds)
 
         temp_dir = self._get_temp_dir()
         segments: list[MediaSegment] = []
