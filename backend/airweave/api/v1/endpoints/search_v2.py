@@ -150,7 +150,7 @@ async def _run_agentic_search_v2(
         from airweave.db.session import AsyncSessionLocal
 
         async with AsyncSessionLocal() as search_db:
-            await service.search_stream(search_db, ctx, readable_id, request)
+            await service.search(search_db, ctx, readable_id, request)
     except Exception as e:
         ctx.logger.exception(f"[AgenticSearchV2] Error in stream {ctx.request_id}: {e}")
         # Safety net: if the service crashed before publishing a failed event,

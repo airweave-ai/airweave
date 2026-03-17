@@ -97,17 +97,3 @@ class AgenticSearchServiceProtocol(Protocol):
     ) -> SearchResults:
         """Execute agentic search and return results."""
         ...
-
-    async def search_stream(
-        self,
-        db: AsyncSession,
-        ctx: ApiContext,
-        readable_id: str,
-        request: AgenticSearchRequest,
-    ) -> SearchResults:
-        """Execute agentic search, emitting events to EventBus.
-
-        Same loop as search(). Events flow through event bus →
-        stream relay → PubSub → SSE. Returns results (caller may ignore).
-        """
-        ...

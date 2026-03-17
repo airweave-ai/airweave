@@ -33,13 +33,3 @@ class FakeAgenticSearchService(AgenticSearchServiceProtocol):
     ) -> SearchResults:
         self._calls.append(("search", readable_id, request))
         return self._result
-
-    async def search_stream(
-        self,
-        db: AsyncSession,
-        ctx: ApiContext,
-        readable_id: str,
-        request: AgenticSearchRequest,
-    ) -> SearchResults:
-        self._calls.append(("search_stream", readable_id, request))
-        return self._result

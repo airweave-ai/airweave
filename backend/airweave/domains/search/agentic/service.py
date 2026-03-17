@@ -73,17 +73,3 @@ class AgenticSearchService(AgenticSearchServiceProtocol):
             config=SearchConfig(),
         )
         return await agent.run(db, ctx, readable_id, request)
-
-    async def search_stream(
-        self,
-        db: AsyncSession,
-        ctx: ApiContext,
-        readable_id: str,
-        request: AgenticSearchRequest,
-    ) -> SearchResults:
-        """Run agentic search with event streaming.
-
-        Same loop as search(). Events flow through event bus →
-        stream relay → PubSub → SSE. Returns results.
-        """
-        return await self.search(db, ctx, readable_id, request)
