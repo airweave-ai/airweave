@@ -2,9 +2,9 @@
 
 Splits audio/video into segments that fit within Gemini Embedding 2's
 duration and file size limits. Uses ffprobe for duration detection and
-ffmpeg for stream-copy splitting (no decode into RAM). Falls back to
-pydub only when ffmpeg is unavailable. Temp directories are cleaned up
-via the async context manager after embedding completes.
+ffmpeg for stream-copy splitting (no decode into RAM). Both ffmpeg and
+ffprobe are required. Temp directories are cleaned up via the async
+context manager after embedding completes.
 """
 
 import asyncio
@@ -12,14 +12,15 @@ import logging
 import os
 import shutil
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# Defaults — overridden by settings when available
+# Defaults — overridden by settings when available.
+# These match the settings.py defaults for consistency.
 AUDIO_MAX_SECONDS: int = 75
-VIDEO_AUDIO_MAX_SECONDS: int = 75
-VIDEO_NOAUDIO_MAX_SECONDS: int = 115
+VIDEO_AUDIO_MAX_SECONDS: int = 120
+VIDEO_NOAUDIO_MAX_SECONDS: int = 120
 OVERLAP_SECONDS: int = 5
 
 

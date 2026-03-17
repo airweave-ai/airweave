@@ -162,9 +162,17 @@ class TestFindCompatibleProviders:
         """Test unsupported dimensions returns empty list."""
         from airweave.core.embedding_validation import find_compatible_providers
 
-        # 999 is not a standard dimension for any provider
-        compatible = find_compatible_providers(999)
+        # 99999 is beyond any provider's range
+        compatible = find_compatible_providers(99999)
         assert compatible == []
+
+    def test_gemini_accepts_any_dimension_in_range(self):
+        """Gemini supports any dimension in [128, 3072], not just enumerated values."""
+        from airweave.core.embedding_validation import find_compatible_providers
+
+        # 999 is not a standard dimension but is within Gemini's Matryoshka range
+        compatible = find_compatible_providers(999)
+        assert "gemini" in compatible
 
 
 class TestValidateEmbeddingStack:

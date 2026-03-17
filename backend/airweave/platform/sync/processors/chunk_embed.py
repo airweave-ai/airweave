@@ -238,14 +238,20 @@ class ChunkEmbedProcessor:
         An entity with empty text still gets a dense vector from the raw file.
         Text is best-effort for sparse/BM25 scoring.
         """
-        # Step 1: Build textual representations as best-effort (not a gate)
+        # Step 1: Build textual representations as best-effort (not a gate).
+        # build_for_batch may drop entities that fail conversion entirely.
+        # Re-add any dropped entities so embed_file() still runs on them.
         processed = await text_builder.build_for_batch(entities, sync_context, runtime)
 
-        # Do NOT filter by empty text — native embedding works on raw files.
-        # Entities with empty text will get a placeholder for sparse scoring.
+        processed_ids = {e.entity_id for e in processed}
+        for entity in entities:
+            if entity.entity_id not in processed_ids:
+                processed.append(entity)
+
+        # Assign placeholder text for any entity with empty textual_representation.
+        # Native embedding works on raw files; text is best-effort for sparse/BM25.
         for entity in processed:
             if not entity.textual_representation or not entity.textual_representation.strip():
-                # Provide a minimal placeholder so sparse embedding has something
                 name = getattr(entity, "local_path", None) or entity.entity_id
                 entity.textual_representation = f"[{os.path.basename(str(name))}]"
 

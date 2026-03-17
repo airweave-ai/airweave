@@ -195,7 +195,7 @@ class TestChunkEmbedProcessor:
 
     @pytest.mark.asyncio
     async def test_embed_entities_passes_document_purpose(
-        self, processor, mock_runtime
+        self, processor, mock_sync_context, mock_runtime
     ):
         """Test dense embedder is called with purpose=DOCUMENT at sync time."""
         mock_entity = MagicMock()
@@ -208,7 +208,7 @@ class TestChunkEmbedProcessor:
         mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
         mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
-        await processor._embed_entities([mock_entity], mock_runtime)
+        await processor._embed_entities([mock_entity], mock_sync_context, mock_runtime)
 
         # Verify purpose=DOCUMENT was passed to dense embedder
         call_kwargs = mock_runtime.dense_embedder.embed_many.call_args

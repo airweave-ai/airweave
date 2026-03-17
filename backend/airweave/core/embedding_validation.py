@@ -38,6 +38,13 @@ def get_provider_dimensions() -> Dict[str, List[int]]:
             if "supported_dimensions" in model_spec:
                 dims.update(model_spec["supported_dimensions"])
 
+            # Check dimension_range for providers that accept any value
+            # in a continuous range (e.g., Gemini Matryoshka)
+            if "dimension_range" in model_spec:
+                dim_range = model_spec["dimension_range"]
+                if len(dim_range) == 2:
+                    dims.update(range(dim_range[0], dim_range[1] + 1))
+
         if dims:
             provider_dims[provider_name] = sorted(dims, reverse=True)
 

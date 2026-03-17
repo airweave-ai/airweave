@@ -109,6 +109,7 @@ provider_models:
       dimensions: 3072
       max_tokens: 8192
       supported_dimensions: [128, 256, 384, 512, 768, 1024, 1536, 2048, 3072]
+      dimension_range: [128, 3072]  # Gemini accepts ANY value in this range
     rerank: null
 
   # Local embedding provider using text2vec-transformers container

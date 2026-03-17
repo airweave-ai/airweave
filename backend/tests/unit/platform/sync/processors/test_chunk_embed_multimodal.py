@@ -45,9 +45,11 @@ def _make_multimodal_runtime(supported_mimes=None):
     runtime.dense_embedder = embedder
 
     runtime.sparse_embedder = MagicMock()
-    runtime.sparse_embedder.embed_many = AsyncMock(
-        return_value=[SparseEmbedding(indices=[0], values=[1.0])]
-    )
+
+    async def _dynamic_sparse(texts):
+        return [SparseEmbedding(indices=[0], values=[1.0]) for _ in texts]
+
+    runtime.sparse_embedder.embed_many = AsyncMock(side_effect=_dynamic_sparse)
 
     return runtime
 
@@ -66,9 +68,11 @@ def _make_text_only_runtime():
     runtime.dense_embedder = embedder
 
     runtime.sparse_embedder = MagicMock()
-    runtime.sparse_embedder.embed_many = AsyncMock(
-        return_value=[SparseEmbedding(indices=[0], values=[1.0])]
-    )
+
+    async def _dynamic_sparse(texts):
+        return [SparseEmbedding(indices=[0], values=[1.0]) for _ in texts]
+
+    runtime.sparse_embedder.embed_many = AsyncMock(side_effect=_dynamic_sparse)
 
     return runtime
 
@@ -333,6 +337,34 @@ class TestNativeEmbeddingDecoupledFromText:
         assert len(chunks) >= 1
         # Sparse embedding should have been computed (not skipped)
         runtime.sparse_embedder.embed_many.assert_called_once()
+
+
+class TestNativeEmbeddingPreservesDroppedEntities:
+    """Verify entities dropped by build_for_batch are re-added for native embedding."""
+
+    @pytest.mark.asyncio
+    async def test_dropped_entity_still_gets_dense_embedding(
+        self, processor, mock_sync_context
+    ):
+        """If build_for_batch drops an entity (conversion fails),
+        embed_file() should still run on it with placeholder text."""
+        runtime = _make_multimodal_runtime()
+        entity_kept = _make_file_entity(entity_id="kept", mime_type="image/png")
+        entity_dropped = _make_file_entity(entity_id="dropped", mime_type="image/png")
+
+        with patch(
+            "airweave.platform.sync.processors.chunk_embed.text_builder"
+        ) as mock_tb:
+            # build_for_batch returns only one entity — the other was "dropped"
+            mock_tb.build_for_batch = AsyncMock(return_value=[entity_kept])
+
+            result = await processor._native_multimodal_pipeline(
+                [entity_kept, entity_dropped], mock_sync_context, runtime
+            )
+
+        # Both entities should produce chunks (embed_file called for both)
+        assert len(result) >= 2
+        assert runtime.dense_embedder.embed_file.call_count == 2
 
 
 class TestNativeMultimodalPipelineFallback:
