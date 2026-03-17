@@ -113,7 +113,7 @@ async def test_resolve_insert_when_no_existing():
     ctx = _sync_context()
     e = _entity(entity_id="new-1", hash_val="h1")
 
-    with patch("airweave.db.session.get_db_context") as mock_db_ctx:
+    with patch("airweave.domains.sync_pipeline.entity.resolver.get_db_context") as mock_db_ctx:
         mock_db = AsyncMock()
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -142,7 +142,7 @@ async def test_resolve_update_when_hash_changed():
     ctx = _sync_context()
     e = _entity(entity_id="e-1", hash_val="new-hash")
 
-    with patch("airweave.db.session.get_db_context") as mock_db_ctx:
+    with patch("airweave.domains.sync_pipeline.entity.resolver.get_db_context") as mock_db_ctx:
         mock_db = AsyncMock()
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -170,7 +170,7 @@ async def test_resolve_keep_when_hash_matches():
     ctx = _sync_context()
     e = _entity(entity_id="e-1", hash_val="same-hash")
 
-    with patch("airweave.db.session.get_db_context") as mock_db_ctx:
+    with patch("airweave.domains.sync_pipeline.entity.resolver.get_db_context") as mock_db_ctx:
         mock_db = AsyncMock()
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
