@@ -17,6 +17,7 @@ from .linear import LinearCursor
 from .outlook_mail import OutlookMailCursor
 from .sharepoint2019v2 import SharePoint2019V2Cursor
 from .sharepoint_online import SharePointOnlineCursor
+from .zoom import ZoomCursor
 
 __all__ = [
     "BaseCursor",
@@ -32,4 +33,5 @@ __all__ = [
     "OutlookMailCursor",
     "SharePoint2019V2Cursor",
     "SharePointOnlineCursor",
+    "ZoomCursor",
 ]

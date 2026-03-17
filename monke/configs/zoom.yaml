@@ -6,13 +6,12 @@ connector:
   type: zoom
   auth_mode: composio
   composio_config:
-    account_id: ca_4h0jqpCWXcdH
-    auth_config_id: ac_JSBgoEk_7h06
+    account_id: ca_i8GbUbtULZPL
+    auth_config_id: ac_OS0yiuGseuAO
   config_fields:
     openai_model: "gpt-4.1-mini"
     max_concurrency: 2
 
-# Temporary: no delete steps (meeting deletion not supported for now)
 test_flow:
   steps:
     - cleanup
@@ -22,6 +21,13 @@ test_flow:
     - update
     - sync
     - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
     - cleanup
     - collection_cleanup
 
