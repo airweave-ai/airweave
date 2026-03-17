@@ -23,11 +23,15 @@ class EntityDispatcherBuilder:
         processor: ChunkEmbedProcessorProtocol,
         entity_repo: EntityRepositoryProtocol,
         arf_service: Optional[ArfServiceProtocol] = None,
+        vector_size: int = 0,
+        embedding_model_name: str = "",
     ) -> None:
-        """Initialize with processor and entity repository."""
+        """Initialize with processor, entity repository, and embedding metadata."""
         self._processor = processor
         self._entity_repo = entity_repo
         self._arf_service = arf_service
+        self._vector_size = vector_size
+        self._embedding_model_name = embedding_model_name
 
     def build(
         self,
@@ -117,7 +121,13 @@ class EntityDispatcherBuilder:
                 logger.warning("Skipping ArfHandler (no arf_service provided)")
             return
 
-        handlers.append(ArfHandler(arf_service=self._arf_service))
+        handlers.append(
+            ArfHandler(
+                arf_service=self._arf_service,
+                vector_size=self._vector_size,
+                embedding_model_name=self._embedding_model_name,
+            )
+        )
         if logger:
             logger.debug("Added ArfHandler")
 

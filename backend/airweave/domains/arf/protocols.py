@@ -15,7 +15,13 @@ from airweave.platform.entities._base import BaseEntity
 class ArfServiceProtocol(Protocol):
     """Write-path contract for ARF entity capture."""
 
-    async def upsert_manifest(self, sync_context: SyncContext, runtime: SyncRuntime) -> None:
+    async def upsert_manifest(
+        self,
+        sync_context: SyncContext,
+        runtime: SyncRuntime,
+        vector_size: int,
+        embedding_model_name: str,
+    ) -> None:
         """Create or update the sync manifest."""
         ...
 

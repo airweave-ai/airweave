@@ -35,9 +35,16 @@ class ArfHandler(EntityActionHandler):
         └── files/{entity_id}_{name}.{ext}
     """
 
-    def __init__(self, arf_service: ArfServiceProtocol) -> None:
-        """Initialize with injected ARF service."""
+    def __init__(
+        self,
+        arf_service: ArfServiceProtocol,
+        vector_size: int,
+        embedding_model_name: str,
+    ) -> None:
+        """Initialize with injected ARF service and embedding metadata."""
         self._arf_service = arf_service
+        self._vector_size = vector_size
+        self._embedding_model_name = embedding_model_name
         self._manifest_initialized = False
 
     @property
@@ -49,7 +56,12 @@ class ArfHandler(EntityActionHandler):
         if self._manifest_initialized:
             return
         try:
-            await self._arf_service.upsert_manifest(sync_context, runtime)
+            await self._arf_service.upsert_manifest(
+                sync_context,
+                runtime,
+                vector_size=self._vector_size,
+                embedding_model_name=self._embedding_model_name,
+            )
             self._manifest_initialized = True
         except Exception as e:
             sync_context.logger.warning(f"[ARF] Failed to upsert manifest: {e}")

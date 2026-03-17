@@ -190,6 +190,8 @@ class SyncFactory:
             processor=self._processor,
             entity_repo=self._entity_repo,
             arf_service=self._arf_service,
+            vector_size=self._dense_embedder.dimensions,
+            embedding_model_name=self._dense_embedder.model_name,
         )
         dispatcher = dispatcher_builder.build(
             destinations=runtime.destinations,
