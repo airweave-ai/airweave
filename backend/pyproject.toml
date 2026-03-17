@@ -128,6 +128,7 @@ extend_skip = ["backend (old, neena, only for inspiration)"]
 
 [tool.mypy]
 python_version = "3.13"
+plugins = ["pydantic.mypy"]
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

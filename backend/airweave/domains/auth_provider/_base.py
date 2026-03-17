@@ -1,7 +1,7 @@
 """Base auth provider class."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, ClassVar, Dict, List, Optional, Set
 
 from airweave.core.logging import logger
 from airweave.domains.auth_provider.auth_result import AuthResult
@@ -9,6 +9,13 @@ from airweave.domains.auth_provider.auth_result import AuthResult
 
 class BaseAuthProvider(ABC):
     """Base class for all auth providers."""
+
+    # Identity (set by @auth_provider decorator)
+    is_auth_provider: ClassVar[bool] = False
+    provider_name: ClassVar[str] = ""
+    short_name: ClassVar[str] = ""
+    auth_config_class: ClassVar[Optional[type]] = None
+    config_class: ClassVar[Optional[type]] = None
 
     def __init__(self):
         """Initialize the base auth provider."""

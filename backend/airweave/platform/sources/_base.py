@@ -286,7 +286,8 @@ class BaseSource:
     @abstractmethod
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for the source."""
-        pass
+        return
+        yield  # Make it a generator
 
     async def generate_access_control_memberships(
         self,
