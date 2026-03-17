@@ -119,6 +119,21 @@ class TestConvertBatch:
 # ---------------------------------------------------------------------------
 
 
+class TestAudioConverterCaching:
+    def test_audio_converter_cached(self):
+        """_get_audio_converter should return the same instance on repeated calls."""
+        converter = VideoConverter(gemini_api_key="test-key")
+        ac1 = converter._get_audio_converter()
+        ac2 = converter._get_audio_converter()
+        assert ac1 is ac2
+
+    def test_audio_converter_inherits_api_key(self):
+        """Cached AudioConverter should receive the same API key."""
+        converter = VideoConverter(gemini_api_key="my-key")
+        ac = converter._get_audio_converter()
+        assert ac._api_key == "my-key"
+
+
 class TestClientCaching:
     def test_client_cached_across_calls(self):
         """_get_client should cache the Gemini client."""

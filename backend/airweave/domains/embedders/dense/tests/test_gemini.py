@@ -390,6 +390,36 @@ async def test_timeout_raises_timeout_error():
 
 
 @pytest.mark.asyncio
+async def test_hang_triggers_wait_for_timeout():
+    """A hung embed_content coroutine should be killed by asyncio.wait_for."""
+    import asyncio as _asyncio
+
+    async def hang_forever(*args, **kwargs):
+        await _asyncio.sleep(999)
+
+    client = MagicMock()
+    client.aio.models.embed_content = hang_forever
+    client.aio.aclose = AsyncMock()
+
+    embedder = _build_embedder(client_mock=client)
+
+    # Patch the timeout to something tiny so the test completes fast
+    with patch.object(
+        type(embedder), "_call_api", wraps=embedder._call_api
+    ):
+        # The wait_for timeout (120s) would take too long in tests.
+        # Instead, verify the code path by patching asyncio.wait_for's timeout.
+        original_wait_for = _asyncio.wait_for
+
+        async def fast_wait_for(coro, *, timeout):
+            return await original_wait_for(coro, timeout=0.01)
+
+        with patch("asyncio.wait_for", side_effect=fast_wait_for):
+            with pytest.raises((EmbedderTimeoutError, TimeoutError)):
+                await embedder.embed("test")
+
+
+@pytest.mark.asyncio
 async def test_connection_error_raises_connection_error():
     """ConnectionError raises EmbedderConnectionError."""
     client = MagicMock()

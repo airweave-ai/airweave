@@ -16,29 +16,26 @@ Introduce `ENABLE_MEDIA_SYNC: bool = False` in `settings.py`.
 
 ### Pipeline-Level Enforcement
 
-The flag is enforced **at the pipeline level** in `_partition_by_embedding_mode()`, not at individual sources. This means ANY source that emits audio/video MIME types is gated -- not just Google Drive:
+The flag is enforced **at the top of `process()`** via `_filter_disabled_media()`, before either pipeline processes the entities. This means audio/video entities are **dropped entirely** — they never reach `text_builder`, `AudioConverter`, or `VideoConverter`:
 
 ```python
-# In ChunkEmbedProcessor._partition_by_embedding_mode()
+# In ChunkEmbedProcessor.process()
+entities = self._filter_disabled_media(entities, sync_context)
+
+# In _filter_disabled_media()
 _MEDIA_MIME_TYPES = {"audio/mpeg", "audio/wav", "video/mp4"}
 
-media_enabled = settings.ENABLE_MEDIA_SYNC
-
-for entity in entities:
-    # ... FileEntity + MIME + local_path checks ...
-
-    # Gate audio/video behind ENABLE_MEDIA_SYNC at the pipeline level
-    if entity.mime_type in _MEDIA_MIME_TYPES and not media_enabled:
-        text.append(entity)  # Falls through to text pipeline
-        continue
-
-    native.append(entity)
+if not settings.ENABLE_MEDIA_SYNC:
+    # Drop audio/video entities entirely
+    filtered = [e for e in entities if e.mime_type not in _MEDIA_MIME_TYPES]
 ```
 
+`_partition_by_embedding_mode()` provides a **secondary routing safeguard** that also checks the flag when routing between native and text pipelines (defense in depth).
+
 When `False` (default):
-- Audio/video entities from ANY source fall through to the text pipeline
-- Google Drive connector additionally skips video files at the source level (defense in depth)
-- The `MediaChunker`, `AudioConverter`, and `VideoConverter` exist in code but are never invoked for embedding
+- Audio/video entities from ANY source are dropped before processing
+- No ffmpeg/Gemini transcription cost is incurred
+- The `MediaChunker`, `AudioConverter`, and `VideoConverter` exist in code but are never invoked
 
 When `True`:
 - Audio/video entities route through `MediaChunker` for segmentation and native embedding

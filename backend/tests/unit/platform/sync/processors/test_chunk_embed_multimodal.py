@@ -371,6 +371,57 @@ class TestNativeMultimodalPipelineFallback:
 # ---------------------------------------------------------------------------
 
 
+class TestFilterDisabledMedia:
+    """Test that _filter_disabled_media drops media entities at process() level."""
+
+    @pytest.mark.asyncio
+    async def test_media_only_input_returns_empty_when_disabled(
+        self, processor, mock_sync_context
+    ):
+        """process() with only audio/video entities and ENABLE_MEDIA_SYNC=False → []."""
+        runtime = _make_text_only_runtime()
+        audio = _make_file_entity(entity_id="audio-1", mime_type="audio/mpeg")
+        video = _make_file_entity(entity_id="video-1", mime_type="video/mp4")
+
+        with patch("airweave.core.config.settings", MagicMock(ENABLE_MEDIA_SYNC=False)):
+            result = await processor.process(
+                [audio, video], mock_sync_context, runtime
+            )
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_text_pipeline_not_called_for_media_when_disabled(
+        self, processor, mock_sync_context
+    ):
+        """Media entities should never reach _text_pipeline when ENABLE_MEDIA_SYNC=False."""
+        runtime = _make_text_only_runtime()
+        audio = _make_file_entity(entity_id="audio-1", mime_type="audio/mpeg")
+        image = _make_file_entity(entity_id="img-1", mime_type="image/png")
+
+        with patch("airweave.core.config.settings", MagicMock(ENABLE_MEDIA_SYNC=False)), \
+             patch.object(processor, "_text_pipeline", new_callable=AsyncMock, return_value=[]) as mock_text:
+            await processor.process([audio, image], mock_sync_context, runtime)
+
+            # _text_pipeline should be called with only the image, not the audio
+            if mock_text.called:
+                entities_arg = mock_text.call_args[0][0]
+                mime_types = [getattr(e, "mime_type", None) for e in entities_arg]
+                assert "audio/mpeg" not in mime_types
+
+    def test_filter_passes_all_when_enabled(self, processor, mock_sync_context):
+        """When ENABLE_MEDIA_SYNC=True, all entities pass through."""
+        audio = _make_file_entity(entity_id="audio-1", mime_type="audio/mpeg")
+        image = _make_file_entity(entity_id="img-1", mime_type="image/png")
+
+        with patch("airweave.core.config.settings", MagicMock(ENABLE_MEDIA_SYNC=True)):
+            result = processor._filter_disabled_media(
+                [audio, image], mock_sync_context
+            )
+
+        assert len(result) == 2
+
+
 class TestProcessEmpty:
     @pytest.mark.asyncio
     async def test_empty_list(self, processor, mock_sync_context):

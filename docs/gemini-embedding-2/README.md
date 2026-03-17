@@ -386,7 +386,7 @@ sequenceDiagram
 
 4. **Graceful fallback** -- If `embed_file()` raises `EmbedderInputError` or `EmbedderProviderError`, the entity falls back to the text pipeline with a warning log. For oversized PDFs, the pipeline first attempts 6-page chunking before falling back to text.
 
-5. **Audio/video behind feature flag** -- `ENABLE_MEDIA_SYNC=false` by default. The flag is enforced at the **pipeline level** in `_partition_by_embedding_mode()` -- any source emitting audio/video MIME types is gated, not just Google Drive. ([ADR-003](./adr-003-feature-flag-for-media.md))
+5. **Audio/video behind feature flag** -- `ENABLE_MEDIA_SYNC=false` by default. The flag is enforced at the **top of `process()`** via `_filter_disabled_media()` — audio/video entities are dropped before either pipeline processes them. This prevents expensive ffmpeg/Gemini transcription when media sync is disabled. `_partition_by_embedding_mode()` provides a secondary routing safeguard. ([ADR-003](./adr-003-feature-flag-for-media.md))
 
 6. **Scene-based keyframe OCR for video** -- VideoConverter uses ffmpeg scene detection to extract keyframes only when screen content changes, then OCRs each via Docling/Mistral (or Gemini vision fallback). Consecutive frames >80% similar are deduplicated. This captures slide text and UI content without fixed-interval waste. ([ADR-004](./adr-004-scene-keyframe-ocr.md))
 
