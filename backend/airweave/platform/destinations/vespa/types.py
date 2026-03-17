@@ -3,7 +3,7 @@
 Simple Pydantic models for type safety and clear interfaces between components.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,8 +39,10 @@ class DeleteResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     deleted_count: int = Field(default=0, description="Number of deleted documents")
-    schema_name: str = Field(
-        ..., alias="schema", description="Schema the deletion was performed on"
+    schema_name: Optional[str] = Field(
+        default=None,
+        alias="schema",
+        description="Schema the deletion was performed on (None for cross-schema)",
     )
 
 

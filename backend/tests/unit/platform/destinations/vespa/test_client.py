@@ -47,7 +47,7 @@ class TestVespaClient:
         # Just test that we can create a client with an app
         mock_app = MagicMock()
         client = VespaClient(app=mock_app)
-        
+
         assert client.app == mock_app
 
     @pytest.mark.asyncio
@@ -60,7 +60,7 @@ class TestVespaClient:
     async def test_feed_documents_calls_feed_iterable(self, client, mock_vespa_app, sample_vespa_document):
         """Test feed_documents uses feed_iterable."""
         docs_by_schema = {"base_entity": [sample_vespa_document]}
-        
+
         # Mock feed_iterable to simulate successful feeding
         def mock_feed_iterable(iter, schema, namespace, callback, **kwargs):
             for doc in iter:
@@ -68,11 +68,11 @@ class TestVespaClient:
                 response = MagicMock()
                 response.is_successful = MagicMock(return_value=True)
                 callback(response, doc["id"])
-        
+
         mock_vespa_app.feed_iterable = mock_feed_iterable
-        
+
         result = await client.feed_documents(docs_by_schema)
-        
+
         assert result.success_count == 1
         assert len(result.failed_docs) == 0
 
@@ -80,7 +80,7 @@ class TestVespaClient:
     async def test_feed_documents_tracks_failures(self, client, mock_vespa_app, sample_vespa_document):
         """Test feed_documents tracks failed documents."""
         docs_by_schema = {"base_entity": [sample_vespa_document]}
-        
+
         def mock_feed_iterable(iter, schema, namespace, callback, **kwargs):
             for doc in iter:
                 response = MagicMock()
@@ -88,11 +88,11 @@ class TestVespaClient:
                 response.status_code = 500
                 response.json = {"error": "Internal error"}
                 callback(response, doc["id"])
-        
+
         mock_vespa_app.feed_iterable = mock_feed_iterable
-        
+
         result = await client.feed_documents(docs_by_schema)
-        
+
         assert result.success_count == 0
         assert len(result.failed_docs) == 1
         assert result.failed_docs[0][1] == 500  # status_code
@@ -101,7 +101,7 @@ class TestVespaClient:
     async def test_feed_documents_empty_schema(self, client):
         """Test feeding empty documents dict."""
         result = await client.feed_documents({})
-        
+
         assert result.success_count == 0
         assert len(result.failed_docs) == 0
 
@@ -112,14 +112,14 @@ class TestVespaClient:
         # Instead, test the URL construction logic
         schema = "base_entity"
         selection = "field=='value'"
-        
+
         # Verify the method exists and basic structure
         assert hasattr(client, 'delete_by_selection')
-        
+
         # Test DeleteResult structure
         from airweave.platform.destinations.vespa.types import DeleteResult
         result = DeleteResult(deleted_count=5, schema=schema)
-        
+
         assert result.deleted_count == 5
         assert result.schema_name == schema
 
@@ -128,12 +128,12 @@ class TestVespaClient:
         """Test delete by sync ID across all schemas."""
         sync_id = UUID("11111111-1111-1111-1111-111111111111")
         collection_id = UUID("22222222-2222-2222-2222-222222222222")
-        
+
         with patch.object(client, 'delete_by_selection', new_callable=AsyncMock) as mock_delete:
             mock_delete.return_value = MagicMock(deleted_count=5, schema="base_entity")
-            
+
             results = await client.delete_by_sync_id(sync_id, collection_id)
-            
+
             # Should call delete_by_selection for each schema
             assert mock_delete.call_count > 0
             assert all(isinstance(r.deleted_count, int) for r in results)
@@ -142,33 +142,41 @@ class TestVespaClient:
     async def test_delete_by_collection_id(self, client):
         """Test delete by collection ID."""
         collection_id = UUID("22222222-2222-2222-2222-222222222222")
-        
+
         with patch.object(client, 'delete_by_selection', new_callable=AsyncMock) as mock_delete:
             mock_delete.return_value = MagicMock(deleted_count=10, schema="base_entity")
-            
+
             results = await client.delete_by_collection_id(collection_id)
-            
+
             assert mock_delete.call_count > 0
             assert all(isinstance(r.deleted_count, int) for r in results)
 
     @pytest.mark.asyncio
-    async def test_delete_by_parent_ids(self, client):
-        """Test delete by parent IDs."""
-        parent_ids = ["parent-1", "parent-2", "parent-3"]
+    async def test_delete_by_original_entity_ids(self, client):
+        """Test delete by original entity IDs uses query-then-delete path."""
+        entity_ids = ["entity-1", "entity-2", "entity-3"]
         collection_id = UUID("22222222-2222-2222-2222-222222222222")
-        
-        with patch.object(client, 'delete_by_selection', new_callable=AsyncMock) as mock_delete:
-            mock_delete.return_value = MagicMock(deleted_count=5, schema="base_entity")
-            
-            results = await client.delete_by_parent_ids(parent_ids, collection_id)
-            
-            assert mock_delete.call_count > 0
+
+        resolved = [("base_entity", "base_entity_entity-1__chunk_0")]
+        with (
+            patch.object(client, '_query_doc_ids_by_original_entity_ids', new_callable=AsyncMock) as mock_q,
+            patch.object(client, '_delete_by_doc_ids', new_callable=AsyncMock) as mock_d,
+        ):
+            mock_q.return_value = resolved
+            mock_d.return_value = 1
+
+            results = await client.delete_by_original_entity_ids(entity_ids, collection_id)
+
+            assert len(results) == 1
+            assert results[0].deleted_count == 1
+            mock_q.assert_awaited_once()
+            mock_d.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_execute_query_success(self, client, mock_vespa_app):
         """Test query execution with successful response."""
         query_params = {"yql": "select * from base_entity", "hits": 10}
-        
+
         # Mock response
         mock_response = MagicMock()
         mock_response.is_successful = MagicMock(return_value=True)
@@ -182,12 +190,12 @@ class TestVespaClient:
                 "coverage": {"coverage": 100.0}
             }
         }
-        
+
         with patch('asyncio.to_thread', new_callable=AsyncMock) as mock_to_thread:
             mock_to_thread.return_value = mock_response
-            
+
             result = await client.execute_query(query_params)
-            
+
             assert len(result.hits) == 2
             assert result.total_count == 2
             assert result.coverage_percent == 100.0
@@ -196,17 +204,17 @@ class TestVespaClient:
     async def test_execute_query_error(self, client):
         """Test query execution with error response."""
         query_params = {"yql": "invalid query"}
-        
+
         mock_response = MagicMock()
         mock_response.is_successful = MagicMock(return_value=False)
         mock_response.json = {"error": "Invalid YQL"}
-        
+
         with patch('asyncio.to_thread', new_callable=AsyncMock) as mock_to_thread:
             mock_to_thread.return_value = mock_response
-            
+
             with pytest.raises(RuntimeError) as exc_info:
                 await client.execute_query(query_params)
-            
+
             assert "Vespa search error" in str(exc_info.value)
 
     def test_convert_hits_to_results(self, client):
@@ -226,9 +234,9 @@ class TestVespaClient:
                 }
             }
         ]
-        
+
         results = client.convert_hits_to_results(hits)
-        
+
         assert len(results) == 1
         assert results[0].entity_id == "entity-1"
         assert results[0].name == "Test Entity"
@@ -249,9 +257,9 @@ class TestVespaClient:
                 }
             }
         ]
-        
+
         results = client.convert_hits_to_results(hits)
-        
+
         assert len(results[0].breadcrumbs) == 1
         assert results[0].breadcrumbs[0].entity_id == "parent-1"
         assert results[0].breadcrumbs[0].name == "Folder"
@@ -270,9 +278,9 @@ class TestVespaClient:
                 }
             }
         ]
-        
+
         results = client.convert_hits_to_results(hits)
-        
+
         assert results[0].access is not None
         assert results[0].access.is_public is False
         assert results[0].access.viewers == ["user1", "user2"]
@@ -282,7 +290,7 @@ class TestVespaClient:
         # Valid epoch timestamp in seconds
         dt = client._parse_timestamp(1704067200)
         assert dt is not None
-        
+
         # Invalid timestamp
         dt_invalid = client._parse_timestamp(None)
         assert dt_invalid is None
@@ -290,13 +298,13 @@ class TestVespaClient:
     def test_parse_payload(self, client):
         """Test payload JSON parsing."""
         import json
-        
+
         payload_str = json.dumps({"entity_id": "123", "custom_field": "value"})
         parsed = client._parse_payload(payload_str)
-        
+
         assert parsed["entity_id"] == "123"
         assert parsed["custom_field"] == "value"
-        
+
         # Invalid JSON
         invalid_parsed = client._parse_payload("not json")
         assert invalid_parsed == {}
@@ -314,11 +322,10 @@ class TestVespaClient:
             "airweave_system_metadata_sync_id": "sync-123",
             "airweave_system_metadata_chunk_index": 5
         }
-        
+
         metadata = client._extract_system_metadata(fields)
-        
+
         assert metadata.entity_type == "document"
         assert metadata.source_name == "GitHub"
         assert metadata.sync_id == "sync-123"
         assert metadata.chunk_index == 5
-

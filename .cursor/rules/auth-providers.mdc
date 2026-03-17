@@ -50,51 +50,46 @@ SLUG_NAME_MAPPING = {
 ```
 
 
-## Integration with TokenManager
+## Integration with TokenProviderProtocol
 
-The `TokenManager` class orchestrates token refresh during long-running syncs:
+Auth providers integrate via `AuthProviderTokenProvider`, one of three `TokenProviderProtocol` implementations:
 
-### Initialization
+### TokenProviderProtocol
 ```python
-# SyncFactory creates TokenManager with optional auth provider
-token_manager = TokenManager(
-    db=db,
-    source_connection=connection,
-    auth_provider_instance=auth_provider,  # Optional
-    initial_credentials=credentials
+class TokenProviderProtocol(Protocol):
+    async def get_token(self) -> str: ...
+    async def force_refresh(self) -> str: ...
+```
+
+### AuthProviderTokenProvider
+Created by `SourceLifecycleService._configure_token_provider()` when a source connection has an `auth_provider_connection_id`.
+
+```python
+# Lifecycle builds the provider with the auth provider instance
+provider = AuthProviderTokenProvider(
+    auth_provider=auth_provider_instance,
+    source_short_name="slack",
+    auth_config_fields=["access_token", "refresh_token"],
+    logger=logger,
 )
 ```
 
-### Refresh Flow
-1. **Check refresh capability** (`_determine_refresh_capability()`):
-   - Direct injection tokens → no refresh
-   - Auth provider present → always refreshable
-   - Standard OAuth → attempt refresh
+#### Refresh Flow
+1. **`get_token()`** — calls `auth_provider.get_creds_for_source()` each time to fetch fresh credentials from the external service (Pipedream/Composio)
+2. **`force_refresh()`** — same as `get_token()` (auth providers always return fresh creds)
+3. **Retry** — uses tenacity (3 attempts, exponential backoff) on `AuthProviderServerError` / `AuthProviderRateLimitError`
+4. **Error translation** — `AuthProviderError` subtypes are mapped to `TokenProviderError` subtypes:
+   - `AuthProviderAuthError` → `TokenCredentialsInvalidError`
+   - `AuthProviderAccountNotFoundError` → `TokenProviderAccountGoneError`
+   - `AuthProviderMissingFieldsError` → `TokenProviderMissingCredsError`
+   - `AuthProviderConfigError` → `TokenProviderConfigError`
+   - `AuthProviderRateLimitError` → `TokenProviderRateLimitError`
+   - `AuthProviderServerError` → `TokenProviderServerError`
 
-2. **Proactive refresh** (`get_valid_token()`):
-   - Refreshes tokens every 25 minutes (before 1-hour expiry)
-   - Uses async lock to prevent concurrent refreshes
-   - Falls back to stored token if refresh fails
-
-3. **Auth provider refresh** (`_refresh_via_auth_provider()`):
-   ```python
-   # TokenManager calls auth provider for fresh credentials
-   fresh_creds = await auth_provider.get_creds_for_source(
-       source_short_name="slack",
-       source_auth_config_fields=["access_token", "refresh_token"]
-   )
-   # Updates database with new credentials
-   await crud.integration_credential.update(db, credential, fresh_creds)
-   ```
-
-4. **Fallback OAuth refresh** (`_refresh_via_oauth()`):
-   - Uses oauth2_service if no auth provider
-   - Creates separate DB session to avoid transaction issues
-
-### Credential Priority (in SyncFactory)
-1. Direct token injection (highest)
-2. Auth provider instance
-3. Database credentials with OAuth refresh
+### Provider Resolution (in SourceLifecycleService)
+1. Auth provider connection present → `AuthProviderTokenProvider`
+2. OAuth credentials with `oauth_type` → `OAuthTokenProvider`
+3. Direct token injection → `StaticTokenProvider`
 
 ## Database Schema
 - **auth_providers**: Provider definitions from decorators

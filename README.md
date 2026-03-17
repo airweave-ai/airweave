@@ -126,6 +126,23 @@ results = client.collections.search(
 <a href="https://docs.airweave.ai"><img src="https://img.shields.io/badge/SDK_Documentation-0066FF" alt="SDK Documentation"></a>
 <a href="https://github.com/airweave-ai/airweave/tree/main/examples"><img src="https://img.shields.io/badge/Example_Notebooks-0066FF" alt="Example Notebooks"></a>
 
+## CLI
+
+Search collections, manage sources, and trigger syncs from your terminal:
+
+```bash
+pip install airweave-cli
+```
+
+```bash
+airweave auth login
+airweave search "quarterly revenue figures" --collection finance-data
+```
+
+The CLI outputs rich interactive results in your terminal and clean JSON when piped — making it work for both developers and AI agents.
+
+<a href="https://docs.airweave.ai/cli"><img src="https://img.shields.io/badge/CLI_Documentation-0066FF" alt="CLI Documentation"></a>
+
 ## Tech Stack
 
 - **Frontend**: [React/TypeScript](https://react.dev/) with [ShadCN](https://ui.shadcn.com/)

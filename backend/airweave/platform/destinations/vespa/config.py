@@ -35,8 +35,14 @@ FEED_MAX_CONNECTIONS = 16
 # Delete Settings
 # =============================================================================
 
-# Batch size for bulk_delete_by_parent_ids
-DELETE_BATCH_SIZE = 50
+# Max original entity IDs per query batch in delete_by_original_entity_ids
+DELETE_BATCH_SIZE = 200
+
+# Max concurrent direct-delete HTTP requests (semaphore limit)
+DELETE_CONCURRENCY = 20
+
+# Max doc IDs to resolve per YQL query (Vespa query result limit)
+DELETE_QUERY_HITS_LIMIT = 10000
 
 # =============================================================================
 # Vespa Schema Names

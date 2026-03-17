@@ -258,7 +258,7 @@ class TestVespaDestination:
             parent_ids = ["parent-1", "parent-2"]
             await dest.bulk_delete_by_parent_ids(parent_ids, sync_id)
             
-            mock_client.delete_by_parent_ids.assert_called_once_with(parent_ids, collection_id)
+            mock_client.delete_by_original_entity_ids.assert_called_once_with(parent_ids, collection_id)
 
     @pytest.mark.asyncio
     async def test_bulk_delete_by_parent_ids_empty_list(self, collection_id, sync_id):

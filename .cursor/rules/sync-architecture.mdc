@@ -127,7 +127,7 @@ async for entity in stream.get_entities():
 | Handler | Responsibility | Execution |
 |---------|----------------|-----------|
 | `VectorDBHandler` | Chunking → embedding → vector DB writes | Concurrent |
-| `RawDataHandler` | Captures raw entities to ARF storage | Concurrent |
+| `ArfHandler` | Captures raw entities to ARF storage via `ArfService` | Concurrent |
 | `PostgresMetadataHandler` | Persists entity metadata | Sequential (last) |
 
 **Error Handling**:
@@ -273,8 +273,8 @@ EntityPipeline.process()
 └── Dispatch to handlers (ActionDispatcher)
     ├── VectorDBHandler (concurrent)
     │   └── text → chunks → embeddings → vector DB
-    ├── RawDataHandler (concurrent)
-    │   └── Capture to ARF storage
+    ├── ArfHandler (concurrent)
+    │   └── Capture to ARF storage via ArfService
     └── PostgresMetadataHandler (sequential, last)
         └── Persist entity metadata
 ```

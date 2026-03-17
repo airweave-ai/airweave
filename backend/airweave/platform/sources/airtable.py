@@ -24,7 +24,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -122,10 +122,9 @@ class AirtableSource(BaseSource):
                 self.logger.warning(f"Received 401 Unauthorized for {url}, refreshing token...")
 
                 # If we have a token manager, try to refresh
-                if self.token_manager:
+                if self.token_provider:
                     try:
-                        # Force refresh the token
-                        new_token = await self.token_manager.refresh_on_unauthorized()
+                        new_token = await self.token_provider.force_refresh()
                         headers = {"Authorization": f"Bearer {new_token}"}
 
                         # Retry the request with the new token

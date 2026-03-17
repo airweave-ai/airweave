@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.api.context import ApiContext, ConnectContext
 from airweave.core.logging import ContextualLogger
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.oauth.types import OAuth1TokenResponse, OAuthBrowserInitiationResult
+from airweave.domains.oauth.types import (
+    OAuth1TokenResponse,
+    OAuthBrowserInitiationResult,
+    RefreshResult,
+)
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings, OAuth2TokenResponse
 from airweave.schemas.source_connection import SourceConnection as SourceConnectionSchema
@@ -122,6 +126,20 @@ class OAuth2ServiceProtocol(Protocol):
         config_fields: Optional[dict] = None,
     ) -> OAuth2TokenResponse:
         """Refresh an OAuth2 access token."""
+        ...
+
+    async def refresh_and_persist(
+        self,
+        db: AsyncSession,
+        integration_short_name: str,
+        connection_id: UUID,
+        ctx: ApiContext,
+        config_fields: Optional[dict] = None,
+    ) -> RefreshResult:
+        """Load credentials, refresh token, persist rotated refresh_token.
+
+        Returns a RefreshResult with the new access_token and optional expires_in.
+        """
         ...
 
 

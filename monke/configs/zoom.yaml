@@ -6,7 +6,7 @@ connector:
   type: zoom
   auth_mode: composio
   composio_config:
-    account_id: ca_i8GbUbtULZPL
+    account_id: ca_2RnWGfCA4Fap
     auth_config_id: ac_OS0yiuGseuAO
   config_fields:
     openai_model: "gpt-4.1-mini"

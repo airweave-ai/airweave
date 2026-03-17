@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.domains.oauth.types import RefreshResult
 from airweave.platform.auth.schemas import OAuth2Settings, OAuth2TokenResponse
 
 
@@ -189,3 +190,25 @@ class FakeOAuth2Service:
         if not resp:
             raise ValueError(f"No seeded refresh response for {integration_short_name}")
         return resp
+
+    async def refresh_and_persist(
+        self,
+        db: AsyncSession,
+        integration_short_name: str,
+        connection_id: UUID,
+        ctx: ApiContext,
+        config_fields: Optional[dict[str, str]] = None,
+    ) -> RefreshResult:
+        """Fake refresh_and_persist — returns seeded RefreshResult."""
+        self._calls.append(
+            ("refresh_and_persist", db, integration_short_name, connection_id, ctx, config_fields)
+        )
+        if self._should_raise:
+            raise self._should_raise
+        resp = self._refresh_responses.get(integration_short_name)
+        if not resp:
+            raise ValueError(f"No seeded refresh response for {integration_short_name}")
+        return RefreshResult(
+            access_token=resp.access_token,
+            expires_in=resp.expires_in,
+        )

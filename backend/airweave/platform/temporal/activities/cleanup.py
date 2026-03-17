@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from temporalio import activity
 
+from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 
 
@@ -87,6 +88,7 @@ class CleanupSyncDataActivity:
 
     Dependencies:
         temporal_schedule_service: Delete orphaned Temporal schedules
+        arf_service: Delete ARF stores for cleaned-up syncs
 
     This activity runs asynchronously after a source connection or collection
     has been deleted from the database. It handles the slow, potentially
@@ -102,6 +104,7 @@ class CleanupSyncDataActivity:
     """
 
     temporal_schedule_service: TemporalScheduleServiceProtocol
+    arf_service: "ArfServiceProtocol"
 
     @activity.defn(name="cleanup_sync_data_activity")
     async def run(
@@ -124,7 +127,8 @@ class CleanupSyncDataActivity:
 
         from airweave.core.logging import LoggerConfigurator
         from airweave.platform.destinations.vespa.destination import VespaDestination
-        from airweave.platform.sync.arf import arf_service
+
+        arf_service = self.arf_service
 
         logger = LoggerConfigurator.configure_logger(
             "airweave.temporal.cleanup_sync_data",

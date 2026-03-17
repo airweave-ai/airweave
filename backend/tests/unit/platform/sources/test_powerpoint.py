@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 
 from airweave.platform.sources.powerpoint import PowerPointSource
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 
 
 # ------------------------------------------------------------------

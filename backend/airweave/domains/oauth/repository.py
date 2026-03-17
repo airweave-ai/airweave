@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.crud import connection_init_session, redirect_session
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.connection_init_session import ConnectionInitSession
@@ -28,6 +29,16 @@ class OAuthInitSessionRepository:
     ) -> Optional[ConnectionInitSession]:
         """Look up an init session by OAuth token."""
         return await connection_init_session.get_by_oauth_token_no_auth(db, oauth_token=oauth_token)
+
+    async def get(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: BaseContext,
+    ) -> Optional[ConnectionInitSession]:
+        """Fetch an init session by ID (org-scoped)."""
+        return await connection_init_session.get(db, id=id, ctx=ctx)
 
     async def create(
         self,

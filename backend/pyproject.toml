@@ -90,7 +90,6 @@ pytest-xdist = "^3.6.1"
 black = "^24.1.1"
 isort = "^5.13.2"
 mypy = "^1.8.0"
-ruff = "^0.9.6"
 pre-commit = "^3.6.0"
 httpx = "^0.28.0"
 faker = "^22.5.1"
@@ -101,6 +100,9 @@ mcp = "^1.3.0"
 vulture = "^2.10"
 watchfiles = "^1.1.0"
 debugpy = "^1.8.16"
+[tool.poetry.group.lint.dependencies]
+ruff = "^0.9.6"
+diff-cover = "^10.2"
 import-linter = "^2.1"
 
 [build-system]
@@ -171,6 +173,7 @@ convention = "google"
 "__init__.py" = ["D104"]
 "**/tests/**" = ["D100", "D101", "D102", "D103", "D107"]
 "**/fakes/**" = ["D102", "D107"]
+"**/handlers/**" = ["D102"]
 "**/fake.py" = ["D102", "D107"]
 "**/sources/stub.py" = ["S311"]
 "**/sources/file_stub.py" = ["S311"]
