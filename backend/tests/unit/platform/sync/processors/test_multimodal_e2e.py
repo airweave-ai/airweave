@@ -340,8 +340,8 @@ class TestVideoE2E:
 
     @pytest.mark.asyncio
     async def test_long_video_produces_segments(self, tmp_path):
-        """An 85-second MP4 (over 75s limit) produces 2 segments."""
-        mp4_path = generate_mp4(str(tmp_path / "long.mp4"), duration_seconds=85.0)
+        """A 130-second MP4 (over 120s settings limit) produces 2 segments."""
+        mp4_path = generate_mp4(str(tmp_path / "long.mp4"), duration_seconds=130.0)
         assert mp4_path is not None
 
         from airweave.platform.chunkers.media import MediaChunker

@@ -164,8 +164,8 @@ class TestChunkVideo:
         ):
             segments = await chunker.chunk_video(str(video_file))
 
-        # 200s / (75-5) step = ~2.86, so 3 segments
-        assert len(segments) >= 3
+        # 200s / (120-5) step = ~1.74, so 2 segments (settings default is 120s)
+        assert len(segments) >= 2
 
     @pytest.mark.asyncio
     async def test_video_without_audio_uses_higher_limit(self, tmp_path):

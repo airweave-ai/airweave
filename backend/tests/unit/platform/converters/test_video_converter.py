@@ -39,7 +39,8 @@ class TestVideoConverter:
         ):
             results = await converter.convert_batch([str(video)])
 
-        assert results[str(video)] is None
+        # convert_batch returns a placeholder on failure, not None
+        assert results[str(video)] == f"[Video: {video.name}]"
 
     @pytest.mark.asyncio
     async def test_successful_transcription(self, tmp_path):
@@ -55,7 +56,8 @@ class TestVideoConverter:
         ):
             results = await converter.convert_batch([str(video)])
 
-        assert results[str(video)] == "Hello from the video"
+        # _convert_video wraps audio transcript in a markdown section header
+        assert results[str(video)] == "## Audio Transcript\nHello from the video"
 
     def test_batch_size(self):
         converter = VideoConverter(gemini_api_key="test-key")
