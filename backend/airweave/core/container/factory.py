@@ -1058,8 +1058,8 @@ def _create_rate_limiter(settings: Settings):
 def _create_sce_service(settings: Settings):
     """Create the Structural Context Extraction service with extractors.
 
-    Builds the regex and NER extractors, wires the NER exclusion set
-    from the CodeFileEntity class hierarchy.
+    Builds the regex, NER, and (optionally) LLM extractors. Wires the NER/LLM
+    exclusion set from the CodeFileEntity class hierarchy.
     """
     import airweave.platform.entities  # noqa: F401 — trigger subclass registration
     from airweave.domains.sce.extractors import (
@@ -1077,7 +1077,7 @@ def _create_sce_service(settings: Settings):
             names |= _collect_subclass_names(sub)
         return names
 
-    # NER produces garbage on code — exclude CodeFileEntity and all subclasses
+    # NER/LLM produce garbage on code — exclude CodeFileEntity and all subclasses
     ner_excluded = _collect_subclass_names(CodeFileEntity)
 
     regex_extractor = RegexExtractor(REGEX_EXTRACTOR_TYPES)
@@ -1086,4 +1086,73 @@ def _create_sce_service(settings: Settings):
         excluded_entity_types=ner_excluded,
     )
 
-    return StructuralContextExtractorService([regex_extractor, ner_extractor])
+    extractors = [regex_extractor, ner_extractor]
+
+    # LLM extractor is optional — skip if no LLM providers are configured
+    llm_extractor = _create_llm_extractor(ner_excluded)
+    if llm_extractor is not None:
+        extractors.append(llm_extractor)
+
+    return StructuralContextExtractorService(extractors=extractors)
+
+
+def _create_llm_extractor(excluded_entity_types: set[str]):
+    """Try to create an LLM extractor using cheap/fast models from the SCE chain.
+
+    Uses config.SCE_LLM_FALLBACK_CHAIN (light models like Haiku) instead of
+    the main agentic search chain to keep costs low.
+
+    Returns None if no LLM providers are available (missing API keys).
+    """
+    try:
+        from airweave.core.config import settings
+        from airweave.domains.sce.extractors import LLMExtractor
+        from airweave.search.agentic_search.config import AgenticSearchConfig
+        from airweave.search.agentic_search.external.llm import AgenticSearchLLMInterface
+        from airweave.search.agentic_search.external.llm.fallback import FallbackChainLLM
+        from airweave.search.agentic_search.external.llm.registry import (
+            PROVIDER_API_KEY_SETTINGS,
+        )
+        from airweave.search.agentic_search.external.llm.registry import (
+            get_model_spec as get_llm_model_spec,
+        )
+        from airweave.search.agentic_search.services import AgenticSearchServices
+
+        # Not the neatest to construct dependencies like this
+        # but its temporary.
+        tokenizer = AgenticSearchServices._create_tokenizer()
+
+        chain: list[AgenticSearchLLMInterface] = []
+        for provider, model in AgenticSearchConfig.SCE_LLM_FALLBACK_CHAIN:
+            api_key_attr = PROVIDER_API_KEY_SETTINGS.get(provider)
+            if api_key_attr:
+                api_key = getattr(settings, api_key_attr, None)
+                if not api_key:
+                    continue
+
+            model_spec = get_llm_model_spec(provider, model)
+            instance = AgenticSearchServices._create_single_provider(
+                provider, model_spec, tokenizer
+            )
+            chain.append(instance)
+
+        if not chain:
+            logger.info("[SCE] LLM extractor not available: no API keys configured")
+            return None
+
+        if len(chain) > 1:
+            llm: AgenticSearchLLMInterface = FallbackChainLLM(
+                providers=chain,
+                circuit_breaker=InMemoryCircuitBreaker(),
+            )
+        else:
+            llm = chain[0]
+
+        logger.info(f"[SCE] LLM extractor ready with {len(chain)} provider(s)")
+        return LLMExtractor(
+            llm=llm,
+            excluded_entity_types=excluded_entity_types,
+        )
+    except Exception as exc:
+        logger.info(f"[SCE] LLM extractor not available: {exc}")
+        return None

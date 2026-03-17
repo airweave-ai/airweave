@@ -129,6 +129,16 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             rate_limit_tpm=200_000,
             reasoning=ReasoningConfig(param_name="_noop", param_value=True),
         ),
+        LLMModel.CLAUDE_HAIKU_4_5: LLMModelSpec(
+            api_model_name="claude-haiku-4-5-20251001",
+            context_window=200_000,
+            max_output_tokens=8_192,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=50,
+            rate_limit_tpm=200_000,
+            reasoning=ReasoningConfig(param_name="_noop", param_value=True),
+        ),
     },
 }
 

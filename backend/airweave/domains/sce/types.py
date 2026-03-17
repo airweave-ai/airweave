@@ -18,6 +18,10 @@ class ExtractedRefType(str, Enum):
     ORG = "org"
     PRODUCT = "product"
     EVENT = "event"
+    TAG = "tag"
+    GPE = "gpe"
+    DATE = "date"
+    LAW = "law"
 
 
 class ExtractedRef(BaseModel):

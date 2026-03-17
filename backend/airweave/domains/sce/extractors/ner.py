@@ -15,14 +15,16 @@ class NamedEntityRecognitionExtractor(ExtractorProtocol):
     # spaCy label -> ExtractedRefType mapping
     SPACY_LABEL_MAP: Dict[str, ExtractedRefType] = {
         "PERSON": ExtractedRefType.PERSON,
-        "ORG": ExtractedRefType.ORG,
+        # "ORG": ExtractedRefType.ORG,
         "PRODUCT": ExtractedRefType.PRODUCT,
         "EVENT": ExtractedRefType.EVENT,
+        "GPE": ExtractedRefType.GPE,
+        "DATE": ExtractedRefType.DATE,
     }
 
     def __init__(
         self,
-        model: str = "en_core_web_md",
+        model: str = "en_core_web_lg",
         excluded_entity_types: set[str] | None = None,
     ):
         """Initialize with a spaCy model.

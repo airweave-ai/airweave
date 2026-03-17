@@ -47,12 +47,19 @@ FILE_PATH_EXTRACTOR_TYPE = RegexExtractorType(
     normalizer=lambda s: s,
 )
 
+HASHTAG_EXTRACTOR_TYPE = RegexExtractorType(
+    ref_type=ExtractedRefType.TAG,
+    pattern=r"(?<!\w)#[a-zA-Z][a-zA-Z0-9_-]*",
+    normalizer=lambda s: s.lower(),
+)
+
 REGEX_EXTRACTOR_TYPES = [
     URL_EXTRACTOR_TYPE,
     EMAIL_EXTRACTOR_TYPE,
     MENTION_EXTRACTOR_TYPE,
     TICKET_ID_EXTRACTOR_TYPE,
     FILE_PATH_EXTRACTOR_TYPE,
+    HASHTAG_EXTRACTOR_TYPE,
 ]
 
 

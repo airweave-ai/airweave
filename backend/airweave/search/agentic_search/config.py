@@ -31,6 +31,7 @@ class LLMModel(str, Enum):
     GPT_OSS_120B = "gpt-oss-120b"
     ZAI_GLM_4_7 = "zai-glm-4.7"
     CLAUDE_SONNET_4_5 = "claude-sonnet-4.5"
+    CLAUDE_HAIKU_4_5 = "claude-haiku-4.5"
 
 
 # --- Tokenizer ---
@@ -78,6 +79,12 @@ class AgenticSearchConfig:
         (LLMProvider.CEREBRAS, LLMModel.ZAI_GLM_4_7),
         (LLMProvider.GROQ, LLMModel.GPT_OSS_120B),
         (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_5),
+    ]
+
+    # SCE (Structural Context Extraction) fallback chain — cheap/fast models only.
+    # Used for annotation extraction where cost matters more than reasoning depth.
+    SCE_LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = [
+        (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_HAIKU_4_5),
     ]
 
     # Tokenizer

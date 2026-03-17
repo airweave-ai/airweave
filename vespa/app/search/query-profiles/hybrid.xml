@@ -1,7 +1,7 @@
 <query-profile id="hybrid">
     <!-- Max hits/offset for large result sets (reranking, prefetch) -->
     <field name="maxHits">10000</field>
-    <field name="maxOffset">10000</field>
+    <field name="maxOffset">100000</field>
 
     <!-- Schema and document type -->
     <field name="schema">base_entity</field>
