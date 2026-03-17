@@ -1,5 +1,5 @@
 ---
-globs: **/auth_providers/**
+globs: **/auth_provider/**
 alwaysApply: false
 ---
 # Airweave Auth Providers
@@ -11,11 +11,19 @@ Auth providers enable third-party services (Pipedream, Composio) to supply crede
 
 ### Core Components
 ```
-platform/auth_providers/
+domains/auth_provider/
 ├── _base.py              # BaseAuthProvider abstract class
-├── pipedream.py          # OAuth2 provider (tokens expire in 3600s)
-├── composio.py           # API key provider
-└── klavis.py             # Future provider
+├── auth_result.py        # AuthResult dataclass
+├── exceptions.py         # Typed exception hierarchy
+├── protocols.py          # Domain protocols
+├── registry.py           # Provider discovery/registration
+├── service.py            # AuthProviderService
+├── types.py              # Shared type aliases
+├── providers/
+│   ├── composio.py       # API key provider
+│   ├── klavis.py         # Future provider
+│   └── pipedream.py      # OAuth2 provider (tokens expire in 3600s)
+└── tests/
 ```
 
 ### Provider Registration
@@ -23,9 +31,8 @@ platform/auth_providers/
 @auth_provider(
     name="Pipedream",
     short_name="pipedream",
-    auth_type=AuthType.oauth2_with_refresh,
-    auth_config_class="PipedreamAuthConfig",
-    config_class="PipedreamConfig"
+    auth_config_class=PipedreamAuthConfig,
+    config_class=PipedreamConfig,
 )
 class PipedreamAuthProvider(BaseAuthProvider):
     async def create(credentials, config): ...
@@ -95,8 +102,6 @@ provider = AuthProviderTokenProvider(
 - **auth_providers**: Provider definitions from decorators
 - **auth_provider_connections**: User's configured providers (encrypted)
 - **source_connections**: Links to auth provider via `auth_provider_connection_id`
-# Airweave Auth Providers
-
 
 ### Pipedream Proxy Authentication
 
