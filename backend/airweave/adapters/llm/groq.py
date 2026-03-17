@@ -176,8 +176,13 @@ class GroqLLM(BaseLLM):
         tools: list[dict],
         system_prompt: str,
     ) -> LLMResponse:
-        """Groq tool calling (OpenAI-compatible format)."""
-        converted = self._embed_thinking_in_messages(messages)
+        """Groq tool calling (OpenAI-compatible format).
+
+        Groq explicitly warns against including reasoning in conversation
+        history — it degrades output quality. The default
+        ``_prepare_messages_for_api`` strips ``_thinking`` entirely.
+        """
+        converted = self._prepare_messages_for_api(messages)
         api_messages = [{"role": "system", "content": system_prompt}, *converted]
         strict_tools = self._prepare_tools_strict(tools)
 

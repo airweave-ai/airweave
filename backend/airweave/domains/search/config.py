@@ -5,9 +5,6 @@ from enum import Enum
 from airweave.adapters.llm.registry import LLMModel, LLMProvider
 from airweave.adapters.tokenizer.registry import TokenizerEncoding, TokenizerType
 
-# Shared constant: approximate characters per token for budget estimation.
-CHARS_PER_TOKEN = 4
-
 
 class DatabaseImpl(str, Enum):
     """Supported database implementations."""

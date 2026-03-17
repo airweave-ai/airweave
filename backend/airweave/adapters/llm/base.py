@@ -179,31 +179,19 @@ class BaseLLM(LLMProtocol):
 
     # ── Message helpers ──────────────────────────────────────────────────
 
-    @staticmethod
-    def _embed_thinking_in_messages(messages: list[dict]) -> list[dict]:
-        """Embed _thinking into content for OpenAI-compatible providers.
+    def _prepare_messages_for_api(self, messages: list[dict]) -> list[dict]:
+        """Strip internal fields (``_``-prefixed) before sending to the API.
 
-        For providers that don't support native thinking blocks, this merges
-        the thinking text into the assistant message content so the model
-        can reference its prior reasoning.
+        Default behaviour: drops ``_thinking``, ``_tool_name``, etc.
+        This is the correct strategy for providers that should NOT receive
+        prior reasoning (e.g. Groq).
 
-        Anthropic has its own conversion and should NOT use this.
+        Subclasses override to implement provider-specific thinking passthrough
+        (e.g. Cerebras embeds in content, Together passes a ``reasoning`` field).
+        Anthropic has its own ``_convert_messages_to_anthropic`` and does not
+        call this method.
         """
-        result = []
-        for msg in messages:
-            thinking = msg.get("_thinking")
-            if thinking and msg.get("role") == "assistant":
-                content = msg.get("content") or ""
-                parts = []
-                if content:
-                    parts.append(content)
-                parts.append(f"# Your Internal Reasoning\n{thinking}")
-                merged = {**msg, "content": "\n\n".join(parts)}
-                merged.pop("_thinking", None)
-                result.append(merged)
-            else:
-                result.append(msg)
-        return result
+        return [{k: v for k, v in msg.items() if not k.startswith("_")} for msg in messages]
 
     # ── Retry logic ──────────────────────────────────────────────────────
 

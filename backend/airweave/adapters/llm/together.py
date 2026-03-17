@@ -111,6 +111,22 @@ class TogetherLLM(BaseLLM):
 
         return self._parse_json_response(content, schema)
 
+    def _prepare_messages_for_api(self, messages: list[dict]) -> list[dict]:
+        """Together AI: pass reasoning as a separate field on assistant messages.
+
+        Together AI expects ``reasoning`` as a sibling of ``content`` on
+        assistant messages (not embedded in content).  This enables
+        preserved thinking and KV cache reuse in agentic workflows.
+        """
+        result = []
+        for msg in messages:
+            thinking = msg.get("_thinking")
+            cleaned = {k: v for k, v in msg.items() if not k.startswith("_")}
+            if thinking and msg.get("role") == "assistant":
+                cleaned["reasoning"] = thinking
+            result.append(cleaned)
+        return result
+
     async def _call_api_chat(
         self,
         messages: list[dict],
@@ -118,19 +134,26 @@ class TogetherLLM(BaseLLM):
         system_prompt: str,
     ) -> LLMResponse:
         """Together AI tool calling (OpenAI-compatible format)."""
-        converted = self._embed_thinking_in_messages(messages)
+        converted = self._prepare_messages_for_api(messages)
         api_messages = [{"role": "system", "content": system_prompt}, *converted]
 
-        api_start = time.monotonic()
-        response = await self._client.chat.completions.create(
-            model=self._model_spec.api_model_name,
-            messages=api_messages,
-            tools=tools,
-            tool_choice="required",
-            temperature=1.0 if self._thinking_enabled else 0.6,
-            max_tokens=self._model_spec.max_output_tokens,
+        kwargs: dict[str, Any] = {
+            "model": self._model_spec.api_model_name,
+            "messages": api_messages,
+            "tools": tools,
+            "tool_choice": "required",
+            "temperature": 1.0 if self._thinking_enabled else 0.6,
+            "max_tokens": self._model_spec.max_output_tokens,
             **self._build_reasoning_kwargs(),
-        )
+        }
+
+        # Preserve thinking across turns for agentic tool-calling loops.
+        # Models that don't recognize this kwarg simply ignore it.
+        if self._thinking_enabled:
+            kwargs["chat_template_kwargs"] = {"clear_thinking": False}
+
+        api_start = time.monotonic()
+        response = await self._client.chat.completions.create(**kwargs)
         api_time = time.monotonic() - api_start
 
         choice = response.choices[0]

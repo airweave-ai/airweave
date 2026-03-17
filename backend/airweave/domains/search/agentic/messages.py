@@ -54,12 +54,15 @@ def build_user_message(query: str, filters: list[FilterGroup]) -> dict[str, str]
 def build_assistant_message(response: LLMResponse) -> dict[str, Any]:
     """Convert an LLM response to an assistant message dict.
 
-    Thinking and text are handled differently per provider:
-    - Anthropic: `_thinking` field → adapter builds native thinking blocks
-    - OpenAI-compatible: thinking is embedded in content as markdown sections
-      so the model sees its own reasoning on subsequent turns
+    The ``_thinking`` field is an internal marker that each LLM adapter
+    converts to the provider-appropriate format via ``_prepare_messages_for_api``:
 
-    Both approaches ensure the model can reference its prior reasoning.
+    - **Anthropic**: native ``thinking`` content blocks.
+    - **Together AI**: ``reasoning`` field on assistant messages
+      (preserved thinking for KV cache reuse).
+    - **Cerebras**: embedded in ``content``
+      (GPT-OSS: raw prepend; GLM/Qwen: ``<think>`` tags).
+    - **Groq**: stripped entirely (Groq docs warn it degrades output).
     """
     msg: dict[str, Any] = {
         "role": "assistant",

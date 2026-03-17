@@ -41,6 +41,9 @@ class CerebrasLLM(BaseLLM):
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Cerebras client: {e}") from e
 
+        # GLM/Qwen models use <think> tags; GPT-OSS prepends reasoning raw.
+        self._uses_think_tags = model_spec.reasoning.param_name == "disable_reasoning"
+
         self._logger.debug(
             f"[CerebrasLLM] Initialized with model={model_spec.api_model_name}, "
             f"context_window={model_spec.context_window}, "
@@ -118,6 +121,25 @@ class CerebrasLLM(BaseLLM):
             )
         return strict_tools
 
+    def _prepare_messages_for_api(self, messages: list[dict]) -> list[dict]:
+        """Cerebras: embed thinking in content for multi-turn reasoning continuity.
+
+        GPT-OSS models: prepend reasoning directly before the answer.
+        GLM / Qwen models: wrap reasoning in ``<think>...</think>`` tags.
+        """
+        result = []
+        for msg in messages:
+            thinking = msg.get("_thinking")
+            cleaned = {k: v for k, v in msg.items() if not k.startswith("_")}
+            if thinking and msg.get("role") == "assistant":
+                content = cleaned.get("content") or ""
+                if self._uses_think_tags:
+                    cleaned["content"] = f"<think>{thinking}</think>\n{content}"
+                else:
+                    cleaned["content"] = f"{thinking}\n{content}" if content else thinking
+            result.append(cleaned)
+        return result
+
     async def _call_api_chat(
         self,
         messages: list[dict],
@@ -125,7 +147,7 @@ class CerebrasLLM(BaseLLM):
         system_prompt: str,
     ) -> LLMResponse:
         """Cerebras tool calling (OpenAI-compatible format)."""
-        converted = self._embed_thinking_in_messages(messages)
+        converted = self._prepare_messages_for_api(messages)
         api_messages = [{"role": "system", "content": system_prompt}, *converted]
         strict_tools = self._prepare_tools_strict(tools)
 
