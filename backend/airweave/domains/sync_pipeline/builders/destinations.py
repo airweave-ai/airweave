@@ -58,6 +58,26 @@ class DestinationsContextBuilder:
         return destinations, entity_map
 
     @classmethod
+    async def build_destinations_only(
+        cls,
+        db: AsyncSession,
+        sync: schemas.Sync,
+        collection: schemas.CollectionRecord,
+        ctx: BaseContext,
+        logger: ContextualLogger,
+        execution_config: Optional[SyncConfig] = None,
+    ) -> List[BaseDestination]:
+        """Build destinations without entity map (entity map built by factory via DI)."""
+        return await cls._create_destinations(
+            db=db,
+            sync=sync,
+            collection=collection,
+            ctx=ctx,
+            logger=logger,
+            execution_config=execution_config,
+        )
+
+    @classmethod
     async def build_for_collection(
         cls,
         db: AsyncSession,

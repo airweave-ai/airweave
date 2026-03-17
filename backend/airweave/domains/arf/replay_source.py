@@ -1,6 +1,6 @@
 """ARF Replay source for automatic replay from ARF storage.
 
-Internal source (NOT decorated, NOT registered) injected by SourceContextBuilder
+Internal source (NOT decorated, NOT registered) injected by SyncFactory
 when execution_config.behavior.replay_from_arf=True.
 
 Unlike SnapshotSource (user-facing for evals), this source:

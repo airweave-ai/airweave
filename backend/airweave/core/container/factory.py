@@ -377,7 +377,11 @@ def create_container(settings: Settings) -> Container:
     acl_membership_repo = AccessControlMembershipRepository()
     access_broker = AccessBroker(acl_repo=acl_membership_repo)
     converter_registry = ConverterRegistry(ocr_provider=ocr_provider)
-    chunk_embed_processor = ChunkEmbedProcessor(converter_registry=converter_registry)
+    chunk_embed_processor = ChunkEmbedProcessor(
+        converter_registry=converter_registry,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
+    )
 
     # Storage domain
     # -----------------------------------------------------------------
@@ -388,6 +392,9 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     arf_service = ArfService(storage=storage_backend)
 
+    # Node selection repo (shared by sync factory + browse tree service)
+    node_selection_repo = NodeSelectionRepository()
+
     # -----------------------------------------------------------------
     # Sync factory + service
     # -----------------------------------------------------------------
@@ -395,11 +402,16 @@ def create_container(settings: Settings) -> Container:
         sc_repo=source_deps["sc_repo"],
         event_bus=event_bus,
         usage_checker=usage_checker,
+        usage_ledger=usage_ledger,
         dense_embedder=dense_embedder,
         sparse_embedder=sparse_embedder,
         entity_repo=sync_deps["entity_repo"],
+        entity_definition_registry=source_deps["entity_definition_registry"],
         acl_repo=acl_membership_repo,
         processor=chunk_embed_processor,
+        source_lifecycle_service=source_deps["source_lifecycle_service"],
+        storage_backend=storage_backend,
+        selection_repo=node_selection_repo,
         arf_service=arf_service,
     )
 
@@ -462,7 +474,6 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     # Browse tree service
     # -----------------------------------------------------------------
-    node_selection_repo = NodeSelectionRepository()
     browse_tree_service = BrowseTreeService(
         selection_repo=node_selection_repo,
         sc_repo=source_deps["sc_repo"],

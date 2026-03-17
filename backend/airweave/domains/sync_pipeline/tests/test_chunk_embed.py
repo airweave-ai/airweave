@@ -14,8 +14,27 @@ _SEMANTIC_CHUNKER = "airweave.platform.chunkers.semantic.SemanticChunker"
 
 
 @pytest.fixture
-def processor():
-    return ChunkEmbedProcessor(converter_registry=FakeConverterRegistry())
+def mock_dense_embedder():
+    embedder = MagicMock()
+    embedder.dimensions = 3072
+    embedder.embed_many = AsyncMock()
+    return embedder
+
+
+@pytest.fixture
+def mock_sparse_embedder():
+    embedder = MagicMock()
+    embedder.embed_many = AsyncMock()
+    return embedder
+
+
+@pytest.fixture
+def processor(mock_dense_embedder, mock_sparse_embedder):
+    return ChunkEmbedProcessor(
+        converter_registry=FakeConverterRegistry(),
+        dense_embedder=mock_dense_embedder,
+        sparse_embedder=mock_sparse_embedder,
+    )
 
 
 @pytest.fixture
@@ -30,11 +49,6 @@ def mock_sync_context():
 def mock_runtime():
     runtime = MagicMock()
     runtime.entity_tracker = AsyncMock()
-    runtime.dense_embedder = MagicMock()
-    runtime.dense_embedder.dimensions = 3072
-    runtime.dense_embedder.embed_many = AsyncMock()
-    runtime.sparse_embedder = MagicMock()
-    runtime.sparse_embedder.embed_many = AsyncMock()
     return runtime
 
 
@@ -148,7 +162,9 @@ class TestChunkEmbedProcessor:
         assert len(result) == 2
 
     @pytest.mark.asyncio
-    async def test_embed_entities_calls_both_embedders(self, processor, mock_runtime):
+    async def test_embed_entities_calls_both_embedders(
+        self, processor, mock_dense_embedder, mock_sparse_embedder
+    ):
         mock_entity = MagicMock()
         mock_entity.textual_representation = "Test content"
         mock_entity.airweave_system_metadata = MagicMock()
@@ -156,16 +172,18 @@ class TestChunkEmbedProcessor:
 
         dense_result = MagicMock()
         dense_result.vector = [0.1] * 3072
-        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
-        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
+        mock_dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
-        await processor._embed_entities([mock_entity], mock_runtime)
+        await processor._embed_entities([mock_entity])
 
-        mock_runtime.dense_embedder.embed_many.assert_called_once()
-        mock_runtime.sparse_embedder.embed_many.assert_called_once()
+        mock_dense_embedder.embed_many.assert_called_once()
+        mock_sparse_embedder.embed_many.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_embed_entities_assigns_embeddings(self, processor, mock_runtime):
+    async def test_embed_entities_assigns_embeddings(
+        self, processor, mock_dense_embedder, mock_sparse_embedder
+    ):
         mock_entity = MagicMock()
         mock_entity.textual_representation = "Test"
         mock_entity.airweave_system_metadata = MagicMock()
@@ -178,16 +196,18 @@ class TestChunkEmbedProcessor:
         dense_result.vector = dense_vector
         sparse_embedding = MagicMock()
 
-        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
-        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[sparse_embedding])
+        mock_dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_sparse_embedder.embed_many = AsyncMock(return_value=[sparse_embedding])
 
-        await processor._embed_entities([mock_entity], mock_runtime)
+        await processor._embed_entities([mock_entity])
 
         assert mock_entity.airweave_system_metadata.dense_embedding == dense_vector
         assert mock_entity.airweave_system_metadata.sparse_embedding == sparse_embedding
 
     @pytest.mark.asyncio
-    async def test_embed_entities_uses_full_json_for_sparse(self, processor, mock_runtime):
+    async def test_embed_entities_uses_full_json_for_sparse(
+        self, processor, mock_dense_embedder, mock_sparse_embedder
+    ):
         mock_entity = MagicMock()
         mock_entity.textual_representation = "Test"
         mock_entity.airweave_system_metadata = MagicMock()
@@ -197,12 +217,12 @@ class TestChunkEmbedProcessor:
 
         dense_result = MagicMock()
         dense_result.vector = [0.1] * 3072
-        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
-        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
+        mock_dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
-        await processor._embed_entities([mock_entity], mock_runtime)
+        await processor._embed_entities([mock_entity])
 
-        call_args = mock_runtime.sparse_embedder.embed_many.call_args[0][0]
+        call_args = mock_sparse_embedder.embed_many.call_args[0][0]
         assert isinstance(call_args, list)
         assert isinstance(call_args[0], str)
 
@@ -212,7 +232,9 @@ class TestChunkEmbedProcessor:
         assert "entity_id" in parsed
 
     @pytest.mark.asyncio
-    async def test_embed_entities_validates_embeddings_exist(self, processor, mock_runtime):
+    async def test_embed_entities_validates_embeddings_exist(
+        self, processor, mock_dense_embedder, mock_sparse_embedder
+    ):
         mock_entity = MagicMock()
         mock_entity.textual_representation = "Test"
         mock_entity.entity_id = "test-123"
@@ -221,16 +243,18 @@ class TestChunkEmbedProcessor:
 
         dense_result = MagicMock()
         dense_result.vector = None
-        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
-        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
+        mock_dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
         with pytest.raises(Exception) as exc_info:
-            await processor._embed_entities([mock_entity], mock_runtime)
+            await processor._embed_entities([mock_entity])
 
         assert "no dense embedding" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_full_pipeline_with_mocks(self, processor, mock_sync_context, mock_runtime):
+    async def test_full_pipeline_with_mocks(
+        self, processor, mock_sync_context, mock_runtime, mock_dense_embedder, mock_sparse_embedder
+    ):
         mock_entity = MagicMock()
         mock_entity.entity_id = "test-123"
         mock_entity.textual_representation = "Original text"
@@ -252,10 +276,10 @@ class TestChunkEmbedProcessor:
         dense_result.vector = [0.1] * 3072
         dense_result_2 = MagicMock()
         dense_result_2.vector = [0.2] * 3072
-        mock_runtime.dense_embedder.embed_many = AsyncMock(
+        mock_dense_embedder.embed_many = AsyncMock(
             return_value=[dense_result, dense_result_2]
         )
-        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock(), MagicMock()])
+        mock_sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock(), MagicMock()])
 
         with (
             patch.object(
@@ -275,12 +299,12 @@ class TestChunkEmbedProcessor:
             assert len(result) == 2
             mock_build.assert_called_once()
             mock_chunker.chunk_batch.assert_called_once()
-            mock_runtime.dense_embedder.embed_many.assert_called_once()
-            mock_runtime.sparse_embedder.embed_many.assert_called_once()
+            mock_dense_embedder.embed_many.assert_called_once()
+            mock_sparse_embedder.embed_many.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_memory_optimization_clears_parent_text(
-        self, processor, mock_sync_context, mock_runtime
+        self, processor, mock_sync_context, mock_runtime, mock_dense_embedder, mock_sparse_embedder
     ):
         mock_entity = MagicMock()
         mock_entity.entity_id = "test-123"
@@ -297,8 +321,8 @@ class TestChunkEmbedProcessor:
 
         dense_result = MagicMock()
         dense_result.vector = [0.1] * 3072
-        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
-        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
+        mock_dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
         with (
             patch.object(

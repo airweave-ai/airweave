@@ -15,6 +15,7 @@ import json
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from airweave.domains.converters.protocols import ConverterRegistryProtocol
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 from airweave.domains.sync_pipeline.pipeline.text_builder import TextualRepresentationBuilder
 from airweave.domains.sync_pipeline.processors.utils import filter_empty_representations
@@ -28,9 +29,16 @@ if TYPE_CHECKING:
 class ChunkEmbedProcessor:
     """Unified processor that chunks text and computes embeddings."""
 
-    def __init__(self, converter_registry: ConverterRegistryProtocol) -> None:
-        """Initialize with a converter registry for text building."""
+    def __init__(
+        self,
+        converter_registry: ConverterRegistryProtocol,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
+    ) -> None:
+        """Initialize with converter registry and embedding providers."""
         self._text_builder = TextualRepresentationBuilder(converter_registry)
+        self._dense_embedder = dense_embedder
+        self._sparse_embedder = sparse_embedder
 
     async def process(
         self,
@@ -61,7 +69,7 @@ class ChunkEmbedProcessor:
             entity.textual_representation = None
 
         # Step 5: Embed chunks
-        await self._embed_entities(chunk_entities, sync_context, runtime)
+        await self._embed_entities(chunk_entities, sync_context)
 
         sync_context.logger.debug(
             f"[ChunkEmbedProcessor] {len(entities)} entities -> {len(chunk_entities)} chunks"
@@ -205,24 +213,17 @@ class ChunkEmbedProcessor:
         self,
         chunk_entities: List[BaseEntity],
         sync_context: "SyncContext",
-        runtime: "SyncRuntime",
     ) -> None:
         """Compute dense and sparse embeddings for all destinations.
 
         Both Qdrant and Vespa use:
         - Dense embeddings (provider-specific dim) for neural/semantic search
         - Sparse embeddings (FastEmbed Qdrant/bm25) for keyword search scoring
-
-        This ensures consistent keyword search behavior across both vector databases,
-        with benefits of pre-trained vocabulary/IDF, stopword removal, and learned term weights.
         """
         if not chunk_entities:
             return
 
-        if runtime.dense_embedder is None:
-            return
-
-        expected_dims = runtime.dense_embedder.dimensions
+        expected_dims = self._dense_embedder.dimensions
 
         # Dense embeddings (provider-specific dimensions for neural search)
         dense_texts = [e.textual_representation or "" for e in chunk_entities]
@@ -233,7 +234,7 @@ class ChunkEmbedProcessor:
             entity_ids,
         )
         try:
-            dense_results = await runtime.dense_embedder.embed_many(dense_texts)
+            dense_results = await self._dense_embedder.embed_many(dense_texts)
         except Exception:
             sync_context.logger.error(
                 "[ChunkEmbedProcessor] Dense embedding failed for entity IDs: %s",
@@ -261,7 +262,7 @@ class ChunkEmbedProcessor:
             )
             for e in chunk_entities
         ]
-        sparse_embeddings = await runtime.sparse_embedder.embed_many(sparse_texts)
+        sparse_embeddings = await self._sparse_embedder.embed_many(sparse_texts)
 
         # Assign embeddings to entities
         for i, entity in enumerate(chunk_entities):

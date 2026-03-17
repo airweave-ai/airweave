@@ -12,6 +12,7 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
+from airweave.core.protocols.event_bus import EventBus
 from airweave.domains.access_control.pipeline import AccessControlPipeline
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
@@ -23,6 +24,7 @@ from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
 )
+from airweave.domains.usage.protocols import UsageLedgerProtocol, UsageLimitCheckerProtocol
 from airweave.domains.usage.types import ActionType
 from airweave.platform.utils.error_utils import get_error_message
 
@@ -46,6 +48,9 @@ class SyncOrchestrator:
         sync_context: SyncContext,
         runtime: SyncRuntime,
         access_control_pipeline: AccessControlPipeline,
+        event_bus: EventBus,
+        usage_checker: UsageLimitCheckerProtocol,
+        usage_ledger: UsageLedgerProtocol,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
@@ -54,6 +59,9 @@ class SyncOrchestrator:
         self.sync_context = sync_context
         self.runtime = runtime
         self.access_control_pipeline = access_control_pipeline
+        self._event_bus = event_bus
+        self._usage_checker = usage_checker
+        self._usage_ledger = usage_ledger
 
         # Batch config from context
         self.should_batch = sync_context.should_batch
@@ -148,9 +156,7 @@ class SyncOrchestrator:
             # Flush the usage ledger for this org to prevent data loss
             try:
                 self.sync_context.logger.info("Flushing usage ledger...")
-                from airweave.core.container import container as _container
-
-                await _container.usage_ledger.flush(self.sync_context.organization.id)
+                await self._usage_ledger.flush(self.sync_context.organization.id)
             except Exception as flush_error:
                 self.sync_context.logger.error(
                     f"Failed to flush usage ledger: {flush_error}", exc_info=True
@@ -206,7 +212,7 @@ class SyncOrchestrator:
                 if not self.sync_context.execution_config.behavior.skip_guardrails:
                     try:
                         async with get_db_context() as db:
-                            await self.runtime.usage_checker.is_allowed(
+                            await self._usage_checker.is_allowed(
                                 db, self.sync_context.organization.id, ActionType.ENTITIES
                             )
                     except (
@@ -519,7 +525,7 @@ class SyncOrchestrator:
     async def _publish_acl_heartbeat(self) -> None:
         """Publish an ACL heartbeat event to keep the stall detector alive."""
         ctx = self.sync_context
-        await self.runtime.event_bus.publish(
+        await self._event_bus.publish(
             AccessControlMembershipBatchProcessedEvent(
                 organization_id=ctx.organization_id,
                 sync_id=ctx.sync.id,
