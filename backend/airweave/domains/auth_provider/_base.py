@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Dict, List, Optional, Set
 
+from pydantic import BaseModel
+
 from airweave.core.logging import logger
 from airweave.domains.auth_provider.auth_result import AuthResult
 
@@ -14,8 +16,8 @@ class BaseAuthProvider(ABC):
     is_auth_provider: ClassVar[bool] = False
     provider_name: ClassVar[str] = ""
     short_name: ClassVar[str] = ""
-    auth_config_class: ClassVar[Optional[type]] = None
-    config_class: ClassVar[Optional[type]] = None
+    auth_config_class: ClassVar[Optional[type[BaseModel]]] = None
+    config_class: ClassVar[Optional[type[BaseModel]]] = None
 
     def __init__(self):
         """Initialize the base auth provider."""

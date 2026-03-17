@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Dict, List, Optional
 from uuid import UUID
 
+from pydantic import BaseModel
+
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.entities._base import BaseEntity
@@ -18,8 +20,8 @@ class BaseDestination(ABC):
     is_destination: ClassVar[bool] = False
     destination_name: ClassVar[str] = ""
     short_name: ClassVar[str] = ""
-    auth_config_class: ClassVar[Optional[type]] = None
-    config_class: ClassVar[Optional[type]] = None
+    auth_config_class: ClassVar[Optional[type[BaseModel]]] = None
+    config_class: ClassVar[Optional[type[BaseModel]]] = None
 
     # Capabilities (set by @destination decorator)
     supports_upsert: ClassVar[bool] = True

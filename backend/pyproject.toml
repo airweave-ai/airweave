@@ -134,6 +134,10 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 check_untyped_defs = true
 
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+
 [[tool.mypy.overrides]]
 module = [
     "airweave.*.tests.*",

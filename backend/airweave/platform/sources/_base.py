@@ -44,8 +44,8 @@ class BaseSource:
     auth_methods: ClassVar[list[AuthenticationMethod]] = []
     oauth_type: ClassVar[Optional[OAuthType]] = None
     requires_byoc: ClassVar[bool] = False
-    auth_config_class: ClassVar[Optional[type]] = None
-    config_class: ClassVar[Optional[type]] = None
+    auth_config_class: ClassVar[Optional[type[BaseModel]]] = None
+    config_class: ClassVar[Optional[type[BaseModel]]] = None
 
     # Capabilities (set by @source decorator)
     supports_continuous: ClassVar[bool] = False

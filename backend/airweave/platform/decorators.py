@@ -127,15 +127,6 @@ def source(
         cls.feature_flag = feature_flag
         cls.internal = internal
 
-        # Add validation method if not present
-        if not hasattr(cls, "validate"):
-
-            async def validate(self) -> bool:
-                """Default validation that always passes."""
-                return True
-
-            cls.validate = validate
-
         return cls
 
     return decorator
