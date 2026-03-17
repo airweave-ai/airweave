@@ -125,7 +125,7 @@ class SyncFactory:
         sc = await self._sc_repo.get_by_sync_id(db, sync_id=sync.id, ctx=ctx)
         if not sc:
             raise NotFoundException(f"Source connection record not found for sync {sync.id}")
-        source_connection_id = UUID(str(sc.id))
+        source_connection_id = sc.id
 
         sync_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.source_build",
@@ -142,7 +142,7 @@ class SyncFactory:
                 sync_job=sync_job,
                 ctx=ctx,
                 logger=sync_logger,
-                source_connection_id=source_connection_id,
+                source_connection=sc,
                 force_full_sync=force_full_sync,
                 execution_config=resolved_config,
             ),
@@ -258,7 +258,7 @@ class SyncFactory:
         sync_job: schemas.SyncJob,
         ctx: BaseContext,
         logger: ContextualLogger,
-        source_connection_id: UUID,
+        source_connection: SourceConnection,
         force_full_sync: bool,
         execution_config: SyncConfig,
     ) -> Tuple[BaseSource, SyncCursor]:
@@ -266,26 +266,36 @@ class SyncFactory:
         if execution_config and execution_config.behavior.replay_from_arf:
             return await self._build_arf_replay_source(db=db, sync=sync, ctx=ctx, logger=logger)
 
-        source_connection_obj = await crud.source_connection.get_by_sync_id(
-            db, sync_id=sync.id, ctx=ctx
-        )
-        if not source_connection_obj:
-            raise NotFoundException(
-                f"Source connection record not found for sync {sync.id}. "
-                f"This typically occurs when a source connection is deleted while a "
-                f"scheduled workflow is queued."
-            )
+        self._validate_not_completed_snapshot(source_connection)
 
-        self._validate_not_completed_snapshot(source_connection_obj)
+        source_connection_id = source_connection.id
 
         source = await self._source_lifecycle_service.create(
             db=db,
-            source_connection_id=UUID(str(source_connection_obj.id)),
+            source_connection_id=source_connection_id,
             ctx=ctx,
         )
 
         # TODO(@felix): add pre-sync validation
+        # short_name = source.source_name
+        # try:
+        #     is_valid = await source.validate()
+        #     if not is_valid:
+        #         raise SourceValidationError(short_name, "validate() returned False")
+        # except SourceValidationError:
+        #     raise
+        # except Exception as exc:
+        #     raise SourceValidationError(
+        #         short_name, f"pre-sync validation raised: {exc}"
+        #     ) from exc
+
         # TODO(@felix): pause temporal schedule
+        # schedule so we stop burning runs while creds are broken.
+        # Needs: inject TemporalScheduleService into SyncFactory, then:
+        #   schedule_id = sync.temporal_schedule_id
+        #   if schedule_id:
+        #       await self._temporal_schedule_service.pause_schedule(schedule_id)
+        # Also update source_connection status to NEEDS_REAUTH here.
 
         self._setup_file_downloader(source, sync_job, logger)
 
@@ -301,9 +311,7 @@ class SyncFactory:
 
         source.set_cursor(cursor)
 
-        node_selections = await self._load_node_selections(
-            db, UUID(str(source_connection_obj.id)), ctx
-        )
+        node_selections = await self._load_node_selections(db, source_connection_id, ctx)
         if node_selections:
             source.set_node_selections(node_selections)
             logger.info(f"Loaded {len(node_selections)} node selections for targeted sync")

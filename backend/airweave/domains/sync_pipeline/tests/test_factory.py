@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -204,33 +204,6 @@ def _make_sync_job(job_id=None):
 
 class TestBuildSource:
     @pytest.mark.asyncio
-    async def test_raises_not_found_when_source_connection_missing(self):
-        from airweave.core.exceptions import NotFoundException
-
-        factory = _build_factory()
-        db = AsyncMock()
-        sync = _make_sync()
-        sync_job = _make_sync_job()
-        ctx = _make_ctx()
-
-        with patch(
-            "airweave.domains.sync_pipeline.factory.crud.source_connection.get_by_sync_id",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            with pytest.raises(NotFoundException, match="Source connection record not found"):
-                await factory._build_source(
-                    db=db,
-                    sync=sync,
-                    sync_job=sync_job,
-                    ctx=ctx,
-                    logger=MagicMock(),
-                    source_connection_id=uuid4(),
-                    force_full_sync=False,
-                    execution_config=None,
-                )
-
-    @pytest.mark.asyncio
     async def test_returns_source_and_cursor(self):
         sc = MagicMock()
         sc.id = uuid4()
@@ -250,11 +223,6 @@ class TestBuildSource:
         ctx = _make_ctx()
 
         with (
-            patch(
-                "airweave.domains.sync_pipeline.factory.crud.source_connection.get_by_sync_id",
-                new_callable=AsyncMock,
-                return_value=sc,
-            ),
             patch(
                 "airweave.domains.sync_pipeline.factory.SyncFactory._validate_not_completed_snapshot"
             ),
@@ -276,7 +244,7 @@ class TestBuildSource:
                 sync_job=sync_job,
                 ctx=ctx,
                 logger=MagicMock(),
-                source_connection_id=UUID(str(sc.id)),
+                source_connection=sc,
                 force_full_sync=False,
                 execution_config=None,
             )
@@ -306,11 +274,6 @@ class TestBuildSource:
 
         with (
             patch(
-                "airweave.domains.sync_pipeline.factory.crud.source_connection.get_by_sync_id",
-                new_callable=AsyncMock,
-                return_value=sc,
-            ),
-            patch(
                 "airweave.domains.sync_pipeline.factory.SyncFactory._validate_not_completed_snapshot"
             ),
             patch(
@@ -331,7 +294,7 @@ class TestBuildSource:
                 sync_job=sync_job,
                 ctx=ctx,
                 logger=MagicMock(),
-                source_connection_id=UUID(str(sc.id)),
+                source_connection=sc,
                 force_full_sync=False,
                 execution_config=None,
             )
