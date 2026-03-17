@@ -241,13 +241,14 @@ class TestTryChardetDecode:
         with patch(
             "chardet.detect", return_value={"confidence": 0.9, "encoding": "ascii"}
         ):
-            # bytes outside ASCII range → UnicodeDecodeError on ascii decode
             result = TxtConverter._try_chardet_decode(b"\x80\x81\x82", "/path/to/file.txt")
         assert result is None
 
     def test_returns_none_when_chardet_not_installed(self):
         """ImportError from chardet import → returns None (lines 75-77)."""
         import builtins
+        from unittest.mock import patch
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
