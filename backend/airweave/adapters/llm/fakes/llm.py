@@ -5,7 +5,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from airweave.adapters.llm.registry import LLMModelSpec
-from airweave.adapters.llm.tool_response import LLMToolResponse
+from airweave.adapters.llm.tool_response import LLMResponse
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -19,15 +19,15 @@ class FakeLLM:
     def __init__(self, model_spec: LLMModelSpec) -> None:
         self._model_spec = model_spec
         self._structured_output_results: list = []
-        self._tool_responses: list[LLMToolResponse] = []
+        self._tool_responses: list[LLMResponse] = []
         self._calls: list[tuple] = []
 
     def seed_structured_output(self, result: BaseModel) -> None:
         """Seed a result to be returned by next structured_output call."""
         self._structured_output_results.append(result)
 
-    def seed_tool_response(self, response: LLMToolResponse) -> None:
-        """Seed a response to be returned by next create_with_tools call."""
+    def seed_tool_response(self, response: LLMResponse) -> None:
+        """Seed a response to be returned by next chat call."""
         self._tool_responses.append(response)
 
     @property
@@ -47,14 +47,14 @@ class FakeLLM:
             raise RuntimeError("FakeLLM: no seeded structured_output results")
         return self._structured_output_results.pop(0)  # type: ignore[no-any-return]
 
-    async def create_with_tools(
+    async def chat(
         self,
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
-    ) -> LLMToolResponse:
+    ) -> LLMResponse:
         """Return next seeded tool response."""
-        self._calls.append(("create_with_tools", messages, tools, system_prompt))
+        self._calls.append(("chat", messages, tools, system_prompt))
         if not self._tool_responses:
             raise RuntimeError("FakeLLM: no seeded tool responses")
         return self._tool_responses.pop(0)

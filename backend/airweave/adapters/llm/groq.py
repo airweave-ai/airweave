@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from airweave.adapters.llm.base import BaseLLM
 from airweave.adapters.llm.exceptions import LLMTransientError
 from airweave.adapters.llm.registry import LLMModelSpec
-from airweave.adapters.llm.tool_response import LLMToolCall, LLMToolResponse
+from airweave.adapters.llm.tool_response import LLMResponse, LLMToolCall
 from airweave.core.config import settings
 
 T = TypeVar("T", bound=BaseModel)
@@ -170,14 +170,15 @@ class GroqLLM(BaseLLM):
         else:
             node["anyOf"] = new_branches
 
-    async def _call_api_with_tools(
+    async def _call_api_chat(
         self,
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
-    ) -> LLMToolResponse:
+    ) -> LLMResponse:
         """Groq tool calling (OpenAI-compatible format)."""
-        api_messages = [{"role": "system", "content": system_prompt}, *messages]
+        converted = self._embed_thinking_in_messages(messages)
+        api_messages = [{"role": "system", "content": system_prompt}, *converted]
         strict_tools = self._prepare_tools_strict(tools)
 
         reasoning_params: dict[str, Any] = {}
@@ -218,27 +219,22 @@ class GroqLLM(BaseLLM):
                     )
                 )
 
-        stop_reason = choice.finish_reason or "stop"
-
-        usage = {}
+        prompt_tokens = 0
+        completion_tokens = 0
         if response.usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            }
+            prompt_tokens = response.usage.prompt_tokens
+            completion_tokens = response.usage.completion_tokens
             self._logger.debug(
                 f"[GroqLLM] Tool call completed in {api_time:.2f}s, "
-                f"tokens: prompt={response.usage.prompt_tokens}, "
-                f"completion={response.usage.completion_tokens}"
+                f"tokens: prompt={prompt_tokens}, completion={completion_tokens}"
             )
 
-        return LLMToolResponse(
+        return LLMResponse(
             text=text,
             thinking=thinking,
             tool_calls=tool_calls,
-            stop_reason=stop_reason,
-            usage=usage,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
         )
 
     async def close(self) -> None:

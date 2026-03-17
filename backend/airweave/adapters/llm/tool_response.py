@@ -1,5 +1,5 @@
 """LLM response types — re-exported from core/protocols for convenience."""
 
-from airweave.core.protocols.llm import LLMToolCall, LLMToolResponse
+from airweave.core.protocols.llm import LLMResponse, LLMToolCall
 
-__all__ = ["LLMToolCall", "LLMToolResponse"]
+__all__ = ["LLMToolCall", "LLMResponse"]

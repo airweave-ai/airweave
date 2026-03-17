@@ -83,6 +83,7 @@ class SearchStreamRelay(EventSubscriber):
             payload["collection_readable_id"] = event.collection_readable_id
 
         elif isinstance(event, SearchThinkingEvent):
+            payload["thinking"] = event.thinking
             payload["text"] = event.text
             payload["duration_ms"] = event.duration_ms
             payload["diagnostics"] = event.diagnostics.model_dump()

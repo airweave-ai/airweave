@@ -19,7 +19,7 @@ from airweave.adapters.llm.exceptions import (
     LLMError,
 )
 from airweave.adapters.llm.registry import LLMModelSpec
-from airweave.adapters.llm.tool_response import LLMToolResponse
+from airweave.adapters.llm.tool_response import LLMResponse
 from airweave.core.logging import logger as _default_logger
 from airweave.core.protocols import CircuitBreaker
 from airweave.core.protocols.llm import LLMProtocol
@@ -100,14 +100,14 @@ class FallbackChainLLM(LLMProtocol):
         """Generate structured output, falling through the provider chain."""
         return await self._try_chain(lambda p: p.structured_output(prompt, schema, system_prompt))
 
-    async def create_with_tools(
+    async def chat(
         self,
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
-    ) -> LLMToolResponse:
+    ) -> LLMResponse:
         """Send a tool-calling conversation, falling through the provider chain."""
-        return await self._try_chain(lambda p: p.create_with_tools(messages, tools, system_prompt))
+        return await self._try_chain(lambda p: p.chat(messages, tools, system_prompt))
 
     async def close(self) -> None:
         """Clean up all providers in the chain."""

@@ -189,7 +189,10 @@ class SearchRerankingEvent(DomainEvent):
 class SearchThinkingEvent(DomainEvent):
     """Emitted once per iteration after the LLM responds.
 
-    Agentic only. User-facing: reasoning text and LLM call latency.
+    Agentic only.
+    - thinking: extended reasoning / chain-of-thought (ephemeral in some providers)
+    - text: model's conversational output before tool calls
+    Both are passed back to the LLM in the assistant message on the next turn.
     """
 
     event_type: SearchEventType = SearchEventType.THINKING
@@ -197,7 +200,8 @@ class SearchThinkingEvent(DomainEvent):
     request_id: str
 
     # User-facing
-    text: str
+    thinking: Optional[str] = None  # extended reasoning (e.g., Anthropic thinking blocks)
+    text: Optional[str] = None  # conversational text output
     duration_ms: int
 
     # Diagnostics

@@ -23,7 +23,7 @@ from airweave.adapters.llm.registry import (
     get_model_spec,
 )
 from airweave.adapters.llm.together import TogetherLLM
-from airweave.adapters.llm.tool_response import LLMToolCall, LLMToolResponse
+from airweave.adapters.llm.tool_response import LLMResponse, LLMToolCall
 from airweave.core.protocols.llm import LLMProtocol
 
 __all__ = [
@@ -49,7 +49,7 @@ __all__ = [
     "LLMModelSpec",
     "ReasoningConfig",
     "LLMToolCall",
-    "LLMToolResponse",
+    "LLMResponse",
     # Registry
     "MODEL_REGISTRY",
     "PROVIDER_API_KEY_SETTINGS",

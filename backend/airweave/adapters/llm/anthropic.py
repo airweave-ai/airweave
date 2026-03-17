@@ -4,7 +4,7 @@ Supports Claude Sonnet 4.5 and Claude Sonnet 4.6 (with extended thinking).
 Uses tool_use for structured output since Anthropic doesn't support
 json_schema response_format directly.
 
-For tool-calling conversations (create_with_tools), translates between the
+For tool-calling conversations (chat), translates between the
 provider-generic OpenAI-compatible message format and Anthropic's native
 tool_use/tool_result content block format.
 """
@@ -20,8 +20,8 @@ from airweave.adapters.llm.base import BaseLLM
 from airweave.adapters.llm.exceptions import LLMTransientError
 from airweave.adapters.llm.registry import LLMModelSpec
 from airweave.adapters.llm.tool_response import (
+    LLMResponse,
     LLMToolCall,
-    LLMToolResponse,
 )
 from airweave.core.config import settings
 
@@ -138,12 +138,12 @@ class AnthropicLLM(BaseLLM):
                 cause=e,
             ) from e
 
-    async def _call_api_with_tools(
+    async def _call_api_chat(
         self,
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
-    ) -> LLMToolResponse:
+    ) -> LLMResponse:
         """Anthropic tool calling with optional extended thinking."""
         # Convert tool defs and messages to Anthropic format
         anthropic_tools = self._convert_tool_defs(tools)
@@ -189,31 +189,30 @@ class AnthropicLLM(BaseLLM):
 
         thinking = "\n".join(thinking_parts) if thinking_parts else None
         text = "\n".join(text_parts) if text_parts else None
-        stop_reason = response.stop_reason or "end_turn"
 
-        usage = {}
+        prompt_tokens = 0
+        completion_tokens = 0
+        cache_creation = 0
+        cache_read = 0
         if response.usage:
+            prompt_tokens = response.usage.input_tokens
+            completion_tokens = response.usage.output_tokens
             cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
             cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
-            usage = {
-                "prompt_tokens": response.usage.input_tokens,
-                "completion_tokens": response.usage.output_tokens,
-                "cache_creation_input_tokens": cache_creation,
-                "cache_read_input_tokens": cache_read,
-            }
             self._logger.debug(
                 f"[AnthropicLLM] Tool call in {api_time:.2f}s, "
-                f"tokens: in={response.usage.input_tokens}, "
-                f"out={response.usage.output_tokens}, "
+                f"tokens: in={prompt_tokens}, out={completion_tokens}, "
                 f"cache_create={cache_creation}, cache_read={cache_read}"
             )
 
-        return LLMToolResponse(
+        return LLMResponse(
             text=text,
             thinking=thinking,
             tool_calls=tool_calls,
-            stop_reason=stop_reason,
-            usage=usage,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cache_creation_input_tokens=cache_creation,
+            cache_read_input_tokens=cache_read,
         )
 
     def _convert_tool_defs(self, tools: list[dict]) -> list[dict]:
@@ -321,8 +320,14 @@ def _merge_user_content(existing_msg: dict, new_content: str | list[dict]) -> No
 def _build_assistant_blocks(msg: dict) -> list[dict]:
     """Build Anthropic content blocks from a generic assistant message."""
     content_blocks: list[dict] = []
-    text = msg.get("content")
 
+    # Native thinking block
+    thinking = msg.get("_thinking")
+    if thinking:
+        content_blocks.append({"type": "thinking", "thinking": thinking})
+
+    # Text content
+    text = msg.get("content")
     if isinstance(text, str) and text:
         content_blocks.append({"type": "text", "text": text})
     elif isinstance(text, list):

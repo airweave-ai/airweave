@@ -25,7 +25,7 @@ from airweave.adapters.llm.exceptions import (
     LLMTransientError,
 )
 from airweave.adapters.llm.registry import LLMModelSpec
-from airweave.adapters.llm.tool_response import LLMToolResponse
+from airweave.adapters.llm.tool_response import LLMResponse
 from airweave.core.logging import logger as _default_logger
 from airweave.core.protocols.llm import LLMProtocol
 
@@ -133,19 +133,19 @@ class BaseLLM(LLMProtocol):
             "API call", self._call_api, prompt, schema, schema_json, system_prompt
         )
 
-    async def create_with_tools(
+    async def chat(
         self,
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
-    ) -> LLMToolResponse:
+    ) -> LLMResponse:
         """Send a conversation with tools and get a response.
 
-        Template method: wraps the provider-specific _call_api_with_tools
+        Template method: wraps the provider-specific _call_api_chat
         with the same retry logic used by structured_output.
         """
         return await self._with_retry(
-            "tool API call", self._call_api_with_tools, messages, tools, system_prompt
+            "tool API call", self._call_api_chat, messages, tools, system_prompt
         )
 
     # ── Hooks for subclasses ─────────────────────────────────────────────
@@ -164,18 +164,46 @@ class BaseLLM(LLMProtocol):
         """Make a single API call. Must be implemented by subclass."""
         raise NotImplementedError
 
-    async def _call_api_with_tools(
+    async def _call_api_chat(
         self,
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
-    ) -> LLMToolResponse:
+    ) -> LLMResponse:
         """Make a single API call with tools. Must be implemented by subclass."""
         raise NotImplementedError
 
     async def close(self) -> None:
         """Clean up SDK client. Must be implemented by subclass."""
         raise NotImplementedError
+
+    # ── Message helpers ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _embed_thinking_in_messages(messages: list[dict]) -> list[dict]:
+        """Embed _thinking into content for OpenAI-compatible providers.
+
+        For providers that don't support native thinking blocks, this merges
+        the thinking text into the assistant message content so the model
+        can reference its prior reasoning.
+
+        Anthropic has its own conversion and should NOT use this.
+        """
+        result = []
+        for msg in messages:
+            thinking = msg.get("_thinking")
+            if thinking and msg.get("role") == "assistant":
+                content = msg.get("content") or ""
+                parts = []
+                if content:
+                    parts.append(content)
+                parts.append(f"# Your Internal Reasoning\n{thinking}")
+                merged = {**msg, "content": "\n\n".join(parts)}
+                merged.pop("_thinking", None)
+                result.append(merged)
+            else:
+                result.append(msg)
+        return result
 
     # ── Retry logic ──────────────────────────────────────────────────────
 

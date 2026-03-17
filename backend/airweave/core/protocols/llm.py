@@ -5,16 +5,16 @@ Uses :class:`typing.Protocol` so implementations don't need to inherit.
 
 Usage::
 
-    from airweave.core.protocols.llm import LLMProtocol, LLMToolResponse
+    from airweave.core.protocols.llm import LLMProtocol, LLMResponse
 
 
-    async def search(llm: LLMProtocol) -> LLMToolResponse:
-        return await llm.create_with_tools(messages, tools, system_prompt)
+    async def search(llm: LLMProtocol) -> LLMResponse:
+        return await llm.chat(messages, tools, system_prompt)
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel
@@ -32,23 +32,28 @@ class LLMToolCall:
 
 
 @dataclass
-class LLMToolResponse:
-    """Response from create_with_tools.
+class LLMResponse:
+    """Response from LLM chat.
 
     Attributes:
-        text: Model's text output (reasoning before tool calls). None if no text.
-        thinking: Extended thinking / chain-of-thought text (Anthropic only). None
-            if the provider doesn't support it or thinking wasn't produced.
+        text: Model's text output (conversational text before tool calls).
+            None if the model produced no text.
+        thinking: Extended thinking / chain-of-thought text. None if the
+            provider doesn't support it or thinking wasn't produced.
         tool_calls: Tool calls the model wants to make. Empty if end_turn.
-        stop_reason: Why the model stopped: "tool_use", "end_turn", "stop", etc.
-        usage: Token usage dict with at least "prompt_tokens" and "completion_tokens".
+        prompt_tokens: Input tokens used by this LLM call.
+        completion_tokens: Output tokens used by this LLM call.
+        cache_creation_input_tokens: Tokens written to prompt cache (Anthropic).
+        cache_read_input_tokens: Tokens read from prompt cache (Anthropic).
     """
 
     text: str | None
     thinking: str | None
     tool_calls: list[LLMToolCall]
-    stop_reason: str
-    usage: dict = field(default_factory=dict)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
 
 
 @runtime_checkable
@@ -73,12 +78,12 @@ class LLMProtocol(Protocol):
         """Generate structured output matching the schema."""
         ...
 
-    async def create_with_tools(
+    async def chat(
         self,
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
-    ) -> LLMToolResponse:
+    ) -> LLMResponse:
         """Send a conversation with tools and get a response."""
         ...
 
