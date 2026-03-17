@@ -223,6 +223,43 @@ class TestTxtConverterJsonXmlReplacementLimits:
         assert result[file_path] is None
 
 
+class TestTryChardetDecode:
+    """Direct unit tests for _try_chardet_decode static method branches."""
+
+    def test_returns_none_when_encoding_is_none(self):
+        """chardet detects high confidence but encoding=None → returns None (line 68)."""
+        from unittest.mock import patch
+
+        with patch("chardet.detect", return_value={"confidence": 0.9, "encoding": None}):
+            result = TxtConverter._try_chardet_decode(b"some bytes", "/path/to/file.txt")
+        assert result is None
+
+    def test_returns_none_when_decode_raises_unicode_error(self):
+        """chardet detects an encoding that fails to decode the bytes → returns None (lines 73-74)."""
+        from unittest.mock import patch
+
+        with patch(
+            "chardet.detect", return_value={"confidence": 0.9, "encoding": "ascii"}
+        ):
+            # bytes outside ASCII range → UnicodeDecodeError on ascii decode
+            result = TxtConverter._try_chardet_decode(b"\x80\x81\x82", "/path/to/file.txt")
+        assert result is None
+
+    def test_returns_none_when_chardet_not_installed(self):
+        """ImportError from chardet import → returns None (lines 75-77)."""
+        import builtins
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "chardet":
+                raise ImportError("chardet not installed")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import):
+            result = TxtConverter._try_chardet_decode(b"some bytes", "/path/to/file.txt")
+        assert result is None
+
+
 class TestTxtConverterEdgeCases:
 
     @pytest.mark.asyncio

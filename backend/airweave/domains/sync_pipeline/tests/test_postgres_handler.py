@@ -270,6 +270,35 @@ class TestOrphanCleanup:
 # ---------------------------------------------------------------------------
 
 
+class TestFetchExistingMap:
+    @pytest.mark.asyncio
+    async def test_delegates_to_repo(self):
+        """_fetch_existing_map calls bulk_get_by_entity_sync_and_definition with correct args."""
+        handler, repo = _make_handler()
+        ctx = FakeSyncContext()
+        db = MagicMock()
+        expected = {("e1", "stub"): MagicMock()}
+        repo.bulk_get_by_entity_sync_and_definition = AsyncMock(return_value=expected)
+
+        actions = [_make_update("e1")]
+        result = await handler._fetch_existing_map(actions, ctx, db)
+
+        repo.bulk_get_by_entity_sync_and_definition.assert_awaited_once_with(
+            db=db, sync_id=ctx.sync.id, entity_requests=[("e1", "stub")]
+        )
+        assert result is expected
+
+    @pytest.mark.asyncio
+    async def test_empty_actions_returns_empty(self):
+        handler, repo = _make_handler()
+        ctx = FakeSyncContext()
+        repo.bulk_get_by_entity_sync_and_definition = AsyncMock(return_value={})
+
+        result = await handler._fetch_existing_map([], ctx, MagicMock())
+
+        assert result == {}
+
+
 class TestHandleBatch:
     @pytest.mark.asyncio
     async def test_no_mutations_returns_early(self):

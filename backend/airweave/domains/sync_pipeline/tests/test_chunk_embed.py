@@ -356,6 +356,20 @@ class TestChunkEmbedProcessor:
             assert len(result) == 0
 
     @pytest.mark.asyncio
+    async def test_embed_raises_when_textual_representation_is_none(
+        self, processor, mock_dense_embedder
+    ):
+        from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+
+        entity = MagicMock()
+        entity.entity_id = "bad-chunk"
+        entity.textual_representation = None
+        entity.model_dump = MagicMock(return_value={})
+
+        with pytest.raises(SyncFailureError, match="no textual_representation"):
+            await processor._embed_entities([entity])
+
+    @pytest.mark.asyncio
     async def test_handles_empty_chunks_from_chunker(
         self, processor, mock_sync_context, mock_runtime
     ):

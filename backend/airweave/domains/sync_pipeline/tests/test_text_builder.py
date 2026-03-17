@@ -111,6 +111,65 @@ class TestConvertSubBatch:
         assert failures == [entity]
 
 
+class TestGetConverterAndKey:
+    """Tests for _get_converter_and_key dispatch and guards."""
+
+    def test_raises_when_registry_is_none(self):
+        from airweave.platform.entities._base import WebEntity
+
+        builder = TextualRepresentationBuilder(converter_registry=None)
+        entity = MagicMock(spec=WebEntity)
+        entity.entity_id = "e1"
+        with pytest.raises(EntityProcessingError, match="registry"):
+            builder._get_converter_and_key(entity)
+
+    def test_web_entity_returns_web_converter(self):
+        from airweave.platform.entities._base import WebEntity
+
+        fake_web_converter = MagicMock()
+        registry = MagicMock()
+        registry.for_web.return_value = fake_web_converter
+        builder = TextualRepresentationBuilder(converter_registry=registry)
+
+        entity = MagicMock(spec=WebEntity)
+        entity.entity_id = "e1"
+        entity.crawl_url = "https://example.com"
+
+        converter, key = builder._get_converter_and_key(entity)
+
+        assert converter is fake_web_converter
+        assert key == "https://example.com"
+
+    def test_file_entity_unsupported_extension_raises(self):
+        from airweave.platform.entities._base import FileEntity
+
+        registry = MagicMock()
+        builder = TextualRepresentationBuilder(converter_registry=registry)
+
+        entity = MagicMock(spec=FileEntity)
+        entity.entity_id = "e1"
+        entity.local_path = "/tmp/some_file.xyz_unsupported"
+
+        with pytest.raises(EntityProcessingError, match="Unsupported"):
+            builder._get_converter_and_key(entity)
+
+    def test_file_entity_no_converter_for_extension_raises(self):
+        from airweave.platform.entities._base import FileEntity
+        from airweave.domains.sync_pipeline.file_types import SUPPORTED_FILE_EXTENSIONS
+
+        supported_ext = next(iter(SUPPORTED_FILE_EXTENSIONS))
+        registry = MagicMock()
+        registry.for_extension.return_value = None
+        builder = TextualRepresentationBuilder(converter_registry=registry)
+
+        entity = MagicMock(spec=FileEntity)
+        entity.entity_id = "e1"
+        entity.local_path = f"/tmp/myfile{supported_ext}"
+
+        with pytest.raises(EntityProcessingError, match="Unsupported"):
+            builder._get_converter_and_key(entity)
+
+
 class TestHandleConversionFailures:
     """Tests for _handle_conversion_failures removal and tracking."""
 

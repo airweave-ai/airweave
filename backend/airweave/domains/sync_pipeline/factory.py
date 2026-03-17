@@ -284,6 +284,9 @@ class SyncFactory:
             ctx=ctx,
         )
 
+        # TODO(@felix): add pre-sync validation
+        # TODO(@felix): pause temporal schedule
+
         self._setup_file_downloader(source, sync_job, logger)
 
         cursor = await self._create_cursor(

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from airweave.domains.converters.pdf import PdfConverter
 from airweave.domains.converters.text_extractors.pdf import (
     PageExtractionResult,
     PdfExtractionResult,
@@ -129,6 +130,43 @@ class TestPdfExtractionResult:
 # ---------------------------------------------------------------------------
 # text_to_markdown
 # ---------------------------------------------------------------------------
+
+
+class TestPdfConverterTryExtract:
+    @pytest.mark.asyncio
+    async def test_returns_none_when_extraction_not_fully_extracted(self):
+        """_try_extract returns None when extraction is partial (needs OCR)."""
+        partial = PdfExtractionResult(
+            path="/test.pdf",
+            pages=[
+                PageExtractionResult(page_num=0, text="", needs_ocr=True),
+            ],
+        )
+        with patch(
+            "airweave.domains.converters.pdf.extract_pdf_text",
+            new_callable=AsyncMock,
+            return_value=partial,
+        ):
+            converter = PdfConverter()
+            result = await converter._try_extract("/test.pdf")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_full_text_is_empty(self):
+        """_try_extract returns None when extraction reports fully_extracted but no text."""
+        import dataclasses
+
+        empty_extraction = PdfExtractionResult(path="/test.pdf", pages=[])
+        with patch(
+            "airweave.domains.converters.pdf.extract_pdf_text",
+            new_callable=AsyncMock,
+            return_value=empty_extraction,
+        ):
+            converter = PdfConverter()
+            result = await converter._try_extract("/test.pdf")
+
+        assert result is None
 
 
 class TestTextToMarkdown:
