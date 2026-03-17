@@ -80,10 +80,10 @@ class AgenticSearchService(AgenticSearchServiceProtocol):
         ctx: ApiContext,
         readable_id: str,
         request: AgenticSearchRequest,
-    ) -> None:
+    ) -> SearchResults:
         """Run agentic search with event streaming.
 
         Same loop as search(). Events flow through event bus →
-        stream relay → PubSub → SSE. The return value is discarded.
+        stream relay → PubSub → SSE. Returns results.
         """
-        await self.search(db, ctx, readable_id, request)
+        return await self.search(db, ctx, readable_id, request)

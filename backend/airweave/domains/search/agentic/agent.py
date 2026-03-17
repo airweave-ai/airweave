@@ -39,7 +39,10 @@ from airweave.core.protocols.tokenizer import TokenizerProtocol
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.search.adapters.vector_db.protocol import VectorDBProtocol
 from airweave.domains.search.agentic.context_manager import ContextManager
-from airweave.domains.search.agentic.exceptions import ContextBudgetExhaustedError
+from airweave.domains.search.agentic.exceptions import (
+    ContextBudgetExhaustedError,
+    ToolError,
+)
 from airweave.domains.search.agentic.messages import (
     build_assistant_message,
     build_system_prompt,
@@ -110,26 +113,10 @@ class Agent:
         """Run the agent loop. Emits events throughout. Returns collected results."""
         start_time = time.monotonic()
         state = AgentState()
-
-        # Track diagnostics across iterations
-        total_prompt_tokens = 0
-        total_completion_tokens = 0
-        total_cache_creation = 0
-        total_cache_read = 0
-        total_llm_retries = 0
-        stagnation_nudges_sent = 0
-        max_iterations_hit = False
+        diag = _DiagnosticsAccumulator()
 
         try:
-            return await self._run(
-                db,
-                ctx,
-                readable_id,
-                request,
-                state,
-                start_time,
-                _DiagnosticsAccumulator(),
-            )
+            return await self._run(db, ctx, readable_id, request, state, start_time, diag)
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)
             await self._event_bus.publish(
@@ -140,17 +127,16 @@ class Agent:
                     message=str(e),
                     duration_ms=duration_ms,
                     diagnostics=FailedDiagnostics(
-                        iteration=0,
+                        iteration=diag.iteration,
                         partial_results_count=len(state.collected_ids),
                         all_seen_entity_ids=list(state.results.keys()),
                         all_collected_entity_ids=list(state.collected_ids),
-                        prompt_tokens=total_prompt_tokens,
-                        completion_tokens=total_completion_tokens,
-                        cache_creation_input_tokens=total_cache_creation,
-                        cache_read_input_tokens=total_cache_read,
-                        total_llm_retries=total_llm_retries,
-                        stagnation_nudges_sent=stagnation_nudges_sent,
-                        max_iterations_hit=max_iterations_hit,
+                        prompt_tokens=diag.prompt_tokens,
+                        completion_tokens=diag.completion_tokens,
+                        cache_creation_input_tokens=diag.cache_creation,
+                        cache_read_input_tokens=diag.cache_read,
+                        stagnation_nudges_sent=diag.stagnation_nudges,
+                        max_iterations_hit=diag.max_iterations_hit,
                     ),
                 )
             )
@@ -204,6 +190,8 @@ class Agent:
         prev_read_ids: set[str] = set()
 
         for iteration in range(max_iter):
+            diag.iteration = iteration
+
             # 1. Call LLM
             response = await self._llm.chat(messages, ALL_TOOL_DEFINITIONS, system_prompt)
 
@@ -380,10 +368,7 @@ class Agent:
                 results=collected_results,
                 duration_ms=duration_ms,
                 diagnostics=CompletedDiagnostics(
-                    total_iterations=min(
-                        iteration + 1 if "iteration" in dir() else 0,
-                        self._config.MAX_ITERATIONS,
-                    ),
+                    total_iterations=diag.iteration + 1,
                     all_seen_entity_ids=list(state.results.keys()),
                     all_read_entity_ids=all_read_ids,
                     all_collected_entity_ids=list(state.collected_ids),
@@ -464,8 +449,6 @@ class Agent:
         new_read_ids: set[str],
     ) -> None:
         """Execute all tool calls, emit events, fit results into context."""
-        from airweave.domains.search.agentic.exceptions import ToolError
-
         for tc in tool_calls:
             tc_start = time.monotonic()
             try:
@@ -547,6 +530,7 @@ class _DiagnosticsAccumulator:
 
     def __init__(self) -> None:
         """Initialize counters."""
+        self.iteration: int = 0
         self.prompt_tokens: int = 0
         self.completion_tokens: int = 0
         self.cache_creation: int = 0

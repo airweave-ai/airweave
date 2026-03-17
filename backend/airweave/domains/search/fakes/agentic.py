@@ -40,5 +40,6 @@ class FakeAgenticSearchService(AgenticSearchServiceProtocol):
         ctx: ApiContext,
         readable_id: str,
         request: AgenticSearchRequest,
-    ) -> None:
+    ) -> SearchResults:
         self._calls.append(("search_stream", readable_id, request))
+        return self._result

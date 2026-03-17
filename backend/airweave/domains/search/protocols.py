@@ -104,11 +104,10 @@ class AgenticSearchServiceProtocol(Protocol):
         ctx: ApiContext,
         readable_id: str,
         request: AgenticSearchRequest,
-    ) -> None:
+    ) -> SearchResults:
         """Execute agentic search, emitting events to EventBus.
 
-        The agent publishes domain events (thinking, tool_called, completed,
-        failed) to the EventBus. The SearchStreamRelay subscriber bridges
-        them to PubSub for SSE streaming.
+        Same loop as search(). Events flow through event bus →
+        stream relay → PubSub → SSE. Returns results (caller may ignore).
         """
         ...
