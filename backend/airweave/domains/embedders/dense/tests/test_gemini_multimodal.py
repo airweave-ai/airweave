@@ -313,6 +313,32 @@ class TestMultimodalApiErrors:
                 await embedder.embed_file(str(img), "image/png")
 
     @pytest.mark.asyncio
+    async def test_hang_triggers_wait_for_timeout(self, tmp_path):
+        """A hung embed_content coroutine should be killed by asyncio.wait_for."""
+        import asyncio as _asyncio
+
+        img = tmp_path / "test.png"
+        img.write_bytes(b"\x89PNG" + b"\x00" * 100)
+
+        async def hang_forever(*args, **kwargs):
+            await _asyncio.sleep(999)
+
+        embedder = _make_embedder()
+        embedder._client.aio.models.embed_content = hang_forever
+
+        original_wait_for = _asyncio.wait_for
+
+        async def fast_wait_for(coro, *, timeout):
+            return await original_wait_for(coro, timeout=0.01)
+
+        with patch("asyncio.wait_for", side_effect=fast_wait_for), \
+             patch("airweave.domains.embedders.dense.gemini.errors") as mock_errors:
+            mock_errors.ClientError = type("ClientError", (Exception,), {})
+            mock_errors.ServerError = type("ServerError", (Exception,), {})
+            with pytest.raises((EmbedderTimeoutError, TimeoutError)):
+                await embedder.embed_file(str(img), "image/png")
+
+    @pytest.mark.asyncio
     async def test_connection_error(self, tmp_path):
         img = tmp_path / "test.png"
         img.write_bytes(b"\x89PNG" + b"\x00" * 100)
