@@ -358,3 +358,96 @@ class TestProcessIncremental:
             total = await pipeline._process_incremental(source, ctx, runtime)
 
         assert total == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests: _cleanup_orphan_memberships
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupOrphanMemberships:
+    """Tests for orphan membership cleanup during full syncs."""
+
+    @pytest.mark.asyncio
+    async def test_deletes_orphans_not_encountered(self):
+        """Memberships in DB but not in encountered_keys are deleted."""
+        pipeline = _make_pipeline()
+        ctx = FakeSyncContext()
+
+        orphan_id = uuid4()
+        kept_id = uuid4()
+
+        stored = [
+            MagicMock(
+                id=kept_id,
+                member_id="alice",
+                member_type="user",
+                group_id="g1",
+            ),
+            MagicMock(
+                id=orphan_id,
+                member_id="bob",
+                member_type="user",
+                group_id="g2",
+            ),
+        ]
+
+        pipeline._acl_repo.get_by_source_connection = AsyncMock(return_value=stored)
+        pipeline._acl_repo.bulk_delete = AsyncMock(return_value=1)
+
+        encountered = {("alice", "user", "g1")}
+
+        with patch(_GET_DB_CTX) as mock_db_ctx:
+            mock_db = MagicMock()
+            mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+            mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await pipeline._cleanup_orphan_memberships(ctx, encountered)
+
+        assert result == 1
+        pipeline._acl_repo.bulk_delete.assert_called_once()
+        call_ids = pipeline._acl_repo.bulk_delete.call_args[1]["ids"]
+        assert call_ids == [orphan_id]
+
+    @pytest.mark.asyncio
+    async def test_no_stored_memberships_returns_zero(self):
+        """No memberships in DB → return 0, no delete call."""
+        pipeline = _make_pipeline()
+        ctx = FakeSyncContext()
+
+        pipeline._acl_repo.get_by_source_connection = AsyncMock(return_value=[])
+        pipeline._acl_repo.bulk_delete = AsyncMock()
+
+        with patch(_GET_DB_CTX) as mock_db_ctx:
+            mock_db = MagicMock()
+            mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+            mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await pipeline._cleanup_orphan_memberships(ctx, set())
+
+        assert result == 0
+        pipeline._acl_repo.bulk_delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_orphans_returns_zero(self):
+        """All stored memberships were encountered → no deletes."""
+        pipeline = _make_pipeline()
+        ctx = FakeSyncContext()
+
+        stored = [
+            MagicMock(id=uuid4(), member_id="alice", member_type="user", group_id="g1"),
+        ]
+        pipeline._acl_repo.get_by_source_connection = AsyncMock(return_value=stored)
+        pipeline._acl_repo.bulk_delete = AsyncMock()
+
+        encountered = {("alice", "user", "g1")}
+
+        with patch(_GET_DB_CTX) as mock_db_ctx:
+            mock_db = MagicMock()
+            mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+            mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await pipeline._cleanup_orphan_memberships(ctx, encountered)
+
+        assert result == 0
+        pipeline._acl_repo.bulk_delete.assert_not_called()

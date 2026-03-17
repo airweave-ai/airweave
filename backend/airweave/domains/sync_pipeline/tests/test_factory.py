@@ -14,11 +14,16 @@ def _build_factory(**overrides):
         "sc_repo": MagicMock(),
         "event_bus": MagicMock(),
         "usage_checker": MagicMock(),
+        "usage_ledger": MagicMock(),
         "dense_embedder": MagicMock(),
         "sparse_embedder": MagicMock(),
         "entity_repo": MagicMock(),
+        "entity_definition_registry": MagicMock(),
         "acl_repo": MagicMock(),
         "processor": MagicMock(),
+        "source_lifecycle_service": MagicMock(),
+        "storage_backend": MagicMock(),
+        "selection_repo": MagicMock(),
     }
     defaults.update(overrides)
     return SyncFactory(**defaults)
@@ -35,21 +40,31 @@ def test_constructor_stores_all_deps():
         "sc_repo": MagicMock(),
         "event_bus": MagicMock(),
         "usage_checker": MagicMock(),
+        "usage_ledger": MagicMock(),
         "dense_embedder": MagicMock(),
         "sparse_embedder": MagicMock(),
         "entity_repo": MagicMock(),
+        "entity_definition_registry": MagicMock(),
         "acl_repo": MagicMock(),
         "processor": MagicMock(),
+        "source_lifecycle_service": MagicMock(),
+        "storage_backend": MagicMock(),
+        "selection_repo": MagicMock(),
     }
     f = SyncFactory(**deps)
     assert f._sc_repo is deps["sc_repo"]
     assert f._event_bus is deps["event_bus"]
     assert f._usage_checker is deps["usage_checker"]
+    assert f._usage_ledger is deps["usage_ledger"]
     assert f._dense_embedder is deps["dense_embedder"]
     assert f._sparse_embedder is deps["sparse_embedder"]
     assert f._entity_repo is deps["entity_repo"]
+    assert f._entity_definition_registry is deps["entity_definition_registry"]
     assert f._acl_repo is deps["acl_repo"]
     assert f._processor is deps["processor"]
+    assert f._source_lifecycle_service is deps["source_lifecycle_service"]
+    assert f._storage_backend is deps["storage_backend"]
+    assert f._selection_repo is deps["selection_repo"]
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +143,6 @@ async def test_create_orchestrator_passes_entity_repo_to_pipeline():
             "airweave.domains.sync_pipeline.factory.EntityDispatcherBuilder"
         ) as mock_disp_builder,
         patch(
-            "airweave.domains.sync_pipeline.factory.TrackingContextBuilder"
-        ) as mock_track_builder,
-        patch(
             "airweave.domains.sync_pipeline.factory.SyncFactory._build_source",
             new_callable=AsyncMock,
         ) as mock_build_source,
@@ -138,12 +150,18 @@ async def test_create_orchestrator_passes_entity_repo_to_pipeline():
             "airweave.domains.sync_pipeline.factory.SyncFactory._build_destinations",
             new_callable=AsyncMock,
         ) as mock_build_destinations,
+        patch(
+            "airweave.domains.sync_pipeline.factory.SyncFactory._build_entity_tracker",
+            new_callable=AsyncMock,
+        ) as mock_build_tracker,
     ):
         mock_build_source.return_value = (MagicMock(), MagicMock())
         mock_build_destinations.return_value = ([], {})
-        mock_track_builder.build = AsyncMock(return_value=MagicMock())
+        mock_build_tracker.return_value = MagicMock()
         mock_sc_builder.build = AsyncMock(return_value=MagicMock())
-        mock_disp_builder.build = MagicMock(return_value=MagicMock())
+        mock_disp_builder_instance = MagicMock()
+        mock_disp_builder_instance.build = MagicMock(return_value=MagicMock())
+        mock_disp_builder.return_value = mock_disp_builder_instance
 
         orchestrator = await factory.create_orchestrator(
             db=db,

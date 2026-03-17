@@ -74,3 +74,16 @@ class TestHtmlConverterEncodingValidation:
         result = await converter.convert_batch(["/nonexistent/page.html"])
         assert "/nonexistent/page.html" in result
         assert result["/nonexistent/page.html"] is None
+
+    @pytest.mark.asyncio
+    async def test_html_with_excessive_binary_returns_none(self, converter, temp_dir):
+        """HTML with >100 replacement chars from bad UTF-8 → None."""
+        file_path = os.path.join(temp_dir, "binary.html")
+        # Valid-ish HTML prefix + lots of invalid bytes
+        content = b"<html><body>" + b"\x80" * 200 + b"</body></html>"
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        result = await converter.convert_batch([file_path])
+        assert file_path in result
+        assert result[file_path] is None
