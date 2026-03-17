@@ -50,8 +50,8 @@ class TogetherLLM(BaseLLM):
 
         # Thinking mode: reasoning param_name="reasoning" with param_value=True
         self._thinking_enabled = (
-            model_spec.reasoning.param_name == "reasoning"
-            and model_spec.reasoning.param_value is True
+            model_spec.thinking_config.param_name == "reasoning"
+            and model_spec.thinking_config.param_value is True
         )
 
         self._logger.debug(
@@ -66,8 +66,8 @@ class TogetherLLM(BaseLLM):
 
     def _build_reasoning_kwargs(self) -> dict[str, Any]:
         """Build reasoning kwargs for Together AI models."""
-        if self._model_spec.reasoning.param_name == "reasoning":
-            return {"reasoning": {"enabled": bool(self._model_spec.reasoning.param_value)}}
+        if self._model_spec.thinking_config.param_name == "reasoning":
+            return {"reasoning": {"enabled": bool(self._model_spec.thinking_config.param_value)}}
         return {}
 
     async def _call_api(

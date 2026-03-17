@@ -50,13 +50,13 @@ class AnthropicLLM(BaseLLM):
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Anthropic client: {e}") from e
 
-        self._adaptive_thinking = model_spec.reasoning.param_name == "adaptive_thinking"
-        self._effort = model_spec.reasoning.effort  # e.g., "high"
+        self._adaptive_thinking = model_spec.thinking_config.param_name == "adaptive_thinking"
+        self._effort = model_spec.thinking_config.effort  # e.g., "high"
 
         # Legacy: support budget_tokens for older model specs
-        self._legacy_thinking = model_spec.reasoning.param_name == "thinking_budget"
+        self._legacy_thinking = model_spec.thinking_config.param_name == "thinking_budget"
         self._thinking_budget = (
-            int(model_spec.reasoning.param_value) if self._legacy_thinking else 0
+            int(model_spec.thinking_config.param_value) if self._legacy_thinking else 0
         )
 
         if self._adaptive_thinking:

@@ -33,6 +33,8 @@ class SearchToolResult:
 
     summaries: list[RenderedResult]
     new_count: int
+    requested_limit: int = 0  # for pagination warning
+    requested_offset: int = 0  # for pagination warning
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,7 @@ class ReadToolResult:
 
     entities: list[RenderedResult]
     not_found: list[str]
+    read_entity_ids: list[str] = field(default_factory=list)  # for triage nudge
 
 
 @dataclass(frozen=True)

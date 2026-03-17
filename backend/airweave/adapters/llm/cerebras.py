@@ -42,7 +42,7 @@ class CerebrasLLM(BaseLLM):
             raise RuntimeError(f"Failed to initialize Cerebras client: {e}") from e
 
         # GLM/Qwen models use <think> tags; GPT-OSS prepends reasoning raw.
-        self._uses_think_tags = model_spec.reasoning.param_name == "disable_reasoning"
+        self._uses_think_tags = model_spec.thinking_config.param_name == "disable_reasoning"
 
         self._logger.debug(
             f"[CerebrasLLM] Initialized with model={model_spec.api_model_name}, "
@@ -61,9 +61,8 @@ class CerebrasLLM(BaseLLM):
         system_prompt: str,
     ) -> T:
         # Reasoning params from model spec
-        reasoning_params = {
-            self._model_spec.reasoning.param_name: self._model_spec.reasoning.param_value
-        }
+        tc = self._model_spec.thinking_config
+        reasoning_params = {tc.param_name: tc.param_value}
 
         api_start = time.monotonic()
         response = await self._client.chat.completions.create(
@@ -152,9 +151,8 @@ class CerebrasLLM(BaseLLM):
         strict_tools = self._prepare_tools_strict(tools)
 
         # Include reasoning params so reasoning models return a reasoning field
-        reasoning_params = {
-            self._model_spec.reasoning.param_name: self._model_spec.reasoning.param_value
-        }
+        tc = self._model_spec.thinking_config
+        reasoning_params = {tc.param_name: tc.param_value}
 
         api_start = time.monotonic()
         response = await self._client.chat.completions.create(

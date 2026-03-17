@@ -61,5 +61,9 @@ class SearchConfig:
     STAGNATION_THRESHOLD = 4  # iterations without new marks before nudging
     READ_SURROUNDING_CHUNKS = 2  # ±N chunks around matched chunk in read tool
 
+    # Context management
+    MIN_USEFUL_BUDGET_TOKENS = 5_000  # safety valve threshold (~50 summaries or 2-3 full reads)
+    NON_THINKING_OUTPUT_RESERVE = 10_000  # tokens reserved for non-thinking model output
+
 
 config = SearchConfig()

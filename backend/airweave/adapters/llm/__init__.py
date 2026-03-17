@@ -18,7 +18,7 @@ from airweave.adapters.llm.registry import (
     LLMModel,
     LLMModelSpec,
     LLMProvider,
-    ReasoningConfig,
+    ThinkingConfig,
     get_available_models,
     get_model_spec,
 )
@@ -47,7 +47,7 @@ __all__ = [
     "LLMModel",
     # Types
     "LLMModelSpec",
-    "ReasoningConfig",
+    "ThinkingConfig",
     "LLMToolCall",
     "LLMResponse",
     # Registry

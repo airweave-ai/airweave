@@ -60,10 +60,9 @@ class GroqLLM(BaseLLM):
     ) -> T:
         # Reasoning params (e.g., reasoning_effort for GPT-OSS)
         reasoning_params: dict[str, Any] = {}
-        if self._model_spec.reasoning and self._model_spec.reasoning.param_name != "_noop":
-            reasoning_params[self._model_spec.reasoning.param_name] = (
-                self._model_spec.reasoning.param_value
-            )
+        tc = self._model_spec.thinking_config
+        if tc and tc.param_name != "_noop":
+            reasoning_params[tc.param_name] = tc.param_value
 
         api_start = time.monotonic()
         response = await self._client.chat.completions.create(
@@ -187,10 +186,9 @@ class GroqLLM(BaseLLM):
         strict_tools = self._prepare_tools_strict(tools)
 
         reasoning_params: dict[str, Any] = {}
-        if self._model_spec.reasoning and self._model_spec.reasoning.param_name != "_noop":
-            reasoning_params[self._model_spec.reasoning.param_name] = (
-                self._model_spec.reasoning.param_value
-            )
+        tc = self._model_spec.thinking_config
+        if tc and tc.param_name != "_noop":
+            reasoning_params[tc.param_name] = tc.param_value
 
         api_start = time.monotonic()
         response = await self._client.chat.completions.create(

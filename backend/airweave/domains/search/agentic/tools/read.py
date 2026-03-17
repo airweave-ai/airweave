@@ -98,7 +98,8 @@ class ReadTool:
         if tool_call_id:
             state.reads_by_tool_call_id[tool_call_id] = all_read_results
 
-        return ReadToolResult(entities=entities, not_found=not_found)
+        read_ids = [e.entity_id for e in entities]
+        return ReadToolResult(entities=entities, not_found=not_found, read_entity_ids=read_ids)
 
     def _render_chunks(
         self,

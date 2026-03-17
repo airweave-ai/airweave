@@ -72,4 +72,9 @@ class SearchTool:
             for r in results.results
         ]
 
-        return SearchToolResult(summaries=summaries, new_count=new_count)
+        return SearchToolResult(
+            summaries=summaries,
+            new_count=new_count,
+            requested_limit=plan.limit,
+            requested_offset=plan.offset,
+        )
