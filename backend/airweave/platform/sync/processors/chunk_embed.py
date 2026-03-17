@@ -337,14 +337,20 @@ class ChunkEmbedProcessor:
                     chunk.airweave_system_metadata.original_entity_id = original_id
                     chunk.airweave_system_metadata.dense_embedding = dense_result.vector
 
-                    # Segment-specific text for sparse/BM25 alignment.
-                    # Only include a segment identifier, not the full parent text,
-                    # so dense and sparse representations are aligned.
+                    # Segment text for sparse/BM25. The first segment carries
+                    # the full parent transcript so keyword search can find it.
+                    # Subsequent segments get a segment label only (dense embedding
+                    # on the raw file carries the actual content).
                     name = os.path.basename(str(entity.local_path or entity.entity_id))
-                    chunk.textual_representation = (
+                    seg_label = (
                         f"[{name} — Segment {idx}: "
                         f"{segment.start_seconds:.1f}s - {segment.end_seconds:.1f}s]"
                     )
+                    parent_text = entity.textual_representation or ""
+                    if idx == 0 and parent_text.strip():
+                        chunk.textual_representation = f"{seg_label}\n\n{parent_text}"
+                    else:
+                        chunk.textual_representation = seg_label
 
                     chunks.append(chunk)
 
@@ -455,12 +461,19 @@ class ChunkEmbedProcessor:
                     chunk.airweave_system_metadata.original_entity_id = original_id
                     chunk.airweave_system_metadata.dense_embedding = dense_result.vector
 
-                    # Page-aligned text for sparse/BM25 (not full parent text)
+                    # Page-aligned text for sparse/BM25.
+                    # Prefer PyMuPDF extracted text (page-aligned).
+                    # For scanned/image PDFs where get_text() returns empty,
+                    # fall back to the parent's OCR text on the first chunk
+                    # so keyword search still works.
                     start_pg, end_pg = page_ranges[idx]
-                    chunk.textual_representation = (
-                        page_texts[idx]
-                        or f"[PDF pages {start_pg + 1}-{end_pg}]"
-                    )
+                    page_text = page_texts[idx]
+                    if page_text:
+                        chunk.textual_representation = page_text
+                    elif idx == 0 and entity.textual_representation:
+                        chunk.textual_representation = entity.textual_representation
+                    else:
+                        chunk.textual_representation = f"[PDF pages {start_pg + 1}-{end_pg}]"
                     chunks.append(chunk)
 
                 except (EmbedderInputError, EmbedderProviderError) as e:

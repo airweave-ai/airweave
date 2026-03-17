@@ -259,7 +259,7 @@ class MediaChunker:
 
         temp_dir = self._get_temp_dir()
         segments: list[MediaSegment] = []
-        step = max_seconds - overlap
+        step = max(1, max_seconds - overlap)
 
         start = 0.0
         idx = 0

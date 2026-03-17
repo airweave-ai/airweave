@@ -26,7 +26,10 @@ from airweave.domains.embedders.exceptions import (
     EmbedderResponseError,
     EmbedderTimeoutError,
 )
-from airweave.domains.embedders.protocols import EmbeddingPurpose
+from airweave.domains.embedders.protocols import (
+    EmbeddingPurpose,
+    MultimodalDenseEmbedderProtocol,
+)
 from airweave.domains.embedders.types import DenseEmbedding
 
 _PROVIDER = "gemini"
@@ -69,8 +72,8 @@ def _get_max_file_size_bytes() -> int:
         return 20 * 1024 * 1024
 
 
-class GeminiDenseEmbedder:
-    """Gemini dense embedder satisfying DenseEmbedderProtocol + MultimodalDenseEmbedderProtocol.
+class GeminiDenseEmbedder(MultimodalDenseEmbedderProtocol):
+    """Gemini dense embedder implementing MultimodalDenseEmbedderProtocol.
 
     Handles batching, concurrency, input validation, L2 normalization
     for Matryoshka dimensions, purpose-aware task types, multimodal file
