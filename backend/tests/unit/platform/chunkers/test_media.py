@@ -196,6 +196,78 @@ class TestChunkVideo:
             with pytest.raises(RuntimeError, match="ffmpeg and ffprobe are both required"):
                 await chunker.chunk_video(str(video_file))
 
+    @pytest.mark.asyncio
+    async def test_size_aware_video_splitting(self, tmp_path):
+        """Short high-bitrate video exceeding 20MB should be split by size."""
+        video_file = tmp_path / "highbitrate.mp4"
+        # 25MB file, 30 seconds — under duration limit but over size limit
+        video_file.write_bytes(b"\x00" * (25 * 1024 * 1024))
+
+        chunker = MediaChunker(temp_dir=str(tmp_path / "segments"))
+
+        async def mock_ffmpeg_segment(*args, **kwargs):
+            import os as _os
+
+            cmd_args = args
+            seg_path = cmd_args[-1] if isinstance(cmd_args[-1], str) else None
+            if seg_path and seg_path.endswith(".mp4"):
+                _os.makedirs(_os.path.dirname(seg_path), exist_ok=True)
+                with open(seg_path, "wb") as f:
+                    f.write(b"\x00" * 100)
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            return proc
+
+        with patch.object(
+            chunker, "_probe_duration", new_callable=AsyncMock, return_value=30.0
+        ), patch.object(
+            chunker, "_probe_has_audio", new_callable=AsyncMock, return_value=True
+        ), patch(
+            "asyncio.create_subprocess_exec", side_effect=mock_ffmpeg_segment
+        ):
+            segments = await chunker.chunk_video(str(video_file))
+
+        # Even though 30s < 120s duration limit, file is 25MB > 19MB size limit
+        # So it should be split into multiple segments
+        assert len(segments) >= 2
+
+    @pytest.mark.asyncio
+    async def test_small_video_not_split(self, tmp_path):
+        """Video under both duration and size limits returns as-is."""
+        video_file = tmp_path / "small.mp4"
+        video_file.write_bytes(b"\x00" * 1000)  # Tiny file
+
+        chunker = MediaChunker()
+
+        with patch.object(
+            chunker, "_probe_duration", new_callable=AsyncMock, return_value=10.0
+        ), patch.object(
+            chunker, "_probe_has_audio", new_callable=AsyncMock, return_value=True
+        ):
+            segments = await chunker.chunk_video(str(video_file))
+
+        assert len(segments) == 1
+        assert segments[0].file_path == str(video_file)
+
+
+# ---------------------------------------------------------------------------
+# Audio chunker — ffmpeg+ffprobe requirement
+# ---------------------------------------------------------------------------
+
+
+class TestChunkAudioRequirements:
+    @pytest.mark.asyncio
+    async def test_audio_requires_ffmpeg_and_ffprobe(self, tmp_path):
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"\x00" * 100)
+
+        chunker = MediaChunker()
+
+        with patch("shutil.which", return_value=None):
+            with pytest.raises(RuntimeError, match="ffmpeg and ffprobe are both required"):
+                await chunker.chunk_audio(str(audio_file))
+
 
 # ---------------------------------------------------------------------------
 # MediaSegment dataclass

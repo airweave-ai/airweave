@@ -277,6 +277,59 @@ class TestNativeMultimodalPipeline:
             assert len(result) == 1
 
 
+class TestNativeEmbeddingDecoupledFromText:
+    """Verify native embedding works even when text extraction fails."""
+
+    @pytest.mark.asyncio
+    async def test_entity_with_empty_text_still_gets_dense_embedding(
+        self, processor, mock_sync_context
+    ):
+        """An entity with empty textual_representation should still get
+        a dense embedding via embed_file() — text is best-effort."""
+        runtime = _make_multimodal_runtime()
+        file_entity = _make_file_entity(mime_type="image/png")
+        file_entity.textual_representation = None  # OCR failed
+
+        with patch(
+            "airweave.platform.sync.processors.chunk_embed.text_builder"
+        ) as mock_tb:
+            # Simulate text_builder returning entity with no text
+            mock_tb.build_for_batch = AsyncMock(return_value=[file_entity])
+
+            result = await processor._native_multimodal_pipeline(
+                [file_entity], mock_sync_context, runtime
+            )
+
+        # Should still produce a chunk with dense embedding
+        assert len(result) >= 1
+        runtime.dense_embedder.embed_file.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_empty_text_gets_placeholder_for_sparse(
+        self, processor, mock_sync_context
+    ):
+        """Entities with no text get a filename placeholder for sparse scoring."""
+        runtime = _make_multimodal_runtime()
+        file_entity = _make_file_entity(
+            mime_type="image/png", local_path="/data/photo.png"
+        )
+        file_entity.textual_representation = ""  # Empty
+
+        with patch(
+            "airweave.platform.sync.processors.chunk_embed.text_builder"
+        ) as mock_tb:
+            mock_tb.build_for_batch = AsyncMock(return_value=[file_entity])
+
+            chunks = await processor._native_multimodal_pipeline(
+                [file_entity], mock_sync_context, runtime
+            )
+
+        # Should still produce chunks despite empty text
+        assert len(chunks) >= 1
+        # Sparse embedding should have been computed (not skipped)
+        runtime.sparse_embedder.embed_many.assert_called_once()
+
+
 class TestNativeMultimodalPipelineFallback:
     @pytest.mark.asyncio
     async def test_fallback_on_embedder_input_error(self, processor, mock_sync_context):
