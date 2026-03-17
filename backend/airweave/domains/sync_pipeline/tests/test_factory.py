@@ -501,7 +501,13 @@ class TestBuildEntityTracker:
         sync = _make_sync()
         sync_job = _make_sync_job()
         ctx = _make_ctx()
-        count_row = SimpleNamespace(entity_definition_short_name="github_pr", count=5)
+        count_row = SimpleNamespace(
+            entity_definition_short_name="github_pr",
+            entity_definition_name="GithubPr",
+            entity_definition_type="standard",
+            entity_definition_description="A GitHub pull request",
+            count=5,
+        )
 
         with patch(
             "airweave.domains.sync_pipeline.factory.crud.entity_count.get_counts_per_sync_and_type",
@@ -513,7 +519,7 @@ class TestBuildEntityTracker:
             )
 
         assert tracker is not None
-        assert tracker._job_id == sync_job.id
+        assert tracker.job_id == sync_job.id
 
     @pytest.mark.asyncio
     async def test_returns_tracker_with_empty_counts(self):
