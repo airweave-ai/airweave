@@ -23,3 +23,11 @@ class ToolExecutionError(ToolError):
 
 class ToolNotFoundError(ToolError):
     """LLM called a tool that doesn't exist."""
+
+
+class ContextBudgetExhaustedError(SearchError):
+    """Context window too full for useful work, even after compression."""
+
+
+class ContextBudgetCriticalError(SearchError):
+    """Context exceeds hard limit — safety check failed."""

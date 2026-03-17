@@ -21,6 +21,9 @@ from typing import Union
 from airweave.core.protocols.tokenizer import TokenizerProtocol
 from airweave.domains.search.agentic.state import AgentState
 from airweave.domains.search.agentic.tools.types import (
+    COMPRESSIBLE_TOOLS,
+    READ_LIKE_TOOLS,
+    SEARCH_LIKE_TOOLS,
     CollectToolResult,
     CountToolResult,
     FinishToolResult,
@@ -29,6 +32,7 @@ from airweave.domains.search.agentic.tools.types import (
     ReviewToolResult,
     SearchToolResult,
     ToolErrorResult,
+    ToolName,
 )
 from airweave.domains.search.config import SearchConfig
 from airweave.domains.search.types.results import SearchResult
@@ -48,10 +52,6 @@ ToolResult = Union[
 # Reserve tokens for system nudges appended after tool results
 # (iteration warnings, stagnation nudges, progress messages)
 _NUDGE_RESERVE_TOKENS = 500
-
-_COMPRESSIBLE_TOOLS = frozenset(
-    {"search", "read", "get_children", "get_siblings", "get_parent", "review_results"}
-)
 
 
 class ContextManager:
@@ -138,7 +138,7 @@ class ContextManager:
         # Quick check: anything to compress?
         has_compressible = any(
             m.get("role") == "tool"
-            and m.get("_tool_name", "") in _COMPRESSIBLE_TOOLS
+            and m.get("_tool_name", "") in COMPRESSIBLE_TOOLS
             and m.get("tool_call_id", "") not in all_current
             for m in messages
         )
@@ -170,10 +170,10 @@ class ContextManager:
         tc_id = msg.get("tool_call_id", "")
         tool_name = msg.get("_tool_name", "")
 
-        if tool_name not in _COMPRESSIBLE_TOOLS or tc_id in all_current:
+        if tool_name not in COMPRESSIBLE_TOOLS or tc_id in all_current:
             return None
 
-        if tool_name in ("search", "get_children", "get_siblings"):
+        if tool_name in SEARCH_LIKE_TOOLS:
             results = state.results_by_tool_call_id.get(tc_id)
             if results is None:
                 return None
@@ -182,13 +182,13 @@ class ContextManager:
                 if tc_id in previous_search_ids
                 else _format_search_older(results)
             )
-        elif tool_name in ("read", "get_parent", "review_results"):
+        elif tool_name in READ_LIKE_TOOLS:
             # review_results shows collected entities — compress like reads
             results = state.reads_by_tool_call_id.get(tc_id)
             if results is None:
                 # review_results doesn't store in reads_by_tool_call_id,
                 # so fall back to collecting from state
-                if tool_name == "review_results":
+                if tool_name == ToolName.REVIEW_RESULTS:
                     results = [
                         state.results[eid] for eid in state.collected_ids if eid in state.results
                     ]

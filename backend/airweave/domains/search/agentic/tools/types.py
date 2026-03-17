@@ -12,6 +12,28 @@ in the LLM context window.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+class ToolName(str, Enum):
+    """Typed tool names — single source of truth for all tool name strings."""
+
+    SEARCH = "search"
+    READ = "read"
+    ADD_TO_RESULTS = "add_to_results"
+    REMOVE_FROM_RESULTS = "remove_from_results"
+    COUNT = "count"
+    GET_CHILDREN = "get_children"
+    GET_SIBLINGS = "get_siblings"
+    GET_PARENT = "get_parent"
+    REVIEW_RESULTS = "review_results"
+    RETURN_RESULTS = "return_results_to_user"
+
+
+# Tool categories for context management
+SEARCH_LIKE_TOOLS = frozenset({ToolName.SEARCH, ToolName.GET_CHILDREN, ToolName.GET_SIBLINGS})
+READ_LIKE_TOOLS = frozenset({ToolName.READ, ToolName.GET_PARENT, ToolName.REVIEW_RESULTS})
+COMPRESSIBLE_TOOLS = SEARCH_LIKE_TOOLS | READ_LIKE_TOOLS
 
 
 @dataclass(frozen=True)

@@ -1244,9 +1244,10 @@ def _create_search_services(
         llm=llm,
         tokenizer=tokenizer,
         reranker=reranker,
-        dense_embedder=dense_embedder,
-        sparse_embedder=sparse_embedder,
+        executor=executor,
+        vector_db=vector_db,
         metadata_builder=metadata_builder,
+        collection_repo=collection_repo,
         event_bus=event_bus,
     )
 

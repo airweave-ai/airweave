@@ -1,7 +1,6 @@
 """Agentic search service.
 
-Full agent loop with tool calling.
-Placeholder: returns empty SearchResults / publishes completed event via EventBus.
+Thin composition point — constructs the Agent and delegates.
 """
 
 from __future__ import annotations
@@ -11,46 +10,47 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
-from airweave.core.events.search import CompletedDiagnostics, SearchCompletedEvent
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.llm import LLMProtocol
 from airweave.core.protocols.reranker import RerankerProtocol
 from airweave.core.protocols.tokenizer import TokenizerProtocol
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+from airweave.domains.search.adapters.vector_db.protocol import VectorDBProtocol
+from airweave.domains.search.agentic.agent import Agent
+from airweave.domains.search.config import SearchConfig
 from airweave.domains.search.protocols import (
     AgenticSearchServiceProtocol,
     CollectionMetadataBuilderProtocol,
+    SearchPlanExecutorProtocol,
 )
 from airweave.domains.search.types import SearchResults
-from airweave.schemas.search_v2 import SearchTier
 
 if TYPE_CHECKING:
     from airweave.schemas.search_v2 import AgenticSearchRequest
 
 
 class AgenticSearchService(AgenticSearchServiceProtocol):
-    """Agentic search — full agent loop with tool calling.
-
-    Placeholder: returns empty SearchResults / publishes completed event.
-    """
+    """Agentic search — constructs an Agent per request and delegates."""
 
     def __init__(
         self,
         llm: LLMProtocol,
         tokenizer: TokenizerProtocol,
         reranker: Optional[RerankerProtocol],
-        dense_embedder: DenseEmbedderProtocol,
-        sparse_embedder: SparseEmbedderProtocol,
+        executor: SearchPlanExecutorProtocol,
+        vector_db: VectorDBProtocol,
         metadata_builder: CollectionMetadataBuilderProtocol,
+        collection_repo: CollectionRepositoryProtocol,
         event_bus: EventBus,
     ) -> None:
-        """Initialize with LLM, tokenizer, reranker, embedders, metadata builder, and event bus."""
+        """Initialize with all dependencies needed to construct agents."""
         self._llm = llm
         self._tokenizer = tokenizer
         self._reranker = reranker
-        self._dense_embedder = dense_embedder
-        self._sparse_embedder = sparse_embedder
+        self._executor = executor
+        self._vector_db = vector_db
         self._metadata_builder = metadata_builder
+        self._collection_repo = collection_repo
         self._event_bus = event_bus
 
     async def search(
@@ -60,8 +60,19 @@ class AgenticSearchService(AgenticSearchServiceProtocol):
         readable_id: str,
         request: AgenticSearchRequest,
     ) -> SearchResults:
-        """Placeholder: returns empty results."""
-        return SearchResults(results=[])
+        """Run agentic search and return results."""
+        agent = Agent(
+            llm=self._llm,
+            tokenizer=self._tokenizer,
+            reranker=self._reranker,
+            executor=self._executor,
+            vector_db=self._vector_db,
+            metadata_builder=self._metadata_builder,
+            collection_repo=self._collection_repo,
+            event_bus=self._event_bus,
+            config=SearchConfig(),
+        )
+        return await agent.run(db, ctx, readable_id, request)
 
     async def search_stream(
         self,
@@ -70,14 +81,9 @@ class AgenticSearchService(AgenticSearchServiceProtocol):
         readable_id: str,
         request: AgenticSearchRequest,
     ) -> None:
-        """Placeholder: publishes a completed event immediately."""
-        await self._event_bus.publish(
-            SearchCompletedEvent(
-                organization_id=ctx.organization.id,
-                request_id=ctx.request_id,
-                tier=SearchTier.AGENTIC,
-                results=[],
-                duration_ms=0,
-                diagnostics=CompletedDiagnostics(),
-            )
-        )
+        """Run agentic search with event streaming.
+
+        Same loop as search(). Events flow through event bus →
+        stream relay → PubSub → SSE. The return value is discarded.
+        """
+        await self.search(db, ctx, readable_id, request)
