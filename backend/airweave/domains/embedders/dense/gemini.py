@@ -321,10 +321,13 @@ class GeminiDenseEmbedder(MultimodalDenseEmbedderProtocol):
 
         try:
             config = {"output_dimensionality": self._dimensions}
-            return await self._client.aio.models.embed_content(
-                model=self._model,
-                contents=batch,
-                config={"task_type": task_type, **config},
+            return await asyncio.wait_for(
+                self._client.aio.models.embed_content(
+                    model=self._model,
+                    contents=batch,
+                    config={"task_type": task_type, **config},
+                ),
+                timeout=120.0,
             )
         except errors.ClientError as e:
             self._translate_client_error(e)
@@ -358,13 +361,16 @@ class GeminiDenseEmbedder(MultimodalDenseEmbedderProtocol):
 
         try:
             async with self._semaphore:
-                return await self._client.aio.models.embed_content(
-                    model=self._model,
-                    contents=[part],
-                    config={
-                        "task_type": task_type,
-                        "output_dimensionality": self._dimensions,
-                    },
+                return await asyncio.wait_for(
+                    self._client.aio.models.embed_content(
+                        model=self._model,
+                        contents=[part],
+                        config={
+                            "task_type": task_type,
+                            "output_dimensionality": self._dimensions,
+                        },
+                    ),
+                    timeout=120.0,
                 )
         except errors.ClientError as e:
             self._translate_client_error(e)

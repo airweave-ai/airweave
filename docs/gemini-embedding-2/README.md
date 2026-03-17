@@ -423,7 +423,7 @@ sequenceDiagram
 | `platform/converters/__init__.py` | Registered audio/video converters |
 | `platform/sync/pipeline/text_builder.py` | Audio/video converter routing |
 | `platform/sync/file_types.py` | +`.mp3`, `.wav`, `.mp4` |
-| `platform/sources/google_drive.py` | Video skip gated behind `ENABLE_MEDIA_SYNC` |
+| `platform/sources/google_drive.py` | Media entities emitted for all MIME types (gating is at pipeline level) |
 | `core/config/settings.py` | +`ENABLE_MEDIA_SYNC` + all `MULTIMODAL_*` settings |
 | `Dockerfile`, `Dockerfile.dev`, `temporal/Dockerfile` | +`ffmpeg` |
 | `pyproject.toml` | +`pydub` (fallback only; primary path uses ffmpeg) |

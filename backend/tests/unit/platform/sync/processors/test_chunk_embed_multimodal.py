@@ -193,7 +193,10 @@ class TestPartitionByEmbeddingMode:
 
     def test_mixed_entities_partition_correctly(self, processor):
         """Mix of FileEntity and BaseEntity partitions correctly."""
+        from airweave.domains.embedders.fakes.embedder import FakeMultimodalDenseEmbedder
+
         runtime = _make_multimodal_runtime()
+        runtime.dense_embedder = FakeMultimodalDenseEmbedder(dimensions=256)
         file_entity = _make_file_entity(mime_type="image/png")
         base_entity = _make_base_entity()
 
@@ -206,9 +209,11 @@ class TestPartitionByEmbeddingMode:
 
     def test_media_gated_by_enable_media_sync(self, processor):
         """Audio/video entities go to text when ENABLE_MEDIA_SYNC=False."""
-        runtime = _make_multimodal_runtime(
-            supported_mimes={"image/png", "audio/mpeg", "video/mp4"}
-        )
+        from airweave.domains.embedders.fakes.embedder import FakeMultimodalDenseEmbedder
+
+        runtime = _make_multimodal_runtime()
+        runtime.dense_embedder = FakeMultimodalDenseEmbedder(dimensions=256)
+
         audio_entity = _make_file_entity(mime_type="audio/mpeg")
         video_entity = _make_file_entity(mime_type="video/mp4", entity_id="vid-1")
         image_entity = _make_file_entity(mime_type="image/png", entity_id="img-1")

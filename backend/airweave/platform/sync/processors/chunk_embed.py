@@ -73,6 +73,13 @@ class ChunkEmbedProcessor:
         if not entities:
             return []
 
+        # Gate: drop media entities entirely when ENABLE_MEDIA_SYNC=False.
+        # This prevents expensive ffmpeg/Gemini transcription in the text
+        # pipeline for audio/video entities that shouldn't be processed.
+        entities = self._filter_disabled_media(entities, sync_context)
+        if not entities:
+            return []
+
         # Partition: entities eligible for native multimodal vs text pipeline
         native_entities, text_entities = self._partition_by_embedding_mode(
             entities, runtime
@@ -98,6 +105,48 @@ class ChunkEmbedProcessor:
         )
 
         return all_chunks
+
+    # -------------------------------------------------------------------------
+    # Media gating
+    # -------------------------------------------------------------------------
+
+    def _filter_disabled_media(
+        self,
+        entities: List[BaseEntity],
+        sync_context: "SyncContext",
+    ) -> List[BaseEntity]:
+        """Drop audio/video entities when ENABLE_MEDIA_SYNC is False.
+
+        This is the single, authoritative gate for media processing.
+        Without it, media entities would flow into the text pipeline
+        where text_builder routes them to AudioConverter/VideoConverter
+        for expensive ffmpeg/Gemini transcription.
+        """
+        try:
+            from airweave.core.config import settings
+
+            media_enabled = settings.ENABLE_MEDIA_SYNC
+        except Exception:
+            media_enabled = False
+
+        if media_enabled:
+            return entities
+
+        filtered: List[BaseEntity] = []
+        for entity in entities:
+            if (
+                isinstance(entity, FileEntity)
+                and entity.mime_type
+                and entity.mime_type in self._MEDIA_MIME_TYPES
+            ):
+                sync_context.logger.debug(
+                    f"[ChunkEmbed] Skipping media entity {entity.entity_id} "
+                    f"({entity.mime_type}) — ENABLE_MEDIA_SYNC=False"
+                )
+                continue
+            filtered.append(entity)
+
+        return filtered
 
     # -------------------------------------------------------------------------
     # Partitioning

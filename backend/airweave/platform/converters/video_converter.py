@@ -59,6 +59,7 @@ class VideoConverter(BaseTextConverter):
     def __init__(self, *, gemini_api_key: str | None = None) -> None:
         self._api_key = gemini_api_key
         self._client = None
+        self._audio_converter = None
 
     async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
         """Convert videos to text via keyframe OCR + audio."""
@@ -207,6 +208,16 @@ class VideoConverter(BaseTextConverter):
 
         return texts
 
+    def _get_audio_converter(self):
+        """Lazily create and cache the AudioConverter for video audio extraction."""
+        if self._audio_converter is not None:
+            return self._audio_converter
+
+        from airweave.platform.converters.audio_converter import AudioConverter
+
+        self._audio_converter = AudioConverter(gemini_api_key=self._api_key)
+        return self._audio_converter
+
     def _get_client(self):
         """Lazily create and cache the Gemini client."""
         if self._client is not None:
@@ -343,9 +354,7 @@ class VideoConverter(BaseTextConverter):
                 )
                 return None
 
-            from airweave.platform.converters.audio_converter import AudioConverter
-
-            converter = AudioConverter(gemini_api_key=self._api_key)
+            converter = self._get_audio_converter()
             results = await converter.convert_batch([audio_path])
             return results.get(audio_path)
 

@@ -64,12 +64,13 @@ class DenseEmbedderProtocol(Protocol):
 
 
 @runtime_checkable
-class MultimodalDenseEmbedderProtocol(Protocol):
+class MultimodalDenseEmbedderProtocol(DenseEmbedderProtocol, Protocol):
     """Protocol for dense embedders that support native file embedding.
 
-    Embedders implementing this protocol can embed files (PDFs, images,
-    audio, video) directly via the provider API, bypassing text extraction.
-    The pipeline detects this capability at runtime via isinstance() checks.
+    Extends DenseEmbedderProtocol with multimodal capabilities — embed files
+    (PDFs, images, audio, video) directly via the provider API, bypassing
+    text extraction. The pipeline detects this capability at runtime via
+    isinstance() checks.
     """
 
     @property

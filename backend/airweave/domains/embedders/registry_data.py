@@ -83,7 +83,7 @@ DENSE_EMBEDDERS: list[DenseEmbedderSpec] = [
         short_name="gemini_embedding_2",
         name="Gemini Embedding 2",
         description="Google Gemini embedding model with Matryoshka support (up to 3072d). "
-        "Text-only in Phase 1; natively multimodal after Phase 2.",
+        "Natively multimodal — supports text, PDF, image, audio, video.",
         provider="gemini",
         api_model_name="gemini-embedding-2-preview",
         max_dimensions=3072,
