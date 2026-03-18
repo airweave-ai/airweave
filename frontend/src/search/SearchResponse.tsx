@@ -3,10 +3,7 @@ import { cn } from '@/lib/utils';
 import { useTheme } from '@/lib/theme-provider';
 import { Button } from '@/components/ui/button';
 import {
-    Tooltip,
-    TooltipContent,
     TooltipProvider,
-    TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
     Layers,
@@ -19,16 +16,13 @@ import {
     Copy,
     Check,
     FileJson2,
-    ExternalLink
 } from 'lucide-react';
 import { FiMessageSquare } from 'react-icons/fi';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { materialOceanic, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { DESIGN_SYSTEM } from '@/lib/design-system';
 import { CollapsibleCard } from '@/components/ui/CollapsibleCard';
-import { FiLayers, FiFilter, FiSliders, FiList, FiClock, FiGitMerge, FiType } from "react-icons/fi";
+import { FiLayers, FiFilter, FiSliders, FiGitMerge, FiType } from "react-icons/fi";
 import { ChartScatter } from 'lucide-react';
 import type { SearchEvent } from '@/search/types';
 import { EntityResultCard } from './EntityResultCard';
@@ -52,8 +46,6 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 }) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
-    const [copiedCompletion, setCopiedCompletion] = useState(false);
-    const [copiedJson, setCopiedJson] = useState(false);
 
     // Collapsible state with localStorage persistence
     const [isExpanded, setIsExpanded] = useState(() => {
@@ -82,11 +74,6 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
         }
     }, [isSearching]);
 
-    // State for tooltip management
-    const [openTooltip, setOpenTooltip] = useState<string | null>(null);
-    const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const [hoveredTooltipContent, setHoveredTooltipContent] = useState<string | null>(null);
-
     // Ref for JSON viewer container for scrolling to entities
     const jsonViewerRef = useRef<HTMLDivElement>(null);
 
@@ -102,8 +89,6 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     // Extract data from response
     const statusCode = searchResponse?.error ? (searchResponse?.status ?? 500) : 200;
     const responseTime = searchResponse?.responseTime || null;
-    const completion = searchResponse?.completion || '';
-    const citations = searchResponse?.citations || [];
     const results = searchResponse?.results || [];
     const hasError = Boolean(searchResponse?.error);
     const isTransientError = Boolean(searchResponse?.errorIsTransient);
@@ -115,10 +100,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     useEffect(() => {
         console.log('[SearchResponseDisplay] State changed:', {
             isSearching,
-            responseType,
             hasSearchResponse: !!searchResponse,
-            completionLength: completion?.length,
-            completionPreview: completion?.substring(0, 50) + (completion?.length > 50 ? '...' : ''),
             resultsCount: results?.length,
             hasError,
             activeTab,
@@ -128,123 +110,11 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
         if (!searchResponse && !isSearching) {
             console.warn('[SearchResponseDisplay] Component will return NULL on next render!');
         }
-    }, [isSearching, responseType, searchResponse, completion, results, hasError, activeTab]);
+    }, [isSearching, searchResponse, results, hasError, activeTab]);
 
 
     // Memoize expensive style objects
     const syntaxStyle = useMemo(() => isDark ? materialOceanic : oneLight, [isDark]);
-
-    // Create a mapping of entity IDs to source names and numbers
-    // ALSO create a mapping of result numbers to entity IDs (for LLM citations that use numbers)
-    const { entitySourceMap, resultNumberMap } = useMemo(() => {
-        const map = new Map<string, { source: string; number: number }>();
-        const numberMap = new Map<string, string>(); // result number -> entity ID
-
-        // Helper function to format source names
-        const formatSourceName = (name: string) => {
-            return name
-                .split('_')
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                .join(' ');
-        };
-
-        results.forEach((result: any, idx: number) => {
-            const entityId = result.entity_id;
-            const rawSourceName = result.system_metadata?.source_name || result.airweave_system_metadata?.source_name || 'Unknown';
-            const sourceName = formatSourceName(rawSourceName);
-
-            if (entityId) {
-                // Store the mapping by entity ID
-                // Use the global result number (1-based), not per-source count
-                const resultNumber = idx + 1;
-                map.set(entityId, {
-                    source: sourceName,
-                    number: resultNumber
-                });
-
-                // ALSO store mapping by result number string (1-based)
-                // This handles LLM citations like [[1]], [[2]], [[39]], etc.
-                numberMap.set(String(resultNumber), entityId);
-            }
-        });
-
-        return { entitySourceMap: map, resultNumberMap: numberMap };
-    }, [results]);
-
-    // Resolve citation entity_ids to display names + sources for the references footer
-    const citationEntities = useMemo(() => {
-        if (!citations || citations.length === 0 || results.length === 0) return [];
-
-        const formatSourceName = (name: string) => {
-            return name
-                .split('_')
-                .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                .join(' ');
-        };
-
-        // Deduplicate by entity_id
-        const seen = new Set<string>();
-        return citations
-            .map((citation: any) => {
-                const entityId = citation.entity_id;
-                if (!entityId || seen.has(entityId)) return null;
-                seen.add(entityId);
-                const result = results.find((r: any) => r.entity_id === entityId);
-                if (!result) return null;
-                const rawSource = result.airweave_system_metadata?.source_name
-                    || result.system_metadata?.source_name
-                    || 'Unknown';
-                return {
-                    entity_id: entityId,
-                    name: result.name || entityId,
-                    source: formatSourceName(rawSource),
-                };
-            })
-            .filter(Boolean) as { entity_id: string; name: string; source: string }[];
-    }, [citations, results]);
-
-    // Helper functions for tooltip management with delay
-    const handleTooltipMouseEnter = useCallback((tooltipId: string) => {
-        // Clear any pending timeout
-        if (tooltipTimeoutRef.current) {
-            clearTimeout(tooltipTimeoutRef.current);
-            tooltipTimeoutRef.current = null;
-        }
-        setOpenTooltip(tooltipId);
-    }, []);
-
-    const handleTooltipMouseLeave = useCallback((tooltipId: string) => {
-        // Only close if we're not hovering over the tooltip content
-        if (hoveredTooltipContent !== tooltipId) {
-            // Add a small delay before closing to allow moving to tooltip content
-            tooltipTimeoutRef.current = setTimeout(() => {
-                setOpenTooltip(prev => prev === tooltipId ? null : prev);
-            }, 100);
-        }
-    }, [hoveredTooltipContent]);
-
-    const handleTooltipContentMouseEnter = useCallback((tooltipId: string) => {
-        // Clear any pending timeout
-        if (tooltipTimeoutRef.current) {
-            clearTimeout(tooltipTimeoutRef.current);
-            tooltipTimeoutRef.current = null;
-        }
-        setHoveredTooltipContent(tooltipId);
-        setOpenTooltip(tooltipId);
-    }, []);
-
-    const handleTooltipContentMouseLeave = useCallback((tooltipId: string) => {
-        setHoveredTooltipContent(null);
-        // Close the tooltip after a small delay
-        tooltipTimeoutRef.current = setTimeout(() => {
-            setOpenTooltip(prev => prev === tooltipId ? null : prev);
-        }, 100);
-    }, []);
-
-
-    const handleCopyCompletion = useCallback(async () => {
-        await navigator.clipboard.writeText(completion);
-    }, [completion]);
 
     const handleCopyJson = useCallback(async () => {
         await navigator.clipboard.writeText(JSON.stringify(results, null, 2));
@@ -270,16 +140,13 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             return;
         }
         if (activeTab === 'raw' && searchResponse) {
-            // Always copy the FULL JSON, regardless of truncation state
             await navigator.clipboard.writeText(JSON.stringify(searchResponse, null, 2));
             return;
         }
-        if (responseType === 'completion' && activeTab === 'answer' && completion) {
-            await handleCopyCompletion();
-        } else if (activeTab === 'entities' && results.length > 0) {
+        if (activeTab === 'entities' && results.length > 0) {
             await handleCopyJson();
         }
-    }, [activeTab, responseType, completion, results, searchResponse, handleCopyCompletion, handleCopyJson]);
+    }, [activeTab, results, searchResponse, handleCopyJson]);
 
     // Auto-scroll Trace to bottom on new events while searching, unless user scrolled up
     useEffect(() => {
@@ -291,7 +158,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     }, [events?.length, isSearching, traceAutoScroll]);
 
     // Helper function to scroll to and highlight an entity card
-    const scrollToEntity = useCallback((entityIndex: number, entityId: string) => {
+    const scrollToEntity = useCallback((_entityIndex: number, entityId: string) => {
         if (!jsonViewerRef.current) {
             return;
         }
@@ -1377,16 +1244,6 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     }, [isSearching, showTrace]);
 
     useEffect(() => {
-        // When completion arrives (not streaming anymore), switch to answer tab
-        if (responseType === 'completion' && !isSearching && completion && completion.length > 0) {
-            if (activeTab === 'trace' && !hasAutoSwitchedRef.current) {
-                setActiveTab('answer');
-                hasAutoSwitchedRef.current = true;
-            }
-        }
-    }, [responseType, isSearching, completion]);
-
-    useEffect(() => {
         if (responseType === 'raw' && !isSearching && Array.isArray(results) && results.length > 0) {
             if (!hasAutoSwitchedRef.current) {
                 setActiveTab('entities');
@@ -1532,181 +1389,57 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                     )}
                                 </button>
                             )}
-                            {/* Middle + Right depend on responseType */}
-                            {responseType === 'raw' ? (
-                                <>
-                                    {/* Entities (middle) */}
-                                    <button
-                                        onClick={() => startTransition(() => setActiveTab('entities'))}
-                                        className={cn(
-                                            "px-3.5 py-2 text-[13px] font-medium transition-colors relative",
-                                            activeTab === 'entities'
-                                                ? isDark
-                                                    ? "text-white bg-gray-800/70"
-                                                    : "text-gray-900 bg-white"
-                                                : isDark
-                                                    ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/30"
-                                                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
-                                        )}
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <FileJson2 className="h-3 w-3" strokeWidth={1.5} />
-                                            Entities
-                                        </div>
-                                        {activeTab === 'entities' && (
-                                            <div className={cn(
-                                                "absolute bottom-0 left-0 right-0 h-0.5",
-                                                isDark ? "bg-blue-400" : "bg-blue-600"
-                                            )} />
-                                        )}
-                                    </button>
+                            {/* Entities tab */}
+                            <button
+                                onClick={() => startTransition(() => setActiveTab('entities'))}
+                                className={cn(
+                                    "px-3.5 py-2 text-[13px] font-medium transition-colors relative",
+                                    activeTab === 'entities'
+                                        ? isDark
+                                            ? "text-white bg-gray-800/70"
+                                            : "text-gray-900 bg-white"
+                                        : isDark
+                                            ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/30"
+                                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
+                                )}
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <FileJson2 className="h-3 w-3" strokeWidth={1.5} />
+                                    Entities
+                                </div>
+                                {activeTab === 'entities' && (
+                                    <div className={cn(
+                                        "absolute bottom-0 left-0 right-0 h-0.5",
+                                        isDark ? "bg-blue-400" : "bg-blue-600"
+                                    )} />
+                                )}
+                            </button>
 
-                                    {/* Raw (middle-right) */}
-                                    <button
-                                        onClick={() => startTransition(() => setActiveTab('raw'))}
-                                        className={cn(
-                                            "px-3.5 py-2 text-[13px] font-medium transition-colors relative",
-                                            activeTab === 'raw'
-                                                ? isDark
-                                                    ? "text-white bg-gray-800/70"
-                                                    : "text-gray-900 bg-white"
-                                                : isDark
-                                                    ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/30"
-                                                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
-                                        )}
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <Braces className="h-3 w-3" strokeWidth={1.5} />
-                                            Raw
-                                        </div>
-                                        {activeTab === 'raw' && (
-                                            <div className={cn(
-                                                "absolute bottom-0 left-0 right-0 h-0.5",
-                                                isDark ? "bg-blue-400" : "bg-blue-600"
-                                            )} />
-                                        )}
-                                    </button>
-
-                                    {/* Answer (right, disabled) */}
-                                    <Tooltip open={openTooltip === "answerTab"}>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                onMouseEnter={() => handleTooltipMouseEnter("answerTab")}
-                                                onMouseLeave={() => handleTooltipMouseLeave("answerTab")}
-                                                className={cn(
-                                                    "px-3.5 py-2 text-[13px] font-medium transition-colors relative cursor-not-allowed",
-                                                    isDark
-                                                        ? "text-gray-600 bg-gray-900/30"
-                                                        : "text-gray-400 bg-gray-50/50"
-                                                )}
-                                            >
-                                                <div className="flex items-center gap-1.5 opacity-60">
-                                                    <FiMessageSquare className="h-3 w-3" />
-                                                    Answer
-                                                </div>
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent
-                                            side="top"
-                                            sideOffset={2}
-                                            className={cn(
-                                                "max-w-[240px] p-2.5 rounded-md bg-gray-900 text-white",
-                                                "border border-white/10 shadow-xl"
-                                            )}
-                                            arrowClassName="fill-gray-900"
-                                            onMouseEnter={() => handleTooltipContentMouseEnter("answerTab")}
-                                            onMouseLeave={() => handleTooltipContentMouseLeave("answerTab")}
-                                        >
-                                            <div className="flex items-start gap-1.5">
-                                                <FiMessageSquare className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-white/80" />
-                                                <p className="text-xs text-white/90 leading-relaxed">
-                                                    To get an answer to your question, turn on "Generate answer" when searching.
-                                                </p>
-                                            </div>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </>
-                            ) : (
-                                <>
-                                    {/* Answer (middle) */}
-                                    <button
-                                        onClick={() => startTransition(() => setActiveTab('answer'))}
-                                        className={cn(
-                                            "px-3.5 py-2 text-[13px] font-medium transition-colors relative",
-                                            activeTab === 'answer'
-                                                ? isDark
-                                                    ? "text-white bg-gray-800/70"
-                                                    : "text-gray-900 bg-white"
-                                                : isDark
-                                                    ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/30"
-                                                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
-                                        )}
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <FiMessageSquare className="h-3 w-3" />
-                                            Answer
-                                        </div>
-                                        {activeTab === 'answer' && (
-                                            <div className={cn(
-                                                "absolute bottom-0 left-0 right-0 h-0.5",
-                                                isDark ? "bg-blue-400" : "bg-blue-600"
-                                            )} />
-                                        )}
-                                    </button>
-
-                                    {/* Entities (middle-right) */}
-                                    <button
-                                        onClick={() => startTransition(() => setActiveTab('entities'))}
-                                        className={cn(
-                                            "px-3.5 py-2 text-[13px] font-medium transition-colors relative",
-                                            activeTab === 'entities'
-                                                ? isDark
-                                                    ? "text-white bg-gray-800/70"
-                                                    : "text-gray-900 bg-white"
-                                                : isDark
-                                                    ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/30"
-                                                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
-                                        )}
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <FileJson2 className="h-3 w-3" strokeWidth={1.5} />
-                                            Entities
-                                        </div>
-                                        {activeTab === 'entities' && (
-                                            <div className={cn(
-                                                "absolute bottom-0 left-0 right-0 h-0.5",
-                                                isDark ? "bg-blue-400" : "bg-blue-600"
-                                            )} />
-                                        )}
-                                    </button>
-
-                                    {/* Raw (right) */}
-                                    <button
-                                        onClick={() => startTransition(() => setActiveTab('raw'))}
-                                        className={cn(
-                                            "px-3.5 py-2 text-[13px] font-medium transition-colors relative",
-                                            activeTab === 'raw'
-                                                ? isDark
-                                                    ? "text-white bg-gray-800/70"
-                                                    : "text-gray-900 bg-white"
-                                                : isDark
-                                                    ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/30"
-                                                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
-                                        )}
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <Braces className="h-3 w-3" strokeWidth={1.5} />
-                                            Raw
-                                        </div>
-                                        {activeTab === 'raw' && (
-                                            <div className={cn(
-                                                "absolute bottom-0 left-0 right-0 h-0.5",
-                                                isDark ? "bg-blue-400" : "bg-blue-600"
-                                            )} />
-                                        )}
-                                    </button>
-                                </>
-                            )}
+                            {/* Raw tab */}
+                            <button
+                                onClick={() => startTransition(() => setActiveTab('raw'))}
+                                className={cn(
+                                    "px-3.5 py-2 text-[13px] font-medium transition-colors relative",
+                                    activeTab === 'raw'
+                                        ? isDark
+                                            ? "text-white bg-gray-800/70"
+                                            : "text-gray-900 bg-white"
+                                        : isDark
+                                            ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/30"
+                                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
+                                )}
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <Braces className="h-3 w-3" strokeWidth={1.5} />
+                                    Raw
+                                </div>
+                                {activeTab === 'raw' && (
+                                    <div className={cn(
+                                        "absolute bottom-0 left-0 right-0 h-0.5",
+                                        isDark ? "bg-blue-400" : "bg-blue-600"
+                                    )} />
+                                )}
+                            </button>
                         </div>
                     </TooltipProvider>
                 )}
@@ -1743,361 +1476,6 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                             </div>
                                         )}
                                     </>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Answer Tab Content */}
-                        {activeTab === 'answer' && responseType === 'completion' && (completion || isSearching) && (
-                            <div>
-                                <div className={cn(
-                                    "overflow-auto max-h-[700px] leading-relaxed raw-data-scrollbar",
-                                    DESIGN_SYSTEM.spacing.padding.compact,
-                                    DESIGN_SYSTEM.typography.sizes.body,
-                                    isDark ? "bg-gray-900 text-gray-200" : "bg-white text-gray-800"
-                                )}>
-                                    {isSearching ? (
-                                        // Show skeleton while searching (completion not streamed anymore)
-                                        <div className="animate-pulse h-32 w-full">
-                                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2.5"></div>
-                                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2.5"></div>
-                                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6 mb-2.5"></div>
-                                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-2.5"></div>
-                                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                                        </div>
-                                    ) : completion ? (
-                                        // Show the actual completion (only available when search completes)
-                                        <div className="animate-fade-in"><ReactMarkdown
-                                            remarkPlugins={[remarkGfm]}
-                                            components={{
-                                                h1: ({ node, ...props }) => <h1 className="text-[13px] font-semibold mt-0 mb-1.5" {...props} />,
-                                                h2: ({ node, ...props }) => <h2 className="text-[12px] font-semibold mt-0 mb-1.5" {...props} />,
-                                                h3: ({ node, ...props }) => <h3 className="text-[12px] font-medium mt-0 mb-1.5" {...props} />,
-                                                ul: ({ node, ...props }) => <ul className="list-disc pl-4 mt-0 mb-1 space-y-0.5" {...props} />,
-                                                ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mt-0 mb-1 space-y-0.5" {...props} />,
-                                                table: ({ node, ...props }) => (
-                                                    <div className="overflow-x-auto my-4">
-                                                        <table className={cn(
-                                                            "min-w-full divide-y",
-                                                            isDark ? "divide-gray-700" : "divide-gray-200"
-                                                        )} {...props} />
-                                                    </div>
-                                                ),
-                                                thead: ({ node, ...props }) => (
-                                                    <thead className={cn(
-                                                        isDark ? "bg-gray-800/50" : "bg-gray-50"
-                                                    )} {...props} />
-                                                ),
-                                                tbody: ({ node, ...props }) => (
-                                                    <tbody className={cn(
-                                                        "divide-y",
-                                                        isDark ? "divide-gray-800 bg-gray-900/30" : "divide-gray-200 bg-white"
-                                                    )} {...props} />
-                                                ),
-                                                tr: ({ node, ...props }) => (
-                                                    <tr className={cn(
-                                                        "transition-colors",
-                                                        isDark ? "hover:bg-gray-800/30" : "hover:bg-gray-50"
-                                                    )} {...props} />
-                                                ),
-                                                th: ({ node, ...props }) => (
-                                                    <th className={cn(
-                                                        "px-3 py-1.5 text-left text-[11px] font-medium uppercase tracking-wider",
-                                                        isDark ? "text-gray-300" : "text-gray-700"
-                                                    )} {...props} />
-                                                ),
-                                                td: ({ node, ...props }) => (
-                                                    <td className={cn(
-                                                        "px-3 py-1.5 text-[12px]",
-                                                        isDark ? "text-gray-300" : "text-gray-700"
-                                                    )} {...props} />
-                                                ),
-                                                a: ({ node, href, children, ...props }) => {
-                                                    // Check if this is a malformed citation
-                                                    // Pattern 1: href like "Result 5" or "5"
-                                                    const hrefPattern = /^(?:Result\s+)?(\d+)$/i;
-                                                    const hrefMatch = href?.match(hrefPattern);
-
-                                                    // Pattern 2: children text like "[Result 75]" or "[5]"
-                                                    // (happens when LLM writes [[Result 75]](url))
-                                                    const childText = typeof children === 'string' ? children : '';
-                                                    const childPattern = /^\[(?:Result\s+)?(\d+)\]$/i;
-                                                    const childMatch = childText.match(childPattern);
-
-                                                    // Extract result number from either pattern
-                                                    const resultNumber = hrefMatch?.[1] || childMatch?.[1];
-
-                                                    if (resultNumber) {
-                                                        // This is a citation, render as button (ignoring the URL)
-                                                        const mappedId = resultNumberMap.get(resultNumber);
-                                                        const resolvedEntityId = mappedId || resultNumber;
-                                                        const sourceInfo = entitySourceMap.get(resolvedEntityId);
-
-                                                        const displayText = sourceInfo
-                                                            ? `${sourceInfo.source} [${sourceInfo.number}]`
-                                                            : `[${resultNumber}]`;
-
-                                                        const tooltipText = sourceInfo
-                                                            ? `Click to view ${sourceInfo.source} entity #${sourceInfo.number} in the Entities tab`
-                                                            : `Click to view entity: ${resultNumber}`;
-
-                                                        return (
-                                                            <button
-                                                                onClick={() => handleEntityClick(resolvedEntityId)}
-                                                                className={cn(
-                                                                    "inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-[11px] font-medium",
-                                                                    "transition-colors cursor-pointer",
-                                                                    isDark
-                                                                        ? "bg-blue-950/50 text-blue-300 hover:bg-blue-900/70 hover:text-blue-200"
-                                                                        : "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700",
-                                                                    "border",
-                                                                    isDark ? "border-blue-800/50" : "border-blue-200"
-                                                                )}
-                                                                title={tooltipText}
-                                                            >
-                                                                {displayText}
-                                                            </button>
-                                                        );
-                                                    }
-
-                                                    // Regular link - render normally
-                                                    return (
-                                                        <a
-                                                            href={href}
-                                                            className={cn(
-                                                                "underline",
-                                                                isDark ? "text-blue-400 hover:text-blue-300" : "text-blue-600 hover:text-blue-700"
-                                                            )}
-                                                            {...props}
-                                                        >
-                                                            {children}
-                                                        </a>
-                                                    );
-                                                },
-                                                li: ({ children, ...props }) => {
-                                                    // Process list item content to replace citations with clickable links
-                                                    const processedChildren = React.Children.map(children, (child) => {
-                                                        if (typeof child === 'string') {
-                                                            // Split by citation patterns: [[...]] or 【...】
-                                                            const parts = child.split(/(\[\[[^\]]+\]\]|【[^】]+】)/g);
-                                                            return parts.map((part, index) => {
-                                                                // Match either [[...]] or 【...】
-                                                                const match = part.match(/^(?:\[\[([^\]]+)\]\]|【([^】]+)】)$/);
-                                                                if (match) {
-                                                                    // Extract citation content (from either capture group)
-                                                                    let citationRef = match[1] || match[2];
-
-                                                                    // Handle "Results 36-37" or "Result 5" format
-                                                                    // Extract just the numbers
-                                                                    const numbersMatch = citationRef.match(/(\d+)(?:[-–‑](\d+))?/);
-                                                                    if (numbersMatch) {
-                                                                        // For ranges like "36-37", use the first number
-                                                                        citationRef = numbersMatch[1];
-                                                                    }
-
-                                                                    // Try to resolve citation ref to entity ID
-                                                                    // LLM might cite by result number (e.g., [[39]]) or by UUID
-                                                                    let resolvedEntityId = citationRef;
-
-                                                                    // Check if this is a result number citation (e.g., "39", "1", "100")
-                                                                    if (/^\d+$/.test(citationRef)) {
-                                                                        const mappedId = resultNumberMap.get(citationRef);
-                                                                        if (mappedId) {
-                                                                            resolvedEntityId = mappedId;
-                                                                        }
-                                                                    }
-
-                                                                    const sourceInfo = entitySourceMap.get(resolvedEntityId);
-
-                                                                    const displayText = sourceInfo
-                                                                        ? `${sourceInfo.source} [${sourceInfo.number}]`
-                                                                        : citationRef;
-
-                                                                    const tooltipText = sourceInfo
-                                                                        ? `Click to view ${sourceInfo.source} entity #${sourceInfo.number} in the Entities tab`
-                                                                        : `Click to view entity: ${citationRef}`;
-
-                                                                    return (
-                                                                        <button
-                                                                            key={index}
-                                                                            onClick={() => handleEntityClick(resolvedEntityId)}
-                                                                            className={cn(
-                                                                                "inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-[11px] font-medium",
-                                                                                "transition-colors cursor-pointer",
-                                                                                isDark
-                                                                                    ? "bg-blue-950/50 text-blue-300 hover:bg-blue-900/70 hover:text-blue-200"
-                                                                                    : "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700",
-                                                                                "border",
-                                                                                isDark ? "border-blue-800/50" : "border-blue-200"
-                                                                            )}
-                                                                            title={tooltipText}
-                                                                        >
-                                                                            {displayText}
-                                                                        </button>
-                                                                    );
-                                                                }
-                                                                return part;
-                                                            });
-                                                        }
-                                                        return child;
-                                                    });
-                                                    return <li className="my-0.5" {...props}>{processedChildren}</li>;
-                                                },
-                                                p: ({ children, ...props }) => {
-                                                    // Process paragraph content to replace citations with clickable links
-                                                    const processedChildren = React.Children.map(children, (child) => {
-                                                        if (typeof child === 'string') {
-                                                            // Split by citation patterns: [[...]] or 【...】
-                                                            const parts = child.split(/(\[\[[^\]]+\]\]|【[^】]+】)/g);
-                                                            return parts.map((part, index) => {
-                                                                // Match either [[...]] or 【...】
-                                                                const match = part.match(/^(?:\[\[([^\]]+)\]\]|【([^】]+)】)$/);
-                                                                if (match) {
-                                                                    // Extract citation content (from either capture group)
-                                                                    let citationRef = match[1] || match[2];
-
-                                                                    // Handle "Results 36-37" or "Result 5" format
-                                                                    // Extract just the numbers
-                                                                    const numbersMatch = citationRef.match(/(\d+)(?:[-–‑](\d+))?/);
-                                                                    if (numbersMatch) {
-                                                                        // For ranges like "36-37", use the first number
-                                                                        citationRef = numbersMatch[1];
-                                                                    }
-
-                                                                    // Try to resolve citation ref to entity ID
-                                                                    // LLM might cite by result number (e.g., [[39]]) or by UUID
-                                                                    let resolvedEntityId = citationRef;
-
-                                                                    // Check if this is a result number citation (e.g., "39", "1", "100")
-                                                                    if (/^\d+$/.test(citationRef)) {
-                                                                        const mappedId = resultNumberMap.get(citationRef);
-                                                                        if (mappedId) {
-                                                                            resolvedEntityId = mappedId;
-                                                                        }
-                                                                    }
-
-                                                                    const sourceInfo = entitySourceMap.get(resolvedEntityId);
-
-                                                                    const displayText = sourceInfo
-                                                                        ? `${sourceInfo.source} [${sourceInfo.number}]`
-                                                                        : citationRef;
-
-                                                                    const tooltipText = sourceInfo
-                                                                        ? `Click to view ${sourceInfo.source} entity #${sourceInfo.number} in the Entities tab`
-                                                                        : `Click to view entity: ${citationRef}`;
-
-                                                                    return (
-                                                                        <button
-                                                                            key={index}
-                                                                            onClick={() => handleEntityClick(resolvedEntityId)}
-                                                                            className={cn(
-                                                                                "inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md text-[11px] font-medium",
-                                                                                "transition-colors cursor-pointer",
-                                                                                isDark
-                                                                                    ? "bg-blue-950/50 text-blue-300 hover:bg-blue-900/70 hover:text-blue-200"
-                                                                                    : "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700",
-                                                                                "border",
-                                                                                isDark ? "border-blue-800/50" : "border-blue-200"
-                                                                            )}
-                                                                            title={tooltipText}
-                                                                        >
-                                                                            {displayText}
-                                                                        </button>
-                                                                    );
-                                                                }
-                                                                return part;
-                                                            });
-                                                        }
-                                                        return child;
-                                                    });
-                                                    return <p className="mt-0 mb-1 leading-relaxed" {...props}>{processedChildren}</p>;
-                                                },
-                                                blockquote: ({ node, ...props }) => (
-                                                    <blockquote className={cn(
-                                                        "border-l-4 pl-4 my-3 italic",
-                                                        isDark ? "border-gray-600 text-gray-300" : "border-gray-300 text-gray-700"
-                                                    )} {...props} />
-                                                ),
-                                                hr: ({ node, ...props }) => (
-                                                    <hr className={cn(
-                                                        "my-2",
-                                                        isDark ? "border-gray-700" : "border-gray-300"
-                                                    )} {...props} />
-                                                ),
-                                                strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
-                                                em: ({ node, ...props }) => <em className="italic" {...props} />,
-                                                code(props) {
-                                                    const { children, className, node, ...rest } = props;
-                                                    const match = /language-(\w+)/.exec(className || '');
-                                                    return match ? (
-                                                        <SyntaxHighlighter
-                                                            language={match[1]}
-                                                            style={syntaxStyle}
-                                                            customStyle={{
-                                                                margin: '0.25rem 0',
-                                                                borderRadius: '0.5rem',
-                                                                fontSize: '0.75rem',
-                                                                padding: '0.75rem',
-                                                                background: isDark ? 'rgba(17, 24, 39, 0.8)' : 'rgba(249, 250, 251, 0.95)'
-                                                            }}
-                                                        >
-                                                            {String(children).replace(/\n$/, '')}
-                                                        </SyntaxHighlighter>
-                                                    ) : (
-                                                        <code className={cn(
-                                                            "px-1 py-0.5 rounded text-[12px] font-mono",
-                                                            isDark
-                                                                ? "bg-gray-800 text-gray-300"
-                                                                : "bg-gray-100 text-gray-800"
-                                                        )} {...rest}>
-                                                            {children}
-                                                        </code>
-                                                    );
-                                                }
-                                            }}
-                                        >
-                                            {completion.replace(/\\n/g, '\n')}
-                                        </ReactMarkdown></div>
-                                    ) : null}
-                                </div>
-
-                                {/* References footer */}
-                                {!isSearching && citationEntities.length > 0 && (
-                                    <div className={cn(
-                                        "animate-fade-in border-t px-4 py-3",
-                                        isDark ? "border-gray-800/50" : "border-gray-200/50"
-                                    )}>
-                                        <div className={cn(
-                                            "text-[10px] font-medium uppercase tracking-wider mb-2",
-                                            isDark ? "text-gray-500" : "text-gray-400"
-                                        )}>
-                                            Sources
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {citationEntities.map((entity) => (
-                                                <button
-                                                    key={entity.entity_id}
-                                                    onClick={() => handleEntityClick(entity.entity_id)}
-                                                    className={cn(
-                                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px]",
-                                                        "transition-colors cursor-pointer max-w-[280px]",
-                                                        isDark
-                                                            ? "bg-gray-800/60 text-gray-300 hover:bg-gray-700/80 hover:text-gray-100 border border-gray-700/50"
-                                                            : "bg-gray-50 text-gray-700 hover:bg-gray-100 hover:text-gray-900 border border-gray-200"
-                                                    )}
-                                                    title={`${entity.name} — ${entity.source}`}
-                                                >
-                                                    <span className="truncate font-medium">{entity.name}</span>
-                                                    <span className={cn(
-                                                        "shrink-0 text-[10px]",
-                                                        isDark ? "text-gray-500" : "text-gray-400"
-                                                    )}>
-                                                        {entity.source}
-                                                    </span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
                                 )}
                             </div>
                         )}

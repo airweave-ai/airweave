@@ -114,7 +114,7 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
                         isSearching={isSearching}
                         responseType={searchResponseType}
                         events={events as any[]}
-                        showTrace={tier !== "instant"}
+                        showTrace={tier !== "instant" && tier !== "classic"}
                     />
                 </div>
             )}
