@@ -67,4 +67,5 @@ def create_llm_from_override(model_override: str) -> LLMProtocol:
     if provider_cls is None:
         raise ValueError(f"No LLM class registered for provider: {provider.value}")
 
-    return provider_cls(model_spec=model_spec, max_retries=0)
+    # No fallback chain wrapping this provider, so use default retries
+    return provider_cls(model_spec=model_spec)
