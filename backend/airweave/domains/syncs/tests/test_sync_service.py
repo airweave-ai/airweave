@@ -292,3 +292,46 @@ async def test_run_writes_error_category(case: ErrorCategoryCase):
     assert call[2] == SyncJobStatus.FAILED
     # error_category is at index 6 in the tuple
     assert call[6] == case.expected_category
+
+
+# ---------------------------------------------------------------------------
+# _resolve_authentication_method — direct unit tests (not patched)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_auth_method_no_credential_id():
+    """Connection with integration_credential_id=None returns ''."""
+    connection = MagicMock()
+    connection.integration_credential_id = None
+    ctx = _mock_ctx()
+
+    result = await SyncService._resolve_authentication_method(connection, ctx)
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_resolve_auth_method_returns_method_from_db():
+    """Connection with credential_id, DB returns credential with authentication_method → returns it."""
+    cred_id = uuid4()
+    connection = MagicMock()
+    connection.integration_credential_id = cred_id
+    ctx = _mock_ctx()
+
+    credential = MagicMock()
+    credential.authentication_method = "oauth2"
+
+    mock_db = AsyncMock()
+
+    with (
+        patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx,
+        patch("airweave.crud.integration_credential.get", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = credential
+
+        result = await SyncService._resolve_authentication_method(connection, ctx)
+
+    assert result == "oauth2"
+    mock_get.assert_awaited_once_with(mock_db, id=cred_id, ctx=ctx)

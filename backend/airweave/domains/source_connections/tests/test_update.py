@@ -434,6 +434,99 @@ async def test_credential_update_direct_auth_missing_credential_record_raises():
         await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
 
 
+async def test_credential_update_unpauses_schedules():
+    """After credential update on SC with sync_id, unpause_sync_schedules is called."""
+    conn_id = uuid4()
+    cred_id = uuid4()
+    sync_id = uuid4()
+    sc = _make_sc(
+        connection_id=conn_id,
+        is_authenticated=True,
+        sync_id=sync_id,
+    )
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+
+    conn = MagicMock(spec=Connection)
+    conn.id = conn_id
+    conn.integration_credential_id = cred_id
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed(conn_id, conn)
+
+    cred = MagicMock(spec=IntegrationCredential)
+    cred.id = cred_id
+    cred_repo = FakeIntegrationCredentialRepository()
+    cred_repo.seed(cred_id, cred)
+
+    validation = FakeSourceValidationService()
+    validation.seed_auth_result("github", _AuthPayload(token="secret"))
+
+    temporal = FakeTemporalScheduleService()
+
+    svc = _build_service(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        cred_repo=cred_repo,
+        source_validation=validation,
+        temporal_schedule_service=temporal,
+    )
+
+    obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
+    result = await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+
+    assert result.id == sc.id
+    unpause_calls = [c for c in temporal._calls if c[0] == "unpause_sync_schedules"]
+    assert len(unpause_calls) == 1
+    assert unpause_calls[0][1] == sync_id
+    assert unpause_calls[0][2] == "Credentials updated via API"
+
+
+async def test_credential_update_unpause_failure_swallowed():
+    """When unpause_sync_schedules raises, update still completes without raising."""
+    conn_id = uuid4()
+    cred_id = uuid4()
+    sync_id = uuid4()
+    sc = _make_sc(
+        connection_id=conn_id,
+        is_authenticated=True,
+        sync_id=sync_id,
+    )
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+
+    conn = MagicMock(spec=Connection)
+    conn.id = conn_id
+    conn.integration_credential_id = cred_id
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed(conn_id, conn)
+
+    cred = MagicMock(spec=IntegrationCredential)
+    cred.id = cred_id
+    cred_repo = FakeIntegrationCredentialRepository()
+    cred_repo.seed(cred_id, cred)
+
+    validation = FakeSourceValidationService()
+    validation.seed_auth_result("github", _AuthPayload(token="secret"))
+
+    temporal = FakeTemporalScheduleService()
+    temporal.set_error(RuntimeError("Temporal unavailable"))
+
+    svc = _build_service(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        cred_repo=cred_repo,
+        source_validation=validation,
+        temporal_schedule_service=temporal,
+    )
+
+    obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
+    result = await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+
+    assert result.id == sc.id
+
+
 # ---------------------------------------------------------------------------
 # Cron validation -- table-driven (tests _validate_cron_schedule_for_source directly)
 # ---------------------------------------------------------------------------

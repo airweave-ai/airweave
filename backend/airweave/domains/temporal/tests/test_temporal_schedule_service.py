@@ -851,6 +851,32 @@ async def test_pause_sync_schedules_swallows_not_found():
 
 
 @pytest.mark.asyncio
+async def test_pause_sync_schedules_swallows_non_not_found_rpc_error():
+    """pause_sync_schedules swallows non-NOT_FOUND RPCError, logs warning, continues."""
+    svc = _build_svc()
+    sync_id = uuid4()
+    mock_pause = AsyncMock(
+        side_effect=_rpc_error("internal error", RPCStatusCode.INTERNAL)
+    )
+    with patch.object(svc, "pause_schedule", mock_pause):
+        await svc.pause_sync_schedules(sync_id, "test reason")
+
+    assert mock_pause.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_pause_sync_schedules_swallows_generic_exception():
+    """pause_sync_schedules swallows generic Exception, logs warning, continues."""
+    svc = _build_svc()
+    sync_id = uuid4()
+    mock_pause = AsyncMock(side_effect=RuntimeError("connection reset"))
+    with patch.object(svc, "pause_schedule", mock_pause):
+        await svc.pause_sync_schedules(sync_id, "test reason")
+
+    assert mock_pause.await_count == 3
+
+
+@pytest.mark.asyncio
 async def test_unpause_sync_schedules_success():
     """unpause_sync_schedules calls unpause_schedule 3 times with correct IDs."""
     svc = _build_svc()
@@ -879,6 +905,32 @@ async def test_unpause_sync_schedules_swallows_not_found():
     mock_unpause = AsyncMock(
         side_effect=_rpc_error("not found", RPCStatusCode.NOT_FOUND)
     )
+    with patch.object(svc, "unpause_schedule", mock_unpause):
+        await svc.unpause_sync_schedules(sync_id, "test reason")
+
+    assert mock_unpause.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_unpause_sync_schedules_swallows_non_not_found_rpc_error():
+    """unpause_sync_schedules swallows non-NOT_FOUND RPCError, logs warning, continues."""
+    svc = _build_svc()
+    sync_id = uuid4()
+    mock_unpause = AsyncMock(
+        side_effect=_rpc_error("internal error", RPCStatusCode.INTERNAL)
+    )
+    with patch.object(svc, "unpause_schedule", mock_unpause):
+        await svc.unpause_sync_schedules(sync_id, "test reason")
+
+    assert mock_unpause.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_unpause_sync_schedules_swallows_generic_exception():
+    """unpause_sync_schedules swallows generic Exception, logs warning, continues."""
+    svc = _build_svc()
+    sync_id = uuid4()
+    mock_unpause = AsyncMock(side_effect=RuntimeError("connection reset"))
     with patch.object(svc, "unpause_schedule", mock_unpause):
         await svc.unpause_sync_schedules(sync_id, "test reason")
 

@@ -1350,6 +1350,42 @@ class TestFinalizeCallback:
         with pytest.raises(ValueError, match="no connection_id"):
             await svc._finalize_callback(DB, source_conn, _ctx())
 
+    async def test_unpause_failure_after_oauth_callback_swallowed(self):
+        """unpause_sync_schedules failure is logged but not raised; response still returned."""
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        temporal_schedule_service = AsyncMock()
+        temporal_schedule_service.unpause_sync_schedules = AsyncMock(
+            side_effect=RuntimeError("temporal down")
+        )
+
+        sync_id = uuid4()
+        source_conn = SimpleNamespace(
+            sync_id=sync_id,
+            id=uuid4(),
+            connection_id=uuid4(),
+            connection_init_session_id=uuid4(),
+            readable_collection_id="col-abc",
+        )
+
+        svc = _service(
+            response_builder=builder,
+            event_bus=event_bus,
+            temporal_schedule_service=temporal_schedule_service,
+        )
+        svc._has_claim_token = AsyncMock(return_value=True)
+
+        result = await svc._finalize_callback(DB, source_conn, _ctx())
+
+        assert result is response
+        temporal_schedule_service.unpause_sync_schedules.assert_awaited_once_with(
+            sync_id, reason="OAuth re-authentication completed"
+        )
+
     async def test_auth_completed_event_failure_is_fatal(self):
         response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
