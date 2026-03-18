@@ -87,9 +87,15 @@ CASES = [
         expected_category=SourceConnectionErrorCategory.AUTH_PROVIDER_ACCOUNT_GONE,
     ),
     ClassifyCase(
-        name="token_provider_error_oauth",
+        name="token_provider_error_oauth_byoc",
         exc=TokenProviderError("failed", provider_kind="oauth"),
         auth_method="oauth_byoc",
+        expected_category=SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID,
+    ),
+    ClassifyCase(
+        name="token_provider_error_oauth_browser",
+        exc=TokenProviderError("failed", provider_kind="oauth"),
+        auth_method="oauth_browser",
         expected_category=SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,
     ),
     ClassifyCase(
@@ -97,6 +103,18 @@ CASES = [
         exc=TokenProviderError("failed", provider_kind="static"),
         auth_method="direct",
         expected_category=SourceConnectionErrorCategory.API_KEY_INVALID,
+    ),
+    ClassifyCase(
+        name="token_invalid_oauth_byoc",
+        exc=TokenCredentialsInvalidError("bad", provider_kind="oauth"),
+        auth_method="oauth_byoc",
+        expected_category=SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID,
+    ),
+    ClassifyCase(
+        name="source_auth_error_oauth_byoc",
+        exc=SourceAuthError("401"),
+        auth_method="oauth_byoc",
+        expected_category=SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID,
     ),
     ClassifyCase(
         name="source_token_refresh_oauth",

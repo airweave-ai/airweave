@@ -224,12 +224,12 @@ class ResponseBuilder(ResponseBuilderProtocol):
             db, source_conn.readable_auth_provider_id, ctx
         )
         if not connection:
-            return None
-        try:
-            entry = self._auth_provider_registry.get(connection.short_name)
-            return entry.settings_url
-        except KeyError:
-            return None
+            raise ValueError(
+                f"Auth provider connection {source_conn.readable_auth_provider_id!r} "
+                f"referenced by source connection {source_conn.id} does not exist"
+            )
+        entry = self._auth_provider_registry.get(connection.short_name)
+        return entry.settings_url
 
     async def _resolve_auth_method(
         self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext

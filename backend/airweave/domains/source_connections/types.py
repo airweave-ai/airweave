@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Optional, TypedDict
+from typing import Any, Dict, Optional, TypedDict
 from uuid import UUID
 
 from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
-
-if TYPE_CHECKING:
-    from airweave.models.sync_job import SyncJob
-    from airweave.schemas.source_connection import SyncDetails
+from airweave.models.sync_job import SyncJob
+from airweave.schemas.source_connection import SyncDetails
 
 
 class ScheduleInfo(TypedDict):

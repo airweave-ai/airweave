@@ -18,15 +18,18 @@ from airweave.domains.sources.token_providers.exceptions import (
     TokenProviderError,
 )
 
-_AUTH_METHOD_OAUTH_PREFIXES = ("oauth",)
+_AUTH_METHOD_CLIENT_CREDS = "oauth_byoc"
 _AUTH_METHOD_AUTH_PROVIDER = "auth_provider"
+_AUTH_METHOD_OAUTH_PREFIX = "oauth"
 
 
 def _category_for_auth_method(
     auth_method: str,
 ) -> SourceConnectionErrorCategory:
     """Map a generic credential-invalid error to a category based on auth method."""
-    if auth_method.startswith(_AUTH_METHOD_OAUTH_PREFIXES):
+    if auth_method == _AUTH_METHOD_CLIENT_CREDS:
+        return SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID
+    if auth_method.startswith(_AUTH_METHOD_OAUTH_PREFIX):
         return SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED
     if auth_method == _AUTH_METHOD_AUTH_PROVIDER:
         return SourceConnectionErrorCategory.AUTH_PROVIDER_CREDENTIALS_INVALID
