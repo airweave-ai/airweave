@@ -222,7 +222,7 @@ class AdminSyncQueryBuilder:
 class AdminSyncService:
     """Service for admin sync operations with optimized bulk fetching."""
 
-    MAX_CONCURRENT_DESTINATION_QUERIES = 10  # Reduced from 20 to prevent overload
+    MAX_CONCURRENT_DESTINATION_QUERIES = 10
 
     async def list_syncs_with_metadata(
         self,
@@ -367,9 +367,10 @@ class AdminSyncService:
             return {s.id: None for s in syncs}
 
         start = time.monotonic()
-        from airweave.platform.sync.arf.service import ArfService
+        # [code blue] todo: inject arf_service once admin domain is extracted
+        from airweave.core import container as container_mod
 
-        arf_service = ArfService()
+        arf_service = container_mod.container.arf_service
 
         async def get_arf_count_safe(sync_id: UUID) -> Optional[int]:
             try:

@@ -1,7 +1,7 @@
 """Fake repositories for OAuth domain testing."""
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,13 +57,25 @@ class FakeOAuthInitSessionRepository:
     def __init__(self) -> None:
         self._store_by_state: dict[str, ConnectionInitSession] = {}
         self._store_by_token: dict[str, ConnectionInitSession] = {}
+        self._store_by_id: dict[UUID, ConnectionInitSession] = {}
         self._calls: list[tuple[Any, ...]] = []
 
     def seed_by_state(self, state: str, obj: ConnectionInitSession) -> None:
         self._store_by_state[state] = obj
+        if hasattr(obj, "id") and obj.id:
+            self._store_by_id[cast(UUID, obj.id)] = obj
 
     def seed_by_oauth_token(self, oauth_token: str, obj: ConnectionInitSession) -> None:
         self._store_by_token[oauth_token] = obj
+        if hasattr(obj, "id") and obj.id:
+            self._store_by_id[cast(UUID, obj.id)] = obj
+
+    def seed_by_id(self, id: UUID, obj: ConnectionInitSession) -> None:
+        self._store_by_id[id] = obj
+
+    async def get(self, db: AsyncSession, *, id: UUID, ctx: Any) -> Optional[ConnectionInitSession]:
+        self._calls.append(("get", id))
+        return self._store_by_id.get(id)
 
     async def get_by_state_no_auth(
         self, db: AsyncSession, *, state: str

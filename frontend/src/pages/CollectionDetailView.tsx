@@ -374,17 +374,41 @@ const Collections = () => {
         }
     };
 
-    // ** NEW: Handle OAuth callback and toast notification **
+    // ** Handle OAuth callback: verify claim token and trigger deferred sync **
     useEffect(() => {
-        if (isFromOAuthSuccess) {
-            const newSourceId = searchParams.get("source_connection_id");
+        if (!isFromOAuthSuccess) return;
 
-            // Always refresh source connections when returning from OAuth
+        const newSourceId = searchParams.get("source_connection_id");
+
+        const handleOAuthReturn = async () => {
+            let verifyFailed = false;
+
+            if (newSourceId) {
+                const claimToken = sessionStorage.getItem(`oauth_claim_token:${newSourceId}`);
+                if (claimToken) {
+                    try {
+                        const resp = await apiClient.post(
+                            `/source-connections/${newSourceId}/verify-oauth`,
+                            { claim_token: claimToken }
+                        );
+                        if (resp.ok) {
+                            sessionStorage.removeItem(`oauth_claim_token:${newSourceId}`);
+                        } else {
+                            console.error("verify-oauth failed:", resp.status);
+                            verifyFailed = true;
+                        }
+                    } catch (err) {
+                        console.error("Failed to verify OAuth flow:", err);
+                        verifyFailed = true;
+                    }
+                }
+            }
+
             if (collection?.readable_id) {
                 fetchSourceConnections(collection.readable_id);
             }
 
-            if (newSourceId && sourceConnections.length > 0) {
+            if (!verifyFailed && newSourceId && sourceConnections.length > 0) {
                 const newConnection = sourceConnections.find(c => c.id === newSourceId);
                 if (newConnection) {
                     toast({
@@ -394,13 +418,16 @@ const Collections = () => {
                 }
             }
 
-            // Clean up URL params
-            const newSearchParams = new URLSearchParams(searchParams);
-            newSearchParams.delete("status");
-            newSearchParams.delete("source_connection_id");
-            newSearchParams.delete("collection");
-            setSearchParams(newSearchParams, { replace: true });
-        }
+            if (!verifyFailed) {
+                const newSearchParams = new URLSearchParams(searchParams);
+                newSearchParams.delete("status");
+                newSearchParams.delete("source_connection_id");
+                newSearchParams.delete("collection");
+                setSearchParams(newSearchParams, { replace: true });
+            }
+        };
+
+        handleOAuthReturn();
     }, [isFromOAuthSuccess, collection?.readable_id, searchParams, setSearchParams]);
 
     // ** NEW: Refresh connections when panel or creation modal closes, in case a new one was added **

@@ -104,6 +104,7 @@ from .source_connection import (
     SourceConnectionUpdate,
     SyncDetails,
     SyncJobDetails,
+    VerifyOAuthRequest,
 )
 from .source_rate_limit import (
     SourceRateLimit,

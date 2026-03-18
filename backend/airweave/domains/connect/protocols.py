@@ -82,6 +82,16 @@ class ConnectServiceProtocol(Protocol):
         """Create a source connection via Connect session."""
         ...
 
+    async def verify_oauth(
+        self,
+        db: AsyncSession,
+        connection_id: UUID,
+        claim_token: str,
+        session: ConnectSessionContext,
+    ) -> schemas.SourceConnection:
+        """Verify OAuth flow ownership via Connect session."""
+        ...
+
     async def get_connection_jobs(
         self,
         db: AsyncSession,

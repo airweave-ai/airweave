@@ -1,6 +1,6 @@
 """Fake collection repository for testing."""
 
-from typing import Any, List, Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.collections.protocols import CollectionListResult
 from airweave.models.collection import Collection
 
 
@@ -48,7 +49,7 @@ class FakeCollectionRepository:
         skip: int = 0,
         limit: int = 100,
         search_query: Optional[str] = None,
-    ) -> List[Collection]:
+    ) -> CollectionListResult:
         """Return seeded collections with optional search filter."""
         self._calls.append(("get_multi", db, ctx, skip, limit, search_query))
         items = list(self._readable_store.values())
@@ -59,7 +60,7 @@ class FakeCollectionRepository:
                 for c in items
                 if q in getattr(c, "name", "").lower() or q in getattr(c, "readable_id", "").lower()
             ]
-        return items[skip : skip + limit]
+        return CollectionListResult(collections=items[skip : skip + limit])
 
     async def count(
         self, db: AsyncSession, *, ctx: ApiContext, search_query: Optional[str] = None

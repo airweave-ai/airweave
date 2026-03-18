@@ -10,7 +10,7 @@ const MODES: SessionMode[] = ["all", "connect", "manage", "reauth"];
 
 export function ModePicker({ mode, onChange }: ModePickerProps) {
   return (
-    <div className="flex gap-1 rounded-lg bg-muted/50 p-0.5">
+    <div className="flex gap-1 rounded-lg bg-muted/70 p-1">
       {MODES.map((m) => (
         <button
           key={m}
@@ -18,8 +18,8 @@ export function ModePicker({ mode, onChange }: ModePickerProps) {
           className={cn(
             "flex-1 py-1.5 rounded-md text-xs font-medium transition-all capitalize text-center",
             mode === m
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
+              : "text-foreground/50 hover:text-foreground/80"
           )}
         >
           {m}

@@ -197,8 +197,8 @@ async def test_text_exceeding_token_limit_raises_input_error():
 
 @pytest.mark.asyncio
 async def test_token_based_batch_splitting():
-    """Sub-batch exceeding 300K tokens splits recursively."""
-    # 10 texts, each ~50K tokens → 500K total → must split
+    """Sub-batch exceeding 100K tokens splits recursively."""
+    # 10 texts, each ~50K tokens → 500K total → must split recursively
     encoder_mock = MagicMock()
     encoder_mock.encode.side_effect = lambda text, **kwargs: list(range(50_000))
 
@@ -221,8 +221,9 @@ async def test_token_based_batch_splitting():
     result = await embedder.embed_many(texts)
 
     assert len(result) == 10
-    # Should have split: 10 → 5+5, each 250K < 300K → 2 calls
-    assert call_count == 2
+    # With 100K limit, 50K per text: each sub-batch can hold at most 2 texts
+    # 10 texts → splits down to pairs/singles → multiple API calls
+    assert call_count > 2
 
 
 # ===========================================================================

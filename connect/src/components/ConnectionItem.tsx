@@ -1,5 +1,5 @@
 import { Menu } from "@base-ui/react/menu";
-import { MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
 import { getStatusColor, getStatusLabel } from "../lib/connection-utils";
 import type {
   ConnectLabels,
@@ -12,6 +12,7 @@ import { SyncProgressIndicator } from "./SyncProgressIndicator";
 interface ConnectionItemProps {
   connection: SourceConnectionListItem;
   onReconnect?: () => void;
+  isReconnectLoading?: boolean;
   onDelete: () => void;
   labels: Required<ConnectLabels>;
   /** Real-time sync progress when connection is syncing */
@@ -23,6 +24,7 @@ interface ConnectionItemProps {
 export function ConnectionItem({
   connection,
   onReconnect,
+  isReconnectLoading = false,
   onDelete,
   labels,
   syncProgress,
@@ -69,16 +71,32 @@ export function ConnectionItem({
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <span
-          className="text-xs px-2 py-1 rounded-full shrink-0 border"
-          style={{
-            backgroundColor: `color-mix(in srgb, ${statusColor} 5%, transparent)`,
-            borderColor: `color-mix(in srgb, ${statusColor} 20%, transparent)`,
-            color: statusColor,
-          }}
-        >
-          {getStatusLabel(connection.status, labels)}
-        </span>
+        {isReconnectLoading ? (
+          <span
+            className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full shrink-0 border"
+            style={{
+              backgroundColor:
+                "color-mix(in srgb, var(--connect-primary) 5%, transparent)",
+              borderColor:
+                "color-mix(in srgb, var(--connect-primary) 20%, transparent)",
+              color: "var(--connect-primary)",
+            }}
+          >
+            <Loader2 size={12} className="animate-spin" />
+            {labels.menuReconnect}...
+          </span>
+        ) : (
+          <span
+            className="text-xs px-2 py-1 rounded-full shrink-0 border"
+            style={{
+              backgroundColor: `color-mix(in srgb, ${statusColor} 5%, transparent)`,
+              borderColor: `color-mix(in srgb, ${statusColor} 20%, transparent)`,
+              color: statusColor,
+            }}
+          >
+            {getStatusLabel(connection.status, labels)}
+          </span>
+        )}
         <Menu.Root>
           <Menu.Trigger className="p-1 rounded cursor-pointer border-none bg-transparent flex items-center justify-center transition-colors duration-150 hover:bg-black/10 dark:hover:bg-white/10 [color:var(--connect-text-muted)] hover:[color:var(--connect-text)]">
             <MoreHorizontal size={16} />

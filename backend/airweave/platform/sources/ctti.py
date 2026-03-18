@@ -5,7 +5,7 @@ from the studies table, and creates WebEntity instances with ClinicalTrials.gov 
 """
 
 import asyncio
-import random
+import secrets
 from typing import Any, AsyncGenerator, Dict, Optional, Union
 
 import asyncpg
@@ -141,7 +141,7 @@ class CTTISource(BaseSource):
                 if attempt < max_retries:
                     # Calculate delay with exponential backoff and jitter
                     base_delay = 2**attempt  # 1s, 2s, 4s
-                    jitter = random.uniform(0.1, 0.5)
+                    jitter = 0.1 + secrets.randbelow(401) / 1000
                     delay = base_delay + jitter
 
                     self.logger.warning(
@@ -189,6 +189,58 @@ class CTTISource(BaseSource):
             await self.pool.close()
             self.pool = None
 
+    async def _fetch_records(self, last_nct_id: str, remaining: int, total_synced: int, limit: int):
+        """Fetch clinical trial records from the AACT database.
+
+        Handles sync-mode logging, query construction, and query execution
+        with retry logic.
+        """
+        if last_nct_id:
+            self.logger.debug(
+                f"📊 Incremental sync from NCT_ID > {last_nct_id} "
+                f"({total_synced}/{limit} synced, {remaining} remaining)"
+            )
+        else:
+            self.logger.debug(f"🔄 Full sync (no cursor), limit={limit}")
+
+        pool = await self._ensure_pool()
+
+        if last_nct_id:
+            query = f"""
+                SELECT nct_id
+                FROM "{self.AACT_SCHEMA}"."{self.AACT_TABLE}"
+                WHERE nct_id IS NOT NULL AND nct_id > $1
+                ORDER BY nct_id ASC
+                LIMIT {remaining}
+            """
+            query_args = [last_nct_id]
+        else:
+            query = f"""
+                SELECT nct_id
+                FROM "{self.AACT_SCHEMA}"."{self.AACT_TABLE}"
+                WHERE nct_id IS NOT NULL
+                ORDER BY nct_id ASC
+                LIMIT {remaining}
+            """
+            query_args = []
+
+        async def _execute_query():
+            async with pool.acquire() as conn:
+                if last_nct_id:
+                    self.logger.debug(
+                        f"Fetching up to {remaining} clinical trials from AACT "
+                        f"(NCT_ID > {last_nct_id})"
+                    )
+                else:
+                    self.logger.debug(
+                        f"Fetching up to {remaining} clinical trials from AACT (full sync)"
+                    )
+                records = await conn.fetch(query, *query_args)
+                self.logger.debug(f"Fetched {len(records)} clinical trial records")
+                return records
+
+        return await self._retry_with_backoff(_execute_query)
+
     async def generate_entities(self) -> AsyncGenerator[CTTIWebEntity, None]:
         """Generate WebEntity instances for each nct_id in the AACT studies table.
 
@@ -218,55 +270,7 @@ class CTTISource(BaseSource):
                 )
                 return
 
-            # Log sync mode
-            if last_nct_id:
-                self.logger.debug(
-                    f"📊 Incremental sync from NCT_ID > {last_nct_id} "
-                    f"({total_synced}/{limit} synced, {remaining} remaining)"
-                )
-            else:
-                self.logger.debug(f"🔄 Full sync (no cursor), limit={limit}")
-
-            pool = await self._ensure_pool()
-
-            # Build query with cursor-based filtering
-            # Use parameterized query to prevent SQL injection
-            # Use 'remaining' as the limit to enforce total limit across syncs
-            if last_nct_id:
-                query = f"""
-                    SELECT nct_id
-                    FROM "{self.AACT_SCHEMA}"."{self.AACT_TABLE}"
-                    WHERE nct_id IS NOT NULL AND nct_id > $1
-                    ORDER BY nct_id ASC
-                    LIMIT {remaining}
-                """
-                query_args = [last_nct_id]
-            else:
-                query = f"""
-                    SELECT nct_id
-                    FROM "{self.AACT_SCHEMA}"."{self.AACT_TABLE}"
-                    WHERE nct_id IS NOT NULL
-                    ORDER BY nct_id ASC
-                    LIMIT {remaining}
-                """
-                query_args = []
-
-            async def _execute_query():
-                async with pool.acquire() as conn:
-                    if last_nct_id:
-                        self.logger.debug(
-                            f"Fetching up to {remaining} clinical trials from AACT "
-                            f"(NCT_ID > {last_nct_id})"
-                        )
-                    else:
-                        self.logger.debug(
-                            f"Fetching up to {remaining} clinical trials from AACT (full sync)"
-                        )
-                    records = await conn.fetch(query, *query_args)
-                    self.logger.debug(f"Fetched {len(records)} clinical trial records")
-                    return records
-
-            records = await self._retry_with_backoff(_execute_query)
+            records = await self._fetch_records(last_nct_id, remaining, total_synced, limit)
 
             self.logger.debug(f"Processing {len(records)} records into entities")
             entities_created = 0

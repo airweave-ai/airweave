@@ -19,11 +19,11 @@ export type NavigateView =
 // postMessage types - messages sent from parent to child
 export type ParentToChildMessage =
   | {
-      type: "TOKEN_RESPONSE";
-      requestId: string;
-      token: string;
-      theme?: ConnectTheme;
-    }
+    type: "TOKEN_RESPONSE";
+    requestId: string;
+    token: string;
+    theme?: ConnectTheme;
+  }
   | { type: "TOKEN_ERROR"; requestId: string; error: string }
   | { type: "SET_THEME"; theme: ConnectTheme }
   | { type: "NAVIGATE"; view: NavigateView };

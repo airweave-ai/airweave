@@ -147,6 +147,10 @@ export const defaultLabels: Required<ConnectLabels> = {
   folderSelectionHeading: "Select folders to sync",
   folderSelectionStartSync: "Start sync",
   folderSelectionCount: "{count} folders",
+
+  // Action errors
+  errorDeleteFailed: "Failed to delete connection. Please try again.",
+  errorReconnectFailed: "Failed to reconnect. Please try again.",
 };
 
 // Default options

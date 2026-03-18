@@ -6,10 +6,14 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.api.context import ApiContext, ConnectContext
 from airweave.core.logging import ContextualLogger
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.oauth.types import OAuth1TokenResponse, OAuthBrowserInitiationResult
+from airweave.domains.oauth.types import (
+    OAuth1TokenResponse,
+    OAuthBrowserInitiationResult,
+    RefreshResult,
+)
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings, OAuth2TokenResponse
 from airweave.schemas.source_connection import SourceConnection as SourceConnectionSchema
@@ -124,6 +128,20 @@ class OAuth2ServiceProtocol(Protocol):
         """Refresh an OAuth2 access token."""
         ...
 
+    async def refresh_and_persist(
+        self,
+        db: AsyncSession,
+        integration_short_name: str,
+        connection_id: UUID,
+        ctx: ApiContext,
+        config_fields: Optional[dict] = None,
+    ) -> RefreshResult:
+        """Load credentials, refresh token, persist rotated refresh_token.
+
+        Returns a RefreshResult with the new access_token and optional expires_in.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # Init session + redirect session repositories
@@ -154,6 +172,16 @@ class OAuthInitSessionRepositoryProtocol(Protocol):
         uow: UnitOfWork,
     ) -> ConnectionInitSession:
         """Persist a new init session."""
+        ...
+
+    async def get(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+    ) -> Optional[ConnectionInitSession]:
+        """Fetch an init session by ID (org-scoped)."""
         ...
 
     async def mark_completed(
@@ -277,6 +305,9 @@ class OAuthFlowServiceProtocol(Protocol):
         redirect_url: Optional[str] = None,
         template_configs: Optional[dict] = None,
         additional_overrides: Optional[Dict[str, Any]] = None,
+        initiator_user_id: Optional[UUID] = None,
+        initiator_session_id: Optional[UUID] = None,
+        claim_token_hash: Optional[str] = None,
     ) -> ConnectionInitSession:
         """Persist an init session for a new OAuth flow."""
         ...
@@ -328,4 +359,15 @@ class OAuthCallbackServiceProtocol(Protocol):
 
         Exchange verifier, wire credential + connection, trigger sync.
         """
+        ...
+
+    async def verify_oauth_flow(
+        self,
+        db: AsyncSession,
+        *,
+        source_connection_id: UUID,
+        claim_token: str,
+        ctx: ApiContext | ConnectContext,
+    ) -> SourceConnectionSchema:
+        """Verify OAuth flow ownership via claim token and trigger deferred sync."""
         ...

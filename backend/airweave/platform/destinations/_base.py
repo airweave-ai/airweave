@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Dict, List, Optional
 from uuid import UUID
 
+from pydantic import BaseModel
+
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.entities._base import BaseEntity
@@ -13,6 +15,21 @@ from airweave.schemas.search_result import AirweaveSearchResult
 
 class BaseDestination(ABC):
     """Common base destination class. This is the umbrella interface for all destinations."""
+
+    # Identity (set by @destination decorator)
+    is_destination: ClassVar[bool] = False
+    destination_name: ClassVar[str] = ""
+    short_name: ClassVar[str] = ""
+    auth_config_class: ClassVar[Optional[type[BaseModel]]] = None
+    config_class: ClassVar[Optional[type[BaseModel]]] = None
+
+    # Capabilities (set by @destination decorator)
+    supports_upsert: ClassVar[bool] = True
+    supports_delete: ClassVar[bool] = True
+    supports_vector: ClassVar[bool] = False
+    max_batch_size: ClassVar[int] = 1000
+    requires_client_embedding: ClassVar[bool] = True
+    supports_temporal_relevance: ClassVar[bool] = True
 
     # Class variables for integration metadata
     _labels: ClassVar[List[str]] = []

@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../lib/api";
 import type { ConnectLabels, Source } from "../lib/types";
 import { BackButton } from "./BackButton";
-import { LoadingScreen } from "./LoadingScreen";
 import { PageLayout } from "./PageLayout";
+import { SourceItemSkeleton } from "./Skeleton";
 import { SourceItem } from "./SourceItem";
 
 interface SourcesListProps {
@@ -31,8 +31,12 @@ export function SourcesList({
   return (
     <PageLayout title={labels.sourcesListHeading} headerLeft={backButton}>
       {isLoading && (
-        <div className="h-full flex items-center justify-center">
-          <LoadingScreen inline />
+        <div className="flex flex-col gap-2 pb-4">
+          <SourceItemSkeleton />
+          <SourceItemSkeleton />
+          <SourceItemSkeleton />
+          <SourceItemSkeleton />
+          <SourceItemSkeleton />
         </div>
       )}
 

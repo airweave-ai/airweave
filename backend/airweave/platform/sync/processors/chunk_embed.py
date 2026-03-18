@@ -73,7 +73,7 @@ class ChunkEmbedProcessor:
             entity.textual_representation = None
 
         # Step 5: Embed chunks
-        await self._embed_entities(chunk_entities, runtime)
+        await self._embed_entities(chunk_entities, sync_context, runtime)
 
         sync_context.logger.debug(
             f"[ChunkEmbedProcessor] {len(entities)} entities -> {len(chunk_entities)} chunks"
@@ -216,6 +216,7 @@ class ChunkEmbedProcessor:
     async def _embed_entities(
         self,
         chunk_entities: List[BaseEntity],
+        sync_context: "SyncContext",
         runtime: "SyncRuntime",
     ) -> None:
         """Compute dense and sparse embeddings for all destinations.
@@ -230,11 +231,27 @@ class ChunkEmbedProcessor:
         if not chunk_entities:
             return
 
+        if runtime.dense_embedder is None:
+            return
+
         expected_dims = runtime.dense_embedder.dimensions
 
         # Dense embeddings (provider-specific dimensions for neural search)
-        dense_texts = [e.textual_representation for e in chunk_entities]
-        dense_results = await runtime.dense_embedder.embed_many(dense_texts)
+        dense_texts = [e.textual_representation or "" for e in chunk_entities]
+        entity_ids = [e.entity_id for e in chunk_entities]
+        sync_context.logger.info(
+            "[ChunkEmbedProcessor] Embedding %d chunk entities. Entity IDs: %s",
+            len(chunk_entities),
+            entity_ids,
+        )
+        try:
+            dense_results = await runtime.dense_embedder.embed_many(dense_texts)
+        except Exception:
+            sync_context.logger.error(
+                "[ChunkEmbedProcessor] Dense embedding failed for entity IDs: %s",
+                entity_ids,
+            )
+            raise
         dense_embeddings = [r.vector for r in dense_results]
         if (
             dense_embeddings

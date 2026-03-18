@@ -170,7 +170,7 @@ class TestChunkEmbedProcessor:
 
     @pytest.mark.asyncio
     async def test_embed_entities_calls_both_embedders(
-        self, processor, mock_runtime
+        self, processor, mock_sync_context, mock_runtime
     ):
         """Test both dense and sparse embedders are called."""
         mock_entity = MagicMock()
@@ -186,7 +186,7 @@ class TestChunkEmbedProcessor:
         mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
         mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
-        await processor._embed_entities(chunk_entities, mock_runtime)
+        await processor._embed_entities(chunk_entities, mock_sync_context, mock_runtime)
 
         # Verify both embedders called
         mock_runtime.dense_embedder.embed_many.assert_called_once()
@@ -194,7 +194,7 @@ class TestChunkEmbedProcessor:
 
     @pytest.mark.asyncio
     async def test_embed_entities_assigns_embeddings(
-        self, processor, mock_runtime
+        self, processor, mock_sync_context, mock_runtime
     ):
         """Test embeddings assigned to entity system metadata."""
         mock_entity = MagicMock()
@@ -214,7 +214,7 @@ class TestChunkEmbedProcessor:
         mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
         mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[sparse_embedding])
 
-        await processor._embed_entities(chunk_entities, mock_runtime)
+        await processor._embed_entities(chunk_entities, mock_sync_context, mock_runtime)
 
         # Check embeddings assigned
         assert mock_entity.airweave_system_metadata.dense_embedding == dense_vector
@@ -222,7 +222,7 @@ class TestChunkEmbedProcessor:
 
     @pytest.mark.asyncio
     async def test_embed_entities_uses_full_json_for_sparse(
-        self, processor, mock_runtime
+        self, processor, mock_sync_context, mock_runtime
     ):
         """Test sparse embedder receives full entity JSON."""
         mock_entity = MagicMock()
@@ -240,7 +240,7 @@ class TestChunkEmbedProcessor:
         mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
         mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
 
-        await processor._embed_entities(chunk_entities, mock_runtime)
+        await processor._embed_entities(chunk_entities, mock_sync_context, mock_runtime)
 
         # Verify sparse embedder got JSON strings
         call_args = mock_runtime.sparse_embedder.embed_many.call_args[0][0]
@@ -254,7 +254,7 @@ class TestChunkEmbedProcessor:
 
     @pytest.mark.asyncio
     async def test_embed_entities_validates_embeddings_exist(
-        self, processor, mock_runtime
+        self, processor, mock_sync_context, mock_runtime
     ):
         """Test validation that all entities have embeddings."""
         mock_entity = MagicMock()
@@ -273,9 +273,32 @@ class TestChunkEmbedProcessor:
 
         # Should raise error
         with pytest.raises(Exception) as exc_info:
-            await processor._embed_entities(chunk_entities, mock_runtime)
+            await processor._embed_entities(chunk_entities, mock_sync_context, mock_runtime)
 
         assert "no dense embedding" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_embed_entities_logs_error_on_dense_failure(
+        self, processor, mock_sync_context, mock_runtime
+    ):
+        """Test that dense embedding failure logs entity IDs and re-raises."""
+        mock_entity = MagicMock()
+        mock_entity.textual_representation = "Test"
+        mock_entity.entity_id = "test-123"
+        mock_entity.airweave_system_metadata = MagicMock()
+
+        mock_runtime.dense_embedder.embed_many = AsyncMock(
+            side_effect=RuntimeError("API error")
+        )
+
+        with pytest.raises(RuntimeError, match="API error"):
+            await processor._embed_entities(
+                [mock_entity], mock_sync_context, mock_runtime
+            )
+
+        mock_sync_context.logger.error.assert_called_once()
+        log_args = mock_sync_context.logger.error.call_args[0]
+        assert "test-123" in str(log_args)
 
     @pytest.mark.asyncio
     async def test_full_pipeline_with_mocks(

@@ -1208,18 +1208,9 @@ class ZohoCRMSource(BaseSource):
 
         Note: Zoho uses 'Zoho-oauthtoken' header format, not standard 'Bearer'.
         """
-        # DEBUG: Log token state
-        self.logger.info(
-            f"🔍 validate() - self.access_token exists: {bool(getattr(self, 'access_token', None))}"
-        )
-        if getattr(self, "access_token", None):
-            self.logger.info(
-                f"🔍 validate() - self.access_token preview: {self.access_token[:20]}..."
-            )
-
         token = await self.get_access_token()
         self.logger.info(
-            (f"🔍 validate() - get_access_token() returned: {token[:20] if token else 'None'}...")
+            f"🔍 validate() - get_access_token() returned: {token[:20] if token else 'None'}..."
         )
 
         if not token:

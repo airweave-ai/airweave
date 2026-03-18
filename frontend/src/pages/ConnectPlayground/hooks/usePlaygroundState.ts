@@ -34,19 +34,19 @@ export interface PlaygroundConfig {
 }
 
 export const DEFAULT_DARK: ThemeColors = {
-  background: "#0f172a",
-  surface: "#1e293b",
-  primary: "#06b6d4",
-  text: "#ffffff",
-  textMuted: "#9ca3af",
-  border: "#334155",
+  background: "#060606",
+  surface: "#141414",
+  primary: "#1692e5",
+  text: "#fafcfe",
+  textMuted: "#b3b3b3",
+  border: "#1f1f1f",
 };
 
 export const DEFAULT_LIGHT: ThemeColors = {
   background: "#ffffff",
-  surface: "#f9fafb",
-  primary: "#0891b2",
-  text: "#111827",
+  surface: "#f5f5f7",
+  primary: "#1692e5",
+  text: "#1a1a1a",
   textMuted: "#6b7280",
   border: "#e5e7eb",
 };
@@ -61,8 +61,8 @@ const INITIAL_CONFIG: PlaygroundConfig = {
   modal: {
     shadow: "lg",
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#334155",
+    borderWidth: 0,
+    borderColor: "#1f1f1f",
   },
 };
 

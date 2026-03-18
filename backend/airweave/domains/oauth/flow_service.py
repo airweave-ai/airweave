@@ -4,7 +4,7 @@ Owns URL generation, token exchange, and session state persistence.
 Does NOT know about source connections, credentials, or syncs.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 from uuid import UUID
 
@@ -22,7 +22,8 @@ from airweave.domains.oauth.protocols import (
 )
 from airweave.domains.oauth.types import OAuth1TokenResponse, OAuthBrowserInitiationResult
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
-from airweave.platform.auth.schemas import OAuth1Settings, OAuth2TokenResponse
+from airweave.models.redirect_session import RedirectSession
+from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings, OAuth2TokenResponse
 from airweave.platform.auth.settings import IntegrationSettings
 
 
@@ -80,6 +81,12 @@ class OAuthFlowService:
                 detail=f"OAuth not configured for source: {short_name}",
             )
 
+        if not isinstance(oauth_settings, OAuth2Settings):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Source {short_name} is not configured for OAuth2",
+            )
+
         api_callback = f"{self._settings.api_url}/source-connections/callback"
 
         try:
@@ -131,6 +138,11 @@ class OAuthFlowService:
         api_callback = f"{self._settings.api_url}/source-connections/callback"
         effective_consumer_key = consumer_key or oauth_settings.consumer_key
         effective_consumer_secret = consumer_secret or oauth_settings.consumer_secret
+        if not effective_consumer_secret:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing consumer_secret for OAuth1 source: {short_name}",
+            )
 
         request_token_response = await self._oauth1_service.get_request_token(
             request_token_url=oauth_settings.request_token_url,
@@ -252,6 +264,12 @@ class OAuthFlowService:
         """Exchange OAuth1 verifier for access token."""
         ctx.logger.info(f"Exchanging OAuth1 verifier for access token: {short_name}")
 
+        if not oauth_settings.consumer_secret:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing consumer_secret for OAuth1 source: {short_name}",
+            )
+
         return await self._oauth1_service.exchange_token(
             access_token_url=oauth_settings.access_token_url,
             consumer_key=oauth_settings.consumer_key,
@@ -282,6 +300,9 @@ class OAuthFlowService:
         redirect_url: Optional[str] = None,
         template_configs: Optional[dict] = None,
         additional_overrides: Optional[Dict[str, Any]] = None,
+        initiator_user_id: Optional[UUID] = None,
+        initiator_session_id: Optional[UUID] = None,
+        claim_token_hash: Optional[str] = None,
     ) -> ConnectionInitSession:
         """Persist an init session for a new OAuth flow.
 
@@ -303,7 +324,7 @@ class OAuthFlowService:
         if additional_overrides:
             overrides.update(additional_overrides)
 
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        expires_at = ConnectionInitSession.default_expires_at()
 
         return await self._init_session_repo.create(
             db,
@@ -316,6 +337,9 @@ class OAuthFlowService:
                 "status": ConnectionInitStatus.PENDING,
                 "expires_at": expires_at,
                 "redirect_session_id": redirect_session_id,
+                "initiator_user_id": initiator_user_id,
+                "initiator_session_id": initiator_session_id,
+                "claim_token_hash": claim_token_hash,
             },
             ctx=ctx,
             uow=uow,
@@ -333,8 +357,7 @@ class OAuthFlowService:
         Returns:
             (proxy_url, proxy_expires, redirect_session_id)
         """
-        proxy_ttl = 1440  # 24 hours
-        proxy_expires = datetime.now(timezone.utc) + timedelta(minutes=proxy_ttl)
+        proxy_expires = RedirectSession.default_expires_at()
         code8 = await self._redirect_session_repo.generate_unique_code(db, length=8)
 
         redirect_sess = await self._redirect_session_repo.create(

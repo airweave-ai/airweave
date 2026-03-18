@@ -23,7 +23,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -109,10 +109,10 @@ class ZendeskSource(BaseSource):
             if response.status_code == 401:
                 self.logger.warning(f"Received 401 Unauthorized for {url}")
 
-                if self.token_manager:
+                if self.token_provider:
                     try:
                         # Force refresh the token
-                        new_token = await self.token_manager.refresh_on_unauthorized()
+                        new_token = await self.token_provider.force_refresh()
                         headers = {"Authorization": f"Bearer {new_token}"}
 
                         # Retry the request with the new token
@@ -140,18 +140,8 @@ class ZendeskSource(BaseSource):
 
     async def _get_auth_headers(self) -> Dict[str, str]:
         """Get OAuth authentication headers."""
-        # Use get_access_token method to avoid sending 'Bearer None'
         token = await self.get_access_token()
-        if not token:
-            raise ValueError("No access token available for authentication")
         return {"Authorization": f"Bearer {token}"}
-
-    async def get_access_token(self) -> Optional[str]:
-        """Get the current access token."""
-        if self.token_manager:
-            # Token manager handles token retrieval
-            return getattr(self, "access_token", None)
-        return getattr(self, "access_token", None)
 
     @staticmethod
     def _parse_datetime(value: Optional[str]) -> Optional[datetime]:

@@ -9,8 +9,8 @@ from uuid import UUID
 from airweave.core.protocols.registry import BaseRegistryEntry
 from airweave.models.connection import Connection
 from airweave.models.source_connection import SourceConnection
-from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.auth_providers.auth_result import AuthProviderMode
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.platform.configs._base import BaseConfig, Fields
 
 

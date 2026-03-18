@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { FileDown, Check } from "lucide-react";
+import { ClipboardCopy, Check, FileText, FileCode, BotMessageSquare } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { posthog } from "@/lib/posthog-provider";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { generatePythonServer, generateTypeScriptServer, generateReactClient, generateVanillaClient } from "../code/codeGen";
@@ -43,24 +43,6 @@ ${generateVanillaClient(config)}
 `;
 }
 
-function buildLlmsTxt(config: PlaygroundConfig): string {
-  return `# Airweave Connect
-> Embeddable widget for connecting data sources to Airweave.
-
-## Quick Start
-${generatePythonServer(config)}
-
-## React Integration
-${generateReactClient(config)}
-
-## API Reference
-- POST /connect/sessions — create a session token (server-side, API key auth)
-- Session tokens are scoped to a single collection, expire in 10 minutes
-- Modes: all, connect, manage, reauth
-- Docs: https://docs.airweave.ai/connect
-`;
-}
-
 function buildCursorRules(config: PlaygroundConfig): string {
   return `---
 description: Airweave Connect integration guide
@@ -92,10 +74,9 @@ ${generateReactClient(config)}
 }
 
 const FORMATS = [
-  { id: "markdown", label: "Markdown", build: buildMarkdown },
-  { id: "llms", label: "llms.txt", build: buildLlmsTxt },
-  { id: "cursor", label: "Cursor Rules", build: buildCursorRules },
-  { id: "claude", label: "Claude", build: buildMarkdown },
+  { id: "markdown", label: "Markdown", description: "Formatted documentation", icon: FileText, build: buildMarkdown },
+  { id: "cursor", label: "Cursor Rules", description: "Agent coding rules", icon: FileCode, build: buildCursorRules },
+  { id: "claude", label: "Claude", description: "Markdown for Claude", icon: BotMessageSquare, build: buildMarkdown },
 ] as const;
 
 export function ExportDropdown({ config }: ExportDropdownProps) {
@@ -111,26 +92,54 @@ export function ExportDropdown({ config }: ExportDropdownProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors">
-          <FileDown className="h-3.5 w-3.5" />
-          Copy as...
+        <button className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-xs font-medium bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+          <ClipboardCopy className="h-3 w-3" />
+          Export
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
-        {FORMATS.map((fmt) => (
-          <DropdownMenuItem
-            key={fmt.id}
-            onClick={() => handleCopy(fmt.id, fmt.build)}
-            className="text-xs gap-2"
-          >
-            {copied === fmt.id ? (
-              <Check className="h-3 w-3 text-emerald-500" />
-            ) : (
-              <div className="w-3" />
-            )}
-            {fmt.label}
-          </DropdownMenuItem>
-        ))}
+      <DropdownMenuContent align="end" className="w-56 p-1.5">
+        {FORMATS.map((fmt) => {
+          const Icon = fmt.icon;
+          const isCopied = copied === fmt.id;
+          return (
+            <button
+              key={fmt.id}
+              onClick={() => handleCopy(fmt.id, fmt.build)}
+              className={cn(
+                "w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-left transition-colors",
+                isCopied
+                  ? "bg-emerald-500/10"
+                  : "hover:bg-muted/80",
+              )}
+            >
+              <div
+                className={cn(
+                  "shrink-0 w-7 h-7 rounded-md flex items-center justify-center",
+                  isCopied
+                    ? "bg-emerald-500/15 text-emerald-500"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                {isCopied ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Icon className="h-3.5 w-3.5" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className={cn(
+                  "text-xs font-medium",
+                  isCopied ? "text-emerald-500" : "text-foreground",
+                )}>
+                  {isCopied ? "Copied!" : fmt.label}
+                </div>
+                <div className="text-[10px] text-muted-foreground/70 leading-tight">
+                  {fmt.description}
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

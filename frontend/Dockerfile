@@ -21,6 +21,8 @@ FROM node:20.20.0-alpine@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28
 
 WORKDIR /app
 
+RUN apk upgrade --no-cache
+
 # Install serve for hosting the built app
 RUN npm install -g serve
 

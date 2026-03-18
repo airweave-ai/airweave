@@ -1,11 +1,18 @@
 """Refactored platform decorators with simplified capabilities."""
 
-from typing import Callable, List, Optional, Type
+from typing import Callable, List, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.platform.destinations._base import BaseDestination
+from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+_SourceT = TypeVar("_SourceT", bound=BaseSource)
+_DestinationT = TypeVar("_DestinationT", bound=BaseDestination)
+_AuthProviderT = TypeVar("_AuthProviderT", bound=BaseAuthProvider)
 
 
 def source(
@@ -26,7 +33,7 @@ def source(
     supports_browse_tree: bool = False,
     feature_flag: Optional[str] = None,
     internal: bool = False,
-) -> Callable[[type], type]:
+) -> Callable[[type[_SourceT]], type[_SourceT]]:
     """Enhanced source decorator with OAuth type tracking and typed cursor support.
 
     Args:
@@ -92,7 +99,7 @@ def source(
         )
     """
 
-    def decorator(cls: type) -> type:
+    def decorator(cls: type[_SourceT]) -> type[_SourceT]:
         # Validate continuous sync configuration
         if supports_continuous and cursor_class is None:
             raise ValueError(
@@ -120,15 +127,6 @@ def source(
         cls.feature_flag = feature_flag
         cls.internal = internal
 
-        # Add validation method if not present
-        if not hasattr(cls, "validate"):
-
-            async def validate(self) -> bool:
-                """Default validation that always passes."""
-                return True
-
-            cls.validate = validate
-
         return cls
 
     return decorator
@@ -145,7 +143,7 @@ def destination(
     max_batch_size: int = 1000,
     requires_client_embedding: bool = True,
     supports_temporal_relevance: bool = True,
-) -> Callable[[type], type]:
+) -> Callable[[type[_DestinationT]], type[_DestinationT]]:
     """Decorator for destination connectors with separated auth and config.
 
     Args:
@@ -163,7 +161,7 @@ def destination(
             ranking
     """
 
-    def decorator(cls: type) -> type:
+    def decorator(cls: type[_DestinationT]) -> type[_DestinationT]:
         cls.is_destination = True
         cls.destination_name = name
         cls.short_name = short_name
@@ -192,7 +190,7 @@ def auth_provider(
     short_name: str,
     auth_config_class: Type[BaseModel],
     config_class: Type[BaseModel],
-) -> Callable[[type], type]:
+) -> Callable[[type[_AuthProviderT]], type[_AuthProviderT]]:
     """Class decorator to mark a class as representing an Airweave auth provider.
 
     Args:
@@ -204,11 +202,11 @@ def auth_provider(
 
     Returns:
     -------
-        Callable[[type], type]: The decorated class.
+        Callable[[type[_AuthProviderT]], type[_AuthProviderT]]: The decorated class.
 
     """
 
-    def decorator(cls: type) -> type:
+    def decorator(cls: type[_AuthProviderT]) -> type[_AuthProviderT]:
         cls.is_auth_provider = True
         cls.provider_name = name
         cls.short_name = short_name

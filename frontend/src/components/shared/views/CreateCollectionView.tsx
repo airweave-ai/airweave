@@ -24,9 +24,9 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { Pencil, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
+import { generateRandomSuffix, generateReadableIdBase } from "@/lib/readable-id";
 import {
     DialogTitle,
     DialogDescription,
@@ -36,49 +36,6 @@ import type { DialogViewProps } from "@/components/types/dialog";
 import { getAppIconUrl } from "@/lib/utils/icons";
 import { useNavigate } from "react-router-dom";
 import { redirectWithError } from "@/lib/error-utils";
-
-/**
- * Generates a random suffix for the readable ID
- * This ensures uniqueness for similar collection names
- *
- * @returns Random alphanumeric string of length 6
- */
-const generateRandomSuffix = () => {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-};
-
-/**
- * Helper to generate the base readable ID from a name
- * Transforms name to lowercase, replaces spaces with hyphens, and removes special characters
- *
- * @param name Collection name to transform
- * @returns Sanitized base readable ID (without suffix)
- */
-const generateReadableIdBase = (name: string): string => {
-    if (!name || name.trim() === "") return "";
-
-    // Convert to lowercase and replace spaces with hyphens
-    let readable_id = name.toLowerCase().trim();
-
-    // Replace any character that's not a letter, number, or space with nothing
-    readable_id = readable_id.replace(/[^a-z0-9\s]/g, "");
-
-    // Replace spaces with hyphens
-    readable_id = readable_id.replace(/\s+/g, "-");
-
-    // Ensure no consecutive hyphens
-    readable_id = readable_id.replace(/-+/g, "-");
-
-    // Trim hyphens from start and end
-    readable_id = readable_id.replace(/^-|-$/g, "");
-
-    return readable_id;
-};
 
 /**
  * Form validation schema using Zod

@@ -75,22 +75,19 @@ setTokenProvider({
 - Clears org-specific data on switch (collections, API keys)
 
 ### 2. **Collections Store** (`stores/collections.ts`)
-- Caches collections and source connections
+- Caches collections (with API-provided `source_connection_summaries` for list views)
 - Implements event-driven updates via custom event bus
 - Smart caching with force refresh option
 - Handles collection CRUD events automatically
+- Source connection details for list pages come from `GET /collections` response (no per-card fetching)
 
-### 3. **Auth Store** (`stores/auth-store.ts`)
-- Persists user authentication state
-- Minimal store for auth state tracking
-
-### 4. **Sync State Store** (`stores/syncStateStore.ts`)
+### 3. **Sync State Store** (`stores/syncStateStore.ts`)
 - Real-time sync progress via SSE
 - Manages multiple concurrent subscriptions
 - Session storage for progress persistence
 - Automatic cleanup and health checks
 
-### 5. **API Keys Store** (`stores/apiKeys.ts`)
+### 4. **API Keys Store** (`stores/apiKeys.ts`)
 - Organization-scoped API key management
 - Auto-clears on organization switch
 
@@ -114,7 +111,14 @@ setTokenProvider({
    - Handles dev mode (auth disabled)
    - Token initialization tracking
 
-3. **Auth Guard** (`components/AuthGuard.tsx`):
+3. **Token Caching Strategy** (`lib/auth0-provider.tsx`):
+   - `getCacheLocation()` selects `memory` for custom Auth0 domains and `localstorage` for standard `*.auth0.com` tenants
+   - Custom domains share the app's eTLD+1, so the Auth0 session cookie is first-party — tokens stay in memory only (no XSS surface via localStorage)
+   - Standard tenants use a third-party cookie that Safari ITP / Firefox strict / Chrome incognito block, so tokens must be persisted in localStorage
+   - `useRefreshTokens={true}` — refresh token rotation is always enabled
+   - `useRefreshTokensFallback={true}` — enables iframe-based silent auth as a fallback when the refresh token is unavailable (e.g. after a page refresh with memory cache)
+
+4. **Auth Guard** (`components/AuthGuard.tsx`):
    - Protects routes requiring authentication
    - Initializes organizations on first load
    - Redirects to `/no-organization` if needed
@@ -124,6 +128,15 @@ setTokenProvider({
 - State preserved in sessionStorage during redirect
 - Handles both standard and SemanticMcp flows
 - Error recovery with detailed user feedback
+
+#### Browser OAuth Claim-Token Contract
+All browser OAuth flows use a two-step handoff to trigger the initial sync:
+
+1. **Before redirect**: `POST /source-connections` returns `auth.claim_token`. Store it in `sessionStorage` keyed as `oauth_claim_token:{source_connection_id}` before navigating to `auth.auth_url`.
+2. **After redirect**: The backend callback 303-redirects to the frontend with `?status=success&source_connection_id=...`. On landing, retrieve the stored claim token and call `POST /source-connections/{id}/verify-oauth` with `{ claim_token }` to trigger the deferred sync workflow.
+3. **Cleanup**: Only remove the `oauth_claim_token:*` entry from `sessionStorage` after `verify-oauth` returns a successful (`response.ok`) response — this preserves the token for retry on failure.
+
+Skipping the `verify-oauth` call leaves the sync job stuck in `PENDING` indefinitely.
 
 ## Component Patterns
 
@@ -339,5 +352,10 @@ try {
 
 ### 3. **Error Handling**
 - Sensitive data stripped from errors
-- No credentials in localStorage
+- Token cache location is conditional: custom Auth0 domains use `memory` (no localStorage exposure), standard `*.auth0.com` tenants use `localstorage` (necessary due to third-party cookie restrictions)
 - Secure OAuth state management
+
+### 4. **Randomness**
+- Never use `Math.random()` — it is banned by ESLint
+- Use `crypto.getRandomValues()` for random bytes/integers
+- Use `crypto.randomUUID()` for UUIDs

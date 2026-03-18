@@ -20,7 +20,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Install wget for healthcheck
-RUN apk add --no-cache wget
+RUN apk upgrade --no-cache && apk add --no-cache wget
 
 # Copy built app from builder stage
 COPY --from=builder /app/connect/.output /app/.output

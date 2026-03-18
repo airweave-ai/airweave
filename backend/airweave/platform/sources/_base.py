@@ -20,6 +20,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
+    from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
     from airweave.platform.access_control.schemas import MembershipTuple
 
 import httpx
@@ -43,8 +44,8 @@ class BaseSource:
     auth_methods: ClassVar[list[AuthenticationMethod]] = []
     oauth_type: ClassVar[Optional[OAuthType]] = None
     requires_byoc: ClassVar[bool] = False
-    auth_config_class: ClassVar[Optional[type]] = None
-    config_class: ClassVar[Optional[type]] = None
+    auth_config_class: ClassVar[Optional[type[BaseModel]]] = None
+    config_class: ClassVar[Optional[type[BaseModel]]] = None
 
     # Capabilities (set by @source decorator)
     supports_continuous: ClassVar[bool] = False
@@ -62,13 +63,10 @@ class BaseSource:
 
     def __init__(self):
         """Initialize the base source."""
-        self._logger: Optional[Any] = None  # Store contextual logger as instance variable
-        self._token_manager: Optional[Any] = None  # Store token manager for OAuth sources
-        self._http_client_factory: Optional[Callable] = None  # Factory for creating HTTP clients
-        self._file_downloader: Optional[Any] = None  # File download service
-        # Optional sync identifiers for multi-tenant scoped helpers
-        self._organization_id: Optional[str] = None
-        self._source_connection_id: Optional[str] = None
+        self._logger: Optional[Any] = None
+        self._token_provider: Optional["TokenProviderProtocol"] = None
+        self._http_client_factory: Optional[Callable] = None
+        self._file_downloader: Optional[Any] = None
 
     @property
     def logger(self):
@@ -82,27 +80,18 @@ class BaseSource:
         """Set a contextual logger for this source."""
         self._logger = logger
 
-    def set_sync_identifiers(self, organization_id: str, source_connection_id: str) -> None:
-        """Set sync-scoped identifiers for this source instance.
-
-        These identifiers can be used by sources to persist auxiliary metadata
-        (e.g., schema catalogs) scoped to the current tenant/connection.
-        """
-        self._organization_id = organization_id
-        self._source_connection_id = source_connection_id
-
     @property
-    def token_manager(self):
-        """Get the token manager for this source."""
-        return self._token_manager
+    def token_provider(self) -> Optional["TokenProviderProtocol"]:
+        """Get the token provider for this source."""
+        return self._token_provider
 
-    def set_token_manager(self, token_manager) -> None:
-        """Set a token manager for this source.
+    def set_token_provider(self, provider: "TokenProviderProtocol") -> None:
+        """Set token provider for this source.
 
         Args:
-            token_manager: TokenManager instance for handling OAuth token refresh
+            provider: Any TokenProviderProtocol implementation.
         """
-        self._token_manager = token_manager
+        self._token_provider = provider
 
     def set_http_client_factory(self, factory: Optional[Callable]) -> None:
         """Set the HTTP client factory for creating HTTP clients.
@@ -221,44 +210,61 @@ class BaseSource:
         """Check if source requires user to bring their own OAuth client credentials."""
         return cls.requires_byoc
 
-    async def get_access_token(self) -> Optional[str]:
-        """Get a valid access token using the token manager.
+    async def get_access_token(self) -> str:
+        """Get a valid access token, preferring the token provider when available.
+
+        Falls back to self.access_token (set by create()) when no provider
+        is configured — e.g. during lightweight validation flows.
 
         Returns:
-            A valid access token if token manager is set and source uses OAuth,
-            None otherwise
-        """
-        if self._token_manager:
-            return await self._token_manager.get_valid_token()
+            A valid access token string.
 
-        # Fallback to instance access_token if no token manager
-        return getattr(self, "access_token", None)
+        Raises:
+            RuntimeError: If neither a token provider nor self.access_token is available.
+        """
+        if self._token_provider:
+            return await self._token_provider.get_token()
+
+        token = getattr(self, "access_token", None)
+        if token:
+            return token
+
+        raise RuntimeError(
+            f"{self.__class__.__name__}.get_access_token() called but no "
+            f"token provider or access_token is available."
+        )
 
     async def refresh_on_unauthorized(self) -> Optional[str]:
-        """Refresh token after receiving a 401 error.
+        """Force-refresh the token after a 401 error.
 
         Returns:
-            New access token if refresh was successful, None otherwise
+            A fresh access token, or None if no token provider is set.
         """
-        if self._token_manager:
-            return await self._token_manager.refresh_on_unauthorized()
-        return None
+        if not self._token_provider:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.refresh_on_unauthorized() called but no "
+                f"token provider is configured. Ensure the lifecycle service "
+                f"sets a TokenProvider before calling this method."
+            )
+        if self._token_provider:
+            return await self._token_provider.force_refresh()
 
     async def get_token_for_resource(self, resource_scope: str) -> Optional[str]:
-        """Get a token for a different resource scope via the token manager.
+        """Get a token for a different resource scope.
 
         Used for cross-resource access, e.g. SharePoint REST API when the
-        primary token is scoped to Microsoft Graph.
+        primary token is scoped to Microsoft Graph. Only works with
+        OAuthTokenProvider which has the ``get_token_for_resource`` method.
 
         Args:
-            resource_scope: The target scope, e.g. "https://tenant.sharepoint.com/.default"
+            resource_scope: The target scope.
 
         Returns:
-            An access token scoped to the requested resource, or None if unavailable.
+            An access token scoped to the requested resource, or None.
         """
-        if not self._token_manager:
-            return None
-        return await self._token_manager.get_token_for_resource(resource_scope)
+        if self._token_provider and hasattr(self._token_provider, "get_token_for_resource"):
+            return await self._token_provider.get_token_for_resource(resource_scope)
+        return None
 
     @classmethod
     @abstractmethod
@@ -280,7 +286,8 @@ class BaseSource:
     @abstractmethod
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for the source."""
-        pass
+        return
+        yield  # Make it a generator
 
     async def generate_access_control_memberships(
         self,
@@ -449,7 +456,7 @@ class BaseSource:
           - or `ping_url` for a simple authorized GET using the access token,
           - or both (introspection first, then ping).
 
-        Token refresh is attempted automatically on 401 via `token_manager`.
+        Token refresh is attempted automatically on 401 via `token_provider`.
 
         Returns:
             True if the token is active and the endpoint(s) respond as expected; otherwise False.

@@ -3,7 +3,6 @@
 import asyncio
 import base64
 import hashlib
-import random
 import secrets
 from typing import Any, Optional, Tuple
 from urllib.parse import urlencode
@@ -16,14 +15,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config.settings import Settings
-from airweave.core.exceptions import NotFoundException, TokenRefreshError
+from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.shared_models import ConnectionStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
+from airweave.domains.oauth.exceptions import (
+    OAuthRefreshBadRequestError,
+    OAuthRefreshCredentialMissingError,
+    OAuthRefreshError,
+    OAuthRefreshRateLimitError,
+    OAuthRefreshServerError,
+    OAuthRefreshTokenRevokedError,
+)
 from airweave.domains.oauth.protocols import OAuth2ServiceProtocol
+from airweave.domains.oauth.types import RefreshResult
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.models.integration_credential import IntegrationType
 from airweave.platform.auth.schemas import (
@@ -32,6 +40,7 @@ from airweave.platform.auth.schemas import (
     OAuth2TokenResponse,
 )
 from airweave.platform.auth.settings import integration_settings
+from airweave.platform.utils.ssrf import validate_url
 
 
 class OAuth2Service(OAuth2ServiceProtocol):
@@ -312,7 +321,11 @@ class OAuth2Service(OAuth2ServiceProtocol):
             OAuth2TokenResponse: The response containing the new access token and other details.
 
         Raises:
-            TokenRefreshError: If token refresh fails.
+            OAuthRefreshTokenRevokedError: If the refresh token is expired or revoked (401).
+            OAuthRefreshBadRequestError: If the token endpoint returns 400.
+            OAuthRefreshRateLimitError: If rate-limited after exhausting retries.
+            OAuthRefreshServerError: If the token endpoint returns 5xx or times out.
+            OAuthRefreshCredentialMissingError: If no refresh token in credentials.
             NotFoundException: If the integration is not found.
         """
         try:
@@ -356,7 +369,13 @@ class OAuth2Service(OAuth2ServiceProtocol):
                 ctx.logger, integration_config, refresh_token, client_id, client_secret
             )
 
-            response = await self._make_token_request(ctx.logger, backend_url, headers, payload)
+            response = await self._make_token_request(
+                ctx.logger,
+                backend_url,
+                headers,
+                payload,
+                integration_short_name=integration_short_name,
+            )
 
             oauth2_token_response = await self._handle_token_response(
                 db, response, integration_config, ctx, connection_id
@@ -364,12 +383,75 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
             return oauth2_token_response
 
+        except OAuthRefreshError:
+            raise
+
         except Exception as e:
             ctx.logger.error(
                 f"Token refresh failed for organization {ctx.organization.id} and "
                 f"integration {integration_short_name}: {str(e)}"
             )
             raise
+
+    async def refresh_and_persist(
+        self,
+        db: AsyncSession,
+        integration_short_name: str,
+        connection_id: UUID,
+        ctx: ApiContext,
+        config_fields: Optional[dict[str, str]] = None,
+    ) -> RefreshResult:
+        """Load credentials, refresh token, persist rotation, return new access token.
+
+        Convenience method that combines credential loading with refresh_access_token.
+
+        Args:
+            db: Database session.
+            integration_short_name: Source short name.
+            connection_id: Connection UUID (for credential lookup and rotation persistence).
+            ctx: API context.
+            config_fields: Optional config fields for templated backend URLs.
+
+        Returns:
+            RefreshResult with the new access token and optional expires_in.
+
+        Raises:
+            OAuthRefreshCredentialMissingError: If connection or credential not found.
+            OAuthRefreshTokenRevokedError: If the refresh token is expired or revoked.
+            OAuthRefreshBadRequestError: If the token endpoint returns 400.
+            OAuthRefreshRateLimitError: If rate-limited after exhausting retries.
+            OAuthRefreshServerError: If the token endpoint returns 5xx or times out.
+        """
+        connection = await self.conn_repo.get(db=db, id=connection_id, ctx=ctx)
+        if not connection or not connection.integration_credential_id:
+            raise OAuthRefreshCredentialMissingError(
+                f"Connection {connection_id} not found or has no credential",
+                integration_short_name=integration_short_name,
+            )
+
+        credential = await self.cred_repo.get(
+            db=db, id=connection.integration_credential_id, ctx=ctx
+        )
+        if not credential:
+            raise OAuthRefreshCredentialMissingError(
+                "Integration credential not found",
+                integration_short_name=integration_short_name,
+            )
+
+        decrypted = self.encryptor.decrypt(credential.encrypted_credentials)
+
+        response = await self.refresh_access_token(
+            db=db,
+            integration_short_name=integration_short_name,
+            ctx=ctx,
+            connection_id=connection_id,
+            decrypted_credential=decrypted,
+            config_fields=config_fields,
+        )
+        return RefreshResult(
+            access_token=response.access_token,
+            expires_in=response.expires_in,
+        )
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -419,13 +501,13 @@ class OAuth2Service(OAuth2ServiceProtocol):
         """Get refresh token from decrypted credentials.
 
         Raises:
-            TokenRefreshError: If no refresh token is found.
+            OAuthRefreshCredentialMissingError: If no refresh token is found.
         """
         refresh_token = decrypted_credential.get("refresh_token", None)
         if not refresh_token:
             error_message = "No refresh token found"
             logger.error(error_message)
-            raise TokenRefreshError(error_message)
+            raise OAuthRefreshCredentialMissingError(error_message)
         return refresh_token
 
     async def _get_integration_config(
@@ -556,9 +638,21 @@ class OAuth2Service(OAuth2ServiceProtocol):
         return False
 
     async def _make_token_request(
-        self, logger: ContextualLogger, url: str, headers: dict[str, str], payload: dict[str, str]
+        self,
+        logger: ContextualLogger,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, str],
+        integration_short_name: str = "",
     ) -> httpx.Response:
-        """Make the token refresh request with retry on rate limit."""
+        """Make the token refresh request with retry on rate limit.
+
+        Raises:
+            OAuthRefreshTokenRevokedError: On 401 from the token endpoint.
+            OAuthRefreshBadRequestError: On 400 / invalid_grant.
+            OAuthRefreshRateLimitError: After exhausting rate-limit retries.
+            OAuthRefreshServerError: On 5xx, timeout, or connection error.
+        """
         logger.info(f"Making token request to: {url}")
 
         max_retries = 5
@@ -573,7 +667,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
                     logger.info(f"Received response: Status {response.status_code}, ")
 
                     if self._is_oauth_rate_limit_error(response):
-                        delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                        delay = base_delay * (2**attempt) + secrets.randbelow(2001) / 1000
                         logger.warning(
                             f"OAuth rate limit hit, waiting {delay:.1f}s before retry "
                             f"(attempt {attempt + 1}/{max_retries})"
@@ -586,7 +680,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
             except httpx.HTTPStatusError as e:
                 if self._is_oauth_rate_limit_error(e.response):
-                    delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                    delay = base_delay * (2**attempt) + secrets.randbelow(2001) / 1000
                     logger.warning(
                         f"OAuth rate limit hit (exception), waiting {delay:.1f}s before retry "
                         f"(attempt {attempt + 1}/{max_retries})"
@@ -594,9 +688,9 @@ class OAuth2Service(OAuth2ServiceProtocol):
                     await asyncio.sleep(delay)
                     continue
 
+                status = e.response.status_code
                 logger.error(
-                    f"HTTP error during token request: {e.response.status_code} "
-                    f"{e.response.reason_phrase}"
+                    f"HTTP error during token request: {status} {e.response.reason_phrase}"
                 )
 
                 try:
@@ -605,16 +699,76 @@ class OAuth2Service(OAuth2ServiceProtocol):
                 except Exception:
                     logger.error(f"Error response text: {e.response.text}")
 
-                raise
+                self._raise_typed_refresh_error(e, integration_short_name=integration_short_name)
+
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                logger.error(f"Connection/timeout error during token request: {e}")
+                raise OAuthRefreshServerError(
+                    f"Token endpoint unreachable: {e}",
+                    integration_short_name=integration_short_name,
+                ) from e
+
             except Exception as e:
                 logger.error(f"Unexpected error during token request: {str(e)}")
-                raise
+                raise OAuthRefreshServerError(
+                    f"Unexpected error during token refresh: {e}",
+                    integration_short_name=integration_short_name,
+                ) from e
 
-        raise httpx.HTTPStatusError(
+        raise OAuthRefreshRateLimitError(
             f"OAuth token request failed after {max_retries} retries (rate limited)",
-            request=httpx.Request("POST", url),
-            response=httpx.Response(429),
+            integration_short_name=integration_short_name,
         )
+
+    def _raise_typed_refresh_error(
+        self,
+        exc: httpx.HTTPStatusError,
+        *,
+        integration_short_name: str = "",
+    ) -> None:
+        """Translate an httpx.HTTPStatusError into a typed OAuthRefresh exception.
+
+        Always raises — never returns.
+        """
+        status = exc.response.status_code
+        detail = ""
+        try:
+            body = exc.response.json()
+            detail = body.get("error_description", body.get("error", ""))
+        except Exception:
+            detail = exc.response.text[:200] if exc.response.text else ""
+
+        if status == 401:
+            raise OAuthRefreshTokenRevokedError(
+                f"Token endpoint returned 401: {detail}",
+                integration_short_name=integration_short_name,
+                status_code=status,
+            ) from exc
+
+        if status == 400 or status == 403:
+            error_code = ""
+            try:
+                error_code = exc.response.json().get("error", "")
+            except Exception:
+                pass
+            raise OAuthRefreshBadRequestError(
+                f"Token endpoint returned {status}: {detail}",
+                integration_short_name=integration_short_name,
+                error_code=error_code,
+            ) from exc
+
+        if status >= 500:
+            raise OAuthRefreshServerError(
+                f"Token endpoint returned {status}: {detail}",
+                integration_short_name=integration_short_name,
+                status_code=status,
+            ) from exc
+
+        raise OAuthRefreshServerError(
+            f"Token endpoint returned unexpected {status}: {detail}",
+            integration_short_name=integration_short_name,
+            status_code=status,
+        ) from exc
 
     async def _handle_token_response(
         self,
@@ -719,6 +873,8 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
         Supports both standard OAuth 2.0 and PKCE (Proof Key for Code Exchange).
         """
+        validate_url(backend_url)
+
         headers = {
             "Content-Type": integration_config.content_type,
         }

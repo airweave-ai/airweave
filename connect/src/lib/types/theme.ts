@@ -130,6 +130,10 @@ export interface ConnectLabels {
   folderSelectionHeading?: string;
   folderSelectionStartSync?: string;
   folderSelectionCount?: string; // Use {count} placeholder
+
+  // Action errors (inline banners)
+  errorDeleteFailed?: string;
+  errorReconnectFailed?: string;
 }
 
 export interface ConnectOptions {

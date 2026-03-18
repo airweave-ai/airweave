@@ -10,8 +10,8 @@ import { AppIcon } from "./AppIcon";
 import { AuthMethodSelector } from "./AuthMethodSelector";
 import { BackButton } from "./BackButton";
 import { Button } from "./Button";
-import { LoadingScreen } from "./LoadingScreen";
 import { PageLayout } from "./PageLayout";
+import { SourceConfigSkeleton } from "./Skeleton";
 import {
   ConfigFieldsSection,
   ConnectionNameField,
@@ -215,7 +215,17 @@ export function SourceConfigView({
   };
 
   if (isLoading) {
-    return <LoadingScreen />;
+    const headerLeft = (
+      <div className="flex items-center gap-2">
+        <BackButton onClick={onBack} />
+        <AppIcon shortName={source.short_name} name={source.name} className="size-5" />
+      </div>
+    );
+    return (
+      <PageLayout title={source.name} headerLeft={headerLeft}>
+        <SourceConfigSkeleton />
+      </PageLayout>
+    );
   }
 
   if (error) {

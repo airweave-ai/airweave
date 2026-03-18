@@ -12,6 +12,9 @@ on:
       - "backend/**"
       - ".github/workflows/code-quality.yml"
 
+permissions:
+  contents: read
+
 jobs:
   ruff:
     runs-on: ubuntu-latest
@@ -25,25 +28,44 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.13"
-      - run: pip install "ruff==0.9.6"
-      - name: Get changed Python files
-        id: changed
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-          else
-            BASE="${{ github.event.before }}"
-          fi
-          FILES=$(git diff --name-only --relative --diff-filter=d "$BASE" HEAD -- '*.py' | grep '^airweave/' | grep -v '^airweave/alembic/' || true)
-          echo "files<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$FILES" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+      - name: Install Poetry
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+        with:
+          version: 2.3.2
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      - name: Load cached venv
+        id: cached-lint-deps
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ./backend/.venv
+          key: lint-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+      - name: Install lint dependencies
+        if: steps.cached-lint-deps.outputs.cache-hit != 'true'
+        run: poetry install --only lint --no-interaction --no-root
       - name: Ruff lint
-        if: steps.changed.outputs.files != ''
-        run: echo "${{ steps.changed.outputs.files }}" | xargs ruff check
+        if: github.event_name == 'push'
+        run: poetry run ruff check airweave/ --exclude airweave/alembic/
       - name: Ruff format
-        if: steps.changed.outputs.files != ''
-        run: echo "${{ steps.changed.outputs.files }}" | xargs ruff format --check --diff
+        if: github.event_name == 'push'
+        run: poetry run ruff format --check --diff airweave/ --exclude airweave/alembic/
+      - name: Run ruff check
+        if: github.event_name == 'pull_request'
+        run: |
+          poetry run ruff check airweave/ --exclude airweave/alembic/ \
+            --output-format pylint > ruff_report.txt || true
+      - name: Ruff lint (changed lines)
+        if: github.event_name == 'pull_request'
+        run: |
+          poetry run diff-quality --violations=ruff.check \
+            --compare-branch=origin/${{ github.base_ref }} \
+            --fail-under=100 \
+            ruff_report.txt
+      # Format is checked across the full codebase on PRs: since push
+      # ensures main is formatted, any failure must be from the PR.
+      - name: Ruff format (changed files)
+        if: github.event_name == 'pull_request'
+        run: poetry run ruff format --check --diff airweave/ --exclude airweave/alembic/
 
   mypy:
     runs-on: ubuntu-latest
@@ -64,22 +86,21 @@ jobs:
           virtualenvs-create: false
       - name: Install dependencies
         run: poetry install
-      - name: Get changed Python files
-        id: changed
+      - name: Run mypy
+        if: github.event_name == 'push'
+        run: poetry run mypy --config-file pyproject.toml airweave/
+      - name: Run mypy
+        if: github.event_name == 'pull_request'
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-          else
-            BASE="${{ github.event.before }}"
-          fi
-          FILES=$(git diff --name-only --relative --diff-filter=d "$BASE" HEAD -- '*.py' | grep '^airweave/' | grep -v '^airweave/alembic/' || true)
-          echo "files<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$FILES" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-      - name: Run mypy on changed files
-        if: steps.changed.outputs.files != ''
+          poetry run mypy --config-file pyproject.toml airweave/ \
+            > mypy_report.txt || true
+      - name: Run mypy (changed lines)
+        if: github.event_name == 'pull_request'
         run: |
-          echo "${{ steps.changed.outputs.files }}" | xargs poetry run mypy --config-file pyproject.toml
+          poetry run diff-quality --violations=mypy \
+            --compare-branch=origin/${{ github.base_ref }} \
+            --fail-under=100 \
+            mypy_report.txt
 
   import-linter:
     runs-on: ubuntu-latest
@@ -96,7 +117,7 @@ jobs:
         with:
           version: 2.3.2
           virtualenvs-create: false
-      - name: Install dependencies
-        run: poetry install --only dev
+      - name: Install lint dependencies
+        run: poetry install --only lint --no-interaction --no-root
       - name: Run import-linter
         run: poetry run lint-imports

@@ -30,6 +30,7 @@ from airweave.core.protocols import (
 )
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
+from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.auth_provider.protocols import (
     AuthProviderRegistryProtocol,
     AuthProviderServiceProtocol,
@@ -80,6 +81,7 @@ from airweave.domains.sources.protocols import (
     SourceRegistryProtocol,
     SourceServiceProtocol,
 )
+from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
 from airweave.domains.syncs.protocols import (
     SyncCursorRepositoryProtocol,
     SyncJobRepositoryProtocol,
@@ -233,6 +235,15 @@ class Container:
     instant_search: InstantSearchServiceProtocol
     classic_search: ClassicSearchServiceProtocol
     agentic_search: AgenticSearchServiceProtocol
+
+    # Storage domain — unified backend for file/object storage
+    storage_backend: StorageBackend
+
+    # Storage domain — sync-aware file manager (CTTI, metadata, caching)
+    sync_file_manager: SyncFileManagerProtocol
+
+    # ARF domain — raw entity capture / replay service
+    arf_service: ArfServiceProtocol
 
     # Optional fields (default=None) — must be last in frozen dataclass
     # OCR provider (with fallback chain + circuit breaking)

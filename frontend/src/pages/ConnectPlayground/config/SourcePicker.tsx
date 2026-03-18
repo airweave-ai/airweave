@@ -65,23 +65,30 @@ export function SourcePicker({ sources, selected, onToggle }: SourcePickerProps)
         </div>
       )}
 
-      <div className="space-y-0.5 max-h-[240px] overflow-y-auto">
+      <div className="grid grid-cols-4 gap-1.5 max-h-[400px] overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:hsl(var(--muted-foreground)/0.15)_transparent] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/15 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
         {filtered.map((s) => {
           const active = selected.includes(s.short_name);
           return (
             <button
               key={s.short_name}
               onClick={() => onToggle(s.short_name)}
+              title={s.name}
               className={cn(
-                "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-colors text-left",
+                "relative flex flex-col items-center gap-1 px-1 py-2 rounded-lg transition-colors cursor-pointer",
                 active
-                  ? "bg-primary/8 text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                  ? "bg-primary/10 ring-1 ring-primary/30"
+                  : "bg-muted/40 hover:bg-muted/70"
               )}
             >
               <SourceIcon shortName={s.short_name} />
-              <span className="flex-1">{s.name}</span>
-              {active && <Check className="h-3 w-3 text-primary shrink-0" />}
+              <span className="text-[9px] leading-tight text-center truncate w-full text-muted-foreground">
+                {s.name}
+              </span>
+              {active && (
+                <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="h-2 w-2 text-primary-foreground" />
+                </div>
+              )}
             </button>
           );
         })}

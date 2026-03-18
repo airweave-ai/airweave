@@ -90,8 +90,9 @@ class MondaySource(BaseSource):
         self, client: httpx.AsyncClient, query: str, variables: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Execute a single GraphQL query against the Monday.com API."""
+        access_token = await self.get_access_token()
         headers = {
-            "Authorization": self.access_token,
+            "Authorization": access_token,
             "Content-Type": "application/json",
         }
         payload = {"query": query}

@@ -28,7 +28,7 @@ from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.tests.conftest import _make_ctx, _make_entry
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData
-from airweave.platform.auth_providers.auth_result import AuthProviderMode
+from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.platform.configs._base import Fields
 
 
@@ -48,7 +48,7 @@ class _StubSourceValid:
         instance._credentials = credentials
         instance._config = config
         instance._logger = None
-        instance._token_manager = None
+        instance._token_provider = None
         instance._sync_org_id = None
         instance._sync_sc_id = None
         return instance
@@ -62,12 +62,8 @@ class _StubSourceValid:
     def set_http_client_factory(self, factory):
         self._http_client_factory = factory
 
-    def set_sync_identifiers(self, organization_id, source_connection_id):
-        self._sync_org_id = organization_id
-        self._sync_sc_id = source_connection_id
-
-    def set_token_manager(self, tm):
-        self._token_manager = tm
+    def set_token_provider(self, tp):
+        self._token_provider = tp
 
 
 class _StubSourceValidateFalse:
@@ -626,7 +622,7 @@ async def test_handle_auth_config_oauth2_error_propagates():
 
 
 # ===========================================================================
-# _process_credentials_for_source() — table-driven
+# _normalize_credentials() — table-driven
 # ===========================================================================
 
 
@@ -658,7 +654,7 @@ PROCESS_CREDS_TABLE = [
 
 
 @pytest.mark.parametrize("case", PROCESS_CREDS_TABLE, ids=lambda c: c.id)
-def test_process_credentials_for_source(case: ProcessCredsCase):
+def test_normalize_credentials(case: ProcessCredsCase):
     mock_config_class = MagicMock()
     mock_config_class.__name__ = "TestAuthConfig"
 
@@ -668,30 +664,30 @@ def test_process_credentials_for_source(case: ProcessCredsCase):
         mock_config_class.model_validate.return_value = "VALIDATED"
 
     entry = _entry_with_class("src", _StubSourceValid)
+    if case.oauth_type:
+        object.__setattr__(entry, "oauth_type", case.oauth_type)
     if case.has_auth_config_ref:
         object.__setattr__(entry, "auth_config_ref", mock_config_class)
 
     service = _make_service(source_entries=[entry])
     ctx = _make_ctx()
-    data = _sc_data(short_name="src", oauth_type=case.oauth_type,
-                    auth_config_class="TestAuthConfig" if case.has_auth_config_ref else None)
 
     if case.expect_error:
         with pytest.raises(case.expect_error):
-            service._process_credentials_for_source(
+            service._normalize_credentials(
                 raw_credentials=case.raw_credentials,
-                source_connection_data=data, logger=ctx.logger,
+                entry=entry, logger=ctx.logger,
             )
     else:
-        result = service._process_credentials_for_source(
+        result = service._normalize_credentials(
             raw_credentials=case.raw_credentials,
-            source_connection_data=data, logger=ctx.logger,
+            entry=entry, logger=ctx.logger,
         )
         assert result == case.expected
 
 
 # ===========================================================================
-# _configure_token_manager() — table-driven
+# _configure_token_provider() — table-driven
 # ===========================================================================
 
 
@@ -705,10 +701,12 @@ class TokenManagerCase:
 
 
 TOKEN_MANAGER_TABLE = [
-    TokenManagerCase(id="skip-direct-injection", access_token="injected"),
+    TokenManagerCase(id="direct-injection", access_token="injected",
+                     expect_tm_set=True),
     TokenManagerCase(id="skip-proxy-mode", auth_mode=AuthProviderMode.PROXY),
     TokenManagerCase(id="skip-no-oauth-type", oauth_type=None),
-    TokenManagerCase(id="skip-access-only-oauth", oauth_type="access_only"),
+    TokenManagerCase(id="access-only-no-refresh", oauth_type="access_only",
+                     expect_tm_set=True),
     TokenManagerCase(id="happy-with-refresh", oauth_type="with_refresh",
                      expect_tm_set=True),
     TokenManagerCase(id="happy-rotating-refresh", oauth_type="with_rotating_refresh",
@@ -718,7 +716,7 @@ TOKEN_MANAGER_TABLE = [
 
 @pytest.mark.parametrize("case", TOKEN_MANAGER_TABLE, ids=lambda c: c.id)
 @pytest.mark.asyncio
-async def test_configure_token_manager(case: TokenManagerCase):
+async def test_configure_token_provider(case: TokenManagerCase):
     source = MagicMock() if case.expect_tm_set else await _StubSourceValid.create("tok")
     data = _sc_data(short_name="src", oauth_type=case.oauth_type)
     ctx = _make_ctx()
@@ -728,23 +726,24 @@ async def test_configure_token_manager(case: TokenManagerCase):
         auth_provider_instance=None,
         auth_mode=case.auth_mode,
     )
+    service = _make_service()
 
     if case.expect_tm_set:
-        with patch("airweave.domains.sources.lifecycle.TokenManager") as mock_tm:
-            mock_tm.return_value = MagicMock()
-            await SourceLifecycleService._configure_token_manager(
-                db=MagicMock(), source=source, source_connection_data=data,
+        with patch("airweave.domains.sources.lifecycle.OAuthTokenProvider") as mock_tp:
+            mock_tp.return_value = MagicMock()
+            await service._configure_token_provider(
+                source=source, source_connection_data=data,
                 source_credentials="tok", ctx=ctx, logger=ctx.logger,
                 access_token=case.access_token, auth_config=auth_config,
             )
-        source.set_token_manager.assert_called_once()
+        source.set_token_provider.assert_called_once()
     else:
-        await SourceLifecycleService._configure_token_manager(
-            db=MagicMock(), source=source, source_connection_data=data,
+        await service._configure_token_provider(
+            source=source, source_connection_data=data,
             source_credentials="tok", ctx=ctx, logger=ctx.logger,
             access_token=case.access_token, auth_config=auth_config,
         )
-        assert source._token_manager is None
+        assert source._token_provider is None
 
 
 # ===========================================================================
@@ -783,20 +782,6 @@ class TestConfigureHttpClientFactory:
         )
         SourceLifecycleService._configure_http_client_factory(source, ac)
         source.set_http_client_factory.assert_not_called()
-
-
-class TestConfigureSyncIdentifiers:
-    def test_happy(self):
-        source = MagicMock()
-        ctx = _make_ctx()
-        SourceLifecycleService._configure_sync_identifiers(source, _sc_data(), ctx)
-        source.set_sync_identifiers.assert_called_once()
-
-    def test_swallows_exception(self):
-        source = MagicMock()
-        source.set_sync_identifiers.side_effect = AttributeError
-        ctx = _make_ctx()
-        SourceLifecycleService._configure_sync_identifiers(source, _sc_data(), ctx)
 
 
 # ===========================================================================

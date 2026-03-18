@@ -27,7 +27,7 @@ from airweave.platform.entities.notion import (
 )
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import wait_rate_limit_with_backoff
-from airweave.platform.storage import FileSkippedException
+from airweave.domains.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -182,8 +182,9 @@ class NotionSource(BaseSource):
         self.logger.debug(f"GET request to {url}")
         self._stats["api_calls"] += 1
 
+        access_token = await self.get_access_token()
         headers = {
-            "Authorization": f"Bearer {self.access_token}",
+            "Authorization": f"Bearer {access_token}",
             "Notion-Version": "2022-06-28",
         }
 
@@ -244,8 +245,9 @@ class NotionSource(BaseSource):
         self.logger.debug(f"POST request to {url}")
         self._stats["api_calls"] += 1
 
+        access_token = await self.get_access_token()
         headers = {
-            "Authorization": f"Bearer {self.access_token}",
+            "Authorization": f"Bearer {access_token}",
             "Notion-Version": "2022-06-28",
         }
 

@@ -130,20 +130,9 @@ class IntercomSource(BaseSource):
         )
         return instance
 
-    def _headers(self) -> Dict[str, str]:
-        """Return auth and version headers for Intercom API."""
-        return {
-            "Authorization": f"Bearer {getattr(self, 'access_token', '')}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Intercom-Version": INTERCOM_VERSION,
-        }
-
     async def _get_auth_headers(self) -> Dict[str, str]:
-        """Get OAuth headers (with token from token_manager if set)."""
+        """Get OAuth headers via the token provider."""
         token = await self.get_access_token()
-        if not token:
-            raise ValueError("No access token available for authentication")
         return {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
@@ -166,10 +155,10 @@ class IntercomSource(BaseSource):
         headers = await self._get_auth_headers()
         try:
             response = await client.get(url, headers=headers, params=params, timeout=30.0)
-            if response.status_code == 401 and self.token_manager:
+            if response.status_code == 401 and self.token_provider:
                 self.logger.warning(f"Received 401 for {url}, refreshing token...")
                 try:
-                    new_token = await self.token_manager.refresh_on_unauthorized()
+                    new_token = await self.token_provider.force_refresh()
                     headers["Authorization"] = f"Bearer {new_token}"
                     response = await client.get(url, headers=headers, params=params, timeout=30.0)
                 except TokenRefreshError as e:
@@ -194,10 +183,10 @@ class IntercomSource(BaseSource):
         headers = await self._get_auth_headers()
         try:
             response = await client.post(url, headers=headers, json=json_body, timeout=30.0)
-            if response.status_code == 401 and self.token_manager:
+            if response.status_code == 401 and self.token_provider:
                 self.logger.warning(f"Received 401 for {url}, refreshing token...")
                 try:
-                    new_token = await self.token_manager.refresh_on_unauthorized()
+                    new_token = await self.token_provider.force_refresh()
                     headers["Authorization"] = f"Bearer {new_token}"
                     response = await client.post(url, headers=headers, json=json_body, timeout=30.0)
                 except TokenRefreshError as e:

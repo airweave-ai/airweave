@@ -214,11 +214,12 @@ class ShopifySource(BaseSource):
         """
         return f"https://{self.shop_domain}/admin/{resource}/{resource_id}"
 
-    def _get_headers(self) -> Dict[str, str]:
+    async def _get_headers(self) -> Dict[str, str]:
         """Get headers for authenticated API requests."""
+        access_token = await self.get_access_token()
         return {
             "Content-Type": "application/json",
-            "X-Shopify-Access-Token": self.access_token,
+            "X-Shopify-Access-Token": access_token,
         }
 
     @retry(
@@ -237,7 +238,8 @@ class ShopifySource(BaseSource):
         Returns:
             JSON response from API
         """
-        response = await client.get(url, headers=self._get_headers(), timeout=30.0)
+        headers = await self._get_headers()
+        response = await client.get(url, headers=headers, timeout=30.0)
         response.raise_for_status()
         return response.json()
 
@@ -259,7 +261,8 @@ class ShopifySource(BaseSource):
         Returns:
             Full httpx.Response object (for header access)
         """
-        response = await client.get(url, headers=self._get_headers(), timeout=30.0)
+        headers = await self._get_headers()
+        response = await client.get(url, headers=headers, timeout=30.0)
         response.raise_for_status()
         return response
 
@@ -1141,9 +1144,10 @@ class ShopifySource(BaseSource):
                 variables["after"] = cursor
 
             try:
+                headers = await self._get_headers()
                 response = await client.post(
                     graphql_url,
-                    headers=self._get_headers(),
+                    headers=headers,
                     json={"query": query, "variables": variables},
                     timeout=30.0,
                 )
@@ -1324,8 +1328,8 @@ class ShopifySource(BaseSource):
             return False
 
         try:
-            # Get access token if not already obtained
-            if not self.access_token:
+            # Ensure we have an access token (exchange credentials if needed)
+            if not await self.get_access_token():
                 self.access_token = await self._get_access_token()
 
             async with self.http_client(timeout=10.0) as client:

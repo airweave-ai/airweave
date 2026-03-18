@@ -17,7 +17,10 @@ from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import FeatureFlag
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
+from airweave.domains.auth_provider.providers.pipedream import PipedreamAuthProvider
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import (
     IntegrationCredentialRepositoryProtocol,
@@ -35,15 +38,13 @@ from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
 )
-from airweave.domains.sources.types import AuthConfig, SourceConnectionData
-from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.auth_providers.auth_result import AuthProviderMode
-from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
+from airweave.domains.sources.token_providers.auth_provider import AuthProviderTokenProvider
+from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
+from airweave.domains.sources.token_providers.static import StaticTokenProvider
+from airweave.domains.sources.types import AuthConfig, SourceConnectionData, SourceRegistryEntry
 from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.sync.token_manager import TokenManager
-from airweave.schemas.source_connection import OAuthType
 
 SourceCredentials = Union[str, dict, BaseModel]
 
@@ -121,9 +122,10 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         )
 
         # 3. Process credentials for source consumption
-        source_credentials = self._process_credentials_for_source(
+        entry = self._source_registry.get(source_connection_data.short_name)
+        source_credentials = self._normalize_credentials(
             raw_credentials=auth_config.credentials,
-            source_connection_data=source_connection_data,
+            entry=entry,
             logger=logger,
         )
 
@@ -135,10 +137,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         # 5. Configure source
         self._configure_logger(source, logger)
         self._configure_http_client_factory(source, auth_config)
-        self._configure_sync_identifiers(source, source_connection_data, ctx)
-
-        await self._configure_token_manager(
-            db=db,
+        await self._configure_token_provider(
             source=source,
             source_connection_data=source_connection_data,
             source_credentials=auth_config.credentials,
@@ -166,7 +165,9 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     ) -> None:
         """Validate credentials by creating a lightweight source and calling .validate().
 
-        No token manager, no HTTP wrapping, no rate limiting — just create + validate.
+        No HTTP wrapping, no rate limiting — just create + validate.
+        The source's own access_token (set during create()) is used for
+        any API calls made during validation.
 
         Raises:
             SourceNotFoundError: If source short_name is not in the registry.
@@ -180,8 +181,10 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         source_class = entry.source_class_ref
 
+        normalized = self._normalize_credentials(credentials, entry)
+
         try:
-            source = await source_class.create(credentials, config=config)
+            source = await source_class.create(normalized, config=config)
         except Exception as exc:
             raise SourceCreationError(short_name, str(exc)) from exc
 
@@ -559,53 +562,80 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     # Private: credential processing
     # ------------------------------------------------------------------
 
-    def _process_credentials_for_source(
+    def _normalize_credentials(
         self,
-        raw_credentials: Union[dict, BaseModel],
-        source_connection_data: SourceConnectionData,
-        logger: ContextualLogger,
+        raw_credentials: Union[dict, BaseModel, str],
+        entry: SourceRegistryEntry,
+        logger: Optional[ContextualLogger] = None,
     ) -> SourceCredentials:
-        """Process raw credentials into the format expected by the source.
+        """Normalize raw credentials into the format expected by source.create().
 
         Handles three cases:
         1. OAuth sources without auth_config_class: Extract just the access_token string
         2. Sources with auth_config_class and dict credentials: Convert to auth config object
         3. Other sources: Pass through as-is
+
+        Used by both the full create() path and the lightweight validate() path.
         """
-        short_name = source_connection_data.short_name
-        oauth_type = source_connection_data.oauth_type
+        if isinstance(raw_credentials, str):
+            return raw_credentials
 
-        # Case 1: OAuth sources without auth_config_class need just the access_token string
-        entry = self._source_registry.get(short_name)
+        creds_dict = self._to_creds_dict(raw_credentials, entry.short_name, logger)
+        if creds_dict is None:
+            return raw_credentials
+
+        return self._process_creds_dict(creds_dict, raw_credentials, entry, logger)
+
+    @staticmethod
+    def _to_creds_dict(
+        raw_credentials: Union[dict, BaseModel, str],
+        short_name: str,
+        logger: Optional[ContextualLogger],
+    ) -> Optional[dict]:
+        """Convert raw credentials to a dict, or None if the type is unexpected."""
+        if isinstance(raw_credentials, BaseModel):
+            return raw_credentials.model_dump()
+        if isinstance(raw_credentials, dict):
+            return raw_credentials
+        if logger:
+            logger.warning(
+                f"Source {short_name} credentials in unexpected format: {type(raw_credentials)}"
+            )
+        return None
+
+    @staticmethod
+    def _process_creds_dict(
+        creds_dict: dict,
+        raw_credentials: Union[dict, BaseModel, str],
+        entry: SourceRegistryEntry,
+        logger: Optional[ContextualLogger],
+    ) -> SourceCredentials:
+        """Process a credentials dict according to the source registry entry."""
         auth_config_ref = entry.auth_config_ref
+        short_name = entry.short_name
 
-        if not auth_config_ref and oauth_type:
-            if isinstance(raw_credentials, dict) and "access_token" in raw_credentials:
-                logger.debug(f"Extracting access_token for OAuth source {short_name}")
-                return raw_credentials["access_token"]
-            elif isinstance(raw_credentials, str):
-                logger.debug(f"OAuth source {short_name} credentials already a string token")
-                return raw_credentials
-            else:
-                logger.warning(
-                    f"OAuth source {short_name} credentials not in expected format: "
-                    f"{type(raw_credentials)}"
-                )
-                return raw_credentials
+        if not auth_config_ref and entry.oauth_type:
+            if "access_token" in creds_dict:
+                if logger:
+                    logger.debug(f"Extracting access_token for OAuth source {short_name}")
+                return creds_dict["access_token"]
+            if logger:
+                logger.warning(f"OAuth source {short_name} credentials missing access_token")
+            return raw_credentials
 
-        # Case 2: Sources with auth_config_class and dict credentials
-        if auth_config_ref and isinstance(raw_credentials, dict):
+        if auth_config_ref:
             try:
-                processed_credentials = auth_config_ref.model_validate(raw_credentials)
-                logger.debug(
-                    f"Converted credentials dict to {auth_config_ref.__name__} for {short_name}"
-                )
-                return processed_credentials
+                validated = auth_config_ref.model_validate(creds_dict)
+                if logger:
+                    logger.debug(
+                        f"Converted credentials dict to {auth_config_ref.__name__} for {short_name}"
+                    )
+                return validated
             except Exception as e:
-                logger.error(f"Failed to convert credentials to auth config object: {e}")
+                if logger:
+                    logger.error(f"Failed to convert credentials to auth config: {e}")
                 raise
 
-        # Case 3: Pass through as-is
         return raw_credentials
 
     # ------------------------------------------------------------------
@@ -622,24 +652,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if auth_config.http_client_factory:
             source.set_http_client_factory(auth_config.http_client_factory)
 
-    @staticmethod
-    def _configure_sync_identifiers(
-        source: BaseSource, source_connection_data: SourceConnectionData, ctx: ApiContext
-    ) -> None:
-        try:
-            organization_id = ctx.organization.id
-            sc_id = source_connection_data.source_connection_id
-            if hasattr(source, "set_sync_identifiers") and sc_id:
-                source.set_sync_identifiers(
-                    organization_id=str(organization_id),
-                    source_connection_id=str(sc_id),
-                )
-        except Exception:
-            pass  # Non-fatal for older sources
-
-    @staticmethod
-    async def _configure_token_manager(
-        db: AsyncSession,
+    async def _configure_token_provider(
+        self,
         source: BaseSource,
         source_connection_data: SourceConnectionData,
         source_credentials: SourceCredentials,
@@ -648,65 +662,48 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         access_token: Optional[str],
         auth_config: AuthConfig,
     ) -> None:
-        """Set up token manager for OAuth sources that support refresh."""
+        """Set up the appropriate TokenProvider for this source."""
         auth_mode = auth_config.auth_mode
         auth_provider_instance: Optional[BaseAuthProvider] = auth_config.auth_provider_instance
+        short_name = source_connection_data.short_name
 
         if access_token is not None:
-            logger.debug(
-                f"Skipping token manager for {source_connection_data.short_name} "
-                f"— direct token injection"
+            source.set_token_provider(
+                StaticTokenProvider(access_token, source_short_name=short_name)
             )
             return
 
         if auth_mode == AuthProviderMode.PROXY:
-            logger.info(
-                f"Skipping token manager for {source_connection_data.short_name} — proxy mode"
-            )
             return
 
-        short_name = source_connection_data.short_name
         oauth_type = source_connection_data.oauth_type
-
         if not oauth_type:
             return
 
-        if oauth_type not in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
-            logger.debug(
-                f"Skipping token manager for {short_name} — "
-                f"oauth_type={oauth_type} does not support refresh"
-            )
-            return
-
         try:
-            minimal_connection = type(
-                "SourceConnection",
-                (),
-                {
-                    "id": source_connection_data.connection_id,
-                    "integration_credential_id": source_connection_data.integration_credential_id,
-                    "config_fields": source_connection_data.config_fields,
-                },
-            )()
+            if auth_provider_instance:
+                token_provider = AuthProviderTokenProvider(
+                    auth_provider_instance=auth_provider_instance,
+                    source_short_name=short_name,
+                    source_registry=self._source_registry,
+                    logger=logger,
+                )
+            else:
+                token_provider = OAuthTokenProvider(
+                    credentials=source_credentials,
+                    oauth_type=oauth_type,
+                    oauth2_service=self._oauth2_service,
+                    source_short_name=short_name,
+                    connection_id=source_connection_data.connection_id,
+                    ctx=ctx,
+                    logger=logger,
+                    config_fields=source_connection_data.config_fields,
+                )
 
-            token_manager = TokenManager(
-                db=db,
-                source_short_name=short_name,
-                source_connection=minimal_connection,
-                ctx=ctx,
-                initial_credentials=source_credentials,
-                is_direct_injection=False,
-                logger_instance=logger,
-                auth_provider_instance=auth_provider_instance,
-            )
-            source.set_token_manager(token_manager)
+            source.set_token_provider(token_provider)
 
-            logger.info(
-                f"Token manager initialized for OAuth source {short_name} "
-                f"(auth_provider: {'Yes' if auth_provider_instance else 'None'})"
-            )
         except Exception as e:
-            logger.error(f"Failed to setup token manager for '{short_name}': {e}")
+            raise SourceCreationError(short_name, f"token provider setup failed: {e}") from e
 
     # ------------------------------------------------------------------
     # Private: rate limiting wrapper

@@ -113,9 +113,9 @@ class ZoomSource(BaseSource):
                 self.logger.warning(
                     f"Got 401 Unauthorized from Zoom API at {url}, refreshing token..."
                 )
-                if self.token_manager:
+                if self.token_provider:
                     try:
-                        new_token = await self.token_manager.refresh_on_unauthorized()
+                        new_token = await self.token_provider.force_refresh()
                         headers["Authorization"] = f"Bearer {new_token}"
                         self.logger.debug(f"Retrying with refreshed token: {url}")
                         response = await client.get(url, headers=headers, params=params)

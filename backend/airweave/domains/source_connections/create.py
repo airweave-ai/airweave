@@ -1,5 +1,6 @@
 """Source connection creation service."""
 
+import hashlib
 import secrets
 from typing import Any, Optional
 from uuid import UUID
@@ -358,6 +359,11 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         state = secrets.token_urlsafe(24)
+        claim_token = secrets.token_urlsafe(32)
+        claim_token_hash = hashlib.sha256(claim_token.encode()).hexdigest()
+
+        initiator_user_id = ctx.user_id if hasattr(ctx, "user_id") else None
+        initiator_session_id: Optional[UUID] = getattr(ctx, "session_id", None)
 
         initiation_result = await self._oauth_flow_service.initiate_browser_flow(
             short_name=obj_in.short_name,
@@ -425,6 +431,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 redirect_url=obj_in.redirect_url,
                 template_configs=template_configs,
                 additional_overrides=initiation_result.additional_overrides,
+                initiator_user_id=initiator_user_id,
+                initiator_session_id=initiator_session_id,
+                claim_token_hash=claim_token_hash,
             )
             await uow.session.flush()
             source_conn.connection_init_session_id = init_session.id
@@ -433,7 +442,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             await uow.commit()
             await uow.session.refresh(source_conn)
 
-        return await self._response_builder.build_response(db, source_conn, ctx)
+        return await self._response_builder.build_response(
+            db, source_conn, ctx, claim_token=claim_token
+        )
 
     async def _create_redirect_session(
         self, db: AsyncSession, provider_auth_url: str, ctx: ApiContext, uow: UnitOfWork

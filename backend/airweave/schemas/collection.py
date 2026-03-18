@@ -3,49 +3,24 @@
 A collection is a group of different data sources that you can search using a single endpoint.
 """
 
-import random
-import re
-import string
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
+from airweave.core.readable_id import generate_readable_id
 from airweave.core.shared_models import CollectionStatus
 from airweave.platform.sync.config.base import SyncConfig
 
 
-def generate_readable_id(name: str) -> str:
-    """Generate a readable ID from a collection name.
+class SourceConnectionSummary(BaseModel):
+    """Lightweight summary of a source connection for collection list display."""
 
-    Converts the name to lowercase, replaces spaces with hyphens,
-    removes special characters, and adds a random 6-character suffix
-    to ensure uniqueness.
+    short_name: str
+    name: str
 
-    Args:
-        name: The collection name to convert
-
-    Returns:
-        A URL-safe readable identifier (e.g., "finance-data-ab123")
-    """
-    # Convert to lowercase and replace spaces with hyphens
-    readable_id = name.lower().strip()
-
-    # Replace any character that's not a letter, number, or space with nothing
-    readable_id = re.sub(r"[^a-z0-9\s]", "", readable_id)
-    # Replace spaces with hyphens
-    readable_id = re.sub(r"\s+", "-", readable_id)
-    # Ensure no consecutive hyphens
-    readable_id = re.sub(r"-+", "-", readable_id)
-    # Trim hyphens from start and end
-    readable_id = readable_id.strip("-")
-
-    # Add random alphanumeric suffix
-    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    readable_id = f"{readable_id}-{suffix}"
-
-    return readable_id
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CollectionBase(BaseModel):
@@ -277,6 +252,13 @@ class Collection(CollectionRecord):
             "(derived from deployment metadata)."
         ),
     )
+    source_connection_summaries: List[SourceConnectionSummary] = Field(
+        default_factory=list,
+        description=(
+            "Lightweight list of source connections attached to this collection. "
+            "Contains only short_name and name, suitable for rendering icons in list views."
+        ),
+    )
 
     model_config = {
         "from_attributes": True,
@@ -294,6 +276,10 @@ class Collection(CollectionRecord):
                 "created_by_email": "admin@company.com",
                 "modified_by_email": "finance@company.com",
                 "status": "ACTIVE",
+                "source_connection_summaries": [
+                    {"short_name": "slack", "name": "Slack"},
+                    {"short_name": "github", "name": "GitHub"},
+                ],
             }
         },
     }

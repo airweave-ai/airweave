@@ -36,7 +36,7 @@ class OpenAIDenseEmbedder(DenseEmbedderProtocol):
 
     _MAX_TOKENS_PER_TEXT: int = 8192
     _MAX_TEXTS_PER_SUB_BATCH: int = 100
-    _MAX_TOKENS_PER_REQUEST: int = 300_000
+    _MAX_TOKENS_PER_REQUEST: int = 100_000
     _MAX_CONCURRENT_REQUESTS: int = 10
     _CLIENT_TIMEOUT: float = 1200.0
     _CLIENT_MAX_RETRIES: int = 2

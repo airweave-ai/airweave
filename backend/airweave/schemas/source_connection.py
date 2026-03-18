@@ -496,6 +496,11 @@ class AuthenticationDetails(BaseModel):
     auth_url: Optional[str] = Field(None, description="For pending OAuth flows")
     auth_url_expires: Optional[datetime] = None
     redirect_url: Optional[str] = None
+    claim_token: Optional[str] = Field(
+        None,
+        description="One-time token to verify OAuth flow ownership. "
+        "Only returned when creating an OAuth browser connection.",
+    )
 
     # Provider-specific
     provider_readable_id: Optional[str] = None
@@ -829,6 +834,12 @@ def determine_auth_method(source_conn: Any) -> AuthenticationMethod:
 
     # Default to OAuth browser for unauthenticated
     return AuthenticationMethod.OAUTH_BROWSER
+
+
+class VerifyOAuthRequest(BaseModel):
+    """Request body for verifying OAuth flow ownership."""
+
+    claim_token: str = Field(..., description="Claim token from create response")
 
 
 def compute_status(

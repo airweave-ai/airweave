@@ -439,6 +439,10 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
       // The authentication_url is now inside the auth object
       const authUrl = result.auth?.authentication_url || result.auth?.auth_url;
       if (authUrl) {
+        if (result.auth?.claim_token) {
+          sessionStorage.setItem(`oauth_claim_token:${result.id}`, result.auth.claim_token);
+        }
+
         setOAuthData(
           result.id,
           payload.redirect_url || getDefaultRedirectUrl(),

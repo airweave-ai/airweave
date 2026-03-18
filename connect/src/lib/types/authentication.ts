@@ -35,5 +35,6 @@ export interface SourceConnectionCreateResponse {
     method: AuthenticationMethod;
     authenticated: boolean;
     auth_url?: string;
+    claim_token?: string;
   };
 }

@@ -138,8 +138,12 @@ class SyncFactory:
         logger.debug(f"Context + runtime built in {time.time() - init_start:.2f}s")
 
         # Step 6: Build pipelines using runtime services
+        assert container_mod.container is not None, (
+            "Container must be initialized before building sync orchestrator"
+        )
         dispatcher = EntityDispatcherBuilder.build(
             destinations=runtime.destinations,
+            arf_service=container_mod.container.arf_service,
             execution_config=resolved_config,
             logger=sync_context.logger,
         )

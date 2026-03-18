@@ -1,5 +1,18 @@
-import { Plus } from "lucide-react";
+import { ChevronDown, Database, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Collection {
   readable_id: string;
@@ -21,36 +34,62 @@ export function CollectionPicker({
   onSelect,
   onSelectNew,
 }: CollectionPickerProps) {
+  const current = collections.find((c) => c.readable_id === selected);
+  const displayName = isNew
+    ? "New collection"
+    : current?.name || current?.readable_id || "Select collection";
+
   return (
-    <div className="relative">
-      <select
-        value={isNew ? "__new__" : selected}
-        onChange={(e) => {
-          if (e.target.value === "__new__") {
-            onSelectNew();
-          } else {
-            onSelect(e.target.value);
-          }
-        }}
-        className={cn(
-          "h-8 pl-3 pr-8 text-[11px] font-medium rounded-lg border border-border/30 bg-background text-foreground",
-          "focus:outline-none focus:ring-1 focus:ring-primary/20",
-          "appearance-none cursor-pointer",
-          isNew && "text-primary"
-        )}
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "right 8px center",
-        }}
-      >
-        <option value="__new__">+ New collection</option>
-        {collections.map((c) => (
-          <option key={c.readable_id} value={c.readable_id}>
-            {c.name || c.readable_id}
-          </option>
-        ))}
-      </select>
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <DropdownMenu>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  "flex items-center gap-1.5 h-8 pl-3 pr-2.5 rounded-full text-xs font-medium transition-colors",
+                  "bg-primary/10 text-primary hover:bg-primary/15",
+                )}
+              >
+                <Database className="h-3 w-3" />
+                <span className="max-w-[140px] truncate">{displayName}</span>
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-[260px] p-3">
+            <div className="space-y-1.5">
+              <p className="font-medium text-popover-foreground text-xs">What is a collection?</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Collections group synced data from your users' connected apps. Each Connect session is scoped to one collection.
+              </p>
+            </div>
+          </TooltipContent>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem
+              onClick={onSelectNew}
+              className={cn("text-xs gap-2", isNew && "bg-accent")}
+            >
+              <Plus className="h-3 w-3" />
+              New collection
+            </DropdownMenuItem>
+            {collections.length > 0 && <DropdownMenuSeparator />}
+            {collections.map((c) => (
+              <DropdownMenuItem
+                key={c.readable_id}
+                onClick={() => onSelect(c.readable_id)}
+                className={cn(
+                  "text-xs gap-2",
+                  !isNew && selected === c.readable_id && "bg-accent",
+                )}
+              >
+                <Database className="h-3 w-3 opacity-40" />
+                <span className="truncate">{c.name || c.readable_id}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

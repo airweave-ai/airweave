@@ -38,10 +38,18 @@ from airweave.adapters.encryption.fake import FakeCredentialEncryptor
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException, TokenRefreshError
 from airweave.core.logging import logger
-from airweave.core.shared_models import AuthMethod, IntegrationType
+from airweave.core.shared_models import AuthMethod, ConnectionStatus, IntegrationType
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
+from airweave.domains.oauth.exceptions import (
+    OAuthRefreshBadRequestError,
+    OAuthRefreshCredentialMissingError,
+    OAuthRefreshRateLimitError,
+    OAuthRefreshServerError,
+    OAuthRefreshTokenRevokedError,
+)
 from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.domains.oauth.types import RefreshResult
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.models.connection import Connection
 from airweave.models.integration_credential import IntegrationCredential
@@ -1150,14 +1158,14 @@ REFRESH_CASES = [
         expect_access_token="new-at",
     ),
     RefreshCase(
-        "no refresh token → TokenRefreshError",
+        "no refresh token → OAuthRefreshCredentialMissingError",
         {"access_token": "only-at"},
         True,
         "with_refresh",
         200,
         {},
         True,
-        TokenRefreshError,
+        OAuthRefreshCredentialMissingError,
     ),
     RefreshCase(
         "integration config not found → NotFoundException",
@@ -1448,7 +1456,7 @@ async def test_make_token_request_zoho_style_rate_limit():
 
 @pytest.mark.asyncio
 async def test_make_token_request_non_retryable_error_raises():
-    """500 error (not rate limit) → raises immediately."""
+    """500 error (not rate limit) → raises OAuthRefreshServerError."""
     svc = _svc()
     log = logger.with_context(test="non_retry")
 
@@ -1465,8 +1473,264 @@ async def test_make_token_request_non_retryable_error_raises():
         "airweave.domains.oauth.oauth2_service.httpx.AsyncClient",
         return_value=mock_client,
     ):
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(OAuthRefreshServerError):
             await svc._make_token_request(log, "https://p.com/token", {}, {})
+
+
+# ===========================================================================
+# Exception __init__ coverage (exceptions.py:62-63, 80-81)
+# ===========================================================================
+
+
+def test_oauth_refresh_bad_request_error_stores_error_code():
+    err = OAuthRefreshBadRequestError("msg", error_code="invalid_grant")
+    assert err.error_code == "invalid_grant"
+    assert str(err) == "msg"
+
+
+def test_oauth_refresh_rate_limit_error_stores_retry_after():
+    err = OAuthRefreshRateLimitError("msg", retry_after=60.0)
+    assert err.retry_after == 60.0
+    assert str(err) == "msg"
+
+
+# ===========================================================================
+# refresh_and_persist (oauth2_service.py:425-451)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_refresh_and_persist_no_connection_raises():
+    """Connection not found → OAuthRefreshCredentialMissingError."""
+    deps = Deps()
+    svc = deps.build()
+    ctx = _make_ctx()
+    with pytest.raises(OAuthRefreshCredentialMissingError):
+        await svc.refresh_and_persist(MagicMock(), "slack", uuid4(), ctx)
+
+
+@pytest.mark.asyncio
+async def test_refresh_and_persist_no_credential_raises():
+    """Connection exists but credential not found → OAuthRefreshCredentialMissingError."""
+    deps = Deps()
+    conn_id = uuid4()
+    cred_id = uuid4()
+    conn = Connection(
+        id=conn_id,
+        name="test-conn",
+        readable_id="test-conn-001",
+        short_name="slack",
+        integration_type=IntegrationType.SOURCE,
+        status=ConnectionStatus.ACTIVE,
+        organization_id=ORG_ID,
+        created_by_email="test@test.com",
+        modified_by_email="test@test.com",
+        integration_credential_id=cred_id,
+    )
+    deps.conn_repo.seed(conn_id, conn)
+    svc = deps.build()
+    ctx = _make_ctx()
+    with pytest.raises(OAuthRefreshCredentialMissingError):
+        await svc.refresh_and_persist(MagicMock(), "slack", conn_id, ctx)
+
+
+@pytest.mark.asyncio
+async def test_refresh_and_persist_happy_path():
+    """Full flow: loads connection, decrypts credential, refreshes, returns RefreshResult."""
+    deps = Deps()
+    conn_id = uuid4()
+    cred_id = uuid4()
+    conn = Connection(
+        id=conn_id,
+        name="test-conn",
+        readable_id="test-conn-002",
+        short_name="slack",
+        integration_type=IntegrationType.SOURCE,
+        status=ConnectionStatus.ACTIVE,
+        organization_id=ORG_ID,
+        created_by_email="test@test.com",
+        modified_by_email="test@test.com",
+        integration_credential_id=cred_id,
+    )
+    deps.conn_repo.seed(conn_id, conn)
+
+    encrypted = deps.encryptor.encrypt({"access_token": "old", "refresh_token": "rt"})
+    cred = IntegrationCredential(
+        id=cred_id,
+        name="test-cred",
+        integration_short_name="slack",
+        integration_type=IntegrationType.SOURCE,
+        authentication_method=AuthenticationMethod.OAUTH_TOKEN,
+        organization_id=ORG_ID,
+        created_by_email="test@test.com",
+        modified_by_email="test@test.com",
+        encrypted_credentials=encrypted,
+    )
+    deps.cred_repo.seed(cred_id, cred)
+
+    svc = deps.build()
+    mock_response = OAuth2TokenResponse(
+        access_token="new-tok", token_type="bearer", expires_in=3600
+    )
+    svc.refresh_access_token = AsyncMock(return_value=mock_response)
+
+    ctx = _make_ctx()
+    result = await svc.refresh_and_persist(MagicMock(), "slack", conn_id, ctx)
+    assert result.access_token == "new-tok"
+    assert result.expires_in == 3600
+
+
+# ===========================================================================
+# _make_token_request error branches (oauth2_service.py:704-718)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_make_token_request_connect_error_raises_server_error():
+    """httpx.ConnectError → OAuthRefreshServerError."""
+    svc = _svc()
+    log = logger.with_context(test="connect_err")
+
+    async def fake_post(url, headers=None, data=None):
+        raise httpx.ConnectError("Connection refused")
+
+    mock_client = AsyncMock()
+    mock_client.post = fake_post
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "airweave.domains.oauth.oauth2_service.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
+        with pytest.raises(OAuthRefreshServerError, match="unreachable"):
+            await svc._make_token_request(log, "https://p.com/token", {}, {})
+
+
+@pytest.mark.asyncio
+async def test_make_token_request_timeout_raises_server_error():
+    """httpx.TimeoutException → OAuthRefreshServerError."""
+    svc = _svc()
+    log = logger.with_context(test="timeout")
+
+    async def fake_post(url, headers=None, data=None):
+        raise httpx.TimeoutException("timed out")
+
+    mock_client = AsyncMock()
+    mock_client.post = fake_post
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "airweave.domains.oauth.oauth2_service.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
+        with pytest.raises(OAuthRefreshServerError, match="unreachable"):
+            await svc._make_token_request(log, "https://p.com/token", {}, {})
+
+
+@pytest.mark.asyncio
+async def test_make_token_request_generic_exception_raises_server_error():
+    """Random exception → OAuthRefreshServerError."""
+    svc = _svc()
+    log = logger.with_context(test="generic")
+
+    async def fake_post(url, headers=None, data=None):
+        raise RuntimeError("something unexpected")
+
+    mock_client = AsyncMock()
+    mock_client.post = fake_post
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "airweave.domains.oauth.oauth2_service.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
+        with pytest.raises(OAuthRefreshServerError, match="Unexpected"):
+            await svc._make_token_request(log, "https://p.com/token", {}, {})
+
+
+@pytest.mark.asyncio
+async def test_make_token_request_exhausts_retries_on_rate_limit():
+    """All retries fail with 429 → OAuthRefreshRateLimitError."""
+    svc = _svc()
+    log = logger.with_context(test="exhaust_retries")
+
+    async def fake_post(url, headers=None, data=None):
+        resp = _make_httpx_response(429, {"error": "rate_limited"})
+        raise httpx.HTTPStatusError("429", request=resp.request, response=resp)
+
+    mock_client = AsyncMock()
+    mock_client.post = fake_post
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(
+            "airweave.domains.oauth.oauth2_service.httpx.AsyncClient",
+            return_value=mock_client,
+        ),
+        patch("airweave.domains.oauth.oauth2_service.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        with pytest.raises(OAuthRefreshRateLimitError):
+            await svc._make_token_request(log, "https://p.com/token", {}, {})
+
+
+# ===========================================================================
+# _raise_typed_refresh_error branches (oauth2_service.py:738-767)
+# ===========================================================================
+
+
+def test_raise_typed_refresh_error_401_raises_revoked():
+    svc = _svc()
+    resp = _make_httpx_response(401, {"error": "invalid_token"})
+    exc = httpx.HTTPStatusError("err", request=resp.request, response=resp)
+    with pytest.raises(OAuthRefreshTokenRevokedError):
+        svc._raise_typed_refresh_error(exc)
+
+
+def test_raise_typed_refresh_error_400_raises_bad_request():
+    svc = _svc()
+    resp = _make_httpx_response(400, {"error": "invalid_grant", "error_description": "expired"})
+    exc = httpx.HTTPStatusError("err", request=resp.request, response=resp)
+    with pytest.raises(OAuthRefreshBadRequestError) as exc_info:
+        svc._raise_typed_refresh_error(exc)
+    assert exc_info.value.error_code == "invalid_grant"
+
+
+def test_raise_typed_refresh_error_403_raises_bad_request():
+    svc = _svc()
+    resp = _make_httpx_response(403, {"error": "forbidden"})
+    exc = httpx.HTTPStatusError("err", request=resp.request, response=resp)
+    with pytest.raises(OAuthRefreshBadRequestError):
+        svc._raise_typed_refresh_error(exc)
+
+
+def test_raise_typed_refresh_error_500_raises_server_error():
+    svc = _svc()
+    resp = _make_httpx_response(500, {"error": "internal"})
+    exc = httpx.HTTPStatusError("err", request=resp.request, response=resp)
+    with pytest.raises(OAuthRefreshServerError):
+        svc._raise_typed_refresh_error(exc)
+
+
+def test_raise_typed_refresh_error_unexpected_status_raises_server_error():
+    """418 or any other status → OAuthRefreshServerError."""
+    svc = _svc()
+    resp = _make_httpx_response(418, {"error": "teapot"})
+    exc = httpx.HTTPStatusError("err", request=resp.request, response=resp)
+    with pytest.raises(OAuthRefreshServerError, match="unexpected 418"):
+        svc._raise_typed_refresh_error(exc)
+
+
+def test_raise_typed_refresh_error_non_json_body_still_works():
+    """Response body is not JSON — detail extraction fallback to .text."""
+    svc = _svc()
+    resp = _make_httpx_response(401, text="Not authorized")
+    exc = httpx.HTTPStatusError("err", request=resp.request, response=resp)
+    with pytest.raises(OAuthRefreshTokenRevokedError):
+        svc._raise_typed_refresh_error(exc)
 
 
 # ===========================================================================

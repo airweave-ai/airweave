@@ -46,6 +46,8 @@ export function ConnectPreview({
     return () => document.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
 
+  const activeColors = config.themeMode === "light" ? config.lightColors : config.darkColors;
+
   const modalStyle = useMemo(() => ({
     width: 400,
     height: 520,
@@ -77,17 +79,18 @@ export function ConnectPreview({
           transform: visible ? "scale(1) translateY(0)" : "scale(0.96) translateY(8px)",
         }}
       >
-        <button
-          onClick={onClose}
-          className="absolute -top-3 -right-3 z-10 w-7 h-7 rounded-full bg-background border border-border/50 shadow-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-
         <div
-          className="overflow-hidden"
+          className="relative overflow-hidden"
           style={modalStyle}
         >
+          <button
+            onClick={onClose}
+            className="absolute top-2.5 right-2.5 z-10 w-6 h-6 rounded-md flex items-center justify-center transition-opacity opacity-40 hover:opacity-80"
+            style={{ color: activeColors.textMuted }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+
           <iframe
             ref={iframeRef}
             src={connectUrl}

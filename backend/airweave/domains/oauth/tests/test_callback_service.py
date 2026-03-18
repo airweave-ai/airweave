@@ -24,6 +24,7 @@ from airweave.domains.oauth.fakes.repository import FakeOAuthInitSessionReposito
 from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
+from airweave.domains.sources.exceptions import SourceNotFoundError, SourceValidationError
 from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
 from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
@@ -62,6 +63,10 @@ def _init_session(
     session_id: UUID | None = None,
     payload: dict | None = None,
     overrides: dict | None = None,
+    expires_at: datetime | None = None,
+    initiator_user_id: UUID | None = None,
+    initiator_session_id: UUID | None = None,
+    claim_token_hash: str | None = None,
 ) -> ConnectionInitSession:
     return ConnectionInitSession(
         id=session_id or SESSION_ID,
@@ -71,7 +76,10 @@ def _init_session(
         organization_id=organization_id or ORG_ID,
         payload=payload or {},
         overrides=overrides or {},
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=expires_at or datetime(2099, 1, 1, tzinfo=timezone.utc),
+        initiator_user_id=initiator_user_id,
+        initiator_session_id=initiator_session_id,
+        claim_token_hash=claim_token_hash,
     )
 
 
@@ -111,6 +119,7 @@ def _service(
     oauth_flow_service=None,
     response_builder=None,
     source_registry=None,
+    source_lifecycle=None,
     sync_lifecycle=None,
     sync_record_service=None,
     temporal_workflow_service=None,
@@ -121,6 +130,7 @@ def _service(
         init_session_repo=init_session_repo or FakeOAuthInitSessionRepository(),
         response_builder=response_builder or AsyncMock(),
         source_registry=source_registry or MagicMock(),
+        source_lifecycle=source_lifecycle or AsyncMock(),
         sync_lifecycle=sync_lifecycle or AsyncMock(),
         sync_record_service=sync_record_service or AsyncMock(),
         temporal_workflow_service=temporal_workflow_service or AsyncMock(),
@@ -137,6 +147,7 @@ def _service(
 
 
 DB = AsyncMock()
+DB.add = MagicMock()
 
 
 # ---------------------------------------------------------------------------
@@ -241,21 +252,14 @@ class TestCompleteOAuth2Callback:
             OAuth2TokenResponse(access_token="bad-token", token_type="bearer")
         )
 
-        class _InvalidSource:
-            def set_logger(self, _logger):
-                return None
-
-            async def validate(self):
-                return False
-
-        class _SourceClass:
-            @staticmethod
-            async def create(access_token, config):  # noqa: ARG004
-                return _InvalidSource()
-
         registry = MagicMock()
         registry.get.return_value = SimpleNamespace(
-            source_class_ref=_SourceClass, short_name="github"
+            source_class_ref=MagicMock(), short_name="github", auth_config_ref=None,
+        )
+
+        source_lifecycle = AsyncMock()
+        source_lifecycle.validate = AsyncMock(
+            side_effect=SourceValidationError("github", "validate() returned False")
         )
 
         svc = _service(
@@ -264,12 +268,13 @@ class TestCompleteOAuth2Callback:
             sc_repo=sc_repo,
             oauth_flow_service=oauth_flow,
             source_registry=registry,
+            source_lifecycle=source_lifecycle,
         )
         with pytest.raises(HTTPException) as exc:
             await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
 
         assert exc.value.status_code == 400
-        assert "token" in exc.value.detail.lower()
+        assert "validation failed" in exc.value.detail.lower()
         assert all(call[0] != "mark_completed" for call in init_repo._calls)
 
     async def test_validation_exception_fails_fast_with_400(self):
@@ -290,21 +295,14 @@ class TestCompleteOAuth2Callback:
             OAuth2TokenResponse(access_token="token", token_type="bearer")
         )
 
-        class _BrokenSource:
-            def set_logger(self, _logger):
-                return None
-
-            async def validate(self):
-                raise RuntimeError("provider error")
-
-        class _SourceClass:
-            @staticmethod
-            async def create(access_token, config):  # noqa: ARG004
-                return _BrokenSource()
-
         registry = MagicMock()
         registry.get.return_value = SimpleNamespace(
-            source_class_ref=_SourceClass, short_name="github"
+            source_class_ref=MagicMock(), short_name="github", auth_config_ref=None,
+        )
+
+        source_lifecycle = AsyncMock()
+        source_lifecycle.validate = AsyncMock(
+            side_effect=SourceValidationError("github", "validation raised: provider error")
         )
 
         svc = _service(
@@ -313,6 +311,7 @@ class TestCompleteOAuth2Callback:
             sc_repo=sc_repo,
             oauth_flow_service=oauth_flow,
             source_registry=registry,
+            source_lifecycle=source_lifecycle,
         )
         with pytest.raises(HTTPException) as exc:
             await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
@@ -320,6 +319,47 @@ class TestCompleteOAuth2Callback:
         assert exc.value.status_code == 400
         assert "validation failed" in exc.value.detail.lower()
         assert all(call[0] != "mark_completed" for call in init_repo._calls)
+
+    async def test_source_not_found_fails_with_404(self):
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session()
+        init_repo.seed_by_state("state-abc", session)
+
+        org_repo = FakeOrganizationRepository()
+        org_repo.seed(ORG_ID, _organization())
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell()
+        sc_repo.seed(shell.id, shell)
+        sc_repo.seed_init_session(SESSION_ID, session)
+
+        oauth_flow = FakeOAuthFlowService()
+        oauth_flow.seed_oauth2_response(
+            OAuth2TokenResponse(access_token="bad-token", token_type="bearer")
+        )
+
+        registry = MagicMock()
+        registry.get.return_value = SimpleNamespace(
+            source_class_ref=MagicMock(), short_name="github", auth_config_ref=None,
+        )
+
+        source_lifecycle = AsyncMock()
+        source_lifecycle.validate = AsyncMock(
+            side_effect=SourceNotFoundError("unknown_source")
+        )
+
+        svc = _service(
+            init_session_repo=init_repo,
+            organization_repo=org_repo,
+            sc_repo=sc_repo,
+            oauth_flow_service=oauth_flow,
+            source_registry=registry,
+            source_lifecycle=source_lifecycle,
+        )
+        with pytest.raises(HTTPException) as exc:
+            await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
+
+        assert exc.value.status_code == 404
 
     async def test_happy_path_delegates_and_finalizes(self):
         init_repo = FakeOAuthInitSessionRepository()
@@ -876,6 +916,72 @@ class TestCompleteConnectionCommon:
 
         svc._sync_lifecycle.provision_sync.assert_not_awaited()
 
+    async def test_claim_token_session_skips_mark_completed(self):
+        svc = _service()
+        conn_id = uuid4()
+        svc._credential_repo.create = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+        svc._connection_repo.create = AsyncMock(return_value=SimpleNamespace(id=conn_id))
+        svc._collection_repo.get_by_readable_id = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4(), readable_id="col-abc")
+        )
+        sc_id = uuid4()
+        svc._sc_repo.update = AsyncMock(
+            return_value=SimpleNamespace(id=sc_id, connection_id=conn_id)
+        )
+        svc._init_session_repo.mark_completed = AsyncMock()
+        svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
+        sync_id = uuid4()
+        svc._sync_lifecycle.provision_sync = AsyncMock(
+            return_value=SimpleNamespace(sync_id=sync_id)
+        )
+
+        from airweave.domains.oauth import callback_service as callback_module
+
+        class _FakeUOW:
+            def __init__(self, db):
+                self.session = db
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def commit(self):
+                return None
+
+        db = AsyncMock()
+        db.flush = AsyncMock()
+        db.refresh = AsyncMock()
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(callback_module, "UnitOfWork", _FakeUOW)
+        try:
+            source_entry = SimpleNamespace(
+                short_name="github",
+                name="GitHub",
+                auth_config_ref=type("GitHubAuth", (), {}),
+                oauth_type="access_only",
+                config_ref=None,
+                source_class_ref=SimpleNamespace(federated_search=False),
+            )
+            shell = _source_conn_shell()
+            await svc._complete_connection_common(
+                db,
+                source_entry,
+                shell,
+                SESSION_ID,
+                {"name": "n", "readable_collection_id": "col-abc"},
+                {"access_token": "tok"},
+                AuthenticationMethod.OAUTH_BROWSER,
+                is_oauth1=False,
+                ctx=_ctx(),
+                has_claim_token=True,
+            )
+        finally:
+            monkeypatch.undo()
+
+        svc._init_session_repo.mark_completed.assert_not_awaited()
+
     async def test_non_federated_source_provisions_sync_with_cron_schedule(self):
         svc = _service()
         conn_id = uuid4()
@@ -959,7 +1065,12 @@ class TestFinalizeCallback:
         event_bus = AsyncMock()
         event_bus.publish = AsyncMock()
 
-        source_conn = SimpleNamespace(sync_id=None, id=uuid4(), connection_id=uuid4())
+        source_conn = SimpleNamespace(
+            sync_id=None,
+            id=uuid4(),
+            connection_id=uuid4(),
+            connection_init_session_id=None,
+        )
 
         svc = _service(response_builder=builder, event_bus=event_bus)
         result = await svc._finalize_callback(DB, source_conn, _ctx())
@@ -985,6 +1096,7 @@ class TestFinalizeCallback:
             sync_id=sync_id,
             connection_id=conn_id,
             readable_collection_id="col-abc",
+            connection_init_session_id=None,
         )
 
         # Seed sync repo
@@ -1084,6 +1196,7 @@ class TestFinalizeCallback:
             sync_id=sync_id,
             connection_id=uuid4(),
             readable_collection_id="col-abc",
+            connection_init_session_id=None,
         )
 
         sync_repo = FakeSyncRepository()
@@ -1118,6 +1231,7 @@ class TestFinalizeCallback:
             sync_id=sync_id,
             connection_id=conn_id,
             readable_collection_id="col-abc",
+            connection_init_session_id=None,
         )
 
         from airweave import schemas
@@ -1174,6 +1288,7 @@ class TestFinalizeCallback:
             sync_id=sync_id,
             connection_id=None,
             readable_collection_id="col-abc",
+            connection_init_session_id=None,
         )
         from airweave import schemas
 
@@ -1240,7 +1355,12 @@ class TestFinalizeCallback:
         event_bus = AsyncMock()
         event_bus.publish = AsyncMock(side_effect=RuntimeError("pub-fail"))
         ctx = _ctx()
-        source_conn = SimpleNamespace(sync_id=None, id=uuid4(), connection_id=uuid4())
+        source_conn = SimpleNamespace(
+            sync_id=None,
+            id=uuid4(),
+            connection_id=uuid4(),
+            connection_init_session_id=None,
+        )
         svc = _service(response_builder=builder, event_bus=event_bus)
         with pytest.raises(RuntimeError, match="pub-fail"):
             await svc._finalize_callback(DB, source_conn, ctx)
@@ -1257,6 +1377,7 @@ class TestFinalizeCallback:
             sync_id=sync_id,
             connection_id=conn_id,
             readable_collection_id="col-abc",
+            connection_init_session_id=None,
         )
 
         from airweave import schemas
@@ -1348,6 +1469,139 @@ class TestFinalizeCallback:
         assert any(call[0] == "get" for call in connection_repo._calls)
         temporal_svc.run_source_connection_workflow.assert_awaited_once()
 
+    async def test_no_jobs_skips_workflow(self):
+        """_run_sync_workflow returns early when no sync jobs exist (line 757)."""
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+
+        temporal_svc = AsyncMock()
+        temporal_svc.run_source_connection_workflow = AsyncMock()
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        sync_id = uuid4()
+        source_conn = SimpleNamespace(
+            id=uuid4(),
+            sync_id=sync_id,
+            connection_id=uuid4(),
+            readable_collection_id="col-abc",
+            connection_init_session_id=None,
+        )
+
+        from airweave import schemas
+
+        sync_repo = FakeSyncRepository()
+        sync_repo.seed(
+            sync_id,
+            schemas.Sync(
+                id=sync_id,
+                name="test-sync",
+                source_connection_id=source_conn.connection_id,
+                collection_id=uuid4(),
+                collection_readable_id="col-abc",
+                organization_id=ORG_ID,
+                created_at=NOW,
+                modified_at=NOW,
+                cron_schedule=None,
+                status="active",
+                source_connections=[],
+                destination_connections=[],
+                destination_connection_ids=[],
+            ),
+        )
+
+        sync_job_repo = FakeSyncJobRepository()
+
+        svc = _service(
+            response_builder=builder,
+            temporal_workflow_service=temporal_svc,
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+        )
+
+        result = await svc._finalize_callback(DB, source_conn, _ctx())
+
+        assert result is response
+        temporal_svc.run_source_connection_workflow.assert_not_awaited()
+
+    async def test_no_collection_skips_workflow(self):
+        """_run_sync_workflow returns early when collection not found (line 775)."""
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+
+        temporal_svc = AsyncMock()
+        temporal_svc.run_source_connection_workflow = AsyncMock()
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        sync_id = uuid4()
+        source_conn = SimpleNamespace(
+            id=uuid4(),
+            sync_id=sync_id,
+            connection_id=uuid4(),
+            readable_collection_id="col-missing",
+            connection_init_session_id=None,
+        )
+
+        from airweave import schemas
+
+        sync_repo = FakeSyncRepository()
+        sync_repo.seed(
+            sync_id,
+            schemas.Sync(
+                id=sync_id,
+                name="test-sync",
+                source_connection_id=source_conn.connection_id,
+                collection_id=uuid4(),
+                collection_readable_id="col-missing",
+                organization_id=ORG_ID,
+                created_at=NOW,
+                modified_at=NOW,
+                cron_schedule=None,
+                status="active",
+                source_connections=[],
+                destination_connections=[],
+                destination_connection_ids=[],
+            ),
+        )
+
+        from airweave.models.sync_job import SyncJob
+
+        sync_job_repo = FakeSyncJobRepository()
+        sync_job_repo.seed_jobs_for_sync(
+            sync_id,
+            [
+                SyncJob(
+                    id=uuid4(),
+                    sync_id=sync_id,
+                    status=SyncJobStatus.PENDING,
+                    organization_id=ORG_ID,
+                    scheduled=False,
+                )
+            ],
+        )
+
+        collection_repo = FakeCollectionRepository()
+
+        svc = _service(
+            response_builder=builder,
+            temporal_workflow_service=temporal_svc,
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+            collection_repo=collection_repo,
+        )
+
+        result = await svc._finalize_callback(DB, source_conn, _ctx())
+
+        assert result is response
+        temporal_svc.run_source_connection_workflow.assert_not_awaited()
+
 
 class TestTokenValidation:
     async def test_validate_token_returns_early_when_source_missing(self):
@@ -1365,3 +1619,596 @@ class TestCredentialEncryptorInjection:
         encryptor = FakeCredentialEncryptor()
         svc = _service(credential_encryptor=encryptor)
         assert svc._credential_encryptor is encryptor
+
+
+# ---------------------------------------------------------------------------
+# Expiry enforcement
+# ---------------------------------------------------------------------------
+
+
+class TestExpiryEnforcement:
+    async def test_expired_oauth2_session_raises_410(self):
+        repo = FakeOAuthInitSessionRepository()
+        session = _init_session(
+            expires_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        )
+        repo.seed_by_state("state-abc", session)
+
+        svc = _service(init_session_repo=repo)
+        with pytest.raises(HTTPException) as exc:
+            await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
+        assert exc.value.status_code == 410
+        assert "expired" in exc.value.detail.lower()
+
+    async def test_expired_oauth1_session_raises_410(self):
+        repo = FakeOAuthInitSessionRepository()
+        session = _init_session(
+            expires_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        )
+        repo.seed_by_oauth_token("tok1", session)
+
+        svc = _service(init_session_repo=repo)
+        with pytest.raises(HTTPException) as exc:
+            await svc.complete_oauth1_callback(DB, oauth_token="tok1", oauth_verifier="v")
+        assert exc.value.status_code == 410
+
+
+# ---------------------------------------------------------------------------
+# IN_PROGRESS replay protection
+# ---------------------------------------------------------------------------
+
+
+class TestInProgressReplayProtection:
+    async def test_in_progress_oauth2_session_raises_400(self):
+        repo = FakeOAuthInitSessionRepository()
+        session = _init_session(status=ConnectionInitStatus.IN_PROGRESS)
+        repo.seed_by_state("state-abc", session)
+
+        svc = _service(init_session_repo=repo)
+        with pytest.raises(HTTPException) as exc:
+            await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
+        assert exc.value.status_code == 400
+
+    async def test_in_progress_oauth1_session_raises_400(self):
+        repo = FakeOAuthInitSessionRepository()
+        session = _init_session(status=ConnectionInitStatus.IN_PROGRESS)
+        repo.seed_by_oauth_token("tok1", session)
+
+        svc = _service(init_session_repo=repo)
+        with pytest.raises(HTTPException) as exc:
+            await svc.complete_oauth1_callback(DB, oauth_token="tok1", oauth_verifier="v")
+        assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Deferred sync when claim token is set
+# ---------------------------------------------------------------------------
+
+
+class TestDeferredSync:
+    async def test_sync_deferred_when_claim_token_set(self):
+        """_finalize_callback skips Temporal trigger when init session has claim_token_hash."""
+        init_session_id = uuid4()
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session(
+            session_id=init_session_id,
+            claim_token_hash="abc123",
+        )
+        init_repo.seed_by_id(init_session_id, session)
+
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+
+        temporal_svc = AsyncMock()
+        temporal_svc.run_source_connection_workflow = AsyncMock()
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        sync_id = uuid4()
+        source_conn = SimpleNamespace(
+            id=uuid4(),
+            sync_id=sync_id,
+            connection_id=uuid4(),
+            connection_init_session_id=init_session_id,
+            readable_collection_id="col-abc",
+        )
+
+        # Seed sync repo with a pending job
+        from airweave import schemas
+
+        sync_repo = FakeSyncRepository()
+        sync_repo.seed(
+            sync_id,
+            schemas.Sync(
+                id=sync_id,
+                name="test-sync",
+                source_connection_id=source_conn.connection_id,
+                collection_id=uuid4(),
+                collection_readable_id="col-abc",
+                organization_id=ORG_ID,
+                created_at=NOW,
+                modified_at=NOW,
+                cron_schedule=None,
+                status="active",
+                source_connections=[],
+                destination_connections=[],
+                destination_connection_ids=[],
+            ),
+        )
+
+        from airweave.models.sync_job import SyncJob
+
+        sync_job_repo = FakeSyncJobRepository()
+        sync_job_repo.seed_jobs_for_sync(
+            sync_id,
+            [
+                SyncJob(
+                    id=uuid4(),
+                    sync_id=sync_id,
+                    status=SyncJobStatus.PENDING,
+                    organization_id=ORG_ID,
+                    scheduled=False,
+                )
+            ],
+        )
+
+        svc = _service(
+            init_session_repo=init_repo,
+            response_builder=builder,
+            temporal_workflow_service=temporal_svc,
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+        )
+
+        result = await svc._finalize_callback(DB, source_conn, _ctx())
+
+        assert result is response
+        # Sync should be deferred — workflow NOT triggered
+        temporal_svc.run_source_connection_workflow.assert_not_awaited()
+
+    async def test_sync_triggered_when_no_claim_token(self):
+        """Backward compat: existing behavior preserved for sessions without claim_token_hash."""
+        init_session_id = uuid4()
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session(session_id=init_session_id, claim_token_hash=None)
+        init_repo.seed_by_id(init_session_id, session)
+
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+
+        temporal_svc = AsyncMock()
+        temporal_svc.run_source_connection_workflow = AsyncMock()
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        sync_id = uuid4()
+        conn_id = uuid4()
+        source_conn = SimpleNamespace(
+            id=uuid4(),
+            sync_id=sync_id,
+            connection_id=conn_id,
+            connection_init_session_id=init_session_id,
+            readable_collection_id="col-abc",
+        )
+
+        from airweave import schemas
+
+        sync_repo = FakeSyncRepository()
+        sync_repo.seed(
+            sync_id,
+            schemas.Sync(
+                id=sync_id,
+                name="test-sync",
+                source_connection_id=conn_id,
+                collection_id=uuid4(),
+                collection_readable_id="col-abc",
+                organization_id=ORG_ID,
+                created_at=NOW,
+                modified_at=NOW,
+                cron_schedule=None,
+                status="active",
+                source_connections=[],
+                destination_connections=[],
+                destination_connection_ids=[],
+            ),
+        )
+
+        from airweave.models.sync_job import SyncJob
+
+        sync_job_repo = FakeSyncJobRepository()
+        sync_job_repo.seed_jobs_for_sync(
+            sync_id,
+            [
+                SyncJob(
+                    id=uuid4(),
+                    sync_id=sync_id,
+                    status=SyncJobStatus.PENDING,
+                    organization_id=ORG_ID,
+                    scheduled=False,
+                )
+            ],
+        )
+
+        from airweave.models.collection import Collection
+
+        collection_repo = FakeCollectionRepository()
+        col = Collection(
+            id=uuid4(),
+            name="Col",
+            readable_id="col-abc",
+            organization_id=ORG_ID,
+            vector_db_deployment_metadata_id=uuid4(),
+        )
+        col.created_at = NOW
+        col.modified_at = NOW
+        collection_repo.seed_readable("col-abc", col)
+
+        from airweave.models.connection import Connection
+
+        connection_repo = FakeConnectionRepository()
+        connection = Connection(
+            id=conn_id,
+            organization_id=ORG_ID,
+            name="github-conn",
+            readable_id="conn-github-abc",
+            short_name="github",
+            integration_type="source",
+            status=ConnectionStatus.ACTIVE,
+        )
+        connection.created_at = NOW
+        connection.modified_at = NOW
+        connection_repo.seed(conn_id, connection)
+
+        svc = _service(
+            init_session_repo=init_repo,
+            response_builder=builder,
+            temporal_workflow_service=temporal_svc,
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+            collection_repo=collection_repo,
+            connection_repo=connection_repo,
+        )
+
+        result = await svc._finalize_callback(DB, source_conn, _ctx())
+
+        assert result is response
+        temporal_svc.run_source_connection_workflow.assert_awaited_once()
+
+    async def test_two_step_contract_callback_defers_then_verify_triggers(self):
+        """Full two-step contract: callback defers sync, verify-oauth triggers it."""
+        import hashlib
+        import secrets
+
+        claim_token = secrets.token_urlsafe(32)
+        claim_hash = hashlib.sha256(claim_token.encode()).hexdigest()
+        user_id = uuid4()
+
+        init_session_id = uuid4()
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session(
+            session_id=init_session_id,
+            status=ConnectionInitStatus.PENDING,
+            claim_token_hash=claim_hash,
+            initiator_user_id=user_id,
+        )
+        init_repo.seed_by_id(init_session_id, session)
+
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+
+        temporal_svc = AsyncMock()
+        temporal_svc.run_source_connection_workflow = AsyncMock()
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        sync_id = uuid4()
+        conn_id = uuid4()
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell(init_session_id=init_session_id, org_id=ORG_ID)
+        shell.sync_id = sync_id
+        shell.connection_id = conn_id
+        sc_repo.seed(shell.id, shell)
+
+        source_conn = SimpleNamespace(
+            id=shell.id,
+            sync_id=sync_id,
+            connection_id=conn_id,
+            connection_init_session_id=init_session_id,
+            readable_collection_id="col-abc",
+        )
+
+        from airweave import schemas
+
+        sync_repo = FakeSyncRepository()
+        sync_repo.seed(
+            sync_id,
+            schemas.Sync(
+                id=sync_id,
+                name="test-sync",
+                source_connection_id=conn_id,
+                collection_id=uuid4(),
+                collection_readable_id="col-abc",
+                organization_id=ORG_ID,
+                created_at=NOW,
+                modified_at=NOW,
+                cron_schedule=None,
+                status="active",
+                source_connections=[],
+                destination_connections=[],
+                destination_connection_ids=[],
+            ),
+        )
+
+        from airweave.models.sync_job import SyncJob
+
+        sync_job_repo = FakeSyncJobRepository()
+        sync_job_repo.seed_jobs_for_sync(
+            sync_id,
+            [
+                SyncJob(
+                    id=uuid4(),
+                    sync_id=sync_id,
+                    status=SyncJobStatus.PENDING,
+                    organization_id=ORG_ID,
+                    scheduled=False,
+                )
+            ],
+        )
+
+        org_repo = FakeOrganizationRepository()
+        org_repo.seed(ORG_ID, _organization())
+
+        from airweave.models.collection import Collection
+
+        collection_repo = FakeCollectionRepository()
+        col = Collection(
+            id=uuid4(),
+            name="Col",
+            readable_id="col-abc",
+            organization_id=ORG_ID,
+            vector_db_deployment_metadata_id=uuid4(),
+        )
+        col.created_at = NOW
+        col.modified_at = NOW
+        collection_repo.seed_readable("col-abc", col)
+
+        from airweave.models.connection import Connection
+
+        connection_repo = FakeConnectionRepository()
+        connection = Connection(
+            id=conn_id,
+            organization_id=ORG_ID,
+            name="github-conn",
+            readable_id="conn-github-abc",
+            short_name="github",
+            integration_type="source",
+            status=ConnectionStatus.ACTIVE,
+        )
+        connection.created_at = NOW
+        connection.modified_at = NOW
+        connection_repo.seed(conn_id, connection)
+
+        svc = _service(
+            init_session_repo=init_repo,
+            sc_repo=sc_repo,
+            response_builder=builder,
+            temporal_workflow_service=temporal_svc,
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+            collection_repo=collection_repo,
+            connection_repo=connection_repo,
+            organization_repo=org_repo,
+        )
+
+        # Step 1: callback finalizes — sync must be DEFERRED
+        await svc._finalize_callback(DB, source_conn, _ctx())
+        temporal_svc.run_source_connection_workflow.assert_not_awaited()
+
+        # Advance init session to IN_PROGRESS (as real callback would)
+        session.status = ConnectionInitStatus.IN_PROGRESS
+
+        # Step 2: verify-oauth with correct claim token — sync must be TRIGGERED
+        ctx = _ctx()
+        from airweave.schemas.user import User
+
+        ctx.user = User(
+            id=user_id,
+            email="test@example.com",
+            created_at=NOW,
+            modified_at=NOW,
+        )
+
+        result = await svc.verify_oauth_flow(
+            DB,
+            source_connection_id=shell.id,
+            claim_token=claim_token,
+            ctx=ctx,
+        )
+
+        assert result is response
+        assert any(call[0] == "mark_completed" for call in init_repo._calls)
+        temporal_svc.run_source_connection_workflow.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# verify_oauth_flow
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyOAuthFlow:
+    def _make_claim_token(self) -> tuple[str, str]:
+        import hashlib
+        import secrets
+
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        return token, token_hash
+
+    async def test_happy_path_triggers_sync(self):
+        claim_token, claim_hash = self._make_claim_token()
+        user_id = uuid4()
+
+        init_session_id = uuid4()
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session(
+            session_id=init_session_id,
+            status=ConnectionInitStatus.IN_PROGRESS,
+            claim_token_hash=claim_hash,
+            initiator_user_id=user_id,
+        )
+        init_repo.seed_by_id(init_session_id, session)
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell(init_session_id=init_session_id)
+        shell.connection_id = uuid4()
+        sc_repo.seed(shell.id, shell)
+
+        org_repo = FakeOrganizationRepository()
+        org_repo.seed(ORG_ID, _organization())
+
+        response_obj = MagicMock(id=shell.id, short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response_obj)
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        svc = _service(
+            init_session_repo=init_repo,
+            sc_repo=sc_repo,
+            organization_repo=org_repo,
+            response_builder=builder,
+            event_bus=event_bus,
+        )
+
+        # Build a ctx with user_id
+        ctx = _ctx()
+        from airweave.schemas.user import User
+
+        ctx.user = User(
+            id=user_id,
+            email="test@example.com",
+            created_at=NOW,
+            modified_at=NOW,
+        )
+
+        result = await svc.verify_oauth_flow(
+            DB,
+            source_connection_id=shell.id,
+            claim_token=claim_token,
+            ctx=ctx,
+        )
+
+        assert result is response_obj
+        # mark_completed should have been called
+        assert any(call[0] == "mark_completed" for call in init_repo._calls)
+
+    async def test_wrong_token_raises_403(self):
+        _, claim_hash = self._make_claim_token()
+
+        init_session_id = uuid4()
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session(
+            session_id=init_session_id,
+            status=ConnectionInitStatus.IN_PROGRESS,
+            claim_token_hash=claim_hash,
+        )
+        init_repo.seed_by_id(init_session_id, session)
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell(init_session_id=init_session_id)
+        shell.connection_id = uuid4()
+        sc_repo.seed(shell.id, shell)
+
+        svc = _service(init_session_repo=init_repo, sc_repo=sc_repo)
+
+        with pytest.raises(HTTPException) as exc:
+            await svc.verify_oauth_flow(
+                DB,
+                source_connection_id=shell.id,
+                claim_token="wrong-token",
+                ctx=_ctx(),
+            )
+        assert exc.value.status_code == 403
+        assert "Invalid claim token" in exc.value.detail
+
+    async def test_wrong_user_raises_403(self):
+        claim_token, claim_hash = self._make_claim_token()
+        initiator_user_id = uuid4()
+        different_user_id = uuid4()
+
+        init_session_id = uuid4()
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session(
+            session_id=init_session_id,
+            status=ConnectionInitStatus.IN_PROGRESS,
+            claim_token_hash=claim_hash,
+            initiator_user_id=initiator_user_id,
+        )
+        init_repo.seed_by_id(init_session_id, session)
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell(init_session_id=init_session_id)
+        shell.connection_id = uuid4()
+        sc_repo.seed(shell.id, shell)
+
+        svc = _service(init_session_repo=init_repo, sc_repo=sc_repo)
+
+        ctx = _ctx()
+        from airweave.schemas.user import User
+
+        ctx.user = User(
+            id=different_user_id,
+            email="other@example.com",
+            created_at=NOW,
+            modified_at=NOW,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await svc.verify_oauth_flow(
+                DB,
+                source_connection_id=shell.id,
+                claim_token=claim_token,
+                ctx=ctx,
+            )
+        assert exc.value.status_code == 403
+        assert "identity mismatch" in exc.value.detail.lower()
+
+    async def test_already_completed_raises_400(self):
+        claim_token, claim_hash = self._make_claim_token()
+
+        init_session_id = uuid4()
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session(
+            session_id=init_session_id,
+            status=ConnectionInitStatus.COMPLETED,
+            claim_token_hash=claim_hash,
+        )
+        init_repo.seed_by_id(init_session_id, session)
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell(init_session_id=init_session_id)
+        shell.connection_id = uuid4()
+        sc_repo.seed(shell.id, shell)
+
+        svc = _service(init_session_repo=init_repo, sc_repo=sc_repo)
+
+        with pytest.raises(HTTPException) as exc:
+            await svc.verify_oauth_flow(
+                DB,
+                source_connection_id=shell.id,
+                claim_token=claim_token,
+                ctx=_ctx(),
+            )
+        assert exc.value.status_code == 400
+        assert "completed" in exc.value.detail.lower()

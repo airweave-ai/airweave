@@ -80,6 +80,38 @@ code {
   animation: progress-indeterminate 1.5s ease-in-out infinite;
 }
 
+/* Themed scrollbar */
+.scrollable-content {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--connect-text-muted) 25%, transparent)
+    transparent;
+}
+
+.scrollable-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb {
+  background: color-mix(
+    in srgb,
+    var(--connect-text-muted) 25%,
+    transparent
+  );
+  border-radius: 3px;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb:hover {
+  background: color-mix(
+    in srgb,
+    var(--connect-text-muted) 45%,
+    transparent
+  );
+}
+
 /* Scrollable content with fade mask */
 .scrollable-content {
   mask-image: linear-gradient(

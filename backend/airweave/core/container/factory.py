@@ -59,6 +59,7 @@ from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
+from airweave.domains.arf.service import ArfService
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.auth_provider.service import AuthProviderService
 from airweave.domains.browse_tree.repository import NodeSelectionRepository
@@ -113,6 +114,7 @@ from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
+from airweave.domains.storage.sync_file_manager import SyncFileManager
 from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
@@ -367,20 +369,6 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
-    # Connect domain service
-    # -----------------------------------------------------------------
-    from airweave.domains.connect.service import ConnectService
-    from airweave.domains.organizations.repository import OrganizationRepository as ConnectOrgRepo
-
-    connect_service = ConnectService(
-        source_connection_service=source_connection_service,
-        source_service=source_deps["source_service"],
-        org_repo=ConnectOrgRepo(),
-        collection_repo=source_deps["collection_repo"],
-        sync_job_repo=source_deps["sync_job_repo"],
-    )
-
-    # -----------------------------------------------------------------
     # Embedder registries + instances (deployment-wide singletons)
     # -----------------------------------------------------------------
     dense_embedder_registry = DenseEmbedderRegistry()
@@ -435,6 +423,7 @@ def create_container(settings: Settings) -> Container:
         init_session_repo=init_session_repo,
         response_builder=sync_deps["response_builder"],
         source_registry=source_deps["source_registry"],
+        source_lifecycle=source_deps["source_lifecycle_service"],
         sync_lifecycle=sync_deps["sync_lifecycle"],
         sync_record_service=sync_deps["sync_record_service"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
@@ -447,6 +436,21 @@ def create_container(settings: Settings) -> Container:
         sync_repo=source_deps["sync_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
         credential_encryptor=encryptor,
+    )
+
+    # -----------------------------------------------------------------
+    # Connect domain service (after oauth_callback_svc for DI)
+    # -----------------------------------------------------------------
+    from airweave.domains.connect.service import ConnectService
+    from airweave.domains.organizations.repository import OrganizationRepository as ConnectOrgRepo
+
+    connect_service = ConnectService(
+        source_connection_service=source_connection_service,
+        source_service=source_deps["source_service"],
+        org_repo=ConnectOrgRepo(),
+        collection_repo=source_deps["collection_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+        oauth_callback_service=oauth_callback_svc,
     )
 
     # -----------------------------------------------------------------
@@ -464,11 +468,23 @@ def create_container(settings: Settings) -> Container:
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
     )
 
+    # Storage domain
+    # -----------------------------------------------------------------
+    storage_backend = _create_storage_backend(settings)
+    sync_file_manager = SyncFileManager(backend=storage_backend)
+
+    # ARF domain service (raw entity capture / replay)
+    # -----------------------------------------------------------------
+    arf_service = ArfService(storage=storage_backend)
+
     # -----------------------------------------------------------------
     # Usage billing listener
     # -----------------------------------------------------------------
 
     return Container(
+        storage_backend=storage_backend,
+        sync_file_manager=sync_file_manager,
+        arf_service=arf_service,
         context_cache=context_cache,
         rate_limiter=rate_limiter,
         billing_service=billing_services["billing_service"],
@@ -1272,3 +1288,59 @@ def _create_search_services(
         "classic_search": classic_search,
         "agentic_search": agentic_search,
     }
+
+
+def _create_storage_backend(settings: Settings):  # -> StorageBackend
+    """Create storage backend from settings.
+
+    Lazy-imports each adapter to avoid pulling in heavy cloud SDKs.
+    """
+    from airweave.core.config import StorageBackendType
+
+    backend_type = settings.STORAGE_BACKEND
+
+    logger.info(f"Initializing storage backend: {backend_type}")
+
+    if backend_type == StorageBackendType.FILESYSTEM:
+        from airweave.adapters.storage.filesystem import FilesystemBackend
+
+        return FilesystemBackend(base_path=settings.STORAGE_PATH)
+
+    if backend_type == StorageBackendType.AZURE:
+        if not settings.STORAGE_AZURE_ACCOUNT:
+            raise ValueError("STORAGE_AZURE_ACCOUNT required for azure backend")
+        from airweave.adapters.storage.azure_blob import AzureBlobBackend
+
+        return AzureBlobBackend(
+            storage_account=settings.STORAGE_AZURE_ACCOUNT,
+            container=settings.STORAGE_AZURE_CONTAINER,
+            prefix=settings.STORAGE_AZURE_PREFIX,
+        )
+
+    if backend_type == StorageBackendType.AWS:
+        if not settings.STORAGE_AWS_BUCKET:
+            raise ValueError("STORAGE_AWS_BUCKET required for aws backend")
+        if not settings.STORAGE_AWS_REGION:
+            raise ValueError("STORAGE_AWS_REGION required for aws backend")
+        from airweave.adapters.storage.aws_s3 import S3Backend
+
+        return S3Backend(
+            bucket=settings.STORAGE_AWS_BUCKET,
+            region=settings.STORAGE_AWS_REGION,
+            prefix=settings.STORAGE_AWS_PREFIX,
+            endpoint_url=settings.STORAGE_AWS_ENDPOINT_URL,
+        )
+
+    if backend_type == StorageBackendType.GCP:
+        if not settings.STORAGE_GCP_BUCKET:
+            raise ValueError("STORAGE_GCP_BUCKET required for gcp backend")
+        from airweave.adapters.storage.gcp_gcs import GCSBackend
+
+        return GCSBackend(
+            bucket=settings.STORAGE_GCP_BUCKET,
+            project=settings.STORAGE_GCP_PROJECT,
+            prefix=settings.STORAGE_GCP_PREFIX,
+        )
+
+    valid_options = ", ".join(t.value for t in StorageBackendType)
+    raise ValueError(f"Unknown STORAGE_BACKEND: {backend_type}. Valid options: {valid_options}")

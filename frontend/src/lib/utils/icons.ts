@@ -2,6 +2,10 @@ import { useTheme } from "@/lib/theme-provider";
 
 export function getAppIconUrl(shortName: string, theme?: string): string {
   try {
+    // Apollo default is black — use white-fill variant in dark mode
+    if (shortName === "apollo" && theme === "dark") {
+      return new URL(`/src/components/icons/apps/apollo-light.svg`, import.meta.url).href;
+    }
     // Special handling for Attio icon in dark mode
     if (shortName === "attio" && theme === "dark") {
       return new URL(`/src/components/icons/apps/attio-light.svg`, import.meta.url).href;
@@ -20,6 +24,13 @@ export function getAppIconUrl(shortName: string, theme?: string): string {
     // Special handling for Linear icon in dark mode
     if (shortName === "linear" && theme === "dark") {
       return new URL(`/src/components/icons/apps/linear-light.svg`, import.meta.url).href;
+    }
+    // White logos — use dark-fill variant in light mode
+    if (shortName === "calcom" && theme !== "dark") {
+      return new URL(`/src/components/icons/apps/calcom-light.svg`, import.meta.url).href;
+    }
+    if (shortName === "slab" && theme !== "dark") {
+      return new URL(`/src/components/icons/apps/slab-light.svg`, import.meta.url).href;
     }
     return new URL(`/src/components/icons/apps/${shortName}.svg`, import.meta.url).href;
   } catch {

@@ -591,7 +591,26 @@ def fake_agentic_search_v2():
 
 
 @pytest.fixture
+def fake_storage_backend():
+    """Fake StorageBackend for testing storage consumers."""
+    from airweave.domains.storage.fakes import FakeStorageBackend
+
+    return FakeStorageBackend()
+
+
+@pytest.fixture
+def fake_arf_service():
+    """Fake ArfService for testing ARF consumers."""
+    from airweave.domains.arf.fakes.service import FakeArfService
+
+    return FakeArfService()
+
+
+@pytest.fixture
 def test_container(
+    tmp_path,
+    fake_storage_backend,
+    fake_arf_service,
     fake_context_cache,
     fake_rate_limiter,
     fake_health_service,
@@ -662,8 +681,15 @@ def test_container(
         real_bus_container = test_container.replace(event_bus=InMemoryEventBus())
     """
     from airweave.core.container import Container
+    from airweave.domains.storage.sync_file_manager import SyncFileManager
 
     return Container(
+        storage_backend=fake_storage_backend,
+        sync_file_manager=SyncFileManager(
+            backend=fake_storage_backend,
+            temp_cache_dir=tmp_path / "cache",
+        ),
+        arf_service=fake_arf_service,
         context_cache=fake_context_cache,
         rate_limiter=fake_rate_limiter,
         health=fake_health_service,

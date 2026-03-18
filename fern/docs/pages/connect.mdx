@@ -1,0 +1,496 @@
+---
+title: Airweave Connect
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/connect.mdx
+subtitle: Let your users connect their own data sources with a pre-built, embeddable UI component. No auth UI to build.
+slug: connect
+---
+
+Airweave Connect is a hosted, embeddable UI widget that lets end users connect their apps (Slack, GitHub, Google Drive, Notion, and more) directly inside your product. Think of it like Plaid for data integrations: you add a button, your users click it, and their data starts syncing.
+
+<CardGroup cols={3}>
+  <Card title="No auth UI to build" icon="fa-solid fa-wand-magic-sparkles">
+    OAuth flows, credential forms, and connection management are all handled for you.
+  </Card>
+  <Card title="Fully themeable" icon="fa-solid fa-palette">
+    Match your brand with custom colors, fonts, and dark/light mode support.
+  </Card>
+  <Card title="Works anywhere" icon="fa-solid fa-code">
+    React hook, vanilla JS class, or raw iframe. Integrate however you like.
+  </Card>
+</CardGroup>
+
+---
+
+## How it works
+
+The widget runs inside an iframe hosted by Airweave. Your backend creates a short-lived session token, your frontend passes it to the widget via `postMessage`, and the widget handles the rest.
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Your Application                                              │
+│                                                                │
+│   [Connect your apps]  ──onClick──►  Airweave Connect modal   │
+│                                      ┌──────────────────────┐  │
+│                                      │  ● Slack             │  │
+│                                      │  ● GitHub            │  │
+│                                      │  ● Google Drive      │  │
+│                                      │  ...                 │  │
+│                                      └──────────────────────┘  │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**The flow in three steps:**
+
+<Steps>
+
+  <Step title="Your backend creates a session">
+    Call `POST /connect/sessions` with your API key. This returns a short-lived session token scoped to a specific collection and optionally restricted to certain integrations.
+  </Step>
+
+  <Step title="Your frontend opens the widget">
+    Pass the session token to the Connect widget via your SDK of choice. The widget requests the token, validates it against the Airweave API, and shows the integration picker.
+  </Step>
+
+  <Step title="Your user connects their app">
+    The widget handles OAuth flows, credential forms, and connection management entirely. Once a connection is created, your app receives a callback with the connection ID.
+  </Step>
+
+</Steps>
+
+---
+
+## Quickstart
+
+### 1. Create a Connect session (server-side)
+
+Your backend creates a session token by calling the Airweave API with your API key. **Never expose your API key to the browser.**
+
+<CodeBlocks>
+```python title="Python"
+import requests
+
+def create_connect_session(collection_id: str, user_id: str) -> str:
+    response = requests.post(
+        "https://api.airweave.ai/connect/sessions",
+        headers={
+            "X-API-Key": "YOUR_API_KEY",
+            "Content-Type": "application/json",
+        },
+        json={
+            "readable_collection_id": collection_id,
+            "mode": "all",
+            "end_user_id": user_id,
+        },
+    )
+    return response.json()["session_token"]
+```
+
+```javascript title="Node.js"
+async function createConnectSession(collectionId, userId) {
+  const response = await fetch("https://api.airweave.ai/connect/sessions", {
+    method: "POST",
+    headers: {
+      "X-API-Key": "YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      readable_collection_id: collectionId,
+      mode: "all",
+      end_user_id: userId,
+    }),
+  });
+  const data = await response.json();
+  return data.session_token;
+}
+```
+
+```bash title="cURL"
+curl -X POST https://api.airweave.ai/connect/sessions \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "readable_collection_id": "my-collection-abc123",
+    "mode": "all",
+    "end_user_id": "user-123"
+  }'
+```
+</CodeBlocks>
+
+The response contains the session token:
+
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "session_token": "eyJ...",
+  "expires_at": "2024-01-01T00:10:00Z"
+}
+```
+
+<Note>
+Session tokens expire after **10 minutes** by default (extended to 30 minutes during OAuth flows). Create a new token each time you open the modal. The React and JS SDKs handle this automatically via the `getSessionToken` callback.
+</Note>
+
+---
+
+### 2. Add the Connect widget (client-side)
+
+Choose the integration method that fits your stack:
+
+<Tabs>
+  <Tab title="React">
+    Install the React package:
+
+    ```bash
+    npm install @airweave/connect-react
+    ```
+
+    Use the `useAirweaveConnect` hook in your component:
+
+    ```tsx
+    import { useAirweaveConnect } from "@airweave/connect-react";
+
+    export function ConnectButton() {
+      const { open, isLoading } = useAirweaveConnect({
+        getSessionToken: async () => {
+          // Call your backend. Never hardcode API keys here.
+          const res = await fetch("/api/airweave/session", { method: "POST" });
+          const data = await res.json();
+          return data.session_token;
+        },
+        onSuccess: (connectionId) => {
+          console.log("New connection created:", connectionId);
+        },
+        onClose: (reason) => {
+          console.log("Modal closed:", reason); // "success" | "cancel" | "error"
+        },
+      });
+
+      return (
+        <button onClick={open} disabled={isLoading}>
+          {isLoading ? "Loading..." : "Connect your apps"}
+        </button>
+      );
+    }
+    ```
+  </Tab>
+
+  <Tab title="Vanilla JS">
+    Install the vanilla JS package:
+
+    ```bash
+    npm install @airweave/connect-js
+    ```
+
+    Use the `AirweaveConnect` class:
+
+    ```javascript
+    import { AirweaveConnect } from "@airweave/connect-js";
+
+    const connect = new AirweaveConnect({
+      getSessionToken: async () => {
+        const res = await fetch("/api/airweave/session", { method: "POST" });
+        const data = await res.json();
+        return data.session_token;
+      },
+      onSuccess: (connectionId) => {
+        console.log("New connection created:", connectionId);
+      },
+      onClose: (reason) => {
+        console.log("Modal closed:", reason);
+      },
+    });
+
+    document.getElementById("connect-btn").addEventListener("click", () => {
+      connect.open();
+    });
+    ```
+  </Tab>
+
+  <Tab title="Raw iframe">
+    For frameworks without a package, embed the iframe directly and use `postMessage`:
+
+    ```html
+    <iframe
+      id="airweave-connect"
+      src="https://connect.airweave.ai"
+      style="width: 100%; height: 600px; border: none;"
+    ></iframe>
+
+    <script>
+      const iframe = document.getElementById("airweave-connect");
+      const CONNECT_ORIGIN = "https://connect.airweave.ai";
+
+      window.addEventListener("message", async (event) => {
+        if (event.origin !== CONNECT_ORIGIN) return;
+
+        const { type, requestId } = event.data;
+
+        if (type === "REQUEST_TOKEN") {
+          // Fetch from your backend
+          const res = await fetch("/api/airweave/session", { method: "POST" });
+          const { session_token } = await res.json();
+
+          iframe.contentWindow.postMessage(
+            { type: "TOKEN_RESPONSE", requestId, token: session_token },
+            CONNECT_ORIGIN
+          );
+        }
+
+        if (type === "CONNECTION_CREATED") {
+          console.log("New connection:", event.data.connectionId);
+        }
+
+        if (type === "CLOSE") {
+          // Hide or remove the iframe
+        }
+      });
+    </script>
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Session modes
+
+The `mode` parameter controls what users can do inside the widget:
+
+| Mode | Create connections | View connections | Delete connections | Re-authenticate |
+|------|--------------------|------------------|--------------------|-----------------|
+| `all` | ✓ | ✓ | ✓ | ✓ |
+| `connect` | ✓ | | | |
+| `manage` | | ✓ | ✓ | |
+| `reauth` | | ✓ | | ✓ |
+
+Use `connect` when onboarding new users, `manage` for a settings page, and `reauth` when a connection needs its credentials refreshed.
+
+---
+
+## Restricting integrations
+
+Use `allowed_integrations` to limit which sources appear in the widget. Pass a list of connector short names:
+
+```json
+{
+  "readable_collection_id": "my-collection-abc123",
+  "mode": "connect",
+  "allowed_integrations": ["slack", "github", "google_drive", "notion"]
+}
+```
+
+If `allowed_integrations` is omitted, all available connectors are shown.
+
+---
+
+## Theme customization
+
+Pass a `theme` object to match the widget to your brand. Supports separate palettes for dark and light modes.
+
+<CodeBlocks>
+```tsx title="React"
+const { open } = useAirweaveConnect({
+  getSessionToken,
+  theme: {
+    mode: "dark", // "light" | "dark" | "system"
+    colors: {
+      dark: {
+        primary: "#6366f1",
+        background: "#0f172a",
+        surface: "#1e293b",
+        text: "#ffffff",
+        textMuted: "#9ca3af",
+        border: "#334155",
+        success: "#22c55e",
+        error: "#ef4444",
+      },
+      light: {
+        primary: "#4f46e5",
+        background: "#ffffff",
+        surface: "#f8fafc",
+        text: "#1f2937",
+        textMuted: "#6b7280",
+        border: "#e5e7eb",
+        success: "#22c55e",
+        error: "#ef4444",
+      },
+    },
+  },
+});
+```
+
+```javascript title="Vanilla JS"
+const connect = new AirweaveConnect({
+  getSessionToken,
+  theme: {
+    mode: "dark",
+    colors: {
+      dark: {
+        primary: "#6366f1",
+        background: "#0f172a",
+        surface: "#1e293b",
+        text: "#ffffff",
+        textMuted: "#9ca3af",
+        border: "#334155",
+        success: "#22c55e",
+        error: "#ef4444",
+      },
+    },
+  },
+});
+```
+</CodeBlocks>
+
+You can also update the theme while the modal is open:
+
+<CodeBlocks>
+```tsx title="React"
+const { setTheme } = useAirweaveConnect({ getSessionToken });
+
+// Call at any time, takes effect immediately
+setTheme({ mode: "light" });
+```
+
+```javascript title="Vanilla JS"
+connect.setTheme({ mode: "light" });
+```
+</CodeBlocks>
+
+---
+
+## Event callbacks
+
+| Callback | Signature | When it fires |
+|----------|-----------|---------------|
+| `onSuccess` | `(connectionId: string) => void` | A connection was successfully created |
+| `onConnectionCreated` | `(connectionId: string) => void` | Same as `onSuccess` (alias) |
+| `onClose` | `(reason: "success" \| "cancel" \| "error") => void` | The modal was closed for any reason |
+| `onError` | `(error: SessionError) => void` | A session or network error occurred |
+| `onStatusChange` | `(status: SessionStatus) => void` | The session status changed inside the widget |
+
+---
+
+## SDK reference
+
+### React: `useAirweaveConnect(options)`
+
+**Options:**
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `getSessionToken` | `() => Promise<string>` | Yes | Called each time the modal opens to fetch a fresh session token |
+| `theme` | `ConnectTheme` | No | Visual theme configuration |
+| `connectUrl` | `string` | No | Override the Connect widget URL (for self-hosted deployments) |
+| `onSuccess` | `(connectionId: string) => void` | No | Called when a connection is created |
+| `onError` | `(error: SessionError) => void` | No | Called on errors |
+| `onClose` | `(reason: string) => void` | No | Called when the modal closes |
+| `onConnectionCreated` | `(connectionId: string) => void` | No | Alias for `onSuccess` |
+| `onStatusChange` | `(status: SessionStatus) => void` | No | Called on session status changes |
+| `initialView` | `"connections" \| "sources" \| "configure"` | No | Which view to show when the modal opens |
+| `modalStyle` | `ModalStyle` | No | Override modal dimensions and border radius |
+| `showCloseButton` | `boolean` | No | Show a close button inside the modal (default: `false`) |
+
+**Returns:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `open` | `() => void` | Open the Connect modal |
+| `close` | `() => void` | Close the Connect modal |
+| `setTheme` | `(theme: ConnectTheme) => void` | Update the theme while the modal is open |
+| `navigate` | `(view: NavigateView) => void` | Navigate to a specific view |
+| `isOpen` | `boolean` | Whether the modal is currently open |
+| `isLoading` | `boolean` | Whether a session token is being fetched |
+| `error` | `SessionError \| null` | Current error, if any |
+| `status` | `SessionStatus \| null` | Current session status from the widget |
+
+### Vanilla JS: `new AirweaveConnect(config)`
+
+The `AirweaveConnect` class accepts the same options as the React hook. Key methods:
+
+| Method | Description |
+|--------|-------------|
+| `open()` | Open the modal (fetches a session token first) |
+| `close()` | Close the modal |
+| `setTheme(theme)` | Update the theme while the modal is open |
+| `navigate(view)` | Navigate to a specific view |
+| `getState()` | Returns `{ isOpen, isLoading, error, status }` |
+| `updateConfig(config)` | Update callbacks or options after initialization |
+| `destroy()` | Clean up all resources |
+
+---
+
+## Session API reference
+
+### `POST /connect/sessions`
+
+Creates a Connect session. Requires an API key.
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `readable_collection_id` | `string` | Yes | The collection users will connect sources to |
+| `mode` | `"all" \| "connect" \| "manage" \| "reauth"` | No | Controls available actions (default: `"all"`) |
+| `allowed_integrations` | `string[]` | No | Limit which connectors are shown (e.g. `["slack", "github"]`) |
+| `end_user_id` | `string` | No | Your internal user ID for audit logging |
+
+**Response:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | `string` | Unique session identifier |
+| `session_token` | `string` | HMAC-signed token to pass to the widget |
+| `expires_at` | `string` | ISO 8601 expiry timestamp (10 minutes by default) |
+
+---
+
+## Security
+
+- **Session tokens** are HMAC-signed and expire after 10 minutes. Create a new token for each modal open. The SDKs handle this automatically.
+- **API keys** must only be used server-side. Never include them in frontend code or responses.
+- **Collection scoping**: the collection is bound to the session at creation time. The widget cannot escalate to other collections.
+- **`allowed_integrations`** lets you restrict which connectors are visible, reducing your attack surface.
+- **Origin validation**: the Connect widget validates `postMessage` origins. Once it receives the first token from your app, it only accepts subsequent messages from that same origin.
+
+---
+
+## Self-hosting
+
+If you're running Airweave on your own infrastructure, set `connectUrl` to point at your self-hosted Connect widget:
+
+<CodeBlocks>
+```tsx title="React"
+const { open } = useAirweaveConnect({
+  getSessionToken,
+  connectUrl: "https://connect.your-domain.com",
+});
+```
+
+```javascript title="Vanilla JS"
+const connect = new AirweaveConnect({
+  getSessionToken,
+  connectUrl: "https://connect.your-domain.com",
+});
+```
+</CodeBlocks>
+
+You'll also need to point the Connect widget's `API_URL` environment variable at your self-hosted Airweave API:
+
+```bash
+docker run -p 8082:8082 \
+  -e API_URL=https://api.your-domain.com \
+  ghcr.io/airweave-ai/connect:latest
+```
+
+---
+
+## Try it in the playground
+
+The **Connect Playground** in the Airweave dashboard lets you configure a session, customize the theme, pick allowed integrations, and preview the widget before writing a line of code. It also generates ready-to-use backend and frontend snippets you can copy directly into your app.
+
+<Card
+  title="Open Connect Playground"
+  icon="fa-solid fa-play"
+  href="https://app.airweave.ai/connect/playground"
+>
+  Configure and preview Airweave Connect, then export integration code for Python, Node.js, React, or vanilla JS.
+</Card>
