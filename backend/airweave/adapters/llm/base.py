@@ -46,7 +46,7 @@ class BaseLLM(LLMProtocol):
     """
 
     # Defaults — subclasses can override as class constants
-    MAX_RETRIES = 1
+    MAX_RETRIES = 3
     INITIAL_RETRY_DELAY = 1.0  # seconds
     MAX_RETRY_DELAY = 30.0  # seconds
     RETRY_MULTIPLIER = 2.0  # exponential backoff
