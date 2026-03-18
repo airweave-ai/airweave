@@ -1,13 +1,11 @@
-"""Tests for SearchPlanBuilder."""
-
-import pytest
+"""Tests for SearchPlanBuilder — user filters AND'd into LLM groups."""
 
 from airweave.domains.search.builders.search_plan import SearchPlanBuilder
 from airweave.domains.search.types.filters import (
     FilterCondition,
     FilterGroup,
-    FilterableField,
     FilterOperator,
+    FilterableField,
 )
 from airweave.domains.search.types.plan import RetrievalStrategy, SearchPlan, SearchQuery
 
@@ -37,17 +35,16 @@ def _make_filter_group(field: FilterableField, value: str) -> FilterGroup:
 
 
 class TestSearchPlanBuilder:
-    """Tests for SearchPlanBuilder."""
+    """Tests for SearchPlanBuilder — user filters AND'd into LLM groups."""
 
     def test_no_user_filters_returns_original(self) -> None:
         """When no user filters, returns the original plan unchanged."""
         plan = _make_plan()
         result = SearchPlanBuilder.build(plan, [])
+        assert result is plan
 
-        assert result is plan  # same object, no copy
-
-    def test_user_filters_appended(self) -> None:
-        """User filters are appended to the plan's filter_groups."""
+    def test_user_filter_and_into_llm_group(self) -> None:
+        """User filter conditions are AND'd into each LLM filter group."""
         llm_filter = _make_filter_group(
             FilterableField.SYSTEM_METADATA_SOURCE_NAME, "slack"
         )
@@ -58,10 +55,39 @@ class TestSearchPlanBuilder:
         )
         result = SearchPlanBuilder.build(plan, [user_filter])
 
-        # Result has both filters
+        # Still one group, but now with 2 conditions (LLM + user AND'd)
+        assert len(result.filter_groups) == 1
+        assert len(result.filter_groups[0].conditions) == 2
+
+    def test_user_filter_no_llm_groups_creates_group(self) -> None:
+        """When LLM has no filter groups, user conditions become a new group."""
+        plan = _make_plan()
+
+        user_filter = _make_filter_group(FilterableField.NAME, "doc1")
+        result = SearchPlanBuilder.build(plan, [user_filter])
+
+        assert len(result.filter_groups) == 1
+        assert len(result.filter_groups[0].conditions) == 1
+
+    def test_user_filter_and_into_multiple_llm_groups(self) -> None:
+        """User conditions AND'd into every LLM group."""
+        llm_group_a = _make_filter_group(
+            FilterableField.SYSTEM_METADATA_SOURCE_NAME, "slack"
+        )
+        llm_group_b = _make_filter_group(
+            FilterableField.SYSTEM_METADATA_SOURCE_NAME, "notion"
+        )
+        plan = _make_plan(filter_groups=[llm_group_a, llm_group_b])
+
+        user_filter = _make_filter_group(
+            FilterableField.SYSTEM_METADATA_ENTITY_TYPE, "MessageEntity"
+        )
+        result = SearchPlanBuilder.build(plan, [user_filter])
+
+        # Still 2 groups, each now has 2 conditions
         assert len(result.filter_groups) == 2
-        assert result.filter_groups[0] == llm_filter
-        assert result.filter_groups[1] == user_filter
+        assert len(result.filter_groups[0].conditions) == 2
+        assert len(result.filter_groups[1].conditions) == 2
 
     def test_user_filters_do_not_mutate_original(self) -> None:
         """User filters don't mutate the original plan."""
@@ -71,20 +97,7 @@ class TestSearchPlanBuilder:
         user_filter = _make_filter_group(FilterableField.NAME, "doc1")
         SearchPlanBuilder.build(plan, [user_filter])
 
-        # Original plan unchanged
         assert len(plan.filter_groups) == original_len
-
-    def test_multiple_user_filters(self) -> None:
-        """Multiple user filter groups are all appended."""
-        plan = _make_plan()
-
-        user_filters = [
-            _make_filter_group(FilterableField.NAME, "doc1"),
-            _make_filter_group(FilterableField.NAME, "doc2"),
-        ]
-        result = SearchPlanBuilder.build(plan, user_filters)
-
-        assert len(result.filter_groups) == 2
 
     def test_plan_fields_preserved(self) -> None:
         """Non-filter fields are preserved in the result."""

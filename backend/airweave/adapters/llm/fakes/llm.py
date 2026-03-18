@@ -52,6 +52,7 @@ class FakeLLM:
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
+        thinking: bool = False,
     ) -> LLMResponse:
         """Return next seeded tool response."""
         self._calls.append(("chat", messages, tools, system_prompt))

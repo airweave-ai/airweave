@@ -62,6 +62,18 @@ is how to use them to navigate:
 - **Time-based filtering**: Use `created_at`/`updated_at` with comparison operators to find
   entities from a specific time period.
 
+**User filter merging**: The user may have pre-set filters (shown in the search request).
+User filter conditions are **always AND'd** into every filter group you generate. They are
+leading constraints that cannot be bypassed. This means:
+- Do NOT duplicate user filters in your own filter groups — they are injected automatically.
+- If the user filters on `source_name = "slack"`, all your searches will only return Slack
+  entities, regardless of what other filters you add. You cannot override this.
+- Your filters narrow within the user's constraints. For example, if the user filters on
+  Slack and you add `entity_type = "SlackMessageEntity"`, results will be Slack messages
+  (both conditions AND'd). But if you add `entity_type = "NotionPageEntity"`, you'll get
+  zero results (nothing is both Slack and Notion).
+- If you search without filters, only the user's filter is applied.
+
 **Limit and offset**: Control result count and pagination.
 - If results returned **equal** the limit, more results likely exist. Use offset to paginate.
 - Prefer trying diverse queries over deep pagination on a single query — different phrasings
