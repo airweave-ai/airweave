@@ -1426,3 +1426,124 @@ async def test_build_response_failed_without_category_is_error():
     assert result.error_category is None
     assert result.error_message is None
     assert result.status == SourceConnectionStatus.ERROR
+
+
+# ===========================================================================
+# _resolve_provider_settings_url
+# ===========================================================================
+
+
+def _make_auth_provider_entry(
+    short_name: str = "composio", settings_url: Optional[str] = "https://app.composio.dev/settings"
+) -> "AuthProviderRegistryEntry":
+    from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
+
+    return AuthProviderRegistryEntry(
+        short_name=short_name,
+        name="Composio",
+        description="Composio auth provider",
+        class_name="ComposioAuthProvider",
+        provider_class_ref=type("Stub", (), {}),
+        config_ref=type("StubCfg", (), {}),
+        auth_config_ref=type("StubAuthCfg", (), {}),
+        config_fields=Fields(fields=[]),
+        auth_config_fields=Fields(fields=[]),
+        blocked_sources=[],
+        field_name_mapping={},
+        slug_name_mapping={},
+        settings_url=settings_url,
+    )
+
+
+def _make_connection_obj(
+    readable_id: str = "composio-conn-1", short_name: str = "composio"
+) -> "Connection":
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=uuid4(),
+        organization_id=ORG_ID,
+        short_name=short_name,
+        readable_id=readable_id,
+        integration_credential_id=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_provider_settings_url_happy_path():
+    """Returns settings_url when auth provider connection and registry entry exist."""
+    from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
+
+    auth_reg = FakeAuthProviderRegistry()
+    entry = _make_auth_provider_entry(settings_url="https://composio.dev/settings")
+    auth_reg.seed(entry)
+
+    conn_repo = FakeConnectionRepository()
+    conn_obj = _make_connection_obj(readable_id="composio-conn-1", short_name="composio")
+    conn_repo.seed_readable("composio-conn-1", conn_obj)
+
+    source_registry = FakeSourceRegistry()
+    source_registry.seed(_make_registry_entry("slack"))
+
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=conn_repo,
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=source_registry,
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=FakeSyncJobRepository(),
+        auth_provider_registry=auth_reg,
+    )
+
+    sc = _make_source_conn(readable_auth_provider_id="composio-conn-1")
+    result = await builder._resolve_provider_settings_url(None, sc, _make_ctx())
+    assert result == "https://composio.dev/settings"
+
+
+@pytest.mark.asyncio
+async def test_resolve_provider_settings_url_connection_missing_raises():
+    """Raises ValueError when readable_auth_provider_id points to a non-existent connection."""
+    from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
+
+    auth_reg = FakeAuthProviderRegistry()
+    auth_reg.seed(_make_auth_provider_entry())
+
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=FakeSourceRegistry(),
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=FakeSyncJobRepository(),
+        auth_provider_registry=auth_reg,
+    )
+
+    sc = _make_source_conn(readable_auth_provider_id="nonexistent-conn")
+    with pytest.raises(ValueError, match="does not exist"):
+        await builder._resolve_provider_settings_url(None, sc, _make_ctx())
+
+
+@pytest.mark.asyncio
+async def test_resolve_provider_settings_url_registry_missing_raises():
+    """Raises KeyError when the connection's short_name isn't in the auth provider registry."""
+    from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
+
+    auth_reg = FakeAuthProviderRegistry()
+
+    conn_repo = FakeConnectionRepository()
+    conn_obj = _make_connection_obj(readable_id="orphan-conn", short_name="unknown_provider")
+    conn_repo.seed_readable("orphan-conn", conn_obj)
+
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=conn_repo,
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=FakeSourceRegistry(),
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=FakeSyncJobRepository(),
+        auth_provider_registry=auth_reg,
+    )
+
+    sc = _make_source_conn(readable_auth_provider_id="orphan-conn")
+    with pytest.raises(KeyError):
+        await builder._resolve_provider_settings_url(None, sc, _make_ctx())

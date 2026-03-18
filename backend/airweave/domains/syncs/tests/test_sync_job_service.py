@@ -84,6 +84,7 @@ class TimestampCase:
     completed_at: Optional[datetime] = None
     failed_at: Optional[datetime] = None
     error: Optional[str] = None
+    error_category: Optional[str] = None
     expected: Optional[TimestampUpdate] = None
 
     def __post_init__(self):
@@ -116,6 +117,16 @@ TIMESTAMP_CASES = [
         expected=TimestampUpdate(failed_at=NOW, error="Connection refused"),
     ),
     TimestampCase(
+        name="failed_with_error_category",
+        status=SyncJobStatus.FAILED,
+        failed_at=NOW,
+        error="Token expired",
+        error_category="oauth_credentials_expired",
+        expected=TimestampUpdate(
+            failed_at=NOW, error="Token expired", error_category="oauth_credentials_expired"
+        ),
+    ),
+    TimestampCase(
         name="failed_without_error",
         status=SyncJobStatus.FAILED,
         failed_at=NOW,
@@ -135,7 +146,12 @@ TIMESTAMP_CASES = [
 @pytest.mark.parametrize("case", TIMESTAMP_CASES, ids=lambda c: c.name)
 def test_build_timestamp_update(case: TimestampCase):
     result = SyncJobService._build_timestamp_update(
-        case.status, case.started_at, case.completed_at, case.failed_at, case.error
+        case.status,
+        case.started_at,
+        case.completed_at,
+        case.failed_at,
+        case.error,
+        case.error_category,
     )
     assert result == case.expected
 
