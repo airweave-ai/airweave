@@ -207,11 +207,12 @@ class Agent:
             response = await self._llm.chat(messages, ALL_TOOL_DEFINITIONS, system_prompt)
             llm_duration = int((time.monotonic() - llm_start) * 1000)
 
-            # 2. Accumulate token counts
+            # 2. Accumulate token counts and retries
             diag.prompt_tokens += response.prompt_tokens
             diag.completion_tokens += response.completion_tokens
             diag.cache_creation += response.cache_creation_input_tokens
             diag.cache_read += response.cache_read_input_tokens
+            diag.llm_retries += response.retries
 
             # 3. Emit thinking event
             await self._event_bus.publish(
@@ -385,7 +386,7 @@ class Agent:
                     all_read_entity_ids=all_read_ids,
                     all_collected_entity_ids=list(state.collected_ids),
                     max_iterations_hit=diag.max_iterations_hit,
-                    total_llm_retries=0,
+                    total_llm_retries=diag.llm_retries,
                     stagnation_nudges_sent=diag.stagnation_nudges,
                     prompt_tokens=diag.prompt_tokens,
                     completion_tokens=diag.completion_tokens,
@@ -574,5 +575,6 @@ class _DiagnosticsAccumulator:
         self.completion_tokens: int = 0
         self.cache_creation: int = 0
         self.cache_read: int = 0
+        self.llm_retries: int = 0
         self.stagnation_nudges: int = 0
         self.max_iterations_hit: bool = False

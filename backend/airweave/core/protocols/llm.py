@@ -45,6 +45,7 @@ class LLMResponse:
         completion_tokens: Output tokens used by this LLM call.
         cache_creation_input_tokens: Tokens written to prompt cache (Anthropic).
         cache_read_input_tokens: Tokens read from prompt cache (Anthropic).
+        retries: Number of retry attempts before this response succeeded (0 = first attempt).
     """
 
     text: str | None
@@ -54,6 +55,7 @@ class LLMResponse:
     completion_tokens: int = 0
     cache_creation_input_tokens: int = 0
     cache_read_input_tokens: int = 0
+    retries: int = 0
 
 
 @runtime_checkable

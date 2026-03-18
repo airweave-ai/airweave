@@ -219,7 +219,11 @@ class BaseLLM(LLMProtocol):
 
         for attempt in range(self._max_retries + 1):
             try:
-                return await fn(*args)
+                result = await fn(*args)
+                # Track retries on LLMResponse if applicable
+                if attempt > 0 and hasattr(result, "retries"):
+                    result.retries = attempt
+                return result
 
             except LLMFatalError:
                 raise
