@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import JSON, DateTime, String, event
+from sqlalchemy import JSON, DateTime, String, event, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -87,12 +87,19 @@ def cancel_running_jobs_before_sync_delete(mapper, connection, target):
 
         # Find and cancel any running or pending jobs
         result = connection.execute(
-            f"""
-            SELECT id, status FROM sync_job
-            WHERE sync_id = '{target.id}'
-            AND status IN ('{SyncJobStatus.PENDING.value}', '{SyncJobStatus.RUNNING.value}')
-            ORDER BY created_at DESC
-            """
+            text(
+                """
+                SELECT id, status FROM sync_job
+                WHERE sync_id = :sync_id
+                  AND status IN (:pending, :running)
+                ORDER BY created_at DESC
+                """
+            ),
+            {
+                "sync_id": str(target.id),
+                "pending": SyncJobStatus.PENDING.value,
+                "running": SyncJobStatus.RUNNING.value,
+            },
         )
 
         for job in result:
@@ -101,12 +108,15 @@ def cancel_running_jobs_before_sync_delete(mapper, connection, target):
 
             # Update job status to CANCELLING
             connection.execute(
-                f"""
-                UPDATE sync_job
-                SET status = '{SyncJobStatus.CANCELLING.value}',
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = '{job_id}'
-                """
+                text(
+                    """
+                    UPDATE sync_job
+                    SET status = :cancelling,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :job_id
+                    """
+                ),
+                {"cancelling": SyncJobStatus.CANCELLING.value, "job_id": str(job_id)},
             )
 
             # Try to cancel the Temporal workflow as well
