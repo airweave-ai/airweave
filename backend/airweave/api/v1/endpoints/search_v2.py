@@ -31,6 +31,7 @@ from airweave.schemas.search_v2 import (
     AgenticSearchRequest,
     ClassicSearchRequest,
     InstantSearchRequest,
+    InternalAgenticSearchRequest,
     SearchTier,
     SearchV2Response,
 )
@@ -253,6 +254,64 @@ async def stream_agentic_search(
     ps = await pubsub.subscribe("agentic_search_v2", ctx.request_id)
     search_task = asyncio.create_task(
         _run_agentic_search_v2(service, ctx, readable_id, request, pubsub)
+    )
+
+    return StreamingResponse(
+        _agentic_event_stream_v2(ps, search_task, ctx),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Admin endpoints (model override for evals) ──────────────────────
+
+admin_router = TrailingSlashRouter()
+
+
+@admin_router.post("/{readable_id}/search/agentic/stream")
+async def admin_stream_agentic_search(
+    readable_id: str = Path(...),
+    request: InternalAgenticSearchRequest = ...,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    event_bus: EventBus = Inject(EventBus),
+    pubsub: PubSub = Inject(PubSub),
+    service: AgenticSearchServiceProtocol = Inject(AgenticSearchServiceProtocol),
+) -> StreamingResponse:
+    """Admin streaming agentic search with optional model override (for evals)."""
+    if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
+        raise HTTPException(
+            status_code=403,
+            detail="AGENTIC_SEARCH feature not enabled for this organization",
+        )
+
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+
+    # Build the effective service — with model override if specified
+    effective_service = service
+    if request.model:
+        from airweave.adapters.llm.override import create_llm_from_override
+
+        override_llm = create_llm_from_override(request.model)
+        effective_service = service.with_llm(override_llm)  # type: ignore[union-attr]
+
+    await event_bus.publish(
+        SearchStartedEvent(
+            organization_id=ctx.organization.id,
+            request_id=ctx.request_id,
+            tier=SearchTier.AGENTIC.value,
+            collection_readable_id=readable_id,
+            query=request.query,
+            thinking=request.thinking,
+            filter=[f.model_dump() for f in request.filter] if request.filter else None,
+            limit=request.limit,
+        )
+    )
+
+    ps = await pubsub.subscribe("agentic_search_v2", ctx.request_id)
+    search_task = asyncio.create_task(
+        _run_agentic_search_v2(effective_service, ctx, readable_id, request, pubsub)
     )
 
     return StreamingResponse(

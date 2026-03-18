@@ -53,6 +53,19 @@ class AgenticSearchService(AgenticSearchServiceProtocol):
         self._collection_repo = collection_repo
         self._event_bus = event_bus
 
+    def with_llm(self, llm: LLMProtocol) -> "AgenticSearchService":
+        """Return a copy of this service with a different LLM (for model override)."""
+        return AgenticSearchService(
+            llm=llm,
+            tokenizer=self._tokenizer,
+            reranker=self._reranker,
+            executor=self._executor,
+            vector_db=self._vector_db,
+            metadata_builder=self._metadata_builder,
+            collection_repo=self._collection_repo,
+            event_bus=self._event_bus,
+        )
+
     async def search(
         self,
         db: AsyncSession,

@@ -11,6 +11,7 @@ from airweave.adapters.llm.exceptions import (
     LLMTransientError,
 )
 from airweave.adapters.llm.fallback import FallbackChainLLM
+from airweave.adapters.llm.override import create_llm_from_override
 from airweave.adapters.llm.groq import GroqLLM
 from airweave.adapters.llm.registry import (
     MODEL_REGISTRY,
@@ -55,4 +56,6 @@ __all__ = [
     "PROVIDER_API_KEY_SETTINGS",
     "get_model_spec",
     "get_available_models",
+    # Override
+    "create_llm_from_override",
 ]

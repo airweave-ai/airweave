@@ -83,6 +83,19 @@ class AgenticSearchRequest(BaseModel):
         return v
 
 
+class InternalAgenticSearchRequest(AgenticSearchRequest):
+    """Admin-only agentic search request with model override for evals."""
+
+    model: Optional[str] = Field(
+        default=None,
+        description=(
+            "LLM model override. Format: 'provider/model' "
+            "e.g. 'together/zai-glm-5-thinking'. "
+            "When not set, uses the default model from config."
+        ),
+    )
+
+
 class SearchV2Response(BaseModel):
     """Unified response for all search tiers."""
 
