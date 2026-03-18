@@ -295,13 +295,13 @@ class ChunkEmbedProcessor:
                     chunk_entities.append(chunk)
 
             except (EmbedderInputError, EmbedderProviderError) as e:
-                # For oversized PDFs, try chunking into 6-page segments
+                # For oversized PDFs, try chunking into page-limited segments
                 if mime == "application/pdf" and isinstance(e, EmbedderInputError):
                     try:
                         sync_context.logger.info(
                             f"[ChunkEmbed-Multimodal] PDF {file_entity.entity_id} "
                             f"too large for single embed ({e}). Splitting into "
-                            f"6-page chunks."
+                            f"page-limited chunks."
                         )
                         pdf_chunks = await self._embed_oversized_pdf(
                             file_entity, embedder, expected_dims
@@ -753,9 +753,11 @@ class ChunkEmbedProcessor:
         dense_texts = [e.textual_representation or "" for e in chunk_entities]
         entity_ids = [e.entity_id for e in chunk_entities]
         sync_context.logger.info(
-            "[ChunkEmbedProcessor] Embedding %d chunk entities. Entity IDs: %s",
+            "[ChunkEmbedProcessor] Embedding %d chunk entities",
             len(chunk_entities),
-            entity_ids,
+        )
+        sync_context.logger.debug(
+            "[ChunkEmbedProcessor] Entity IDs: %s", entity_ids
         )
         try:
             dense_results = await runtime.dense_embedder.embed_many(

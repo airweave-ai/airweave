@@ -24,6 +24,40 @@ from airweave.platform.chunkers.media import (
 # ---------------------------------------------------------------------------
 
 
+class TestChunkAudioMimeType:
+    @pytest.mark.asyncio
+    async def test_uppercase_mp3_extension(self, tmp_path):
+        """Uppercase .MP3 should produce audio/mpeg MIME, not audio/wav."""
+        audio_file = tmp_path / "test.MP3"
+        audio_file.write_bytes(b"\x00" * 100)
+
+        chunker = MediaChunker(temp_dir=str(tmp_path / "segments"))
+
+        with patch.object(
+            chunker, "_probe_duration", new_callable=AsyncMock, return_value=10.0
+        ):
+            segments = await chunker.chunk_audio(str(audio_file))
+
+        assert len(segments) == 1
+        assert segments[0].mime_type == "audio/mpeg"
+
+    @pytest.mark.asyncio
+    async def test_uppercase_wav_extension(self, tmp_path):
+        """Uppercase .WAV should produce audio/wav MIME."""
+        audio_file = tmp_path / "test.WAV"
+        audio_file.write_bytes(b"\x00" * 100)
+
+        chunker = MediaChunker(temp_dir=str(tmp_path / "segments"))
+
+        with patch.object(
+            chunker, "_probe_duration", new_callable=AsyncMock, return_value=10.0
+        ):
+            segments = await chunker.chunk_audio(str(audio_file))
+
+        assert len(segments) == 1
+        assert segments[0].mime_type == "audio/wav"
+
+
 class TestChunkAudio:
     @pytest.mark.asyncio
     async def test_short_audio_returns_single_segment(self, tmp_path):

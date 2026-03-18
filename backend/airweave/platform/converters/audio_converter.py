@@ -9,8 +9,9 @@ Supported backends (configured via MULTIMODAL_TRANSCRIPTION_BACKEND):
 - "mlx_whisper": MLX Whisper for Apple Silicon (local, pip install mlx-whisper)
 - "parakeet": NVIDIA Parakeet TDT v3 (local, CUDA, pip install nemo_toolkit[asr])
 
-Large files are transcribed in segments via MediaChunker to stay within
-per-backend limits and avoid OOM.
+For the Gemini backend, large files are transcribed in segments via
+MediaChunker to stay within the inline_data size limit. Local backends
+(whisper, mlx_whisper, parakeet) handle files directly without chunking.
 """
 
 import asyncio

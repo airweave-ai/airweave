@@ -113,8 +113,8 @@ class MediaChunker:
 
         Uses ffprobe for duration detection and ffmpeg stream-copy for splitting.
         Never decodes the full file into memory (avoids OOM on large files).
-        A file is returned as-is only if BOTH duration <= limit AND size <= 19MB.
-        Falls back to pydub only if ffmpeg is unavailable.
+        A file is returned as-is only if BOTH duration <= limit AND size
+        fits within the inline_data limit. Requires ffmpeg + ffprobe.
 
         Args:
             file_path: Path to the audio file (mp3, wav).
@@ -123,8 +123,9 @@ class MediaChunker:
             List of MediaSegment objects, one per chunk.
         """
         audio_max, _, _, overlap = _load_media_config()
-        ext = os.path.splitext(file_path)[1] or ".mp3"
-        mime = "audio/mpeg" if ext == ".mp3" else "audio/wav"
+        ext = os.path.splitext(file_path)[1].lower() or ".mp3"
+        _MIME_MAP = {".mp3": "audio/mpeg", ".wav": "audio/wav"}
+        mime = _MIME_MAP.get(ext, "audio/mpeg")
 
         if not shutil.which("ffprobe") or not shutil.which("ffmpeg"):
             raise RuntimeError(
