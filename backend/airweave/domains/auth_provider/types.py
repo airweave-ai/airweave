@@ -1,3 +1,7 @@
+"""Auth provider domain types."""
+
+from typing import Optional
+
 from airweave.core.protocols.registry import BaseRegistryEntry
 from airweave.platform.configs._base import Fields
 
@@ -20,6 +24,9 @@ class AuthProviderRegistryEntry(BaseRegistryEntry):
     # Mappings (Airweave names → provider-specific names)
     field_name_mapping: dict[str, str]
     slug_name_mapping: dict[str, str]
+
+    # External dashboard URL for managing connected accounts
+    settings_url: Optional[str] = None
 
 
 class AuthProviderMetadata(BaseRegistryEntry):

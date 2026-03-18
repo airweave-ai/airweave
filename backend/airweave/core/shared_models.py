@@ -61,6 +61,7 @@ class SourceConnectionStatus(str, Enum):
     PENDING_AUTH = "pending_auth"  # Awaiting authentication (OAuth flow, etc.)
     SYNCING = "syncing"  # Currently running a sync job
     ERROR = "error"  # Last sync failed or auth error
+    NEEDS_REAUTH = "needs_reauth"  # Credentials expired or invalid
     INACTIVE = "inactive"  # Manually disabled
     PENDING_SYNC = "pending_sync"  # Awaiting a sync job to start
 

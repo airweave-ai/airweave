@@ -13,6 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import { SourceConnectionSettings } from './SourceConnectionSettings';
 import { EntityStateList } from './EntityStateList';
 import { SyncErrorCard } from './SyncErrorCard';
+import { CredentialErrorView } from './CredentialErrorView';
 import { SourceAuthenticationView } from '@/components/shared/SourceAuthenticationView';
 import {
   Tooltip,
@@ -58,6 +59,7 @@ interface AuthenticationInfo {
   auth_url_expires?: string;  // Backend uses 'auth_url_expires'
   provider_id?: string;  // Backend uses 'provider_id'
   provider_readable_id?: string;  // Backend uses 'provider_readable_id'
+  provider_settings_url?: string;
   redirect_url?: string;
 }
 
@@ -90,6 +92,9 @@ interface SourceConnection {
   entities?: EntitySummary;  // Changed from entity_states array to entities object
   // Source configuration
   federated_search?: boolean;  // Whether this source uses federated search
+  // Error classification (when status is needs_reauth)
+  error_category?: string;
+  error_message?: string;
   // Legacy fields that may still exist
   sync_id?: string;
   organization_id?: string;
@@ -226,16 +231,22 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
   // Fetch source connection details (only when not provided as prop)
   const fetchSourceConnection = useCallback(async (regenerateAuthUrl = false) => {
-    // If data is provided as prop, use it instead of fetching
-    if (sourceConnectionData) {
+    const browserParams = new URLSearchParams(window.location.search);
+    const mockError = browserParams.get('mock_error');
+
+    // Use prop data unless we're simulating an error via mock_error
+    if (sourceConnectionData && !mockError) {
       setSourceConnection(sourceConnectionData);
       return;
     }
 
     try {
-      const url = regenerateAuthUrl
-        ? `/source-connections/${sourceConnectionId}?regenerate_auth_url=true`
-        : `/source-connections/${sourceConnectionId}`;
+      const params = new URLSearchParams();
+      if (regenerateAuthUrl) params.set('regenerate_auth_url', 'true');
+      if (mockError) params.set('mock_error', mockError);
+
+      const qs = params.toString();
+      const url = `/source-connections/${sourceConnectionId}${qs ? `?${qs}` : ''}`;
       const response = await apiClient.get(url);
       if (response.ok) {
         const data = await response.json();
@@ -342,9 +353,10 @@ const SourceConnectionStateView: React.FC<Props> = ({
     };
   }, [sourceConnectionId, sourceConnectionData?.status, sourceConnectionData?.auth?.authenticated]); // Add auth status to deps
 
-  // Update source connection when prop changes
+  // Update source connection when prop changes (skip when mock_error is active)
   useEffect(() => {
-    if (sourceConnectionData && sourceConnectionData !== sourceConnection) {
+    const hasMockError = new URLSearchParams(window.location.search).has('mock_error');
+    if (sourceConnectionData && sourceConnectionData !== sourceConnection && !hasMockError) {
       setSourceConnection(sourceConnectionData);
     }
   }, [sourceConnectionData]);
@@ -594,6 +606,9 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
   // Get sync status display
   const getSyncStatusDisplay = () => {
+    if (sourceConnection?.status === 'needs_reauth') {
+      return { text: 'Needs Re-auth', color: 'bg-amber-500', icon: null };
+    }
     if (sourceConnection?.status === 'pending_auth' || !sourceConnection?.auth?.authenticated) {
       return { text: 'Not Authenticated', color: 'bg-cyan-500', icon: null };
     }
@@ -612,11 +627,26 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
   const syncStatus = getSyncStatusDisplay();
   const isNotAuthorized = sourceConnection?.status === 'pending_auth' || !sourceConnection?.auth?.authenticated;
+  const needsReauth = sourceConnection?.status === 'needs_reauth';
 
   return (
     <div className={cn("space-y-4", DESIGN_SYSTEM.typography.sizes.body)}>
-      {/* Show authorization UI if not authorized */}
-      {isNotAuthorized && sourceConnection && (
+      {/* Show credential error UI when re-authentication is needed */}
+      {needsReauth && sourceConnection && (
+        <CredentialErrorView
+          sourceConnection={sourceConnection}
+          onRefreshAuthUrl={handleRefreshAuthUrl}
+          isRefreshing={isRefreshingAuth}
+          onDelete={handleDeleteConnection}
+          onCredentialsUpdated={() => {
+            fetchSourceConnection();
+            onConnectionUpdated?.();
+          }}
+        />
+      )}
+
+      {/* Show authorization UI if not authorized (and not needs_reauth) */}
+      {!needsReauth && isNotAuthorized && sourceConnection && (
         <SourceAuthenticationView
           sourceName={sourceConnection.name}
           sourceShortName={sourceConnection.short_name}
@@ -628,8 +658,8 @@ const SourceConnectionStateView: React.FC<Props> = ({
         />
       )}
 
-      {/* Status Dashboard with Settings - Only show when authenticated */}
-      {!isNotAuthorized && (
+      {/* Status Dashboard with Settings - Only show when authenticated and not needs_reauth */}
+      {!isNotAuthorized && !needsReauth && (
         <div className="flex items-center justify-between">
           <div className="flex gap-2 flex-wrap items-center">
             {/* Entities Card - Only show for non-federated sources */}
@@ -881,8 +911,8 @@ const SourceConnectionStateView: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Only show sync-related UI when authenticated */}
-      {!isNotAuthorized && (
+      {/* Only show sync-related UI when authenticated and not needs_reauth */}
+      {!isNotAuthorized && !needsReauth && (
         <>
           {/* Show error card if sync failed or there's an error - Only for non-federated sources */}
           {!isFederatedSource && (currentSyncJob?.status === 'failed') && (

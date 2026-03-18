@@ -266,6 +266,7 @@ def create_container(settings: Settings) -> Container:
         sync_repo=source_deps["sync_repo"],
         sync_cursor_repo=source_deps["sync_cursor_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
+        auth_provider_registry=source_deps["auth_provider_registry"],
     )
 
     # SourceConnectionService is built here (not in _create_source_services)
@@ -856,6 +857,7 @@ def _create_sync_services(
     sync_repo: SyncRepository,
     sync_cursor_repo: SyncCursorRepository,
     sync_job_repo: SyncJobRepository,
+    auth_provider_registry: "AuthProviderRegistry | None" = None,
 ) -> dict:
     """Create sync-domain services and orchestrator.
 
@@ -889,6 +891,7 @@ def _create_sync_services(
         source_registry=source_registry,
         entity_count_repo=entity_count_repo,
         sync_job_repo=sync_job_repo,
+        auth_provider_registry=auth_provider_registry,
     )
 
     temporal_schedule_service = TemporalScheduleService(

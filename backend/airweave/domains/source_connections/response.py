@@ -14,6 +14,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings as core_settings
 from airweave.core.shared_models import SyncJobStatus
+from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.entities.protocols import EntityCountRepositoryProtocol
@@ -50,6 +51,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         source_registry: SourceRegistryProtocol,
         entity_count_repo: EntityCountRepositoryProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,
+        auth_provider_registry: Optional[AuthProviderRegistryProtocol] = None,
     ) -> None:
         """Initialize with all dependencies."""
         self._sc_repo = sc_repo
@@ -58,6 +60,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         self._source_registry = source_registry
         self._entity_count_repo = entity_count_repo
         self._sync_job_repo = sync_job_repo
+        self._auth_provider_registry = auth_provider_registry
 
     # ------------------------------------------------------------------
     # Public API
@@ -170,9 +173,13 @@ class ResponseBuilder(ResponseBuilderProtocol):
 
         provider_id: Optional[str] = None
         provider_readable_id: Optional[str] = None
+        provider_settings_url: Optional[str] = None
         if source_conn.readable_auth_provider_id:
             provider_id = source_conn.readable_auth_provider_id
             provider_readable_id = source_conn.readable_auth_provider_id
+            provider_settings_url = await self._resolve_provider_settings_url(
+                db, source_conn, ctx
+            )
 
         auth_url: Optional[str] = None
         auth_url_expires: Optional[datetime] = None
@@ -193,11 +200,29 @@ class ResponseBuilder(ResponseBuilderProtocol):
             authenticated_at=authenticated_at,
             provider_id=provider_id,
             provider_readable_id=provider_readable_id,
+            provider_settings_url=provider_settings_url,
             auth_url=auth_url,
             auth_url_expires=auth_url_expires,
             redirect_url=redirect_url,
             claim_token=claim_token,
         )
+
+    async def _resolve_provider_settings_url(
+        self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext
+    ) -> Optional[str]:
+        """Resolve the external settings URL for the auth provider (if any)."""
+        if not self._auth_provider_registry or not source_conn.readable_auth_provider_id:
+            return None
+        connection = await self._connection_repo.get_by_readable_id(
+            db, source_conn.readable_auth_provider_id, ctx
+        )
+        if not connection:
+            return None
+        try:
+            entry = self._auth_provider_registry.get(connection.short_name)
+            return entry.settings_url
+        except KeyError:
+            return None
 
     async def _resolve_auth_method(
         self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext

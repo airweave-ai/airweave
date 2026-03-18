@@ -505,6 +505,9 @@ class AuthenticationDetails(BaseModel):
     # Provider-specific
     provider_readable_id: Optional[str] = None
     provider_id: Optional[str] = None
+    provider_settings_url: Optional[str] = Field(
+        None, description="External dashboard URL for managing connected accounts"
+    )
 
 
 class ScheduleDetails(BaseModel):
@@ -673,6 +676,19 @@ class SourceConnection(BaseModel):
         False,
         description="Whether this source uses federated (real-time) search instead of syncing",
         json_schema_extra={"example": False},
+    )
+
+    # Error classification (populated when status is NEEDS_REAUTH)
+    error_category: Optional[str] = Field(
+        None,
+        description="Category of credential error when status is needs_reauth. "
+        "One of: oauth_credentials_expired, api_key_invalid, "
+        "client_credentials_invalid, auth_provider_account_gone, "
+        "auth_provider_credentials_invalid",
+    )
+    error_message: Optional[str] = Field(
+        None,
+        description="Human-readable error message for credential failures",
     )
 
     model_config = {

@@ -2,8 +2,8 @@
 
 from airweave.core.logging import logger
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
-from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
 from airweave.domains.auth_provider.providers import ALL_AUTH_PROVIDERS
+from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
 from airweave.platform.configs._base import Fields
 
 registry_logger = logger.with_prefix("AuthProviderRegistry: ").with_context(
@@ -88,6 +88,8 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
         config_fields = Fields.from_config_class(config_ref)
         auth_config_fields = Fields.from_config_class(auth_config_ref)
 
+        settings_url: str | None = getattr(provider_cls, "settings_url", None)
+
         return AuthProviderRegistryEntry(
             # Base
             short_name=short_name,
@@ -106,4 +108,6 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
             # Mappings
             field_name_mapping=field_name_mapping,
             slug_name_mapping=slug_name_mapping,
+            # External settings
+            settings_url=settings_url,
         )
