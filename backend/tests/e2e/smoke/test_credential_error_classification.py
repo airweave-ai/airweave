@@ -46,7 +46,7 @@ class TestCredentialErrorClassification:
             "name": "Bad Stripe Key Test",
             "short_name": "stripe",
             "readable_collection_id": collection["readable_id"],
-            "authentication": {"credentials": {"api_key": "sk_test_INVALID_KEY_00000000"}},
+            "authentication": {"credentials": {"api_key": "sk_test_fakeinvalidkey00000000"}},
             "sync_immediately": True,
         }
 
