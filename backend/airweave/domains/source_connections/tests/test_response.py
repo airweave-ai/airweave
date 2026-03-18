@@ -1501,8 +1501,8 @@ async def test_resolve_provider_settings_url_happy_path():
 
 
 @pytest.mark.asyncio
-async def test_resolve_provider_settings_url_connection_missing_raises():
-    """Raises ValueError when readable_auth_provider_id points to a non-existent connection."""
+async def test_resolve_provider_settings_url_connection_missing_returns_none():
+    """Returns None and logs warning when readable_auth_provider_id points to missing connection."""
     from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
 
     auth_reg = FakeAuthProviderRegistry()
@@ -1519,8 +1519,8 @@ async def test_resolve_provider_settings_url_connection_missing_raises():
     )
 
     sc = _make_source_conn(readable_auth_provider_id="nonexistent-conn")
-    with pytest.raises(ValueError, match="does not exist"):
-        await builder._resolve_provider_settings_url(None, sc, _make_ctx())
+    result = await builder._resolve_provider_settings_url(None, sc, _make_ctx())
+    assert result is None
 
 
 @pytest.mark.asyncio

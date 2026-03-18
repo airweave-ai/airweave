@@ -123,6 +123,7 @@ def _service(
     sync_lifecycle=None,
     sync_record_service=None,
     temporal_workflow_service=None,
+    temporal_schedule_service=None,
     event_bus=None,
 ) -> OAuthCallbackService:
     return OAuthCallbackService(
@@ -134,6 +135,7 @@ def _service(
         sync_lifecycle=sync_lifecycle or AsyncMock(),
         sync_record_service=sync_record_service or AsyncMock(),
         temporal_workflow_service=temporal_workflow_service or AsyncMock(),
+        temporal_schedule_service=temporal_schedule_service or AsyncMock(),
         event_bus=event_bus or AsyncMock(),
         organization_repo=organization_repo or FakeOrganizationRepository(),
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
