@@ -45,6 +45,7 @@ class SyncContext(BaseContext):
 
     # --- Derived data (extracted from source at build time) ---
     source_short_name: str = ""
+    authentication_method: str = ""
 
     # --- Convenience ---
 

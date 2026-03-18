@@ -115,6 +115,7 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
             await self._handle_schedule_update(uow, source_conn, update_data, ctx)
 
             # Handle credential update (direct auth only)
+            credentials_updated = False
             if "credentials" in update_data:
                 auth_method = self._determine_auth_method(source_conn)
                 if auth_method != AuthenticationMethod.DIRECT:
@@ -126,6 +127,7 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                     uow.session, source_conn, update_data["credentials"], ctx, uow
                 )
                 del update_data["credentials"]
+                credentials_updated = True
 
             # Update source connection
             if update_data:
@@ -139,6 +141,15 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
 
             await uow.commit()
             await uow.session.refresh(source_conn)
+
+        if credentials_updated and source_conn.sync_id:
+            try:
+                await self._temporal_schedule_service.unpause_sync_schedules(
+                    source_conn.sync_id,
+                    reason="Credentials updated via API",
+                )
+            except Exception as e:
+                ctx.logger.warning(f"Failed to unpause schedules after credential update: {e}")
 
         return await self._response_builder.build_response(db, source_conn, ctx)
 

@@ -53,7 +53,10 @@ from airweave.domains.syncs.protocols import (
     SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
 )
-from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.domains.temporal.protocols import (
+    TemporalScheduleServiceProtocol,
+    TemporalWorkflowServiceProtocol,
+)
 from airweave.models.collection import Collection
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.integration_credential import IntegrationType
@@ -100,6 +103,7 @@ class OAuthCallbackService:
         sync_repo: SyncRepositoryProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,
         credential_encryptor: CredentialEncryptor,
+        temporal_schedule_service: TemporalScheduleServiceProtocol,
     ) -> None:
         """Store callback orchestration dependencies."""
         self._oauth_flow_service = oauth_flow_service
@@ -110,6 +114,7 @@ class OAuthCallbackService:
         self._sync_lifecycle = sync_lifecycle
         self._sync_record_service = sync_record_service
         self._temporal_workflow_service = temporal_workflow_service
+        self._temporal_schedule_service = temporal_schedule_service
         self._event_bus = event_bus
         self._organization_repo = organization_repo
         self._sc_repo = sc_repo
@@ -648,6 +653,15 @@ class OAuthCallbackService:
                 collection_readable_id=source_conn_response.readable_collection_id,
             )
         )
+
+        if source_conn.sync_id:
+            try:
+                await self._temporal_schedule_service.unpause_sync_schedules(
+                    source_conn.sync_id,
+                    reason="OAuth re-authentication completed",
+                )
+            except Exception as e:
+                ctx.logger.warning(f"Failed to unpause schedules after OAuth callback: {e}")
 
         return source_conn_response
 

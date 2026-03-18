@@ -44,6 +44,13 @@ from airweave.platform.temporal.workflows import RunSourceConnectionWorkflow
 
 _MINUTE_LEVEL_RE = re.compile(r"^(\*/([1-5]?\d)|([0-5]?\d)) \* \* \* \*$")
 
+# We maintain an explicit prefix list because Temporal's list_schedules()
+# only supports STARTS_WITH on ScheduleId, but our IDs are formatted as
+# "{prefix}{sync_id}" — the UUID is at the end, not the start.
+# To use list_schedules() instead, flip the format to "{sync_id}/{type}"
+# and query with ScheduleId STARTS_WITH "{sync_id}/".
+SYNC_SCHEDULE_PREFIXES: tuple[str, ...] = ("sync-", "minute-sync-", "daily-cleanup-")
+
 
 class TemporalScheduleService(TemporalScheduleServiceProtocol):
     """Manages Temporal schedules: create/update and delete."""
@@ -395,7 +402,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         ctx: ApiContext,
     ) -> None:
         """Delete all schedules (regular + minute + daily cleanup) for a sync."""
-        for prefix in ("sync-", "minute-sync-", "daily-cleanup-"):
+        for prefix in SYNC_SCHEDULE_PREFIXES:
             schedule_id = f"{prefix}{sync_id}"
             try:
                 await self._delete_schedule_by_id(schedule_id, sync_id, db, ctx)
@@ -421,6 +428,34 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         handle = client.get_schedule_handle(schedule_id)
         await handle.unpause(note=reason)
         logger.info(f"Unpaused schedule {schedule_id}: {reason}")
+
+    async def pause_sync_schedules(self, sync_id: UUID, reason: str = "") -> None:
+        """Pause all schedules for a sync, swallowing NOT_FOUND errors."""
+        for prefix in SYNC_SCHEDULE_PREFIXES:
+            schedule_id = f"{prefix}{sync_id}"
+            try:
+                await self.pause_schedule(schedule_id, reason)
+            except RPCError as e:
+                if e.status == RPCStatusCode.NOT_FOUND:
+                    logger.debug(f"Schedule {schedule_id} not found (skipping pause)")
+                else:
+                    logger.warning(f"Failed to pause schedule {schedule_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to pause schedule {schedule_id}: {e}")
+
+    async def unpause_sync_schedules(self, sync_id: UUID, reason: str = "") -> None:
+        """Unpause all schedules for a sync, swallowing NOT_FOUND errors."""
+        for prefix in SYNC_SCHEDULE_PREFIXES:
+            schedule_id = f"{prefix}{sync_id}"
+            try:
+                await self.unpause_schedule(schedule_id, reason)
+            except RPCError as e:
+                if e.status == RPCStatusCode.NOT_FOUND:
+                    logger.debug(f"Schedule {schedule_id} not found (skipping unpause)")
+                else:
+                    logger.warning(f"Failed to unpause schedule {schedule_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to unpause schedule {schedule_id}: {e}")
 
     async def delete_schedule_handle(self, schedule_id: str) -> None:
         """Delete a Temporal schedule by ID without touching the DB.

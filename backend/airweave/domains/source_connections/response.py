@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings as core_settings
+from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -224,10 +225,12 @@ class ResponseBuilder(ResponseBuilderProtocol):
             db, source_conn.readable_auth_provider_id, ctx
         )
         if not connection:
-            raise ValueError(
+            logger.warning(
                 f"Auth provider connection {source_conn.readable_auth_provider_id!r} "
-                f"referenced by source connection {source_conn.id} does not exist"
+                f"referenced by source connection {source_conn.id} not found — "
+                f"omitting provider_settings_url"
             )
+            return None
         entry = self._auth_provider_registry.get(connection.short_name)
         return entry.settings_url
 

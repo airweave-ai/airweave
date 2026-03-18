@@ -687,10 +687,7 @@ class SyncOrchestrator:
 
         stats = self.runtime.entity_tracker.get_stats()
 
-        # (code blue) getattr because SyncContext.connection lacks authentication_method.
-        # Fix: add authentication_method to SyncContext in the pipeline refactor.
-        auth_method = getattr(self.sync_context.connection, "authentication_method", "") or ""
-        classification = classify_error(error, auth_method)
+        classification = classify_error(error, self.sync_context.authentication_method)
 
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,

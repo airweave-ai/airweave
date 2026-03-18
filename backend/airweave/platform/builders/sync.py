@@ -63,6 +63,8 @@ class SyncContextBuilder:
             ctx=ctx,
         )
 
+        authentication_method = await cls._resolve_authentication_method(db, connection, ctx)
+
         return SyncContext(
             organization=ctx.organization,
             sync_id=sync.id,
@@ -77,6 +79,7 @@ class SyncContextBuilder:
             force_full_sync=force_full_sync,
             entity_map=entity_map,
             source_short_name=source_short_name,
+            authentication_method=authentication_method,
             logger=logger,
         )
 
@@ -102,6 +105,28 @@ class SyncContextBuilder:
                 "scheduled": str(sync_job.scheduled),
             },
         )
+
+    @classmethod
+    async def _resolve_authentication_method(
+        cls,
+        db: AsyncSession,
+        connection: schemas.Connection,
+        ctx: BaseContext,
+    ) -> str:
+        """Resolve authentication_method from the connection's IntegrationCredential."""
+        from airweave import crud
+
+        if not connection.integration_credential_id:
+            return ""
+        try:
+            credential = await crud.integration_credential.get(
+                db, id=connection.integration_credential_id, ctx=ctx
+            )
+            if credential and credential.authentication_method:
+                return str(credential.authentication_method)
+        except Exception:
+            pass
+        return ""
 
     @classmethod
     async def get_source_connection_id(

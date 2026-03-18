@@ -258,7 +258,6 @@ async def test_run_writes_error_category(case: ErrorCategoryCase):
     sync = _mock_sync()
     sync_job = _mock_sync_job()
     source_connection = MagicMock()
-    source_connection.authentication_method = case.auth_method
     ctx = _mock_ctx()
 
     mock_db = AsyncMock()
@@ -266,6 +265,11 @@ async def test_run_writes_error_category(case: ErrorCategoryCase):
     with (
         patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx,
         patch("airweave.domains.syncs.service.SyncFactory") as mock_factory_cls,
+        patch(
+            "airweave.domains.syncs.service.SyncService._resolve_authentication_method",
+            new_callable=AsyncMock,
+            return_value=case.auth_method,
+        ),
     ):
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)

@@ -398,6 +398,7 @@ def create_container(settings: Settings) -> Container:
         sync_repo=source_deps["sync_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
         credential_encryptor=encryptor,
+        temporal_schedule_service=sync_deps["temporal_schedule_service"],
     )
 
     # -----------------------------------------------------------------

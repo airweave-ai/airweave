@@ -26,6 +26,7 @@ from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.core.protocols import EventBus
 from airweave.core.redis_client import redis_client
+from airweave.db.session import get_db_context
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
@@ -36,7 +37,10 @@ from airweave.domains.syncs.protocols import (
     SyncRepositoryProtocol,
     SyncServiceProtocol,
 )
-from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.domains.temporal.protocols import (
+    TemporalScheduleServiceProtocol,
+    TemporalWorkflowServiceProtocol,
+)
 
 # =============================================================================
 # Run Sync Activity
@@ -65,7 +69,9 @@ class RunSyncActivity:
     sparse_embedder: SparseEmbedderProtocol
     sync_service: SyncServiceProtocol
     sync_job_service: SyncJobServiceProtocol
+    sync_job_repo: SyncJobRepositoryProtocol
     collection_repo: CollectionRepositoryProtocol
+    schedule_service: TemporalScheduleServiceProtocol
 
     @activity.defn(name="run_sync_activity")
     async def run(  # noqa: C901
@@ -399,6 +405,8 @@ class RunSyncActivity:
                         error=str(e),
                     )
                 )
+                # Only pauses if error_category is set (auth errors only, not generic failures)
+                await self._pause_schedules_on_auth_error(sync, sync_job, ctx)
                 raise
 
         finally:
@@ -512,6 +520,28 @@ class RunSyncActivity:
                 activity.heartbeat({"phase": "cancelling"})
         with suppress(asyncio.CancelledError):
             await sync_task
+
+    async def _pause_schedules_on_auth_error(
+        self,
+        sync: schemas.Sync,
+        sync_job: schemas.SyncJob,
+        ctx: BaseContext,
+    ) -> None:
+        """Pause all schedules for this sync if the job failed with an auth error."""
+        try:
+            async with get_db_context() as db:
+                job_model = await self.sync_job_repo.get(db, id=sync_job.id, ctx=ctx)
+                if job_model and job_model.error_category:
+                    await self.schedule_service.pause_sync_schedules(
+                        sync.id,
+                        reason=f"Auth error: {job_model.error_category}",
+                    )
+                    ctx.logger.info(
+                        f"Paused schedules for sync {sync.id} "
+                        f"(error_category={job_model.error_category})"
+                    )
+        except Exception as pause_err:
+            ctx.logger.warning(f"Failed to pause schedules after auth error: {pause_err}")
 
 
 # =============================================================================

@@ -74,9 +74,7 @@ class SyncService(SyncServiceProtocol):
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")
-            # (code blue) getattr because schemas.Connection lacks authentication_method.
-            # Fix: add authentication_method to SyncContext in the pipeline refactor.
-            auth_method = getattr(source_connection, "authentication_method", "") or ""
+            auth_method = await self._resolve_authentication_method(source_connection, ctx)
             classification = classify_error(e, auth_method)
             await self._sync_job_service.update_status(
                 sync_job_id=sync_job.id,
@@ -89,3 +87,24 @@ class SyncService(SyncServiceProtocol):
             raise e
 
         return await orchestrator.run()
+
+    @staticmethod
+    async def _resolve_authentication_method(
+        connection: schemas.Connection,
+        ctx: "ApiContext",
+    ) -> str:
+        """Resolve authentication_method from the connection's IntegrationCredential."""
+        from airweave import crud
+
+        if not connection.integration_credential_id:
+            return ""
+        try:
+            async with get_db_context() as db:
+                credential = await crud.integration_credential.get(
+                    db, id=connection.integration_credential_id, ctx=ctx
+                )
+                if credential and credential.authentication_method:
+                    return str(credential.authentication_method)
+        except Exception:
+            pass
+        return ""

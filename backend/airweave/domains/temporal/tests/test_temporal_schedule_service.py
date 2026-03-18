@@ -810,3 +810,76 @@ async def test_pause_schedule_default_reason():
     await svc.pause_schedule("sync-xyz")
 
     mock_handle.pause.assert_awaited_once_with(note="")
+
+
+# ---------------------------------------------------------------------------
+# pause_sync_schedules / unpause_sync_schedules
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pause_sync_schedules_success():
+    """pause_sync_schedules calls pause_schedule 3 times with correct IDs."""
+    svc = _build_svc()
+    sync_id = uuid4()
+    mock_pause = AsyncMock()
+    with patch.object(svc, "pause_schedule", mock_pause):
+        await svc.pause_sync_schedules(sync_id, "test reason")
+
+    assert mock_pause.await_count == 3
+    expected_ids = [
+        f"sync-{sync_id}",
+        f"minute-sync-{sync_id}",
+        f"daily-cleanup-{sync_id}",
+    ]
+    actual_calls = [c[0][0] for c in mock_pause.call_args_list]
+    assert actual_calls == expected_ids
+    for call in mock_pause.call_args_list:
+        assert call[0][1] == "test reason"
+
+
+@pytest.mark.asyncio
+async def test_pause_sync_schedules_swallows_not_found():
+    """pause_sync_schedules swallows RPCError with NOT_FOUND."""
+    svc = _build_svc()
+    sync_id = uuid4()
+    mock_pause = AsyncMock(side_effect=_rpc_error("not found", RPCStatusCode.NOT_FOUND))
+    with patch.object(svc, "pause_schedule", mock_pause):
+        await svc.pause_sync_schedules(sync_id, "test reason")
+
+    assert mock_pause.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_unpause_sync_schedules_success():
+    """unpause_sync_schedules calls unpause_schedule 3 times with correct IDs."""
+    svc = _build_svc()
+    sync_id = uuid4()
+    mock_unpause = AsyncMock()
+    with patch.object(svc, "unpause_schedule", mock_unpause):
+        await svc.unpause_sync_schedules(sync_id, "test reason")
+
+    assert mock_unpause.await_count == 3
+    expected_ids = [
+        f"sync-{sync_id}",
+        f"minute-sync-{sync_id}",
+        f"daily-cleanup-{sync_id}",
+    ]
+    actual_calls = [c[0][0] for c in mock_unpause.call_args_list]
+    assert actual_calls == expected_ids
+    for call in mock_unpause.call_args_list:
+        assert call[0][1] == "test reason"
+
+
+@pytest.mark.asyncio
+async def test_unpause_sync_schedules_swallows_not_found():
+    """unpause_sync_schedules swallows RPCError with NOT_FOUND."""
+    svc = _build_svc()
+    sync_id = uuid4()
+    mock_unpause = AsyncMock(
+        side_effect=_rpc_error("not found", RPCStatusCode.NOT_FOUND)
+    )
+    with patch.object(svc, "unpause_schedule", mock_unpause):
+        await svc.unpause_sync_schedules(sync_id, "test reason")
+
+    assert mock_unpause.await_count == 3

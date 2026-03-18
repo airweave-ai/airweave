@@ -22,7 +22,7 @@ def _make_sync_context(auth_method: str = "oauth2") -> MagicMock:
     ctx.sync_job.id = uuid4()
     ctx.sync_job.started_at = None
     ctx.sync.id = uuid4()
-    ctx.connection.authentication_method = auth_method
+    ctx.authentication_method = auth_method
     ctx.logger = MagicMock()
     return ctx
 
