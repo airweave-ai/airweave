@@ -258,18 +258,14 @@ class AnalyticsEventSubscriber(EventSubscriber):
             distinct_id=str(event.organization_id),
             properties={
                 "request_id": event.request_id,
-                "tier": event.tier.value,
+                "tier": event.tier,
                 "collection_readable_id": event.collection_readable_id,
                 "query": event.query,
                 "thinking": event.thinking,
-                "filter": (
-                    [f.model_dump(mode="json") for f in event.filter] if event.filter else None
-                ),
+                "filter": (event.filter),
                 "limit": event.limit,
                 "offset": event.offset,
-                "retrieval_strategy": (
-                    event.retrieval_strategy.value if event.retrieval_strategy else None
-                ),
+                "retrieval_strategy": (event.retrieval_strategy),
             },
             groups={"organization": str(event.organization_id)},
         )
@@ -280,7 +276,7 @@ class AnalyticsEventSubscriber(EventSubscriber):
             distinct_id=str(event.organization_id),
             properties={
                 "request_id": event.request_id,
-                "tier": event.tier.value,
+                "tier": event.tier,
                 "result_count": len(event.results),
                 "duration_ms": event.duration_ms,
                 "diagnostics": (event.diagnostics.model_dump() if event.diagnostics else None),
@@ -294,7 +290,7 @@ class AnalyticsEventSubscriber(EventSubscriber):
             distinct_id=str(event.organization_id),
             properties={
                 "request_id": event.request_id,
-                "tier": event.tier.value,
+                "tier": event.tier,
                 "message": event.message,
                 "duration_ms": event.duration_ms,
                 "diagnostics": (event.diagnostics.model_dump() if event.diagnostics else None),

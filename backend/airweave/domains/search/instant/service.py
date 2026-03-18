@@ -76,8 +76,8 @@ class InstantSearchService(InstantSearchServiceProtocol):
             SearchCompletedEvent(
                 organization_id=ctx.organization.id,
                 request_id=ctx.request_id,
-                tier=SearchTier.INSTANT,
-                results=results.results,
+                tier=SearchTier.INSTANT.value,
+                results=[r.model_dump(mode="json") for r in results.results],
                 duration_ms=duration_ms,
             )
         )

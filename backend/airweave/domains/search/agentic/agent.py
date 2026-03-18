@@ -123,7 +123,7 @@ class Agent:
                 SearchFailedEvent(
                     organization_id=ctx.organization.id,
                     request_id=ctx.request_id,
-                    tier=SearchTier.AGENTIC,
+                    tier=SearchTier.AGENTIC.value,
                     message=str(e),
                     duration_ms=duration_ms,
                     diagnostics=FailedDiagnostics(
@@ -364,8 +364,8 @@ class Agent:
             SearchCompletedEvent(
                 organization_id=ctx.organization.id,
                 request_id=ctx.request_id,
-                tier=SearchTier.AGENTIC,
-                results=collected_results,
+                tier=SearchTier.AGENTIC.value,
+                results=[r.model_dump(mode="json") for r in collected_results],
                 duration_ms=duration_ms,
                 diagnostics=CompletedDiagnostics(
                     total_iterations=diag.iteration + 1,

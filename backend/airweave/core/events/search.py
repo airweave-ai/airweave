@@ -23,10 +23,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from airweave.core.events.base import DomainEvent
 from airweave.core.events.enums import SearchEventType
-from airweave.domains.search.types.filters import FilterGroup
-from airweave.domains.search.types.plan import RetrievalStrategy
-from airweave.domains.search.types.results import SearchResult
-from airweave.schemas.search_v2 import SearchTier
 
 # ── Diagnostics models ────────────────────────────────────────────────
 
@@ -112,14 +108,14 @@ class SearchStartedEvent(DomainEvent):
     event_type: SearchEventType = SearchEventType.STARTED
 
     request_id: str
-    tier: SearchTier
+    tier: str  # SearchTier value ("instant", "classic", "agentic")
     collection_readable_id: str
     query: str
 
     # Tier-specific (optional)
-    retrieval_strategy: Optional[RetrievalStrategy] = None  # instant only
+    retrieval_strategy: Optional[str] = None  # RetrievalStrategy value, instant only
     thinking: Optional[bool] = None  # agentic only
-    filter: Optional[list[FilterGroup]] = None
+    filter: Optional[list[dict[str, Any]]] = None  # serialized FilterGroups
     limit: Optional[int] = None
     offset: Optional[int] = None  # instant/classic only
 
@@ -133,10 +129,10 @@ class SearchCompletedEvent(DomainEvent):
     event_type: SearchEventType = SearchEventType.COMPLETED
 
     request_id: str
-    tier: SearchTier
+    tier: str  # SearchTier value ("instant", "classic", "agentic")
 
     # User-facing
-    results: list[SearchResult] = Field(default_factory=list)
+    results: list[dict[str, Any]] = Field(default_factory=list)  # serialized SearchResults
     duration_ms: int
 
     # Diagnostics (agentic only, None for instant/classic)
@@ -156,7 +152,7 @@ class SearchFailedEvent(DomainEvent):
     event_type: SearchEventType = SearchEventType.FAILED
 
     request_id: str
-    tier: SearchTier
+    tier: str  # SearchTier value ("instant", "classic", "agentic")
 
     # User-facing
     message: str

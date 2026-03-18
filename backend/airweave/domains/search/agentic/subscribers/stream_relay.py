@@ -79,7 +79,7 @@ class SearchStreamRelay(EventSubscriber):
 
         if isinstance(event, SearchStartedEvent):
             payload["request_id"] = event.request_id
-            payload["tier"] = event.tier.value
+            payload["tier"] = event.tier
             payload["collection_readable_id"] = event.collection_readable_id
 
         elif isinstance(event, SearchThinkingEvent):
@@ -98,7 +98,7 @@ class SearchStreamRelay(EventSubscriber):
             payload["diagnostics"] = event.diagnostics.model_dump()
 
         elif isinstance(event, SearchCompletedEvent):
-            payload["results"] = [r.model_dump(mode="json") for r in event.results]
+            payload["results"] = event.results  # already serialized dicts
             payload["duration_ms"] = event.duration_ms
             if event.diagnostics:
                 payload["diagnostics"] = event.diagnostics.model_dump()

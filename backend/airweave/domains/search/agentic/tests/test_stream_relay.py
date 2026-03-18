@@ -14,7 +14,6 @@ from airweave.core.events.search import (
     ToolCalledDiagnostics,
 )
 from airweave.domains.search.agentic.subscribers.stream_relay import SearchStreamRelay
-from airweave.schemas.search_v2 import SearchTier
 
 
 class _FakePubSub:
@@ -85,7 +84,7 @@ class TestSearchStreamRelay:
         event = SearchCompletedEvent(
             organization_id=uuid4(),
             request_id="req-1",
-            tier=SearchTier.AGENTIC,
+            tier="agentic",
             results=[],
             duration_ms=5000,
         )
@@ -103,7 +102,7 @@ class TestSearchStreamRelay:
         event = SearchFailedEvent(
             organization_id=uuid4(),
             request_id="req-1",
-            tier=SearchTier.AGENTIC,
+            tier="agentic",
             message="something broke",
             duration_ms=100,
         )
@@ -122,7 +121,7 @@ class TestSearchStreamRelay:
         event = SearchStartedEvent(
             organization_id=uuid4(),
             request_id="req-1",
-            tier=SearchTier.AGENTIC,
+            tier="agentic",
             collection_readable_id="test-col",
             query="test query",
         )

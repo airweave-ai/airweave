@@ -55,11 +55,11 @@ async def instant_search(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
             request_id=ctx.request_id,
-            tier=SearchTier.INSTANT,
+            tier=SearchTier.INSTANT.value,
             collection_readable_id=readable_id,
             query=request.query,
-            retrieval_strategy=request.retrieval_strategy,
-            filter=request.filter,
+            retrieval_strategy=request.retrieval_strategy.value,
+            filter=[f.model_dump() for f in request.filter] if request.filter else None,
             limit=request.limit,
             offset=request.offset,
         )
@@ -86,10 +86,10 @@ async def classic_search(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
             request_id=ctx.request_id,
-            tier=SearchTier.CLASSIC,
+            tier=SearchTier.CLASSIC.value,
             collection_readable_id=readable_id,
             query=request.query,
-            filter=request.filter,
+            filter=[f.model_dump() for f in request.filter] if request.filter else None,
             limit=request.limit,
             offset=request.offset,
         )
@@ -121,11 +121,11 @@ async def agentic_search(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
             request_id=ctx.request_id,
-            tier=SearchTier.AGENTIC,
+            tier=SearchTier.AGENTIC.value,
             collection_readable_id=readable_id,
             query=request.query,
             thinking=request.thinking,
-            filter=request.filter,
+            filter=[f.model_dump() for f in request.filter] if request.filter else None,
             limit=request.limit,
         )
     )
@@ -241,11 +241,11 @@ async def stream_agentic_search(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
             request_id=ctx.request_id,
-            tier=SearchTier.AGENTIC,
+            tier=SearchTier.AGENTIC.value,
             collection_readable_id=readable_id,
             query=request.query,
             thinking=request.thinking,
-            filter=request.filter,
+            filter=[f.model_dump() for f in request.filter] if request.filter else None,
             limit=request.limit,
         )
     )
