@@ -25,6 +25,11 @@ SUPPORTED_FILE_EXTENSIONS = {
     ".yaml",
     ".yml",
     ".toml",
+    # Audio (requires ENABLE_MEDIA_SYNC + ffmpeg)
+    ".mp3",
+    ".wav",
+    # Video (requires ENABLE_MEDIA_SYNC + ffmpeg)
+    ".mp4",
     # Code files (tree-sitter AST chunking)
     ".py",
     ".js",

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from airweave.domains.embedders.protocols import EmbeddingPurpose
 from airweave.platform.sync.processors.chunk_embed import ChunkEmbedProcessor
 
 
@@ -191,6 +192,27 @@ class TestChunkEmbedProcessor:
         # Verify both embedders called
         mock_runtime.dense_embedder.embed_many.assert_called_once()
         mock_runtime.sparse_embedder.embed_many.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_embed_entities_passes_document_purpose(
+        self, processor, mock_sync_context, mock_runtime
+    ):
+        """Test dense embedder is called with purpose=DOCUMENT at sync time."""
+        mock_entity = MagicMock()
+        mock_entity.textual_representation = "Test content"
+        mock_entity.airweave_system_metadata = MagicMock()
+        mock_entity.model_dump = MagicMock(return_value={"entity_id": "test"})
+
+        dense_result = MagicMock()
+        dense_result.vector = [0.1] * 3072
+        mock_runtime.dense_embedder.embed_many = AsyncMock(return_value=[dense_result])
+        mock_runtime.sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
+
+        await processor._embed_entities([mock_entity], mock_sync_context, mock_runtime)
+
+        # Verify purpose=DOCUMENT was passed to dense embedder
+        call_kwargs = mock_runtime.dense_embedder.embed_many.call_args
+        assert call_kwargs.kwargs.get("purpose") == EmbeddingPurpose.DOCUMENT
 
     @pytest.mark.asyncio
     async def test_embed_entities_assigns_embeddings(

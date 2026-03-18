@@ -44,6 +44,7 @@ class Settings(BaseSettings):
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
+        GEMINI_API_KEY (Optional[str]): The Google Gemini API key.
         EMBEDDING_DIMENSIONS (int): Embedding dimensions for the stack (provider, Vespa).
         FIRECRAWL_API_KEY (Optional[str]): The FireCrawl API key.
         TEMPORAL_HOST (str): The host of the Temporal server.
@@ -111,6 +112,59 @@ class Settings(BaseSettings):
     RUN_ALEMBIC_MIGRATIONS: bool = True
     RUN_DB_SYNC: bool = True
     ENABLE_INTERNAL_SOURCES: bool = False  # Enable internal/testing sources (stub, snapshot)
+    ENABLE_MEDIA_SYNC: bool = False  # Enable audio/video sync (requires ffmpeg)
+
+    # -------------------------------------------------------------------------
+    # Multimodal embedding configuration
+    # -------------------------------------------------------------------------
+    # These control how native file embedding (Gemini Embedding 2) handles
+    # PDFs, images, audio, and video. Only active when the dense embedder
+    # implements MultimodalDenseEmbedderProtocol.
+
+    # PDF: max pages per native embed call (Gemini limit = 6)
+    MULTIMODAL_PDF_MAX_PAGES: int = 6
+    # PDF: overlap pages when chunking oversized PDFs (e.g., 1 = last page
+    # of chunk N is also first page of chunk N+1)
+    MULTIMODAL_PDF_OVERLAP_PAGES: int = 1
+    # Max file size in MB for any single native embed call
+    MULTIMODAL_MAX_FILE_SIZE_MB: int = 20
+
+    # Audio: max seconds per segment (Gemini hard limit = 80s)
+    MULTIMODAL_AUDIO_MAX_SECONDS: int = 75
+    # Video with audio: max seconds per segment (Gemini hard limit = 128s)
+    MULTIMODAL_VIDEO_AUDIO_MAX_SECONDS: int = 120
+    # Video without audio: max seconds per segment (Gemini hard limit = 128s)
+    MULTIMODAL_VIDEO_NOAUDIO_MAX_SECONDS: int = 120
+    # Overlap between consecutive audio/video segments in seconds
+    MULTIMODAL_MEDIA_OVERLAP_SECONDS: int = 5
+
+    # Video keyframe OCR: scene change threshold (0.0-1.0).
+    # Lower = more sensitive (more frames). 0.3 is good for screen recordings,
+    # 0.1 for slide decks with subtle transitions.
+    MULTIMODAL_VIDEO_SCENE_THRESHOLD: float = 0.3
+    # Maximum keyframes to extract per video (caps OCR cost)
+    MULTIMODAL_VIDEO_MAX_KEYFRAMES: int = 30
+
+    # Transcription backend: "gemini" | "whisper" | "mlx_whisper" | "parakeet"
+    # - gemini: Cloud API, requires GEMINI_API_KEY (also used for video OCR)
+    # - whisper: OpenAI Whisper, local, CPU or CUDA (pip install openai-whisper)
+    # - mlx_whisper: MLX Whisper for Apple Silicon (pip install mlx-whisper)
+    # - parakeet: NVIDIA Parakeet TDT v3, local, CUDA (pip install nemo_toolkit[asr])
+    MULTIMODAL_TRANSCRIPTION_BACKEND: str = "gemini"
+
+    # Gemini model for transcription/OCR (only used when backend=gemini)
+    MULTIMODAL_TRANSCRIPTION_MODEL: str = "gemini-3-flash-preview"
+
+    # Whisper model size: "turbo" | "large" | "medium" | "small" | "base" | "tiny"
+    # "turbo" is recommended (fastest large-class, ~6GB VRAM)
+    MULTIMODAL_WHISPER_MODEL: str = "turbo"
+
+    # Parakeet model name on HuggingFace
+    MULTIMODAL_PARAKEET_MODEL: str = "nvidia/parakeet-tdt-0.6b-v3"
+
+    # Device for local transcription: "auto" | "cpu" | "cuda" | "mps"
+    # "auto" detects best available (CUDA > MPS > CPU)
+    MULTIMODAL_TRANSCRIPTION_DEVICE: str = "auto"
 
     # Redis configuration
     REDIS_HOST: str = "localhost"
@@ -161,6 +215,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
     FIRECRAWL_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
     COHERE_API_KEY: Optional[str] = None

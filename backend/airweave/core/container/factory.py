@@ -672,6 +672,7 @@ def _create_dense_embedder(
     Uses the domain config constants (DENSE_EMBEDDER, EMBEDDING_DIMENSIONS)
     and the registry to look up the spec and construct the correct embedder.
     """
+    from airweave.domains.embedders.dense.gemini import GeminiDenseEmbedder
     from airweave.domains.embedders.dense.local import LocalDenseEmbedder
     from airweave.domains.embedders.dense.mistral import MistralDenseEmbedder
     from airweave.domains.embedders.dense.openai import OpenAIDenseEmbedder
@@ -688,6 +689,13 @@ def _create_dense_embedder(
     if spec.embedder_class_ref is MistralDenseEmbedder:
         return MistralDenseEmbedder(
             api_key=settings.MISTRAL_API_KEY,
+            model=spec.api_model_name,
+            dimensions=EMBEDDING_DIMENSIONS,
+        )
+
+    if spec.embedder_class_ref is GeminiDenseEmbedder:
+        return GeminiDenseEmbedder(
+            api_key=settings.GEMINI_API_KEY,
             model=spec.api_model_name,
             dimensions=EMBEDDING_DIMENSIONS,
         )

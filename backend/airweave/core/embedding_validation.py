@@ -38,6 +38,13 @@ def get_provider_dimensions() -> Dict[str, List[int]]:
             if "supported_dimensions" in model_spec:
                 dims.update(model_spec["supported_dimensions"])
 
+            # Check dimension_range for providers that accept any value
+            # in a continuous range (e.g., Gemini Matryoshka)
+            if "dimension_range" in model_spec:
+                dim_range = model_spec["dimension_range"]
+                if len(dim_range) == 2:
+                    dims.update(range(dim_range[0], dim_range[1] + 1))
+
         if dims:
             provider_dims[provider_name] = sorted(dims, reverse=True)
 
@@ -54,6 +61,9 @@ def get_available_providers() -> List[str]:
 
     if settings.MISTRAL_API_KEY:
         available.append("mistral")
+
+    if settings.GEMINI_API_KEY:
+        available.append("gemini")
 
     # Local is available if TEXT2VEC_INFERENCE_URL is set
     # Note: LocalProvider for search is not yet implemented, but sync embeddings work
@@ -90,7 +100,8 @@ def validate_embedding_stack() -> Tuple[bool, List[str]]:
     if not available:
         messages.append(
             "WARNING: No embedding providers available. "
-            "Set OPENAI_API_KEY, MISTRAL_API_KEY, or configure TEXT2VEC_INFERENCE_URL."
+            "Set OPENAI_API_KEY, MISTRAL_API_KEY, GEMINI_API_KEY, "
+            "or configure TEXT2VEC_INFERENCE_URL."
         )
         is_valid = False
     else:

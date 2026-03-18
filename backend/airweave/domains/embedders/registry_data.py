@@ -6,6 +6,7 @@ Add new models here — the domain registry reads this at startup.
 
 from dataclasses import dataclass
 
+from airweave.domains.embedders.dense.gemini import GeminiDenseEmbedder
 from airweave.domains.embedders.dense.local import LocalDenseEmbedder
 from airweave.domains.embedders.dense.mistral import MistralDenseEmbedder
 from airweave.domains.embedders.dense.openai import OpenAIDenseEmbedder
@@ -77,6 +78,19 @@ DENSE_EMBEDDERS: list[DenseEmbedderSpec] = [
         supports_matryoshka=False,
         embedder_class=MistralDenseEmbedder,
         required_setting="MISTRAL_API_KEY",
+    ),
+    DenseEmbedderSpec(
+        short_name="gemini_embedding_2",
+        name="Gemini Embedding 2",
+        description="Google Gemini embedding model with Matryoshka support (up to 3072d). "
+        "Natively multimodal — supports text, PDF, image, audio, video.",
+        provider="gemini",
+        api_model_name="gemini-embedding-2-preview",
+        max_dimensions=3072,
+        max_tokens=8192,
+        supports_matryoshka=True,
+        embedder_class=GeminiDenseEmbedder,
+        required_setting="GEMINI_API_KEY",
     ),
     DenseEmbedderSpec(
         short_name="local_minilm",

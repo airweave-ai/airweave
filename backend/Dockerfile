@@ -12,6 +12,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     unixodbc \
     unixodbc-dev \
     exiftool \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && pip install --no-cache-dir "poetry==2.3.2"

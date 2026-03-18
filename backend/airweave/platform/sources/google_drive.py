@@ -913,12 +913,7 @@ class GoogleDriveSource(BaseSource):
 
         Returns None for files that should be skipped (e.g., trashed files, videos).
         """
-        # Skip all video files to prevent tmp storage issues
         mime_type = file_obj.get("mimeType", "")
-        if mime_type.startswith("video/"):
-            file_name = file_obj.get("name", "unknown")
-            self.logger.debug(f"Skipping video file ({mime_type}): {file_name}")
-            return None
 
         # Skip files larger than 200MB using metadata from the listing API
         MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024

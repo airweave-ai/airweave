@@ -8,12 +8,14 @@ converters module never imports the DI container.
 import sys
 from typing import TYPE_CHECKING
 
+from .audio_converter import AudioConverter
 from .code_converter import CodeConverter
 from .docx_converter import DocxConverter
 from .html_converter import HtmlConverter
 from .pdf_converter import PdfConverter
 from .pptx_converter import PptxConverter
 from .txt_converter import TxtConverter
+from .video_converter import VideoConverter
 from .web_converter import WebConverter
 from .xlsx_converter import XlsxConverter
 
@@ -42,16 +44,20 @@ _SINGLETON_NAMES = frozenset(
         "xlsx_converter",
         "code_converter",
         "web_converter",
+        "audio_converter",
+        "video_converter",
     }
 )
 
 for _mod in (
+    "audio_converter",
     "code_converter",
     "docx_converter",
     "html_converter",
     "pdf_converter",
     "pptx_converter",
     "txt_converter",
+    "video_converter",
     "web_converter",
     "xlsx_converter",
 ):
@@ -91,6 +97,8 @@ def initialize_converters(ocr_provider: "OcrProvider | None" = None) -> None:
         "xlsx_converter": XlsxConverter(),
         "code_converter": CodeConverter(),
         "web_converter": WebConverter(),
+        "audio_converter": AudioConverter(),
+        "video_converter": VideoConverter(),
     }
 
     # Also set as module attributes so subsequent lookups are O(1)

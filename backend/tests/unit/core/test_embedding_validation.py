@@ -45,6 +45,7 @@ class TestGetAvailableProviders:
         with patch("airweave.core.embedding_validation.settings") as mock_settings:
             mock_settings.OPENAI_API_KEY = "sk-test-key"
             mock_settings.MISTRAL_API_KEY = None
+            mock_settings.GEMINI_API_KEY = None
             mock_settings.TEXT2VEC_INFERENCE_URL = None
 
             available = get_available_providers()
@@ -57,6 +58,7 @@ class TestGetAvailableProviders:
         with patch("airweave.core.embedding_validation.settings") as mock_settings:
             mock_settings.OPENAI_API_KEY = None
             mock_settings.MISTRAL_API_KEY = "mistral-test-key"
+            mock_settings.GEMINI_API_KEY = None
             mock_settings.TEXT2VEC_INFERENCE_URL = None
 
             available = get_available_providers()
@@ -69,10 +71,24 @@ class TestGetAvailableProviders:
         with patch("airweave.core.embedding_validation.settings") as mock_settings:
             mock_settings.OPENAI_API_KEY = None
             mock_settings.MISTRAL_API_KEY = None
+            mock_settings.GEMINI_API_KEY = None
             mock_settings.TEXT2VEC_INFERENCE_URL = "http://localhost:9878"
 
             available = get_available_providers()
             assert "local" in available
+
+    def test_returns_gemini_when_key_set(self):
+        """Test Gemini is available when API key is configured."""
+        from airweave.core.embedding_validation import get_available_providers
+
+        with patch("airweave.core.embedding_validation.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = None
+            mock_settings.MISTRAL_API_KEY = None
+            mock_settings.GEMINI_API_KEY = "gemini-test-key"
+            mock_settings.TEXT2VEC_INFERENCE_URL = None
+
+            available = get_available_providers()
+            assert "gemini" in available
 
     def test_returns_multiple_providers(self):
         """Test multiple providers can be available simultaneously."""
@@ -81,11 +97,13 @@ class TestGetAvailableProviders:
         with patch("airweave.core.embedding_validation.settings") as mock_settings:
             mock_settings.OPENAI_API_KEY = "sk-test"
             mock_settings.MISTRAL_API_KEY = "mistral-test"
+            mock_settings.GEMINI_API_KEY = "gemini-test"
             mock_settings.TEXT2VEC_INFERENCE_URL = "http://localhost:9878"
 
             available = get_available_providers()
             assert "openai" in available
             assert "mistral" in available
+            assert "gemini" in available
             assert "local" in available
 
     def test_returns_empty_when_no_providers_configured(self):
@@ -95,6 +113,7 @@ class TestGetAvailableProviders:
         with patch("airweave.core.embedding_validation.settings") as mock_settings:
             mock_settings.OPENAI_API_KEY = None
             mock_settings.MISTRAL_API_KEY = None
+            mock_settings.GEMINI_API_KEY = None
             mock_settings.TEXT2VEC_INFERENCE_URL = None
 
             available = get_available_providers()
@@ -132,13 +151,28 @@ class TestFindCompatibleProviders:
         compatible = find_compatible_providers(384)
         assert "local" in compatible
 
+    def test_finds_gemini_for_3072_dims(self):
+        """Test 3072 dimensions maps to Gemini."""
+        from airweave.core.embedding_validation import find_compatible_providers
+
+        compatible = find_compatible_providers(3072)
+        assert "gemini" in compatible
+
     def test_returns_empty_for_unsupported_dims(self):
         """Test unsupported dimensions returns empty list."""
         from airweave.core.embedding_validation import find_compatible_providers
 
-        # 999 is not a standard dimension for any provider
-        compatible = find_compatible_providers(999)
+        # 99999 is beyond any provider's range
+        compatible = find_compatible_providers(99999)
         assert compatible == []
+
+    def test_gemini_accepts_any_dimension_in_range(self):
+        """Gemini supports any dimension in [128, 3072], not just enumerated values."""
+        from airweave.core.embedding_validation import find_compatible_providers
+
+        # 999 is not a standard dimension but is within Gemini's Matryoshka range
+        compatible = find_compatible_providers(999)
+        assert "gemini" in compatible
 
 
 class TestValidateEmbeddingStack:
@@ -152,6 +186,7 @@ class TestValidateEmbeddingStack:
             mock_settings.EMBEDDING_DIMENSIONS = 1536
             mock_settings.OPENAI_API_KEY = "sk-test"
             mock_settings.MISTRAL_API_KEY = None
+            mock_settings.GEMINI_API_KEY = None
             mock_settings.TEXT2VEC_INFERENCE_URL = None
 
             is_valid, messages = validate_embedding_stack()
@@ -168,6 +203,39 @@ class TestValidateEmbeddingStack:
             mock_settings.EMBEDDING_DIMENSIONS = 1024
             mock_settings.OPENAI_API_KEY = None
             mock_settings.MISTRAL_API_KEY = "mistral-test"
+            mock_settings.GEMINI_API_KEY = None
+            mock_settings.TEXT2VEC_INFERENCE_URL = None
+
+            is_valid, messages = validate_embedding_stack()
+
+            assert is_valid is True
+            assert not any("ERROR" in msg for msg in messages)
+
+    def test_valid_config_gemini_3072(self):
+        """Test valid config: Gemini key + 3072 dimensions."""
+        from airweave.core.embedding_validation import validate_embedding_stack
+
+        with patch("airweave.core.embedding_validation.settings") as mock_settings:
+            mock_settings.EMBEDDING_DIMENSIONS = 3072
+            mock_settings.OPENAI_API_KEY = None
+            mock_settings.MISTRAL_API_KEY = None
+            mock_settings.GEMINI_API_KEY = "gemini-test"
+            mock_settings.TEXT2VEC_INFERENCE_URL = None
+
+            is_valid, messages = validate_embedding_stack()
+
+            assert is_valid is True
+            assert not any("ERROR" in msg for msg in messages)
+
+    def test_valid_config_gemini_matryoshka_1024(self):
+        """Test valid config: Gemini key + 1024 dimensions (Matryoshka)."""
+        from airweave.core.embedding_validation import validate_embedding_stack
+
+        with patch("airweave.core.embedding_validation.settings") as mock_settings:
+            mock_settings.EMBEDDING_DIMENSIONS = 1024
+            mock_settings.OPENAI_API_KEY = None
+            mock_settings.MISTRAL_API_KEY = None
+            mock_settings.GEMINI_API_KEY = "gemini-test"
             mock_settings.TEXT2VEC_INFERENCE_URL = None
 
             is_valid, messages = validate_embedding_stack()
@@ -183,6 +251,7 @@ class TestValidateEmbeddingStack:
             mock_settings.EMBEDDING_DIMENSIONS = 1536
             mock_settings.OPENAI_API_KEY = None
             mock_settings.MISTRAL_API_KEY = "mistral-test"
+            mock_settings.GEMINI_API_KEY = None
             mock_settings.TEXT2VEC_INFERENCE_URL = None
 
             is_valid, messages = validate_embedding_stack()
@@ -199,6 +268,7 @@ class TestValidateEmbeddingStack:
             mock_settings.EMBEDDING_DIMENSIONS = 1536
             mock_settings.OPENAI_API_KEY = None
             mock_settings.MISTRAL_API_KEY = None
+            mock_settings.GEMINI_API_KEY = None
             mock_settings.TEXT2VEC_INFERENCE_URL = None
 
             is_valid, messages = validate_embedding_stack()
@@ -222,6 +292,7 @@ class TestValidateAndRaise:
             mock_settings.EMBEDDING_DIMENSIONS = 1536
             mock_settings.OPENAI_API_KEY = None
             mock_settings.MISTRAL_API_KEY = "mistral-test"
+            mock_settings.GEMINI_API_KEY = None
             mock_settings.TEXT2VEC_INFERENCE_URL = None
 
             with pytest.raises(EmbeddingConfigurationError):
@@ -235,6 +306,7 @@ class TestValidateAndRaise:
             mock_settings.EMBEDDING_DIMENSIONS = 1024
             mock_settings.OPENAI_API_KEY = None
             mock_settings.MISTRAL_API_KEY = "mistral-test"
+            mock_settings.GEMINI_API_KEY = None
             mock_settings.TEXT2VEC_INFERENCE_URL = None
 
             # Should not raise
