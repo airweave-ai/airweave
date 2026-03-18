@@ -155,6 +155,34 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             logger=logger,
         )
 
+        # 6. Validate credentials before handing source to the sync pipeline.
+        #
+        # classify_error() in the caller (SyncService.run / SyncOrchestrator)
+        # unwraps SourceValidationError.__cause__ to determine the error
+        # category (api_key_invalid, oauth_expired, auth_provider_gone, …).
+        #
+        # For this to work, each source's validate() must RAISE typed
+        # exceptions (SourceAuthError, TokenCredentialsInvalidError, etc.)
+        # instead of returning False. Returning False produces an
+        # unclassified SourceValidationError with no __cause__, which the
+        # classifier cannot map — the UI will show a generic error.
+        #
+        # TODO(source-contract-v2): migrate every source.validate() to
+        # raise typed domain exceptions on auth failures so the classifier
+        # can distinguish api_key_invalid / oauth_expired / auth_provider_gone.
+        try:
+            is_valid = await source.validate()
+        except Exception as exc:
+            raise SourceValidationError(
+                source_connection_data.short_name,
+                f"validation raised: {exc}",
+            ) from exc
+        if not is_valid:
+            raise SourceValidationError(
+                source_connection_data.short_name,
+                "validate() returned False",
+            )
+
         return source
 
     async def validate(

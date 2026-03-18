@@ -327,7 +327,15 @@ class BaseSource:
 
     @abstractmethod
     async def validate(self) -> bool:
-        """Validate that this source is reachable and credentials are usable."""
+        """Validate that this source is reachable and credentials are usable.
+
+        Implementations SHOULD raise typed exceptions on auth failures
+        (SourceAuthError, TokenCredentialsInvalidError, etc.) rather than
+        returning False. SourceLifecycleService.create() wraps the exception
+        in SourceValidationError, and classify_error() unwraps __cause__ to
+        determine the error category for the UI. Returning False produces an
+        unclassified error.
+        """
         raise NotImplementedError
 
     async def get_browse_children(

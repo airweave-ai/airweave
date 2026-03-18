@@ -90,6 +90,20 @@ class _StubSourceCreateRaises:
         raise ValueError("bad credentials format")
 
 
+class _StubSourceCreateValidateFalse(_StubSourceValid):
+    """Source that creates fine but validate() returns False."""
+
+    async def validate(self):
+        return False
+
+
+class _StubSourceCreateValidateRaises(_StubSourceValid):
+    """Source that creates fine but validate() raises."""
+
+    async def validate(self):
+        raise ConnectionError("cannot reach API")
+
+
 class _StubSourceMinimal:
     """Source with no set_* methods at all."""
 
@@ -1030,6 +1044,55 @@ async def test_create(case: CreateCase):
         assert source._logger is not None
     if case.expect_http_client:
         assert source._http_client_factory is not None
+
+
+@pytest.mark.asyncio
+async def test_create_validates_source_returns_false():
+    """create() raises SourceValidationError when validate() returns False."""
+    sc = _mock_source_connection(short_name="src")
+    conn = _mock_connection()
+    cred = _mock_credential()
+    entry = _entry_with_class("src", _StubSourceCreateValidateFalse)
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed(sc.connection_id, conn)
+    cred_repo = FakeIntegrationCredentialRepository()
+    cred_repo.seed(conn.integration_credential_id, cred)
+
+    service = _make_service(source_entries=[entry], sc_repo=sc_repo,
+                            conn_repo=conn_repo, cred_repo=cred_repo)
+
+    with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
+        mock_creds.decrypt.return_value = {"access_token": "tok"}
+        with pytest.raises(SourceValidationError, match="validate\\(\\) returned False"):
+            await service.create(db=MagicMock(), source_connection_id=sc.id, ctx=_make_ctx())
+
+
+@pytest.mark.asyncio
+async def test_create_validates_source_raises():
+    """create() wraps validate() exceptions in SourceValidationError with __cause__."""
+    sc = _mock_source_connection(short_name="src")
+    conn = _mock_connection()
+    cred = _mock_credential()
+    entry = _entry_with_class("src", _StubSourceCreateValidateRaises)
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed(sc.connection_id, conn)
+    cred_repo = FakeIntegrationCredentialRepository()
+    cred_repo.seed(conn.integration_credential_id, cred)
+
+    service = _make_service(source_entries=[entry], sc_repo=sc_repo,
+                            conn_repo=conn_repo, cred_repo=cred_repo)
+
+    with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
+        mock_creds.decrypt.return_value = {"access_token": "tok"}
+        with pytest.raises(SourceValidationError, match="validation raised") as exc_info:
+            await service.create(db=MagicMock(), source_connection_id=sc.id, ctx=_make_ctx())
+        assert isinstance(exc_info.value.__cause__, ConnectionError)
 
 
 # ===========================================================================
