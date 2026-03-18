@@ -1116,7 +1116,9 @@ def _build_llm_chain(
         LLMProvider.TOGETHER: TogetherLLM,
     }
 
-    llm_providers = []
+    # Collect available (provider, model_spec, class) tuples first,
+    # then decide retry strategy based on how many survived.
+    available = []
     for provider, model in config.LLM_FALLBACK_CHAIN:
         api_key_attr = PROVIDER_API_KEY_SETTINGS.get(provider)
         if api_key_attr and not getattr(settings, api_key_attr, None):
@@ -1129,8 +1131,22 @@ def _build_llm_chain(
             logger.warning(f"[SearchFactory] Unknown provider: {provider.value}")
             continue
 
+        available.append((provider, model, model_spec, provider_cls))
+
+    if not available:
+        raise ValueError(
+            "No LLM providers available for search. "
+            "Configure at least one API key from SearchConfig.LLM_FALLBACK_CHAIN."
+        )
+
+    # Single provider: use default retries (no fallback chain to handle them).
+    # Multiple providers: max_retries=0 per provider, the chain handles failover.
+    use_retries = 0 if len(available) > 1 else None  # None = use class default
+
+    llm_providers = []
+    for provider, model, model_spec, provider_cls in available:
         try:
-            llm_providers.append(provider_cls(model_spec=model_spec, max_retries=0))
+            llm_providers.append(provider_cls(model_spec=model_spec, max_retries=use_retries))
             logger.info(
                 f"[SearchFactory] Added {provider.value}/{model.value} "
                 f"({model_spec.api_model_name})"
@@ -1144,7 +1160,7 @@ def _build_llm_chain(
     if not llm_providers:
         raise ValueError(
             "No LLM providers available for search. "
-            "Configure at least one API key from SearchConfig.LLM_FALLBACK_CHAIN."
+            "All configured providers failed to initialize."
         )
 
     if len(llm_providers) == 1:
