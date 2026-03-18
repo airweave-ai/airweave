@@ -13,6 +13,7 @@ Functions:
 from __future__ import annotations
 
 import functools
+import json
 from pathlib import Path
 from typing import Any
 
@@ -77,7 +78,9 @@ def build_assistant_message(response: LLMResponse) -> dict[str, Any]:
                 "type": "function",
                 "function": {
                     "name": tc.name,
-                    "arguments": tc.arguments,
+                    "arguments": (
+                        json.dumps(tc.arguments) if isinstance(tc.arguments, dict) else tc.arguments
+                    ),
                 },
             }
             for tc in response.tool_calls
