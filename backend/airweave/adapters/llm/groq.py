@@ -174,6 +174,7 @@ class GroqLLM(BaseLLM):
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
+        thinking: bool = False,
     ) -> LLMResponse:
         """Groq tool calling (OpenAI-compatible format).
 
@@ -185,10 +186,11 @@ class GroqLLM(BaseLLM):
         api_messages = [{"role": "system", "content": system_prompt}, *converted]
         strict_tools = self._prepare_tools_strict(tools)
 
+        # GPT-OSS on Groq uses reasoning_effort
         reasoning_params: dict[str, Any] = {}
         tc = self._model_spec.thinking_config
-        if tc and tc.param_name != "_noop":
-            reasoning_params[tc.param_name] = tc.param_value
+        if tc and tc.param_name == "reasoning_effort":
+            reasoning_params[tc.param_name] = "high" if thinking else "low"
 
         api_start = time.monotonic()
         response = await self._client.chat.completions.create(

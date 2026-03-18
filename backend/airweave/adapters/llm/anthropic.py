@@ -50,21 +50,9 @@ class AnthropicLLM(BaseLLM):
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Anthropic client: {e}") from e
 
-        self._adaptive_thinking = model_spec.thinking_config.param_name == "adaptive_thinking"
         self._effort = model_spec.thinking_config.effort  # e.g., "high"
 
-        # Legacy: support budget_tokens for older model specs
-        self._legacy_thinking = model_spec.thinking_config.param_name == "thinking_budget"
-        self._thinking_budget = (
-            int(model_spec.thinking_config.param_value) if self._legacy_thinking else 0
-        )
-
-        if self._adaptive_thinking:
-            thinking_mode = f"adaptive (effort={self._effort})"
-        elif self._legacy_thinking:
-            thinking_mode = f"enabled (budget={self._thinking_budget})"
-        else:
-            thinking_mode = "disabled"
+        thinking_mode = f"adaptive (effort={self._effort})" if self._effort else "on-demand"
 
         self._logger.debug(
             f"[AnthropicLLM] Initialized model={model_spec.api_model_name}, "
@@ -143,6 +131,7 @@ class AnthropicLLM(BaseLLM):
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
+        thinking: bool = False,
     ) -> LLMResponse:
         """Anthropic tool calling with optional extended thinking."""
         # Convert tool defs and messages to Anthropic format
@@ -169,16 +158,11 @@ class AnthropicLLM(BaseLLM):
             "tools": anthropic_tools,
         }
 
-        # Enable thinking if configured
-        if self._adaptive_thinking:
+        # Enable thinking when requested
+        if thinking:
             kwargs["thinking"] = {"type": "adaptive"}
             if self._effort:
                 kwargs["output_config"] = {"effort": self._effort}
-        elif self._legacy_thinking:
-            kwargs["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": self._thinking_budget,
-            }
 
         api_start = time.monotonic()
         response = await self._client.messages.create(**kwargs)

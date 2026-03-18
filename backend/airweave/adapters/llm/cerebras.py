@@ -139,20 +139,30 @@ class CerebrasLLM(BaseLLM):
             result.append(cleaned)
         return result
 
+    def _build_reasoning_params(self, thinking: bool) -> dict[str, Any]:
+        """Build provider-specific reasoning params from the thinking flag."""
+        tc = self._model_spec.thinking_config
+        if tc.param_name == "reasoning_effort":
+            # GPT-OSS: reasoning_effort="high" when thinking, "low" when not
+            return {tc.param_name: "high" if thinking else "low"}
+        if tc.param_name == "disable_reasoning":
+            # GLM: disable_reasoning=False when thinking, True when not
+            return {tc.param_name: not thinking}
+        return {}
+
     async def _call_api_chat(
         self,
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
+        thinking: bool = False,
     ) -> LLMResponse:
         """Cerebras tool calling (OpenAI-compatible format)."""
         converted = self._prepare_messages_for_api(messages)
         api_messages = [{"role": "system", "content": system_prompt}, *converted]
         strict_tools = self._prepare_tools_strict(tools)
 
-        # Include reasoning params so reasoning models return a reasoning field
-        tc = self._model_spec.thinking_config
-        reasoning_params = {tc.param_name: tc.param_value}
+        reasoning_params = self._build_reasoning_params(thinking)
 
         api_start = time.monotonic()
         response = await self._client.chat.completions.create(

@@ -111,7 +111,6 @@ def make_rendered_result(
 def make_model_spec(
     context_window: int = 200_000,
     max_output_tokens: int = 64_000,
-    thinking_enabled: bool = False,
 ) -> LLMModelSpec:
     """Build an LLMModelSpec for tests."""
     return LLMModelSpec(
@@ -121,5 +120,4 @@ def make_model_spec(
         required_tokenizer_type=TokenizerType.TIKTOKEN,
         required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
         thinking_config=ThinkingConfig(param_name="_noop", param_value=True),
-        thinking_enabled=thinking_enabled,
     )

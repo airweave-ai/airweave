@@ -3,6 +3,10 @@
 Single source of truth for all provider-model combinations and their specifications.
 The fallback chain (which combinations to use and in what order) is configured in
 SearchConfig, not here. This module is purely a catalog.
+
+Thinking/reasoning is controlled per-call via the `thinking` parameter on chat(),
+not per-model. The ThinkingConfig tells providers *how* to toggle thinking (which
+API parameter to use), but not *whether* to — that comes from the request.
 """
 
 from dataclasses import dataclass
@@ -27,43 +31,39 @@ class LLMModel(str, Enum):
     A model can be hosted by multiple providers (e.g., GPT_OSS_120B on both
     Cerebras and Groq). The MODEL_REGISTRY maps each (provider, model) pair
     to its provider-specific specification.
+
+    Thinking is toggled per-call, so there are no separate -thinking variants.
     """
 
     GPT_OSS_120B = "gpt-oss-120b"
     ZAI_GLM_4_7 = "zai-glm-4.7"
     ZAI_GLM_5 = "zai-glm-5"
-    ZAI_GLM_5_THINKING = "zai-glm-5-thinking"
     CLAUDE_SONNET_4_5 = "claude-sonnet-4.5"
     CLAUDE_SONNET_4_6 = "claude-sonnet-4.6"
-    CLAUDE_SONNET_4_6_THINKING = "claude-sonnet-4.6-thinking"
     KIMI_K2_5 = "kimi-k2.5"
-    KIMI_K2_5_THINKING = "kimi-k2.5-thinking"
     QWEN_3_5 = "qwen-3.5"
-    QWEN_3_5_THINKING = "qwen-3.5-thinking"
     QWEN_3_5_DEDICATED = "qwen-3.5-dedicated"
-    QWEN_3_5_DEDICATED_THINKING = "qwen-3.5-dedicated-thinking"
     ZAI_GLM_5_DEDICATED = "zai-glm-5-dedicated"
-    ZAI_GLM_5_DEDICATED_THINKING = "zai-glm-5-dedicated-thinking"
     MINIMAX_M2_5 = "minimax-m2.5"
-    MINIMAX_M2_5_THINKING = "minimax-m2.5-thinking"
 
 
 @dataclass(frozen=True)
 class ThinkingConfig:
     """Model-specific thinking/reasoning API configuration.
 
-    Different models have different parameters for controlling thinking:
-    - GPT-OSS: reasoning_effort="low"|"medium"|"high"
-    - GLM/Qwen: disable_reasoning=True|False
+    Tells providers which API parameter to use when toggling thinking on/off:
+    - Together (GLM/Qwen/Kimi/MiniMax): reasoning={"enabled": True/False}
+    - Cerebras GPT-OSS: reasoning_effort="high"/"low"
+    - Cerebras GLM: disable_reasoning=True/False
     - Anthropic 4.6: adaptive thinking with effort="high"
-    - Anthropic 4.5: no thinking (param_name="_noop")
+    - Anthropic 4.5: no thinking support (param_name="_noop")
 
-    This dataclass encapsulates the parameter name and value so the provider
-    can pass it through without knowing about model families.
+    The actual on/off decision comes from the `thinking` parameter on chat(),
+    not from param_value here. param_value is unused in the per-call model.
     """
 
     param_name: str
-    param_value: Union[str, bool, int]
+    param_value: Union[str, bool, int]  # kept for backward compat, unused in per-call model
     effort: str | None = None
 
 
@@ -84,7 +84,6 @@ class LLMModelSpec:
     required_tokenizer_type: TokenizerType
     required_tokenizer_encoding: TokenizerEncoding
     thinking_config: ThinkingConfig
-    thinking_enabled: bool = False
 
 
 # Registry: provider -> model -> spec
@@ -100,7 +99,6 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
                 param_name="reasoning_effort",
                 param_value="high",
             ),
-            thinking_enabled=True,
         ),
         LLMModel.ZAI_GLM_4_7: LLMModelSpec(
             api_model_name="zai-glm-4.7",
@@ -112,7 +110,6 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
                 param_name="disable_reasoning",
                 param_value=False,
             ),
-            thinking_enabled=True,
         ),
     },
     LLMProvider.GROQ: {
@@ -126,19 +123,10 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
                 param_name="reasoning_effort",
                 param_value="high",
             ),
-            thinking_enabled=True,
         ),
     },
     LLMProvider.ANTHROPIC: {
         LLMModel.CLAUDE_SONNET_4_6: LLMModelSpec(
-            api_model_name="claude-sonnet-4-6",
-            context_window=200_000,
-            max_output_tokens=64_000,
-            required_tokenizer_type=TokenizerType.TIKTOKEN,
-            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
-            thinking_config=ThinkingConfig(param_name="_noop", param_value=True),
-        ),
-        LLMModel.CLAUDE_SONNET_4_6_THINKING: LLMModelSpec(
             api_model_name="claude-sonnet-4-6",
             context_window=200_000,
             max_output_tokens=64_000,
@@ -149,7 +137,6 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
                 param_value=True,
                 effort="high",
             ),
-            thinking_enabled=True,
         ),
         LLMModel.CLAUDE_SONNET_4_5: LLMModelSpec(
             api_model_name="claude-sonnet-4-5-20250929",
@@ -170,15 +157,6 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             thinking_config=ThinkingConfig(param_name="reasoning", param_value=False),
         ),
-        LLMModel.KIMI_K2_5_THINKING: LLMModelSpec(
-            api_model_name="moonshotai/Kimi-K2.5",
-            context_window=256_000,
-            max_output_tokens=64_000,
-            required_tokenizer_type=TokenizerType.TIKTOKEN,
-            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
-            thinking_config=ThinkingConfig(param_name="reasoning", param_value=True),
-            thinking_enabled=True,
-        ),
         # ── GLM-5 ─────────────────────────────────────────────────
         LLMModel.ZAI_GLM_5: LLMModelSpec(
             api_model_name="zai-org/GLM-5",
@@ -187,15 +165,6 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             required_tokenizer_type=TokenizerType.TIKTOKEN,
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             thinking_config=ThinkingConfig(param_name="reasoning", param_value=False),
-        ),
-        LLMModel.ZAI_GLM_5_THINKING: LLMModelSpec(
-            api_model_name="zai-org/GLM-5",
-            context_window=200_000,
-            max_output_tokens=64_000,
-            required_tokenizer_type=TokenizerType.TIKTOKEN,
-            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
-            thinking_config=ThinkingConfig(param_name="reasoning", param_value=True),
-            thinking_enabled=True,
         ),
         # ── GLM-5 Dedicated (B200, Together) ─────────────────────
         LLMModel.ZAI_GLM_5_DEDICATED: LLMModelSpec(
@@ -206,15 +175,6 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             thinking_config=ThinkingConfig(param_name="reasoning", param_value=False),
         ),
-        LLMModel.ZAI_GLM_5_DEDICATED_THINKING: LLMModelSpec(
-            api_model_name="airweave/glm-5",
-            context_window=200_000,
-            max_output_tokens=64_000,
-            required_tokenizer_type=TokenizerType.TIKTOKEN,
-            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
-            thinking_config=ThinkingConfig(param_name="reasoning", param_value=True),
-            thinking_enabled=True,
-        ),
         # ── Qwen 3.5 ──────────────────────────────────────────────
         LLMModel.QWEN_3_5: LLMModelSpec(
             api_model_name="Qwen/Qwen3.5-397B-A17B",
@@ -223,15 +183,6 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             required_tokenizer_type=TokenizerType.TIKTOKEN,
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             thinking_config=ThinkingConfig(param_name="reasoning", param_value=False),
-        ),
-        LLMModel.QWEN_3_5_THINKING: LLMModelSpec(
-            api_model_name="Qwen/Qwen3.5-397B-A17B",
-            context_window=256_000,
-            max_output_tokens=81_920,
-            required_tokenizer_type=TokenizerType.TIKTOKEN,
-            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
-            thinking_config=ThinkingConfig(param_name="reasoning", param_value=True),
-            thinking_enabled=True,
         ),
         # ── Qwen 3.5 Dedicated (FP8, 4×H200) ───────────────────────
         LLMModel.QWEN_3_5_DEDICATED: LLMModelSpec(
@@ -242,15 +193,6 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             thinking_config=ThinkingConfig(param_name="reasoning", param_value=False),
         ),
-        LLMModel.QWEN_3_5_DEDICATED_THINKING: LLMModelSpec(
-            api_model_name="daan_0248/Qwen/Qwen3.5-397B-A17B-FP8-8e91e0d0",
-            context_window=256_000,
-            max_output_tokens=81_920,
-            required_tokenizer_type=TokenizerType.TIKTOKEN,
-            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
-            thinking_config=ThinkingConfig(param_name="reasoning", param_value=True),
-            thinking_enabled=True,
-        ),
         # ── MiniMax M2.5 ──────────────────────────────────────────
         LLMModel.MINIMAX_M2_5: LLMModelSpec(
             api_model_name="MiniMaxAI/MiniMax-M2.5",
@@ -259,15 +201,6 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             required_tokenizer_type=TokenizerType.TIKTOKEN,
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             thinking_config=ThinkingConfig(param_name="reasoning", param_value=False),
-        ),
-        LLMModel.MINIMAX_M2_5_THINKING: LLMModelSpec(
-            api_model_name="MiniMaxAI/MiniMax-M2.5",
-            context_window=192_000,
-            max_output_tokens=64_000,
-            required_tokenizer_type=TokenizerType.TIKTOKEN,
-            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
-            thinking_config=ThinkingConfig(param_name="reasoning", param_value=True),
-            thinking_enabled=True,
         ),
     },
 }

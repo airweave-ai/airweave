@@ -178,7 +178,7 @@ class Agent:
         system_prompt = build_system_prompt(metadata, config.MAX_ITERATIONS)
         user_filter = request.filter or []
         messages: list[dict] = [build_user_message(request.query, user_filter)]
-        thinking_enabled = self._llm.model_spec.thinking_enabled
+        thinking_enabled = request.thinking
 
         # Construct per-request tools
         dispatcher = self._build_dispatcher(collection_id, user_filter)
@@ -204,7 +204,7 @@ class Agent:
 
             # 1. Call LLM
             llm_start = time.monotonic()
-            response = await self._llm.chat(messages, ALL_TOOL_DEFINITIONS, system_prompt)
+            response = await self._llm.chat(messages, ALL_TOOL_DEFINITIONS, system_prompt, thinking=thinking_enabled)
             llm_duration = int((time.monotonic() - llm_start) * 1000)
 
             # 2. Accumulate token counts and retries

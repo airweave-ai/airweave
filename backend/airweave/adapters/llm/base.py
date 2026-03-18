@@ -138,6 +138,7 @@ class BaseLLM(LLMProtocol):
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
+        thinking: bool = False,
     ) -> LLMResponse:
         """Send a conversation with tools and get a response.
 
@@ -145,7 +146,7 @@ class BaseLLM(LLMProtocol):
         with the same retry logic used by structured_output.
         """
         return await self._with_retry(
-            "tool API call", self._call_api_chat, messages, tools, system_prompt
+            "tool API call", self._call_api_chat, messages, tools, system_prompt, thinking
         )
 
     # ── Hooks for subclasses ─────────────────────────────────────────────
@@ -169,6 +170,7 @@ class BaseLLM(LLMProtocol):
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
+        thinking: bool = False,
     ) -> LLMResponse:
         """Make a single API call with tools. Must be implemented by subclass."""
         raise NotImplementedError

@@ -85,6 +85,7 @@ class LLMProtocol(Protocol):
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
+        thinking: bool = False,
     ) -> LLMResponse:
         """Send a conversation with tools and get a response."""
         ...

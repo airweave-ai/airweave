@@ -48,27 +48,19 @@ class TogetherLLM(BaseLLM):
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Together client: {e}") from e
 
-        # Thinking mode: reasoning param_name="reasoning" with param_value=True
-        self._thinking_enabled = (
-            model_spec.thinking_config.param_name == "reasoning"
-            and model_spec.thinking_config.param_value is True
-        )
-
         self._logger.debug(
             f"[TogetherLLM] Initialized with model={model_spec.api_model_name}, "
             f"context_window={model_spec.context_window}, "
-            f"max_output_tokens={model_spec.max_output_tokens}, "
-            f"thinking={'enabled' if self._thinking_enabled else 'disabled'}"
+            f"max_output_tokens={model_spec.max_output_tokens}"
         )
 
     def _prepare_schema(self, schema_json: dict[str, Any]) -> dict[str, Any]:
         return self._normalize_strict_schema(schema_json)
 
-    def _build_reasoning_kwargs(self) -> dict[str, Any]:
+    @staticmethod
+    def _build_reasoning_kwargs(thinking: bool) -> dict[str, Any]:
         """Build reasoning kwargs for Together AI models."""
-        if self._model_spec.thinking_config.param_name == "reasoning":
-            return {"reasoning": {"enabled": bool(self._model_spec.thinking_config.param_value)}}
-        return {}
+        return {"reasoning": {"enabled": thinking}}
 
     async def _call_api(
         self,
@@ -84,13 +76,13 @@ class TogetherLLM(BaseLLM):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
-            temperature=1.0 if self._thinking_enabled else 0.6,
+            temperature=0.6,
             response_format={
                 "type": "json_schema",
                 "schema": schema_json,
             },
             max_tokens=self._model_spec.max_output_tokens,
-            **self._build_reasoning_kwargs(),
+            **self._build_reasoning_kwargs(False),
         )
         api_time = time.monotonic() - api_start
 
@@ -132,6 +124,7 @@ class TogetherLLM(BaseLLM):
         messages: list[dict],
         tools: list[dict],
         system_prompt: str,
+        thinking: bool = False,
     ) -> LLMResponse:
         """Together AI tool calling (OpenAI-compatible format)."""
         converted = self._prepare_messages_for_api(messages)
@@ -142,14 +135,14 @@ class TogetherLLM(BaseLLM):
             "messages": api_messages,
             "tools": tools,
             "tool_choice": "required",
-            "temperature": 1.0 if self._thinking_enabled else 0.6,
+            "temperature": 1.0 if thinking else 0.6,
             "max_tokens": self._model_spec.max_output_tokens,
-            **self._build_reasoning_kwargs(),
+            **self._build_reasoning_kwargs(thinking),
         }
 
         # Preserve thinking across turns for agentic tool-calling loops.
         # Models that don't recognize this kwarg simply ignore it.
-        if self._thinking_enabled:
+        if thinking:
             kwargs["chat_template_kwargs"] = {"clear_thinking": False}
 
         api_start = time.monotonic()
@@ -160,7 +153,7 @@ class TogetherLLM(BaseLLM):
         message = choice.message
 
         text = message.content if message.content else None
-        thinking = getattr(message, "reasoning", None) or None
+        thinking_text = getattr(message, "reasoning", None) or None
 
         tool_calls: list[LLMToolCall] = []
         if message.tool_calls:
@@ -188,7 +181,7 @@ class TogetherLLM(BaseLLM):
 
         return LLMResponse(
             text=text,
-            thinking=thinking,
+            thinking=thinking_text,
             tool_calls=tool_calls,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
