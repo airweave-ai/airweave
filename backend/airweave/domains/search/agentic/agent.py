@@ -203,7 +203,9 @@ class Agent:
             diag.iteration = iteration
 
             # 1. Call LLM
+            llm_start = time.monotonic()
             response = await self._llm.chat(messages, ALL_TOOL_DEFINITIONS, system_prompt)
+            llm_duration = int((time.monotonic() - llm_start) * 1000)
 
             # 2. Accumulate token counts
             diag.prompt_tokens += response.prompt_tokens
@@ -218,7 +220,7 @@ class Agent:
                     request_id=ctx.request_id,
                     thinking=response.thinking,
                     text=response.text,
-                    duration_ms=0,  # TODO: measure LLM call duration
+                    duration_ms=llm_duration,
                     diagnostics=ThinkingDiagnostics(iteration=iteration),
                 )
             )
