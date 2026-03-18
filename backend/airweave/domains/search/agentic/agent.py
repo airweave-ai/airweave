@@ -64,7 +64,17 @@ from airweave.domains.search.agentic.tools import (
     SearchTool,
     ToolDispatcher,
 )
-from airweave.domains.search.agentic.tools.types import ToolErrorResult, ToolName
+from airweave.domains.search.agentic.tools.types import (
+    CollectToolResult,
+    CountToolResult,
+    FinishToolResult,
+    NavigateToolResult,
+    ReadToolResult,
+    ReviewToolResult,
+    SearchToolResult,
+    ToolErrorResult,
+    ToolName,
+)
 from airweave.domains.search.config import SearchConfig
 from airweave.domains.search.protocols import (
     CollectionMetadataBuilderProtocol,
@@ -469,7 +479,7 @@ class Agent:
                         iteration=iteration,
                         tool_call_id=tc.id,
                         arguments=tc.arguments,
-                        stats={},
+                        stats=_build_tool_stats(result),
                     ),
                 )
             )
@@ -523,6 +533,33 @@ class Agent:
                 ToolName.RETURN_RESULTS: ReturnResultsTool(),
             }
         )
+
+
+def _build_tool_stats(result: object) -> dict:
+    """Build stats dict from a tool result for the ToolCalledEvent."""
+    if isinstance(result, SearchToolResult):
+        return {
+            "result_count": len(result.summaries),
+            "new_results": result.new_count,
+        }
+    if isinstance(result, ReadToolResult):
+        return {
+            "found": len(result.entities),
+            "not_found": len(result.not_found),
+        }
+    if isinstance(result, CollectToolResult):
+        return {"total_collected": result.total_collected}
+    if isinstance(result, CountToolResult):
+        return {"count": result.count}
+    if isinstance(result, NavigateToolResult):
+        return {"result_count": len(result.summaries)}
+    if isinstance(result, ReviewToolResult):
+        return {"total_collected": result.total_collected}
+    if isinstance(result, FinishToolResult):
+        return {"accepted": result.accepted, "total_collected": result.total_collected}
+    if isinstance(result, ToolErrorResult):
+        return {"error": result.error}
+    return {}
 
 
 class _DiagnosticsAccumulator:
