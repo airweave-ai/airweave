@@ -27,7 +27,6 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.config import settings
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.protocols import EventBus
-from airweave.core.shared_models import SourceConnectionStatus
 from airweave.db.session import get_db
 from airweave.domains.oauth.protocols import OAuthCallbackServiceProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
@@ -42,42 +41,6 @@ from airweave.schemas.errors import (
 from airweave.schemas.source_connection import VerifyOAuthRequest
 
 logger = logging.getLogger(__name__)
-
-_MOCK_ERRORS: dict[str, dict[str, str]] = {
-    "oauth_credentials_expired": {
-        "error_category": "oauth_credentials_expired",
-        "error_message": (
-            "Your OAuth access token has expired and could not be refreshed. "
-            "Please re-authorize this connection."
-        ),
-    },
-    "api_key_invalid": {
-        "error_category": "api_key_invalid",
-        "error_message": "The API key for this connection is invalid or has been revoked.",
-    },
-    "client_credentials_invalid": {
-        "error_category": "client_credentials_invalid",
-        "error_message": (
-            "The client credentials (client ID / client secret) are invalid "
-            "or the app has been deleted."
-        ),
-    },
-    "auth_provider_account_gone": {
-        "error_category": "auth_provider_account_gone",
-        "error_message": (
-            "The connected account in your auth provider could not be found. "
-            "It may have been deleted."
-        ),
-        "provider_settings_url": "https://app.composio.dev/connected_accounts",
-    },
-    "auth_provider_credentials_invalid": {
-        "error_category": "auth_provider_credentials_invalid",
-        "error_message": (
-            "The auth provider credentials are invalid. "
-            "Please check your auth provider configuration."
-        ),
-    },
-}
 
 router = TrailingSlashRouter()
 
@@ -292,35 +255,17 @@ async def get(
         description="Unique identifier of the source connection (UUID)",
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
     ),
-    mock_error: Optional[str] = Query(
-        None,
-        description="DEV ONLY: Simulate a credential error scenario. "
-        "Valid values: oauth_credentials_expired, api_key_invalid, "
-        "client_credentials_invalid, auth_provider_account_gone, "
-        "auth_provider_credentials_invalid",
-        include_in_schema=False,
-    ),
     ctx: ApiContext = Depends(deps.get_context),
     source_connection_service: SourceConnectionServiceProtocol = Inject(
         SourceConnectionServiceProtocol
     ),
 ) -> schemas.SourceConnection:
     """Get a source connection with full details."""
-    result = await source_connection_service.get(
+    return await source_connection_service.get(
         db,
         id=source_connection_id,
         ctx=ctx,
     )
-
-    if mock_error and mock_error in _MOCK_ERRORS:
-        mock = _MOCK_ERRORS[mock_error]
-        result.status = SourceConnectionStatus.NEEDS_REAUTH
-        result.error_category = mock["error_category"]
-        result.error_message = mock["error_message"]
-        if "provider_settings_url" in mock and result.auth:
-            result.auth.provider_settings_url = mock["provider_settings_url"]
-
-    return result
 
 
 @router.patch(

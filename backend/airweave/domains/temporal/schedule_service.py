@@ -402,6 +402,26 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
             except Exception as e:
                 logger.info(f"Schedule {schedule_id} not deleted (may not exist): {e}")
 
+    async def pause_schedule(self, schedule_id: str, reason: str = "") -> None:
+        """Pause a Temporal schedule.
+
+        Used to halt scheduled syncs when validate() fails with auth errors.
+        """
+        client = await self._get_client()
+        handle = client.get_schedule_handle(schedule_id)
+        await handle.pause(note=reason)
+        logger.info(f"Paused schedule {schedule_id}: {reason}")
+
+    async def unpause_schedule(self, schedule_id: str, reason: str = "") -> None:
+        """Unpause a previously paused Temporal schedule.
+
+        Used to resume syncs after the user re-authenticates.
+        """
+        client = await self._get_client()
+        handle = client.get_schedule_handle(schedule_id)
+        await handle.unpause(note=reason)
+        logger.info(f"Unpaused schedule {schedule_id}: {reason}")
+
     async def delete_schedule_handle(self, schedule_id: str) -> None:
         """Delete a Temporal schedule by ID without touching the DB.
 

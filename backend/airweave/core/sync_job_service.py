@@ -37,6 +37,7 @@ class SyncJobService:
         completed_at: Optional[datetime],
         failed_at: Optional[datetime],
         error: Optional[str],
+        error_category: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build timestamp and error update data."""
         update_data = {}
@@ -51,6 +52,8 @@ class SyncJobService:
                 update_data["failed_at"] = failed_at or utc_now_naive()
             if error:
                 update_data["error"] = error
+            if error_category:
+                update_data["error_category"] = error_category
 
         return update_data
 
@@ -78,6 +81,7 @@ class SyncJobService:
         ctx: ApiContext,
         stats: Optional[SyncStats] = None,
         error: Optional[str] = None,
+        error_category: Optional[str] = None,
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
         failed_at: Optional[datetime] = None,
@@ -113,7 +117,7 @@ class SyncJobService:
                     update_data.update(stats_data)
 
                 timestamp_data = self._build_timestamp_update_data(
-                    status, started_at, completed_at, failed_at, error
+                    status, started_at, completed_at, failed_at, error, error_category
                 )
                 update_data.update(timestamp_data)
 

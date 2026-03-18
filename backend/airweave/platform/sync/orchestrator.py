@@ -11,6 +11,7 @@ from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
+from airweave.domains.source_connections.error_classifier import classify_error
 from airweave.db.session import get_db_context
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
@@ -686,11 +687,17 @@ class SyncOrchestrator:
 
         stats = self.runtime.entity_tracker.get_stats()
 
+        # (code blue) getattr because SyncContext.connection lacks authentication_method.
+        # Fix: add authentication_method to SyncContext in the pipeline refactor.
+        auth_method = getattr(self.sync_context.connection, "authentication_method", "") or ""
+        classification = classify_error(error, auth_method)
+
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.FAILED,
             ctx=self.sync_context,
             error=error_message,
+            error_category=classification.category.value if classification.category else None,
             failed_at=utc_now_naive(),
             stats=stats,
         )

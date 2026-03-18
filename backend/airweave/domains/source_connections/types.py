@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Dict, Optional, TypedDict
 from uuid import UUID
 
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
+
+if TYPE_CHECKING:
+    from airweave.models.sync_job import SyncJob
+    from airweave.schemas.source_connection import SyncDetails
 
 
 class ScheduleInfo(TypedDict):
@@ -26,6 +30,7 @@ class LastJobInfo:
 
     status: SyncJobStatus
     completed_at: Optional[datetime]
+    error_category: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +64,11 @@ class SourceConnectionStats:
         """
         raw_job = data["last_job"]
         last_job = (
-            LastJobInfo(status=raw_job["status"], completed_at=raw_job.get("completed_at"))
+            LastJobInfo(
+                status=raw_job["status"],
+                completed_at=raw_job.get("completed_at"),
+                error_category=raw_job.get("error_category"),
+            )
             if raw_job
             else None
         )
@@ -80,3 +89,27 @@ class SourceConnectionStats:
             entity_count=data["entity_count"],
             federated_search=data["federated_search"],
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ErrorClassification:
+    """Result of classify_error(). None fields mean non-auth error."""
+
+    category: Optional[SourceConnectionErrorCategory] = None
+    message: Optional[str] = None
+
+    @property
+    def is_auth_error(self) -> bool:
+        """True when the exception was classified as an auth/credential error."""
+        return self.category is not None
+
+
+@dataclass(frozen=True, slots=True)
+class SyncDetailsResult:
+    """Return type for _build_sync_details: schema + raw ORM job.
+
+    Avoids a second DB query to read error_category from the job.
+    """
+
+    details: Optional[SyncDetails] = None
+    last_job_orm: Optional[SyncJob] = None

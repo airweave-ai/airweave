@@ -161,6 +161,7 @@ class SyncJobServiceProtocol(Protocol):
         ctx: ApiContext,
         stats: Optional[SyncStats] = None,
         error: Optional[str] = None,
+        error_category: Optional[str] = None,
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
         failed_at: Optional[datetime] = None,

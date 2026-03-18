@@ -102,6 +102,7 @@ def _make_sync_job(
     entities_deleted=2,
     entities_skipped=1,
     error=None,
+    error_category=None,
 ):
     """Build a lightweight sync job ORM stand-in."""
     return SimpleNamespace(
@@ -114,6 +115,7 @@ def _make_sync_job(
         entities_deleted=entities_deleted,
         entities_skipped=entities_skipped,
         error=error,
+        error_category=error_category,
     )
 
 
@@ -842,6 +844,7 @@ async def test_sync_details_null_entity_counts_default_to_zero():
         entities_deleted=None,
         entities_skipped=None,
         error=None,
+        error_category=None,
     )
     f.sync_job_repo.seed_last_job(sync_id, job)
 
@@ -1327,3 +1330,99 @@ def test_stats_from_dict_last_job_missing_status_raises():
     raw = _full_raw_dict(last_job={"completed_at": NOW})
     with pytest.raises(KeyError):
         SourceConnectionStats.from_dict(raw)
+
+
+# ---------------------------------------------------------------------------
+# build_response — error_category / error_message from last job
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_build_response_populates_error_category_from_job():
+    """When last job has error_category, response.error_category is set and status is NEEDS_REAUTH."""
+    sync_id = uuid4()
+    job = _make_sync_job(
+        status=SyncJobStatus.FAILED,
+        error="OAuth token expired",
+        error_category="oauth_credentials_expired",
+    )
+    sc = _make_source_conn(sync_id=sync_id)
+
+    job_repo = FakeSyncJobRepository()
+    job_repo.seed_last_job(sync_id, job)
+    source_registry = FakeSourceRegistry()
+    source_registry.seed(_make_registry_entry("slack"))
+
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=source_registry,
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=job_repo,
+    )
+
+    result = await builder.build_response(None, sc, _make_ctx())
+    assert result.error_category == "oauth_credentials_expired"
+    assert result.error_message == "OAuth token expired"
+    assert result.status == SourceConnectionStatus.NEEDS_REAUTH
+
+
+@pytest.mark.asyncio
+async def test_build_response_no_error_category_when_job_succeeds():
+    """When last job succeeded, error_category and error_message are None."""
+    sync_id = uuid4()
+    job = _make_sync_job(
+        status=SyncJobStatus.COMPLETED,
+        completed_at=NOW,
+    )
+    sc = _make_source_conn(sync_id=sync_id)
+
+    job_repo = FakeSyncJobRepository()
+    job_repo.seed_last_job(sync_id, job)
+    source_registry = FakeSourceRegistry()
+    source_registry.seed(_make_registry_entry("slack"))
+
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=source_registry,
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=job_repo,
+    )
+
+    result = await builder.build_response(None, sc, _make_ctx())
+    assert result.error_category is None
+    assert result.error_message is None
+    assert result.status == SourceConnectionStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_build_response_failed_without_category_is_error():
+    """When last job failed without error_category, status is ERROR, not NEEDS_REAUTH."""
+    sync_id = uuid4()
+    job = _make_sync_job(
+        status=SyncJobStatus.FAILED,
+        error="connection timeout",
+    )
+    sc = _make_source_conn(sync_id=sync_id)
+
+    job_repo = FakeSyncJobRepository()
+    job_repo.seed_last_job(sync_id, job)
+    source_registry = FakeSourceRegistry()
+    source_registry.seed(_make_registry_entry("slack"))
+
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=source_registry,
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=job_repo,
+    )
+
+    result = await builder.build_response(None, sc, _make_ctx())
+    assert result.error_category is None
+    assert result.error_message is None
+    assert result.status == SourceConnectionStatus.ERROR

@@ -758,3 +758,55 @@ async def test_ensure_system_schedules_calls_both():
     assert "cleanup-stuck-sync-jobs" in call_ids
     assert "api-key-expiration-notifications" in call_ids
     assert len(call_ids) == 2
+
+
+# ---------------------------------------------------------------------------
+# pause_schedule / unpause_schedule
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pause_schedule():
+    """pause_schedule calls handle.pause with the provided reason."""
+    svc = _build_svc()
+    mock_client = MagicMock()
+    mock_handle = MagicMock()
+    mock_handle.pause = AsyncMock()
+    mock_client.get_schedule_handle.return_value = mock_handle
+    svc._client = mock_client
+
+    await svc.pause_schedule("sync-abc", reason="auth failure")
+
+    mock_client.get_schedule_handle.assert_called_once_with("sync-abc")
+    mock_handle.pause.assert_awaited_once_with(note="auth failure")
+
+
+@pytest.mark.asyncio
+async def test_unpause_schedule():
+    """unpause_schedule calls handle.unpause with the provided reason."""
+    svc = _build_svc()
+    mock_client = MagicMock()
+    mock_handle = MagicMock()
+    mock_handle.unpause = AsyncMock()
+    mock_client.get_schedule_handle.return_value = mock_handle
+    svc._client = mock_client
+
+    await svc.unpause_schedule("sync-abc", reason="user re-authenticated")
+
+    mock_client.get_schedule_handle.assert_called_once_with("sync-abc")
+    mock_handle.unpause.assert_awaited_once_with(note="user re-authenticated")
+
+
+@pytest.mark.asyncio
+async def test_pause_schedule_default_reason():
+    """pause_schedule works with empty default reason."""
+    svc = _build_svc()
+    mock_client = MagicMock()
+    mock_handle = MagicMock()
+    mock_handle.pause = AsyncMock()
+    mock_client.get_schedule_handle.return_value = mock_handle
+    svc._client = mock_client
+
+    await svc.pause_schedule("sync-xyz")
+
+    mock_handle.pause.assert_awaited_once_with(note="")

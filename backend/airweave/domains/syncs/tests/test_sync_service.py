@@ -11,7 +11,9 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
+from airweave.domains.sources.exceptions import SourceAuthError
+from airweave.domains.sources.token_providers.exceptions import TokenCredentialsInvalidError
 from airweave.domains.syncs.fakes.sync_job_service import FakeSyncJobService
 from airweave.domains.syncs.service import SyncService
 
@@ -209,3 +211,80 @@ def test_stores_sync_job_service():
     fake = FakeSyncJobService()
     svc = SyncService(sync_job_service=fake)
     assert svc._sync_job_service is fake
+
+
+# ---------------------------------------------------------------------------
+# run() — error_category written on auth failures
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ErrorCategoryCase:
+    name: str
+    exception: Exception
+    auth_method: str
+    expected_category: Optional[str]
+
+
+ERROR_CATEGORY_CASES = [
+    ErrorCategoryCase(
+        name="oauth_source_auth_error",
+        exception=SourceAuthError("token expired"),
+        auth_method="oauth2",
+        expected_category=SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED.value,
+    ),
+    ErrorCategoryCase(
+        name="api_key_credentials_invalid",
+        exception=TokenCredentialsInvalidError("bad key"),
+        auth_method="api_key",
+        expected_category=SourceConnectionErrorCategory.API_KEY_INVALID.value,
+    ),
+    ErrorCategoryCase(
+        name="generic_error_no_category",
+        exception=RuntimeError("network timeout"),
+        auth_method="oauth2",
+        expected_category=None,
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ERROR_CATEGORY_CASES, ids=lambda c: c.name)
+async def test_run_writes_error_category(case: ErrorCategoryCase):
+    """Validate failure in factory writes error_category to sync job."""
+    fake_job_svc = FakeSyncJobService()
+    svc = SyncService(sync_job_service=fake_job_svc)
+
+    sync = _mock_sync()
+    sync_job = _mock_sync_job()
+    source_connection = MagicMock()
+    source_connection.authentication_method = case.auth_method
+    ctx = _mock_ctx()
+
+    mock_db = AsyncMock()
+
+    with (
+        patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx,
+        patch("airweave.domains.syncs.service.SyncFactory") as mock_factory_cls,
+    ):
+        mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_factory_cls.create_orchestrator = AsyncMock(side_effect=case.exception)
+
+        with pytest.raises(type(case.exception)):
+            await svc.run(
+                sync=sync,
+                sync_job=sync_job,
+                collection=MagicMock(),
+                source_connection=source_connection,
+                ctx=ctx,
+                dense_embedder=MagicMock(),
+                sparse_embedder=MagicMock(),
+            )
+
+    assert len(fake_job_svc._calls) == 1
+    call = fake_job_svc._calls[0]
+    assert call[0] == "update_status"
+    assert call[2] == SyncJobStatus.FAILED
+    # error_category is at index 6 in the tuple
+    assert call[6] == case.expected_category

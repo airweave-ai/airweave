@@ -231,11 +231,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
   // Fetch source connection details (only when not provided as prop)
   const fetchSourceConnection = useCallback(async (regenerateAuthUrl = false) => {
-    const browserParams = new URLSearchParams(window.location.search);
-    const mockError = browserParams.get('mock_error');
-
-    // Use prop data unless we're simulating an error via mock_error
-    if (sourceConnectionData && !mockError) {
+    if (sourceConnectionData) {
       setSourceConnection(sourceConnectionData);
       return;
     }
@@ -243,7 +239,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
     try {
       const params = new URLSearchParams();
       if (regenerateAuthUrl) params.set('regenerate_auth_url', 'true');
-      if (mockError) params.set('mock_error', mockError);
 
       const qs = params.toString();
       const url = `/source-connections/${sourceConnectionId}${qs ? `?${qs}` : ''}`;
@@ -251,8 +246,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
       if (response.ok) {
         const data = await response.json();
         setSourceConnection(data);
-
-        // No need for separate auth URL fetch, it's handled by the regenerateAuthUrl parameter
       }
     } catch (error) {
       console.error('Failed to fetch source connection:', error);
@@ -353,10 +346,8 @@ const SourceConnectionStateView: React.FC<Props> = ({
     };
   }, [sourceConnectionId, sourceConnectionData?.status, sourceConnectionData?.auth?.authenticated]); // Add auth status to deps
 
-  // Update source connection when prop changes (skip when mock_error is active)
   useEffect(() => {
-    const hasMockError = new URLSearchParams(window.location.search).has('mock_error');
-    if (sourceConnectionData && sourceConnectionData !== sourceConnection && !hasMockError) {
+    if (sourceConnectionData && sourceConnectionData !== sourceConnection) {
       setSourceConnection(sourceConnectionData);
     }
   }, [sourceConnectionData]);

@@ -13,7 +13,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
-from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus
+from airweave.core.shared_models import (
+    SourceConnectionErrorCategory,
+    SourceConnectionStatus,
+    SyncJobStatus,
+)
 
 
 class AuthenticationMethod(str, Enum):
@@ -415,6 +419,7 @@ class SourceConnectionListItem(BaseModel):
     authentication_method: Optional[str] = Field(None, exclude=True)
     is_active: bool = Field(True, exclude=True)
     last_job_status: Optional[str] = Field(None, exclude=True)
+    last_job_error_category: Optional[str] = Field(None, exclude=True)
 
     model_config = {
         "json_schema_extra": {
@@ -464,13 +469,10 @@ class SourceConnectionListItem(BaseModel):
         if not self.is_authenticated:
             return SourceConnectionStatus.PENDING_AUTH
 
-        # Check if manually disabled
         if not self.is_active:
             return SourceConnectionStatus.INACTIVE
 
-        # Check last job status if provided
         if self.last_job_status:
-            # Handle both string and enum values
             job_status = (
                 self.last_job_status
                 if isinstance(self.last_job_status, str)
@@ -479,6 +481,8 @@ class SourceConnectionListItem(BaseModel):
             if job_status in ("running", "cancelling"):
                 return SourceConnectionStatus.SYNCING
             elif job_status == "failed":
+                if self.last_job_error_category:
+                    return SourceConnectionStatus.NEEDS_REAUTH
                 return SourceConnectionStatus.ERROR
 
         return SourceConnectionStatus.ACTIVE
@@ -679,12 +683,9 @@ class SourceConnection(BaseModel):
     )
 
     # Error classification (populated when status is NEEDS_REAUTH)
-    error_category: Optional[str] = Field(
+    error_category: Optional[SourceConnectionErrorCategory] = Field(
         None,
-        description="Category of credential error when status is needs_reauth. "
-        "One of: oauth_credentials_expired, api_key_invalid, "
-        "client_credentials_invalid, auth_provider_account_gone, "
-        "auth_provider_credentials_invalid",
+        description="Category of credential error when status is needs_reauth",
     )
     error_message: Optional[str] = Field(
         None,
@@ -861,6 +862,7 @@ class VerifyOAuthRequest(BaseModel):
 def compute_status(
     source_conn: Any,
     last_job_status: Optional[SyncJobStatus] = None,
+    last_job_error_category: Optional[str] = None,
 ) -> SourceConnectionStatus:
     """DEPRECATED: Use SourceConnectionListItem computed field instead.
 
@@ -869,15 +871,15 @@ def compute_status(
     if not source_conn.is_authenticated:
         return SourceConnectionStatus.PENDING_AUTH
 
-    # Check if manually disabled
     if hasattr(source_conn, "is_active") and not source_conn.is_active:
         return SourceConnectionStatus.INACTIVE
 
-    # Check last job status if provided
     if last_job_status:
         if last_job_status in (SyncJobStatus.RUNNING, SyncJobStatus.CANCELLING):
             return SourceConnectionStatus.SYNCING
         elif last_job_status == SyncJobStatus.FAILED:
+            if last_job_error_category:
+                return SourceConnectionStatus.NEEDS_REAUTH
             return SourceConnectionStatus.ERROR
 
     return SourceConnectionStatus.ACTIVE

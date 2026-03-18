@@ -11,6 +11,7 @@ from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.source_connections.error_classifier import classify_error
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol, SyncServiceProtocol
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.factory import SyncFactory
@@ -73,11 +74,16 @@ class SyncService(SyncServiceProtocol):
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")
+            # (code blue) getattr because schemas.Connection lacks authentication_method.
+            # Fix: add authentication_method to SyncContext in the pipeline refactor.
+            auth_method = getattr(source_connection, "authentication_method", "") or ""
+            classification = classify_error(e, auth_method)
             await self._sync_job_service.update_status(
                 sync_job_id=sync_job.id,
                 status=SyncJobStatus.FAILED,
                 ctx=ctx,
                 error=str(e),
+                error_category=classification.category.value if classification.category else None,
                 failed_at=utc_now_naive(),
             )
             raise e

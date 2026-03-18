@@ -41,3 +41,4 @@ class TimestampUpdate:
     completed_at: Optional[datetime] = None
     failed_at: Optional[datetime] = None
     error: Optional[str] = None
+    error_category: Optional[str] = None

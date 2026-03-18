@@ -22,7 +22,7 @@ from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
 )
-from airweave.domains.source_connections.types import SourceConnectionStats
+from airweave.domains.source_connections.types import SourceConnectionStats, SyncDetailsResult
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
 from airweave.models.source_connection import SourceConnection
@@ -86,13 +86,18 @@ class ResponseBuilder(ResponseBuilderProtocol):
             claim_token=claim_token,
         )
         schedule = await self._build_schedule_details(db, source_conn, ctx)
-        sync_details = await self._build_sync_details(db, source_conn, ctx)
+        sync_details_result = await self._build_sync_details(db, source_conn, ctx)
         entities = await self._build_entity_summary(db, source_conn, ctx)
         federated_search = self._get_federated_search(source_conn)
 
         last_job_status = None
-        if sync_details and sync_details.last_job:
-            last_job_status = sync_details.last_job.status
+        last_job_error_category = None
+        last_job_error_message = None
+        if sync_details_result.details and sync_details_result.details.last_job:
+            last_job_status = sync_details_result.details.last_job.status
+        if sync_details_result.last_job_orm and sync_details_result.last_job_orm.error_category:
+            last_job_error_category = sync_details_result.last_job_orm.error_category
+            last_job_error_message = sync_details_result.last_job_orm.error
 
         return SourceConnectionSchema(
             id=source_conn.id,
@@ -101,21 +106,24 @@ class ResponseBuilder(ResponseBuilderProtocol):
             description=source_conn.description,
             short_name=source_conn.short_name,
             readable_collection_id=source_conn.readable_collection_id,
-            status=compute_status(source_conn, last_job_status),
+            status=compute_status(source_conn, last_job_status, last_job_error_category),
             created_at=source_conn.created_at,
             modified_at=source_conn.modified_at,
             auth=auth,
             config=source_conn.config_fields,
             schedule=schedule,
-            sync=sync_details,
+            sync=sync_details_result.details,
             sync_id=source_conn.sync_id,
             entities=entities,
             federated_search=federated_search,
+            error_category=last_job_error_category,
+            error_message=last_job_error_message if last_job_error_category else None,
         )
 
     def build_list_item(self, stats: SourceConnectionStats) -> SourceConnectionListItem:
         """Build a SourceConnectionListItem from a typed stats object."""
         last_job_status = stats.last_job.status if stats.last_job else None
+        last_job_error_category = stats.last_job.error_category if stats.last_job else None
 
         return SourceConnectionListItem(
             id=stats.id,
@@ -129,6 +137,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
             entity_count=stats.entity_count,
             is_active=stats.is_active,
             last_job_status=last_job_status,
+            last_job_error_category=last_job_error_category,
             federated_search=stats.federated_search,
         )
 
@@ -177,9 +186,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         if source_conn.readable_auth_provider_id:
             provider_id = source_conn.readable_auth_provider_id
             provider_readable_id = source_conn.readable_auth_provider_id
-            provider_settings_url = await self._resolve_provider_settings_url(
-                db, source_conn, ctx
-            )
+            provider_settings_url = await self._resolve_provider_settings_url(db, source_conn, ctx)
 
         auth_url: Optional[str] = None
         auth_url_expires: Optional[datetime] = None
@@ -316,10 +323,10 @@ class ResponseBuilder(ResponseBuilderProtocol):
 
     async def _build_sync_details(
         self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext
-    ) -> Optional[schemas.SyncDetails]:
+    ) -> SyncDetailsResult:
         """Build sync/job details section."""
         if not source_conn.sync_id:
-            return None
+            return SyncDetailsResult()
         try:
             job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=source_conn.sync_id)
             if job:
@@ -340,16 +347,17 @@ class ResponseBuilder(ResponseBuilderProtocol):
                     error=job.error,
                 )
 
-                return schemas.SyncDetails(
+                details = schemas.SyncDetails(
                     total_runs=1,
                     successful_runs=1 if job.status == SyncJobStatus.COMPLETED else 0,
                     failed_runs=1 if job.status == SyncJobStatus.FAILED else 0,
                     last_job=last_job,
                 )
+                return SyncDetailsResult(details=details, last_job_orm=job)
 
         except Exception as e:
             ctx.logger.warning(f"Failed to get sync details: {e}")
-        return None
+        return SyncDetailsResult()
 
     async def _build_entity_summary(
         self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext

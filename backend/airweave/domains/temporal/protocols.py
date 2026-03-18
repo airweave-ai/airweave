@@ -84,6 +84,14 @@ class TemporalScheduleServiceProtocol(Protocol):
         """Delete all schedules associated with a sync."""
         ...
 
+    async def pause_schedule(self, schedule_id: str, reason: str = "") -> None:
+        """Pause a Temporal schedule (halts scheduled syncs)."""
+        ...
+
+    async def unpause_schedule(self, schedule_id: str, reason: str = "") -> None:
+        """Unpause a previously paused Temporal schedule."""
+        ...
+
     async def delete_schedule_handle(self, schedule_id: str) -> None:
         """Delete a Temporal schedule by ID without touching the DB.
 
