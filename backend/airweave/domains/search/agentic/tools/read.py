@@ -137,17 +137,17 @@ class ReadTool:
             FilterGroup(
                 conditions=[
                     FilterCondition(
-                        field=FilterableField.ORIGINAL_ENTITY_ID,
+                        field=FilterableField.SYSTEM_METADATA_ORIGINAL_ENTITY_ID,
                         operator=FilterOperator.EQUALS,
                         value=original_entity_id,
                     ),
                     FilterCondition(
-                        field=FilterableField.CHUNK_INDEX,
+                        field=FilterableField.SYSTEM_METADATA_CHUNK_INDEX,
                         operator=FilterOperator.GREATER_THAN_OR_EQUAL,
                         value=max(0, min_chunk),
                     ),
                     FilterCondition(
-                        field=FilterableField.CHUNK_INDEX,
+                        field=FilterableField.SYSTEM_METADATA_CHUNK_INDEX,
                         operator=FilterOperator.LESS_THAN_OR_EQUAL,
                         value=max_chunk,
                     ),
