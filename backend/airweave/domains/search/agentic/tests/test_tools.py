@@ -6,11 +6,18 @@ from airweave.domains.search.adapters.vector_db.fakes import FakeVectorDB
 from airweave.domains.search.agentic.exceptions import ToolValidationError
 from airweave.domains.search.agentic.tests.conftest import make_result, make_state
 from airweave.domains.search.agentic.tools.collect import AddToResultsTool, RemoveFromResultsTool
+from airweave.domains.search.agentic.tools.count import CountTool
 from airweave.domains.search.agentic.tools.finish import ReturnResultsTool, ReviewResultsTool
+from airweave.domains.search.agentic.tools.navigate import (
+    GetChildrenTool,
+    GetParentTool,
+    GetSiblingsTool,
+)
 from airweave.domains.search.agentic.tools.read import ReadTool
 from airweave.domains.search.agentic.tools.search import SearchTool
 from airweave.domains.search.fakes.executor import FakeSearchPlanExecutor
 from airweave.domains.search.types import SearchResults
+from airweave.domains.search.types.results import SearchBreadcrumb
 
 # ── Search tool ───────────────────────────────────────────────────────
 
@@ -260,3 +267,116 @@ class TestReviewResultsTool:
 
         assert result.total_collected == 0
         assert result.entities == []
+
+
+# ── Navigation tools ──────────────────────────────────────────────────
+
+
+class TestGetChildrenTool:
+    """Tests for GetChildrenTool."""
+
+    @pytest.mark.asyncio
+    async def test_returns_direct_children(self) -> None:
+        """Filter search returns children, post-filtered to direct."""
+        child = make_result(entity_id="child-1", name="Child Doc")
+        # Child's last breadcrumb should point to the parent
+        child.breadcrumbs = [
+            SearchBreadcrumb(entity_id="parent-1", name="Parent", entity_type="FolderEntity")
+        ]
+        vdb = FakeVectorDB()
+        vdb.seed_filter_results([child])
+
+        tool = GetChildrenTool(vector_db=vdb, collection_id="col-1")
+        state = make_state()
+        result = await tool.execute({"entity_id": "parent-1"}, state, tool_call_id="tc-1")
+
+        assert len(result.summaries) == 1
+        assert "child-1" in state.results
+
+    @pytest.mark.asyncio
+    async def test_missing_entity_id_raises(self) -> None:
+        """No entity_id → ToolValidationError."""
+        tool = GetChildrenTool(vector_db=FakeVectorDB(), collection_id="col-1")
+        with pytest.raises(ToolValidationError):
+            await tool.execute({}, make_state())
+
+
+class TestGetSiblingsTool:
+    """Tests for GetSiblingsTool."""
+
+    @pytest.mark.asyncio
+    async def test_entity_not_in_state_raises(self) -> None:
+        """Entity must be in state.results."""
+        tool = GetSiblingsTool(vector_db=FakeVectorDB(), collection_id="col-1")
+        with pytest.raises(ToolValidationError, match="not found"):
+            await tool.execute({"entity_id": "unknown"}, make_state())
+
+    @pytest.mark.asyncio
+    async def test_no_breadcrumbs_raises(self) -> None:
+        """Root entity (no breadcrumbs) → ToolValidationError."""
+        r = make_result(entity_id="ent-1")
+        r.breadcrumbs = []
+        state = make_state(results={"ent-1": r})
+        tool = GetSiblingsTool(vector_db=FakeVectorDB(), collection_id="col-1")
+
+        with pytest.raises(ToolValidationError, match="no breadcrumbs"):
+            await tool.execute({"entity_id": "ent-1"}, state)
+
+
+class TestGetParentTool:
+    """Tests for GetParentTool."""
+
+    @pytest.mark.asyncio
+    async def test_parent_already_in_state(self) -> None:
+        """Parent already in state → returns immediately."""
+        parent = make_result(entity_id="parent-1", name="Parent")
+        child = make_result(entity_id="child-1")
+        child.breadcrumbs = [
+            SearchBreadcrumb(entity_id="parent-1", name="Parent", entity_type="FolderEntity")
+        ]
+        state = make_state(results={"child-1": child, "parent-1": parent})
+        tool = GetParentTool(vector_db=FakeVectorDB(), collection_id="col-1")
+
+        result = await tool.execute({"entity_id": "child-1"}, state)
+
+        assert len(result.entities) == 1
+
+    @pytest.mark.asyncio
+    async def test_root_entity_raises(self) -> None:
+        """Root entity → ToolValidationError."""
+        r = make_result(entity_id="ent-1")
+        r.breadcrumbs = []
+        state = make_state(results={"ent-1": r})
+        tool = GetParentTool(vector_db=FakeVectorDB(), collection_id="col-1")
+
+        with pytest.raises(ToolValidationError, match="root entity"):
+            await tool.execute({"entity_id": "ent-1"}, state)
+
+
+# ── Count tool ────────────────────────────────────────────────────────
+
+
+class TestCountTool:
+    """Tests for CountTool."""
+
+    @pytest.mark.asyncio
+    async def test_returns_count(self) -> None:
+        """Count returns seeded value."""
+        vdb = FakeVectorDB()
+        vdb.seed_count(42)
+        tool = CountTool(vector_db=vdb, collection_id="col-1", user_filter=[])
+
+        result = await tool.execute({"filter_groups": []}, make_state())
+
+        assert result.count == 42
+
+    @pytest.mark.asyncio
+    async def test_zero_count(self) -> None:
+        """Zero matches → count=0."""
+        vdb = FakeVectorDB()
+        vdb.seed_count(0)
+        tool = CountTool(vector_db=vdb, collection_id="col-1", user_filter=[])
+
+        result = await tool.execute({"filter_groups": []}, make_state())
+
+        assert result.count == 0
