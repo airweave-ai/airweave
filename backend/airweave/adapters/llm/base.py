@@ -113,6 +113,7 @@ class BaseLLM(LLMProtocol):
         prompt: str,
         schema: type[T],
         system_prompt: str,
+        thinking: bool = False,
     ) -> T:
         """Generate structured output matching the schema.
 
@@ -130,7 +131,7 @@ class BaseLLM(LLMProtocol):
         schema_json = self._prepare_schema(schema_json)
 
         return await self._with_retry(
-            "API call", self._call_api, prompt, schema, schema_json, system_prompt
+            "API call", self._call_api, prompt, schema, schema_json, system_prompt, thinking
         )
 
     async def chat(
@@ -161,6 +162,7 @@ class BaseLLM(LLMProtocol):
         schema: type[T],
         schema_json: dict[str, Any],
         system_prompt: str,
+        thinking: bool = False,
     ) -> T:
         """Make a single API call. Must be implemented by subclass."""
         raise NotImplementedError

@@ -49,17 +49,13 @@ def create_llm_from_override(model_override: str) -> LLMProtocol:
         provider = LLMProvider(provider_str)
     except ValueError:
         valid = [p.value for p in LLMProvider]
-        raise ValueError(
-            f"Unknown provider: '{provider_str}'. Valid providers: {valid}"
-        )
+        raise ValueError(f"Unknown provider: '{provider_str}'. Valid providers: {valid}")
 
     try:
         model = LLMModel(model_str)
     except ValueError:
         valid = [m.value for m in LLMModel]
-        raise ValueError(
-            f"Unknown model: '{model_str}'. Valid models: {valid}"
-        )
+        raise ValueError(f"Unknown model: '{model_str}'. Valid models: {valid}")
 
     model_spec = get_model_spec(provider, model)
 

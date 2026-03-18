@@ -60,8 +60,6 @@ class SearchPlanBuilder:
                 group.conditions.extend(user_conditions)
         else:
             # No LLM groups — create one from user conditions alone
-            complete_plan.filter_groups = [
-                FilterGroup(conditions=list(user_conditions))
-            ]
+            complete_plan.filter_groups = [FilterGroup(conditions=list(user_conditions))]
 
         return complete_plan

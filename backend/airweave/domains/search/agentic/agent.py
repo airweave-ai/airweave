@@ -204,7 +204,9 @@ class Agent:
 
             # 1. Call LLM
             llm_start = time.monotonic()
-            response = await self._llm.chat(messages, ALL_TOOL_DEFINITIONS, system_prompt, thinking=thinking_enabled)
+            response = await self._llm.chat(
+                messages, ALL_TOOL_DEFINITIONS, system_prompt, thinking=thinking_enabled
+            )
             llm_duration = int((time.monotonic() - llm_start) * 1000)
 
             # 2. Accumulate token counts and retries

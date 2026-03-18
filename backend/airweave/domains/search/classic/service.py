@@ -1,52 +1,67 @@
 """Classic search service.
 
-LLM generates a search plan, execute against Vespa, rerank results.
-Placeholder: returns empty SearchResults.
+Single LLM call generates a search strategy (query expansions, retrieval strategy,
+optional filters), then execute via the shared SearchPlanExecutor, optionally rerank.
+Target latency: 2-5s.
 """
 
 from __future__ import annotations
 
+import functools
+import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent
+from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.llm import LLMProtocol
 from airweave.core.protocols.reranker import RerankerProtocol
-from airweave.core.protocols.tokenizer import TokenizerProtocol
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+from airweave.domains.search.classic.types import ClassicSearchStrategy
+from airweave.domains.search.messages import _load_overview, build_system_prompt
 from airweave.domains.search.protocols import (
     ClassicSearchServiceProtocol,
     CollectionMetadataBuilderProtocol,
+    SearchPlanExecutorProtocol,
 )
-from airweave.domains.search.types import SearchResults
+from airweave.domains.search.types import SearchPlan, SearchResults
+from airweave.domains.search.types.filters import format_filter_groups_md
+from airweave.schemas.search_v2 import SearchTier
 
 if TYPE_CHECKING:
     from airweave.schemas.search_v2 import ClassicSearchRequest
 
 
-class ClassicSearchService(ClassicSearchServiceProtocol):
-    """Classic search — LLM generates search plan, execute against Vespa.
+@functools.cache
+def _load_classic_task() -> str:
+    """Load and cache the classic task prompt."""
+    return (Path(__file__).parent / "context" / "classic_task.md").read_text()
 
-    Placeholder: returns empty SearchResults.
-    """
+
+class ClassicSearchService(ClassicSearchServiceProtocol):
+    """Classic search — one LLM call generates a smart search strategy, then execute."""
 
     def __init__(
         self,
         llm: LLMProtocol,
-        tokenizer: TokenizerProtocol,
         reranker: Optional[RerankerProtocol],
-        dense_embedder: DenseEmbedderProtocol,
-        sparse_embedder: SparseEmbedderProtocol,
+        executor: SearchPlanExecutorProtocol,
+        collection_repo: CollectionRepositoryProtocol,
         metadata_builder: CollectionMetadataBuilderProtocol,
+        event_bus: EventBus,
     ) -> None:
-        """Initialize with LLM, tokenizer, reranker, embedders, and metadata builder."""
+        """Initialize with LLM, reranker, executor, collection repo, metadata builder, event bus."""
         self._llm = llm
-        self._tokenizer = tokenizer
         self._reranker = reranker
-        self._dense_embedder = dense_embedder
-        self._sparse_embedder = sparse_embedder
+        self._executor = executor
+        self._collection_repo = collection_repo
         self._metadata_builder = metadata_builder
+        self._event_bus = event_bus
 
     async def search(
         self,
@@ -55,5 +70,88 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
         readable_id: str,
         request: ClassicSearchRequest,
     ) -> SearchResults:
-        """Placeholder: returns empty results."""
-        return SearchResults(results=[])
+        """Generate strategy via LLM, execute, optionally rerank, return results."""
+        start_time = time.monotonic()
+
+        try:
+            return await self._execute(db, ctx, readable_id, request, start_time)
+        except Exception as e:
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            await self._event_bus.publish(
+                SearchFailedEvent(
+                    organization_id=ctx.organization.id,
+                    request_id=ctx.request_id,
+                    tier=SearchTier.CLASSIC.value,
+                    message=str(e),
+                    duration_ms=duration_ms,
+                )
+            )
+            raise
+
+    async def _execute(
+        self,
+        db: AsyncSession,
+        ctx: ApiContext,
+        readable_id: str,
+        request: ClassicSearchRequest,
+        start_time: float,
+    ) -> SearchResults:
+        """Internal execution — resolve collection, LLM strategy, search, rerank."""
+        # 1. Resolve collection
+        collection = await self._collection_repo.get_by_readable_id(db, readable_id, ctx)
+        if not collection:
+            raise HTTPException(status_code=404, detail=f"Collection '{readable_id}' not found")
+
+        # 2. Build system prompt
+        metadata = await self._metadata_builder.build(db, ctx, readable_id)
+        system_prompt = build_system_prompt(
+            overview=_load_overview(),
+            task=_load_classic_task(),
+            metadata=metadata,
+        )
+
+        # 3. LLM generates strategy (no limit/offset — those come from the request)
+        user_filter_md = format_filter_groups_md(request.filter) if request.filter else "None"
+        prompt = f"User query: {request.query}\nUser filter: {user_filter_md}"
+        strategy = await self._llm.structured_output(prompt, ClassicSearchStrategy, system_prompt)
+
+        # 4. Combine with request.limit/offset → full SearchPlan
+        plan = SearchPlan(
+            query=strategy.query,
+            retrieval_strategy=strategy.retrieval_strategy,
+            filter_groups=strategy.filter_groups,
+            limit=request.limit,
+            offset=request.offset,
+        )
+
+        # 5. Execute
+        results = await self._executor.execute(
+            plan=plan,
+            user_filter=request.filter or [],
+            collection_id=str(collection.id),
+        )
+
+        # 6. Optional rerank
+        if self._reranker and results.results:
+            documents = [r.textual_representation for r in results.results]
+            reranked = await self._reranker.rerank(
+                query=request.query,
+                documents=documents,
+                top_n=request.limit,
+            )
+            results = SearchResults(results=[results.results[r.index] for r in reranked])
+
+        # 7. Emit event + return
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        await self._event_bus.publish(
+            SearchCompletedEvent(
+                organization_id=ctx.organization.id,
+                request_id=ctx.request_id,
+                tier=SearchTier.CLASSIC.value,
+                results=[r.model_dump(mode="json") for r in results.results],
+                duration_ms=duration_ms,
+                collection_id=UUID(str(collection.id)),
+            )
+        )
+
+        return results

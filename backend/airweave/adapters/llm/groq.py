@@ -57,6 +57,7 @@ class GroqLLM(BaseLLM):
         schema: type[T],
         schema_json: dict[str, Any],
         system_prompt: str,
+        thinking: bool = False,
     ) -> T:
         # Reasoning params (e.g., reasoning_effort for GPT-OSS)
         reasoning_params: dict[str, Any] = {}

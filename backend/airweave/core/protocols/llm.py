@@ -76,6 +76,7 @@ class LLMProtocol(Protocol):
         prompt: str,
         schema: type[T],
         system_prompt: str,
+        thinking: bool = False,
     ) -> T:
         """Generate structured output matching the schema."""
         ...

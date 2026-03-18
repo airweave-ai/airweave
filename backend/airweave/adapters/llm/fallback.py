@@ -96,9 +96,12 @@ class FallbackChainLLM(LLMProtocol):
         prompt: str,
         schema: type[T],
         system_prompt: str,
+        thinking: bool = False,
     ) -> T:
         """Generate structured output, falling through the provider chain."""
-        return await self._try_chain(lambda p: p.structured_output(prompt, schema, system_prompt))
+        return await self._try_chain(
+            lambda p: p.structured_output(prompt, schema, system_prompt, thinking)
+        )
 
     async def chat(
         self,

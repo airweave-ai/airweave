@@ -59,6 +59,7 @@ class CerebrasLLM(BaseLLM):
         schema: type[T],
         schema_json: dict[str, Any],
         system_prompt: str,
+        thinking: bool = False,
     ) -> T:
         # Reasoning params from model spec
         tc = self._model_spec.thinking_config

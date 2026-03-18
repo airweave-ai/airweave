@@ -1175,8 +1175,7 @@ def _build_llm_chain(
 
     if not llm_providers:
         raise ValueError(
-            "No LLM providers available for search. "
-            "All configured providers failed to initialize."
+            "No LLM providers available for search. All configured providers failed to initialize."
         )
 
     if len(llm_providers) == 1:
@@ -1266,11 +1265,11 @@ def _create_search_services(
     )
     classic_search = ClassicSearchService(
         llm=llm,
-        tokenizer=tokenizer,
         reranker=reranker,
-        dense_embedder=dense_embedder,
-        sparse_embedder=sparse_embedder,
+        executor=executor,
+        collection_repo=collection_repo,
         metadata_builder=metadata_builder,
+        event_bus=event_bus,
     )
     agentic_search = AgenticSearchService(
         llm=llm,

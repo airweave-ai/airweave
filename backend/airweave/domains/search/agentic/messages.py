@@ -18,17 +18,16 @@ from pathlib import Path
 from typing import Any
 
 from airweave.core.protocols.llm import LLMResponse
+from airweave.domains.search.messages import _load_overview
+from airweave.domains.search.messages import build_system_prompt as _build_system_prompt
 from airweave.domains.search.types.filters import FilterGroup, format_filter_groups_md
 from airweave.domains.search.types.metadata import CollectionMetadata
 
 
 @functools.cache
-def _load_prompt_parts() -> tuple[str, str]:
-    """Load and cache the static prompt files (read once, reused forever)."""
-    context_dir = Path(__file__).parent / "context"
-    overview = (context_dir / "airweave_overview.md").read_text()
-    task = (context_dir / "agent_task.md").read_text()
-    return overview, task
+def _load_agent_task() -> str:
+    """Load and cache the agent task prompt (read once, reused forever)."""
+    return (Path(__file__).parent / "context" / "agent_task.md").read_text()
 
 
 def build_system_prompt(
@@ -36,12 +35,11 @@ def build_system_prompt(
     max_iterations: int,
 ) -> str:
     """Assemble the full system prompt from static prompts + collection metadata."""
-    overview, task = _load_prompt_parts()
-    task = task.replace("{max_iterations}", str(max_iterations))
-    return (
-        f"# Airweave Overview\n\n{overview}\n\n"
-        f"---\n\n{task}\n\n"
-        f"---\n\n## Collection Metadata\n\n{metadata.to_md()}"
+    return _build_system_prompt(
+        overview=_load_overview(),
+        task=_load_agent_task(),
+        metadata=metadata,
+        max_iterations=max_iterations,
     )
 
 

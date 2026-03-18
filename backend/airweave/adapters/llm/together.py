@@ -68,6 +68,7 @@ class TogetherLLM(BaseLLM):
         schema: type[T],
         schema_json: dict[str, Any],
         system_prompt: str,
+        thinking: bool = False,
     ) -> T:
         api_start = time.monotonic()
         response = await self._client.chat.completions.create(

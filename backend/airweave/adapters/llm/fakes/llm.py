@@ -40,6 +40,7 @@ class FakeLLM:
         prompt: str,
         schema: type[T],
         system_prompt: str,
+        thinking: bool = False,
     ) -> T:
         """Return next seeded structured output result."""
         self._calls.append(("structured_output", prompt, schema, system_prompt))

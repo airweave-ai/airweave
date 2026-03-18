@@ -70,6 +70,7 @@ class AnthropicLLM(BaseLLM):
         schema: type[T],
         schema_json: dict[str, Any],
         system_prompt: str,
+        thinking: bool = False,
     ) -> T:
         tool_name = f"generate_{schema.__name__.lower()}"
         tool = {
