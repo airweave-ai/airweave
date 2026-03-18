@@ -255,7 +255,7 @@ class CollectionMetadataBuilder:
         # 2. Get source connections in collection
         source_connections = await self._sc_repo.get_by_collection_ids(
             db,
-            organization_id=ctx.organization_id,
+            organization_id=ctx.organization.id,
             readable_collection_ids=[collection_readable_id],
         )
 
