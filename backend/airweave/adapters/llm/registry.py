@@ -42,6 +42,8 @@ class LLMModel(str, Enum):
     QWEN_3_5_THINKING = "qwen-3.5-thinking"
     QWEN_3_5_DEDICATED = "qwen-3.5-dedicated"
     QWEN_3_5_DEDICATED_THINKING = "qwen-3.5-dedicated-thinking"
+    ZAI_GLM_5_DEDICATED = "zai-glm-5-dedicated"
+    ZAI_GLM_5_DEDICATED_THINKING = "zai-glm-5-dedicated-thinking"
     MINIMAX_M2_5 = "minimax-m2.5"
     MINIMAX_M2_5_THINKING = "minimax-m2.5-thinking"
 
@@ -188,6 +190,24 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
         ),
         LLMModel.ZAI_GLM_5_THINKING: LLMModelSpec(
             api_model_name="zai-org/GLM-5",
+            context_window=200_000,
+            max_output_tokens=64_000,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            thinking_config=ThinkingConfig(param_name="reasoning", param_value=True),
+            thinking_enabled=True,
+        ),
+        # ── GLM-5 Dedicated (B200, Together) ─────────────────────
+        LLMModel.ZAI_GLM_5_DEDICATED: LLMModelSpec(
+            api_model_name="airweave/glm-5",
+            context_window=200_000,
+            max_output_tokens=64_000,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            thinking_config=ThinkingConfig(param_name="reasoning", param_value=False),
+        ),
+        LLMModel.ZAI_GLM_5_DEDICATED_THINKING: LLMModelSpec(
+            api_model_name="airweave/glm-5",
             context_window=200_000,
             max_output_tokens=64_000,
             required_tokenizer_type=TokenizerType.TIKTOKEN,
