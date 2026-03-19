@@ -25,6 +25,7 @@ def _seeded_checker(
     period_status=BillingPeriodStatus.ACTIVE,
     entities=0,
     queries=0,
+    tokens=0,
     sc_count=0,
     member_count=1,
 ):
@@ -38,6 +39,7 @@ def _seeded_checker(
         billing_period_id=period.id,
         entities=entities,
         queries=queries,
+        tokens=tokens,
     )
     usage_repo.seed_current(DEFAULT_ORG_ID, usage)
     sc_repo.set_org_count(DEFAULT_ORG_ID, sc_count)
@@ -156,16 +158,16 @@ class TestEntityLimits:
 class TestQueryLimits:
     @pytest.mark.asyncio
     async def test_allows_queries_under_limit(self, db):
-        checker, *_ = _seeded_checker(plan=BillingPlan.PRO, queries=1000)
+        checker, *_ = _seeded_checker(plan=BillingPlan.PRO, queries=250)
         assert await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.QUERIES) is True
 
     @pytest.mark.asyncio
     async def test_raises_at_query_limit(self, db):
-        checker, *_ = _seeded_checker(plan=BillingPlan.PRO, queries=2000)
+        checker, *_ = _seeded_checker(plan=BillingPlan.PRO, queries=500)
         with pytest.raises(UsageLimitExceededError) as exc_info:
             await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.QUERIES)
         assert exc_info.value.action_type == "queries"
-        assert exc_info.value.limit == 2000
+        assert exc_info.value.limit == 500
 
     @pytest.mark.asyncio
     async def test_enterprise_unlimited_queries(self, db):
@@ -253,10 +255,10 @@ class TestDeveloperPlan:
 
     @pytest.mark.asyncio
     async def test_developer_query_limit(self, db):
-        checker, *_ = _seeded_checker(plan=BillingPlan.DEVELOPER, queries=500)
+        checker, *_ = _seeded_checker(plan=BillingPlan.DEVELOPER, queries=50)
         with pytest.raises(UsageLimitExceededError) as exc_info:
             await checker.is_allowed(db, DEFAULT_ORG_ID, ActionType.QUERIES)
-        assert exc_info.value.limit == 500
+        assert exc_info.value.limit == 50
 
     @pytest.mark.asyncio
     async def test_developer_source_connection_limit(self, db):

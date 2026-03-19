@@ -280,10 +280,11 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 if (text || tokens) {
                     rows.push(
                         <div key={`thinking-${i}`} className="animate-fade-in py-1">
-                            <span className={cn("text-[10px] font-mono", muted)}>
-                                <span className={cn(isDark ? "text-gray-400" : "text-gray-600")}>Thinking</span>
-                                <span className="tabular-nums">  {[formatDuration(event.duration_ms), tokens].filter(Boolean).join('  ')}</span>
-                            </span>
+                            <div className={cn("flex items-baseline gap-3 text-[10px] font-mono", muted)}>
+                                <span>thinking</span>
+                                <span className="tabular-nums">{formatDuration(event.duration_ms)}</span>
+                                {tokens && <span className="tabular-nums">{tokens}</span>}
+                            </div>
                             {text && (
                                 <div className={cn("text-[10px] leading-relaxed", muted)}>
                                     {text}
@@ -306,6 +307,29 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 
                 const toolLabel = getToolLabel(tool_name, args.retrieval_strategy);
                 const isExpanded = expandedFilters.has(i);
+
+                // Handle errored tool calls
+                if (stats.error) {
+                    rows.push(
+                        <div key={`tool-${i}`} className="animate-fade-in py-0.5 font-mono">
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                                <span className={cn("text-[11px] font-medium", isDark ? "text-gray-300" : "text-gray-700")}>
+                                    {toolLabel}
+                                </span>
+                                <span className={cn("text-[10px]", isDark ? "text-red-400/70" : "text-red-500/70")}>error</span>
+                                <span className={cn("text-[10px] tabular-nums", muted)}>
+                                    {formatDuration(duration_ms)}
+                                </span>
+                            </div>
+                            {args.entity_id && (
+                                <div className={cn("text-[10px] ml-3", muted)}>
+                                    {args.entity_id}
+                                </div>
+                            )}
+                        </div>
+                    );
+                    continue;
+                }
 
                 // Build headline stat and collapsed/expanded content
                 let statText = '';
@@ -519,6 +543,18 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                         statText = `${stats.found ?? stats.result_count ?? '?'} found`;
                         collapsedIsInput = true;
                         collapsedParts.push(stats.context_label || `"${args.entity_id || '?'}"`);
+                        // Output: parent entity
+                        const parentEntities = stats.entities || [];
+                        if (parentEntities.length > 0) {
+                            outputCollapsed = formatEntityList(parentEntities, stats.found);
+                            parentEntities.forEach((r: any, ri: number) => {
+                                outputExpanded.push(
+                                    <div key={`entity-${ri}`}>
+                                        {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id})</span>
+                                    </div>
+                                );
+                            });
+                        }
                         break;
                     }
                     case 'review_results': {

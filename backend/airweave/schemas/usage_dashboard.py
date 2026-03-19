@@ -13,12 +13,14 @@ class UsageSnapshot(BaseModel):
     # Current values
     entities: int = Field(..., description="Total entities processed")
     queries: int = Field(..., description="Search queries executed")
+    tokens: int = Field(0, description="Normalized token usage from agentic search")
     source_connections: int = Field(..., description="Source connections configured")
     team_members: int = Field(..., description="Team members in the organization")
 
     # Limits (None = unlimited)
     max_entities: Optional[int] = Field(None, description="Maximum entities allowed")
     max_queries: Optional[int] = Field(None, description="Maximum queries allowed")
+    max_tokens: Optional[int] = Field(None, description="Maximum normalized tokens allowed")
     max_source_connections: Optional[int] = Field(
         None, description="Maximum source connections allowed"
     )

@@ -259,6 +259,7 @@ class AnalyticsEventSubscriber(EventSubscriber):
             properties={
                 "request_id": event.request_id,
                 "tier": event.tier,
+                "plan": event.plan,
                 "collection_readable_id": event.collection_readable_id,
                 "query": event.query,
                 "thinking": event.thinking,
@@ -277,6 +278,7 @@ class AnalyticsEventSubscriber(EventSubscriber):
             properties={
                 "request_id": event.request_id,
                 "tier": event.tier,
+                "plan": event.plan,
                 "result_count": len(event.results),
                 "duration_ms": event.duration_ms,
                 "diagnostics": (event.diagnostics.model_dump() if event.diagnostics else None),
@@ -291,6 +293,7 @@ class AnalyticsEventSubscriber(EventSubscriber):
             properties={
                 "request_id": event.request_id,
                 "tier": event.tier,
+                "plan": event.plan,
                 "message": event.message,
                 "duration_ms": event.duration_ms,
                 "diagnostics": (event.diagnostics.model_dump() if event.diagnostics else None),

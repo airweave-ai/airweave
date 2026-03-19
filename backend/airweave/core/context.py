@@ -65,6 +65,13 @@ class BaseContext:
         """User ID if available."""
         return None
 
+    @property
+    def billing_plan(self) -> Optional[str]:
+        """Billing plan as a string value, or None if unavailable."""
+        if self.organization.billing is None:
+            return None
+        return self.organization.billing.billing_plan.value
+
     def has_feature(self, flag: "FeatureFlagEnum") -> bool:
         """Check if organization has a feature enabled.
 

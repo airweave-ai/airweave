@@ -28,6 +28,7 @@ class Usage(OrganizationBase):
     # Usage counters with server defaults
     entities: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     queries: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     # Relationships
     organization: Mapped["Organization"] = relationship(

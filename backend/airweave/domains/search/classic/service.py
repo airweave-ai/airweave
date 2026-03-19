@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
-from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent
+from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent, SearchTier
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.llm import LLMProtocol
 from airweave.core.protocols.reranker import RerankerProtocol
@@ -31,7 +31,6 @@ from airweave.domains.search.protocols import (
 )
 from airweave.domains.search.types import SearchPlan, SearchResults
 from airweave.domains.search.types.filters import format_filter_groups_md
-from airweave.schemas.search_v2 import SearchTier
 
 if TYPE_CHECKING:
     from airweave.schemas.search_v2 import ClassicSearchRequest
@@ -81,7 +80,8 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
                 SearchFailedEvent(
                     organization_id=ctx.organization.id,
                     request_id=ctx.request_id,
-                    tier=SearchTier.CLASSIC.value,
+                    tier=SearchTier.CLASSIC,
+                    plan=ctx.billing_plan,
                     message=str(e),
                     duration_ms=duration_ms,
                 )
@@ -155,7 +155,8 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
             SearchCompletedEvent(
                 organization_id=ctx.organization.id,
                 request_id=ctx.request_id,
-                tier=SearchTier.CLASSIC.value,
+                tier=SearchTier.CLASSIC,
+                plan=ctx.billing_plan,
                 results=[r.model_dump(mode="json") for r in results.results],
                 duration_ms=duration_ms,
                 collection_id=UUID(str(collection.id)),

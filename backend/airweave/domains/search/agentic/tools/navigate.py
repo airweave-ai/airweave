@@ -237,7 +237,7 @@ class GetSiblingsTool:
         ]
 
         parent_source = (
-            parent.airweave_system_metadata.source_name if parent.airweave_system_metadata else ""
+            entity.airweave_system_metadata.source_name if entity.airweave_system_metadata else ""
         )
         label = (
             f'siblings of "{parent.name}" ({parent_source})'

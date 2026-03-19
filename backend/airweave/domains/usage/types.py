@@ -18,6 +18,7 @@ class ActionType(str, Enum):
 
     ENTITIES = "entities"
     QUERIES = "queries"
+    TOKENS = "tokens"
     SOURCE_CONNECTIONS = "source_connections"
     TEAM_MEMBERS = "team_members"
 
@@ -37,8 +38,19 @@ BILLING_STATUS_RESTRICTIONS: dict[BillingPeriodStatus, set[ActionType]] = {
         ActionType.ENTITIES,
         ActionType.SOURCE_CONNECTIONS,
         ActionType.QUERIES,
+        ActionType.TOKENS,
     },
 }
+
+
+def normalize_tokens(
+    prompt_tokens: int,
+    completion_tokens: int,
+    input_price_factor: float = 1.0,
+    output_price_factor: float = 1.0,
+) -> int:
+    """Compute normalized token count from raw input/output tokens and model pricing."""
+    return int(prompt_tokens * input_price_factor + completion_tokens * output_price_factor)
 
 
 def infer_usage_limit(plan: Optional[BillingPlan] = None) -> UsageLimit:
@@ -51,6 +63,7 @@ def infer_usage_limit(plan: Optional[BillingPlan] = None) -> UsageLimit:
     return UsageLimit(
         max_entities=limits.get("max_entities"),
         max_queries=limits.get("max_queries"),
+        max_tokens=limits.get("max_tokens"),
         max_source_connections=limits.get("max_source_connections"),
         max_team_members=limits.get("max_team_members"),
     )

@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _FLUSH_THRESHOLDS: dict[ActionType, int] = {
     ActionType.ENTITIES: 100,
     ActionType.QUERIES: 10,
+    ActionType.TOKENS: 100_000,
 }
 
 

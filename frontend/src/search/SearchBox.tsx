@@ -78,7 +78,7 @@ const TIER_CONFIG = {
         label: "Agentic",
         placeholder: "Ask a question about your data",
         tooltip: "Agent that navigates through your collection to find the best results",
-        timing: "~2 min",
+        timing: "<2 min",
     },
 } as const;
 
@@ -124,8 +124,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     const [showCodeBlock, setShowCodeBlock] = useState(false);
 
     // Usage limits
-    const [queriesAllowed, setQueriesAllowed] = useState(true);
-    const [queriesCheckDetails, setQueriesCheckDetails] = useState<SingleActionCheckResponse | null>(null);
+    const [usageAllowed, setUsageAllowed] = useState(true);
+    const [usageCheckDetails, setUsageCheckDetails] = useState<SingleActionCheckResponse | null>(null);
     const [isCheckingUsage, setIsCheckingUsage] = useState(true);
 
     const [transientIssue, setTransientIssue] = useState<{
@@ -193,35 +193,36 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             try { onStreamUpdateProp?.({ status: 'cancelled' }); } catch { void 0; }
             try { onCancel?.(); } catch { void 0; }
         }
-        try { void checkQueriesAllowed(); } catch { void 0; }
+        try { void checkUsageAllowed(); } catch { void 0; }
     }, [onStreamEventProp, onStreamUpdateProp, onCancel]);
 
-    // Check usage limits
-    const checkQueriesAllowed = useCallback(async () => {
+    // Check usage limits — tier-aware (tokens for agentic, queries for instant/classic)
+    const checkUsageAllowed = useCallback(async () => {
         try {
             setIsCheckingUsage(true);
-            const response = await apiClient.get('/usage/check-action?action=queries');
+            const actionToCheck = tier === 'agentic' ? 'tokens' : 'queries';
+            const response = await apiClient.get(`/usage/check-action?action=${actionToCheck}`);
             if (response.ok) {
                 const data: SingleActionCheckResponse = await response.json();
-                setQueriesAllowed(data.allowed);
-                setQueriesCheckDetails(data);
+                setUsageAllowed(data.allowed);
+                setUsageCheckDetails(data);
             } else {
-                setQueriesAllowed(true);
-                setQueriesCheckDetails(null);
+                setUsageAllowed(true);
+                setUsageCheckDetails(null);
             }
         } catch {
-            setQueriesAllowed(true);
-            setQueriesCheckDetails(null);
+            setUsageAllowed(true);
+            setUsageCheckDetails(null);
         } finally {
             setIsCheckingUsage(false);
         }
-    }, []);
+    }, [tier]);
 
-    useEffect(() => { void checkQueriesAllowed(); }, [checkQueriesAllowed]);
+    useEffect(() => { void checkUsageAllowed(); }, [checkUsageAllowed]);
 
     // Main search handler — routes to v2 endpoints based on tier
     const handleSendQuery = useCallback(async () => {
-        if (!hasQuery || !collectionId || isSearching || !queriesAllowed || isCheckingUsage || disabled) return;
+        if (!hasQuery || !collectionId || isSearching || !usageAllowed || isCheckingUsage || disabled) return;
 
         if (abortRef.current) {
             abortRef.current.abort();
@@ -437,11 +438,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             if (searchSeqRef.current === mySeq) {
                 setIsSearching(false);
                 onSearchEnd?.();
-                try { void checkQueriesAllowed(); } catch { void 0; }
+                try { void checkUsageAllowed(); } catch { void 0; }
                 if (abortRef.current === abortController) abortRef.current = null;
             }
         }
-    }, [hasQuery, collectionId, query, tier, retrievalStrategy, thinking, filterGroups, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, queriesAllowed, isCheckingUsage, disabled, checkQueriesAllowed]);
+    }, [hasQuery, collectionId, query, tier, retrievalStrategy, thinking, filterGroups, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, usageAllowed, isCheckingUsage, disabled, checkUsageAllowed]);
 
     // Tooltip helpers
     const handleTooltipMouseEnter = useCallback((tooltipId: string) => {
@@ -509,7 +510,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                         </TooltipProvider>
 
                         {/* Query textarea */}
-                        {(!queriesAllowed || isCheckingUsage || disabled) ? (
+                        {(!usageAllowed || isCheckingUsage || disabled) ? (
                             <TooltipProvider delayDuration={0}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -519,13 +520,13 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                 onChange={(e) => setQuery(e.target.value)}
                                                 onKeyDown={(e) => {
                                                     if (e.key === "Enter" && !e.shiftKey) {
-                                                        if (!hasQuery || isSearching || !queriesAllowed || isCheckingUsage || disabled) return;
+                                                        if (!hasQuery || isSearching || !usageAllowed || isCheckingUsage || disabled) return;
                                                         e.preventDefault();
                                                         handleSendQuery();
                                                     }
                                                 }}
                                                 placeholder={currentTier.placeholder}
-                                                disabled={!queriesAllowed || isCheckingUsage || disabled}
+                                                disabled={!usageAllowed || isCheckingUsage || disabled}
                                                 className={cn(
                                                     "w-full h-20 px-2 pr-32 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
                                                     DESIGN_SYSTEM.typography.sizes.header,
@@ -539,9 +540,9 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         <p className={DESIGN_SYSTEM.typography.sizes.body}>
                                             {isCheckingUsage ? "Checking usage…" :
                                              disabled ? "Connect a source to enable search." :
-                                             queriesCheckDetails?.reason === 'usage_limit_exceeded' ? (
-                                                <>Query limit reached. <a href="/organization/settings?tab=billing" className="underline">Upgrade your plan</a> to continue.</>
-                                             ) : queriesCheckDetails?.reason === 'payment_required' ? (
+                                             usageCheckDetails?.reason === 'usage_limit_exceeded' ? (
+                                                <>{tier === 'agentic' ? 'Token' : 'Query'} limit reached. <a href="/organization/settings?tab=billing" className="underline">Upgrade your plan</a> to continue.</>
+                                             ) : usageCheckDetails?.reason === 'payment_required' ? (
                                                 <>Billing issue. <a href="/organization/settings?tab=billing" className="underline">Update billing</a> to continue.</>
                                              ) : "Search is currently disabled."}
                                         </p>
@@ -554,7 +555,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                 onChange={(e) => setQuery(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (e.key === "Enter" && !e.shiftKey) {
-                                        if (!hasQuery || isSearching || !queriesAllowed || isCheckingUsage || disabled) return;
+                                        if (!hasQuery || isSearching || !usageAllowed || isCheckingUsage || disabled) return;
                                         e.preventDefault();
                                         handleSendQuery();
                                     }
@@ -743,7 +744,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                 <p className={DESIGN_SYSTEM.tooltip.description}>
                                                     Extended reasoning, the agent thinks more carefully
                                                 </p>
-                                                <p className={cn(DESIGN_SYSTEM.tooltip.description, "font-semibold")}>~5 min</p>
+                                                <p className={cn(DESIGN_SYSTEM.tooltip.description, "font-semibold")}>&lt;5 min</p>
                                             </div>
                                         </TooltipContent>
                                     </Tooltip>
@@ -761,14 +762,14 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                 if (canRetrySearch) setTransientIssue(null);
                                                 void handleSendQuery();
                                             }}
-                                            disabled={isSearching ? false : (!hasQuery || !queriesAllowed || isCheckingUsage || disabled)}
+                                            disabled={isSearching ? false : (!hasQuery || !usageAllowed || isCheckingUsage || disabled)}
                                             className={cn(
                                                 "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all",
                                                 isSearching
                                                     ? isDark
                                                         ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
                                                         : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
-                                                    : (hasQuery && queriesAllowed && !isCheckingUsage && !disabled)
+                                                    : (hasQuery && usageAllowed && !isCheckingUsage && !disabled)
                                                         ? isDark
                                                             ? "bg-gray-800 border-border hover:bg-muted text-foreground border-gray-700"
                                                             : "bg-white border-border hover:bg-muted text-foreground"
@@ -787,10 +788,10 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                             )}
                                         </button>
                                     </TooltipTrigger>
-                                    {!queriesAllowed && queriesCheckDetails?.reason === 'usage_limit_exceeded' && (
+                                    {!usageAllowed && usageCheckDetails?.reason === 'usage_limit_exceeded' && (
                                         <TooltipContent className="max-w-xs">
                                             <p className={DESIGN_SYSTEM.typography.sizes.body}>
-                                                Query limit reached. <a href="/organization/settings?tab=billing" className="underline">Upgrade your plan</a> to continue.
+                                                {tier === 'agentic' ? 'Token' : 'Query'} limit reached. <a href="/organization/settings?tab=billing" className="underline">Upgrade your plan</a> to continue.
                                             </p>
                                         </TooltipContent>
                                     )}

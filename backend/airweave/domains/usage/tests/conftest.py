@@ -135,6 +135,7 @@ def _make_usage_model(
         billing_period_id=billing_period_id or uuid4(),
         entities=0,
         queries=0,
+        tokens=0,
     )
     defaults.update(overrides)
     return UsageModel(**defaults)

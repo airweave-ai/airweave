@@ -132,7 +132,7 @@ class CRUDUsage(CRUDBaseOrganization[Usage, UsageCreate, UsageUpdate]):
                 SET {", ".join(update_parts)},
                     modified_at = NOW()
                 WHERE id = :usage_id
-                RETURNING id, organization_id, entities, queries,
+                RETURNING id, organization_id, entities, queries, tokens,
                         billing_period_id, created_at, modified_at
             """
             )
@@ -148,6 +148,7 @@ class CRUDUsage(CRUDBaseOrganization[Usage, UsageCreate, UsageUpdate]):
                     "organization_id": updated_row.organization_id,
                     "entities": updated_row.entities,
                     "queries": updated_row.queries,
+                    "tokens": updated_row.tokens,
                     "billing_period_id": updated_row.billing_period_id,
                     "created_at": updated_row.created_at,
                     "modified_at": updated_row.modified_at,
@@ -159,6 +160,7 @@ class CRUDUsage(CRUDBaseOrganization[Usage, UsageCreate, UsageUpdate]):
                     organization_id=updated_values["organization_id"],
                     entities=updated_values["entities"],
                     queries=updated_values["queries"],
+                    tokens=updated_values["tokens"],
                     billing_period_id=updated_values["billing_period_id"],
                     created_at=updated_values["created_at"],
                     modified_at=updated_values["modified_at"],

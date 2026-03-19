@@ -5,7 +5,7 @@ from typing import List
 
 from airweave.core.events.base import DomainEvent
 from airweave.core.events.enums import SourceConnectionEventType
-from airweave.core.events.search import SearchCompletedEvent
+from airweave.core.events.search import SearchCompletedEvent, SearchTier
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import (
     EntityBatchProcessedEvent,
@@ -14,7 +14,7 @@ from airweave.core.events.sync import (
 )
 from airweave.core.protocols.event_bus import EventSubscriber
 from airweave.domains.usage.protocols import UsageLedgerProtocol
-from airweave.domains.usage.types import ActionType
+from airweave.domains.usage.types import ActionType, normalize_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,30 @@ class UsageBillingListener(EventSubscriber):
     async def _handle_search_completed(self, event: SearchCompletedEvent) -> None:
         if not event.billable:
             return
-        await self._ledger.record(event.organization_id, ActionType.QUERIES, amount=1)
+
+        if event.tier == SearchTier.AGENTIC and event.diagnostics:
+            # Agentic search: record normalized tokens instead of queries.
+            # Price factors from the primary model in the fallback chain.
+            # Lazy imports to avoid circular dependency through SearchConfig's
+            # deep import chain (search types → embedders → core protocols).
+            from airweave.adapters.llm.registry import get_model_spec
+            from airweave.domains.search.config import SearchConfig
+
+            provider, model = SearchConfig.LLM_FALLBACK_CHAIN[0]
+            spec = get_model_spec(provider, model)
+            normalized = normalize_tokens(
+                event.diagnostics.prompt_tokens,
+                event.diagnostics.completion_tokens,
+                spec.input_price_factor,
+                spec.output_price_factor,
+            )
+            if normalized > 0:
+                await self._ledger.record(
+                    event.organization_id, ActionType.TOKENS, amount=normalized
+                )
+        else:
+            # Instant/classic: record 1 query
+            await self._ledger.record(event.organization_id, ActionType.QUERIES, amount=1)
 
     async def _handle_source_connection_lifecycle(
         self, event: SourceConnectionLifecycleEvent

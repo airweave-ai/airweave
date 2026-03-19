@@ -8,6 +8,7 @@ import {
   Search,
   Link2,
   Users,
+  Cpu,
 } from 'lucide-react';
 
 interface UsageDashboardData {
@@ -20,9 +21,11 @@ interface UsageDashboardData {
     usage: {
       entities: number;
       queries: number;
+      tokens: number;
       source_connections: number;
       max_entities: number | null;
       max_queries: number | null;
+      max_tokens: number | null;
       max_source_connections: number | null;
       team_members: number;
       max_team_members: number | null;
@@ -46,6 +49,11 @@ const metricConfig = [
     key: 'queries',
     label: 'Queries',
     icon: Search,
+  },
+  {
+    key: 'tokens',
+    label: 'Agentic tokens',
+    icon: Cpu,
   },
   {
     key: 'entities',

@@ -16,6 +16,7 @@ Consumers:
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, Optional
 from uuid import UUID
 
@@ -23,6 +24,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from airweave.core.events.base import DomainEvent
 from airweave.core.events.enums import SearchEventType
+
+
+class SearchTier(str, Enum):
+    """Search tiers — duplicated from schemas.search_v2 to avoid circular imports.
+
+    core/events must not import from schemas/search_v2 because that triggers a
+    deep import chain through domains/search/types → embedders → protocols → webhooks.
+    Values are kept in sync by tests.
+    """
+
+    INSTANT = "instant"
+    CLASSIC = "classic"
+    AGENTIC = "agentic"
+
 
 # ── Diagnostics models ────────────────────────────────────────────────
 
@@ -217,9 +232,10 @@ class SearchStartedEvent(DomainEvent):
     event_type: SearchEventType = SearchEventType.STARTED
 
     request_id: str
-    tier: str  # SearchTier value ("instant", "classic", "agentic")
+    tier: SearchTier
     collection_readable_id: str
     query: str
+    plan: Optional[str] = None  # BillingPlan value, for analytics
 
     # Tier-specific (optional)
     retrieval_strategy: Optional[str] = None  # RetrievalStrategy value, instant only
@@ -238,7 +254,8 @@ class SearchCompletedEvent(DomainEvent):
     event_type: SearchEventType = SearchEventType.COMPLETED
 
     request_id: str
-    tier: str  # SearchTier value ("instant", "classic", "agentic")
+    tier: SearchTier
+    plan: Optional[str] = None  # BillingPlan value, for analytics
 
     # User-facing
     results: list[dict[str, Any]] = Field(default_factory=list)  # serialized SearchResults
@@ -261,7 +278,8 @@ class SearchFailedEvent(DomainEvent):
     event_type: SearchEventType = SearchEventType.FAILED
 
     request_id: str
-    tier: str  # SearchTier value ("instant", "classic", "agentic")
+    tier: SearchTier
+    plan: Optional[str] = None  # BillingPlan value, for analytics
 
     # User-facing
     message: str

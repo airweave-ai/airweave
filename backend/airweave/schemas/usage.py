@@ -28,15 +28,26 @@ class UsageBase(BaseModel):
         ge=0,
         description="Number of search queries executed.",
     )
+    tokens: int = Field(
+        0,
+        ge=0,
+        description="Normalized token usage from agentic search.",
+    )
     source_connections: Optional[int] = Field(
         None,
         ge=0,
-        description="Number of source connections configured. Computed dynamically from source_connection table.",
+        description=(
+            "Number of source connections configured."
+            " Computed dynamically from source_connection table."
+        ),
     )
     team_members: Optional[int] = Field(
         None,
         ge=0,
-        description="Current number of team members in the organization. Computed dynamically from user_organization table.",
+        description=(
+            "Current number of team members in the organization."
+            " Computed dynamically from user_organization table."
+        ),
     )
 
     model_config = ConfigDict(from_attributes=True)
@@ -69,6 +80,11 @@ class UsageUpdate(BaseModel):
         None,
         ge=0,
         description="Updated query count.",
+    )
+    tokens: Optional[int] = Field(
+        None,
+        ge=0,
+        description="Updated token count.",
     )
 
 
@@ -104,6 +120,7 @@ class Usage(UsageInDBBase):
                     "billing_period_id": "period123-4567-89ab-cdef-0123456789ab",
                     "entities": 10000,
                     "queries": 250,
+                    "tokens": 1500000,
                     "source_connections": 8,
                     "team_members": 5,
                     "created_at": "2024-01-01T00:00:00Z",
@@ -127,6 +144,11 @@ class UsageLimit(BaseModel):
         ge=0,
         description="Maximum number of queries allowed. None means unlimited.",
     )
+    max_tokens: Optional[int] = Field(
+        None,
+        ge=0,
+        description="Maximum number of normalized tokens allowed. None means unlimited.",
+    )
     max_source_connections: Optional[int] = Field(
         None,
         ge=0,
@@ -144,6 +166,7 @@ class UsageLimit(BaseModel):
                 {
                     "max_entities": 50000,
                     "max_queries": 1000,
+                    "max_tokens": 2000000,
                     "max_source_connections": 20,
                     "max_team_members": 10,
                 },

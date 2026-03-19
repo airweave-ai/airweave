@@ -84,7 +84,8 @@ const SUBSCRIPTION_PLANS = [
     description: 'Perfect for personal agents and side projects. No credit card required.',
     features: [
       '10 source connections',
-      '500 queries / mo',
+      '50 queries / mo',
+      '2M agentic tokens / mo',
       '50K entities / mo',
       '1 team member',
       'Community support',
@@ -101,7 +102,8 @@ const SUBSCRIPTION_PLANS = [
     description: 'Take your agent to the next level',
     features: [
       '50 source connections',
-      '2K queries / mo',
+      '500 queries / mo',
+      '10M agentic tokens / mo',
       '100K entities / mo',
       '2 team members',
       'Email support',
@@ -118,7 +120,8 @@ const SUBSCRIPTION_PLANS = [
     description: 'For fast-moving teams that need scale and control',
     features: [
       '1000 source connections',
-      '10K queries / mo',
+      '5K queries / mo',
+      '50M agentic tokens / mo',
       '1M entities synced / mo',
       '10 team members',
       'Dedicated Slack support',

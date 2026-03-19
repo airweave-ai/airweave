@@ -17,7 +17,7 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.events.search import SearchStartedEvent
+from airweave.core.events.search import SearchStartedEvent, SearchTier
 from airweave.core.protocols import EventBus, PubSub
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.search.protocols import (
@@ -32,7 +32,6 @@ from airweave.schemas.search_v2 import (
     ClassicSearchRequest,
     InstantSearchRequest,
     InternalAgenticSearchRequest,
-    SearchTier,
     SearchV2Response,
 )
 
@@ -56,9 +55,10 @@ async def instant_search(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
             request_id=ctx.request_id,
-            tier=SearchTier.INSTANT.value,
+            tier=SearchTier.INSTANT,
             collection_readable_id=readable_id,
             query=request.query,
+            plan=ctx.billing_plan,
             retrieval_strategy=request.retrieval_strategy.value,
             filter=[f.model_dump() for f in request.filter] if request.filter else None,
             limit=request.limit,
@@ -87,9 +87,10 @@ async def classic_search(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
             request_id=ctx.request_id,
-            tier=SearchTier.CLASSIC.value,
+            tier=SearchTier.CLASSIC,
             collection_readable_id=readable_id,
             query=request.query,
+            plan=ctx.billing_plan,
             filter=[f.model_dump() for f in request.filter] if request.filter else None,
             limit=request.limit,
             offset=request.offset,
@@ -116,15 +117,16 @@ async def agentic_search(
             status_code=403,
             detail="AGENTIC_SEARCH feature not enabled for this organization",
         )
-    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.TOKENS)
 
     await event_bus.publish(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
             request_id=ctx.request_id,
-            tier=SearchTier.AGENTIC.value,
+            tier=SearchTier.AGENTIC,
             collection_readable_id=readable_id,
             query=request.query,
+            plan=ctx.billing_plan,
             thinking=request.thinking,
             filter=[f.model_dump() for f in request.filter] if request.filter else None,
             limit=request.limit,
@@ -235,7 +237,7 @@ async def stream_agentic_search(
             detail="AGENTIC_SEARCH feature not enabled for this organization",
         )
 
-    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.TOKENS)
 
     # Subscribe first so we don't miss the started event
     ps = await pubsub.subscribe("agentic_search_v2", ctx.request_id)
@@ -245,9 +247,10 @@ async def stream_agentic_search(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
             request_id=ctx.request_id,
-            tier=SearchTier.AGENTIC.value,
+            tier=SearchTier.AGENTIC,
             collection_readable_id=readable_id,
             query=request.query,
+            plan=ctx.billing_plan,
             thinking=request.thinking,
             filter=[f.model_dump() for f in request.filter] if request.filter else None,
             limit=request.limit,
@@ -288,7 +291,7 @@ async def admin_stream_agentic_search(
             detail="AGENTIC_SEARCH feature not enabled for this organization",
         )
 
-    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.TOKENS)
 
     # Build the effective service — with model override if specified
     effective_service = service
@@ -304,9 +307,10 @@ async def admin_stream_agentic_search(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
             request_id=ctx.request_id,
-            tier=SearchTier.AGENTIC.value,
+            tier=SearchTier.AGENTIC,
             collection_readable_id=readable_id,
             query=request.query,
+            plan=ctx.billing_plan,
             thinking=request.thinking,
             filter=[f.model_dump() for f in request.filter] if request.filter else None,
             limit=request.limit,

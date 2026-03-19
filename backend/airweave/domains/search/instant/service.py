@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
-from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent
+from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent, SearchTier
 from airweave.core.protocols.event_bus import EventBus
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.search.protocols import (
@@ -21,7 +21,6 @@ from airweave.domains.search.protocols import (
     SearchPlanExecutorProtocol,
 )
 from airweave.domains.search.types import SearchPlan, SearchQuery, SearchResults
-from airweave.schemas.search_v2 import SearchTier
 
 if TYPE_CHECKING:
     from airweave.schemas.search_v2 import InstantSearchRequest
@@ -62,7 +61,8 @@ class InstantSearchService(InstantSearchServiceProtocol):
                 SearchFailedEvent(
                     organization_id=ctx.organization.id,
                     request_id=ctx.request_id,
-                    tier=SearchTier.INSTANT.value,
+                    tier=SearchTier.INSTANT,
+                    plan=ctx.billing_plan,
                     message=str(e),
                     duration_ms=duration_ms,
                 )
@@ -103,7 +103,8 @@ class InstantSearchService(InstantSearchServiceProtocol):
             SearchCompletedEvent(
                 organization_id=ctx.organization.id,
                 request_id=ctx.request_id,
-                tier=SearchTier.INSTANT.value,
+                tier=SearchTier.INSTANT,
+                plan=ctx.billing_plan,
                 results=[r.model_dump(mode="json") for r in results.results],
                 duration_ms=duration_ms,
             )

@@ -36,6 +36,7 @@ from airweave.core.events.search import (
     SearchFailedEvent,
     SearchRerankingEvent,
     SearchThinkingEvent,
+    SearchTier,
     SearchToolCalledEvent,
     SearchToolStats,
     ThinkingDiagnostics,
@@ -90,7 +91,6 @@ from airweave.domains.search.protocols import (
     SearchPlanExecutorProtocol,
 )
 from airweave.domains.search.types import SearchResults
-from airweave.schemas.search_v2 import SearchTier
 
 if TYPE_CHECKING:
     from airweave.schemas.search_v2 import AgenticSearchRequest
@@ -142,7 +142,8 @@ class Agent:
                 SearchFailedEvent(
                     organization_id=ctx.organization.id,
                     request_id=ctx.request_id,
-                    tier=SearchTier.AGENTIC.value,
+                    tier=SearchTier.AGENTIC,
+                    plan=ctx.billing_plan,
                     message=str(e),
                     duration_ms=duration_ms,
                     diagnostics=FailedDiagnostics(
@@ -404,7 +405,8 @@ class Agent:
             SearchCompletedEvent(
                 organization_id=ctx.organization.id,
                 request_id=ctx.request_id,
-                tier=SearchTier.AGENTIC.value,
+                tier=SearchTier.AGENTIC,
+                plan=ctx.billing_plan,
                 results=[r.model_dump(mode="json") for r in collected_results],
                 duration_ms=duration_ms,
                 diagnostics=CompletedDiagnostics(
