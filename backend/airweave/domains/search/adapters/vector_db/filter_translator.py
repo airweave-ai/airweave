@@ -173,6 +173,8 @@ class FilterTranslator:
     def _parse_datetime_to_epoch(self, value: str, field: str) -> int:
         """Parse ISO datetime string to epoch seconds."""
         try:
+            # Strip surrounding quotes — LLMs sometimes wrap datetime strings
+            value = value.strip("'\"")
             if value.endswith("Z"):
                 value = value[:-1] + "+00:00"
             dt = datetime.fromisoformat(value)

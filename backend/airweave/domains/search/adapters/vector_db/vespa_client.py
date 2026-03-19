@@ -122,6 +122,14 @@ class VespaVectorDB:
         try:
             response = await asyncio.to_thread(self._app.query, body=query_params)
         except Exception as e:
+            # Vespa rejects queries that produce no parseable terms (e.g. "." or pure
+            # punctuation with BM25/keyword). Return empty results instead of crashing.
+            error_str = str(e)
+            if "NullItem" in error_str or "Invalid query parameter" in error_str:
+                self._logger.warning(
+                    f"[VespaVectorDB] Query not parseable by Vespa, returning empty: {e}"
+                )
+                return SearchResults(results=[])
             self._logger.error(f"[VespaVectorDB] Query execution failed: {e}")
             raise VectorDBError(f"Vespa query failed: {e}", cause=e) from e
         query_time_ms = (time.monotonic() - start_time) * 1000

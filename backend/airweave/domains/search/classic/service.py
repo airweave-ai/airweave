@@ -115,6 +115,11 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
         prompt = f"User query: {request.query}\nUser filter: {user_filter_md}"
         strategy = await self._llm.structured_output(prompt, ClassicSearchStrategy, system_prompt)
 
+        # Guard: if LLM returned an empty or non-word primary query, fall back to the
+        # user's original. LLMs sometimes return "", ".", or punctuation-only strings.
+        if not strategy.query.primary or not any(c.isalnum() for c in strategy.query.primary):
+            strategy.query.primary = request.query
+
         # 4. Combine with request.limit/offset → full SearchPlan
         plan = SearchPlan(
             query=strategy.query,
