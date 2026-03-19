@@ -55,6 +55,12 @@ def _make_fake_api_key_obj() -> MagicMock:
     key.created_by_email = "testuser@example.com"
     key.modified_by_email = "testuser@example.com"
     key.encrypted_key = b"encrypted"
+    key.status = "active"
+    key.key_prefix = "ak_te"
+    key.description = None
+    key.last_used_ip = None
+    key.decrypted_key = None
+    key.revoked_at = None
     return key
 
 
