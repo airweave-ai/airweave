@@ -97,6 +97,11 @@ class OAuthTokenProvider(TokenProviderProtocol):
         self._can_refresh = oauth_type in _REFRESHABLE_OAUTH_TYPES and _has_refresh_token(
             credentials
         )
+        if oauth_type in _REFRESHABLE_OAUTH_TYPES and not self._can_refresh:
+            self._logger.warning(
+                f"Source {source_short_name} has oauth_type={oauth_type} but no refresh_token "
+                f"in credentials — token refresh will not be available"
+            )
         self._needs_initial_refresh = True
         self._expires_at: float = 0.0
         self._lock = asyncio.Lock()

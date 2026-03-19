@@ -567,9 +567,30 @@ async def test_create_with_oauth_token_builds_full_payload_and_delegates():
 
     kwargs = svc._create_authenticated_connection.await_args.kwargs
     assert kwargs["credential_payload"]["access_token"] == "tok"
-    assert "refresh_token" not in kwargs["credential_payload"]
+    assert kwargs["credential_payload"]["refresh_token"] == "rtok"
     assert kwargs["credential_payload"]["expires_at"] == expires.isoformat()
     assert kwargs["auth_method"] == AuthenticationMethod.OAUTH_TOKEN
+
+
+async def test_create_with_oauth_token_omits_refresh_token_when_not_provided():
+    svc = _service(_entry())
+    svc._source_validation.validate_config = MagicMock(return_value={"cfg": "x"})
+    svc._source_lifecycle.validate = AsyncMock()
+    svc._create_authenticated_connection = AsyncMock(return_value=MagicMock(id=uuid4()))
+
+    obj_in = SourceConnectionCreate(
+        short_name="github",
+        readable_collection_id="col-1",
+        authentication=OAuthTokenAuthentication(
+            access_token="tok",
+        ),
+    )
+    await svc._create_with_oauth_token(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+
+    kwargs = svc._create_authenticated_connection.await_args.kwargs
+    assert kwargs["credential_payload"]["access_token"] == "tok"
+    assert "refresh_token" not in kwargs["credential_payload"]
+    assert "expires_at" not in kwargs["credential_payload"]
 
 
 async def test_create_with_oauth_token_maps_source_validation_error_to_400():
