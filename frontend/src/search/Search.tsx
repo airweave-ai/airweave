@@ -54,6 +54,7 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
         setIsSearching(false);
     }, []);
 
+
     return (
         <div
             className={cn(

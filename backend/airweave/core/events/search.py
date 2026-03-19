@@ -27,12 +27,118 @@ from airweave.core.events.enums import SearchEventType
 # ── Diagnostics models ────────────────────────────────────────────────
 
 
+class EntitySummary(BaseModel):
+    """Compact entity reference for trace display."""
+
+    model_config = ConfigDict(frozen=True)
+
+    entity_id: str
+    name: str
+    entity_type: str
+    source_name: str
+    relevance_score: Optional[float] = None
+
+
+class SearchToolStats(BaseModel):
+    """Stats from a search tool execution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    result_count: int = 0
+    new_results: int = 0
+    first_results: list[EntitySummary] = Field(default_factory=list)
+
+
+class ReadToolStats(BaseModel):
+    """Stats from a read tool execution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    found: int = 0
+    not_found: int = 0
+    entities: list[EntitySummary] = Field(default_factory=list)
+    context_label: Optional[str] = None
+
+
+class CollectToolStats(BaseModel):
+    """Stats from a collect (add/remove) tool execution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    added: int = 0
+    already_collected: int = 0
+    not_found: int = 0
+    total_collected: int = 0
+    entities: list[EntitySummary] = Field(default_factory=list)
+
+
+class CountToolStats(BaseModel):
+    """Stats from a count tool execution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    count: int = 0
+
+
+class NavigateToolStats(BaseModel):
+    """Stats from a navigation tool execution (get_children, get_siblings)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    result_count: int = 0
+    context_label: str = ""
+    first_results: list[EntitySummary] = Field(default_factory=list)
+
+
+class ReviewToolStats(BaseModel):
+    """Stats from a review_results tool execution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_collected: int = 0
+    entity_count: int = 0
+    first_results: list[EntitySummary] = Field(default_factory=list)
+
+
+class FinishToolStats(BaseModel):
+    """Stats from a return_results_to_user tool execution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    accepted: bool = False
+    total_collected: int = 0
+    warning: Optional[str] = None
+
+
+class ErrorToolStats(BaseModel):
+    """Stats when a tool call errors."""
+
+    model_config = ConfigDict(frozen=True)
+
+    error: str = ""
+
+
+# Union of all tool stats for serialization
+ToolStats = (
+    SearchToolStats
+    | ReadToolStats
+    | CollectToolStats
+    | CountToolStats
+    | NavigateToolStats
+    | ReviewToolStats
+    | FinishToolStats
+    | ErrorToolStats
+)
+
+
 class ThinkingDiagnostics(BaseModel):
     """Diagnostics for a single LLM iteration."""
 
     model_config = ConfigDict(frozen=True)
 
     iteration: int = Field(..., description="0-indexed iteration number.")
+    prompt_tokens: int = Field(0, description="Input tokens for this LLM call.")
+    completion_tokens: int = Field(0, description="Output tokens for this LLM call.")
 
 
 class ToolCalledDiagnostics(BaseModel):
@@ -48,7 +154,7 @@ class ToolCalledDiagnostics(BaseModel):
     )
     stats: dict[str, Any] = Field(
         default_factory=dict,
-        description="Per-tool result counts (result_count, found, not_found, etc.).",
+        description="Typed tool stats serialized as dict (see *ToolStats models).",
     )
 
 
@@ -62,6 +168,9 @@ class RerankingDiagnostics(BaseModel):
     model: str = Field(..., description="Reranker model name (e.g., 'cohere/rerank-v4.0-pro').")
     top_relevance_score: float = Field(..., description="Highest reranker relevance score.")
     bottom_relevance_score: float = Field(..., description="Lowest reranker relevance score.")
+    first_results: list[EntitySummary] = Field(
+        default_factory=list, description="Top reranked results with relevance scores."
+    )
 
 
 class _AgentRunDiagnostics(BaseModel):

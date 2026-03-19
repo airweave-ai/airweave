@@ -66,6 +66,7 @@ class ReadToolResult:
     entities: list[RenderedResult]
     not_found: list[str]
     read_entity_ids: list[str] = field(default_factory=list)  # for triage nudge
+    context_label: str | None = None  # set by get_parent for trace display
 
 
 @dataclass(frozen=True)

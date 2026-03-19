@@ -149,15 +149,22 @@ class GetChildrenTool:
         if tool_call_id:
             state.results_by_tool_call_id[tool_call_id] = children
 
-        parent_name = state.results[entity_id].name if entity_id in state.results else entity_id
+        parent_entity = state.results.get(entity_id)
+        parent_name = parent_entity.name if parent_entity else entity_id
+        parent_source = parent_entity.airweave_system_metadata.source_name if parent_entity else ""
 
         summaries = [
             RenderedResult(entity_id=r.entity_id, text=r.to_snippet_summary_md()) for r in children
         ]
 
+        label = (
+            f'children of "{parent_name}" ({parent_source})'
+            if parent_source
+            else f'children of "{parent_name}"'
+        )
         return NavigateToolResult(
             summaries=summaries,
-            context_label=f"children of {parent_name} [{entity_id}]",
+            context_label=label,
         )
 
 
@@ -229,9 +236,17 @@ class GetSiblingsTool:
             RenderedResult(entity_id=r.entity_id, text=r.to_snippet_summary_md()) for r in siblings
         ]
 
+        parent_source = (
+            parent.airweave_system_metadata.source_name if parent.airweave_system_metadata else ""
+        )
+        label = (
+            f'siblings of "{parent.name}" ({parent_source})'
+            if parent_source
+            else f'siblings of "{parent.name}"'
+        )
         return NavigateToolResult(
             summaries=summaries,
-            context_label=f"siblings (parent: {parent.name} [{parent.entity_id}])",
+            context_label=label,
         )
 
 
@@ -263,12 +278,22 @@ class GetParentTool:
 
         parent_bc = entity.breadcrumbs[-1]
 
+        entity_source = (
+            entity.airweave_system_metadata.source_name if entity.airweave_system_metadata else ""
+        )
+        context_label = (
+            f'parent of "{entity.name}" ({entity_source})'
+            if entity_source
+            else f'parent of "{entity.name}"'
+        )
+
         # Check if parent already in state
         if parent_bc.entity_id in state.results:
             parent = state.results[parent_bc.entity_id]
             return ReadToolResult(
                 entities=[RenderedResult(entity_id=parent.entity_id, text=parent.to_md())],
                 not_found=[],
+                context_label=context_label,
             )
 
         # Fetch from vector DB
@@ -300,6 +325,9 @@ class GetParentTool:
             return ReadToolResult(
                 entities=[RenderedResult(entity_id=parent.entity_id, text=parent.to_md())],
                 not_found=[],
+                context_label=context_label,
             )
 
-        return ReadToolResult(entities=[], not_found=[parent_bc.entity_id])
+        return ReadToolResult(
+            entities=[], not_found=[parent_bc.entity_id], context_label=context_label
+        )

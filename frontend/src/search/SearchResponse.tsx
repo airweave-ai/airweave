@@ -11,16 +11,6 @@ import {
     FileJson2,
     ChevronRight,
     ChevronDown,
-    Search as SearchIcon,
-    BookOpen,
-    PackagePlus,
-    PackageMinus,
-    Hash,
-    FolderOpen,
-    Users,
-    ArrowUp,
-    ClipboardList,
-    ArrowDownUp,
 } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { materialOceanic, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -80,75 +70,58 @@ function formatFilterGroups(groups: any[]): string[] {
     );
 }
 
-function getSearchLabel(strategy: string): string {
-    switch (strategy) {
-        case 'keyword': return 'Keyword Search';
-        case 'semantic': return 'Semantic Search';
-        default: return 'Hybrid Search';
-    }
-}
-
 function formatDuration(ms: number): string {
     return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-// ── Tool badge config ────────────────────────────────────────────────
+// ── Tool name labels ─────────────────────────────────────────────────
 
-interface ToolBadgeConfig {
-    label: string;
-    icon: React.ElementType;
-    dark: string;   // dark mode: bg + text + border
-    light: string;  // light mode: bg + text + border
-}
-
-const TOOL_BADGES: Record<string, ToolBadgeConfig> = {
-    'hybrid_search':  { label: 'Hybrid Search',  icon: SearchIcon,   dark: 'bg-blue-500/10 text-blue-400 border-blue-500/20',    light: 'bg-blue-50 text-blue-600 border-blue-200' },
-    'keyword_search': { label: 'Keyword Search',  icon: SearchIcon,   dark: 'bg-blue-500/10 text-blue-400 border-blue-500/20',    light: 'bg-blue-50 text-blue-600 border-blue-200' },
-    'semantic_search':{ label: 'Semantic Search', icon: SearchIcon,   dark: 'bg-blue-500/10 text-blue-400 border-blue-500/20',    light: 'bg-blue-50 text-blue-600 border-blue-200' },
-    'read':           { label: 'Read',            icon: BookOpen,     dark: 'bg-amber-500/10 text-amber-400 border-amber-500/20', light: 'bg-amber-50 text-amber-600 border-amber-200' },
-    'add_to_results': { label: 'Collect',         icon: PackagePlus,  dark: 'bg-green-500/10 text-green-400 border-green-500/20', light: 'bg-green-50 text-green-600 border-green-200' },
-    'remove_from_results': { label: 'Remove',     icon: PackageMinus, dark: 'bg-red-500/10 text-red-400 border-red-500/20',       light: 'bg-red-50 text-red-600 border-red-200' },
-    'count':          { label: 'Count',           icon: Hash,         dark: 'bg-gray-500/10 text-gray-400 border-gray-500/20',    light: 'bg-gray-100 text-gray-600 border-gray-200' },
-    'get_children':   { label: 'Get Children',    icon: FolderOpen,   dark: 'bg-purple-500/10 text-purple-400 border-purple-500/20', light: 'bg-purple-50 text-purple-600 border-purple-200' },
-    'get_siblings':   { label: 'Get Siblings',    icon: Users,        dark: 'bg-purple-500/10 text-purple-400 border-purple-500/20', light: 'bg-purple-50 text-purple-600 border-purple-200' },
-    'get_parent':     { label: 'Get Parent',      icon: ArrowUp,      dark: 'bg-purple-500/10 text-purple-400 border-purple-500/20', light: 'bg-purple-50 text-purple-600 border-purple-200' },
-    'review_results': { label: 'Review',          icon: ClipboardList,dark: 'bg-gray-500/10 text-gray-400 border-gray-500/20',    light: 'bg-gray-100 text-gray-600 border-gray-200' },
-    'reranking':      { label: 'Rerank',          icon: ArrowDownUp,  dark: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20', light: 'bg-indigo-50 text-indigo-600 border-indigo-200' },
+const TOOL_LABELS: Record<string, string> = {
+    'search': 'Search',
+    'read': 'Read',
+    'add_to_results': 'Collect',
+    'remove_from_results': 'Remove',
+    'count': 'Count',
+    'get_children': 'GetChildren',
+    'get_siblings': 'GetSiblings',
+    'get_parent': 'GetParent',
+    'review_results': 'Review',
+    'return_results_to_user': 'Return',
+    'reranking': 'Rerank',
 };
 
-function getToolBadgeConfig(toolName: string, strategy?: string): ToolBadgeConfig {
-    if (toolName === 'search') {
-        const key = strategy === 'keyword' ? 'keyword_search'
-            : strategy === 'semantic' ? 'semantic_search'
-            : 'hybrid_search';
-        return TOOL_BADGES[key];
+function formatEntityList(entities: any[], totalCount?: number, maxChars = 100): string {
+    if (!entities || entities.length === 0) return '';
+    const parts: string[] = [];
+    let totalLen = 0;
+    for (const e of entities) {
+        const name = e.name?.length > 30 ? e.name.slice(0, 27) + '...' : e.name;
+        const part = `${name} (${e.source_name})`;
+        if (parts.length > 0 && totalLen + part.length + 2 > maxChars) break;
+        parts.push(part);
+        totalLen += part.length + 2; // +2 for ", "
     }
-    return TOOL_BADGES[toolName] || {
-        label: toolName, icon: SearchIcon,
-        dark: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
-        light: 'bg-gray-100 text-gray-600 border-gray-200',
-    };
+    const total = totalCount ?? entities.length;
+    const remaining = total - parts.length;
+    if (remaining > 0) parts.push(`+${remaining} more`);
+    return parts.join(', ');
 }
 
-const ToolBadge: React.FC<{ config: ToolBadgeConfig; isDark: boolean }> = ({ config, isDark }) => {
-    const Icon = config.icon;
-    return (
-        <span className={cn(
-            "inline-flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-medium border",
-            isDark ? config.dark : config.light
-        )}>
-            <Icon className="h-2.5 w-2.5" />
-            {config.label}
-        </span>
-    );
-};
+function getToolLabel(toolName: string, strategy?: string): string {
+    if (toolName === 'search') {
+        const prefix = strategy === 'keyword' ? 'Keyword'
+            : strategy === 'semantic' ? 'Semantic'
+                : 'Hybrid';
+        return `${prefix}Search`;
+    }
+    return TOOL_LABELS[toolName] || toolName;
+}
 
 // ── Component ────────────────────────────────────────────────────────
 
 export const SearchResponse: React.FC<SearchResponseProps> = ({
     searchResponse,
     isSearching,
-    responseType = 'raw',
     className,
     events = [],
     showTrace = true,
@@ -283,8 +256,6 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 
         const muted = isDark ? 'text-gray-500' : 'text-gray-400';
         const subtle = isDark ? 'text-gray-400' : 'text-gray-500';
-        const primary = isDark ? 'text-gray-200' : 'text-gray-800';
-        const accent = isDark ? 'text-gray-300' : 'text-gray-600';
 
         for (let i = 0; i < events.length; i++) {
             const event = events[i] as any;
@@ -292,13 +263,8 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             // ── Started ──
             if (event.type === 'started') {
                 rows.push(
-                    <div key={`started-${i}`} className={cn("py-1 text-[11px]", muted)}>
-                        Starting search...
-                    </div>
-                );
-                rows.push(
-                    <div key={`sep-started-${i}`} className="py-1">
-                        <div className={cn("border-t", isDark ? "border-gray-800/50" : "border-gray-200/50")} />
+                    <div key={`started-${i}`} className={cn("py-0.5 text-[10px] font-mono", muted)}>
+                        search started
                     </div>
                 );
                 continue;
@@ -307,13 +273,22 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             // ── Thinking ──
             if (event.type === 'thinking') {
                 const text = event.text || event.thinking;
-                if (text) {
+                const diag = event.diagnostics;
+                const tokens = (diag?.prompt_tokens || diag?.completion_tokens)
+                    ? `${diag.prompt_tokens.toLocaleString()}→${diag.completion_tokens.toLocaleString()} tokens`
+                    : null;
+                if (text || tokens) {
                     rows.push(
-                        <div key={`thinking-${i}`} className={cn(
-                            "animate-fade-in py-1 text-[11px] leading-relaxed italic",
-                            subtle
-                        )}>
-                            {text}
+                        <div key={`thinking-${i}`} className="animate-fade-in py-1">
+                            <span className={cn("text-[10px] font-mono", muted)}>
+                                <span className={cn(isDark ? "text-gray-400" : "text-gray-600")}>Thinking</span>
+                                <span className="tabular-nums">  {[formatDuration(event.duration_ms), tokens].filter(Boolean).join('  ')}</span>
+                            </span>
+                            {text && (
+                                <div className={cn("text-[10px] leading-relaxed", muted)}>
+                                    {text}
+                                </div>
+                            )}
                         </div>
                     );
                 }
@@ -325,93 +300,358 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 const { tool_name, duration_ms, diagnostics } = event;
                 const args = diagnostics?.arguments || {};
                 const stats = diagnostics?.stats || {};
-                const showDuration = !['add_to_results', 'remove_from_results'].includes(tool_name);
+                const showDuration = true;
 
                 if (tool_name === 'return_results_to_user') continue;
 
-                const badgeConfig = getToolBadgeConfig(tool_name, args.retrieval_strategy);
+                const toolLabel = getToolLabel(tool_name, args.retrieval_strategy);
+                const isExpanded = expandedFilters.has(i);
 
-                // Build inline info (always shown next to badge)
+                // Build headline stat and collapsed/expanded content
                 let statText = '';
-                let inlineInfo = '';
-                // Expandable content (only when there's rich detail like filters)
-                let filterLines: string[] = [];
-                let filterSummary = '';
+                const collapsedParts: string[] = [];
+                const expandedLines: React.ReactNode[] = [];
+                let collapsedIsOutput = false; // Whether the main collapsed line represents output
+                let collapsedIsInput = false;  // Whether the main collapsed line represents input
+                // Second expandable (output) — only used by search
+                let outputCollapsed = '';
+                const outputExpanded: React.ReactNode[] = [];
 
                 switch (tool_name) {
                     case 'search': {
                         const query = args.query?.primary || '';
-                        const variations = args.query?.variations?.length || 0;
+                        const variations: string[] = args.query?.variations || [];
                         const filterGroups = args.filter_groups || [];
-                        statText = `${stats.result_count ?? '?'} results`;
-                        inlineInfo = `"${query}"`;
-                        if (variations > 0) inlineInfo += ` · ${variations} var`;
+                        const newResults = stats.new_results ?? 0;
+                        const resultCount = stats.result_count ?? '?';
+                        statText = newResults > 0 && newResults < resultCount
+                            ? `${resultCount} results (${newResults} new)`
+                            : `${resultCount} results`;
 
+                        // Collapsed summary
+                        collapsedParts.push(`"${query}"`);
+                        if (variations.length > 0) collapsedParts.push(`${variations.length} variations`);
                         const totalConditions = filterGroups.reduce(
                             (sum: number, g: any) => sum + (g.conditions?.length || 0), 0
                         );
                         if (totalConditions === 1 && filterGroups.length === 1) {
-                            inlineInfo += ` · ${formatCondition(filterGroups[0].conditions[0])}`;
+                            collapsedParts.push(formatCondition(filterGroups[0].conditions[0]));
                         } else if (totalConditions > 0) {
-                            filterSummary = `${totalConditions} filter${totalConditions > 1 ? 's' : ''}`;
-                            filterLines = formatFilterGroups(filterGroups);
+                            collapsedParts.push(`${totalConditions} filters`);
+                        }
+
+                        // Expanded
+                        expandedLines.push(<div key="query">query: "{query}"</div>);
+                        if (variations.length > 0) {
+                            expandedLines.push(<div key="var-header">variations:</div>);
+                            variations.forEach((v: string, vi: number) => {
+                                expandedLines.push(<div key={`var-${vi}`} className="ml-3">"{v}"</div>);
+                            });
+                        }
+                        if (filterGroups.length > 0) {
+                            const lines = formatFilterGroups(filterGroups);
+                            expandedLines.push(<div key="filter-header">filters:</div>);
+                            lines.forEach((line, fi) => {
+                                expandedLines.push(
+                                    <div key={`filter-${fi}`} className="ml-3">
+                                        {fi > 0 && <span className="opacity-50">OR </span>}{line}
+                                    </div>
+                                );
+                            });
+                        }
+                        const limitOffset = [];
+                        if (args.limit) limitOffset.push(`limit: ${args.limit}`);
+                        if (args.offset) limitOffset.push(`offset: ${args.offset}`);
+                        if (limitOffset.length > 0) {
+                            expandedLines.push(<div key="limit">{limitOffset.join('  ')}</div>);
+                        }
+                        // Output: first results
+                        const firstResults = stats.first_results || [];
+                        if (firstResults.length > 0) {
+                            outputCollapsed = formatEntityList(firstResults, stats.result_count);
+                            firstResults.forEach((r: any, ri: number) => {
+                                outputExpanded.push(
+                                    <div key={`result-${ri}`}>
+                                        {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id})</span>
+                                    </div>
+                                );
+                            });
+                            if ((stats.result_count || 0) > firstResults.length) {
+                                outputExpanded.push(
+                                    <div key="results-more" className="opacity-50">
+                                        +{stats.result_count - firstResults.length} more
+                                    </div>
+                                );
+                            }
                         }
                         break;
                     }
-                    case 'read':
-                        statText = `${stats.found ?? '?'}/${args.entity_ids?.length || '?'} found`;
+                    case 'read': {
+                        const readEntities = stats.entities || [];
+                        statText = `${stats.found ?? '?'} entities`;
+                        if (readEntities.length > 0) {
+                            collapsedIsOutput = true;
+                            collapsedParts.push(formatEntityList(readEntities, stats.found));
+                            readEntities.forEach((r: any, ri: number) => {
+                                expandedLines.push(
+                                    <div key={`entity-${ri}`}>
+                                        {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id})</span>
+                                    </div>
+                                );
+                            });
+                            if ((stats.found || 0) > readEntities.length) {
+                                expandedLines.push(
+                                    <div key="more" className="opacity-50">+{stats.found - readEntities.length} more</div>
+                                );
+                            }
+                            if (stats.not_found > 0) {
+                                expandedLines.push(<div key="notfound" className="opacity-50">{stats.not_found} not found</div>);
+                            }
+                        } else {
+                            const ids: string[] = args.entity_ids || [];
+                            if (ids.length > 0) {
+                                collapsedParts.push('entity IDs');
+                                expandedLines.push(<div key="ids">{ids.join(', ')}</div>);
+                            }
+                        }
                         break;
-                    case 'add_to_results':
-                        statText = `${args.entity_ids?.length || stats.total_collected || '?'}`;
+                    }
+                    case 'add_to_results': {
+                        const collectEntities = stats.entities || [];
+                        const added = stats.added ?? collectEntities.length ?? '?';
+                        const total = stats.total_collected ?? '?';
+                        statText = `${added} added (${total} total)`;
+                        if (collectEntities.length > 0) {
+                            collapsedIsOutput = true;
+                            collapsedParts.push(formatEntityList(collectEntities, stats.added));
+                            collectEntities.forEach((r: any, ri: number) => {
+                                expandedLines.push(
+                                    <div key={`entity-${ri}`}>
+                                        {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id})</span>
+                                    </div>
+                                );
+                            });
+                            if ((stats.added || 0) > collectEntities.length) {
+                                expandedLines.push(
+                                    <div key="more" className="opacity-50">+{stats.added - collectEntities.length} more</div>
+                                );
+                            }
+                        } else {
+                            const ids: string[] = args.entity_ids || [];
+                            if (ids.length > 0) {
+                                collapsedParts.push('entity IDs');
+                                expandedLines.push(<div key="ids">{ids.join(', ')}</div>);
+                            }
+                        }
+                        if (stats.not_found > 0) {
+                            expandedLines.push(<div key="notfound" className="opacity-50">{stats.not_found} not found</div>);
+                        }
                         break;
-                    case 'remove_from_results':
-                        statText = `${args.entity_ids?.length || '?'}`;
+                    }
+                    case 'remove_from_results': {
+                        const removeEntities = stats.entities || [];
+                        const ids: string[] = args.entity_ids || [];
+                        statText = `${ids.length || '?'} removed (${stats.total_collected ?? '?'} total)`;
+                        if (removeEntities.length > 0) {
+                            collapsedIsInput = true;
+                            collapsedParts.push(formatEntityList(removeEntities, args.entity_ids?.length));
+                            removeEntities.forEach((r: any, ri: number) => {
+                                expandedLines.push(
+                                    <div key={`entity-${ri}`}>
+                                        {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id})</span>
+                                    </div>
+                                );
+                            });
+                        } else if (ids.length > 0) {
+                            collapsedParts.push('entity IDs');
+                            expandedLines.push(<div key="ids">{ids.join(', ')}</div>);
+                        }
                         break;
-                    case 'count':
+                    }
+                    case 'count': {
+                        const filterGroups = args.filter_groups || [];
                         statText = `${stats.count ?? '?'} matches`;
+                        collapsedIsInput = true;
+                        const totalConditions = filterGroups.reduce(
+                            (sum: number, g: any) => sum + (g.conditions?.length || 0), 0
+                        );
+                        if (totalConditions > 0) {
+                            collapsedParts.push(`${totalConditions} filter${totalConditions > 1 ? 's' : ''}`);
+                        }
+                        if (filterGroups.length > 0) {
+                            const lines = formatFilterGroups(filterGroups);
+                            lines.forEach((line, fi) => {
+                                expandedLines.push(
+                                    <div key={`filter-${fi}`}>
+                                        {fi > 0 && <span className="opacity-50">OR </span>}{line}
+                                    </div>
+                                );
+                            });
+                        }
                         break;
+                    }
                     case 'get_children':
-                    case 'get_siblings':
-                    case 'get_parent':
+                    case 'get_siblings': {
                         statText = `${stats.result_count ?? '?'} results`;
-                        inlineInfo = `"${args.entity_id || '?'}"`;
+                        // Input: context label
+                        collapsedIsInput = true;
+                        collapsedParts.push(stats.context_label || `"${args.entity_id || '?'}"`);
+                        // Output: entity names
+                        const navResults = stats.first_results || [];
+                        if (navResults.length > 0) {
+                            outputCollapsed = formatEntityList(navResults, stats.result_count);
+                            navResults.forEach((r: any, ri: number) => {
+                                outputExpanded.push(
+                                    <div key={`entity-${ri}`}>
+                                        {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id})</span>
+                                    </div>
+                                );
+                            });
+                            if ((stats.result_count || 0) > navResults.length) {
+                                outputExpanded.push(
+                                    <div key="more" className="opacity-50">+{stats.result_count - navResults.length} more</div>
+                                );
+                            }
+                        }
                         break;
-                    case 'review_results':
+                    }
+                    case 'get_parent': {
+                        statText = `${stats.found ?? stats.result_count ?? '?'} found`;
+                        collapsedIsInput = true;
+                        collapsedParts.push(stats.context_label || `"${args.entity_id || '?'}"`);
+                        break;
+                    }
+                    case 'review_results': {
                         statText = `${stats.total_collected ?? '?'} collected`;
+                        const reviewResults = stats.first_results || [];
+                        if (reviewResults.length > 0) {
+                            collapsedIsInput = true;
+                            collapsedParts.push(formatEntityList(reviewResults, stats.total_collected));
+                            reviewResults.forEach((r: any, ri: number) => {
+                                expandedLines.push(
+                                    <div key={`entity-${ri}`}>
+                                        {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id})</span>
+                                    </div>
+                                );
+                            });
+                            if ((stats.total_collected || 0) > reviewResults.length) {
+                                expandedLines.push(
+                                    <div key="more" className="opacity-50">+{stats.total_collected - reviewResults.length} more</div>
+                                );
+                            }
+                        }
                         break;
+                    }
                 }
 
-                const isExpanded = expandedFilters.has(i);
-                const hasExpandable = filterLines.length > 0;
+                const collapsedSummary = collapsedParts.join('  ');
+                const hasExpandable = collapsedSummary.length > 0 && expandedLines.length > 0;
+                const hasBothSections = hasExpandable && outputCollapsed.length > 0;
+                const collapsedLabel = (hasBothSections || collapsedIsInput) ? 'input: '
+                    : collapsedIsOutput ? 'output: ' : '';
 
                 rows.push(
-                    <div key={`tool-${i}`} className="animate-fade-in py-0.5">
-                        {/* Badge + inline info + stats + duration */}
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                            <ToolBadge config={badgeConfig} isDark={isDark} />
-                            {inlineInfo && <span className={cn("text-[10px]", subtle)}>{inlineInfo}</span>}
-                            {(statText || showDuration) && (
+                    <div key={`tool-${i}`} className="animate-fade-in py-0.5 font-mono">
+                        {/* Headline: ToolName  stats  duration */}
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                            <span className={cn("text-[11px] font-medium", isDark ? "text-gray-300" : "text-gray-700")}>
+                                {toolLabel}
+                            </span>
+                            {statText && (
+                                <span className={cn("text-[10px]", subtle)}>{statText}</span>
+                            )}
+                            {showDuration && (
                                 <span className={cn("text-[10px] tabular-nums", muted)}>
-                                    {[statText, showDuration ? formatDuration(duration_ms) : ''].filter(Boolean).join(' · ')}
+                                    {formatDuration(duration_ms)}
                                 </span>
                             )}
                         </div>
-                        {/* Expandable filters (only when there are multi-condition filters) */}
-                        {hasExpandable && (
+                        {/* Collapsed/expanded input */}
+                        {collapsedSummary && (
+                            hasExpandable ? (
+                                <button
+                                    onClick={() => toggleFilter(i)}
+                                    className={cn("flex items-center gap-0.5 text-[10px] ml-0.5", muted, "hover:underline")}
+                                >
+                                    {isExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+                                    {collapsedLabel && <span className="opacity-50">{collapsedLabel}</span>}{collapsedSummary}
+                                </button>
+                            ) : (
+                                <div className={cn("text-[10px] ml-3", muted)}>
+                                    {collapsedLabel && <span className="opacity-50">{collapsedLabel}</span>}{collapsedSummary}
+                                </div>
+                            )
+                        )}
+                        {isExpanded && expandedLines.length > 0 && (
+                            <div className={cn("text-[10px] ml-5 space-y-px", muted)}>
+                                {expandedLines}
+                            </div>
+                        )}
+                        {/* Second expandable: output (search only) */}
+                        {outputCollapsed && (
+                            (() => {
+                                const outputKey = i + 100000;
+                                const isOutputExpanded = expandedFilters.has(outputKey);
+                                const hasOutputExpandable = outputExpanded.length > 0;
+                                return hasOutputExpandable ? (
+                                    <>
+                                        <button
+                                            onClick={() => toggleFilter(outputKey)}
+                                            className={cn("flex items-center gap-0.5 text-[10px] ml-0.5", muted, "hover:underline")}
+                                        >
+                                            {isOutputExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+                                            <span className="opacity-50">output: </span>{outputCollapsed}
+                                        </button>
+                                        {isOutputExpanded && (
+                                            <div className={cn("text-[10px] ml-5 space-y-px", muted)}>
+                                                {outputExpanded}
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className={cn("text-[10px] ml-3", muted)}><span className="opacity-50">output: </span>{outputCollapsed}</div>
+                                );
+                            })()
+                        )}
+                    </div>
+                );
+                continue;
+            }
+
+            // ── Reranking ──
+            if (event.type === 'reranking') {
+                const diag = event.diagnostics || {};
+                const inputCount = diag.input_count ?? '?';
+                const rerankResults = diag.first_results || [];
+                const isRerankExpanded = expandedFilters.has(i);
+                rows.push(
+                    <div key={`rerank-${i}`} className="animate-fade-in py-0.5 font-mono">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                            <span className={cn("text-[11px] font-medium", isDark ? "text-gray-300" : "text-gray-700")}>
+                                Rerank
+                            </span>
+                            <span className={cn("text-[10px]", subtle)}>{inputCount} results</span>
+                            <span className={cn("text-[10px] tabular-nums", muted)}>
+                                {formatDuration(event.duration_ms)}
+                            </span>
+                        </div>
+                        {rerankResults.length > 0 && (
                             <>
                                 <button
                                     onClick={() => toggleFilter(i)}
-                                    className={cn("flex items-center gap-0.5 text-[10px] mt-0.5 ml-0.5", subtle, "hover:underline")}
+                                    className={cn("flex items-center gap-0.5 text-[10px] ml-0.5", muted, "hover:underline")}
                                 >
-                                    {isExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
-                                    {filterSummary}
+                                    {isRerankExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+                                    <span className="opacity-50">output: </span>
+                                    {rerankResults.map((r: any) =>
+                                        `${r.name?.length > 20 ? r.name.slice(0, 17) + '...' : r.name} (${typeof r.relevance_score === 'number' ? r.relevance_score.toFixed(2) : '?'})`
+                                    ).join(', ')}
                                 </button>
-                                {isExpanded && (
-                                    <div className={cn("text-[10px] mt-0.5 ml-4 space-y-0.5", subtle)}>
-                                        {filterLines.map((line, idx) => (
-                                            <div key={idx}>
-                                                {idx > 0 && <span className={muted}>OR </span>}
-                                                {line}
+                                {isRerankExpanded && (
+                                    <div className={cn("text-[10px] ml-5 space-y-px", muted)}>
+                                        {rerankResults.map((r: any, ri: number) => (
+                                            <div key={ri}>
+                                                {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id} · score: {typeof r.relevance_score === 'number' ? r.relevance_score.toFixed(3) : '?'})</span>
                                             </div>
                                         ))}
                                     </div>
@@ -423,45 +663,38 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 continue;
             }
 
-            // ── Reranking ──
-            if (event.type === 'reranking') {
-                const inputCount = event.diagnostics?.input_count ?? '?';
-                const rerankBadge = TOOL_BADGES['reranking'];
-                rows.push(
-                    <div key={`rerank-${i}`} className="animate-fade-in py-1">
-                        <div className="flex items-center gap-2">
-                            <ToolBadge config={rerankBadge} isDark={isDark} />
-                            <span className={cn("text-[10px] tabular-nums", muted)}>
-                                {inputCount} results · {formatDuration(event.duration_ms)}
-                            </span>
-                        </div>
-                    </div>
-                );
-                continue;
-            }
-
             // ── Done ──
             if (event.type === 'done') {
                 const diag = event.diagnostics;
-                const resultCount = event.results?.length ?? 0;
-                const seen = diag?.all_seen_entity_ids?.length ?? 0;
+                const found = diag?.all_seen_entity_ids?.length ?? 0;
                 const read = diag?.all_read_entity_ids?.length ?? 0;
                 const collected = diag?.all_collected_entity_ids?.length ?? 0;
                 const promptTokens = diag?.prompt_tokens ?? 0;
                 const completionTokens = diag?.completion_tokens ?? 0;
+                const cacheRead = diag?.cache_read_input_tokens ?? 0;
+
+                const summaryText = isDark ? 'text-gray-400' : 'text-gray-500';
+                const summaryLabel = isDark ? 'text-gray-300' : 'text-gray-600';
 
                 rows.push(
-                    <div key={`done-sep-${i}`} className="py-1.5">
+                    <div key={`done-sep-${i}`} className="pt-2 pb-1">
                         <div className={cn("border-t", isDark ? "border-gray-800/50" : "border-gray-200/50")} />
                     </div>
                 );
                 rows.push(
-                    <div key={`done-${i}`} className={cn("text-[10px] space-y-0.5", accent)}>
-                        <div>{resultCount} results · {seen} seen · {read} read · {collected} collected</div>
+                    <div key={`done-${i}`} className="font-mono text-[10px] space-y-1">
+                        <div className={summaryText}>
+                            <span className={summaryLabel}>{found}</span> found · <span className={summaryLabel}>{read}</span> read · <span className={summaryLabel}>{collected}</span> collected
+                        </div>
                         {(promptTokens > 0 || completionTokens > 0) && (
-                            <div>{promptTokens.toLocaleString()} prompt tokens · {completionTokens.toLocaleString()} completion tokens</div>
+                            <div className={summaryText}>
+                                <span className={summaryLabel}>{promptTokens.toLocaleString()}</span> input · <span className={summaryLabel}>{completionTokens.toLocaleString()}</span> output tokens
+                                {cacheRead > 0 && <> · <span className={summaryLabel}>{cacheRead.toLocaleString()}</span> cached</>}
+                            </div>
                         )}
-                        <div>Total: {formatDuration(event.duration_ms)}</div>
+                        <div className={summaryText}>
+                            <span className={summaryLabel}>{formatDuration(event.duration_ms)}</span> total
+                        </div>
                     </div>
                 );
                 continue;
@@ -470,8 +703,8 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             // ── Error ──
             if (event.type === 'error') {
                 rows.push(
-                    <div key={`error-${i}`} className="py-0.5 text-[11px] text-red-400">
-                        Error: {event.message}
+                    <div key={`error-${i}`} className={cn("py-0.5 text-[10px] font-mono", isDark ? "text-red-400" : "text-red-600")}>
+                        error: {event.message}
                     </div>
                 );
                 continue;

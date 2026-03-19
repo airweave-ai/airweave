@@ -21,14 +21,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.core.events.search import (
+    CollectToolStats,
     CompletedDiagnostics,
+    CountToolStats,
+    EntitySummary,
+    ErrorToolStats,
     FailedDiagnostics,
+    FinishToolStats,
+    NavigateToolStats,
+    ReadToolStats,
     RerankingDiagnostics,
+    ReviewToolStats,
     SearchCompletedEvent,
     SearchFailedEvent,
     SearchRerankingEvent,
     SearchThinkingEvent,
     SearchToolCalledEvent,
+    SearchToolStats,
     ThinkingDiagnostics,
     ToolCalledDiagnostics,
 )
@@ -181,9 +190,7 @@ class Agent:
         thinking_enabled = request.thinking
 
         # Construct per-request tools
-        dispatcher = self._build_dispatcher(
-            collection_id, user_filter, db, ctx, readable_id
-        )
+        dispatcher = self._build_dispatcher(collection_id, user_filter, db, ctx, readable_id)
 
         context_mgr = ContextManager(
             tokenizer=self._tokenizer,
@@ -226,7 +233,11 @@ class Agent:
                     thinking=response.thinking,
                     text=response.text,
                     duration_ms=llm_duration,
-                    diagnostics=ThinkingDiagnostics(iteration=iteration),
+                    diagnostics=ThinkingDiagnostics(
+                        iteration=iteration,
+                        prompt_tokens=response.prompt_tokens,
+                        completion_tokens=response.completion_tokens,
+                    ),
                 )
             )
 
@@ -349,6 +360,17 @@ class Agent:
             # Reorder results by reranker scores
             reranked_results = [collected_results[r.index] for r in reranked]
 
+            rerank_summaries = [
+                EntitySummary(
+                    entity_id=reranked_results[idx].entity_id,
+                    name=reranked_results[idx].name or reranked_results[idx].entity_id,
+                    entity_type=reranked_results[idx].airweave_system_metadata.entity_type or "",
+                    source_name=reranked_results[idx].airweave_system_metadata.source_name or "",
+                    relevance_score=reranked[idx].relevance_score,
+                )
+                for idx in range(min(5, len(reranked_results)))
+            ]
+
             await self._event_bus.publish(
                 SearchRerankingEvent(
                     organization_id=ctx.organization.id,
@@ -360,6 +382,7 @@ class Agent:
                         model="cohere/rerank-v4.0-pro",
                         top_relevance_score=(reranked[0].relevance_score if reranked else 0.0),
                         bottom_relevance_score=(reranked[-1].relevance_score if reranked else 0.0),
+                        first_results=rerank_summaries,
                     ),
                 )
             )
@@ -486,7 +509,7 @@ class Agent:
                         iteration=iteration,
                         tool_call_id=tc.id,
                         arguments=tc.arguments,
-                        stats=_build_tool_stats(result),
+                        stats=_build_tool_stats(result, state),
                     ),
                 )
             )
@@ -552,31 +575,75 @@ class Agent:
         )
 
 
-def _build_tool_stats(result: object) -> dict:
-    """Build stats dict from a tool result for the ToolCalledEvent."""
+def _build_tool_stats(result: object, state: AgentState) -> dict:
+    """Build typed stats dict from a tool result for the ToolCalledEvent.
+
+    Uses state to look up entity metadata (name, source, type) for summaries.
+    Returns model_dump() of typed *ToolStats models.
+    """
     if isinstance(result, SearchToolResult):
-        return {
-            "result_count": len(result.summaries),
-            "new_results": result.new_count,
-        }
+        return SearchToolStats(
+            result_count=len(result.summaries),
+            new_results=result.new_count,
+            first_results=[_entity_summary(s.entity_id, state) for s in result.summaries[:5]],
+        ).model_dump()
     if isinstance(result, ReadToolResult):
-        return {
-            "found": len(result.entities),
-            "not_found": len(result.not_found),
-        }
+        return ReadToolStats(
+            found=len(result.entities),
+            not_found=len(result.not_found),
+            entities=[_entity_summary(e.entity_id, state) for e in result.entities[:5]],
+            context_label=result.context_label,
+        ).model_dump()
     if isinstance(result, CollectToolResult):
-        return {"total_collected": result.total_collected}
+        return CollectToolStats(
+            added=len(result.added),
+            already_collected=len(result.already_collected),
+            not_found=len(result.not_found),
+            total_collected=result.total_collected,
+            entities=[_entity_summary(eid, state) for eid in (result.added or result.removed)[:5]],
+        ).model_dump()
     if isinstance(result, CountToolResult):
-        return {"count": result.count}
+        return CountToolStats(count=result.count).model_dump()
     if isinstance(result, NavigateToolResult):
-        return {"result_count": len(result.summaries)}
+        return NavigateToolStats(
+            result_count=len(result.summaries),
+            context_label=result.context_label,
+            first_results=[_entity_summary(s.entity_id, state) for s in result.summaries[:5]],
+        ).model_dump()
     if isinstance(result, ReviewToolResult):
-        return {"total_collected": result.total_collected}
+        return ReviewToolStats(
+            total_collected=result.total_collected,
+            entity_count=len(result.entities),
+            first_results=[_entity_summary(e.entity_id, state) for e in result.entities[:5]],
+        ).model_dump()
     if isinstance(result, FinishToolResult):
-        return {"accepted": result.accepted, "total_collected": result.total_collected}
+        return FinishToolStats(
+            accepted=result.accepted,
+            total_collected=result.total_collected,
+            warning=result.warning,
+        ).model_dump()
     if isinstance(result, ToolErrorResult):
-        return {"error": result.error}
+        return ErrorToolStats(error=result.error).model_dump()
     return {}
+
+
+def _entity_summary(entity_id: str, state: AgentState) -> EntitySummary:
+    """Build an EntitySummary from state, falling back to ID-only if not found."""
+    entity = state.results.get(entity_id)
+    if entity:
+        return EntitySummary(
+            entity_id=entity_id,
+            name=entity.name or entity_id,
+            entity_type=entity.airweave_system_metadata.entity_type or "",
+            source_name=entity.airweave_system_metadata.source_name or "",
+            relevance_score=entity.relevance_score,
+        )
+    return EntitySummary(
+        entity_id=entity_id,
+        name=entity_id,
+        entity_type="",
+        source_name="",
+    )
 
 
 class _DiagnosticsAccumulator:

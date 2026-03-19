@@ -1,6 +1,66 @@
 // SSE event types from the new agentic search backend (domains/search/)
 // These mirror the events emitted by SearchStreamRelay.
 
+// ── Entity summary (returned in tool stats) ──
+
+export interface EntitySummary {
+    entity_id: string;
+    name: string;
+    entity_type: string;
+    source_name: string;
+    relevance_score?: number | null;
+}
+
+// ── Typed tool stats ──
+
+export interface SearchToolStats {
+    result_count: number;
+    new_results: number;
+    first_results: EntitySummary[];
+}
+
+export interface ReadToolStats {
+    found: number;
+    not_found: number;
+    entities: EntitySummary[];
+    context_label?: string | null;
+}
+
+export interface CollectToolStats {
+    added: number;
+    already_collected: number;
+    not_found: number;
+    total_collected: number;
+    entities: EntitySummary[];
+}
+
+export interface CountToolStats {
+    count: number;
+}
+
+export interface NavigateToolStats {
+    result_count: number;
+    context_label: string;
+    first_results: EntitySummary[];
+}
+
+export interface ReviewToolStats {
+    total_collected: number;
+    entity_count: number;
+}
+
+export interface FinishToolStats {
+    accepted: boolean;
+    total_collected: number;
+    warning?: string | null;
+}
+
+export interface ErrorToolStats {
+    error: string;
+}
+
+// ── SSE events ──
+
 export interface BaseSSEEvent {
     type: string;
 }
@@ -19,6 +79,8 @@ export interface ThinkingEvent extends BaseSSEEvent {
     duration_ms: number;
     diagnostics: {
         iteration: number;
+        prompt_tokens: number;
+        completion_tokens: number;
     };
 }
 
@@ -43,6 +105,7 @@ export interface RerankingEvent extends BaseSSEEvent {
         model: string;
         top_relevance_score: number;
         bottom_relevance_score: number;
+        first_results: EntitySummary[];
     };
 }
 
