@@ -43,7 +43,8 @@ import {
   UserCheck,
   Puzzle,
   Server,
-  Shield
+  Shield,
+  Cpu
 } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
@@ -85,7 +86,8 @@ const plans = {
     description: 'Perfect for personal agents and side projects.',
     features: [
       { icon: Database, label: '10 source connections' },
-      { icon: Zap, label: '500 queries / month' },
+      { icon: Zap, label: '50 queries / month' },
+      { icon: Cpu, label: '2M agentic tokens / month' },
       { icon: Zap, label: '50K entities synced / month' },
       { icon: Users, label: '1 team member' },
       { icon: MessageCircle, label: 'Community support' }
@@ -97,7 +99,8 @@ const plans = {
     description: 'Take your agent to the next level.',
     features: [
       { icon: Database, label: '50 source connections' },
-      { icon: Zap, label: '2K queries / month' },
+      { icon: Zap, label: '500 queries / month' },
+      { icon: Cpu, label: '10M agentic tokens / month' },
       { icon: Zap, label: '100K entities synced / month' },
       { icon: Users, label: '2 team members' },
       { icon: MessageCircle, label: 'Email support' }
@@ -109,7 +112,8 @@ const plans = {
     description: 'For fast-moving teams that need scale and control.',
     features: [
       { icon: Database, label: '1000 source connections' },
-      { icon: Zap, label: '10K queries / month' },
+      { icon: Zap, label: '5K queries / month' },
+      { icon: Cpu, label: '50M agentic tokens / month' },
       { icon: Zap, label: '1M entities synced / month' },
       { icon: Users, label: '10 team members' },
       { icon: MessageCircle, label: 'Dedicated Slack support' },

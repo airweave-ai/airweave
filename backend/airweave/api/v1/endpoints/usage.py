@@ -158,6 +158,7 @@ async def check_action(
             action_type,
             amount=amount,
         )
+
         return schemas.SingleActionCheckResponse(
             allowed=is_allowed, action=action, reason=None, details=None
         )

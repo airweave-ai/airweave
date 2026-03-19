@@ -123,10 +123,16 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     const [apiKey, setApiKey] = useState<string>("YOUR_API_KEY");
     const [showCodeBlock, setShowCodeBlock] = useState(false);
 
-    // Usage limits
-    const [usageAllowed, setUsageAllowed] = useState(true);
-    const [usageCheckDetails, setUsageCheckDetails] = useState<SingleActionCheckResponse | null>(null);
+    // Usage limits — check both queries (instant/classic) and tokens (agentic)
+    const [queriesBlocked, setQueriesBlocked] = useState(false);
+    const [tokensBlocked, setTokensBlocked] = useState(false);
+    const [queriesCheckDetails, setQueriesCheckDetails] = useState<SingleActionCheckResponse | null>(null);
+    const [tokensCheckDetails, setTokensCheckDetails] = useState<SingleActionCheckResponse | null>(null);
     const [isCheckingUsage, setIsCheckingUsage] = useState(true);
+
+    // Derived: is the current tier blocked?
+    const usageAllowed = tier === 'agentic' ? !tokensBlocked : !queriesBlocked;
+    const usageCheckDetails = tier === 'agentic' ? tokensCheckDetails : queriesCheckDetails;
 
     const [transientIssue, setTransientIssue] = useState<{
         message: string;
@@ -196,29 +202,58 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
         try { void checkUsageAllowed(); } catch { void 0; }
     }, [onStreamEventProp, onStreamUpdateProp, onCancel]);
 
-    // Check usage limits — tier-aware (tokens for agentic, queries for instant/classic)
+    // Check usage limits — fetch both queries and tokens status upfront
     const checkUsageAllowed = useCallback(async () => {
         try {
             setIsCheckingUsage(true);
-            const actionToCheck = tier === 'agentic' ? 'tokens' : 'queries';
-            const response = await apiClient.get(`/usage/check-action?action=${actionToCheck}`);
-            if (response.ok) {
-                const data: SingleActionCheckResponse = await response.json();
-                setUsageAllowed(data.allowed);
-                setUsageCheckDetails(data);
+            const [queriesRes, tokensRes] = await Promise.all([
+                apiClient.get('/usage/check-action?action=queries'),
+                apiClient.get('/usage/check-action?action=tokens'),
+            ]);
+
+            if (queriesRes.ok) {
+                const data: SingleActionCheckResponse = await queriesRes.json();
+                setQueriesBlocked(!data.allowed);
+                setQueriesCheckDetails(data);
             } else {
-                setUsageAllowed(true);
-                setUsageCheckDetails(null);
+                setQueriesBlocked(false);
+                setQueriesCheckDetails(null);
+            }
+
+            if (tokensRes.ok) {
+                const data: SingleActionCheckResponse = await tokensRes.json();
+                setTokensBlocked(!data.allowed);
+                setTokensCheckDetails(data);
+            } else {
+                setTokensBlocked(false);
+                setTokensCheckDetails(null);
             }
         } catch {
-            setUsageAllowed(true);
-            setUsageCheckDetails(null);
+            setQueriesBlocked(false);
+            setTokensBlocked(false);
+            setQueriesCheckDetails(null);
+            setTokensCheckDetails(null);
         } finally {
             setIsCheckingUsage(false);
         }
-    }, [tier]);
+    }, []);
 
     useEffect(() => { void checkUsageAllowed(); }, [checkUsageAllowed]);
+
+    // Auto-select an unblocked tier when limits change
+    useEffect(() => {
+        if (isCheckingUsage) return;
+        const currentBlocked = tier === 'agentic' ? tokensBlocked : queriesBlocked;
+        if (!currentBlocked) return;
+
+        // Current tier is blocked — try to switch to an unblocked one
+        if (tokensBlocked && !queriesBlocked) {
+            onTierChange?.('classic');
+        } else if (queriesBlocked && !tokensBlocked) {
+            onTierChange?.('agentic');
+        }
+        // If both are blocked, stay on current tier (everything is disabled anyway)
+    }, [isCheckingUsage, queriesBlocked, tokensBlocked, tier, onTierChange]);
 
     // Main search handler — routes to v2 endpoints based on tier
     const handleSendQuery = useCallback(async () => {
@@ -586,19 +621,22 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         const config = TIER_CONFIG[t];
                                         const Icon = config.icon;
                                         const isActive = tier === t;
+                                        const isTierBlocked = t === 'agentic' ? tokensBlocked : queriesBlocked;
                                         return (
                                             <Tooltip key={t} open={openTooltip === `tier-${t}`}>
                                                 <TooltipTrigger asChild>
                                                     <button
                                                         type="button"
-                                                        onClick={() => onTierChange?.(t)}
+                                                        onClick={() => !isTierBlocked && onTierChange?.(t)}
                                                         onMouseEnter={() => handleTooltipMouseEnter(`tier-${t}`)}
                                                         onMouseLeave={() => handleTooltipMouseLeave(`tier-${t}`)}
                                                         className={cn(
                                                             "h-full px-2 rounded-[4px] transition-all flex items-center justify-center",
-                                                            isActive
-                                                                ? "text-primary bg-primary/10"
-                                                                : "text-muted-foreground hover:text-foreground"
+                                                            isTierBlocked
+                                                                ? "text-muted-foreground/40 cursor-not-allowed"
+                                                                : isActive
+                                                                    ? "text-primary bg-primary/10"
+                                                                    : "text-muted-foreground hover:text-foreground"
                                                         )}
                                                     >
                                                         <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -616,6 +654,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                         <div className={DESIGN_SYSTEM.tooltip.title}>{config.label}</div>
                                                         <p className={DESIGN_SYSTEM.tooltip.description}>{config.tooltip}</p>
                                                         <p className={cn(DESIGN_SYSTEM.tooltip.description, "font-semibold")}>{config.timing}</p>
+                                                        {isTierBlocked && (
+                                                            <p className={cn(DESIGN_SYSTEM.tooltip.description, "text-amber-500")}>
+                                                                {t === 'agentic' ? 'Token' : 'Query'} limit reached. <a href="/organization/settings?tab=billing" className="underline">Upgrade</a>
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 </TooltipContent>
                                             </Tooltip>
