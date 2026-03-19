@@ -341,16 +341,14 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = "";
-            let latestResults: any[] = [];
-            let latestCompletion: string | null = null;
             let requestId: string | null = null;
-            let phase: StreamPhase = "searching";
+            const phase: StreamPhase = "searching";
 
             const emitEvent = (event: SearchEvent) => {
                 try { onStreamEventProp?.(event); } catch { void 0; }
             };
             const emitUpdate = () => {
-                try { onStreamUpdateProp?.({ requestId, results: latestResults, status: phase }); } catch { void 0; }
+                try { onStreamUpdateProp?.({ requestId, status: phase }); } catch { void 0; }
             };
 
             while (true) {
@@ -378,29 +376,20 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
                     emitEvent(event as SearchEvent);
 
-                    switch (event.type as SearchEvent['type']) {
-                        case 'connected':
+                    switch (event.type) {
+                        case 'started':
                             requestId = event.request_id || requestId;
                             emitUpdate();
                             break;
-                        case 'results':
-                            if (Array.isArray(event.results)) latestResults = event.results;
-                            emitUpdate();
-                            break;
-                        case 'completion_done':
-                            if (typeof event.text === 'string') latestCompletion = event.text;
-                            phase = 'answering';
-                            emitUpdate();
+                        case 'thinking':
+                        case 'tool_call':
+                        case 'reranking':
+                            // Events flow to trace via emitEvent above
                             break;
                         case 'error': {
                             const endTime = performance.now();
                             const responseTime = Math.round(endTime - startTime);
                             const errorMessage = event.message || 'Streaming error';
-                            if (event.transient === true) {
-                                onSearch({ error: "Something went wrong, please try again.", errorIsTransient: true }, currentResponseType, responseTime);
-                                setTransientIssue({ message: errorMessage, detail: event.detail });
-                                throw new TransientStreamError(errorMessage);
-                            }
                             setTransientIssue(null);
                             onSearch({ error: errorMessage, errorIsTransient: false }, currentResponseType, responseTime);
                             throw new Error(errorMessage);
@@ -408,22 +397,10 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                         case 'done': {
                             const endTime = performance.now();
                             const responseTime = Math.round(endTime - startTime);
-                            let finalResponse;
-                            if (event.response) {
-                                finalResponse = {
-                                    completion: event.response.answer?.text || null,
-                                    citations: event.response.answer?.citations || [],
-                                    results: event.response.results || [],
-                                    responseTime,
-                                };
-                            } else {
-                                finalResponse = {
-                                    completion: latestCompletion || null,
-                                    results: latestResults || [],
-                                    responseTime,
-                                };
-                            }
-                            onSearch(finalResponse, currentResponseType, responseTime);
+                            onSearch({
+                                results: event.results || [],
+                                responseTime,
+                            }, currentResponseType, responseTime);
                             break;
                         }
                         default:

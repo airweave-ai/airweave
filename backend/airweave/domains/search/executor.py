@@ -8,6 +8,7 @@ applies filters in-memory, and merges results using Reciprocal Rank Fusion.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -88,9 +89,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         complete_plan = SearchPlanBuilder.build(plan, user_filter)
 
         # 2. Discover federated sources for this collection
-        federated_sources = await self._discover_federated_sources(
-            db, ctx, collection_readable_id
-        )
+        federated_sources = await self._discover_federated_sources(db, ctx, collection_readable_id)
 
         # 3. Adjust limit/offset for RRF pagination (if federated sources exist)
         original_limit = complete_plan.limit
@@ -106,9 +105,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         # 4. Run vector DB search and federated search in parallel
         fetch_limit = original_offset + original_limit
 
-        vector_task = asyncio.create_task(
-            self._execute_vector_search(complete_plan, collection_id)
-        )
+        vector_task = asyncio.create_task(self._execute_vector_search(complete_plan, collection_id))
 
         fed_task = None
         if federated_sources:
@@ -130,15 +127,11 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
 
         # 6. We over-fetched from vector DB (limit=offset+limit, offset=0) for RRF.
         #    Filter federated results in-memory and merge, or slice vector-only.
-        fed_filtered = self._apply_filters_in_memory(
-            fed_results, complete_plan.filter_groups
-        )
+        fed_filtered = self._apply_filters_in_memory(fed_results, complete_plan.filter_groups)
 
         if fed_filtered:
             merged = self._merge_with_rrf(vector_results, fed_filtered)
-            return SearchResults(
-                results=merged[original_offset : original_offset + original_limit]
-            )
+            return SearchResults(results=merged[original_offset : original_offset + original_limit])
 
         # All federated results filtered out — slice vector results to original window
         return SearchResults(
@@ -217,9 +210,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
                 )
                 federated_sources.append(source_instance)
             except Exception as e:
-                ctx.logger.warning(
-                    f"[FederatedSearch] Failed to instantiate {sc.short_name}: {e}"
-                )
+                ctx.logger.warning(f"[FederatedSearch] Failed to instantiate {sc.short_name}: {e}")
 
         return federated_sources
 
@@ -455,6 +446,24 @@ def _evaluate_scalar(value: Any, op: FilterOperator, target: Any) -> bool:  # no
         # None fails all comparisons except not_equals and not_in
         return op in (FilterOperator.NOT_EQUALS, FilterOperator.NOT_IN)
 
+    # Try datetime comparison for ordering ops (string comparison breaks
+    # because str(datetime) uses space separator while ISO uses 'T')
+    cmp_value: Any = value
+    cmp_target: Any = target
+    if op in (
+        FilterOperator.GREATER_THAN,
+        FilterOperator.LESS_THAN,
+        FilterOperator.GREATER_THAN_OR_EQUAL,
+        FilterOperator.LESS_THAN_OR_EQUAL,
+    ):
+        parsed = _try_parse_datetimes(value, target)
+        if parsed:
+            cmp_value, cmp_target = parsed
+        else:
+            cmp_value, cmp_target = str(value), str(target)
+    else:
+        cmp_value, cmp_target = str(value), str(target)
+
     sv = str(value)
 
     if op == FilterOperator.EQUALS:
@@ -468,15 +477,41 @@ def _evaluate_scalar(value: Any, op: FilterOperator, target: Any) -> bool:  # no
     if op == FilterOperator.NOT_IN:
         return sv not in [str(t) for t in target] if isinstance(target, list) else True
     if op == FilterOperator.GREATER_THAN:
-        return sv > str(target)
+        return cmp_value > cmp_target
     if op == FilterOperator.LESS_THAN:
-        return sv < str(target)
+        return cmp_value < cmp_target
     if op == FilterOperator.GREATER_THAN_OR_EQUAL:
-        return sv >= str(target)
+        return cmp_value >= cmp_target
     if op == FilterOperator.LESS_THAN_OR_EQUAL:
-        return sv <= str(target)
+        return cmp_value <= cmp_target
 
     return False
+
+
+def _try_parse_datetimes(value: Any, target: Any) -> tuple["datetime", "datetime"] | None:
+    """Try to parse both value and target as datetimes for comparison.
+
+    Returns a (datetime, datetime) tuple if both parse successfully, None otherwise.
+    """
+
+    def _parse(v: Any) -> datetime | None:
+        if isinstance(v, datetime):
+            return v
+        s = str(v).strip("'\"")
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(s)
+            # Make naive for comparison if needed
+            return parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+        except (ValueError, AttributeError):
+            return None
+
+    pv = _parse(value)
+    pt = _parse(target)
+    if pv is not None and pt is not None:
+        return (pv, pt)
+    return None
 
 
 def _matches_group(result: SearchResult, group: FilterGroup) -> bool:
