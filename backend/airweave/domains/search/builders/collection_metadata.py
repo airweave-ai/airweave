@@ -34,6 +34,10 @@ class CollectionMetadataBuilder:
             "A cloud platform that blends the ease of a spreadsheet with the power of "
             "a database for organizing data, workflows, and custom apps."
         ),
+        "apollo": (
+            "A sales intelligence and engagement platform for finding leads, automating "
+            "outreach, and managing B2B sales pipelines."
+        ),
         "asana": (
             "A work and project management tool for teams to organize, track, and "
             "manage tasks and projects collaboratively."
@@ -50,20 +54,37 @@ class CollectionMetadataBuilder:
             "A cloud content management and file sharing service that enables secure "
             "storage and collaboration."
         ),
+        "calcom": (
+            "An open-source scheduling platform for booking meetings based on "
+            "real-time calendar availability."
+        ),
         "clickup": (
             "An all-in-one productivity and project management platform combining "
             "tasks, docs, goals, and calendars."
+        ),
+        "coda": (
+            "An all-in-one collaborative workspace that combines documents, spreadsheets, "
+            "and databases into one flexible platform."
         ),
         "confluence": (
             "A team collaboration and documentation platform for creating, organizing, "
             "and storing content in a shared workspace."
         ),
+        "document360": (
+            "An AI-powered knowledge base platform for creating, organizing, and "
+            "publishing documentation for customers and internal teams."
+        ),
         "dropbox": (
             "A cloud storage and file-sync service for storing, sharing, and accessing "
             "files across devices."
         ),
-        "excel": (
-            "Microsoft's spreadsheet application for organizing, analyzing, and visualizing data."
+        "fireflies": (
+            "An AI meeting assistant that records, transcribes, and summarizes "
+            "conversations from video calls."
+        ),
+        "freshdesk": (
+            "An AI-powered customer support platform with ticketing, automation, and "
+            "multi-channel helpdesk tools."
         ),
         "github": (
             "A platform for hosting Git repositories and collaborating on software "
@@ -93,6 +114,10 @@ class CollectionMetadataBuilder:
         "hubspot": (
             "An integrated CRM platform that centralizes customer data, marketing, "
             "sales, and service tools."
+        ),
+        "intercom": (
+            "A customer messaging platform combining live chat, email, in-app messaging, "
+            "and AI-powered support in one inbox."
         ),
         "jira": (
             "A project and issue tracking tool used for planning, tracking, and "
@@ -129,21 +154,40 @@ class CollectionMetadataBuilder:
             "A cloud-based sales CRM tool focused on pipeline management and "
             "automating sales processes."
         ),
-        "sales_force": (
+        "powerpoint": (
+            "Microsoft's presentation application for creating and delivering slide decks."
+        ),
+        "salesforce": (
             "A leading enterprise CRM platform for managing sales, marketing, service, "
             "and customer data at scale."
+        ),
+        "servicenow": (
+            "A cloud-based IT service management platform for automating workflows, "
+            "incident management, and enterprise operations."
         ),
         "sharepoint": (
             "Microsoft's content management and intranet platform for storing, "
             "organizing, and sharing information."
         ),
+        "sharepoint_online": (
+            "The cloud-hosted version of Microsoft SharePoint for content management, "
+            "collaboration, and intranet sites."
+        ),
         "shopify": (
             "An e-commerce platform for building online stores and managing products, "
             "payments, and orders."
         ),
+        "slab": (
+            "A modern knowledge base and team wiki for documenting and sharing "
+            "information with powerful search and integrations."
+        ),
         "slack": (
             "A team communication platform featuring channels, direct messages, and "
             "integrations for real-time collaboration."
+        ),
+        "slite": (
+            "An AI-powered knowledge base platform for creating, organizing, and "
+            "finding team documentation."
         ),
         "snapshot": "Snapshot source that generates data from ARF, simulating the source.",
         "stripe": (
@@ -171,6 +215,10 @@ class CollectionMetadataBuilder:
         "zoho_crm": (
             "A cloud-based CRM application for managing sales processes, marketing "
             "activities, and customer support."
+        ),
+        "zoom": (
+            "A video conferencing and communications platform for virtual meetings, "
+            "webinars, and team collaboration."
         ),
         # Enron email corpus
         "enron": (
