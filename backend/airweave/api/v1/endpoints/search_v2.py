@@ -237,6 +237,9 @@ async def stream_agentic_search(
 
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
 
+    # Subscribe first so we don't miss the started event
+    ps = await pubsub.subscribe("agentic_search_v2", ctx.request_id)
+
     # Emit started event — flows through relay to PubSub as SSE "started"
     await event_bus.publish(
         SearchStartedEvent(
@@ -251,7 +254,6 @@ async def stream_agentic_search(
         )
     )
 
-    ps = await pubsub.subscribe("agentic_search_v2", ctx.request_id)
     search_task = asyncio.create_task(
         _run_agentic_search_v2(service, ctx, readable_id, request, pubsub)
     )
@@ -296,6 +298,8 @@ async def admin_stream_agentic_search(
         override_llm = create_llm_from_override(request.model)
         effective_service = service.with_llm(override_llm)  # type: ignore[union-attr]
 
+    ps = await pubsub.subscribe("agentic_search_v2", ctx.request_id)
+
     await event_bus.publish(
         SearchStartedEvent(
             organization_id=ctx.organization.id,
@@ -309,7 +313,6 @@ async def admin_stream_agentic_search(
         )
     )
 
-    ps = await pubsub.subscribe("agentic_search_v2", ctx.request_id)
     search_task = asyncio.create_task(
         _run_agentic_search_v2(effective_service, ctx, readable_id, request, pubsub)
     )

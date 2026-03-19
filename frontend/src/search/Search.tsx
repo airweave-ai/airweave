@@ -76,6 +76,7 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
                     onCancel={() => {
                         setSearchResponse((prev: any) => prev || { results: [] });
                         setIsSearching(false);
+                        setEvents(prev => [...prev, { type: 'cancelled' as const }]);
                     }}
                     onStreamEvent={(event: any) => {
                         setEvents(prev => [...prev, event]);

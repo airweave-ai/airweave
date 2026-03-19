@@ -30,7 +30,7 @@ interface SearchResponseProps {
 
 // ── Trace helpers ────────────────────────────────────────────────────
 
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const SPINNER_FRAMES = ['≋', '≈', '∿', '∼', '~', '∼', '∿', '≈'];
 
 const FIELD_SHORT_NAMES: Record<string, string> = {
     'airweave_system_metadata.source_name': 'source',
@@ -232,7 +232,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     const [spinnerFrame, setSpinnerFrame] = useState(0);
     useEffect(() => {
         if (!isSearching) return;
-        const interval = setInterval(() => setSpinnerFrame(f => (f + 1) % SPINNER_FRAMES.length), 80);
+        const interval = setInterval(() => setSpinnerFrame(f => (f + 1) % SPINNER_FRAMES.length), 250);
         return () => clearInterval(interval);
     }, [isSearching]);
 
@@ -709,6 +709,16 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 );
                 continue;
             }
+
+            // ── Cancelled ──
+            if ((event as any).type === 'cancelled') {
+                rows.push(
+                    <div key={`cancelled-${i}`} className={cn("py-0.5 text-[10px] font-mono", muted)}>
+                        cancelled
+                    </div>
+                );
+                continue;
+            }
         }
 
         return rows;
@@ -795,8 +805,8 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             className={className}
         >
             <div className="flex flex-col">
-                {/* Error Display */}
-                {hasError && (
+                {/* Error Display — only for non-trace tiers (instant/classic) */}
+                {hasError && !showTrace && (
                     <div className={cn(
                         "border-t p-4",
                         isTransientError
@@ -815,7 +825,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 )}
 
                 {/* Tab Navigation */}
-                {!hasError && (
+                {(!hasError || showTrace) && (
                     <div className={cn(
                         "flex items-center border-t",
                         isDark ? "border-gray-800/50 bg-gray-900/70" : "border-gray-200/50 bg-gray-50"
@@ -877,7 +887,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 )}
 
                 {/* Tab Content */}
-                {!hasError && (
+                {(!hasError || showTrace) && (
                     <div className={cn("border-t relative", isDark ? "border-gray-800/50" : "border-gray-200/50")}>
 
                         {/* ── Trace Tab ── */}

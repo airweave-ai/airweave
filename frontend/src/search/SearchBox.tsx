@@ -325,7 +325,18 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                     return;
                 }
 
-                throw new Error(errorText || `Request failed: ${response.status} ${response.statusText}`);
+                // Try to extract a meaningful error message from the response
+                let errorMessage = `Request failed: ${response.status} ${response.statusText}`;
+                try {
+                    const parsed = JSON.parse(errorText);
+                    if (parsed.detail) errorMessage = String(parsed.detail);
+                    else if (parsed.message) errorMessage = String(parsed.message);
+                } catch {
+                    if (errorText) errorMessage = errorText;
+                }
+                const endTime = performance.now();
+                onSearch({ error: errorMessage, errorIsTransient: false, status: response.status }, currentResponseType, Math.round(endTime - startTime));
+                return;
             }
 
             // For instant and classic, the response is JSON (not streaming)
@@ -389,10 +400,12 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                         case 'error': {
                             const endTime = performance.now();
                             const responseTime = Math.round(endTime - startTime);
-                            const errorMessage = event.message || 'Streaming error';
+                            const errorMessage = event.message || 'Search failed';
                             setTransientIssue(null);
                             onSearch({ error: errorMessage, errorIsTransient: false }, currentResponseType, responseTime);
-                            throw new Error(errorMessage);
+                            // Don't throw — the error is already set on searchResponse.
+                            // Breaking out of the read loop is handled by the reader finishing.
+                            return;
                         }
                         case 'done': {
                             const endTime = performance.now();

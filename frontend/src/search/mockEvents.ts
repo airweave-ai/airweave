@@ -437,6 +437,32 @@ export const MOCK_EVENTS: SearchEvent[] = [
     },
 ];
 
+// ── Error scenario: search fails mid-way ──
+export const MOCK_EVENTS_ERROR: SearchEvent[] = [
+    MOCK_EVENTS[0], // started
+    MOCK_EVENTS[1], // thinking
+    MOCK_EVENTS[2], // hybrid search
+    MOCK_EVENTS[3], // thinking
+    MOCK_EVENTS[4], // read
+    {
+        type: 'error',
+        message: 'LLM provider exhausted: together/zai-glm-5 failed after 4 attempts: Rate limit exceeded (429). No fallback providers available.',
+        duration_ms: 8420,
+    },
+];
+
+// ── Cancelled scenario: user cancels during search ──
+export const MOCK_EVENTS_CANCELLED: SearchEvent[] = [
+    MOCK_EVENTS[0], // started
+    MOCK_EVENTS[1], // thinking
+    MOCK_EVENTS[2], // hybrid search
+    MOCK_EVENTS[3], // thinking
+    MOCK_EVENTS[4], // read
+    MOCK_EVENTS[5], // collect
+    MOCK_EVENTS[6], // semantic search
+    { type: 'cancelled' } as any,
+];
+
 /**
  * Inject mock events into the trace with realistic timing.
  * Each event is delayed to simulate the streaming experience.
