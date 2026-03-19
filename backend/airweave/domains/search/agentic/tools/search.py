@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from airweave.api.context import ApiContext
 from airweave.domains.search.agentic.state import AgentState
 from airweave.domains.search.agentic.tools.types import RenderedResult, SearchToolResult
 from airweave.domains.search.protocols import SearchPlanExecutorProtocol
@@ -19,7 +22,7 @@ SEARCH_TOOL: dict[str, Any] = {
     "function": {
         "name": "search",
         "description": (
-            "Search the vector database for relevant entities. "
+            "Search the collection for relevant entities. "
             "Use different queries, expansions, retrieval strategies "
             "(semantic, keyword, hybrid), limits and filters to refine results."
         ),
@@ -36,11 +39,17 @@ class SearchTool:
         executor: SearchPlanExecutorProtocol,
         user_filter: list[FilterGroup],
         collection_id: str,
+        db: AsyncSession,
+        ctx: ApiContext,
+        collection_readable_id: str,
     ) -> None:
-        """Initialize with executor, user filter, and collection ID."""
+        """Initialize with executor, user filter, collection ID, and request context."""
         self._executor = executor
         self._user_filter = user_filter
         self._collection_id = collection_id
+        self._db = db
+        self._ctx = ctx
+        self._collection_readable_id = collection_readable_id
 
     async def execute(
         self,
@@ -54,6 +63,9 @@ class SearchTool:
             plan=plan,
             user_filter=self._user_filter,
             collection_id=self._collection_id,
+            db=self._db,
+            ctx=self._ctx,
+            collection_readable_id=self._collection_readable_id,
         )
 
         # Track new results in state

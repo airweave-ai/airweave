@@ -31,8 +31,13 @@ class SearchSystemMetadata(BaseModel):
     entity_type: str = Field(
         ..., description="Type of the entity this entity represents in the source."
     )
-    sync_id: str = Field(..., description="ID of the sync this entity belongs to.")
-    sync_job_id: str = Field(..., description="ID of the sync job this entity belongs to.")
+    sync_id: Optional[str] = Field(
+        default=None, description="ID of the sync this entity belongs to (None for federated)."
+    )
+    sync_job_id: Optional[str] = Field(
+        default=None,
+        description="ID of the sync job this entity belongs to (None for federated).",
+    )
 
     chunk_index: int = Field(..., description="Index of the chunk in the file.")
     original_entity_id: str = Field(..., description="Original entity ID")
@@ -42,11 +47,17 @@ class SearchSystemMetadata(BaseModel):
         lines = [
             f"- Source: {self.source_name}",
             f"- Entity Type: {self.entity_type}",
-            f"- Sync ID: {self.sync_id}",
-            f"- Sync Job ID: {self.sync_job_id}",
-            f"- Chunk Index: {self.chunk_index}",
-            f"- Original Entity ID: {self.original_entity_id}",
         ]
+        if self.sync_id is not None:
+            lines.append(f"- Sync ID: {self.sync_id}")
+        if self.sync_job_id is not None:
+            lines.append(f"- Sync Job ID: {self.sync_job_id}")
+        lines.extend(
+            [
+                f"- Chunk Index: {self.chunk_index}",
+                f"- Original Entity ID: {self.original_entity_id}",
+            ]
+        )
         return "\n".join(lines)
 
 

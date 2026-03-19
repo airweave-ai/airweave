@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from airweave.domains.search.protocols import SearchPlanExecutorProtocol
 from airweave.domains.search.types import FilterGroup, SearchPlan, SearchResults
 
@@ -22,6 +24,9 @@ class FakeSearchPlanExecutor(SearchPlanExecutorProtocol):
         plan: SearchPlan,
         user_filter: list[FilterGroup],
         collection_id: str,
+        db: Any = None,
+        ctx: Any = None,
+        collection_readable_id: str = "",
     ) -> SearchResults:
         """Record the call and return seeded result."""
         self._calls.append(("execute", plan, user_filter, collection_id))

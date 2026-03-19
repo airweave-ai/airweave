@@ -79,3 +79,17 @@ by system IDs or JSON structure. For exact matching, keyword search uses the ful
 - **Semantic search** matches against `textual_representation` only. Use for meaning-based
   queries and conceptually related content.
 - **Hybrid search** combines both.
+
+### Federated Sources
+
+Some sources (marked as "federated" in the collection metadata) cannot be synced and
+indexed due to API limitations. Instead, they are searched in real-time via their native
+search API at query time using the primary query as a keyword search.
+
+Federated results are automatically merged with vector database results. Filters, limit,
+and offset all work normally on federated results. The only difference is that retrieval
+strategy and query variations don't affect federated sources — they are always searched
+via keyword matching.
+
+Since federated data is not synced, fields like `sync_id` and `chunk_index` will be empty
+on federated results.

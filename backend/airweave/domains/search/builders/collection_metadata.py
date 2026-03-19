@@ -288,11 +288,15 @@ class CollectionMetadataBuilder:
                     )
                 )
 
+            # Check if this source uses federated search
+            entry = self._source_registry.get(sc.short_name)
+
             sources.append(
                 SourceMetadata(
                     short_name=sc.short_name,
                     description=self._get_source_description(sc.short_name),
                     entity_types=entity_types,
+                    federated=entry.federated_search,
                 )
             )
 

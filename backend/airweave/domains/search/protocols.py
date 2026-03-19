@@ -24,9 +24,10 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class SearchPlanExecutorProtocol(Protocol):
-    """Executes a search plan against the vector database.
+    """Executes a search plan against the vector database and federated sources.
 
-    Shared pipeline: merge filters -> embed -> compile -> execute.
+    Shared pipeline: merge filters -> embed -> compile -> execute (vector DB)
+    -> discover federated sources -> search -> filter in-memory -> RRF merge.
     Used by all three tiers (instant, classic, agentic).
     """
 
@@ -35,6 +36,9 @@ class SearchPlanExecutorProtocol(Protocol):
         plan: SearchPlan,
         user_filter: list[FilterGroup],
         collection_id: str,
+        db: AsyncSession,
+        ctx: ApiContext,
+        collection_readable_id: str,
     ) -> SearchResults:
         """Execute a search plan and return results."""
         ...

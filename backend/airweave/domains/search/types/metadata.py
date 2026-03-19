@@ -34,12 +34,25 @@ class SourceMetadata(BaseModel):
     entity_types: list[EntityTypeMetadata] = Field(
         ..., description="Entity types with their fields and counts."
     )
+    federated: bool = Field(
+        default=False,
+        description="Whether this source uses federated (real-time) search instead of syncing.",
+    )
 
     def to_md(self) -> str:
         """Convert source metadata to compact markdown format.
 
         Skips entity types with 0 entities to reduce prompt size.
+        Federated sources get a distinct rendering since they have no entity counts.
         """
+        if self.federated:
+            return (
+                f"### {self.short_name} (federated — searched in real-time)\n"
+                f"{self.description}\n\n"
+                f"*This source is searched automatically via keyword query. "
+                f"Filters work normally. No entity counts available.*"
+            )
+
         # Only show entity types that actually have entities
         non_empty = [et for et in self.entity_types if et.count > 0]
         if not non_empty:

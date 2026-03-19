@@ -93,6 +93,9 @@ class InstantSearchService(InstantSearchServiceProtocol):
             plan=plan,
             user_filter=request.filter or [],
             collection_id=str(collection.id),
+            db=db,
+            ctx=ctx,
+            collection_readable_id=readable_id,
         )
 
         duration_ms = int((time.monotonic() - start_time) * 1000)

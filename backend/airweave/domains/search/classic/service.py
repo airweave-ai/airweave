@@ -129,6 +129,9 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
             plan=plan,
             user_filter=request.filter or [],
             collection_id=str(collection.id),
+            db=db,
+            ctx=ctx,
+            collection_readable_id=readable_id,
         )
 
         # 6. Optional rerank

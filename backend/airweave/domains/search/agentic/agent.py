@@ -181,7 +181,9 @@ class Agent:
         thinking_enabled = request.thinking
 
         # Construct per-request tools
-        dispatcher = self._build_dispatcher(collection_id, user_filter)
+        dispatcher = self._build_dispatcher(
+            collection_id, user_filter, db, ctx, readable_id
+        )
 
         context_mgr = ContextManager(
             tokenizer=self._tokenizer,
@@ -501,7 +503,14 @@ class Agent:
             elif tc.name in (ToolName.READ, ToolName.GET_PARENT):
                 new_read_ids.add(tc.id)
 
-    def _build_dispatcher(self, collection_id: str, user_filter: list) -> ToolDispatcher:
+    def _build_dispatcher(
+        self,
+        collection_id: str,
+        user_filter: list,
+        db: AsyncSession,
+        ctx: ApiContext,
+        collection_readable_id: str,
+    ) -> ToolDispatcher:
         """Construct tools and dispatcher for this request."""
         return ToolDispatcher(
             {
@@ -509,6 +518,9 @@ class Agent:
                     executor=self._executor,
                     user_filter=user_filter,
                     collection_id=collection_id,
+                    db=db,
+                    ctx=ctx,
+                    collection_readable_id=collection_readable_id,
                 ),
                 ToolName.READ: ReadTool(
                     vector_db=self._vector_db,
