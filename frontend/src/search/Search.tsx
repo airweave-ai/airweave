@@ -4,9 +4,6 @@ import { useTheme } from "@/lib/theme-provider";
 import { SearchBox, type SearchTier } from "@/search/SearchBox";
 import { SearchResponse } from "@/search/SearchResponse";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
-import { useOrganizationStore } from "@/lib/stores/organizations";
-import { FeatureFlags } from "@/lib/constants/feature-flags";
-
 interface SearchProps {
     collectionReadableId: string;
     disabled?: boolean;
@@ -20,8 +17,6 @@ interface SearchProps {
 export const Search = ({ collectionReadableId, disabled = false }: SearchProps) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
-
-    const agenticEnabled = useOrganizationStore((state) => state.hasFeature(FeatureFlags.AGENTIC_SEARCH));
 
     // Search tier
     const [tier, setTier] = useState<SearchTier>("classic");
@@ -67,7 +62,7 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
                 <SearchBox
                     collectionId={collectionReadableId}
                     disabled={disabled}
-                    agenticEnabled={agenticEnabled}
+                    agenticEnabled
                     tier={tier}
                     onTierChange={setTier}
                     onSearch={handleSearchResult}

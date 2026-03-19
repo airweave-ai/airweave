@@ -9,17 +9,18 @@ Services emit SearchCompletedEvent/SearchFailedEvent (they own the execution).
 import asyncio
 import json
 
-from fastapi import Depends, HTTPException, Path
+from fastapi import Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
+from airweave.adapters.llm.override import create_llm_from_override
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.api.v1.endpoints.admin import _require_admin
 from airweave.core.events.search import SearchStartedEvent, SearchTier
 from airweave.core.protocols import EventBus, PubSub
-from airweave.core.shared_models import FeatureFlag
 from airweave.domains.search.protocols import (
     AgenticSearchServiceProtocol,
     ClassicSearchServiceProtocol,
@@ -112,11 +113,6 @@ async def agentic_search(
     service: AgenticSearchServiceProtocol = Inject(AgenticSearchServiceProtocol),
 ) -> SearchV2Response:
     """Agentic search — full agent loop with tool calling."""
-    if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
-        raise HTTPException(
-            status_code=403,
-            detail="AGENTIC_SEARCH feature not enabled for this organization",
-        )
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.TOKENS)
 
     await event_bus.publish(
@@ -231,12 +227,6 @@ async def stream_agentic_search(
     service: AgenticSearchServiceProtocol = Inject(AgenticSearchServiceProtocol),
 ) -> StreamingResponse:
     """Streaming agentic search via Server-Sent Events."""
-    if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
-        raise HTTPException(
-            status_code=403,
-            detail="AGENTIC_SEARCH feature not enabled for this organization",
-        )
-
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.TOKENS)
 
     # Subscribe first so we don't miss the started event
@@ -285,19 +275,12 @@ async def admin_stream_agentic_search(
     service: AgenticSearchServiceProtocol = Inject(AgenticSearchServiceProtocol),
 ) -> StreamingResponse:
     """Admin streaming agentic search with optional model override (for evals)."""
-    if not ctx.has_feature(FeatureFlag.AGENTIC_SEARCH):
-        raise HTTPException(
-            status_code=403,
-            detail="AGENTIC_SEARCH feature not enabled for this organization",
-        )
-
+    _require_admin(ctx)
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.TOKENS)
 
     # Build the effective service — with model override if specified
     effective_service = service
     if request.model:
-        from airweave.adapters.llm.override import create_llm_from_override
-
         override_llm = create_llm_from_override(request.model)
         effective_service = service.with_llm(override_llm)  # type: ignore[union-attr]
 
