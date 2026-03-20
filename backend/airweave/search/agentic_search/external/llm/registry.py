@@ -130,6 +130,20 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             reasoning=ReasoningConfig(param_name="_noop", param_value=True),
         ),
     },
+    LLMProvider.MINIMAX: {
+        LLMModel.MINIMAX_M2_7: LLMModelSpec(
+            api_model_name="MiniMax-M2.7",
+            context_window=1_000_000,
+            max_output_tokens=128_000,
+            # MiniMax tokenizer is undocumented; o200k_harmony is a reasonable
+            # approximation for budget estimation purposes.
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            rate_limit_rpm=60,
+            rate_limit_tpm=1_000_000,
+            reasoning=ReasoningConfig(param_name="_noop", param_value=True),
+        ),
+    },
 }
 
 
@@ -139,6 +153,7 @@ PROVIDER_API_KEY_SETTINGS: dict[LLMProvider, str] = {
     LLMProvider.CEREBRAS: "CEREBRAS_API_KEY",
     LLMProvider.GROQ: "GROQ_API_KEY",
     LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
+    LLMProvider.MINIMAX: "MINIMAX_API_KEY",
 }
 
 

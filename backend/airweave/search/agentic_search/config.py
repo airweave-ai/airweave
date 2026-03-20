@@ -18,6 +18,7 @@ class LLMProvider(str, Enum):
     CEREBRAS = "cerebras"
     GROQ = "groq"
     ANTHROPIC = "anthropic"
+    MINIMAX = "minimax"
 
 
 class LLMModel(str, Enum):
@@ -31,6 +32,7 @@ class LLMModel(str, Enum):
     GPT_OSS_120B = "gpt-oss-120b"
     ZAI_GLM_4_7 = "zai-glm-4.7"
     CLAUDE_SONNET_4_5 = "claude-sonnet-4.5"
+    MINIMAX_M2_7 = "minimax-m2.7"
 
 
 # --- Tokenizer ---
@@ -78,6 +80,7 @@ class AgenticSearchConfig:
         (LLMProvider.CEREBRAS, LLMModel.ZAI_GLM_4_7),
         (LLMProvider.GROQ, LLMModel.GPT_OSS_120B),
         (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_5),
+        (LLMProvider.MINIMAX, LLMModel.MINIMAX_M2_7),
     ]
 
     # Tokenizer

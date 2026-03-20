@@ -165,6 +165,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: Optional[str] = None
     COHERE_API_KEY: Optional[str] = None
     CEREBRAS_API_KEY: Optional[str] = None
+    MINIMAX_API_KEY: Optional[str] = None
     AZURE_KEYVAULT_NAME: Optional[str] = None
 
     # Docling OCR fallback service (None = disabled)

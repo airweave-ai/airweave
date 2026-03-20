@@ -248,6 +248,11 @@ class AgenticSearchServices:
 
             return AnthropicLLM(model_spec=model_spec, tokenizer=tokenizer)
 
+        if provider == LLMProvider.MINIMAX:
+            from airweave.search.agentic_search.external.llm.minimax import MiniMaxLLM
+
+            return MiniMaxLLM(model_spec=model_spec, tokenizer=tokenizer)
+
         raise ValueError(f"Unknown LLM provider: {provider}")
 
     @staticmethod
