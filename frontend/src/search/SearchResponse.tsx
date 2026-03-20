@@ -18,6 +18,7 @@ import { DESIGN_SYSTEM } from '@/lib/design-system';
 import { CollapsibleCard } from '@/components/ui/CollapsibleCard';
 import type { SearchEvent } from '@/search/types';
 import { EntityResultCard } from './EntityResultCard';
+import { StreamingSentences } from './StreamingSentences';
 
 interface SearchResponseProps {
     searchResponse: any;
@@ -29,8 +30,6 @@ interface SearchResponseProps {
 }
 
 // ── Trace helpers ────────────────────────────────────────────────────
-
-const SPINNER_FRAMES = ['≋', '≈', '∿', '∼', '~', '∼', '∿', '≈'];
 
 const FIELD_SHORT_NAMES: Record<string, string> = {
     'airweave_system_metadata.source_name': 'source',
@@ -228,14 +227,6 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
         }, 150);
     }, [isDark]);
 
-    // ── Spinner ──────────────────────────────────────────────────────
-    const [spinnerFrame, setSpinnerFrame] = useState(0);
-    useEffect(() => {
-        if (!isSearching) return;
-        const interval = setInterval(() => setSpinnerFrame(f => (f + 1) % SPINNER_FRAMES.length), 250);
-        return () => clearInterval(interval);
-    }, [isSearching]);
-
     // ── Expandable filters ───────────────────────────────────────────
     const [expandedFilters, setExpandedFilters] = useState<Set<number>>(new Set());
     useEffect(() => {
@@ -256,19 +247,14 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
 
         const muted = isDark ? 'text-gray-500' : 'text-gray-400';
         const subtle = isDark ? 'text-gray-400' : 'text-gray-500';
+        const thinkingBody = isDark ? 'text-gray-300' : 'text-gray-600';
+        let hasEmittedFirstThinking = false;
 
         for (let i = 0; i < events.length; i++) {
             const event = events[i] as any;
 
             // ── Started ──
-            if (event.type === 'started') {
-                rows.push(
-                    <div key={`started-${i}`} className={cn("py-0.5 text-[10px] font-mono", muted)}>
-                        search started
-                    </div>
-                );
-                continue;
-            }
+            if (event.type === 'started') continue;
 
             // ── Thinking ──
             if (event.type === 'thinking') {
@@ -277,19 +263,37 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 const tokens = (diag?.prompt_tokens || diag?.completion_tokens)
                     ? `${diag.prompt_tokens.toLocaleString()}→${diag.completion_tokens.toLocaleString()} tokens`
                     : null;
+                const isLatestEvent = i === events.length - 1;
                 if (text || tokens) {
+                    if (hasEmittedFirstThinking) {
+                        rows.push(
+                            <div key={`iter-sep-${i}`} className="pt-2 pb-0.5">
+                                <div className={cn("border-t", isDark ? "border-gray-800/30" : "border-gray-200/40")} />
+                            </div>
+                        );
+                    }
+                    hasEmittedFirstThinking = true;
                     rows.push(
-                        <div key={`thinking-${i}`} className="animate-fade-in py-1">
+                        <div key={`thinking-${i}`} className="animate-fade-in pt-1 pb-2.5 flex gap-2">
+                            <div className={cn("mt-[5px] h-1.5 w-1.5 rounded-full shrink-0", isDark ? "bg-gray-500" : "bg-gray-400")} />
+                            <div className="flex-1 min-w-0">
                             <div className={cn("flex items-baseline gap-3 text-[10px] font-mono", muted)}>
-                                <span>thinking</span>
-                                <span className="tabular-nums">{formatDuration(event.duration_ms)}</span>
-                                {tokens && <span className="tabular-nums">{tokens}</span>}
+                                {isLatestEvent ? (
+                                    <span>Thinking</span>
+                                ) : (
+                                    <span>Thought for {formatDuration(event.duration_ms)}</span>
+                                )}
+                                {!isLatestEvent && tokens && <span className="tabular-nums">{tokens}</span>}
                             </div>
                             {text && (
-                                <div className={cn("text-[10px] leading-relaxed", muted)}>
-                                    {text}
+                                <div className={cn("text-[10px] leading-relaxed font-mono", thinkingBody)}>
+                                    <StreamingSentences
+                                        text={text}
+                                        animate={i === events.length - 1}
+                                    />
                                 </div>
                             )}
+                            </div>
                         </div>
                     );
                 }
@@ -311,21 +315,24 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 // Handle errored tool calls
                 if (stats.error) {
                     rows.push(
-                        <div key={`tool-${i}`} className="animate-fade-in py-0.5 font-mono">
+                        <div key={`tool-${i}`} className="animate-fade-in py-0.5 font-mono flex gap-2">
+                            <div className={cn("mt-[5px] h-1.5 w-1.5 rounded-full shrink-0", isDark ? "bg-blue-400" : "bg-blue-500")} />
+                            <div className="flex-1 min-w-0">
                             <div className="flex items-baseline gap-2 flex-wrap">
-                                <span className={cn("text-[11px] font-medium", isDark ? "text-gray-300" : "text-gray-700")}>
+                                <span className={cn("text-[11px] font-medium", isDark ? "text-blue-400" : "text-blue-500")}>
                                     {toolLabel}
                                 </span>
-                                <span className={cn("text-[10px]", isDark ? "text-red-400/70" : "text-red-500/70")}>error</span>
-                                <span className={cn("text-[10px] tabular-nums", muted)}>
+                                <span className={cn("text-[10px]", isDark ? "text-red-400/70" : "text-red-500/70")}>Error</span>
+                                <span className={cn("text-[10px] tabular-nums opacity-60", muted)}>
                                     {formatDuration(duration_ms)}
                                 </span>
                             </div>
                             {args.entity_id && (
-                                <div className={cn("text-[10px] ml-3", muted)}>
+                                <div className={cn("text-[10px]", muted)}>
                                     {args.entity_id}
                                 </div>
                             )}
+                            </div>
                         </div>
                     );
                     continue;
@@ -587,17 +594,19 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                     : collapsedIsOutput ? 'output: ' : '';
 
                 rows.push(
-                    <div key={`tool-${i}`} className="animate-fade-in py-0.5 font-mono">
+                    <div key={`tool-${i}`} className="animate-fade-in py-0.5 font-mono flex gap-2">
+                        <div className={cn("mt-[5px] h-1.5 w-1.5 rounded-full shrink-0", isDark ? "bg-blue-400" : "bg-blue-500")} />
+                        <div className="flex-1 min-w-0">
                         {/* Headline: ToolName  stats  duration */}
                         <div className="flex items-baseline gap-2 flex-wrap">
-                            <span className={cn("text-[11px] font-medium", isDark ? "text-gray-300" : "text-gray-700")}>
+                            <span className={cn("text-[11px] font-medium", isDark ? "text-blue-400" : "text-blue-500")}>
                                 {toolLabel}
                             </span>
                             {statText && (
                                 <span className={cn("text-[10px]", subtle)}>{statText}</span>
                             )}
                             {showDuration && (
-                                <span className={cn("text-[10px] tabular-nums", muted)}>
+                                <span className={cn("text-[10px] tabular-nums opacity-60", muted)}>
                                     {formatDuration(duration_ms)}
                                 </span>
                             )}
@@ -649,6 +658,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                 );
                             })()
                         )}
+                        </div>
                     </div>
                 );
                 continue;
@@ -661,13 +671,15 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 const rerankResults = diag.first_results || [];
                 const isRerankExpanded = expandedFilters.has(i);
                 rows.push(
-                    <div key={`rerank-${i}`} className="animate-fade-in py-0.5 font-mono">
+                    <div key={`rerank-${i}`} className="animate-fade-in py-0.5 font-mono flex gap-2">
+                        <div className={cn("mt-[5px] h-1.5 w-1.5 rounded-full shrink-0", isDark ? "bg-blue-400" : "bg-blue-500")} />
+                        <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-2 flex-wrap">
-                            <span className={cn("text-[11px] font-medium", isDark ? "text-gray-300" : "text-gray-700")}>
+                            <span className={cn("text-[11px] font-medium", isDark ? "text-blue-400" : "text-blue-500")}>
                                 Rerank
                             </span>
                             <span className={cn("text-[10px]", subtle)}>{inputCount} results</span>
-                            <span className={cn("text-[10px] tabular-nums", muted)}>
+                            <span className={cn("text-[10px] tabular-nums opacity-60", muted)}>
                                 {formatDuration(event.duration_ms)}
                             </span>
                         </div>
@@ -694,6 +706,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                 )}
                             </>
                         )}
+                        </div>
                     </div>
                 );
                 continue;
@@ -713,12 +726,10 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 const summaryLabel = isDark ? 'text-gray-300' : 'text-gray-600';
 
                 rows.push(
-                    <div key={`done-sep-${i}`} className="pt-2 pb-1">
-                        <div className={cn("border-t", isDark ? "border-gray-800/50" : "border-gray-200/50")} />
-                    </div>
-                );
-                rows.push(
-                    <div key={`done-${i}`} className="font-mono text-[10px] space-y-1">
+                    <div key={`done-${i}`} className={cn(
+                        "mt-2 -mx-3 px-3 py-2.5 font-mono text-[10px] space-y-1 border-t",
+                        isDark ? "bg-gray-900/60 border-gray-800/50" : "bg-gray-50/80 border-gray-200/50"
+                    )}>
                         <div className={summaryText}>
                             <span className={summaryLabel}>{found}</span> found · <span className={summaryLabel}>{read}</span> read · <span className={summaryLabel}>{collected}</span> collected
                         </div>
@@ -740,7 +751,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             if (event.type === 'error') {
                 rows.push(
                     <div key={`error-${i}`} className={cn("py-0.5 text-[10px] font-mono", isDark ? "text-red-400" : "text-red-600")}>
-                        error: {event.message}
+                        Error: {event.message}
                     </div>
                 );
                 continue;
@@ -750,7 +761,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
             if ((event as any).type === 'cancelled') {
                 rows.push(
                     <div key={`cancelled-${i}`} className={cn("py-0.5 text-[10px] font-mono", muted)}>
-                        cancelled
+                        Cancelled
                     </div>
                 );
                 continue;
@@ -937,15 +948,30 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                 )}
                             >
                                 {events.length === 0 ? (
-                                    <div className={cn("text-[11px] font-mono", isDark ? "text-gray-500" : "text-gray-400")}>
-                                        {SPINNER_FRAMES[spinnerFrame]}
+                                    <div className={cn("text-[10px] font-mono flex items-center")}>
+                                        <span className={cn("wave-dots", isDark ? "wave-dots--dark" : "wave-dots--light")}>
+                                            <span className="dot" /><span className="dot" /><span className="dot" />
+                                        </span>
+                                        <span className={cn("thinking-shimmer", isDark ? "thinking-shimmer--dark" : "thinking-shimmer--light")}>
+                                            Thinking
+                                        </span>
                                     </div>
                                 ) : (
                                     <>
                                         {traceRows}
                                         {isSearching && (
-                                            <div className={cn("py-1 text-[11px] font-mono", isDark ? "text-gray-500" : "text-gray-400")}>
-                                                {SPINNER_FRAMES[spinnerFrame]}
+                                            <div className={cn("py-1 text-[10px] font-mono flex items-center")}>
+                                                <span className={cn("wave-dots", isDark ? "wave-dots--dark" : "wave-dots--light")}>
+                                                    <span className="dot" /><span className="dot" /><span className="dot" />
+                                                </span>
+                                                <span className={cn("thinking-shimmer", isDark ? "thinking-shimmer--dark" : "thinking-shimmer--light")}>
+                                                    {(() => {
+                                                        const last = events[events.length - 1] as any;
+                                                        if (last?.type === 'thinking') return 'Searching';
+                                                        if (last?.type === 'reranking') return 'Finishing';
+                                                        return 'Thinking';
+                                                    })()}
+                                                </span>
                                             </div>
                                         )}
                                     </>

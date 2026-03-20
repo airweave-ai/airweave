@@ -307,3 +307,69 @@
 .dark .raw-data-scrollbar * {
   scrollbar-color: rgba(107, 114, 128, 0.4) transparent;
 }
+
+/* Sentence-by-sentence reveal for agentic search thinking trace */
+@keyframes sentence-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-sentence-in {
+  opacity: 0;
+  animation: sentence-in 200ms ease-out forwards;
+}
+
+/* Spotlight sweep for active status labels in agentic search trace */
+.thinking-shimmer {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-size: 300% 100%;
+  animation: spotlightSweep 3s ease-in-out infinite;
+}
+.thinking-shimmer--light {
+  background-image: linear-gradient(
+    90deg,
+    rgb(156 163 175) 0%,
+    rgb(156 163 175) 44%,
+    rgb(17 24 39) 50%,
+    rgb(156 163 175) 56%,
+    rgb(156 163 175) 100%
+  );
+}
+.thinking-shimmer--dark {
+  background-image: linear-gradient(
+    90deg,
+    rgb(107 114 128) 0%,
+    rgb(107 114 128) 44%,
+    rgb(255 255 255) 50%,
+    rgb(107 114 128) 56%,
+    rgb(107 114 128) 100%
+  );
+}
+@keyframes spotlightSweep {
+  0%   { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+
+/* Wave dots for agentic search status labels */
+.wave-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.wave-dots .dot {
+  width: 2.5px;
+  height: 2.5px;
+  border-radius: 50%;
+  animation: waveBounce 1.4s ease-in-out infinite;
+}
+.wave-dots .dot:nth-child(2) { animation-delay: 0.16s; }
+.wave-dots .dot:nth-child(3) { animation-delay: 0.32s; }
+.wave-dots--light .dot { background-color: rgb(107 114 128); }
+.wave-dots--dark  .dot { background-color: rgb(156 163 175); }
+@keyframes waveBounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40%           { transform: translateY(-4px); opacity: 1; }
+}
