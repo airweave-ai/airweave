@@ -154,7 +154,6 @@ schema base_entity {
             indexing: attribute | index
             attribute {
                 distance-metric: angular
-                paged
             }
             index {
                 hnsw {
