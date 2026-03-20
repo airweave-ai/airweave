@@ -1130,6 +1130,12 @@ class ComposioConfig(AuthProviderConfig):
     )
 
 
+class CustomConfig(AuthProviderConfig):
+    """Custom Auth Provider configuration schema."""
+
+    pass
+
+
 class PipedreamConfig(AuthProviderConfig):
     """Pipedream Auth Provider configuration schema."""
 

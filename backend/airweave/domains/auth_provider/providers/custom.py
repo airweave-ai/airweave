@@ -1,0 +1,175 @@
+"""Custom Auth Provider - fetches tokens from a customer-hosted HTTP endpoint."""
+
+from typing import Any, Dict, List, Optional, Set
+
+import httpx
+
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.exceptions import (
+    AuthProviderAuthError,
+    AuthProviderMissingFieldsError,
+    AuthProviderRateLimitError,
+    AuthProviderTemporaryError,
+)
+from airweave.platform.configs.auth import CustomAuthConfig
+from airweave.platform.configs.config import CustomConfig
+from airweave.platform.decorators import auth_provider
+
+
+@auth_provider(
+    name="Custom",
+    short_name="custom",
+    auth_config_class=CustomAuthConfig,
+    config_class=CustomConfig,
+)
+class CustomAuthProvider(BaseAuthProvider):
+    """Custom authentication provider.
+
+    Calls GET {base_url}/{source_short_name} on a customer-hosted endpoint
+    to fetch fresh access tokens. The customer is responsible for returning
+    the freshest credentials as JSON.
+    """
+
+    BLOCKED_SOURCES: list[str] = []
+
+    @classmethod
+    async def create(
+        cls, credentials: Optional[Any] = None, config: Optional[Dict[str, Any]] = None
+    ) -> "CustomAuthProvider":
+        """Create a new Custom auth provider instance."""
+        instance = cls()
+        instance.endpoint_url = credentials["endpoint_url"].rstrip("/")
+        instance.api_key = credentials["api_key"]
+        return instance
+
+    def _build_headers(self) -> Dict[str, str]:
+        """Build request headers with API key authentication."""
+        return {
+            "Accept": "application/json",
+            "X-API-Key": self.api_key,
+        }
+
+    async def get_creds_for_source(
+        self,
+        source_short_name: str,
+        source_auth_config_fields: List[str],
+        optional_fields: Optional[Set[str]] = None,
+    ) -> Dict[str, Any]:
+        """Get credentials for a source by calling GET {base_url}/{source_short_name}."""
+        _optional_fields = optional_fields or set()
+        headers = self._build_headers()
+        url = f"{self.endpoint_url}/{source_short_name}"
+
+        self.logger.info(f"[Custom] Fetching credentials for source '{source_short_name}'")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                self.logger.error(
+                    f"[Custom] HTTP {status} from endpoint for source '{source_short_name}'"
+                )
+                if status in (401, 403):
+                    raise AuthProviderAuthError(
+                        f"Custom endpoint returned {status} for source '{source_short_name}'",
+                        provider_name="custom",
+                    ) from e
+                if status == 429:
+                    retry_after = float(e.response.headers.get("retry-after", 30))
+                    raise AuthProviderRateLimitError(
+                        f"Custom endpoint rate-limited for source '{source_short_name}'",
+                        provider_name="custom",
+                        retry_after=retry_after,
+                    ) from e
+                if status >= 500:
+                    raise AuthProviderTemporaryError(
+                        f"Custom endpoint returned {status} for source '{source_short_name}'",
+                        provider_name="custom",
+                        status_code=status,
+                    ) from e
+                raise
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                self.logger.error(f"[Custom] Network error reaching endpoint: {e}")
+                raise AuthProviderTemporaryError(
+                    f"Custom endpoint unreachable: {e}",
+                    provider_name="custom",
+                ) from e
+
+        missing_fields = []
+        found_credentials: Dict[str, Any] = {}
+
+        for field in source_auth_config_fields:
+            if field in data:
+                found_credentials[field] = data[field]
+            elif field not in _optional_fields:
+                missing_fields.append(field)
+
+        if missing_fields:
+            available = list(data.keys())
+            self.logger.error(
+                f"[Custom] Missing required fields for source '{source_short_name}': "
+                f"{missing_fields}. Available: {available}"
+            )
+            raise AuthProviderMissingFieldsError(
+                f"Custom endpoint response missing required fields for "
+                f"source '{source_short_name}': {missing_fields}",
+                provider_name="custom",
+                missing_fields=missing_fields,
+                available_fields=available,
+            )
+
+        self.logger.info(
+            f"[Custom] Successfully retrieved {len(found_credentials)} credential fields "
+            f"for source '{source_short_name}'"
+        )
+        return found_credentials
+
+    async def validate(self) -> bool:
+        """Validate the custom endpoint by calling GET {base_url}/__validate__."""
+        from airweave.domains.auth_provider.exceptions import AuthProviderConfigError
+
+        headers = self._build_headers()
+        url = f"{self.endpoint_url}/__validate__"
+
+        self.logger.info("[Custom] Validating endpoint")
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+
+                if "access_token" not in data:
+                    raise AuthProviderConfigError(
+                        "Custom endpoint validation failed: response missing 'access_token' field",
+                        provider_name="custom",
+                    )
+
+                self.logger.info("[Custom] Endpoint validated successfully")
+                return True
+
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if status in (401, 403):
+                raise AuthProviderAuthError(
+                    f"Custom endpoint validation failed: {status}",
+                    provider_name="custom",
+                ) from e
+            if status >= 500:
+                raise AuthProviderTemporaryError(
+                    f"Custom endpoint validation failed: {status}",
+                    provider_name="custom",
+                    status_code=status,
+                ) from e
+            raise AuthProviderConfigError(
+                f"Custom endpoint validation failed: HTTP {status}",
+                provider_name="custom",
+            ) from e
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            raise AuthProviderTemporaryError(
+                f"Custom endpoint unreachable during validation: {e}",
+                provider_name="custom",
+            ) from e
