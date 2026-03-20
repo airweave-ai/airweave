@@ -277,22 +277,22 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                         <div key={`thinking-${i}`} className="animate-fade-in pt-1 pb-2.5 flex gap-2">
                             <div className={cn("mt-[5px] h-1.5 w-1.5 rounded-full shrink-0", isDark ? "bg-gray-500" : "bg-gray-400")} />
                             <div className="flex-1 min-w-0">
-                            <div className={cn("flex items-baseline gap-3 text-[10px] font-mono", muted)}>
-                                {isLatestEvent ? (
-                                    <span>Thinking</span>
-                                ) : (
-                                    <span>Thought for {formatDuration(event.duration_ms)}</span>
-                                )}
-                                {!isLatestEvent && tokens && <span className="tabular-nums">{tokens}</span>}
-                            </div>
-                            {text && (
-                                <div className={cn("text-[10px] leading-relaxed font-mono", thinkingBody)}>
-                                    <StreamingSentences
-                                        text={text}
-                                        animate={i === events.length - 1}
-                                    />
+                                <div className={cn("flex items-baseline gap-3 text-[10px] font-mono", muted)}>
+                                    {isLatestEvent ? (
+                                        <span>Thinking</span>
+                                    ) : (
+                                        <span>Thought for {formatDuration(event.duration_ms)}</span>
+                                    )}
+                                    {!isLatestEvent && tokens && <span className="tabular-nums">{tokens}</span>}
                                 </div>
-                            )}
+                                {text && (
+                                    <div className={cn("text-[10px] leading-relaxed font-mono", thinkingBody)}>
+                                        <StreamingSentences
+                                            text={text}
+                                            animate={i === events.length - 1}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     );
@@ -312,26 +312,21 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 const toolLabel = getToolLabel(tool_name, args.retrieval_strategy);
                 const isExpanded = expandedFilters.has(i);
 
-                // Handle errored tool calls
+                // Handle errored tool calls (self-correction, not real failures)
                 if (stats.error) {
                     rows.push(
-                        <div key={`tool-${i}`} className="animate-fade-in py-0.5 font-mono flex gap-2">
+                        <div key={`tool-${i}`} className="animate-fade-in py-0.5 font-mono flex gap-2 opacity-50">
                             <div className={cn("mt-[5px] h-1.5 w-1.5 rounded-full shrink-0", isDark ? "bg-blue-400" : "bg-blue-500")} />
                             <div className="flex-1 min-w-0">
-                            <div className="flex items-baseline gap-2 flex-wrap">
-                                <span className={cn("text-[11px] font-medium", isDark ? "text-blue-400" : "text-blue-500")}>
-                                    {toolLabel}
-                                </span>
-                                <span className={cn("text-[10px]", isDark ? "text-red-400/70" : "text-red-500/70")}>Error</span>
-                                <span className={cn("text-[10px] tabular-nums opacity-60", muted)}>
-                                    {formatDuration(duration_ms)}
-                                </span>
-                            </div>
-                            {args.entity_id && (
-                                <div className={cn("text-[10px]", muted)}>
-                                    {args.entity_id}
+                                <div className="flex items-baseline gap-2 flex-wrap">
+                                    <span className={cn("text-[11px] font-medium line-through", muted)}>
+                                        {toolLabel}
+                                    </span>
+                                    <span className={cn("text-[10px] italic", muted)}>invalid input</span>
+                                    <span className={cn("text-[10px] tabular-nums opacity-60", muted)}>
+                                        {formatDuration(duration_ms)}
+                                    </span>
                                 </div>
-                            )}
                             </div>
                         </div>
                     );
@@ -597,67 +592,67 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                     <div key={`tool-${i}`} className="animate-fade-in py-0.5 font-mono flex gap-2">
                         <div className={cn("mt-[5px] h-1.5 w-1.5 rounded-full shrink-0", isDark ? "bg-blue-400" : "bg-blue-500")} />
                         <div className="flex-1 min-w-0">
-                        {/* Headline: ToolName  stats  duration */}
-                        <div className="flex items-baseline gap-2 flex-wrap">
-                            <span className={cn("text-[11px] font-medium", isDark ? "text-blue-400" : "text-blue-500")}>
-                                {toolLabel}
-                            </span>
-                            {statText && (
-                                <span className={cn("text-[10px]", subtle)}>{statText}</span>
-                            )}
-                            {showDuration && (
-                                <span className={cn("text-[10px] tabular-nums opacity-60", muted)}>
-                                    {formatDuration(duration_ms)}
+                            {/* Headline: ToolName  stats  duration */}
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                                <span className={cn("text-[11px] font-medium", isDark ? "text-blue-400" : "text-blue-500")}>
+                                    {toolLabel}
                                 </span>
-                            )}
-                        </div>
-                        {/* Collapsed/expanded input */}
-                        {collapsedSummary && (
-                            hasExpandable ? (
-                                <button
-                                    onClick={() => toggleFilter(i)}
-                                    className={cn("flex items-center gap-0.5 text-[10px] ml-0.5", muted, "hover:underline")}
-                                >
-                                    {isExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
-                                    {collapsedLabel && <span className="opacity-50">{collapsedLabel}</span>}{collapsedSummary}
-                                </button>
-                            ) : (
-                                <div className={cn("text-[10px] ml-3", muted)}>
-                                    {collapsedLabel && <span className="opacity-50">{collapsedLabel}</span>}{collapsedSummary}
-                                </div>
-                            )
-                        )}
-                        {isExpanded && expandedLines.length > 0 && (
-                            <div className={cn("text-[10px] ml-5 space-y-px", muted)}>
-                                {expandedLines}
+                                {statText && (
+                                    <span className={cn("text-[10px]", subtle)}>{statText}</span>
+                                )}
+                                {showDuration && (
+                                    <span className={cn("text-[10px] tabular-nums opacity-60", muted)}>
+                                        {formatDuration(duration_ms)}
+                                    </span>
+                                )}
                             </div>
-                        )}
-                        {/* Second expandable: output (search only) */}
-                        {outputCollapsed && (
-                            (() => {
-                                const outputKey = i + 100000;
-                                const isOutputExpanded = expandedFilters.has(outputKey);
-                                const hasOutputExpandable = outputExpanded.length > 0;
-                                return hasOutputExpandable ? (
-                                    <>
-                                        <button
-                                            onClick={() => toggleFilter(outputKey)}
-                                            className={cn("flex items-center gap-0.5 text-[10px] ml-0.5", muted, "hover:underline")}
-                                        >
-                                            {isOutputExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
-                                            <span className="opacity-50">output: </span>{outputCollapsed}
-                                        </button>
-                                        {isOutputExpanded && (
-                                            <div className={cn("text-[10px] ml-5 space-y-px", muted)}>
-                                                {outputExpanded}
-                                            </div>
-                                        )}
-                                    </>
+                            {/* Collapsed/expanded input */}
+                            {collapsedSummary && (
+                                hasExpandable ? (
+                                    <button
+                                        onClick={() => toggleFilter(i)}
+                                        className={cn("flex items-center gap-0.5 text-[10px] ml-0.5", muted, "hover:underline")}
+                                    >
+                                        {isExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+                                        {collapsedLabel && <span className="opacity-50">{collapsedLabel}</span>}{collapsedSummary}
+                                    </button>
                                 ) : (
-                                    <div className={cn("text-[10px] ml-3", muted)}><span className="opacity-50">output: </span>{outputCollapsed}</div>
-                                );
-                            })()
-                        )}
+                                    <div className={cn("text-[10px] ml-3", muted)}>
+                                        {collapsedLabel && <span className="opacity-50">{collapsedLabel}</span>}{collapsedSummary}
+                                    </div>
+                                )
+                            )}
+                            {isExpanded && expandedLines.length > 0 && (
+                                <div className={cn("text-[10px] ml-5 space-y-px", muted)}>
+                                    {expandedLines}
+                                </div>
+                            )}
+                            {/* Second expandable: output (search only) */}
+                            {outputCollapsed && (
+                                (() => {
+                                    const outputKey = i + 100000;
+                                    const isOutputExpanded = expandedFilters.has(outputKey);
+                                    const hasOutputExpandable = outputExpanded.length > 0;
+                                    return hasOutputExpandable ? (
+                                        <>
+                                            <button
+                                                onClick={() => toggleFilter(outputKey)}
+                                                className={cn("flex items-center gap-0.5 text-[10px] ml-0.5", muted, "hover:underline")}
+                                            >
+                                                {isOutputExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+                                                <span className="opacity-50">output: </span>{outputCollapsed}
+                                            </button>
+                                            {isOutputExpanded && (
+                                                <div className={cn("text-[10px] ml-5 space-y-px", muted)}>
+                                                    {outputExpanded}
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className={cn("text-[10px] ml-3", muted)}><span className="opacity-50">output: </span>{outputCollapsed}</div>
+                                    );
+                                })()
+                            )}
                         </div>
                     </div>
                 );
@@ -674,38 +669,38 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                     <div key={`rerank-${i}`} className="animate-fade-in py-0.5 font-mono flex gap-2">
                         <div className={cn("mt-[5px] h-1.5 w-1.5 rounded-full shrink-0", isDark ? "bg-blue-400" : "bg-blue-500")} />
                         <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline gap-2 flex-wrap">
-                            <span className={cn("text-[11px] font-medium", isDark ? "text-blue-400" : "text-blue-500")}>
-                                Rerank
-                            </span>
-                            <span className={cn("text-[10px]", subtle)}>{inputCount} results</span>
-                            <span className={cn("text-[10px] tabular-nums opacity-60", muted)}>
-                                {formatDuration(event.duration_ms)}
-                            </span>
-                        </div>
-                        {rerankResults.length > 0 && (
-                            <>
-                                <button
-                                    onClick={() => toggleFilter(i)}
-                                    className={cn("flex items-center gap-0.5 text-[10px] ml-0.5", muted, "hover:underline")}
-                                >
-                                    {isRerankExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
-                                    <span className="opacity-50">output: </span>
-                                    {rerankResults.map((r: any) =>
-                                        `${r.name?.length > 20 ? r.name.slice(0, 17) + '...' : r.name} (${typeof r.relevance_score === 'number' ? r.relevance_score.toFixed(2) : '?'})`
-                                    ).join(', ')}
-                                </button>
-                                {isRerankExpanded && (
-                                    <div className={cn("text-[10px] ml-5 space-y-px", muted)}>
-                                        {rerankResults.map((r: any, ri: number) => (
-                                            <div key={ri}>
-                                                {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id} · score: {typeof r.relevance_score === 'number' ? r.relevance_score.toFixed(3) : '?'})</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </>
-                        )}
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                                <span className={cn("text-[11px] font-medium", isDark ? "text-blue-400" : "text-blue-500")}>
+                                    Rerank
+                                </span>
+                                <span className={cn("text-[10px]", subtle)}>{inputCount} results</span>
+                                <span className={cn("text-[10px] tabular-nums opacity-60", muted)}>
+                                    {formatDuration(event.duration_ms)}
+                                </span>
+                            </div>
+                            {rerankResults.length > 0 && (
+                                <>
+                                    <button
+                                        onClick={() => toggleFilter(i)}
+                                        className={cn("flex items-center gap-0.5 text-[10px] ml-0.5", muted, "hover:underline")}
+                                    >
+                                        {isRerankExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+                                        <span className="opacity-50">output: </span>
+                                        {rerankResults.map((r: any) =>
+                                            `${r.name?.length > 20 ? r.name.slice(0, 17) + '...' : r.name} (${typeof r.relevance_score === 'number' ? r.relevance_score.toFixed(2) : '?'})`
+                                        ).join(', ')}
+                                    </button>
+                                    {isRerankExpanded && (
+                                        <div className={cn("text-[10px] ml-5 space-y-px", muted)}>
+                                            {rerankResults.map((r: any, ri: number) => (
+                                                <div key={ri}>
+                                                    {r.name} <span className="opacity-50">({r.source_name} · {r.entity_type} · {r.entity_id} · score: {typeof r.relevance_score === 'number' ? r.relevance_score.toFixed(3) : '?'})</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
                     </div>
                 );
