@@ -1,7 +1,7 @@
 """Fake sync job repository for testing."""
 
 from typing import List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,11 +68,11 @@ class FakeSyncJobRepository:
     ) -> SyncJob:
         """Create a fake SyncJob from the schema and store it."""
         self._calls.append(("create", db, obj_in, ctx, uow))
-        job = SyncJob(
-            **obj_in.model_dump(),
-            organization_id=ctx.organization.id,
-        )
-        self._store[job.id] = job
+        model_columns = {c.key for c in SyncJob.__table__.columns}
+        safe_fields = {k: v for k, v in obj_in.model_dump().items() if k in model_columns}
+        safe_fields.setdefault("id", uuid4())
+        job = SyncJob(**safe_fields, organization_id=ctx.organization.id)
+        self._store[UUID(str(job.id))] = job
         self._created.append(job)
         return job
 
@@ -87,5 +87,5 @@ class FakeSyncJobRepository:
         self._calls.append(("update", db, db_obj, obj_in, ctx))
         for field, value in obj_in.model_dump(exclude_unset=True).items():
             setattr(db_obj, field, value)
-        self._store[db_obj.id] = db_obj
+        self._store[UUID(str(db_obj.id))] = db_obj
         return db_obj

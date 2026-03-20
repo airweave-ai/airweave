@@ -15,10 +15,9 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.core import container as container_mod  # [code blue] todo
+from airweave.core import container as container_mod
 from airweave.core.context import BaseContext
 from airweave.core.logging import LoggerConfigurator, logger
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.builders import SyncContextBuilder
 from airweave.platform.builders.tracking import TrackingContextBuilder
 from airweave.platform.contexts.runtime import SyncRuntime
@@ -55,8 +54,6 @@ class SyncFactory:
         collection: schemas.CollectionRecord,
         connection: schemas.Connection,
         ctx: BaseContext,
-        dense_embedder: DenseEmbedderProtocol,
-        sparse_embedder: SparseEmbedderProtocol,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
@@ -127,8 +124,8 @@ class SyncFactory:
         runtime = SyncRuntime(
             source=source,
             cursor=cursor,
-            dense_embedder=dense_embedder,
-            sparse_embedder=sparse_embedder,
+            dense_embedder=container_mod.container.dense_embedder,
+            sparse_embedder=container_mod.container.sparse_embedder,
             destinations=destinations,
             entity_tracker=entity_tracker_result,
             event_bus=container_mod.container.event_bus,

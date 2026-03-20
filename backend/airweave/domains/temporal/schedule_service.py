@@ -21,6 +21,7 @@ from temporalio.client import (
     Client,
     Schedule,
     ScheduleActionStartWorkflow,
+    ScheduleIntervalSpec,
     ScheduleSpec,
     ScheduleState,
     ScheduleUpdate,
@@ -41,7 +42,11 @@ from airweave.domains.source_connections.protocols import (
 from airweave.domains.syncs.protocols import SyncRepositoryProtocol
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.platform.temporal.client import temporal_client
-from airweave.platform.temporal.workflows import RunSourceConnectionWorkflow
+from airweave.platform.temporal.workflows import (
+    APIKeyExpirationCheckWorkflow,
+    CleanupStuckSyncJobsWorkflow,
+    RunSourceConnectionWorkflow,
+)
 
 _MINUTE_LEVEL_RE = re.compile(r"^(\*/([1-5]?\d)|([0-5]?\d)) \* \* \* \*$")
 
@@ -457,11 +462,6 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         Covers the stuck-job cleanup schedule and the API key expiration
         notification schedule. Called once during API server startup.
         """
-        from airweave.platform.temporal.workflows import CleanupStuckSyncJobsWorkflow
-        from airweave.platform.temporal.workflows.api_key_notifications import (
-            APIKeyExpirationCheckWorkflow,
-        )
-
         client = await self._get_client()
 
         await self._ensure_singleton_schedule(
@@ -492,8 +492,6 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         note: str,
     ) -> None:
         """Create a singleton schedule if it doesn't already exist."""
-        from temporalio.client import ScheduleIntervalSpec
-
         try:
             handle = client.get_schedule_handle(schedule_id)
             await handle.describe()
