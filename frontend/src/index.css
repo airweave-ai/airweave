@@ -329,21 +329,21 @@
 .thinking-shimmer--light {
   background-image: linear-gradient(
     90deg,
-    rgb(156 163 175) 0%,
-    rgb(156 163 175) 44%,
+    rgb(75 85 99) 0%,
+    rgb(75 85 99) 44%,
     rgb(17 24 39) 50%,
-    rgb(156 163 175) 56%,
-    rgb(156 163 175) 100%
+    rgb(75 85 99) 56%,
+    rgb(75 85 99) 100%
   );
 }
 .thinking-shimmer--dark {
   background-image: linear-gradient(
     90deg,
-    rgb(107 114 128) 0%,
-    rgb(107 114 128) 44%,
+    rgb(160 170 185) 0%,
+    rgb(160 170 185) 44%,
     rgb(255 255 255) 50%,
-    rgb(107 114 128) 56%,
-    rgb(107 114 128) 100%
+    rgb(160 170 185) 56%,
+    rgb(160 170 185) 100%
   );
 }
 @keyframes spotlightSweep {
@@ -351,25 +351,17 @@
   100% { background-position: 0% 0; }
 }
 
-/* Wave dots for agentic search status labels */
-.wave-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-right: 5px;
-  vertical-align: middle;
-}
-.wave-dots .dot {
-  width: 2.5px;
-  height: 2.5px;
+/* Pulsing dot for agentic search status labels */
+.pulse-dot {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  animation: waveBounce 1.4s ease-in-out infinite;
+  margin-right: 6px;
+  animation: dotPulse 2s ease-in-out infinite;
 }
-.wave-dots .dot:nth-child(2) { animation-delay: 0.16s; }
-.wave-dots .dot:nth-child(3) { animation-delay: 0.32s; }
-.wave-dots--light .dot { background-color: rgb(107 114 128); }
-.wave-dots--dark  .dot { background-color: rgb(156 163 175); }
-@keyframes waveBounce {
-  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-  40%           { transform: translateY(-4px); opacity: 1; }
+.pulse-dot--light { background-color: rgb(75 85 99); }
+.pulse-dot--dark  { background-color: rgb(210 218 230); }
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.4); }
 }

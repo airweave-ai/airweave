@@ -949,9 +949,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                             >
                                 {events.length === 0 ? (
                                     <div className={cn("text-[10px] font-mono flex items-center")}>
-                                        <span className={cn("wave-dots", isDark ? "wave-dots--dark" : "wave-dots--light")}>
-                                            <span className="dot" /><span className="dot" /><span className="dot" />
-                                        </span>
+                                        <span className={cn("pulse-dot", isDark ? "pulse-dot--dark" : "pulse-dot--light")} />
                                         <span className={cn("thinking-shimmer", isDark ? "thinking-shimmer--dark" : "thinking-shimmer--light")}>
                                             Thinking
                                         </span>
@@ -961,9 +959,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                         {traceRows}
                                         {isSearching && (
                                             <div className={cn("py-1 text-[10px] font-mono flex items-center")}>
-                                                <span className={cn("wave-dots", isDark ? "wave-dots--dark" : "wave-dots--light")}>
-                                                    <span className="dot" /><span className="dot" /><span className="dot" />
-                                                </span>
+                                                <span className={cn("pulse-dot", isDark ? "pulse-dot--dark" : "pulse-dot--light")} />
                                                 <span className={cn("thinking-shimmer", isDark ? "thinking-shimmer--dark" : "thinking-shimmer--light")}>
                                                     {(() => {
                                                         const last = events[events.length - 1] as any;
