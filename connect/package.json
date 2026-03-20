@@ -10,7 +10,7 @@
     "./lib/theme-defaults": "./src/lib/theme-defaults.ts"
   },
   "scripts": {
-    "dev": "vite dev --port 5173",
+    "dev": "vite dev --port 8082",
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "preview": "vite preview",

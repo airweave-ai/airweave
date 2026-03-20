@@ -3,9 +3,9 @@
 from typing import TYPE_CHECKING, Any, List, Optional
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, event
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, event, text
 from sqlalchemy import Enum as SQLAlchemyEnum
-from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.models._base import Base
@@ -108,17 +108,7 @@ class Connection(Base):
 def delete_integration_credential(mapper: Any, connection: Any, target: Any) -> None:
     """When a Connection is deleted, also delete its IntegrationCredential if present."""
     if target.integration_credential_id:
-        # Get the session
-        session = Session.object_session(target)
-        if session:
-            # If we're in a session, use the session to delete the IntegrationCredential
-            from airweave.models.integration_credential import IntegrationCredential
-
-            credential = session.get(IntegrationCredential, target.integration_credential_id)
-            if credential:
-                session.delete(credential)
-        else:
-            # If we're not in a session, use the connection directly
-            connection.execute(
-                f"DELETE FROM integration_credential WHERE id = '{target.integration_credential_id}'"  # noqa: E501
-            )
+        connection.execute(
+            text("DELETE FROM integration_credential WHERE id = :id"),
+            {"id": str(target.integration_credential_id)},
+        )

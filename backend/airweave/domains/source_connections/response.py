@@ -4,10 +4,11 @@ Assembles the rich SourceConnection and SourceConnectionListItem
 response schemas from multiple data sources.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+from croniter import croniter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
@@ -278,9 +279,15 @@ class ResponseBuilder(ResponseBuilderProtocol):
         try:
             schedule_info = await self._sc_repo.get_schedule_info(db, source_connection=source_conn)
             if schedule_info:
+                cron_expression = schedule_info.get("cron_expression")
+                next_run_at = None
+                if cron_expression:
+                    base = datetime.now(timezone.utc)
+                    cron = croniter(cron_expression, base)
+                    next_run_at = cron.get_next(datetime)
                 return schemas.ScheduleDetails(
-                    cron=schedule_info.get("cron_expression"),
-                    next_run=schedule_info.get("next_run_at"),
+                    cron=cron_expression,
+                    next_run=next_run_at,
                     continuous=schedule_info.get("is_continuous", False),
                     cursor_field=schedule_info.get("cursor_field"),
                     cursor_value=schedule_info.get("cursor_value"),

@@ -1052,6 +1052,11 @@ async def resync_with_execution_config(
             },
         ],
     ),
+    force_full_sync: bool = Query(
+        False,
+        description="Force a complete re-sync ignoring cursor data. "
+        "Triggers orphaned entity cleanup after traversal.",
+    ),
     tags: Optional[List[str]] = Body(
         None,
         description="Optional tags for filtering and organizing sync jobs",
@@ -1089,6 +1094,7 @@ async def resync_with_execution_config(
         sync_id: ID of the sync to trigger
         ctx: API context
         execution_config: Optional nested SyncConfig
+        force_full_sync: Force a complete re-sync ignoring cursor data
         tags: Optional list of tags for filtering
         temporal_workflow_service: Injected Temporal workflow service
 
@@ -1254,7 +1260,7 @@ async def resync_with_execution_config(
         collection=collection_schema,
         connection=connection_schema,
         ctx=sync_org_ctx,  # Use sync's org context, not admin's
-        force_full_sync=False,
+        force_full_sync=force_full_sync,
     )
 
     ctx.logger.info(f"✅ Admin resync job {sync_job_schema.id} dispatched to Temporal")

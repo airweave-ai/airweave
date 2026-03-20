@@ -719,7 +719,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
                       })()}
                       {sourceConnection?.schedule?.next_run && (
                         <p className="text-muted-foreground">
-                          Next run: {new Date(sourceConnection.schedule.next_run).toISOString().replace('T', ', ').replace('.000Z', '')} UTC
+                          Next run: {new Date(sourceConnection.schedule.next_run).toLocaleString()}
                         </p>
                       )}
                       {sourceConnection?.schedule?.cron && (

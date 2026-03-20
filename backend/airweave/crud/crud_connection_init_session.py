@@ -4,6 +4,7 @@ This keeps the global CRUD behavior unchanged and only filters unknown fields
 (e.g., auto-injected audit keys) for ConnectionInitSession to avoid TypeError.
 """
 
+import hmac
 from typing import Any, Dict, Optional
 from uuid import UUID
 
@@ -110,10 +111,8 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
         Returns:
             ConnectionInitSession if found, None otherwise
         """
-        # Debug: Log what we're searching for
-        logger.debug(f"Searching for OAuth1 session with oauth_token: {oauth_token}")
+        logger.debug(f"Searching for OAuth1 session with oauth_token: {oauth_token[:8]}…")
 
-        # First, let's try to find ANY pending session and check its overrides
         all_pending = select(self.model).where(
             self.model.status == ConnectionInitStatus.PENDING,
         )
@@ -122,17 +121,17 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
 
         logger.debug(f"Found {len(all_sessions)} pending sessions")
         for session in all_sessions:
-            oauth_token_value = session.overrides.get("oauth_token") if session.overrides else None
+            has_token = bool(session.overrides and "oauth_token" in session.overrides)
             logger.debug(
-                f"Session {session.id}: overrides={session.overrides}, "
-                f"has oauth_token={oauth_token_value}"
+                f"Session {session.id}: has_oauth_token={has_token}, "
+                f"override_keys={list(session.overrides.keys()) if session.overrides else []}"
             )
-            # Match manually
-            if session.overrides and session.overrides.get("oauth_token") == oauth_token:
+            stored = session.overrides.get("oauth_token") if session.overrides else None
+            if isinstance(stored, str) and hmac.compare_digest(stored, oauth_token):
                 logger.debug(f"Found matching session: {session.id}")
                 return session
 
-        logger.warning(f"No OAuth1 session found with oauth_token: {oauth_token}")
+        logger.warning(f"No OAuth1 session found with oauth_token: {oauth_token[:8]}…")
         return None
 
     async def mark_completed(

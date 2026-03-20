@@ -9,6 +9,7 @@ source_connection_helpers dependency.
 """
 
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
@@ -43,6 +44,15 @@ from airweave.platform.temporal.client import temporal_client
 from airweave.platform.temporal.workflows import RunSourceConnectionWorkflow
 
 _MINUTE_LEVEL_RE = re.compile(r"^(\*/([1-5]?\d)|([0-5]?\d)) \* \* \* \*$")
+
+
+@dataclass(frozen=True)
+class ScheduleTypeSpec:
+    """One schedule to create. A cron pattern may require multiple."""
+
+    schedule_type: str  # "regular", "minute", or "cleanup"
+    force_full_sync: bool = False
+    cron_override: Optional[str] = None  # None = use the user's cron
 
 
 class TemporalScheduleService(TemporalScheduleServiceProtocol):
@@ -309,15 +319,28 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         return sync_dict, collection_dict, connection_dict
 
     @staticmethod
-    def _schedule_type_for_cron(cron_schedule: str) -> str:
-        """Return 'minute' or 'regular' based on the cron pattern."""
+    def _schedule_specs_for_cron(cron_schedule: str) -> list[ScheduleTypeSpec]:
+        """Return all schedule specs required for a cron pattern.
+
+        Minute-level crons produce incremental syncs that skip orphan cleanup.
+        A daily forced-full-sync companion ensures orphans are cleaned up.
+        Regular crons do full traversals each run — cleanup happens naturally.
+        """
         match = _MINUTE_LEVEL_RE.match(cron_schedule)
-        if match:
-            if match.group(2) and int(match.group(2)) < 60:
-                return "minute"
-            if match.group(3):
-                return "minute"
-        return "regular"
+        is_minute = match and ((match.group(2) and int(match.group(2)) < 60) or match.group(3))
+
+        if is_minute:
+            now = datetime.now(timezone.utc)
+            daily_cleanup_cron = f"{now.minute} {(now.hour + 12) % 24} * * *"
+            return [
+                ScheduleTypeSpec(schedule_type="minute"),
+                ScheduleTypeSpec(
+                    schedule_type="cleanup",
+                    force_full_sync=True,
+                    cron_override=daily_cleanup_cron,
+                ),
+            ]
+        return [ScheduleTypeSpec(schedule_type="regular")]
 
     # ------------------------------------------------------------------
     # Public API (protocol surface)
@@ -347,23 +370,20 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         if not sync:
             raise ValueError(f"Sync {sync_id} not found")
 
-        # If the sync already has a schedule in Temporal, update it
+        # If the sync already has a schedule in Temporal, tear down all
+        # existing schedules and recreate from scratch.  A simple cron update
+        # is insufficient because the schedule *type* may change (e.g.
+        # regular ↔ minute-level), which requires adding/removing companion
+        # cleanup schedules.
         if sync.temporal_schedule_id:
             status = await self._check_schedule_exists(sync.temporal_schedule_id)
             if status["exists"]:
-                await self._update_schedule(
-                    schedule_id=sync.temporal_schedule_id,
-                    cron_expression=cron_schedule,
-                    sync_id=sync_id,
-                    db=db,
-                    uow=uow,
-                    ctx=ctx,
+                await self.delete_all_schedules_for_sync(sync_id, db, ctx)
+            else:
+                logger.warning(
+                    f"Schedule {sync.temporal_schedule_id} not found in Temporal "
+                    f"for sync {sync_id}, will create new one"
                 )
-                return sync.temporal_schedule_id
-            logger.warning(
-                f"Schedule {sync.temporal_schedule_id} not found in Temporal "
-                f"for sync {sync_id}, will create new one"
-            )
 
         sync_dict, collection_dict, connection_dict = await self._gather_schedule_data(
             sync_id,
@@ -373,20 +393,30 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
             connection_id=connection_id,
         )
 
-        schedule_id = await self._create_schedule(
-            sync_id=sync_id,
-            cron_expression=cron_schedule,
-            sync_dict=sync_dict,
-            collection_dict=collection_dict,
-            connection_dict=connection_dict,
-            db=db,
-            ctx=ctx,
-            schedule_type=self._schedule_type_for_cron(cron_schedule),
-            uow=uow,
-        )
+        specs = self._schedule_specs_for_cron(cron_schedule)
+        primary_schedule_id: str = ""
 
-        logger.info(f"Created new schedule {schedule_id} for sync {sync_id}")
-        return schedule_id
+        for i, spec in enumerate(specs):
+            sid = await self._create_schedule(
+                sync_id=sync_id,
+                cron_expression=spec.cron_override or cron_schedule,
+                sync_dict=sync_dict,
+                collection_dict=collection_dict,
+                connection_dict=connection_dict,
+                db=db,
+                ctx=ctx,
+                schedule_type=spec.schedule_type,
+                force_full_sync=spec.force_full_sync,
+                uow=uow,
+            )
+            if i == 0:
+                primary_schedule_id = sid
+
+        logger.info(
+            f"Created {len(specs)} schedule(s) for sync {sync_id}: "
+            f"{[s.schedule_type for s in specs]}"
+        )
+        return primary_schedule_id
 
     async def delete_all_schedules_for_sync(
         self,

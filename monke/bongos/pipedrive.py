@@ -53,6 +53,10 @@ class PipedriveBongo(BaseBongo):
 
         self._last_req = 0.0
 
+    @property
+    def _auth_params(self) -> dict[str, str]:
+        return {"api_token": self.api_token}
+
     async def _pace(self):
         """Rate limiting helper."""
         now = time.time()
@@ -66,8 +70,9 @@ class PipedriveBongo(BaseBongo):
             return self._pipeline_id, self._stage_id
 
         await self._pace()
-        url = f"{PIPEDRIVE_API}/pipelines?api_token={self.api_token}"
-        r = await client.get(url)
+        r = await client.get(
+            f"{PIPEDRIVE_API}/pipelines", params=self._auth_params
+        )
         r.raise_for_status()
 
         data = r.json()
@@ -77,11 +82,10 @@ class PipedriveBongo(BaseBongo):
 
             # Get stages for this pipeline
             await self._pace()
-            stages_url = (
-                f"{PIPEDRIVE_API}/stages?pipeline_id={self._pipeline_id}"
-                f"&api_token={self.api_token}"
+            stages_r = await client.get(
+                f"{PIPEDRIVE_API}/stages",
+                params={**self._auth_params, "pipeline_id": self._pipeline_id},
             )
-            stages_r = await client.get(stages_url)
             stages_r.raise_for_status()
             stages_data = stages_r.json()
 
@@ -163,8 +167,11 @@ class PipedriveBongo(BaseBongo):
             if org.address:
                 payload["address"] = org.address
 
-            url = f"{PIPEDRIVE_API}/organizations?api_token={self.api_token}"
-            r = await client.post(url, json=payload)
+            r = await client.post(
+                f"{PIPEDRIVE_API}/organizations",
+                json=payload,
+                params=self._auth_params,
+            )
 
             if r.status_code not in (200, 201):
                 self.logger.error(f"Organization create failed {r.status_code}: {r.text}")
@@ -220,8 +227,11 @@ class PipedriveBongo(BaseBongo):
             if self._organizations and i < len(self._organizations):
                 payload["org_id"] = self._organizations[i]["pipedrive_id"]
 
-            url = f"{PIPEDRIVE_API}/persons?api_token={self.api_token}"
-            r = await client.post(url, json=payload)
+            r = await client.post(
+                f"{PIPEDRIVE_API}/persons",
+                json=payload,
+                params=self._auth_params,
+            )
 
             if r.status_code not in (200, 201):
                 self.logger.error(f"Person create failed {r.status_code}: {r.text}")
@@ -288,8 +298,11 @@ class PipedriveBongo(BaseBongo):
             if self._organizations and i < len(self._organizations):
                 payload["org_id"] = self._organizations[i]["pipedrive_id"]
 
-            url = f"{PIPEDRIVE_API}/deals?api_token={self.api_token}"
-            r = await client.post(url, json=payload)
+            r = await client.post(
+                f"{PIPEDRIVE_API}/deals",
+                json=payload,
+                params=self._auth_params,
+            )
 
             if r.status_code not in (200, 201):
                 self.logger.error(f"Deal create failed {r.status_code}: {r.text}")
@@ -378,8 +391,11 @@ class PipedriveBongo(BaseBongo):
             if self._organizations and i < len(self._organizations):
                 payload["org_id"] = self._organizations[i]["pipedrive_id"]
 
-            url = f"{PIPEDRIVE_API}/activities?api_token={self.api_token}"
-            r = await client.post(url, json=payload)
+            r = await client.post(
+                f"{PIPEDRIVE_API}/activities",
+                json=payload,
+                params=self._auth_params,
+            )
 
             if r.status_code not in (200, 201):
                 self.logger.error(f"Activity create failed {r.status_code}: {r.text}")
@@ -450,8 +466,11 @@ class PipedriveBongo(BaseBongo):
                     }
                 ]
 
-            url = f"{PIPEDRIVE_API}/products?api_token={self.api_token}"
-            r = await client.post(url, json=payload)
+            r = await client.post(
+                f"{PIPEDRIVE_API}/products",
+                json=payload,
+                params=self._auth_params,
+            )
 
             if r.status_code not in (200, 201):
                 self.logger.error(f"Product create failed {r.status_code}: {r.text}")
@@ -516,8 +535,11 @@ class PipedriveBongo(BaseBongo):
             else:
                 payload["organization_id"] = self._organizations[i % len(self._organizations)]["pipedrive_id"]
 
-            url = f"{PIPEDRIVE_API}/leads?api_token={self.api_token}"
-            r = await client.post(url, json=payload)
+            r = await client.post(
+                f"{PIPEDRIVE_API}/leads",
+                json=payload,
+                params=self._auth_params,
+            )
 
             if r.status_code not in (200, 201):
                 self.logger.error(f"Lead create failed {r.status_code}: {r.text}")
@@ -575,8 +597,11 @@ class PipedriveBongo(BaseBongo):
                 "person_id": person_id,
             }
 
-            url = f"{PIPEDRIVE_API}/notes?api_token={self.api_token}"
-            r = await client.post(url, json=payload)
+            r = await client.post(
+                f"{PIPEDRIVE_API}/notes",
+                json=payload,
+                params=self._auth_params,
+            )
 
             if r.status_code not in (200, 201):
                 self.logger.error(f"Note create failed {r.status_code}: {r.text}")
@@ -666,8 +691,11 @@ class PipedriveBongo(BaseBongo):
             else:
                 continue
 
-            url = f"{PIPEDRIVE_API}/{endpoint}/{pipedrive_id}?api_token={self.api_token}"
-            r = await client.put(url, json=payload)
+            r = await client.put(
+                f"{PIPEDRIVE_API}/{endpoint}/{pipedrive_id}",
+                json=payload,
+                params=self._auth_params,
+            )
 
             if r.status_code in (200, 201):
                 updated.append({**ent, "updated": True})
@@ -740,11 +768,10 @@ class PipedriveBongo(BaseBongo):
                         await self._pace()
                         # Use pipedrive_id (raw numeric ID) for API calls
                         pipedrive_id = ent.get("pipedrive_id", ent["id"])
-                        url = (
-                            f"{PIPEDRIVE_API}/{endpoint}/{pipedrive_id}"
-                            f"?api_token={self.api_token}"
+                        r = await client.delete(
+                            f"{PIPEDRIVE_API}/{endpoint}/{pipedrive_id}",
+                            params=self._auth_params,
                         )
-                        r = await client.delete(url)
 
                         if r.status_code in (200, 204):
                             # Return the unique id (type-prefixed) for tracking
@@ -856,8 +883,10 @@ class PipedriveBongo(BaseBongo):
         """Clean up orphaned entities of a specific type."""
         try:
             await self._pace()
-            url = f"{PIPEDRIVE_API}/{endpoint}?api_token={self.api_token}&limit=100"
-            r = await client.get(url)
+            r = await client.get(
+                f"{PIPEDRIVE_API}/{endpoint}",
+                params={**self._auth_params, "limit": 100},
+            )
 
             if r.status_code != 200:
                 return
@@ -875,11 +904,10 @@ class PipedriveBongo(BaseBongo):
             for item in test_items:
                 try:
                     await self._pace()
-                    del_url = (
-                        f"{PIPEDRIVE_API}/{endpoint}/{item['id']}"
-                        f"?api_token={self.api_token}"
+                    del_r = await client.delete(
+                        f"{PIPEDRIVE_API}/{endpoint}/{item['id']}",
+                        params=self._auth_params,
                     )
-                    del_r = await client.delete(del_url)
 
                     if del_r.status_code in (200, 204):
                         # Map endpoint to stats key

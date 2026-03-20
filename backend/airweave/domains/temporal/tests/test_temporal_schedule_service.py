@@ -90,32 +90,62 @@ def _mock_connection() -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# _schedule_type_for_cron
+# _schedule_specs_for_cron
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class CronTypeCase:
+class CronSpecsCase:
     name: str
     cron: str
-    expected: str
+    expected_types: list[str]
 
 
-CRON_TYPE_CASES = [
-    CronTypeCase(name="every_minute", cron="*/1 * * * *", expected="minute"),
-    CronTypeCase(name="every_5_min", cron="*/5 * * * *", expected="minute"),
-    CronTypeCase(name="every_30_min", cron="*/30 * * * *", expected="minute"),
-    CronTypeCase(name="specific_minute", cron="15 * * * *", expected="minute"),
-    CronTypeCase(name="hourly", cron="0 * * * *", expected="minute"),
-    CronTypeCase(name="daily", cron="0 0 * * *", expected="regular"),
-    CronTypeCase(name="weekly", cron="0 0 * * 1", expected="regular"),
+CRON_SPECS_CASES = [
+    CronSpecsCase(name="every_minute", cron="*/1 * * * *", expected_types=["minute", "cleanup"]),
+    CronSpecsCase(name="every_5_min", cron="*/5 * * * *", expected_types=["minute", "cleanup"]),
+    CronSpecsCase(name="every_30_min", cron="*/30 * * * *", expected_types=["minute", "cleanup"]),
+    CronSpecsCase(name="specific_minute", cron="15 * * * *", expected_types=["minute", "cleanup"]),
+    CronSpecsCase(name="hourly", cron="0 * * * *", expected_types=["minute", "cleanup"]),
+    CronSpecsCase(name="daily", cron="0 0 * * *", expected_types=["regular"]),
+    CronSpecsCase(name="weekly", cron="0 0 * * 1", expected_types=["regular"]),
 ]
 
 
-@pytest.mark.parametrize("case", CRON_TYPE_CASES, ids=lambda c: c.name)
-def test_schedule_type_for_cron(case: CronTypeCase):
-    result = TemporalScheduleService._schedule_type_for_cron(case.cron)
-    assert result == case.expected
+@pytest.mark.parametrize("case", CRON_SPECS_CASES, ids=lambda c: c.name)
+def test_schedule_specs_for_cron(case: CronSpecsCase):
+    specs = TemporalScheduleService._schedule_specs_for_cron(case.cron)
+    assert [s.schedule_type for s in specs] == case.expected_types
+
+
+def test_minute_cron_produces_two_specs():
+    specs = TemporalScheduleService._schedule_specs_for_cron("*/5 * * * *")
+    assert len(specs) == 2
+    assert specs[0].schedule_type == "minute"
+    assert specs[1].schedule_type == "cleanup"
+
+
+def test_regular_cron_produces_one_spec():
+    specs = TemporalScheduleService._schedule_specs_for_cron("0 0 * * *")
+    assert len(specs) == 1
+    assert specs[0].schedule_type == "regular"
+
+
+def test_cleanup_spec_has_force_full_sync():
+    specs = TemporalScheduleService._schedule_specs_for_cron("*/5 * * * *")
+    cleanup_spec = specs[1]
+    assert cleanup_spec.force_full_sync is True
+    assert specs[0].force_full_sync is False
+
+
+def test_cleanup_cron_is_daily():
+    """Verify cleanup cron_override matches daily pattern N H * * *."""
+    import re
+
+    specs = TemporalScheduleService._schedule_specs_for_cron("*/5 * * * *")
+    cleanup_spec = specs[1]
+    assert cleanup_spec.cron_override is not None
+    assert re.match(r"^\d{1,2} \d{1,2} \* \* \*$", cleanup_spec.cron_override)
 
 
 # ---------------------------------------------------------------------------
@@ -498,7 +528,7 @@ async def test_create_or_update_schedule(case: CreateOrUpdateCase):
             "schedule_info": None,
         }
     )
-    svc._update_schedule = AsyncMock()
+    svc.delete_all_schedules_for_sync = AsyncMock()
     svc._gather_schedule_data = AsyncMock(return_value=({}, {}, {}))
     svc._create_schedule = AsyncMock(return_value="new-sched-id")
 
@@ -523,11 +553,47 @@ async def test_create_or_update_schedule(case: CreateOrUpdateCase):
         result = await svc.create_or_update_schedule(SYNC_ID, case.cron, db, ctx, uow)
 
         if case.has_existing_schedule and case.existing_schedule_found:
-            svc._update_schedule.assert_called_once()
-            assert result == "existing-sched"
+            # Update path: deletes all existing schedules, then recreates
+            svc.delete_all_schedules_for_sync.assert_called_once()
+            svc._create_schedule.assert_called_once()
+            assert result == "new-sched-id"
         else:
             svc._create_schedule.assert_called_once()
             assert result == "new-sched-id"
+
+
+@pytest.mark.asyncio
+async def test_create_or_update_creates_cleanup_for_minute():
+    """Minute-level cron should create both minute + cleanup schedules."""
+    sync_repo = AsyncMock()
+    svc = _build_svc(sync_repo=sync_repo)
+
+    sync_model = _mock_sync_model(temporal_schedule_id=None)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_model)
+
+    svc._check_schedule_exists = AsyncMock(
+        return_value={"exists": False, "running": False, "schedule_info": None}
+    )
+    svc._gather_schedule_data = AsyncMock(return_value=({}, {}, {}))
+
+    create_calls = []
+
+    async def track_create(**kwargs):
+        create_calls.append(kwargs["schedule_type"])
+        return f"{kwargs['schedule_type']}-sched-id"
+
+    svc._create_schedule = track_create
+
+    db = AsyncMock()
+    uow = AsyncMock()
+    ctx = _mock_ctx()
+
+    with patch("airweave.domains.temporal.schedule_service.croniter") as mock_croniter:
+        mock_croniter.is_valid.return_value = True
+        result = await svc.create_or_update_schedule(SYNC_ID, "*/5 * * * *", db, ctx, uow)
+
+    assert create_calls == ["minute", "cleanup"]
+    assert result == "minute-sched-id"  # primary = first schedule
 
 
 # ---------------------------------------------------------------------------

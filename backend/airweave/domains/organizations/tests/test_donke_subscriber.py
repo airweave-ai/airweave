@@ -90,6 +90,8 @@ class TestDonkeHttpCall:
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         assert "notify-signup" in call_args[0][0]
+        assert "code=" not in call_args[0][0]
+        assert call_args[1]["headers"]["x-functions-key"] == "key-123"
         payload = call_args[1]["json"]
         assert payload["organization_name"] == "Acme"
         assert payload["user_email"] == "boss@acme.com"

@@ -2,232 +2,125 @@
  * Utility to parse cron expressions and return human-readable descriptions
  */
 
+import cronstrue from 'cronstrue';
+
 export interface ParsedCron {
   description: string;
   shortDescription: string;
   descriptionLocal: string;
   shortDescriptionLocal: string;
-  nextRun?: Date;
 }
 
 /**
  * Parse a cron expression and return a human-readable description
  * @param cronExpression - The cron expression to parse (5 parts: minute hour day month weekday)
- * @returns Parsed cron with descriptions
+ * @returns Parsed cron with descriptions, or null if invalid
  */
 export function parseCronExpression(cronExpression: string | undefined | null): ParsedCron | null {
   if (!cronExpression) return null;
 
-  const parts = cronExpression.split(' ');
+  const parts = cronExpression.trim().split(/\s+/);
   if (parts.length !== 5) return null;
 
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
-
-  // Handle common patterns
-  // Every X hours
-  if (minute !== '*' && hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
-    if (minute === '0') {
-      return {
-        description: 'Every hour',
-        shortDescription: 'Hourly',
-        descriptionLocal: 'Every hour',
-        shortDescriptionLocal: 'Hourly'
-      };
-    }
-    return {
-      description: `Every hour at ${minute} minutes`,
-      shortDescription: `Hourly :${minute.padStart(2, '0')}`,
-      descriptionLocal: `Every hour at ${minute} minutes`,
-      shortDescriptionLocal: `Hourly :${minute.padStart(2, '0')}`
-    };
+  let description: string;
+  try {
+    description = cronstrue.toString(cronExpression, { use24HourTimeFormat: false });
+  } catch {
+    return null;
   }
 
-  // Every X hours (using */X pattern)
-  if (minute === '0' && hour.startsWith('*/') && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
-    const interval = hour.substring(2);
-    if (interval === '1') {
-      return {
-        description: 'Every hour',
-        shortDescription: 'Hourly',
-        descriptionLocal: 'Every hour',
-        shortDescriptionLocal: 'Hourly'
-      };
-    }
-    return {
-      description: `Every ${interval} hours`,
-      shortDescription: `Every ${interval}h`,
-      descriptionLocal: `Every ${interval} hours`,
-      shortDescriptionLocal: `Every ${interval}h`
-    };
-  }
+  const descriptionLocal = buildLocalDescription(parts, description);
+  const shortDescription = shorten(description);
+  const shortDescriptionLocal = shorten(descriptionLocal);
 
-  // Daily at specific time
-  if (minute !== '*' && hour !== '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
-    const hourNum = parseInt(hour);
-    const minuteNum = parseInt(minute);
-    const timeUTC = formatTime(hourNum, minuteNum);
-    const timeLocal = formatLocalTime(hourNum, minuteNum);
-    return {
-      description: `Daily at ${timeUTC.full} UTC`,
-      shortDescription: `Daily ${timeUTC.short}`,
-      descriptionLocal: `Daily at ${timeLocal.full}`,
-      shortDescriptionLocal: `Daily ${timeLocal.short}`
-    };
-  }
-
-  // Weekly on specific day
-  if (minute !== '*' && hour !== '*' && dayOfMonth === '*' && month === '*' && dayOfWeek !== '*') {
-    const hourNum = parseInt(hour);
-    const minuteNum = parseInt(minute);
-    const timeUTC = formatTime(hourNum, minuteNum);
-    const timeLocal = formatLocalTime(hourNum, minuteNum);
-    const dayName = getDayName(dayOfWeek);
-    return {
-      description: `Every ${dayName} at ${timeUTC.full} UTC`,
-      shortDescription: `${dayName}s ${timeUTC.short}`,
-      descriptionLocal: `Every ${dayName} at ${timeLocal.full}`,
-      shortDescriptionLocal: `${dayName}s ${timeLocal.short}`
-    };
-  }
-
-  // Monthly on specific day
-  if (minute !== '*' && hour !== '*' && dayOfMonth !== '*' && month === '*' && dayOfWeek === '*') {
-    const hourNum = parseInt(hour);
-    const minuteNum = parseInt(minute);
-    const timeUTC = formatTime(hourNum, minuteNum);
-    const timeLocal = formatLocalTime(hourNum, minuteNum);
-    const dayStr = dayOfMonth === '1' ? '1st' :
-                   dayOfMonth === '2' ? '2nd' :
-                   dayOfMonth === '3' ? '3rd' :
-                   `${dayOfMonth}th`;
-    return {
-      description: `Monthly on the ${dayStr} at ${timeUTC.full} UTC`,
-      shortDescription: `Monthly ${dayStr}`,
-      descriptionLocal: `Monthly on the ${dayStr} at ${timeLocal.full}`,
-      shortDescriptionLocal: `Monthly ${dayStr}`
-    };
-  }
-
-  // Every few minutes
-  if (minute.startsWith('*/') && hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
-    const interval = minute.substring(2);
-    if (interval === '1') {
-      return {
-        description: 'Every minute',
-        shortDescription: 'Every min',
-        descriptionLocal: 'Every minute',
-        shortDescriptionLocal: 'Every min'
-      };
-    }
-    return {
-      description: `Every ${interval} minutes`,
-      shortDescription: `Every ${interval}m`,
-      descriptionLocal: `Every ${interval} minutes`,
-      shortDescriptionLocal: `Every ${interval}m`
-    };
-  }
-
-  // Specific minute every hour
-  if (minute !== '*' && hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
-    const minuteNum = parseInt(minute);
-    return {
-      description: `Every hour at ${minuteNum} minutes past`,
-      shortDescription: `Hourly :${minute.padStart(2, '0')}`,
-      descriptionLocal: `Every hour at ${minuteNum} minutes past`,
-      shortDescriptionLocal: `Hourly :${minute.padStart(2, '0')}`
-    };
-  }
-
-  // Default: show the raw cron
-  return {
-    description: `Custom schedule: ${cronExpression}`,
-    shortDescription: 'Custom',
-    descriptionLocal: `Custom schedule: ${cronExpression}`,
-    shortDescriptionLocal: 'Custom'
-  };
+  return { description, shortDescription, descriptionLocal, shortDescriptionLocal };
 }
 
 /**
- * Format time for display
+ * Build a local-time description by converting UTC hour/minute fields to local time.
+ * For frequency-only schedules (every N minutes/hours), local and UTC are the same.
  */
-function formatTime(hour: number, minute: number): { full: string; short: string } {
+function buildLocalDescription(parts: string[], utcDescription: string): string {
+  const [minute, hour] = parts;
+
+  // If there's no fixed hour, local time == UTC (frequency-based schedule)
+  if (hour === '*' || hour.startsWith('*/')) return utcDescription;
+
+  const hourNum = parseInt(hour, 10);
+  const minuteNum = parseInt(minute, 10);
+  if (isNaN(hourNum) || isNaN(minuteNum)) return utcDescription;
+
+  const local = toLocalTime(hourNum, minuteNum);
+  const localTimeStr = formatTime12(local.hour, local.minute);
+  const utcTimeStr = formatTime12(hourNum, minuteNum);
+
+  // Replace the UTC time string with the local one
+  return utcDescription.replace(utcTimeStr, localTimeStr);
+}
+
+function toLocalTime(utcHour: number, utcMinute: number): { hour: number; minute: number } {
+  const d = new Date();
+  d.setUTCHours(utcHour, utcMinute, 0, 0);
+  return { hour: d.getHours(), minute: d.getMinutes() };
+}
+
+function formatTime12(hour: number, minute: number): string {
   const period = hour >= 12 ? 'PM' : 'AM';
   const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
   const minuteStr = minute.toString().padStart(2, '0');
-
-  return {
-    full: `${displayHour}:${minuteStr} ${period}`,
-    short: `${displayHour}:${minuteStr}${period.toLowerCase()}`
-  };
+  return `${displayHour}:${minuteStr} ${period}`;
 }
 
 /**
- * Convert UTC time to local time and format it
+ * Create a condensed short description from a full cronstrue description.
  */
-function formatLocalTime(utcHour: number, utcMinute: number): { full: string; short: string } {
-  // Create a date in UTC for today
-  const utcDate = new Date();
-  utcDate.setUTCHours(utcHour, utcMinute, 0, 0);
+function shorten(desc: string): string {
+  // "Every minute"
+  if (/^every minute$/i.test(desc)) return 'Every min';
 
-  // Get local hour and minute
-  const localHour = utcDate.getHours();
-  const localMinute = utcDate.getMinutes();
+  // "Every N minutes"
+  const everyNMin = desc.match(/^every (\d+) minutes?$/i);
+  if (everyNMin) return `Every ${everyNMin[1]}m`;
 
-  return formatTime(localHour, localMinute);
-}
+  // "Every hour"
+  if (/^every hour$/i.test(desc)) return 'Hourly';
 
-/**
- * Get day name from cron day of week
- */
-function getDayName(dayOfWeek: string): string {
-  const days: Record<string, string> = {
-    '0': 'Sunday',
-    '1': 'Monday',
-    '2': 'Tuesday',
-    '3': 'Wednesday',
-    '4': 'Thursday',
-    '5': 'Friday',
-    '6': 'Saturday',
-    '7': 'Sunday', // 7 is also Sunday in cron
-    'SUN': 'Sunday',
-    'MON': 'Monday',
-    'TUE': 'Tuesday',
-    'WED': 'Wednesday',
-    'THU': 'Thursday',
-    'FRI': 'Friday',
-    'SAT': 'Saturday'
-  };
-  return days[dayOfWeek.toUpperCase()] || dayOfWeek;
-}
+  // "Every N hours"
+  const everyNHr = desc.match(/^every (\d+) hours?$/i);
+  if (everyNHr) return `Every ${everyNHr[1]}h`;
 
-/**
- * Calculate next run time from a cron expression
- * This is a simplified version - for production, consider using a library like cron-parser
- */
-export function getNextRunTime(cronExpression: string | undefined | null): Date | null {
-  if (!cronExpression) return null;
+  // "Every hour, at HH:MM" → "Hourly :MM"
+  const hourlyAt = desc.match(/^every hour,? at (\d+):(\d+)/i);
+  if (hourlyAt) return `Hourly :${hourlyAt[2]}`;
 
-  const parts = cronExpression.split(' ');
-  if (parts.length !== 5) return null;
+  // "At HH:MM PM, ..." with day info → extract time + context
+  const atTime = desc.match(/at (\d+:\d+ [AP]M)/i);
 
-  const [minute, hour] = parts;
-  const now = new Date();
+  // Daily
+  if (/every day/i.test(desc) && atTime) return `Daily ${atTime[1].toLowerCase()}`;
 
-  // For daily schedules (simple case)
-  if (minute !== '*' && hour !== '*' && parts[2] === '*' && parts[3] === '*' && parts[4] === '*') {
-    const nextRun = new Date();
-    nextRun.setUTCHours(parseInt(hour), parseInt(minute), 0, 0);
+  // Weekly (contains a day name)
+  const dayMatch = desc.match(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i);
+  if (dayMatch && atTime) return `${dayMatch[1]}s ${atTime[1].toLowerCase()}`;
 
-    // If the time has passed today, set to tomorrow
-    if (nextRun <= now) {
-      nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+  // Monthly
+  if (/day \d+ of the month/i.test(desc) && atTime) {
+    const dayNum = desc.match(/day (\d+)/i);
+    if (dayNum) {
+      const ordinal = toOrdinal(parseInt(dayNum[1], 10));
+      return `Monthly ${ordinal}`;
     }
-
-    return nextRun;
   }
 
-  // For other patterns, return null (would need more complex logic)
-  return null;
+  // Fallback: truncate if too long
+  return desc.length > 20 ? desc.slice(0, 18) + '...' : desc;
+}
+
+function toOrdinal(n: number): string {
+  if (n === 1) return '1st';
+  if (n === 2) return '2nd';
+  if (n === 3) return '3rd';
+  return `${n}th`;
 }
 
 /**

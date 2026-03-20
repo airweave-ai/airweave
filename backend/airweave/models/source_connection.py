@@ -1,11 +1,10 @@
 """Source connection model."""
 
-from time import sleep
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Index, String, Text, event
-from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
+from sqlalchemy import JSON, Boolean, ForeignKey, Index, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import OrganizationBase, UserMixin
 
@@ -63,6 +62,7 @@ class SourceConnection(OrganizationBase, UserMixin):
         "Sync",
         back_populates="source_connection",
         lazy="noload",
+        cascade="all",
     )
     collection: Mapped[Optional["Collection"]] = relationship(
         "Collection",
@@ -95,37 +95,3 @@ class SourceConnection(OrganizationBase, UserMixin):
         Index("idx_source_connection_connection_id", "connection_id"),
         Index("idx_source_connection_collection_id", "readable_collection_id"),
     )
-
-
-# Event to delete parent Sync when SourceConnection is deleted
-@event.listens_for(SourceConnection, "before_delete")
-def delete_parent_sync_and_connection(mapper: Any, connection: Any, target: Any) -> None:
-    """When a SourceConnection is deleted, also delete its parent Sync and Connection."""
-    # Delete parent Sync if it exists
-    if target.sync_id:
-        # Get the session
-        session = Session.object_session(target)
-        if session:
-            # If we're in a session, use the session to delete the Sync
-            from airweave.models.sync import Sync
-
-            sync = session.get(Sync, target.sync_id)
-            if sync:
-                session.delete(sync)
-        else:
-            # If we're not in a session, use the connection directly
-            connection.execute(f"DELETE FROM sync WHERE id = '{target.sync_id}'")
-
-    sleep(0.2)
-
-    # Delete related Connection if it exists
-    if target.connection_id:
-        session = Session.object_session(target)
-        if session:
-            from airweave.models.connection import Connection
-
-            related_connection = session.get(Connection, target.connection_id)
-            if related_connection:
-                session.delete(related_connection)
-        else:
-            connection.execute(f"DELETE FROM connection WHERE id = '{target.connection_id}'")

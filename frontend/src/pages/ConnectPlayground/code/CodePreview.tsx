@@ -9,15 +9,15 @@ interface CodePreviewProps {
 
 export function CodePreview({ config, isNewCollection = false }: CodePreviewProps) {
   return (
-    <div className="h-full flex flex-col gap-3">
-      <div className="flex-1 min-h-0">
+    <div className="flex flex-col gap-3">
+      <div>
         <ServerSnippet
           config={config}
           isNewCollection={isNewCollection}
           description="Create a session endpoint that returns a token to your frontend"
         />
       </div>
-      <div className="flex-1 min-h-0">
+      <div>
         <ClientSnippet
           config={config}
           description="Use the SDK to open the Connect widget with the session token"

@@ -112,6 +112,7 @@ export function SyncsTab() {
     const [resyncingSync, setResyncingSync] = useState<{ id: string; name: string } | null>(null);
     const [selectedPreset, setSelectedPreset] = useState<SyncPreset>('default');
     const [resyncConfig, setResyncConfig] = useState<SyncConfig>(getPresetConfig('default'));
+    const [forceFullSync, setForceFullSync] = useState(false);
     const [resyncTags, setResyncTags] = useState<string[]>([]);
     const [tagInput, setTagInput] = useState<string>('');
 
@@ -244,9 +245,15 @@ export function SyncsTab() {
         let failed = 0;
 
         // Use nested SyncConfig structure
+        const requestBody: any = { execution_config: resyncConfig };
+        if (resyncTags.length > 0) {
+            requestBody.tags = resyncTags;
+        }
+
         for (const sync of selected) {
             try {
-                const response = await apiClient.post(`/admin/resync/${sync.id}`, resyncConfig);
+                const bulkParams = forceFullSync ? '?force_full_sync=true' : '';
+                const response = await apiClient.post(`/admin/resync/${sync.id}${bulkParams}`, requestBody);
 
                 if (response.ok) {
                     successful++;
@@ -422,6 +429,7 @@ export function SyncsTab() {
         // Reset to default preset
         setSelectedPreset('default');
         setResyncConfig(getPresetConfig('default'));
+        setForceFullSync(false);
         setResyncDialogOpen(true);
     };
 
@@ -459,8 +467,9 @@ export function SyncsTab() {
                 requestBody.tags = resyncTags;
             }
 
+            const params = forceFullSync ? '?force_full_sync=true' : '';
             const response = await apiClient.post(
-                `/admin/resync/${resyncingSync.id}`,
+                `/admin/resync/${resyncingSync.id}${params}`,
                 requestBody
             );
 
@@ -1055,6 +1064,23 @@ export function SyncsTab() {
                     </DialogHeader>
 
                     <div className="space-y-6 py-4">
+                        {/* Force Full Sync Toggle */}
+                        <div className="bg-amber-950/30 border border-amber-500/30 rounded-md p-4 space-y-3">
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="force-full-sync"
+                                    checked={forceFullSync}
+                                    onCheckedChange={(checked) => setForceFullSync(checked as boolean)}
+                                />
+                                <Label htmlFor="force-full-sync" className="text-sm font-semibold cursor-pointer">
+                                    Force Full Sync
+                                </Label>
+                            </div>
+                            <p className="text-xs text-amber-300">
+                                Ignores cursor data and re-fetches all entities from the source. Also triggers orphaned entity cleanup to purge stale vectors.
+                            </p>
+                        </div>
+
                         {/* Preset Selector */}
                         <div className="space-y-3">
                             <Label htmlFor="preset-select" className="text-sm font-semibold">
@@ -1322,6 +1348,23 @@ export function SyncsTab() {
                     </DialogHeader>
 
                     <div className="space-y-6 py-4">
+                        {/* Force Full Sync Toggle */}
+                        <div className="bg-amber-950/30 border border-amber-500/30 rounded-md p-4 space-y-3">
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="bulk-force-full-sync"
+                                    checked={forceFullSync}
+                                    onCheckedChange={(checked) => setForceFullSync(checked as boolean)}
+                                />
+                                <Label htmlFor="bulk-force-full-sync" className="text-sm font-semibold cursor-pointer">
+                                    Force Full Sync
+                                </Label>
+                            </div>
+                            <p className="text-xs text-amber-300">
+                                Ignores cursor data and re-fetches all entities from the source. Also triggers orphaned entity cleanup to purge stale vectors.
+                            </p>
+                        </div>
+
                         {/* Preset Selector */}
                         <div className="space-y-3">
                             <Label htmlFor="bulk-preset-select" className="text-sm font-semibold">

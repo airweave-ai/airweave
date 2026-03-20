@@ -1,4 +1,4 @@
-import { ChevronDown, Database, Plus } from "lucide-react";
+import { ChevronDown, LayoutGrid, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -51,7 +51,7 @@ export function CollectionPicker({
                   "bg-primary/10 text-primary hover:bg-primary/15",
                 )}
               >
-                <Database className="h-3 w-3" />
+                <LayoutGrid className="h-3 w-3" />
                 <span className="max-w-[140px] truncate">{displayName}</span>
                 <ChevronDown className="h-3 w-3 opacity-60" />
               </button>
@@ -83,7 +83,7 @@ export function CollectionPicker({
                   !isNew && selected === c.readable_id && "bg-accent",
                 )}
               >
-                <Database className="h-3 w-3 opacity-40" />
+                <LayoutGrid className="h-3 w-3 opacity-40" />
                 <span className="truncate">{c.name || c.readable_id}</span>
               </DropdownMenuItem>
             ))}

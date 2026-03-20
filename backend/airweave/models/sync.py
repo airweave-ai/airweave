@@ -1,15 +1,19 @@
 """Sync model."""
 
+import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
+from uuid import UUID
 
 from sqlalchemy import JSON, DateTime, String, event, text
+from sqlalchemy import Connection as SAConnection
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.core.logging import logger
-from airweave.core.shared_models import SyncStatus
+from airweave.core.shared_models import SyncJobStatus, SyncStatus
 from airweave.models._base import OrganizationBase, UserMixin
+from airweave.platform.temporal.client import temporal_client
 
 if TYPE_CHECKING:
     from airweave.models.entity import Entity
@@ -78,14 +82,24 @@ class Sync(OrganizationBase, UserMixin):
     )
 
 
-# Cancel any running jobs when a Sync is deleted (covers cascades)
-@event.listens_for(Sync, "before_delete")
-def cancel_running_jobs_before_sync_delete(mapper, connection, target):
-    """Cancel any running or pending jobs when a Sync is deleted."""
-    try:
-        from airweave.core.shared_models import SyncJobStatus
+def cancel_running_sync_jobs(connection: SAConnection, sync_id: UUID) -> None:
+    """Cancel any running or pending jobs for the given sync.
 
-        # Find and cancel any running or pending jobs
+    Called from ORM event listeners and from source_connection cleanup.
+    Best-effort: failures are logged but do not propagate.
+    """
+
+    async def _cancel_workflow(workflow_job_id: str) -> None:
+        client = await temporal_client.get_client()
+        workflow_id = f"sync-{workflow_job_id}"
+        try:
+            handle = client.get_workflow_handle(workflow_id)
+            await handle.cancel()
+            logger.info(f"Requested Temporal cancellation for workflow {workflow_id}")
+        except Exception as e:
+            logger.debug(f"Could not cancel Temporal workflow {workflow_id}: {e}")
+
+    try:
         result = connection.execute(
             text(
                 """
@@ -96,7 +110,7 @@ def cancel_running_jobs_before_sync_delete(mapper, connection, target):
                 """
             ),
             {
-                "sync_id": str(target.id),
+                "sync_id": str(sync_id),
                 "pending": SyncJobStatus.PENDING.value,
                 "running": SyncJobStatus.RUNNING.value,
             },
@@ -104,80 +118,73 @@ def cancel_running_jobs_before_sync_delete(mapper, connection, target):
 
         for job in result:
             job_id = job[0]
-            logger.info(f"Cancelling job {job_id} for sync {target.id} before deletion")
+            logger.info(f"Cancelling job {job_id} for sync {sync_id} before deletion")
 
-            # Update job status to CANCELLING
             connection.execute(
                 text(
                     """
                     UPDATE sync_job
-                    SET status = :cancelling,
-                        updated_at = CURRENT_TIMESTAMP
+                    SET status = :status,
+                        modified_at = CURRENT_TIMESTAMP
                     WHERE id = :job_id
                     """
                 ),
-                {"cancelling": SyncJobStatus.CANCELLING.value, "job_id": str(job_id)},
+                {"status": SyncJobStatus.CANCELLING.value, "job_id": str(job_id)},
             )
 
-            # Try to cancel the Temporal workflow as well
             try:
-                import asyncio
-
-                async def _cancel_workflow(workflow_job_id):
-                    from airweave.platform.temporal.client import temporal_client
-
-                    client = await temporal_client.get_client()
-                    workflow_id = f"sync-{workflow_job_id}"
-                    try:
-                        handle = client.get_workflow_handle(workflow_id)
-                        await handle.cancel()
-                        logger.info(f"Requested Temporal cancellation for workflow {workflow_id}")
-                    except Exception as e:
-                        # Workflow may not exist or Temporal may be unavailable
-                        logger.debug(f"Could not cancel Temporal workflow {workflow_id}: {e}")
-
-                # Try to get or create event loop
                 try:
                     loop = asyncio.get_running_loop()
                     loop.create_task(_cancel_workflow(job_id))
                 except RuntimeError:
-                    # No running loop, create one
                     asyncio.run(_cancel_workflow(job_id))
             except Exception as e:
                 logger.debug(f"Could not request Temporal cancellation for job {job_id}: {e}")
     except Exception as e:
-        logger.warning(f"Error cancelling jobs for sync {getattr(target, 'id', None)}: {e}")
+        logger.warning(f"Error cancelling jobs for sync {sync_id}: {e}")
 
 
-# Ensure Temporal schedules are deleted when a Sync row is deleted (covers cascades)
-@event.listens_for(Sync, "after_delete")
-def delete_temporal_schedules_after_sync_delete(mapper, connection, target):
-    """Delete Temporal schedules when a Sync row is deleted."""
+def cleanup_temporal_schedules(sync_id: UUID) -> None:
+    """Delete Temporal schedules for the given sync.
+
+    Called from ORM event listeners and from source_connection cleanup.
+    Best-effort: failures are logged but do not propagate.
+    """
     try:
-        import asyncio
-
         schedule_ids = [
-            f"sync-{target.id}",  # Regular schedule
-            f"minute-sync-{target.id}",  # Minute-level schedule
-            f"daily-cleanup-{target.id}",  # Daily cleanup schedule
+            f"sync-{sync_id}",
+            f"minute-sync-{sync_id}",
+            f"daily-cleanup-{sync_id}",
         ]
 
-        async def _cleanup():
+        async def _cleanup() -> None:
             # [code blue] todo: replace ORM listener with EventBus subscriber
             from airweave.core import container as container_mod
 
+            if container_mod.container is None:
+                return
             schedule_svc = container_mod.container.temporal_schedule_service
             for sid in schedule_ids:
                 await schedule_svc.delete_schedule_handle(sid)
 
-        # Try to get or create event loop
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(_cleanup())
         except RuntimeError:
-            # No running loop, create one
             asyncio.run(_cleanup())
     except Exception as e:
-        logger.info(
-            f"Could not schedule Temporal cleanup for sync {getattr(target, 'id', None)}: {e}"
-        )
+        logger.info(f"Could not schedule Temporal cleanup for sync {sync_id}: {e}")
+
+
+# Cancel any running jobs when a Sync is deleted (covers cascades)
+@event.listens_for(Sync, "before_delete")
+def cancel_running_jobs_before_sync_delete(mapper: Any, connection: Any, target: Any) -> None:
+    """Cancel any running or pending jobs when a Sync is deleted."""
+    cancel_running_sync_jobs(connection, target.id)
+
+
+# Ensure Temporal schedules are deleted when a Sync row is deleted (covers cascades)
+@event.listens_for(Sync, "after_delete")
+def delete_temporal_schedules_after_sync_delete(mapper: Any, connection: Any, target: Any) -> None:
+    """Delete Temporal schedules when a Sync row is deleted."""
+    cleanup_temporal_schedules(target.id)

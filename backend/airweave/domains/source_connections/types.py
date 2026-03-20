@@ -14,7 +14,6 @@ class ScheduleInfo(TypedDict):
     """Typed return value from get_schedule_info (replaces Dict[str, Any])."""
 
     cron_expression: Optional[str]
-    next_run_at: Optional[datetime]
     is_continuous: bool
     cursor_field: Optional[str]
     cursor_value: Optional[str]

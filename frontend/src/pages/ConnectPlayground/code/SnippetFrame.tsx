@@ -70,7 +70,7 @@ export function SnippetFrame({ label, tabs, stepNumber, description }: SnippetFr
   return (
     <div
       className={cn(
-        "flex flex-col h-full rounded-xl overflow-hidden",
+        "flex flex-col max-h-[480px] rounded-xl overflow-hidden",
         bg,
       )}
     >

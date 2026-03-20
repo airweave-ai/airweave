@@ -10,7 +10,7 @@ Uses table-driven tests wherever possible.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
@@ -658,7 +658,6 @@ SCHEDULE_CASES = [
         has_sync_id=True,
         schedule_info={
             "cron_expression": "0 */6 * * *",
-            "next_run_at": NOW,
             "is_continuous": True,
             "cursor_field": "updated_at",
             "cursor_value": "2024-01-01",
@@ -688,8 +687,74 @@ async def test_build_response_schedule(case: ScheduleCase):
         assert result.schedule is not None
         assert result.schedule.cron == case.expect_cron
         assert result.schedule.continuous is case.expect_continuous
-        assert result.schedule.next_run == case.schedule_info.get("next_run_at")
         assert result.schedule.cursor_field == case.schedule_info.get("cursor_field")
+        # next_run is now computed from cron_expression, not passed through
+        if case.expect_cron:
+            assert result.schedule.next_run is not None
+            assert result.schedule.next_run > datetime.now(timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_schedule_next_run_computed_from_cron():
+    """next_run is dynamically computed from cron_expression, within expected window."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    sync_id = uuid4()
+    sc = _make_source_conn(sync_id=sync_id)
+    f.sc_repo.seed_schedule_info(sc.id, {
+        "cron_expression": "*/5 * * * *",
+        "is_continuous": False,
+        "cursor_field": None,
+        "cursor_value": None,
+    })
+
+    result = await f.builder.build_response(None, sc, _make_ctx())
+
+    assert result.schedule is not None
+    assert result.schedule.next_run is not None
+    now = datetime.now(timezone.utc)
+    assert result.schedule.next_run > now
+    assert result.schedule.next_run <= now + timedelta(minutes=5, seconds=1)
+    assert result.schedule.next_run.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_schedule_next_run_none_when_no_cron():
+    """No cron_expression → next_run is None."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    sync_id = uuid4()
+    sc = _make_source_conn(sync_id=sync_id)
+    f.sc_repo.seed_schedule_info(sc.id, {
+        "cron_expression": None,
+        "is_continuous": False,
+        "cursor_field": None,
+        "cursor_value": None,
+    })
+
+    result = await f.builder.build_response(None, sc, _make_ctx())
+
+    assert result.schedule is not None
+    assert result.schedule.next_run is None
+
+
+@pytest.mark.asyncio
+async def test_schedule_invalid_cron_logs_warning():
+    """Invalid cron expression → schedule is None, warning logged."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    sync_id = uuid4()
+    sc = _make_source_conn(sync_id=sync_id)
+    f.sc_repo.seed_schedule_info(sc.id, {
+        "cron_expression": "not a cron",
+        "is_continuous": False,
+        "cursor_field": None,
+        "cursor_value": None,
+    })
+
+    result = await f.builder.build_response(None, sc, _make_ctx())
+
+    assert result.schedule is None
 
 
 # ===========================================================================

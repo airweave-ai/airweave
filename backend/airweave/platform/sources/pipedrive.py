@@ -80,7 +80,7 @@ class PipedriveSource(BaseSource):
         reraise=True,
     )
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Dict:
-        """Make authenticated GET request to Pipedrive API using API token.
+        """Make authenticated GET request to Pipedrive API via query param.
 
         Args:
             client: HTTP client
@@ -89,11 +89,9 @@ class PipedriveSource(BaseSource):
         Returns:
             JSON response from API
         """
-        # API token auth - add as query parameter
-        # Keep original URL for logging to avoid exposing the token
+        # Keep original URL for logging (before appending auth token)
         separator = "&" if "?" in url else "?"
         auth_url = f"{url}{separator}api_token={self._api_token}"
-
         response = await client.get(auth_url)
 
         # Log detailed error information for 4xx/5xx responses before raising
@@ -103,7 +101,7 @@ class PipedriveSource(BaseSource):
                 error_message = error_body.get("error", "No message provided")
                 error_info = error_body.get("error_info", "No info")
                 self.logger.error(
-                    f"Pipedrive API error at {url} - "
+                    f"Pipedrive API error at {url} - "  # log original URL (no token)
                     f"Status: {response.status_code}, "
                     f"Message: {error_message}, "
                     f"Info: {error_info}, "
@@ -819,8 +817,9 @@ class PipedriveSource(BaseSource):
         """Verify Pipedrive API token by pinging a lightweight endpoint."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                url = f"{self.BASE_URL}/users/me?api_token={self._api_token}"
-                response = await client.get(url)
+                response = await client.get(
+                    f"{self.BASE_URL}/users/me?api_token={self._api_token}",
+                )
                 if response.status_code == 200:
                     data = response.json()
                     return data.get("success", False)

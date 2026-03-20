@@ -349,17 +349,8 @@ class CRUDSourceConnection(
         if not sync:
             return None
 
-        # Convert naive UTC datetime to timezone-aware for proper serialization
-        next_run_at = None
-        if sync.next_scheduled_run:
-            from datetime import timezone
-
-            # Database stores naive UTC, make it timezone-aware
-            next_run_at = sync.next_scheduled_run.replace(tzinfo=timezone.utc)
-
         return {
             "cron_expression": sync.cron_schedule,
-            "next_run_at": next_run_at,
             "is_continuous": getattr(sync, "is_continuous", False),
             "cursor_field": getattr(sync, "cursor_field", None),
             "cursor_value": getattr(sync, "cursor_value", None),
