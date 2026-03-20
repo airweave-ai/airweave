@@ -3,6 +3,7 @@ import { AuthProviderButton } from "@/components/dashboard";
 import { useAuthProvidersStore } from "@/lib/stores/authProviders";
 import { useOrganizationContext } from "@/hooks/use-organization-context";
 import { AuthProviderDialog } from "./AuthProviderDialog";
+import { AuthProviderConnectionsList } from "./AuthProviderConnectionsList";
 import { toast } from "sonner";
 
 export const AuthProviderTable = () => {
@@ -24,7 +25,7 @@ export const AuthProviderTable = () => {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [selectedAuthProvider, setSelectedAuthProvider] = useState<any>(null);
     const [selectedConnection, setSelectedConnection] = useState<any>(null);
-    const [dialogMode, setDialogMode] = useState<'auth-provider' | 'auth-provider-detail' | 'auth-provider-edit'>('auth-provider');
+    const [dialogMode, setDialogMode] = useState<'auth-provider' | 'auth-provider-detail' | 'auth-provider-edit' | 'auth-provider-list'>('auth-provider');
     const [remountKey, setRemountKey] = useState(0);
 
     // Fetch auth providers and connections on component mount
@@ -64,37 +65,30 @@ export const AuthProviderTable = () => {
     // Log dialog state for debugging
 
     const handleAuthProviderClick = (authProvider: any) => {
+        const connections = authProviderConnections.filter(conn => conn.short_name === authProvider.short_name);
+
         console.log('🖱️ [AuthProviderTable] handleAuthProviderClick called:', {
             authProvider: authProvider.short_name,
-            hasConnection: !!authProviderConnections.find(conn => conn.short_name === authProvider.short_name)
+            connectionCount: connections.length
         });
 
-        const connection = authProviderConnections.find(conn => conn.short_name === authProvider.short_name);
+        setSelectedAuthProvider(authProvider);
 
-        if (connection) {
-            console.log('🔗 [AuthProviderTable] Found existing connection:', connection.readable_id);
-            // Auth provider is already connected, show details
-            setSelectedAuthProvider(authProvider);
-            setSelectedConnection(connection);
-            setDialogMode('auth-provider-detail');
-            setDialogOpen(true);
-        } else if (!canManage) {
-            toast.info("Only admins can configure auth providers");
-            return;
-        } else {
+        if (connections.length === 0) {
+            if (!canManage) {
+                toast.info("Only admins can configure auth providers");
+                return;
+            }
             console.log('➕ [AuthProviderTable] No connection found, opening configure dialog');
-            // Auth provider not connected, show configure dialog
-            setSelectedAuthProvider(authProvider);
             setSelectedConnection(null);
             setDialogMode('auth-provider');
             setDialogOpen(true);
+        } else {
+            console.log('📋 [AuthProviderTable] Found connections:', connections.length);
+            setSelectedConnection(null);
+            setDialogMode('auth-provider-list');
+            setDialogOpen(true);
         }
-
-        console.log('🎯 [AuthProviderTable] Dialog state after click:', {
-            dialogOpen: true,
-            dialogMode: connection ? 'auth-provider-detail' : 'auth-provider',
-            selectedAuthProvider: authProvider.short_name
-        });
     };
 
     const handleDialogComplete = (result: any) => {
@@ -205,7 +199,7 @@ export const AuthProviderTable = () => {
                     </div>
                 ) : (
                     allProviders.map(provider => {
-                        const connection = authProviderConnections.find(
+                        const connections = authProviderConnections.filter(
                             conn => conn.short_name === provider.short_name
                         );
 
@@ -215,7 +209,8 @@ export const AuthProviderTable = () => {
                                 id={provider.short_name}
                                 name={provider.name}
                                 shortName={provider.short_name}
-                                isConnected={!!connection}
+                                isConnected={connections.length > 0}
+                                connectionCount={connections.length}
                                 isComingSoon={'isComingSoon' in provider ? provider.isComingSoon : false}
                                 onClick={() => handleAuthProviderClick(provider)}
                             />

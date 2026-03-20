@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ConfigureAuthProviderView } from "./ConfigureAuthProviderView";
 import { AuthProviderDetailView } from "./AuthProviderDetailView";
+import { AuthProviderConnectionsList } from "./AuthProviderConnectionsList";
 import { EditAuthProviderView } from "@/components/shared/views/EditAuthProviderView";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
@@ -14,7 +15,7 @@ export type { DialogViewProps };
 interface AuthProviderDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    mode: 'auth-provider' | 'auth-provider-detail' | 'auth-provider-edit';
+    mode: 'auth-provider' | 'auth-provider-detail' | 'auth-provider-edit' | 'auth-provider-list';
     authProvider: any;
     connection?: any;
     onComplete?: (result: any) => void;
@@ -161,6 +162,25 @@ export const AuthProviderDialog: React.FC<AuthProviderDialogProps> = ({
                         onComplete={handleComplete}
                         onError={handleError}
                         viewData={viewData}
+                    />
+                );
+
+            case 'auth-provider-list':
+                return (
+                    <AuthProviderConnectionsList
+                        authProvider={authProvider}
+                        onSelectConnection={(conn: any) => {
+                            setViewData(prev => ({
+                                ...prev,
+                                authProviderConnectionId: conn.readable_id,
+                                authProviderConnectionName: conn.name,
+                            }));
+                            setCurrentView('auth-provider-detail');
+                        }}
+                        onAddNew={() => {
+                            setCurrentView('auth-provider');
+                        }}
+                        onCancel={handleCancel}
                     />
                 );
 

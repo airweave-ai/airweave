@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Outer circle -->
+  <circle cx="32" cy="32" r="30" stroke="#e2e8f0" stroke-width="2.5" fill="#1e1e2e"/>
+  <!-- Plug prongs -->
+  <rect x="22" y="12" width="5" height="14" rx="2" fill="#e2e8f0"/>
+  <rect x="37" y="12" width="5" height="14" rx="2" fill="#e2e8f0"/>
+  <!-- Plug body -->
+  <rect x="18" y="24" width="28" height="12" rx="4" fill="#e2e8f0"/>
+  <!-- Cable -->
+  <path d="M32 36 L32 44 Q32 50 38 50 L40 50" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+  <!-- Arrow tip -->
+  <path d="M38 46 L42 50 L38 54" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

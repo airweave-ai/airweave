@@ -1020,6 +1020,48 @@ class PipedreamAuthConfig(AuthConfig):
     )
 
 
+class CustomAuthConfig(AuthConfig):
+    """Custom Auth Provider authentication credentials schema.
+
+    Stores a base URL and API key for a customer-hosted token endpoint.
+    Airweave calls GET {base_url}/{source_short_name} to fetch the freshest
+    credentials for each source. The customer is responsible for returning
+    up-to-date tokens.
+    """
+
+    endpoint_url: str = Field(
+        title="Endpoint Base URL",
+        description=(
+            "Base URL of your token endpoint. Airweave will call "
+            "GET {base_url}/{source_short_name} for each source and expects "
+            "a JSON response with the current credentials. "
+            "You are responsible for returning the freshest token."
+        ),
+    )
+    api_key: str = Field(
+        title="API Key",
+        description="API key sent as X-API-Key header to authenticate requests to your endpoint.",
+    )
+
+    @field_validator("endpoint_url")
+    @classmethod
+    def validate_endpoint_url(cls, v: str) -> str:
+        """Validate the endpoint URL for SSRF safety."""
+        if not v or not v.strip():
+            raise ValueError("endpoint_url is required")
+        v = v.strip().rstrip("/")
+        validate_url(v)
+        return v
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate that api_key is non-empty."""
+        if not v or not v.strip():
+            raise ValueError("api_key is required")
+        return v.strip()
+
+
 class ZohoCRMAuthConfig(OAuth2WithRefreshAuthConfig):
     """Zoho CRM authentication credentials schema."""
 
