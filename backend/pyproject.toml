@@ -1,5 +1,4 @@
 [tool.poetry]
-requires-poetry = ">=2.3"
 name = "airweave"
 version = "0.1.0"
 description = "Make any app searchable - Universal search and agent integration tool"
