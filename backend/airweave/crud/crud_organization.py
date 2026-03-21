@@ -45,10 +45,18 @@ class CRUDOrganization:
         Returns:
             List of enabled FeatureFlag enums
         """
-        # feature_flags should be loaded via selectin, check __dict__ to avoid lazy loading
-        if "feature_flags" in org.__dict__:
-            return [FeatureFlagEnum(ff.flag) for ff in org.__dict__["feature_flags"] if ff.enabled]
-        return []
+        if "feature_flags" not in org.__dict__:
+            return []
+
+        enabled = []
+        for ff in org.__dict__["feature_flags"]:
+            if not ff.enabled:
+                continue
+            try:
+                enabled.append(FeatureFlagEnum(ff.flag))
+            except ValueError:
+                logger.warning(f"Skipping unknown feature flag in database: {ff.flag}")
+        return enabled
 
     async def _enrich_with_billing_and_period(
         self, db: AsyncSession, org: Organization
@@ -805,7 +813,14 @@ class CRUDOrganization:
         )
         result = await db.execute(stmt)
         flags = result.scalars().all()
-        return [FeatureFlagEnum(f.flag) for f in flags]
+
+        enabled = []
+        for f in flags:
+            try:
+                enabled.append(FeatureFlagEnum(f.flag))
+            except ValueError:
+                logger.warning(f"Skipping unknown feature flag in database: {f.flag}")
+        return enabled
 
     async def bulk_enable_features(
         self, db: AsyncSession, organization_id: UUID, flags: List[FeatureFlagEnum]
