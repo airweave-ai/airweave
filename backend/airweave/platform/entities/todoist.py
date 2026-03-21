@@ -4,13 +4,25 @@ Based on the Todoist REST API reference, we define entity schemas for
 Todoist objects, Projects, Sections, Tasks, and Comments.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Todoist ISO8601 timestamp strings into datetime objects."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class TodoistProjectEntity(BaseEntity):
@@ -37,7 +49,6 @@ class TodoistProjectEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     color: Optional[str] = AirweaveField(
         None, description="Color of the project (e.g., 'grey', 'blue')", embeddable=False
     )
@@ -111,7 +122,6 @@ class TodoistTaskEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     description: Optional[str] = AirweaveField(
         None, description="Optional detailed description of the task", embeddable=True
     )
@@ -178,6 +188,55 @@ class TodoistTaskEntity(BaseEntity):
         None, description="URL to access the task", embeddable=False, unhashable=True
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any], *, breadcrumbs: List[Breadcrumb]) -> TodoistTaskEntity:
+        """Construct from a Todoist REST API task object."""
+        task_id = data["id"]
+        content = data.get("content") or f"Task {task_id}"
+        created_time = _parse_dt(data.get("created_at")) or datetime.utcnow()
+        task_url = data.get("url")
+        duration = data.get("duration") or {}
+        deadline = data.get("deadline") or {}
+        due = data.get("due") or {}
+
+        return cls(
+            entity_id=task_id,
+            breadcrumbs=breadcrumbs,
+            name=content,
+            created_at=created_time,
+            updated_at=created_time,
+            task_id=task_id,
+            content=content,
+            created_time=created_time,
+            updated_time=created_time,
+            web_url_value=task_url,
+            description=data.get("description"),
+            is_completed=(
+                data.get("completed_at") is not None
+                if "completed_at" in data
+                else data.get("is_completed", False)
+            ),
+            completed_at=data.get("completed_at"),
+            labels=data.get("labels", []),
+            order=data.get("order", 0),
+            priority=data.get("priority", 1),
+            project_id=data.get("project_id"),
+            section_id=data.get("section_id"),
+            parent_id=data.get("parent_id"),
+            creator_id=data.get("creator_id"),
+            assignee_id=data.get("assignee_id"),
+            assigner_id=data.get("assigner_id"),
+            due_date=due.get("date"),
+            due_datetime=due.get("datetime"),
+            due_string=due.get("string"),
+            due_is_recurring=due.get("is_recurring", False),
+            due_timezone=due.get("timezone"),
+            deadline_date=deadline.get("date"),
+            duration_amount=duration.get("amount"),
+            duration_unit=duration.get("unit"),
+            url=task_url,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Return the Todoist task URL."""
@@ -201,3 +260,26 @@ class TodoistCommentEntity(BaseEntity):
     posted_at: datetime = AirweaveField(
         ..., description="When the comment was posted", is_created_at=True
     )
+
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, breadcrumbs: List[Breadcrumb]
+    ) -> TodoistCommentEntity:
+        """Construct from a Todoist REST API comment object."""
+        content = data.get("content", "")
+        comment_name = content[:50] + "..." if len(content) > 50 else content
+        if not comment_name:
+            comment_name = f"Comment {data['id']}"
+        posted_at = _parse_dt(data.get("posted_at")) or datetime.utcnow()
+
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=breadcrumbs,
+            name=comment_name,
+            created_at=posted_at,
+            updated_at=posted_at,
+            comment_id=data["id"],
+            task_id=str(data.get("task_id") or ""),
+            content=content,
+            posted_at=posted_at,
+        )

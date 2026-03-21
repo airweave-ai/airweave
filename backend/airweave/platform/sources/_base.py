@@ -1,11 +1,9 @@
-"""Base source class."""
+"""Base source class — v2 contract with constructor DI and explicit method params."""
 
-import base64  # for JWT payload peek
-import json  # for JWT payload peek
-import re  # for URL cleaning
-import time  # for exp checks
+from __future__ import annotations
+
+import re
 from abc import abstractmethod
-from contextlib import asynccontextmanager
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -20,20 +18,28 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
     from airweave.platform.access_control.schemas import MembershipTuple
 
-import httpx
 from pydantic import BaseModel
 
-from airweave.core.logging import logger
+from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.entities._base import BaseEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 class BaseSource:
-    """Base class for all sources."""
+    """Base class for all sources.
+
+    Construction-time deps (auth, logger, http_client) are injected via
+    ``create()`` and stored on self. Operation-time deps (cursor, files,
+    node_selections) are passed as params to ``generate_entities()``.
+    """
 
     # Identity (set by @source decorator — required)
     is_source: ClassVar[bool] = False
@@ -61,115 +67,73 @@ class BaseSource:
     feature_flag: ClassVar[Optional[str]] = None
     internal: ClassVar[bool] = False
 
-    def __init__(self):
-        """Initialize the base source."""
-        self._logger: Optional[Any] = None
-        self._token_provider: Optional["TokenProviderProtocol"] = None
-        self._http_client_factory: Optional[Callable] = None
-        self._file_downloader: Optional[Any] = None
+    def __init__(
+        self,
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+    ) -> None:
+        """Initialize with injected dependencies.
 
-    @property
-    def logger(self):
-        """Get the logger for this source, falling back to default if not set."""
-        if self._logger is not None:
-            return self._logger
-        # Fall back to default logger
-        return logger
-
-    def set_logger(self, logger) -> None:
-        """Set a contextual logger for this source."""
+        Args:
+            auth: Auth provider (TokenProviderProtocol or DirectCredentialProvider).
+            logger: Contextual logger with sync/search metadata.
+            http_client: Pre-built AirweaveHttpClient with rate limiting.
+        """
+        self._auth = auth
         self._logger = logger
+        self._http_client = http_client
+
+    # ------------------------------------------------------------------
+    # Properties — construction-time deps
+    # ------------------------------------------------------------------
 
     @property
-    def token_provider(self) -> Optional["TokenProviderProtocol"]:
-        """Get the token provider for this source."""
-        return self._token_provider
-
-    def set_token_provider(self, provider: "TokenProviderProtocol") -> None:
-        """Set token provider for this source.
-
-        Args:
-            provider: Any TokenProviderProtocol implementation.
-        """
-        self._token_provider = provider
-
-    def set_http_client_factory(self, factory: Optional[Callable]) -> None:
-        """Set the HTTP client factory for creating HTTP clients.
-
-        Args:
-            factory: Callable that creates HTTP clients, or None for vanilla httpx
-        """
-        self._http_client_factory = factory
-        if factory:
-            self.logger.debug("HTTP client factory configured")
+    def auth(self) -> SourceAuthProvider:
+        """The auth provider for this source."""
+        return self._auth
 
     @property
-    def file_downloader(self):
-        """Get the file downloader for this source."""
-        return self._file_downloader
-
-    def set_file_downloader(self, downloader) -> None:
-        """Set file downloader service for this source.
-
-        Args:
-            downloader: FileDownloadService instance for downloading files
-        """
-        self._file_downloader = downloader
-
-    @asynccontextmanager
-    async def http_client(self, **kwargs):
-        """Get HTTP client with proper lifecycle management.
-
-        Args:
-            **kwargs: Standard httpx.AsyncClient parameters
-
-        Usage:
-            async with self.http_client() as client:
-                response = await client.get(url, headers=headers)
-
-        Yields:
-            HTTP client (either vanilla httpx or Pipedream proxy)
-        """
-        if self._http_client_factory:
-            # Use factory-provided client (could be Pipedream proxy)
-            client = self._http_client_factory(**kwargs)
-            if hasattr(client, "__aenter__"):
-                # Client supports context management
-                async with client as managed_client:
-                    yield managed_client
-            else:
-                # Client doesn't need context management
-                try:
-                    yield client
-                finally:
-                    if hasattr(client, "aclose"):
-                        await client.aclose()
-        else:
-            # Use vanilla httpx
-            async with httpx.AsyncClient(**kwargs) as client:
-                yield client
-
-    def set_cursor(self, cursor) -> None:
-        """Set the cursor for this source.
-
-        Args:
-            cursor: SyncCursor instance for tracking sync progress
-        """
-        self._cursor = cursor
+    def logger(self) -> ContextualLogger:
+        """Contextual logger with sync/search metadata."""
+        return self._logger
 
     @property
-    def cursor(self):
-        """Get the cursor for this source."""
-        return getattr(self, "_cursor", None)
+    def http_client(self) -> AirweaveHttpClient:
+        """Pre-built HTTP client with rate limiting."""
+        return self._http_client
+
+    # ------------------------------------------------------------------
+    # Auth convenience methods
+    # ------------------------------------------------------------------
+
+    async def get_access_token(self) -> str:
+        """Get a valid access token via the auth provider.
+
+        Delegates to ``self._auth.get_token()`` for TokenProviderProtocol
+        implementations.
+        """
+        if hasattr(self._auth, "get_token"):
+            return await self._auth.get_token()
+        raise RuntimeError(
+            f"{self.__class__.__name__}: auth provider {type(self._auth).__name__} "
+            f"does not support get_token(). Use DirectCredentialProvider.credentials instead."
+        )
+
+    async def get_token_for_resource(self, resource_scope: str) -> Optional[str]:
+        """Get a token for a different resource scope (SharePoint Online only)."""
+        if hasattr(self._auth, "get_token_for_resource"):
+            return await self._auth.get_token_for_resource(resource_scope)
+        return None
+
+    # ------------------------------------------------------------------
+    # Class metadata methods
+    # ------------------------------------------------------------------
 
     @classmethod
     def is_internal(cls) -> bool:
-        """Check if this is an internal/test source.
-
-        Internal sources are excluded from documentation generation and only
-        loaded when ENABLE_INTERNAL_SOURCES=true. Set via `internal=True`
-        in the @source decorator.
-        """
+        """Check if this is an internal/test source."""
         return cls.internal
 
     @classmethod
@@ -181,7 +145,6 @@ class BaseSource:
     @classmethod
     def get_supported_auth_methods(cls) -> list[AuthenticationMethod]:
         """Get all supported authentication methods."""
-        # Always include BYOC if OAUTH_BROWSER is supported
         methods = list(cls.auth_methods)
         if (
             AuthenticationMethod.OAUTH_BROWSER in methods
@@ -210,123 +173,65 @@ class BaseSource:
         """Check if source requires user to bring their own OAuth client credentials."""
         return cls.requires_byoc
 
-    async def get_access_token(self) -> str:
-        """Get a valid access token, preferring the token provider when available.
-
-        Falls back to self.access_token (set by create()) when no provider
-        is configured — e.g. during lightweight validation flows.
-
-        Returns:
-            A valid access token string.
-
-        Raises:
-            RuntimeError: If neither a token provider nor self.access_token is available.
-        """
-        if self._token_provider:
-            return await self._token_provider.get_token()
-
-        token = getattr(self, "access_token", None)
-        if token:
-            return token
-
-        raise RuntimeError(
-            f"{self.__class__.__name__}.get_access_token() called but no "
-            f"token provider or access_token is available."
-        )
-
-    async def refresh_on_unauthorized(self) -> Optional[str]:
-        """Force-refresh the token after a 401 error.
-
-        Returns:
-            A fresh access token, or None if no token provider is set.
-        """
-        if not self._token_provider:
-            raise RuntimeError(
-                f"{self.__class__.__name__}.refresh_on_unauthorized() called but no "
-                f"token provider is configured. Ensure the lifecycle service "
-                f"sets a TokenProvider before calling this method."
-            )
-        if self._token_provider:
-            return await self._token_provider.force_refresh()
-
-    async def get_token_for_resource(self, resource_scope: str) -> Optional[str]:
-        """Get a token for a different resource scope.
-
-        Used for cross-resource access, e.g. SharePoint REST API when the
-        primary token is scoped to Microsoft Graph. Only works with
-        OAuthTokenProvider which has the ``get_token_for_resource`` method.
-
-        Args:
-            resource_scope: The target scope.
-
-        Returns:
-            An access token scoped to the requested resource, or None.
-        """
-        if self._token_provider and hasattr(self._token_provider, "get_token_for_resource"):
-            return await self._token_provider.get_token_for_resource(resource_scope)
-        return None
+    # ------------------------------------------------------------------
+    # Abstract methods — the source contract
+    # ------------------------------------------------------------------
 
     @classmethod
     @abstractmethod
     async def create(
-        cls, credentials: Optional[Any] = None, config: Optional[Dict[str, Any]] = None
-    ) -> "BaseSource":
+        cls,
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: BaseModel,
+    ) -> BaseSource:
         """Create a new source instance.
 
-        Args:
-            credentials: Optional credentials for authenticated sources.
-                       For sources without authentication, this can be None.
-            config: Optional configuration parameters
+        Auth is fully handled by the ``auth`` provider — sources never
+        touch raw credentials. Source-specific runtime configuration
+        (repo name, site URL, etc.) comes from ``config`` as a typed
+        Pydantic model (the source's ``config_class``).
 
-        Returns:
-            A configured source instance
+        Args:
+            auth: Auth provider — ``TokenProviderProtocol`` or ``DirectCredentialProvider``.
+            logger: Contextual logger with sync/search metadata.
+            http_client: Pre-built AirweaveHttpClient with rate limiting.
+            config: Typed config instance (source's config_class, parsed by lifecycle).
         """
         pass
 
     @abstractmethod
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        """Generate entities for the source."""
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Generate entities for the source.
+
+        Args:
+            cursor: SyncCursor for incremental sync tracking.
+            files: FileService for downloading files.
+            node_selections: Node selections for targeted sync.
+        """
         return
-        yield  # Make it a generator
+        yield  # type: ignore[misc]
 
     async def generate_access_control_memberships(
         self,
-    ) -> AsyncGenerator["MembershipTuple", None]:
+    ) -> AsyncGenerator[MembershipTuple, None]:
         r"""Generate access control membership tuples.
 
         Only implement this if your source has @source(supports_access_control=True).
-
-        Yields user→group and group→group membership tuples for access
-        control resolution at search time. These tuples are persisted to
-        PostgreSQL and used by AccessBroker to expand user principals.
-
-        Principal format conventions:
-        - Users: "user:{identifier}" (e.g., "user:john@acme.com")
-        - SharePoint groups: "group:sp:{id}" (e.g., "group:sp:42")
-        - AD groups: "group:ad:{login_name}" (e.g., "group:ad:DOMAIN\\Engineers")
-
-        Example implementation (SharePoint):
-        ```python
-        async def generate_access_control_memberships(self):
-            for group in await self._get_all_sharepoint_groups():
-                for member in await self._get_group_members(group.id):
-                    yield MembershipTuple(
-                        member_id=member.email,
-                        member_type="user",
-                        group_id=f"sp:{group.id}",
-                        group_name=group.name,
-                    )
-        ```
-
-        Yields:
-            MembershipTuple objects
         """
-        # Default: yield nothing (source doesn't support access control)
         return
-        yield  # Make it a generator
+        yield  # type: ignore[misc]
 
     @abstractmethod
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate that this source is reachable and credentials are usable."""
         raise NotImplementedError
 
@@ -334,54 +239,15 @@ class BaseSource:
         self,
         parent_node_id: Optional[str] = None,
     ) -> list:
-        """Get child nodes for browse tree display. Override in sources that support browsing.
-
-        Args:
-            parent_node_id: Parent node ID. None = root level.
-
-        Returns:
-            List of BrowseNode objects (source-agnostic tree nodes).
-        """
+        """Get child nodes for browse tree display."""
         raise NotImplementedError(f"{self.__class__.__name__} does not support browse tree")
 
     def parse_browse_node_id(self, node_id: str) -> tuple:
-        """Parse an encoded browse node ID into (node_type, metadata_dict).
-
-        The source owns the node ID encoding (created in get_browse_children),
-        so it is the single place that knows how to decode them.
-
-        Args:
-            node_id: Encoded node ID string (e.g., "site:url", "list:url|guid").
-
-        Returns:
-            Tuple of (node_type: str, metadata: dict).
-        """
+        """Parse an encoded browse node ID into (node_type, metadata_dict)."""
         raise NotImplementedError(f"{self.__class__.__name__} does not support browse tree")
 
-    def set_node_selections(self, selections: list) -> None:
-        """Set node selections for targeted sync.
-
-        Override in sources that support targeted sync via node selections.
-        """
-        pass
-
     async def search(self, query: str, limit: int) -> AsyncGenerator[BaseEntity, None]:
-        """Search the source for entities matching the query.
-
-        This method is used for federated search where the source provides search
-        functionality instead of syncing all data. Sources with federated_search=True
-        must implement this method.
-
-        Args:
-            query: Search query string
-            limit: Maximum number of results to return
-
-        Returns:
-            AsyncGenerator yielding BaseEntity objects matching the query
-
-        Raises:
-            NotImplementedError: If source does not support federated search
-        """
+        """Search the source for entities matching the query."""
         if not getattr(self.__class__, "federated_search", False):
             raise NotImplementedError(
                 f"Source {self.__class__.__name__} does not support federated search"
@@ -391,201 +257,46 @@ class BaseSource:
             "search() method is not implemented"
         )
 
+    # ------------------------------------------------------------------
+    # Backward compat — to be removed once sharepoint2019v2 + google_drive
+    # stop stashing cursor on self (they should use the generate_entities param).
+    # ------------------------------------------------------------------
+
+    @property
+    def cursor(self):
+        """Temporary shim: sharepoint2019v2 and google_drive read self.cursor."""
+        return getattr(self, "_cursor", None)
+
+    # ------------------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------------------
+
     def clean_content_for_embedding(self, content: str) -> str:
-        """Clean content for embedding by removing huge URLs and cleaning up formatting.
-
-        This is especially important for content from sources like Notion, Confluence,
-        and Google Docs which often contain:
-        - Massive pre-signed S3/GCS URLs for images
-        - Excessive query parameters in URLs
-        - Tracking parameters
-        - Redundant whitespace
-
-        Args:
-            content: Raw content that may contain large URLs
-
-        Returns:
-            Cleaned content suitable for embedding with shortened URLs
-        """
+        """Clean content for embedding by removing huge URLs and cleaning up formatting."""
         if not content:
             return ""
 
-        # First, handle image markdown - these have ! prefix
-        # Match images with URLs that have query strings (S3/GCS pre-signed URLs)
         pattern_images_query = r"!\[([^\]]*)\]\([^\?\)]+\?[^\)]+\)"
         content = re.sub(pattern_images_query, r"[Image: \1]", content)
 
-        # Also handle images with very long URLs even without query params
         pattern_images_long = r"!\[([^\]]*)\]\([^\)]{200,}\)"
         content = re.sub(pattern_images_long, r"[Image: \1]", content)
 
-        # Then handle regular links with excessive query parameters
         pattern_links = r"\[([^\]]+)\]\(https?://[^\s\)]+\?[^\)]{100,}\)"
         content = re.sub(pattern_links, r"[\1]", content)
 
-        # Also handle bare URLs that are extremely long (no markdown formatting)
         pattern_bare = r"(https?://[^\s]+\?[^\s]{100,})"
         content = re.sub(pattern_bare, "[link]", content)
 
-        # Remove multiple consecutive blank lines
         content = re.sub(r"\n{3,}", "\n\n", content)
-
-        # Trim whitespace
         content = content.strip()
 
         return content
 
-    async def _validate_oauth2(  # noqa: C901
-        self,
-        *,
-        # Option A: RFC 7662 token introspection
-        introspection_url: Optional[str] = None,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
-        # Option B: Minimal authenticated ping
-        ping_url: Optional[str] = None,
-        # Overrides
-        access_token: Optional[str] = None,
-        headers: Optional[Dict[str, str]] = None,
-        timeout: float = 10.0,
-    ) -> bool:
-        """Generic OAuth2 validation: introspection and/or a bearer ping.
-
-        You can supply either:
-          - `introspection_url` (+ `client_id` and `client_secret`) for RFC 7662,
-          - or `ping_url` for a simple authorized GET using the access token,
-          - or both (introspection first, then ping).
-
-        Token refresh is attempted automatically on 401 via `token_provider`.
-
-        Returns:
-            True if the token is active and the endpoint(s) respond as expected; otherwise False.
-        """
-        token = access_token or await self.get_access_token()
-        if not token:
-            self.logger.error("OAuth2 validation failed: no access token available.")
-            return False
-
-        # Helper: safe JWT 'exp' peek (no signature verification).
-        def _is_jwt_unexpired(tok: str) -> Optional[bool]:
-            try:
-                parts = tok.split(".")
-                if len(parts) != 3:
-                    return None
-                # base64url decode payload
-                pad = "=" * (-len(parts[1]) % 4)
-                payload_bytes = base64.urlsafe_b64decode(parts[1] + pad)
-                payload = json.loads(payload_bytes.decode("utf-8"))
-                exp = payload.get("exp")
-                if exp is None:
-                    return None
-                return time.time() < float(exp)
-            except Exception:
-                return None
-
-        async def _do_ping(bearer: str) -> bool:
-            try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    hdrs = {"Authorization": f"Bearer {bearer}"}
-                    if headers:
-                        hdrs.update(headers)
-                    resp = await client.get(ping_url, headers=hdrs)
-                    if 200 <= resp.status_code < 300:
-                        return True
-                    if resp.status_code == 401:
-                        self.logger.info("Ping unauthorized (401); attempting token refresh.")
-                        new_token = await self.refresh_on_unauthorized()
-                        if new_token:
-                            hdrs["Authorization"] = f"Bearer {new_token}"
-                            resp = await client.get(ping_url, headers=hdrs)
-                            return 200 <= resp.status_code < 300
-                    self.logger.warning(f"Ping failed: HTTP {resp.status_code} - {resp.text[:200]}")
-                    return False
-            except httpx.RequestError as e:
-                self.logger.error(f"Ping request error: {e}")
-                return False
-
-        # 1) Try RFC 7662 introspection if configured
-        if introspection_url:
-            try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    auth = (client_id, client_secret) if client_id and client_secret else None
-                    data = {"token": token, "token_type_hint": "access_token"}
-                    resp = await client.post(
-                        introspection_url,
-                        data=data,
-                        auth=auth,
-                        headers={"Accept": "application/json", **(headers or {})},
-                    )
-                    # Handle unauthorized by refreshing once
-                    if resp.status_code == 401:
-                        self.logger.info(
-                            "Introspection unauthorized (401); attempting token refresh."
-                        )
-                        new_token = await self.refresh_on_unauthorized()
-                        if new_token:
-                            data["token"] = new_token
-                            resp = await client.post(
-                                introspection_url,
-                                data=data,
-                                auth=auth,
-                                headers={"Accept": "application/json", **(headers or {})},
-                            )
-
-                    resp.raise_for_status()
-                    body = resp.json()
-                    active = bool(body.get("active", False))
-
-                    # If the server returns exp, double-check it
-                    exp = body.get("exp")
-                    if exp is not None:
-                        try:
-                            if time.time() >= float(exp):
-                                active = False
-                        except Exception:
-                            pass
-
-                    if active:
-                        return True
-
-                    # If introspection says inactive, do one last lightweight check:
-                    # peek exp from JWT (if it is a JWT) to avoid false negatives
-                    # on non-standard servers.
-                    peek = _is_jwt_unexpired(token)
-                    if peek is True:
-                        self.logger.debug(
-                            "Token appears unexpired by JWT payload, "
-                            "but introspection returned inactive."
-                        )
-                    else:
-                        self.logger.warning("Token reported inactive by introspection.")
-                    # Fall through to optional ping if provided
-            except httpx.HTTPStatusError as e:
-                status = e.response.status_code if getattr(e, "response", None) else "N/A"
-                self.logger.error(f"Introspection HTTP error {status}: {e}")
-            except httpx.RequestError as e:
-                self.logger.error(f"Introspection request error: {e}")
-            except Exception as e:
-                self.logger.error(f"Unexpected introspection error: {e}")
-
-        # 2) Try an authenticated ping if configured
-        if ping_url:
-            return await _do_ping(token)
-
-        # 3) Last resort: if neither endpoint provided, do a best-effort JWT exp peek
-        peek = _is_jwt_unexpired(token)
-        if peek is not None:
-            self.logger.debug("Validated via JWT 'exp' claim peek.")
-            return peek
-
-        self.logger.warning(
-            "OAuth2 validation inconclusive: no endpoints provided and token format is opaque."
-        )
-        return False
-
-    # ------------------------------
+    # ------------------------------------------------------------------
     # Concurrency / batching helpers
-    # ------------------------------
+    # ------------------------------------------------------------------
+
     async def process_entities_concurrent(
         self,
         items: Union[Iterable[Any], AsyncIterable[Any]],
@@ -596,20 +307,7 @@ class BaseSource:
         stop_on_error: bool = False,
         max_queue_size: int = 100,
     ) -> AsyncGenerator[BaseEntity, None]:
-        """Generic bounded-concurrency driver.
-
-        Uses a fixed pool of ``batch_size`` worker tasks fed by a bounded queue
-        so the total number of asyncio tasks stays at ``batch_size + 1``
-        regardless of how many items are provided.
-
-        Args:
-            items: Sync or async iterable of units of work.
-            worker: Async generator ``worker(item)`` yielding 0..N BaseEntity.
-            batch_size: Maximum concurrent workers.
-            preserve_order: If True, buffer per-item results and yield in input order.
-            stop_on_error: If True, cancel remaining work on first error.
-            max_queue_size: Backpressure cap on the results queue.
-        """
+        """Generic bounded-concurrency driver."""
         import asyncio as _asyncio
 
         pool = self._create_bounded_pool(
@@ -650,11 +348,7 @@ class BaseSource:
         batch_size: int,
         max_queue_size: int,
     ) -> Dict[str, Any]:
-        """Create a bounded producer + fixed worker pool.
-
-        Returns a dict with keys: results, all_tasks, producer_finished,
-        get_total_items, sentinel.
-        """
+        """Create a bounded producer + fixed worker pool."""
         import asyncio as _asyncio
 
         results: _asyncio.Queue = _asyncio.Queue(maxsize=max_queue_size)
@@ -741,13 +435,13 @@ class BaseSource:
                 break
             msg = await results.get()
             if msg is None:
-                continue  # producer-done wake-up
+                continue
             i, payload, err = msg
             if payload is sentinel:
                 done_items += 1
                 continue
             if err:
-                self.logger.error(f"Worker {i} error: {err}", exc_info=True)
+                self.logger.warning(f"Worker {i} error: {err}", exc_info=True)
                 if stop_on_error:
                     for t in tasks:
                         t.cancel()
@@ -775,13 +469,13 @@ class BaseSource:
                 break
             msg = await results.get()
             if msg is None:
-                continue  # producer-done wake-up
+                continue
             i, payload, err = msg
             if payload is sentinel:
                 finished.add(i)
                 done_items += 1
             elif err:
-                self.logger.error(f"Worker {i} error: {err}", exc_info=True)
+                self.logger.warning(f"Worker {i} error: {err}", exc_info=True)
                 if stop_on_error:
                     for t in tasks:
                         t.cancel()

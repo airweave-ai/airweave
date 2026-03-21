@@ -50,6 +50,7 @@ def _make_entry(
         oauth_type=None,
         requires_byoc=requires_byoc,
         supports_continuous=False,
+        supports_cursor=False,
         federated_search=False,
         supports_temporal_relevance=True,
         supports_access_control=False,

@@ -91,7 +91,8 @@ from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
 from airweave.domains.storage.sync_file_manager import SyncFileManager
-from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
+from airweave.domains.syncs.cursors.repository import SyncCursorRepository
+from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
 from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
@@ -489,6 +490,7 @@ def create_container(settings: Settings) -> Container:
         response_builder=sync_deps["response_builder"],
         sync_repo=source_deps["sync_repo"],
         sync_cursor_repo=source_deps["sync_cursor_repo"],
+        sync_cursor_service=source_deps["sync_cursor_service"],
         sync_job_repo=source_deps["sync_job_repo"],
         payment_gateway=billing_services["payment_gateway"],
         sync_record_service=sync_deps["sync_record_service"],
@@ -740,6 +742,7 @@ def _create_source_services(settings: Settings) -> dict:
     sync_repo = SyncRepository()
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
+    sync_cursor_service = SyncCursorService()
     redirect_session_repo = OAuthRedirectSessionRepository()
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
@@ -778,6 +781,7 @@ def _create_source_services(settings: Settings) -> dict:
         "source_lifecycle_service": source_lifecycle_service,
         "sync_repo": sync_repo,
         "sync_cursor_repo": sync_cursor_repo,
+        "sync_cursor_service": sync_cursor_service,
         "sync_job_repo": sync_job_repo,
     }
 

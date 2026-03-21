@@ -72,7 +72,7 @@ class SourceLifecycleServiceProtocol(Protocol):
         registry, decrypts credentials, creates the instance, and configures:
         - Contextual logger
         - Token manager (OAuth sources with refresh)
-        - HTTP client (vanilla httpx or Pipedream proxy)
+        - HTTP client factory
         - Rate limiting wrapper (AirweaveHttpClient)
         - Sync identifiers
 

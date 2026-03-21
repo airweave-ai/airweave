@@ -41,6 +41,18 @@ class AttioConfig(SourceConfig):
 class BitbucketConfig(SourceConfig):
     """Bitbucket configuration schema."""
 
+    workspace: str = Field(
+        default="",
+        title="Workspace",
+        description="Bitbucket workspace slug (e.g., 'my-workspace'). "
+        "Required when using OAuth; for API-token auth this can also be set in credentials.",
+    )
+    repo_slug: str = Field(
+        default="",
+        title="Repository Slug",
+        description="Specific repository to sync (e.g., 'my-repo'). "
+        "If empty, syncs all repositories in the workspace.",
+    )
     branch: str = Field(
         default="",
         title="Branch name",
@@ -112,6 +124,14 @@ class ConfluenceConfig(SourceConfig):
 
 class DropboxConfig(SourceConfig):
     """Dropbox configuration schema."""
+
+    exclude_path: str = Field(
+        default="",
+        title="Exclude Path",
+        description=(
+            "Path prefix to exclude from sync (e.g., '/archive'). If empty, nothing is excluded."
+        ),
+    )
 
 
 class FirefliesConfig(SourceConfig):
@@ -656,6 +676,12 @@ class StripeConfig(SourceConfig):
     pass
 
 
+class PipedriveConfig(SourceConfig):
+    """Pipedrive configuration schema."""
+
+    pass
+
+
 class SalesforceConfig(SourceConfig):
     """Salesforce configuration schema.
 
@@ -672,6 +698,13 @@ class SalesforceConfig(SourceConfig):
             "exclude_from_ui": True,
             "auth_provider_field": "instance_url",
         },
+    )
+
+    api_version: str = Field(
+        default="58.0",
+        title="API Version",
+        description="Salesforce API version to use (e.g., '58.0').",
+        json_schema_extra={"exclude_from_ui": True},
     )
 
     @field_validator("instance_url", mode="before")
@@ -814,8 +847,8 @@ class StubConfig(SourceConfig):
     fail_after: int = Field(
         default=-1,
         title="Fail After",
-        description="Number of entities to generate before failing the sync",
-        ge=0,
+        description="Number of entities to generate before failing the sync (-1 to disable)",
+        ge=-1,
         le=100000,
     )
 

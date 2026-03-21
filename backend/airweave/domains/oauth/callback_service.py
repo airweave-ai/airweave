@@ -37,11 +37,8 @@ from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
 )
-from airweave.domains.sources.exceptions import (
-    SourceCreationError,
-    SourceNotFoundError,
-    SourceValidationError,
-)
+from airweave.domains.sources.exceptions import SourceError, SourceNotFoundError
+from airweave.domains.sources.http_translation import http_exception_for_credential_validation
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
@@ -590,10 +587,15 @@ class OAuthCallbackService:
                 short_name=source_entry.short_name,
                 credentials=access_token,
             )
-        except SourceNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
-        except (SourceCreationError, SourceValidationError) as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+        except (SourceNotFoundError, SourceError) as e:
+            raise http_exception_for_credential_validation(
+                e, source_short_name=source_entry.short_name
+            ) from e
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Validation failed for {source_entry.short_name}: {e}",
+            ) from e
 
     # ------------------------------------------------------------------
     # Private: finalization (response + sync trigger)

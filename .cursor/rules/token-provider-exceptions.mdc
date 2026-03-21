@@ -1,0 +1,95 @@
+---
+description: Token provider exception design and how it feeds into the source connection domain
+globs: backend/airweave/domains/sources/token_providers/**,backend/airweave/domains/oauth/exceptions.py,backend/airweave/domains/source_connections/**
+alwaysApply: false
+---
+
+# Token Provider Exceptions → Source Connection Actionability
+
+## Three exception layers
+
+```
+OAuth2 token endpoint / Auth provider API
+        ↓ raises typed domain exceptions
+OAuthRefreshServerError, OAuthRefreshTokenRevokedError, ...     (domains/oauth/exceptions.py)
+AuthProviderAccountNotFoundError, AuthProviderAuthError, ...    (platform/auth_providers/exceptions.py)
+        ↓ token providers catch + translate
+TokenCredentialsInvalidError, TokenProviderAccountGoneError, ... (domains/sources/token_providers/exceptions.py)
+        ↓ each carries:
+        .provider_kind  ("oauth" | "auth_provider" | "static")
+        .source_short_name
+        .__cause__  (original exception)
+```
+
+## Token provider exception hierarchy
+
+```
+TokenProviderError (SourceError)
+├── TokenExpiredError                    — token is known-dead, cannot be refreshed (fast abort)
+├── TokenCredentialsInvalidError         — token/refresh_token expired or revoked
+├── TokenProviderAccountGoneError        — external record deleted (Composio/Pipedream)
+│     .account_id
+├── TokenProviderConfigError             — fundamental misconfiguration
+├── TokenProviderMissingCredsError       — response missing required fields
+│     .missing_fields
+├── TokenProviderRateLimitError          — upstream rate-limiting
+│     .retry_after
+├── TokenProviderServerError             — 5xx / timeout / connection error from credential source
+│     .status_code
+└── TokenRefreshNotSupportedError        — static token / no refresh_token
+```
+
+`TokenExpiredError` is raised by `get_token()` when the provider knows the token is dead and refresh is impossible (e.g. the refresh_token itself is revoked). Callers should treat it as a permanent failure and surface `NEEDS_REAUTH` immediately without retrying.
+
+## How the SC domain makes this actionable
+
+### Connection status expansion
+
+```python
+class SourceConnectionStatus(str, Enum):
+    ACTIVE = "active"
+    PENDING_AUTH = "pending_auth"
+    SYNCING = "syncing"
+    PENDING_SYNC = "pending_sync"
+    NEEDS_REAUTH = "needs_reauth"   # ← credentials expired/revoked, user must re-authenticate
+    ERROR = "error"                 # ← config/permanent errors
+    INACTIVE = "inactive"
+```
+
+### Error reason on the connection model
+
+```python
+error_code: Optional[str]     # machine-readable enum value
+error_message: Optional[str]  # human-readable, shown to user
+```
+
+### Error code enum
+
+```python
+class ConnectionErrorCode(str, Enum):
+    CREDENTIALS_EXPIRED = "credentials_expired"
+    ACCOUNT_DELETED = "account_deleted"
+    CONFIG_ERROR = "config_error"
+    MISSING_CREDENTIALS = "missing_credentials"
+    SERVER_ERROR = "server_error"
+    RATE_LIMITED = "rate_limited"
+```
+
+### Exception → (status, code, message) mapping
+
+| Exception | Status | Error code | User-facing message pattern |
+|---|---|---|---|
+| `TokenCredentialsInvalidError` (oauth) | `NEEDS_REAUTH` | `credentials_expired` | "Your {source} token expired. Re-authenticate to continue syncing." |
+| `TokenCredentialsInvalidError` (auth_provider) | `NEEDS_REAUTH` | `credentials_expired` | "Your {provider} connection to {source} expired. Re-connect in {provider}." |
+| `TokenProviderAccountGoneError` | `NEEDS_REAUTH` | `account_deleted` | "Your {provider} account for {source} was deleted. Re-create the connection." |
+| `TokenProviderConfigError` | `ERROR` | `config_error` | "Connection misconfigured. Contact support." |
+| `TokenProviderMissingCredsError` | `ERROR` | `missing_credentials` | "Incomplete credentials from {provider}. Re-authenticate." |
+| `TokenProviderRateLimitError` | *(no change)* | — | Silent retry. Connection stays in current state. |
+| `TokenProviderServerError` | *(no change)* | — | Silent retry. Becomes `ERROR` after N consecutive failures. |
+
+### Key rules
+
+- **Rate limit and server error don't change connection status.** They're operational. Only persistent failures touch the connection state.
+- **`NEEDS_REAUTH` is not `ERROR`.** It's recoverable with a clear user action. The frontend shows a re-auth button, not a scary error banner.
+- **`provider_kind` differentiates the user message**, not the status. OAuth expired = "re-authenticate with us". Auth provider expired = "re-link in Composio/Pipedream."
+- **`error_code` is stored as varchar** but typed as a Python Enum. Flexible in storage, strict in code.

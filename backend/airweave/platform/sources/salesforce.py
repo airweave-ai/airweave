@@ -10,23 +10,32 @@ Then, we yield them as entities using the respective entity schemas defined
 in entities/salesforce.py.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-import httpx
 from tenacity import retry, stop_after_attempt
 
+from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
-from airweave.platform.configs.auth import SalesforceAuthConfig
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.exceptions import SourceAuthError
+from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.config import SalesforceConfig
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import BaseEntity, Breadcrumb
+from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.salesforce import (
     SalesforceAccountEntity,
     SalesforceContactEntity,
     SalesforceOpportunityEntity,
+    _parse_dt,
 )
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.http_helpers import raise_for_status
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
@@ -43,8 +52,8 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.WITH_REFRESH,
-    requires_byoc=True,  # Users must bring their own Salesforce OAuth credentials
-    auth_config_class=SalesforceAuthConfig,
+    requires_byoc=True,
+    auth_config_class=None,
     config_class=SalesforceConfig,
     labels=["CRM", "Sales"],
     supports_continuous=False,
@@ -63,36 +72,23 @@ class SalesforceSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
-    ) -> "SalesforceSource":
-        """Create a new Salesforce source instance.
+        cls,
+        *,
+        auth: TokenProviderProtocol,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: SalesforceConfig,
+    ) -> SalesforceSource:
+        """Create a new Salesforce source instance."""
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
 
-        Args:
-            access_token: OAuth access token for Salesforce API
-            config: Required configuration containing instance_url
-
-        Returns:
-            Configured SalesforceSource instance
-        """
-        instance = cls()
-
-        if not access_token:
-            raise ValueError("Access token is required")
-
-        instance.access_token = access_token
-        instance.auth_type = "oauth"
-
-        # Get instance_url from config (template field)
-        if config and config.get("instance_url"):
-            instance.instance_url = cls._normalize_instance_url(config["instance_url"])
-            instance.api_version = config.get("api_version", "58.0")
+        if config.instance_url:
+            instance.instance_url = cls._normalize_instance_url(config.instance_url)
         else:
-            # For token validation, we can use a placeholder instance_url
-            # The actual instance_url will be provided during connection creation
-            instance.instance_url = "validation-placeholder.salesforce.com"
-            instance.api_version = "58.0"
-            instance._is_validation_mode = True  # Flag to indicate this is for validation only
+            instance.instance_url = None
+            instance._is_validation_mode = True
 
+        instance.api_version = config.api_version
         return instance
 
     @staticmethod
@@ -104,16 +100,13 @@ class SalesforceSource(BaseSource):
         """
         if not url:
             return url
-        # Remove https:// or http:// prefix
         return url.replace("https://", "").replace("http://", "")
 
     def _get_base_url(self) -> str:
         """Get the base URL for Salesforce API calls."""
         if not self.instance_url:
-            token_status = "<set>" if self.access_token else "<not set>"
             raise ValueError(
-                f"Salesforce instance_url is not set. "
-                f"instance_url={self.instance_url}, access_token={token_status}"
+                f"Salesforce instance_url is not set. instance_url={self.instance_url}"
             )
         return f"https://{self.instance_url}/services/data/v{self.api_version}"
 
@@ -125,56 +118,37 @@ class SalesforceSource(BaseSource):
             return None
         return f"https://{self.instance_url}/lightning/r/{object_api_name}/{record_id}/view"
 
-    @staticmethod
-    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
-        """Parse Salesforce ISO datetimes."""
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-
     @retry(
         stop=stop_after_attempt(5),
         retry=retry_if_rate_limit_or_timeout,
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
-    async def _get_with_auth(
-        self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Make an authenticated GET request to the Salesforce API.
+    async def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Make an authenticated GET request to the Salesforce API."""
+        token = await self.auth.get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        response = await self.http_client.get(url, headers=headers, params=params)
 
-        Args:
-            client: HTTP client
-            url: Full URL to the Salesforce API endpoint
-            params: Optional query parameters
+        if response.status_code == 401 and self.auth.supports_refresh:
+            new_token = await self.auth.force_refresh()
+            headers = {"Authorization": f"Bearer {new_token}"}
+            response = await self.http_client.get(url, headers=headers, params=params)
 
-        Returns:
-            JSON response data
-
-        Raises:
-            httpx.HTTPStatusError: If the request fails
-        """
-        # Get a valid token (will refresh if needed via TokenManager)
-        access_token = await self.get_access_token()
-        if not access_token:
-            raise ValueError("No access token available")
-
-        headers = {"Authorization": f"Bearer {access_token}"}
-        response = await client.get(url, headers=headers, params=params)
-        response.raise_for_status()
+        raise_for_status(
+            response,
+            source_short_name=self.short_name,
+            token_provider_kind=self.auth.provider_kind,
+        )
         return response.json()
 
-    async def _get_object_fields(self, client: httpx.AsyncClient, sobject_name: str) -> List[str]:
+    async def _get_object_fields(self, sobject_name: str) -> List[str]:
         """Get all queryable fields for a Salesforce object.
 
         Uses the Salesforce Describe API to discover all fields available in the org.
         Returns ALL fields - we store everything in metadata anyway.
 
         Args:
-            client: HTTP client
             sobject_name: Salesforce object API name (e.g., "Contact", "Account")
 
         Returns:
@@ -182,8 +156,7 @@ class SalesforceSource(BaseSource):
         """
         url = f"{self._get_base_url()}/sobjects/{sobject_name}/describe"
         try:
-            data = await self._get_with_auth(client, url)
-            # Extract field names (only queryable fields)
+            data = await self._get(url)
             all_fields = [
                 field["name"] for field in data.get("fields", []) if field.get("queryable", True)
             ]
@@ -191,8 +164,9 @@ class SalesforceSource(BaseSource):
                 f"📋 [SALESFORCE] Discovered {len(all_fields)} queryable fields for {sobject_name}"
             )
             return all_fields
+        except SourceAuthError:
+            raise
         except Exception as e:
-            # If describe fails, fall back to a minimal safe set
             self.logger.warning(
                 f"⚠️ [SALESFORCE] Failed to describe {sobject_name}, using fallback fields: {e}"
             )
@@ -219,42 +193,36 @@ class SalesforceSource(BaseSource):
             }
             return fallback.get(sobject_name, ["Id", "Name", "CreatedDate", "LastModifiedDate"])
 
-    async def _generate_account_entities(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[BaseEntity, None]:
+    async def _generate_account_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Retrieve accounts from Salesforce using SOQL query.
 
         Uses Salesforce Object Query Language (SOQL) to fetch Account records.
         Paginated, yields SalesforceAccountEntity objects.
         """
-        # Get all queryable fields for Account
-        all_fields = await self._get_object_fields(client, "Account")
+        all_fields = await self._get_object_fields("Account")
 
-        # Build SOQL query with all available fields
         fields_str = ", ".join(all_fields)
         soql_query = f"SELECT {fields_str} FROM Account"
 
         url = f"{self._get_base_url()}/query"
-        params = {"q": soql_query.strip()}
+        params: Optional[Dict[str, Any]] = {"q": soql_query.strip()}
 
         while url:
-            data = await self._get_with_auth(client, url, params)
+            data = await self._get(url, params)
 
             for account in data.get("records", []):
                 account_id = account["Id"]
                 account_name = account.get("Name") or f"Account {account_id}"
-                created_time = self._parse_datetime(account.get("CreatedDate")) or datetime.utcnow()
-                updated_time = self._parse_datetime(account.get("LastModifiedDate")) or created_time
+                created_time = _parse_dt(account.get("CreatedDate")) or datetime.utcnow()
+                updated_time = _parse_dt(account.get("LastModifiedDate")) or created_time
                 web_url = self._build_record_url("Account", account_id)
 
                 yield SalesforceAccountEntity(
-                    # Base fields
                     entity_id=account_id,
                     breadcrumbs=[],
                     name=account_name,
                     created_at=created_time,
                     updated_at=updated_time,
-                    # API fields
                     account_id=account_id,
                     account_name=account_name,
                     created_time=created_time,
@@ -301,114 +269,35 @@ class SalesforceSource(BaseSource):
                     metadata=account,
                 )
 
-            # Check for next page
             next_records_url = data.get("nextRecordsUrl")
             if next_records_url:
                 url = f"https://{self.instance_url}{next_records_url}"
-                params = None  # nextRecordsUrl already includes all parameters
+                params = None
             else:
                 url = None
 
-    async def _generate_contact_entities(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[BaseEntity, None]:
+    async def _generate_contact_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Retrieve contacts from Salesforce using SOQL query.
 
         Uses Salesforce Object Query Language (SOQL) to fetch Contact records.
         Paginated, yields SalesforceContactEntity objects.
         """
-        # Get all queryable fields for Contact
-        all_fields = await self._get_object_fields(client, "Contact")
+        all_fields = await self._get_object_fields("Contact")
 
-        # Build SOQL query with all available fields
         fields_str = ", ".join(all_fields)
         soql_query = f"SELECT {fields_str} FROM Contact"
 
         url = f"{self._get_base_url()}/query"
-        params = {"q": soql_query.strip()}
+        params: Optional[Dict[str, Any]] = {"q": soql_query.strip()}
 
         while url:
-            data = await self._get_with_auth(client, url, params)
+            data = await self._get(url, params)
 
             for contact in data.get("records", []):
-                contact_id = contact["Id"]
-                contact_name = contact.get("Name") or f"Contact {contact_id}"
-                created_time = self._parse_datetime(contact.get("CreatedDate")) or datetime.utcnow()
-                updated_time = self._parse_datetime(contact.get("LastModifiedDate")) or created_time
-                account_id = contact.get("AccountId")
-                account_obj = contact.get("Account") or {}
-                account_name = account_obj.get("Name")
-                breadcrumbs = []
-                if account_id:
-                    breadcrumbs.append(
-                        Breadcrumb(
-                            entity_id=account_id,
-                            name=account_name or f"Account {account_id}",
-                            entity_type=SalesforceAccountEntity.__name__,
-                        )
-                    )
-                web_url = self._build_record_url("Contact", contact_id)
-
-                yield SalesforceContactEntity(
-                    # Base fields
-                    entity_id=contact_id,
-                    breadcrumbs=breadcrumbs,
-                    name=contact_name,
-                    created_at=created_time,
-                    updated_at=updated_time,
-                    # API fields
-                    contact_id=contact_id,
-                    contact_name=contact_name,
-                    created_time=created_time,
-                    updated_time=updated_time,
-                    web_url_value=web_url,
-                    first_name=contact.get("FirstName"),
-                    last_name=contact.get("LastName"),
-                    email=contact.get("Email"),
-                    phone=contact.get("Phone"),
-                    mobile_phone=contact.get("MobilePhone"),
-                    fax=contact.get("Fax"),
-                    title=contact.get("Title"),
-                    department=contact.get("Department"),
-                    account_id=contact.get("AccountId"),
-                    lead_source=contact.get("LeadSource"),
-                    birthdate=contact.get("Birthdate"),
-                    description=contact.get("Description"),
-                    owner_id=contact.get("OwnerId"),
-                    last_activity_date=contact.get("LastActivityDate"),
-                    last_viewed_date=contact.get("LastViewedDate"),
-                    last_referenced_date=contact.get("LastReferencedDate"),
-                    is_deleted=contact.get("IsDeleted", False),
-                    is_email_bounced=contact.get("IsEmailBounced", False),
-                    is_unread_by_owner=contact.get("IsUnreadByOwner", False),
-                    jigsaw=contact.get("Jigsaw"),
-                    jigsaw_contact_id=contact.get("JigsawContactId"),
-                    clean_status=contact.get("CleanStatus"),
-                    level=contact.get("Level__c"),
-                    languages=contact.get("Languages__c"),
-                    has_opted_out_of_email=contact.get("HasOptedOutOfEmail", False),
-                    has_opted_out_of_fax=contact.get("HasOptedOutOfFax", False),
-                    do_not_call=contact.get("DoNotCall", False),
-                    mailing_street=contact.get("MailingStreet"),
-                    mailing_city=contact.get("MailingCity"),
-                    mailing_state=contact.get("MailingState"),
-                    mailing_postal_code=contact.get("MailingPostalCode"),
-                    mailing_country=contact.get("MailingCountry"),
-                    other_street=contact.get("OtherStreet"),
-                    other_city=contact.get("OtherCity"),
-                    other_state=contact.get("OtherState"),
-                    other_postal_code=contact.get("OtherPostalCode"),
-                    other_country=contact.get("OtherCountry"),
-                    assistant_name=contact.get("AssistantName"),
-                    assistant_phone=contact.get("AssistantPhone"),
-                    reports_to_id=contact.get("ReportsToId"),
-                    email_bounced_date=contact.get("EmailBouncedDate"),
-                    email_bounced_reason=contact.get("EmailBouncedReason"),
-                    individual_id=contact.get("IndividualId"),
-                    metadata=contact,
+                yield SalesforceContactEntity.from_api(
+                    contact, build_record_url_fn=self._build_record_url
                 )
 
-            # Check for next page
             next_records_url = data.get("nextRecordsUrl")
             if next_records_url:
                 url = f"https://{self.instance_url}{next_records_url}"
@@ -416,90 +305,28 @@ class SalesforceSource(BaseSource):
             else:
                 url = None
 
-    async def _generate_opportunity_entities(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[BaseEntity, None]:
+    async def _generate_opportunity_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Retrieve opportunities from Salesforce using SOQL query.
 
         Uses Salesforce Object Query Language (SOQL) to fetch Opportunity records.
         Paginated, yields SalesforceOpportunityEntity objects.
         """
-        # Get all queryable fields for Opportunity
-        all_fields = await self._get_object_fields(client, "Opportunity")
+        all_fields = await self._get_object_fields("Opportunity")
 
-        # Build SOQL query with all available fields
         fields_str = ", ".join(all_fields)
         soql_query = f"SELECT {fields_str} FROM Opportunity"
 
         url = f"{self._get_base_url()}/query"
-        params = {"q": soql_query.strip()}
+        params: Optional[Dict[str, Any]] = {"q": soql_query.strip()}
 
         while url:
-            data = await self._get_with_auth(client, url, params)
+            data = await self._get(url, params)
 
             for opportunity in data.get("records", []):
-                opportunity_id = opportunity["Id"]
-                opportunity_name = opportunity.get("Name") or f"Opportunity {opportunity_id}"
-                created_time = (
-                    self._parse_datetime(opportunity.get("CreatedDate")) or datetime.utcnow()
-                )
-                updated_time = (
-                    self._parse_datetime(opportunity.get("LastModifiedDate")) or created_time
-                )
-                account_id = opportunity.get("AccountId")
-                account_obj = opportunity.get("Account") or {}
-                account_name = account_obj.get("Name")
-                breadcrumbs = []
-                if account_id:
-                    breadcrumbs.append(
-                        Breadcrumb(
-                            entity_id=account_id,
-                            name=account_name or f"Account {account_id}",
-                            entity_type=SalesforceAccountEntity.__name__,
-                        )
-                    )
-                web_url = self._build_record_url("Opportunity", opportunity_id)
-
-                yield SalesforceOpportunityEntity(
-                    # Base fields
-                    entity_id=opportunity_id,
-                    breadcrumbs=breadcrumbs,
-                    name=opportunity_name,
-                    created_at=created_time,
-                    updated_at=updated_time,
-                    # API fields
-                    opportunity_id=opportunity_id,
-                    opportunity_name=opportunity_name,
-                    created_time=created_time,
-                    updated_time=updated_time,
-                    web_url_value=web_url,
-                    account_id=opportunity.get("AccountId"),
-                    amount=opportunity.get("Amount"),
-                    close_date=opportunity.get("CloseDate"),
-                    stage_name=opportunity.get("StageName"),
-                    probability=opportunity.get("Probability"),
-                    forecast_category=opportunity.get("ForecastCategory"),
-                    forecast_category_name=opportunity.get("ForecastCategoryName"),
-                    campaign_id=opportunity.get("CampaignId"),
-                    has_opportunity_line_item=opportunity.get("HasOpportunityLineItem", False),
-                    pricebook2_id=opportunity.get("Pricebook2Id"),
-                    owner_id=opportunity.get("OwnerId"),
-                    last_activity_date=opportunity.get("LastActivityDate"),
-                    last_viewed_date=opportunity.get("LastViewedDate"),
-                    last_referenced_date=opportunity.get("LastReferencedDate"),
-                    is_deleted=opportunity.get("IsDeleted", False),
-                    is_won=opportunity.get("IsWon", False),
-                    is_closed=opportunity.get("IsClosed", False),
-                    has_open_activity=opportunity.get("HasOpenActivity", False),
-                    has_overdue_task=opportunity.get("HasOverdueTask", False),
-                    description=opportunity.get("Description"),
-                    type=opportunity.get("Type"),
-                    lead_source=opportunity.get("LeadSource"),
-                    next_step=opportunity.get("NextStep"),
-                    metadata=opportunity,
+                yield SalesforceOpportunityEntity.from_api(
+                    opportunity, build_record_url_fn=self._build_record_url
                 )
 
-            # Check for next page
             next_records_url = data.get("nextRecordsUrl")
             if next_records_url:
                 url = f"https://{self.instance_url}{next_records_url}"
@@ -507,49 +334,28 @@ class SalesforceSource(BaseSource):
             else:
                 url = None
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Salesforce entities.
 
         - Accounts
         - Contacts
         - Opportunities
         """
-        async with self.http_client(timeout=30.0) as client:
-            # Generate accounts
-            async for account_entity in self._generate_account_entities(client):
-                yield account_entity
+        async for account_entity in self._generate_account_entities():
+            yield account_entity
 
-            # Generate contacts
-            async for contact_entity in self._generate_contact_entities(client):
-                yield contact_entity
+        async for contact_entity in self._generate_contact_entities():
+            yield contact_entity
 
-            # Generate opportunities
-            async for opportunity_entity in self._generate_opportunity_entities(client):
-                yield opportunity_entity
+        async for opportunity_entity in self._generate_opportunity_entities():
+            yield opportunity_entity
 
-    async def validate(self) -> bool:
-        """Verify Salesforce access token by pinging the identity endpoint."""
-        # If we're in validation mode without a real instance_url, skip the actual API call
-        if getattr(self, "_is_validation_mode", False):
-            # For validation mode, we can't make a real API call without the instance_url
-            # Just validate that we have an access token
-            return bool(getattr(self, "access_token", None))
-
-        access_token = await self.get_access_token()
-        if not access_token:
-            self.logger.error("Salesforce validation failed: missing access token.")
-            return False
-
-        if not getattr(self, "instance_url", None):
-            self.logger.error("Salesforce validation failed: missing instance URL.")
-            return False
-
-        try:
-            return await self._validate_oauth2(
-                ping_url=f"https://{self.instance_url}/services/oauth2/userinfo",
-                access_token=access_token,
-                timeout=10.0,
-            )
-        except Exception as e:
-            self.logger.error(f"Unexpected error during Salesforce validation: {e}")
-            return False
+    async def validate(self) -> None:
+        """Validate credentials by pinging the Salesforce OAuth2 userinfo endpoint."""
+        await self._get(f"https://{self.instance_url}/services/oauth2/userinfo")

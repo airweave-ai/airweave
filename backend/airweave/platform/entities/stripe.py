@@ -10,13 +10,25 @@ where each entity class inherits from our BaseEntity and adds relevant fields wi
 shared or per-resource metadata as needed.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_stripe_ts(value: Any) -> Optional[datetime]:
+    """Convert a Stripe unix timestamp (seconds) into a UTC datetime."""
+    if value is None:
+        return None
+    try:
+        return datetime.utcfromtimestamp(int(value))
+    except (OSError, ValueError, TypeError):
+        return None
 
 
 class StripeBalanceEntity(BaseEntity):
@@ -192,6 +204,52 @@ class StripeChargeEntity(BaseEntity):
         description="Set of key-value pairs attached to the charge",
         embeddable=False,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: Optional[str],
+    ) -> StripeChargeEntity:
+        """Build from a Stripe API charge object."""
+        charge_id = data["id"]
+        created_time = _parse_stripe_ts(data.get("created")) or datetime.utcnow()
+        name = data.get("description") or f"Charge {charge_id}"
+
+        customer_id = data.get("customer")
+        breadcrumbs: List[Breadcrumb] = []
+        if customer_id:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=customer_id,
+                    name=f"Customer {customer_id}",
+                    entity_type=StripeCustomerEntity.__name__,
+                )
+            )
+
+        return cls(
+            entity_id=charge_id,
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=created_time,
+            updated_at=created_time,
+            charge_id=charge_id,
+            charge_name=name,
+            created_time=created_time,
+            updated_time=created_time,
+            web_url_value=web_url,
+            amount=data.get("amount"),
+            currency=data.get("currency"),
+            captured=data.get("captured", False),
+            paid=data.get("paid", False),
+            refunded=data.get("refunded", False),
+            description=data.get("description"),
+            receipt_url=data.get("receipt_url"),
+            customer_id=customer_id,
+            invoice_id=data.get("invoice"),
+            metadata=data.get("metadata", {}),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -371,6 +429,53 @@ class StripeInvoiceEntity(BaseEntity):
         embeddable=False,
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: Optional[str],
+    ) -> StripeInvoiceEntity:
+        """Build from a Stripe API invoice object."""
+        invoice_id = data["id"]
+        created_time = _parse_stripe_ts(data.get("created")) or datetime.utcnow()
+        name = data.get("number") or f"Invoice {invoice_id}"
+        due_date = _parse_stripe_ts(data.get("due_date"))
+
+        customer_id = data.get("customer")
+        breadcrumbs: List[Breadcrumb] = []
+        if customer_id:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=customer_id,
+                    name=f"Customer {customer_id}",
+                    entity_type=StripeCustomerEntity.__name__,
+                )
+            )
+
+        return cls(
+            entity_id=invoice_id,
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=created_time,
+            updated_at=created_time,
+            invoice_id=invoice_id,
+            invoice_name=name,
+            created_time=created_time,
+            updated_time=created_time,
+            web_url_value=web_url,
+            customer_id=customer_id,
+            number=data.get("number"),
+            status=data.get("status"),
+            amount_due=data.get("amount_due"),
+            amount_paid=data.get("amount_paid"),
+            amount_remaining=data.get("amount_remaining"),
+            due_date=due_date,
+            paid=data.get("paid", False),
+            currency=data.get("currency"),
+            metadata=data.get("metadata", {}),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Dashboard URL for the invoice."""
@@ -428,6 +533,48 @@ class StripePaymentIntentEntity(BaseEntity):
         embeddable=False,
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: Optional[str],
+    ) -> StripePaymentIntentEntity:
+        """Build from a Stripe API payment_intent object."""
+        pi_id = data["id"]
+        created_time = _parse_stripe_ts(data.get("created")) or datetime.utcnow()
+        name = data.get("description") or f"Payment Intent {pi_id}"
+
+        customer_id = data.get("customer")
+        breadcrumbs: List[Breadcrumb] = []
+        if customer_id:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=customer_id,
+                    name=f"Customer {customer_id}",
+                    entity_type=StripeCustomerEntity.__name__,
+                )
+            )
+
+        return cls(
+            entity_id=pi_id,
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=created_time,
+            updated_at=created_time,
+            payment_intent_id=pi_id,
+            payment_intent_name=name,
+            created_time=created_time,
+            updated_time=created_time,
+            web_url_value=web_url,
+            amount=data.get("amount"),
+            currency=data.get("currency"),
+            status=data.get("status"),
+            description=data.get("description"),
+            customer_id=customer_id,
+            metadata=data.get("metadata", {}),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Dashboard URL for the payment intent."""
@@ -482,6 +629,46 @@ class StripePaymentMethodEntity(BaseEntity):
         description="Set of key-value pairs that can be attached to the PaymentMethod",
         embeddable=False,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: Optional[str],
+    ) -> StripePaymentMethodEntity:
+        """Build from a Stripe API payment_method object."""
+        pm_id = data["id"]
+        created_time = _parse_stripe_ts(data.get("created")) or datetime.utcnow()
+        name = data.get("type") or f"Payment Method {pm_id}"
+
+        customer_id = data.get("customer")
+        breadcrumbs: List[Breadcrumb] = []
+        if customer_id:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=customer_id,
+                    name=f"Customer {customer_id}",
+                    entity_type=StripeCustomerEntity.__name__,
+                )
+            )
+
+        return cls(
+            entity_id=pm_id,
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=created_time,
+            updated_at=created_time,
+            payment_method_id=pm_id,
+            payment_method_name=name,
+            created_time=created_time,
+            web_url_value=web_url,
+            type=data.get("type"),
+            billing_details=data.get("billing_details", {}),
+            customer_id=customer_id,
+            card=data.get("card"),
+            metadata=data.get("metadata", {}),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -548,6 +735,41 @@ class StripePayoutEntity(BaseEntity):
         description="Set of key-value pairs that can be attached to the payout",
         embeddable=False,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: Optional[str],
+    ) -> StripePayoutEntity:
+        """Build from a Stripe API payout object."""
+        payout_id = data["id"]
+        created_time = _parse_stripe_ts(data.get("created")) or datetime.utcnow()
+        name = data.get("description") or f"Payout {payout_id}"
+        arrival_date = _parse_stripe_ts(data.get("arrival_date"))
+
+        return cls(
+            entity_id=payout_id,
+            breadcrumbs=[],
+            name=name,
+            created_at=created_time,
+            updated_at=created_time,
+            payout_id=payout_id,
+            payout_name=name,
+            created_time=created_time,
+            updated_time=created_time,
+            web_url_value=web_url,
+            amount=data.get("amount"),
+            currency=data.get("currency"),
+            arrival_date=arrival_date,
+            description=data.get("description"),
+            destination=data.get("destination"),
+            method=data.get("method"),
+            status=data.get("status"),
+            statement_descriptor=data.get("statement_descriptor"),
+            metadata=data.get("metadata", {}),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -672,6 +894,53 @@ class StripeSubscriptionEntity(BaseEntity):
         description="Set of key-value pairs attached to the subscription",
         embeddable=False,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: Optional[str],
+    ) -> StripeSubscriptionEntity:
+        """Build from a Stripe API subscription object."""
+        sub_id = data["id"]
+        created_time = _parse_stripe_ts(data.get("created")) or datetime.utcnow()
+        name = f"Subscription {sub_id}"
+
+        current_period_start = _parse_stripe_ts(data.get("current_period_start"))
+        current_period_end = _parse_stripe_ts(data.get("current_period_end"))
+        canceled_at = _parse_stripe_ts(data.get("canceled_at"))
+
+        customer_id = data.get("customer")
+        breadcrumbs: List[Breadcrumb] = []
+        if customer_id:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=customer_id,
+                    name=f"Customer {customer_id}",
+                    entity_type=StripeCustomerEntity.__name__,
+                )
+            )
+
+        return cls(
+            entity_id=sub_id,
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=created_time,
+            updated_at=created_time,
+            subscription_id=sub_id,
+            subscription_name=name,
+            created_time=created_time,
+            updated_time=created_time,
+            web_url_value=web_url,
+            customer_id=customer_id,
+            status=data.get("status"),
+            current_period_start=current_period_start,
+            current_period_end=current_period_end,
+            cancel_at_period_end=data.get("cancel_at_period_end", False),
+            canceled_at=canceled_at,
+            metadata=data.get("metadata", {}),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

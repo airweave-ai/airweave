@@ -7,13 +7,66 @@ Reference:
     ServiceNow Table API: https://www.servicenow.com/docs/r/washingtondc/api-reference/rest-apis/api-rest.html
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Parse ServiceNow datetime string (ISO-like) to datetime."""
+    if not value:
+        return None
+    try:
+        s = value.strip().replace("Z", "+00:00")
+        if "T" in s:
+            return datetime.fromisoformat(s)
+        return datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+
+
+def _display_value(record: Dict[str, Any], key: str) -> Optional[str]:
+    """Get display value from record; ServiceNow can return {value, display_value}."""
+    raw = record.get(key)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw.get("display_value") or raw.get("value")
+    return str(raw) if raw else None
+
+
+def _raw_value(record: Dict[str, Any], key: str) -> Optional[str]:
+    """Get raw value from record."""
+    raw = record.get(key)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw.get("value") or raw.get("display_value")
+    return str(raw) if raw else None
+
+
+def _parse_bool(value: Any) -> Optional[bool]:
+    """Parse ServiceNow boolean-like value (bool, str 'true'/'false', 0/1) to bool or None."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes")
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return None
+
+
+def _build_record_url(base_url: str, table: str, sys_id: str) -> str:
+    """Build user-facing URL for a record (UI navigates to list with sys_id)."""
+    return f"{base_url}/now/nav/ui/classic/params/target/{table}.do%3Fsys_id={sys_id}"
 
 
 class ServiceNowIncidentEntity(BaseEntity):
@@ -88,6 +141,32 @@ class ServiceNowIncidentEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any], *, base_url: str) -> ServiceNowIncidentEntity:
+        """Construct from a ServiceNow Table API ``incident`` record."""
+        sys_id = _raw_value(data, "sys_id") or data.get("sys_id", "")
+        number = _display_value(data, "number") or _raw_value(data, "number") or sys_id
+        created = _parse_datetime(_raw_value(data, "sys_created_on"))
+        updated = _parse_datetime(_raw_value(data, "sys_updated_on"))
+        return cls(
+            entity_id=sys_id,
+            breadcrumbs=[],
+            name=number,
+            sys_id=sys_id,
+            number=number,
+            short_description=_display_value(data, "short_description")
+            or _raw_value(data, "short_description"),
+            description=_display_value(data, "description") or _raw_value(data, "description"),
+            state=_display_value(data, "state") or _raw_value(data, "state"),
+            priority=_display_value(data, "priority") or _raw_value(data, "priority"),
+            category=_display_value(data, "category") or _raw_value(data, "category"),
+            assigned_to_name=_display_value(data, "assigned_to"),
+            caller_id_name=_display_value(data, "caller_id"),
+            created_at=created,
+            updated_at=updated,
+            web_url_value=_build_record_url(base_url, "incident", sys_id),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """User-facing link to the incident."""
@@ -160,6 +239,32 @@ class ServiceNowKnowledgeArticleEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any], *, base_url: str) -> ServiceNowKnowledgeArticleEntity:
+        """Construct from a ServiceNow Table API ``kb_knowledge`` record."""
+        sys_id = _raw_value(data, "sys_id") or data.get("sys_id", "")
+        number = _display_value(data, "number") or _raw_value(data, "number") or sys_id
+        created = _parse_datetime(_raw_value(data, "sys_created_on"))
+        updated = _parse_datetime(_raw_value(data, "sys_updated_on"))
+        return cls(
+            entity_id=sys_id,
+            breadcrumbs=[],
+            name=number,
+            sys_id=sys_id,
+            number=number,
+            short_description=_display_value(data, "short_description")
+            or _raw_value(data, "short_description"),
+            text=_display_value(data, "text") or _raw_value(data, "text"),
+            author_name=_display_value(data, "author"),
+            kb_knowledge_base_name=_display_value(data, "kb_knowledge_base"),
+            category_name=_display_value(data, "category"),
+            workflow_state=_display_value(data, "workflow_state")
+            or _raw_value(data, "workflow_state"),
+            created_at=created,
+            updated_at=updated,
+            web_url_value=_build_record_url(base_url, "kb_knowledge", sys_id),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -244,6 +349,33 @@ class ServiceNowChangeRequestEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any], *, base_url: str) -> ServiceNowChangeRequestEntity:
+        """Construct from a ServiceNow Table API ``change_request`` record."""
+        sys_id = _raw_value(data, "sys_id") or data.get("sys_id", "")
+        number = _display_value(data, "number") or _raw_value(data, "number") or sys_id
+        created = _parse_datetime(_raw_value(data, "sys_created_on"))
+        updated = _parse_datetime(_raw_value(data, "sys_updated_on"))
+        return cls(
+            entity_id=sys_id,
+            breadcrumbs=[],
+            name=number,
+            sys_id=sys_id,
+            number=number,
+            short_description=_display_value(data, "short_description")
+            or _raw_value(data, "short_description"),
+            description=_display_value(data, "description") or _raw_value(data, "description"),
+            state=_display_value(data, "state") or _raw_value(data, "state"),
+            phase=_display_value(data, "phase") or _raw_value(data, "phase"),
+            priority=_display_value(data, "priority") or _raw_value(data, "priority"),
+            type=_display_value(data, "type") or _raw_value(data, "type"),
+            assigned_to_name=_display_value(data, "assigned_to"),
+            requested_by_name=_display_value(data, "requested_by"),
+            created_at=created,
+            updated_at=updated,
+            web_url_value=_build_record_url(base_url, "change_request", sys_id),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """User-facing link to the change request."""
@@ -317,6 +449,31 @@ class ServiceNowProblemEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any], *, base_url: str) -> ServiceNowProblemEntity:
+        """Construct from a ServiceNow Table API ``problem`` record."""
+        sys_id = _raw_value(data, "sys_id") or data.get("sys_id", "")
+        number = _display_value(data, "number") or _raw_value(data, "number") or sys_id
+        created = _parse_datetime(_raw_value(data, "sys_created_on"))
+        updated = _parse_datetime(_raw_value(data, "sys_updated_on"))
+        return cls(
+            entity_id=sys_id,
+            breadcrumbs=[],
+            name=number,
+            sys_id=sys_id,
+            number=number,
+            short_description=_display_value(data, "short_description")
+            or _raw_value(data, "short_description"),
+            description=_display_value(data, "description") or _raw_value(data, "description"),
+            state=_display_value(data, "state") or _raw_value(data, "state"),
+            priority=_display_value(data, "priority") or _raw_value(data, "priority"),
+            category=_display_value(data, "category") or _raw_value(data, "category"),
+            assigned_to_name=_display_value(data, "assigned_to"),
+            created_at=created,
+            updated_at=updated,
+            web_url_value=_build_record_url(base_url, "problem", sys_id),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """User-facing link to the problem."""
@@ -384,6 +541,32 @@ class ServiceNowCatalogItemEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any], *, base_url: str) -> ServiceNowCatalogItemEntity:
+        """Construct from a ServiceNow Table API ``sc_cat_item`` record."""
+        sys_id = _raw_value(data, "sys_id") or data.get("sys_id", "")
+        name = _display_value(data, "name") or _raw_value(data, "name") or sys_id
+        created = _parse_datetime(_raw_value(data, "sys_created_on"))
+        updated = _parse_datetime(_raw_value(data, "sys_updated_on"))
+        active_raw = data.get("active")
+        if isinstance(active_raw, dict):
+            active_raw = active_raw.get("value") if active_raw else None
+        return cls(
+            entity_id=sys_id,
+            breadcrumbs=[],
+            name=name,
+            sys_id=sys_id,
+            short_description=_display_value(data, "short_description")
+            or _raw_value(data, "short_description"),
+            description=_display_value(data, "description") or _raw_value(data, "description"),
+            category_name=_display_value(data, "category"),
+            price=_display_value(data, "price") or _raw_value(data, "price"),
+            active=_parse_bool(active_raw),
+            created_at=created,
+            updated_at=updated,
+            web_url_value=_build_record_url(base_url, "sc_cat_item", sys_id),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

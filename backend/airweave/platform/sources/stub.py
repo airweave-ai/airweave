@@ -4,6 +4,8 @@ Generates deterministic test entities with configurable distribution and speed.
 All content is generated locally with no external API calls.
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import random
@@ -11,6 +13,11 @@ import tempfile
 from datetime import datetime, timedelta
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
+from airweave.core.logging import ContextualLogger
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import StubAuthConfig
 from airweave.platform.configs.config import StubConfig
 from airweave.platform.decorators import source
@@ -24,6 +31,7 @@ from airweave.platform.entities.stub import (
     SmallStubFileEntity,
     StubContainerEntity,
 )
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 
@@ -495,70 +503,55 @@ class StubSource(BaseSource):
     """Stub source connector for testing purposes.
 
     Generates deterministic test entities with configurable distribution and speed.
-    No external API calls are made - all content is generated locally.
+    No external API calls are made — all content is generated locally.
     """
-
-    def __init__(self):
-        """Initialize the stub source."""
-        super().__init__()
-        self.seed: int = 42
-        self.entity_count: int = 10
-        self.generation_delay_ms: int = 0
-        self.fail_after: int = -1  # Raise after N entities (-1 = never)
-        self.weights: Dict[str, int] = {}
-        self.generator: Optional[ContentGenerator] = None
-        self._temp_dir: Optional[str] = None
 
     @classmethod
     async def create(
         cls,
-        credentials: Optional[StubAuthConfig] = None,
-        config: Optional[Dict[str, Any]] = None,
-    ) -> "StubSource":
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: StubConfig,
+    ) -> StubSource:
         """Create a new stub source instance.
 
         Args:
-            credentials: Optional auth config (not used for stub).
-            config: Source configuration parameters.
+            auth: Auth provider (placeholder for this internal source).
+            logger: Contextual logger with sync metadata.
+            http_client: Pre-built HTTP client (unused — generates locally).
+            config: StubConfig with generation parameters.
 
         Returns:
             Configured StubSource instance.
         """
-        instance = cls()
-        config = config or {}
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
+        instance.seed = config.seed
+        instance.entity_count = config.entity_count
+        instance.generation_delay_ms = config.generation_delay_ms
+        instance.fail_after = config.fail_after
 
-        instance.seed = config.get("seed", 42)
-        instance.entity_count = config.get("entity_count", 10)
-        instance.generation_delay_ms = config.get("generation_delay_ms", 0)
-        instance.fail_after = config.get("fail_after", -1)
-
-        # Parse distribution weights
         instance.weights = {
-            "small": config.get("small_entity_weight", 30),
-            "medium": config.get("medium_entity_weight", 30),
-            "large": config.get("large_entity_weight", 10),
-            "small_file": config.get("small_file_weight", 15),
-            "large_file": config.get("large_file_weight", 5),
-            "code_file": config.get("code_file_weight", 10),
+            "small": config.small_entity_weight,
+            "medium": config.medium_entity_weight,
+            "large": config.large_entity_weight,
+            "small_file": config.small_file_weight,
+            "large_file": config.large_file_weight,
+            "code_file": config.code_file_weight,
         }
 
-        # Normalize weights
         total_weight = sum(instance.weights.values())
         if total_weight == 0:
-            # Default to equal distribution if all weights are 0
             instance.weights = {k: 1 for k in instance.weights}
-            total_weight = len(instance.weights)
-
-        # Parse special token injection config
-        inject_special_tokens = config.get("inject_special_tokens", False)
-        custom_content_prefix = config.get("custom_content_prefix", None)
 
         instance.generator = ContentGenerator(
             seed=instance.seed,
-            inject_special_tokens=inject_special_tokens,
-            custom_content_prefix=custom_content_prefix,
+            inject_special_tokens=config.inject_special_tokens,
+            custom_content_prefix=config.custom_content_prefix,
         )
 
+        instance._temp_dir = None
         return instance
 
     def _normalize_weights(self) -> List[Tuple[str, float]]:
@@ -842,7 +835,13 @@ class StubSource(BaseSource):
             commit_id=f"stub-commit-{self.seed}-{index}",
         )
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all stub entities.
 
         Yields:
@@ -923,7 +922,7 @@ class StubSource(BaseSource):
 
         self.logger.info(f"Completed stub entity generation. Distribution: {type_counts}")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate the stub source configuration.
 
         Always returns True since stub source doesn't require external validation.
@@ -931,4 +930,3 @@ class StubSource(BaseSource):
         Returns:
             True (stub source is always valid).
         """
-        return True

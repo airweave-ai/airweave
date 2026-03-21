@@ -45,11 +45,20 @@ def _make_source_cls(
     class Stub:
         """Stub source."""
 
+        @classmethod
+        async def create(cls, *, auth, logger, http_client, config):
+            return cls()
+
+        async def generate_entities(self, *, cursor=None, files=None, node_selections=None):
+            return
+            yield
+
     Stub.__name__ = f"{source_name.replace(' ', '')}Source"
     Stub.__doc__ = f"Stub {source_name}"
     Stub.short_name = short_name
     Stub.source_name = source_name
     Stub.config_class = None
+    Stub.cursor_class = None
     Stub.auth_config_class = auth_config_class
     Stub.auth_methods = auth_methods or [_AuthMethod.DIRECT]
     Stub.oauth_type = oauth_type

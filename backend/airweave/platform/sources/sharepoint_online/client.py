@@ -9,6 +9,8 @@ Handles all HTTP communication with the Graph API:
 - File content download
 """
 
+from __future__ import annotations
+
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Tuple
 
 import httpx
@@ -27,16 +29,19 @@ class GraphClient:
 
     Args:
         access_token_provider: Async callable that returns a valid access token.
+        http_client: Pre-built AirweaveHttpClient with rate limiting.
         logger: Logger instance.
     """
 
     def __init__(
         self,
         access_token_provider: Callable,
+        http_client: Any,
         logger: Any,
     ):
         """Initialize the Graph client with an OAuth2 token provider."""
         self._get_token = access_token_provider
+        self._http_client = http_client
         self.logger = logger
 
     async def _headers(self) -> Dict[str, str]:
@@ -55,14 +60,13 @@ class GraphClient:
     )
     async def get(
         self,
-        client: httpx.AsyncClient,
         url: str,
         params: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """Execute a GET request against the Graph API with retry logic."""
         headers = await self._headers()
         self.logger.debug(f"GET {url}")
-        response = await client.get(url, headers=headers, params=params, timeout=30.0)
+        response = await self._http_client.get(url, headers=headers, params=params, timeout=30.0)
 
         if response.status_code == 401:
             self.logger.warning("Got 401, token may need refresh")
@@ -76,16 +80,17 @@ class GraphClient:
         if response.status_code >= 400:
             try:
                 error_body = response.json()
-                self.logger.error(f"Graph API error {response.status_code}: {error_body}")
+                self.logger.warning(f"Graph API error {response.status_code}: {error_body}")
             except Exception:
-                self.logger.error(f"Graph API error {response.status_code}: {response.text[:500]}")
+                self.logger.warning(
+                    f"Graph API error {response.status_code}: {response.text[:500]}"
+                )
 
         response.raise_for_status()
         return response.json()
 
     async def get_paginated(
         self,
-        client: httpx.AsyncClient,
         url: str,
         params: Optional[Dict] = None,
         page_size: int = 200,
@@ -100,7 +105,7 @@ class GraphClient:
             current_params["$top"] = str(page_size)
 
         while current_url:
-            data = await self.get(client, current_url, current_params)
+            data = await self.get(current_url, current_params)
             items = data.get("value", [])
             for item in items:
                 yield item
@@ -110,60 +115,51 @@ class GraphClient:
 
     # -- Site Discovery --
 
-    async def get_root_site(self, client: httpx.AsyncClient) -> Dict[str, Any]:
+    async def get_root_site(self) -> Dict[str, Any]:
         """Get the tenant root SharePoint site."""
         url = f"{GRAPH_BASE_URL}/sites/root"
-        return await self.get(client, url)
+        return await self.get(url)
 
-    async def get_site(self, client: httpx.AsyncClient, site_id: str) -> Dict[str, Any]:
+    async def get_site(self, site_id: str) -> Dict[str, Any]:
         """Get a SharePoint site by its ID."""
         url = f"{GRAPH_BASE_URL}/sites/{site_id}"
-        return await self.get(client, url)
+        return await self.get(url)
 
-    async def get_site_by_url(
-        self, client: httpx.AsyncClient, hostname: str, site_path: str
-    ) -> Dict[str, Any]:
+    async def get_site_by_url(self, hostname: str, site_path: str) -> Dict[str, Any]:
         """Get site by hostname and server-relative path."""
         url = f"{GRAPH_BASE_URL}/sites/{hostname}:/{site_path}"
-        return await self.get(client, url)
+        return await self.get(url)
 
-    async def search_sites(
-        self, client: httpx.AsyncClient, query: str = "*"
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    async def search_sites(self, query: str = "*") -> AsyncGenerator[Dict[str, Any], None]:
         """Search for SharePoint sites matching a query string."""
         url = f"{GRAPH_BASE_URL}/sites"
         params = {"search": query}
-        async for site in self.get_paginated(client, url, params):
+        async for site in self.get_paginated(url, params):
             yield site
 
-    async def get_subsites(
-        self, client: httpx.AsyncClient, site_id: str
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    async def get_subsites(self, site_id: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Get subsites of a SharePoint site."""
         url = f"{GRAPH_BASE_URL}/sites/{site_id}/sites"
-        async for site in self.get_paginated(client, url):
+        async for site in self.get_paginated(url):
             yield site
 
     # -- Drive Discovery --
 
-    async def get_drives(
-        self, client: httpx.AsyncClient, site_id: str
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    async def get_drives(self, site_id: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Get all document library drives for a site."""
         url = f"{GRAPH_BASE_URL}/sites/{site_id}/drives"
-        async for drive in self.get_paginated(client, url):
+        async for drive in self.get_paginated(url):
             yield drive
 
-    async def get_drive(self, client: httpx.AsyncClient, drive_id: str) -> Dict[str, Any]:
+    async def get_drive(self, drive_id: str) -> Dict[str, Any]:
         """Get a single drive by its ID."""
         url = f"{GRAPH_BASE_URL}/drives/{drive_id}"
-        return await self.get(client, url)
+        return await self.get(url)
 
     # -- Drive Items --
 
     async def get_drive_items_recursive(
         self,
-        client: httpx.AsyncClient,
         drive_id: str,
         folder_id: str = "root",
     ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -189,7 +185,7 @@ class GraphClient:
 
             item_count = 0
             folder_count = 0
-            async for item in self.get_paginated(client, url):
+            async for item in self.get_paginated(url):
                 item_count += 1
                 item_name = item.get("name", "?")
                 is_folder = bool(item.get("folder"))
@@ -216,7 +212,6 @@ class GraphClient:
 
     async def get_drive_children(
         self,
-        client: httpx.AsyncClient,
         drive_id: str,
         folder_id: str = "root",
     ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -225,19 +220,17 @@ class GraphClient:
         Used by the browse tree for lazy-loaded folder expansion.
 
         Args:
-            client: httpx AsyncClient instance.
             drive_id: Drive ID.
             folder_id: Folder item ID, or "root" for drive root.
         """
         url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{folder_id}/children"
-        async for item in self.get_paginated(client, url):
+        async for item in self.get_paginated(url):
             yield item
 
     # -- Delta Query (Incremental Sync) --
 
     async def get_drive_delta(
         self,
-        client: httpx.AsyncClient,
         drive_id: str,
         delta_token: str = "",
     ) -> Tuple[List[Dict[str, Any]], str]:
@@ -256,7 +249,7 @@ class GraphClient:
         delta_link = ""
 
         while current_url:
-            data = await self.get(client, current_url)
+            data = await self.get(current_url)
             items = data.get("value", [])
             all_items.extend(items)
 
@@ -276,14 +269,13 @@ class GraphClient:
 
     async def get_item_permissions(
         self,
-        client: httpx.AsyncClient,
         drive_id: str,
         item_id: str,
     ) -> List[Dict[str, Any]]:
         """Get permissions for a drive item."""
         url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/permissions"
         try:
-            data = await self.get(client, url)
+            data = await self.get(url)
             return data.get("value", [])
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -292,33 +284,29 @@ class GraphClient:
 
     # -- Lists --
 
-    async def get_lists(
-        self, client: httpx.AsyncClient, site_id: str
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    async def get_lists(self, site_id: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Get non-hidden lists for a SharePoint site."""
         url = f"{GRAPH_BASE_URL}/sites/{site_id}/lists"
         params = {"$filter": "list/hidden eq false"}
-        async for lst in self.get_paginated(client, url, params):
+        async for lst in self.get_paginated(url, params):
             yield lst
 
     async def get_list_items(
-        self, client: httpx.AsyncClient, site_id: str, list_id: str
+        self, site_id: str, list_id: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Get all items from a SharePoint list with expanded fields."""
         url = f"{GRAPH_BASE_URL}/sites/{site_id}/lists/{list_id}/items"
         params = {"$expand": "fields"}
-        async for item in self.get_paginated(client, url, params):
+        async for item in self.get_paginated(url, params):
             yield item
 
     # -- Pages --
 
-    async def get_pages(
-        self, client: httpx.AsyncClient, site_id: str
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    async def get_pages(self, site_id: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Get site pages for a SharePoint site."""
         url = f"{GRAPH_BASE_URL}/sites/{site_id}/pages"
         try:
-            async for page in self.get_paginated(client, url):
+            async for page in self.get_paginated(url):
                 yield page
         except httpx.HTTPStatusError as e:
             if e.response.status_code in (404, 403):
@@ -341,7 +329,6 @@ class GraphClient:
 
     async def _sp_get_with_retry(
         self,
-        client: httpx.AsyncClient,
         url: str,
         headers: Dict[str, str],
         max_attempts: int = 3,
@@ -351,7 +338,7 @@ class GraphClient:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                response = await client.get(url, headers=headers, timeout=30.0)
+                response = await self._http_client.get(url, headers=headers, timeout=30.0)
                 if response.status_code == 429:
                     retry_after = int(response.headers.get("Retry-After", "5"))
                     self.logger.warning(f"SP REST rate limited, retry after {retry_after}s")
@@ -368,14 +355,12 @@ class GraphClient:
 
     async def get_site_groups(
         self,
-        client: httpx.AsyncClient,
         site_url: str,
         sp_token_provider: Optional[Callable] = None,
     ) -> List[Dict[str, Any]]:
         """Get SharePoint site groups via the SP REST API.
 
         Args:
-            client: httpx AsyncClient.
             site_url: Full site URL (e.g. https://tenant.sharepoint.com/sites/MySite).
             sp_token_provider: Async callable returning a SharePoint-scoped token.
                 If None, falls back to the Graph token (will likely 401).
@@ -383,7 +368,7 @@ class GraphClient:
         url = f"{site_url}/_api/web/sitegroups"
         headers = await self._sp_headers(sp_token_provider)
         try:
-            response = await self._sp_get_with_retry(client, url, headers)
+            response = await self._sp_get_with_retry(url, headers)
             data = response.json()
             return data.get("d", {}).get("results", [])
         except httpx.HTTPStatusError as e:
@@ -392,7 +377,6 @@ class GraphClient:
 
     async def get_site_group_users(
         self,
-        client: httpx.AsyncClient,
         site_url: str,
         group_id: int,
         sp_token_provider: Optional[Callable] = None,
@@ -400,7 +384,6 @@ class GraphClient:
         """Get users in a SharePoint site group via SP REST API.
 
         Args:
-            client: httpx AsyncClient.
             site_url: Full site URL.
             group_id: SP site group ID (integer).
             sp_token_provider: Async callable returning a SharePoint-scoped token.
@@ -408,7 +391,7 @@ class GraphClient:
         url = f"{site_url}/_api/web/sitegroups/getbyid({group_id})/users"
         headers = await self._sp_headers(sp_token_provider)
         try:
-            response = await self._sp_get_with_retry(client, url, headers)
+            response = await self._sp_get_with_retry(url, headers)
             data = response.json()
             return data.get("d", {}).get("results", [])
         except httpx.HTTPStatusError as e:
@@ -419,7 +402,6 @@ class GraphClient:
 
     async def resolve_user_ids(
         self,
-        client: httpx.AsyncClient,
         user_ids: List[str],
     ) -> Dict[str, str]:
         """Resolve Entra user object IDs to email addresses.
@@ -440,7 +422,7 @@ class GraphClient:
             async with semaphore:
                 try:
                     url = f"{GRAPH_BASE_URL}/users/{uid}"
-                    data = await self.get(client, url, {"$select": "userPrincipalName,mail"})
+                    data = await self.get(url, {"$select": "userPrincipalName,mail"})
                     email = data.get("mail") or data.get("userPrincipalName", "")
                     if email and "@" in email:
                         result[uid] = email.lower()
@@ -456,33 +438,30 @@ class GraphClient:
 
     async def get_file_content_url(
         self,
-        client: httpx.AsyncClient,
         drive_id: str,
         item_id: str,
     ) -> str:
         """Get the download URL for a file."""
         url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}"
         params = {"$select": "@microsoft.graph.downloadUrl"}
-        data = await self.get(client, url, params)
+        data = await self.get(url, params)
         return data.get("@microsoft.graph.downloadUrl", "")
 
     # -- Groups (Entra ID) --
 
-    async def get_groups(self, client: httpx.AsyncClient) -> AsyncGenerator[Dict[str, Any], None]:
+    async def get_groups(self) -> AsyncGenerator[Dict[str, Any], None]:
         """Get security and mail-enabled Entra ID groups."""
         url = f"{GRAPH_BASE_URL}/groups"
         params = {
             "$filter": "securityEnabled eq true or mailEnabled eq true",
             "$top": "200",
         }
-        async for group in self.get_paginated(client, url, params):
+        async for group in self.get_paginated(url, params):
             yield group
 
-    async def get_group_members(
-        self, client: httpx.AsyncClient, group_id: str
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    async def get_group_members(self, group_id: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Get transitive members of an Entra ID group."""
         url = f"{GRAPH_BASE_URL}/groups/{group_id}/transitiveMembers"
         params = {"$top": "200"}
-        async for member in self.get_paginated(client, url, params):
+        async for member in self.get_paginated(url, params):
             yield member

@@ -18,10 +18,24 @@ from airweave.platform.sources.sharepoint2019v2.ldap import (
 from airweave.platform.sources.sharepoint2019v2.source import SharePoint2019V2Source
 
 
+def _mock_auth():
+    auth = AsyncMock()
+    auth.get_token = AsyncMock(return_value="test-token")
+    auth.supports_refresh = False
+    auth.provider_kind = "credential"
+    return auth
+
+
+def _bare_source():
+    return SharePoint2019V2Source(
+        auth=_mock_auth(), logger=MagicMock(), http_client=AsyncMock()
+    )
+
+
 @pytest.fixture
 def source_with_ad():
     """Create a SharePoint2019V2Source with AD config populated."""
-    source = SharePoint2019V2Source()
+    source = _bare_source()
     source._ad_username = "admin"
     source._ad_password = "pass"
     source._ad_domain = "DOMAIN"
@@ -33,7 +47,7 @@ def source_with_ad():
 @pytest.fixture
 def source_without_ad():
     """Create a SharePoint2019V2Source without AD config."""
-    source = SharePoint2019V2Source()
+    source = _bare_source()
     source._ad_username = ""
     source._ad_password = ""
     source._ad_domain = ""

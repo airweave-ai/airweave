@@ -70,7 +70,18 @@ class TestExecuteWithRetryTimeout:
 
     @pytest.mark.asyncio
     async def test_asyncio_timeout_error_is_retried(self):
-        """asyncio.TimeoutError (subclass of TimeoutError) should also be retried."""
+        """asyncio.TimeoutError should use the same retry path as TimeoutError.
+
+        From Python 3.11 onward, asyncio.TimeoutError is an alias of the builtin
+        TimeoutError. On 3.10 and earlier it was a separate class, so the handler's
+        retry tuple (which lists TimeoutError) does not treat it as retryable — skip
+        when the two types differ.
+        """
+        if asyncio.TimeoutError is not TimeoutError:
+            pytest.skip(
+                "asyncio.TimeoutError is only an alias of TimeoutError on Python 3.11+"
+            )
+
         dest = _make_mock_destination()
         handler = DestinationHandler([dest])
         ctx = _make_mock_sync_context()

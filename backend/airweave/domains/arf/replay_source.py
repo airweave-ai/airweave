@@ -1,6 +1,6 @@
 """ARF Replay source for automatic replay from ARF storage.
 
-Internal source (NOT decorated, NOT registered) injected by SourceContextBuilder
+Internal source (NOT decorated, NOT registered) injected by SyncFactory
 when execution_config.behavior.replay_from_arf=True.
 
 Unlike SnapshotSource (user-facing for evals), this source:
@@ -12,7 +12,9 @@ Unlike SnapshotSource (user-facing for evals), this source:
 from typing import AsyncGenerator, Optional
 from uuid import UUID
 
+from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
+from airweave.core.logging import logger as _module_logger
 from airweave.domains.arf.reader import ArfReader
 from airweave.domains.storage.protocols import StorageBackend
 from airweave.platform.entities._base import BaseEntity
@@ -37,10 +39,12 @@ class ArfReplaySource(BaseSource):
         restore_files: bool = True,
         original_short_name: Optional[str] = None,
     ) -> None:
-        super().__init__()
+        # Internal source — bypass BaseSource.__init__ (no auth/http_client needed)
+        self._auth = None  # type: ignore[assignment]
+        self._http_client = None  # type: ignore[assignment]
+        self._logger = logger or _module_logger
         self.sync_id = sync_id
         self._storage = storage
-        self._logger = logger
         self.restore_files = restore_files
         self._reader: Optional[ArfReader] = None
 
@@ -84,9 +88,13 @@ class ArfReplaySource(BaseSource):
         async for entity in self.reader.iter_entities():
             yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate that ARF data exists for this sync."""
-        return await self.reader.validate()
+        if not await self.reader.validate():
+            raise NotFoundException(
+                f"ARF data not found for sync {self.sync_id}. "
+                "Cannot replay - ensure ARF capture was enabled for previous syncs."
+            )
 
     def cleanup(self) -> None:
         """Clean up temp files."""

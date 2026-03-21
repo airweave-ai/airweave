@@ -219,7 +219,7 @@ class LDAPClient:
             self.logger.info(f"Connected to AD via STARTTLS: {server_url_starttls}")
             return conn
         except Exception as starttls_error:
-            self.logger.error(f"Both LDAPS and STARTTLS failed: {starttls_error}")
+            self.logger.warning(f"Both LDAPS and STARTTLS failed: {starttls_error}")
             raise Exception(f"Could not connect to AD: {starttls_error}") from starttls_error
 
     def close(self) -> None:

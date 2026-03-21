@@ -5,20 +5,27 @@ Designed for deterministic, timing-sensitive tests (cancellation, state transiti
 without any external API dependencies.
 """
 
+from __future__ import annotations
+
 import asyncio
 import random
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import AsyncGenerator
 
+from airweave.core.logging import ContextualLogger
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import TimedAuthConfig
 from airweave.platform.configs.config import TimedConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.timed import TimedContainerEntity, TimedEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 
-# Word lists for deterministic content generation
 NOUNS = [
     "project",
     "task",
@@ -79,51 +86,29 @@ class TimedSource(BaseSource):
     state transition tests.
     """
 
-    def __init__(self):
-        """Initialize the timed source."""
-        super().__init__()
-        self.seed: int = 42
-        self.entity_count: int = 100
-        self.duration_seconds: float = 10.0
-        self._rng: Optional[random.Random] = None
-
     @classmethod
     async def create(
         cls,
-        credentials: Optional[TimedAuthConfig] = None,
-        config: Optional[Dict[str, Any]] = None,
-    ) -> "TimedSource":
-        """Create a new timed source instance.
-
-        Args:
-            credentials: Optional auth config (not used for timed source).
-            config: Source configuration parameters including:
-                - entity_count: Number of entities to generate (default: 100)
-                - duration_seconds: Total time to generate all entities (required)
-                - seed: Random seed for reproducible content (default: 42)
-
-        Returns:
-            Configured TimedSource instance.
-        """
-        instance = cls()
-        config = config or {}
-
-        instance.seed = config.get("seed", 42)
-        instance.entity_count = config.get("entity_count", 100)
-        instance.duration_seconds = config.get("duration_seconds", 10.0)
-
-        instance._rng = random.Random(instance.seed)
-
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: TimedConfig,
+    ) -> TimedSource:
+        """Create a TimedSource configured from the given config."""
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
+        instance.seed = config.seed
+        instance.entity_count = config.entity_count
+        instance.duration_seconds = config.duration_seconds
+        instance._rng = random.Random(instance.seed)  # noqa: S311
         return instance
 
     def _generate_title(self, index: int) -> str:
-        """Generate a deterministic title for an entity."""
         adj = ADJECTIVES[index % len(ADJECTIVES)]
         noun = NOUNS[index % len(NOUNS)]
         return f"{adj.capitalize()} {noun} #{index + 1}"
 
     def _generate_content(self, index: int) -> str:
-        """Generate deterministic content for an entity."""
         verb = VERBS[index % len(VERBS)]
         noun = NOUNS[index % len(NOUNS)]
         adj = ADJECTIVES[(index + 3) % len(ADJECTIVES)]
@@ -136,24 +121,24 @@ class TimedSource(BaseSource):
             f"The content is deterministic and reproducible for testing purposes."
         )
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        """Generate timed entities spread evenly over the configured duration.
-
-        Yields:
-            BaseEntity instances at regular intervals.
-        """
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Yield timed entities with configurable delays between each."""
         self.logger.info(
             f"TimedSource: generating {self.entity_count} entities "
             f"over {self.duration_seconds}s (seed={self.seed})"
         )
 
-        # Calculate delay between entities
         if self.entity_count > 1:
             delay_per_entity = self.duration_seconds / self.entity_count
         else:
             delay_per_entity = 0.0
 
-        # First yield the container entity
         container_id = f"timed-container-{self.seed}"
         container = TimedContainerEntity(
             container_id=container_id,
@@ -166,14 +151,12 @@ class TimedSource(BaseSource):
         )
         yield container
 
-        # Create breadcrumb from container
         container_breadcrumb = Breadcrumb(
             entity_id=container_id,
             name=container.container_name,
             entity_type="TimedContainerEntity",
         )
 
-        # Generate entities with delay
         for i in range(self.entity_count):
             entity = TimedEntity(
                 entity_id=f"timed-{self.seed}-{i}",
@@ -185,12 +168,10 @@ class TimedSource(BaseSource):
             )
             yield entity
 
-            # Sleep between entities (except after the last one)
             if delay_per_entity > 0 and i < self.entity_count - 1:
                 await asyncio.sleep(delay_per_entity)
 
         self.logger.info(f"TimedSource: finished generating {self.entity_count} entities")
 
-    async def validate(self) -> bool:
-        """Validate the timed source (always succeeds)."""
-        return True
+    async def validate(self) -> None:
+        """Validate the source (always succeeds for timed test sources)."""

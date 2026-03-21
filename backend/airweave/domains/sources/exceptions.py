@@ -7,7 +7,7 @@ NotFoundException
 
 SourceError (AirweaveException)  — base for ALL source runtime errors
 ├── SourceCreationError          — source_class.create() failed
-├── SourceValidationError        — source.validate() returned False / raised
+├── SourceValidationError        — source.validate() raised
 │
 │   Runtime errors (during generate_entities / search / ACL / browse / tool calls)
 ├── SourceAuthError              — 401 after token refresh attempt → abort sync
@@ -25,12 +25,17 @@ SourceError (AirweaveException)  — base for ALL source runtime errors
 └── SourceFileDownloadError      — file download failed for an entity
 """
 
-from typing import Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
 
 from airweave.core.exceptions import (
     AirweaveException,
     NotFoundException,
 )
+
+if TYPE_CHECKING:
+    from airweave.domains.sources.token_providers.protocol import AuthProviderKind
 
 # ---------------------------------------------------------------------------
 # Lifecycle exceptions (registry / creation / validation)
@@ -120,26 +125,29 @@ class SourceValidationError(SourceError):
 
 
 class SourceAuthError(SourceError):
-    """401 Unauthorized after token refresh attempt.
+    """401 Unauthorized.
 
-    The pipeline should abort the sync — credentials are invalid or revoked.
+    The pipeline should abort the sync.
     """
 
     def __init__(
         self,
-        message: str = "Authentication failed after token refresh",
+        message: str,
         *,
-        source_short_name: str = "",
-        status_code: int = 401,
+        source_short_name: str,
+        status_code: int,
+        token_provider_kind: AuthProviderKind,
     ):
         """Create a new SourceAuthError.
 
         Args:
             message: Human-readable error description.
             source_short_name: Source identifier.
-            status_code: HTTP status code that triggered this (usually 401).
+            status_code: HTTP status code that triggered this (401).
+            token_provider_kind: Auth provider kind.
         """
         self.status_code = status_code
+        self.token_provider_kind = token_provider_kind
         super().__init__(message, source_short_name=source_short_name)
 
 
@@ -155,15 +163,22 @@ class SourceTokenRefreshError(SourceAuthError):
         self,
         message: str = "Token refresh failed",
         *,
-        source_short_name: str = "",
+        source_short_name: str,
+        token_provider_kind: AuthProviderKind,
     ):
         """Create a new SourceTokenRefreshError.
 
         Args:
             message: Human-readable error description.
             source_short_name: Source identifier.
+            token_provider_kind: Auth provider kind, if known.
         """
-        super().__init__(message, source_short_name=source_short_name, status_code=401)
+        super().__init__(
+            message,
+            source_short_name=source_short_name,
+            status_code=401,
+            token_provider_kind=token_provider_kind,
+        )
 
 
 # ---------------------------------------------------------------------------

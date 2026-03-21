@@ -19,13 +19,25 @@ Uses OAuth 2.0 client credentials grant for authentication.
 API Reference: https://shopify.dev/docs/api/admin-rest
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
+
+
+def _parse_shopify_ts(value: Optional[str]) -> Optional[datetime]:
+    """Parse a Shopify datetime string (ISO 8601) into a datetime object."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
 
 
 class ShopifyProductEntity(BaseEntity):
@@ -142,6 +154,59 @@ class ShopifyProductVariantEntity(BaseEntity):
     option2: Optional[str] = AirweaveField(None, description="Second option value", embeddable=True)
     option3: Optional[str] = AirweaveField(None, description="Third option value", embeddable=True)
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        product_id: str,
+        product_title: str,
+        web_url: str,
+        parent_created_time: datetime,
+    ) -> ShopifyProductVariantEntity:
+        """Build from a Shopify API product variant object."""
+        variant_id = str(data["id"])
+        variant_created = _parse_shopify_ts(data.get("created_at")) or parent_created_time
+        variant_updated = _parse_shopify_ts(data.get("updated_at")) or variant_created
+
+        variant_title = data.get("title", "Default")
+        if variant_title == "Default Title":
+            variant_title = product_title or f"Variant {variant_id}"
+        else:
+            variant_title = f"{product_title} - {variant_title}" if product_title else variant_title
+
+        breadcrumbs = [
+            Breadcrumb(
+                entity_id=product_id,
+                name=product_title or f"Product {product_id}",
+                entity_type=ShopifyProductEntity.__name__,
+            )
+        ]
+
+        return cls(
+            entity_id=variant_id,
+            breadcrumbs=breadcrumbs,
+            name=variant_title,
+            created_at=variant_created,
+            updated_at=variant_updated,
+            variant_id=variant_id,
+            variant_title=variant_title,
+            created_time=variant_created,
+            updated_time=variant_updated,
+            web_url_value=web_url,
+            product_id=product_id,
+            sku=data.get("sku"),
+            price=data.get("price"),
+            compare_at_price=data.get("compare_at_price"),
+            inventory_quantity=data.get("inventory_quantity"),
+            weight=data.get("weight"),
+            weight_unit=data.get("weight_unit"),
+            barcode=data.get("barcode"),
+            option1=data.get("option1"),
+            option2=data.get("option2"),
+            option3=data.get("option3"),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """URL to view variant in Shopify admin."""
@@ -214,10 +279,83 @@ class ShopifyCustomerEntity(BaseEntity):
         None, description="Customer's default address", embeddable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: str,
+    ) -> ShopifyCustomerEntity:
+        """Build from a Shopify API customer object."""
+        customer_id = str(data["id"])
+        created_time = _parse_shopify_ts(data.get("created_at")) or datetime.utcnow()
+        updated_time = _parse_shopify_ts(data.get("updated_at")) or created_time
+
+        first_name = data.get("first_name", "")
+        last_name = data.get("last_name", "")
+        email = data.get("email", "")
+
+        if first_name and last_name:
+            customer_name = f"{first_name} {last_name}"
+        elif first_name:
+            customer_name = first_name
+        elif last_name:
+            customer_name = last_name
+        elif email:
+            customer_name = email
+        else:
+            customer_name = f"Customer {customer_id}"
+
+        return cls(
+            entity_id=customer_id,
+            breadcrumbs=[],
+            name=customer_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            customer_id=customer_id,
+            customer_name=customer_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url,
+            email=email or None,
+            phone=data.get("phone"),
+            first_name=first_name or None,
+            last_name=last_name or None,
+            verified_email=data.get("verified_email", False),
+            accepts_marketing=data.get("accepts_marketing", False),
+            orders_count=data.get("orders_count", 0),
+            total_spent=data.get("total_spent"),
+            state=data.get("state"),
+            currency=data.get("currency"),
+            tags=data.get("tags"),
+            note=data.get("note"),
+            default_address=data.get("default_address"),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """URL to view customer in Shopify admin."""
         return self.web_url_value or ""
+
+
+def _build_customer_breadcrumb(order_data: Dict[str, Any]) -> List[Breadcrumb]:
+    """Extract customer info from an order/draft-order and return breadcrumbs."""
+    customer = order_data.get("customer")
+    if not customer:
+        return []
+    customer_id = str(customer.get("id", ""))
+    if not customer_id:
+        return []
+    customer_name = f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip()
+    if not customer_name:
+        customer_name = customer.get("email", f"Customer {customer_id}")
+    return [
+        Breadcrumb(
+            entity_id=customer_id,
+            name=customer_name,
+            entity_type=ShopifyCustomerEntity.__name__,
+        )
+    ]
 
 
 class ShopifyOrderEntity(BaseEntity):
@@ -299,6 +437,52 @@ class ShopifyOrderEntity(BaseEntity):
         None, description="Reason for cancellation", embeddable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: str,
+    ) -> ShopifyOrderEntity:
+        """Build from a Shopify API order object."""
+        order_id = str(data["id"])
+        created_time = _parse_shopify_ts(data.get("created_at")) or datetime.utcnow()
+        updated_time = _parse_shopify_ts(data.get("updated_at")) or created_time
+        order_name = data.get("name", f"Order {order_id}")
+        breadcrumbs = _build_customer_breadcrumb(data)
+        customer = data.get("customer")
+
+        return cls(
+            entity_id=order_id,
+            breadcrumbs=breadcrumbs,
+            name=order_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            order_id=order_id,
+            order_name=order_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url,
+            order_number=data.get("order_number"),
+            email=data.get("email"),
+            phone=data.get("phone"),
+            total_price=data.get("total_price"),
+            subtotal_price=data.get("subtotal_price"),
+            total_tax=data.get("total_tax"),
+            total_discounts=data.get("total_discounts"),
+            currency=data.get("currency"),
+            financial_status=data.get("financial_status"),
+            fulfillment_status=data.get("fulfillment_status"),
+            customer_id=str(customer.get("id")) if customer else None,
+            line_items=data.get("line_items", []),
+            shipping_address=data.get("shipping_address"),
+            billing_address=data.get("billing_address"),
+            tags=data.get("tags"),
+            note=data.get("note"),
+            cancelled_at=_parse_shopify_ts(data.get("cancelled_at")),
+            cancel_reason=data.get("cancel_reason"),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """URL to view order in Shopify admin."""
@@ -375,6 +559,48 @@ class ShopifyDraftOrderEntity(BaseEntity):
         None, description="When the draft order was completed", embeddable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: str,
+    ) -> ShopifyDraftOrderEntity:
+        """Build from a Shopify API draft order object."""
+        draft_order_id = str(data["id"])
+        created_time = _parse_shopify_ts(data.get("created_at")) or datetime.utcnow()
+        updated_time = _parse_shopify_ts(data.get("updated_at")) or created_time
+        draft_order_name = data.get("name", f"Draft Order {draft_order_id}")
+        breadcrumbs = _build_customer_breadcrumb(data)
+        customer = data.get("customer")
+
+        return cls(
+            entity_id=draft_order_id,
+            breadcrumbs=breadcrumbs,
+            name=draft_order_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            draft_order_id=draft_order_id,
+            draft_order_name=draft_order_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url,
+            email=data.get("email"),
+            status=data.get("status"),
+            total_price=data.get("total_price"),
+            subtotal_price=data.get("subtotal_price"),
+            total_tax=data.get("total_tax"),
+            currency=data.get("currency"),
+            customer_id=str(customer.get("id")) if customer else None,
+            line_items=data.get("line_items", []),
+            shipping_address=data.get("shipping_address"),
+            billing_address=data.get("billing_address"),
+            tags=data.get("tags"),
+            note=data.get("note"),
+            invoice_sent_at=_parse_shopify_ts(data.get("invoice_sent_at")),
+            completed_at=_parse_shopify_ts(data.get("completed_at")),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """URL to view draft order in Shopify admin."""
@@ -437,6 +663,42 @@ class ShopifyCollectionEntity(BaseEntity):
     products_count: Optional[int] = AirweaveField(
         None, description="Number of products in the collection", embeddable=True
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        collection_type: str,
+        web_url: str,
+    ) -> ShopifyCollectionEntity:
+        """Build from a Shopify API custom_collection or smart_collection object."""
+        collection_id = str(data["id"])
+        created_time = _parse_shopify_ts(data.get("published_at")) or datetime.utcnow()
+        updated_time = _parse_shopify_ts(data.get("updated_at")) or created_time
+        title = data.get("title", f"Collection {collection_id}")
+
+        return cls(
+            entity_id=collection_id,
+            breadcrumbs=[],
+            name=title,
+            created_at=created_time,
+            updated_at=updated_time,
+            collection_id=collection_id,
+            collection_title=title,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url,
+            handle=data.get("handle"),
+            body_html=data.get("body_html"),
+            published_at=_parse_shopify_ts(data.get("published_at")),
+            published_scope=data.get("published_scope"),
+            sort_order=data.get("sort_order"),
+            collection_type=collection_type,
+            disjunctive=data.get("disjunctive") if collection_type == "smart" else None,
+            rules=data.get("rules", []) if collection_type == "smart" else [],
+            products_count=None,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -657,6 +919,52 @@ class ShopifyFulfillmentEntity(BaseEntity):
         None, description="Shipment status", embeddable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        order_id: str,
+        order_name: str,
+        web_url: str,
+    ) -> ShopifyFulfillmentEntity:
+        """Build from a Shopify API fulfillment object nested under an order."""
+        fulfillment_id = str(data["id"])
+        created_time = _parse_shopify_ts(data.get("created_at")) or datetime.utcnow()
+        updated_time = _parse_shopify_ts(data.get("updated_at")) or created_time
+        name = f"Fulfillment {fulfillment_id} for {order_name}"
+
+        breadcrumbs = [
+            Breadcrumb(
+                entity_id=order_id,
+                name=order_name,
+                entity_type=ShopifyOrderEntity.__name__,
+            )
+        ]
+
+        return cls(
+            entity_id=fulfillment_id,
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=created_time,
+            updated_at=updated_time,
+            fulfillment_id=fulfillment_id,
+            fulfillment_name=name,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url,
+            order_id=order_id,
+            status=data.get("status"),
+            tracking_company=data.get("tracking_company"),
+            tracking_number=data.get("tracking_number"),
+            tracking_numbers=data.get("tracking_numbers", []),
+            tracking_url=data.get("tracking_url"),
+            tracking_urls=data.get("tracking_urls", []),
+            location_id=str(data.get("location_id")) if data.get("location_id") else None,
+            line_items=data.get("line_items", []),
+            shipment_status=data.get("shipment_status"),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """URL to view fulfillment in Shopify admin."""
@@ -711,6 +1019,46 @@ class ShopifyGiftCardEntity(BaseEntity):
     order_id: Optional[str] = AirweaveField(
         None, description="ID of the order that created this gift card", embeddable=False
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        web_url: str,
+    ) -> ShopifyGiftCardEntity:
+        """Build from a Shopify API gift_card object."""
+        gift_card_id = str(data["id"])
+        created_time = _parse_shopify_ts(data.get("created_at")) or datetime.utcnow()
+        updated_time = _parse_shopify_ts(data.get("updated_at")) or created_time
+
+        last_chars = data.get("last_characters", "")
+        gift_card_name = (
+            f"Gift Card ****{last_chars}" if last_chars else f"Gift Card {gift_card_id}"
+        )
+
+        return cls(
+            entity_id=gift_card_id,
+            breadcrumbs=[],
+            name=gift_card_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            gift_card_id=gift_card_id,
+            gift_card_name=gift_card_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url,
+            initial_value=data.get("initial_value"),
+            balance=data.get("balance"),
+            currency=data.get("currency"),
+            code=data.get("code"),
+            last_characters=last_chars,
+            disabled_at=_parse_shopify_ts(data.get("disabled_at")),
+            expires_on=data.get("expires_on"),
+            note=data.get("note"),
+            customer_id=str(data.get("customer_id")) if data.get("customer_id") else None,
+            order_id=str(data.get("order_id")) if data.get("order_id") else None,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -862,6 +1210,54 @@ class ShopifyFileEntity(FileEntity):
     preview_image_url: Optional[str] = AirweaveField(
         None, description="URL of the preview image", embeddable=False
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        file_node: Dict[str, Any],
+        *,
+        web_url: str,
+    ) -> ShopifyFileEntity:
+        """Build from a Shopify GraphQL file node (GenericFile/MediaImage/Video)."""
+        file_gid = file_node.get("id", "")
+        file_id = file_gid.split("/")[-1] if "/" in file_gid else file_gid
+
+        created_time = _parse_shopify_ts(file_node.get("createdAt")) or datetime.utcnow()
+        updated_time = _parse_shopify_ts(file_node.get("updatedAt")) or created_time
+
+        file_type = "GENERIC"
+        file_url = file_node.get("url") or ""
+        file_size = file_node.get("originalFileSize") or 0
+
+        if "image" in file_node:
+            file_type = "IMAGE"
+            file_url = file_node.get("image", {}).get("url") or ""
+        elif "originalSource" in file_node:
+            file_type = "VIDEO"
+            original_source = file_node.get("originalSource", {})
+            file_url = original_source.get("url") or ""
+            file_size = original_source.get("fileSize") or 0
+
+        file_name = file_node.get("alt") or f"File {file_id}"
+
+        return cls(
+            entity_id=file_id,
+            breadcrumbs=[],
+            name=file_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            url=file_url,
+            size=file_size,
+            file_type=file_type,
+            file_id=file_id,
+            file_name=file_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url,
+            alt=file_node.get("alt"),
+            file_status=file_node.get("fileStatus"),
+            preview_image_url=file_url or None,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

@@ -4,13 +4,25 @@ Based on the Monday.com API (GraphQL-based), we define entity schemas for
 commonly used Monday resources: Boards, Groups, Columns, Items, Subitems, and Updates.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_monday_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Parse Monday.com ISO 8601 datetime string to datetime."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class MondayBoardEntity(BaseEntity):
@@ -64,6 +76,38 @@ class MondayBoardEntity(BaseEntity):
     web_url_value: Optional[str] = AirweaveField(
         None, description="URL to view the board in Monday.", embeddable=False, unhashable=True
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        web_url: Optional[str] = None,
+    ) -> MondayBoardEntity:
+        """Build from a Monday.com GraphQL board object."""
+        board_id = str(data["id"])
+        board_name = data.get("name") or f"Board {board_id}"
+        updated_time = _parse_monday_datetime(data.get("updated_at"))
+        return cls(
+            entity_id=board_id,
+            breadcrumbs=breadcrumbs,
+            name=board_name,
+            created_at=None,
+            updated_at=updated_time,
+            board_id=board_id,
+            board_name=board_name,
+            created_time=None,
+            updated_time=updated_time,
+            board_kind=data.get("type"),
+            columns=data.get("columns", []),
+            description=None,
+            groups=data.get("groups", []),
+            owners=data.get("owners", []),
+            state=data.get("state"),
+            workspace_id=str(data.get("workspace_id")) if data.get("workspace_id") else None,
+            web_url_value=web_url,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -189,6 +233,39 @@ class MondayItemEntity(BaseEntity):
         None, description="URL to view the item in Monday.", embeddable=False, unhashable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        board_id: str,
+        web_url: Optional[str] = None,
+    ) -> MondayItemEntity:
+        """Build from a Monday.com GraphQL item object."""
+        item_id = str(data["id"])
+        item_name = data.get("name") or f"Item {item_id}"
+        created_time = _parse_monday_datetime(data.get("created_at")) or datetime.utcnow()
+        updated_time = _parse_monday_datetime(data.get("updated_at")) or created_time
+        group = data.get("group")
+        return cls(
+            entity_id=item_id,
+            breadcrumbs=breadcrumbs,
+            name=item_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            item_id=item_id,
+            item_name=item_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            board_id=board_id,
+            group_id=group["id"] if group else None,
+            state=data.get("state"),
+            column_values=data.get("column_values", []),
+            creator=data.get("creator"),
+            web_url_value=web_url,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the item."""
@@ -241,6 +318,41 @@ class MondaySubitemEntity(BaseEntity):
         None, description="URL to view the subitem in Monday.", embeddable=False, unhashable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        parent_item_id: str,
+        web_url: Optional[str] = None,
+    ) -> MondaySubitemEntity:
+        """Build from a Monday.com GraphQL subitem object."""
+        subitem_id = str(data["id"])
+        subitem_name = data.get("name") or f"Subitem {subitem_id}"
+        created_time = _parse_monday_datetime(data.get("created_at")) or datetime.utcnow()
+        updated_time = _parse_monday_datetime(data.get("updated_at")) or created_time
+        board_id = str(data["board"]["id"]) if data.get("board") else ""
+        group = data.get("group")
+        return cls(
+            entity_id=subitem_id,
+            breadcrumbs=breadcrumbs,
+            name=subitem_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            subitem_id=subitem_id,
+            subitem_name=subitem_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            parent_item_id=parent_item_id,
+            board_id=board_id,
+            group_id=group["id"] if group else None,
+            state=data.get("state"),
+            column_values=data.get("column_values", []),
+            creator=data.get("creator"),
+            web_url_value=web_url,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the subitem."""
@@ -290,6 +402,40 @@ class MondayUpdateEntity(BaseEntity):
     web_url_value: Optional[str] = AirweaveField(
         None, description="URL to view the update in Monday.", embeddable=False, unhashable=True
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        board_id: str,
+        item_id: Optional[str] = None,
+        web_url: Optional[str] = None,
+    ) -> MondayUpdateEntity:
+        """Build from a Monday.com GraphQL update object."""
+        body = data.get("body", "")
+        update_name = body[:50] + "..." if len(body) > 50 else body
+        if not update_name:
+            update_name = f"Update {data['id']}"
+        created_time = _parse_monday_datetime(data.get("created_at")) or datetime.utcnow()
+        creator = data.get("creator")
+        return cls(
+            entity_id=str(data["id"]),
+            breadcrumbs=breadcrumbs,
+            name=update_name,
+            created_at=created_time,
+            updated_at=None,
+            update_id=str(data["id"]),
+            update_preview=update_name,
+            created_time=created_time,
+            item_id=item_id,
+            board_id=board_id if item_id is None else None,
+            creator_id=str(creator["id"]) if creator else None,
+            body=body,
+            assets=data.get("assets", []),
+            web_url_value=web_url,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

@@ -3,7 +3,11 @@
 import pytest
 from unittest.mock import MagicMock
 
+from airweave.core.logging import ContextualLogger
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.platform.configs.config import IncrementalStubConfig
 from airweave.platform.entities.stub import SmallStubEntity, StubContainerEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources.incremental_stub import IncrementalStubSource
 
 
@@ -14,8 +18,12 @@ from airweave.platform.sources.incremental_stub import IncrementalStubSource
 
 @pytest.fixture
 def source():
-    """Create an IncrementalStubSource with defaults."""
-    s = IncrementalStubSource()
+    """Create an IncrementalStubSource with defaults (v2 DI)."""
+    s = IncrementalStubSource(
+        auth=MagicMock(spec=SourceAuthProvider),
+        logger=MagicMock(spec=ContextualLogger),
+        http_client=MagicMock(spec=AirweaveHttpClient),
+    )
     s.seed = 42
     s.entity_count = 5
     return s
@@ -23,11 +31,10 @@ def source():
 
 @pytest.fixture
 def source_with_cursor(source):
-    """Source with a cursor indicating a previous sync up to index 4."""
+    """Source plus a cursor indicating a previous sync up to index 4."""
     mock_cursor = MagicMock()
     mock_cursor.data = {"last_entity_index": 4, "entity_count": 5}
-    source.set_cursor(mock_cursor)
-    return source
+    return source, mock_cursor
 
 
 # ---------------------------------------------------------------------------
@@ -39,8 +46,10 @@ def source_with_cursor(source):
 async def test_create_with_config():
     """create() should apply seed and entity_count from config."""
     s = await IncrementalStubSource.create(
-        credentials=None,
-        config={"seed": 99, "entity_count": 20},
+        auth=MagicMock(spec=SourceAuthProvider),
+        logger=MagicMock(spec=ContextualLogger),
+        http_client=MagicMock(spec=AirweaveHttpClient),
+        config=IncrementalStubConfig(seed=99, entity_count=20),
     )
     assert s.seed == 99
     assert s.entity_count == 20
@@ -48,8 +57,13 @@ async def test_create_with_config():
 
 @pytest.mark.asyncio
 async def test_create_with_defaults():
-    """create() with empty config should use defaults."""
-    s = await IncrementalStubSource.create(credentials=None, config=None)
+    """create() with default config should use defaults."""
+    s = await IncrementalStubSource.create(
+        auth=MagicMock(spec=SourceAuthProvider),
+        logger=MagicMock(spec=ContextualLogger),
+        http_client=MagicMock(spec=AirweaveHttpClient),
+        config=IncrementalStubConfig(),
+    )
     assert s.seed == 42
     assert s.entity_count == 5
 
@@ -60,9 +74,9 @@ async def test_create_with_defaults():
 
 
 @pytest.mark.asyncio
-async def test_validate_returns_true(source):
-    """validate() always returns True for stub source."""
-    assert await source.validate() is True
+async def test_validate_completes(source):
+    """validate() completes without error for stub source."""
+    await source.validate()
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +125,6 @@ def test_generate_entity_returns_small_stub_entity(source):
 @pytest.mark.asyncio
 async def test_full_sync_yields_container_plus_entities(source):
     """First sync (no cursor) should yield container + entity_count entities."""
-    # No cursor set -> full sync
     entities = []
     async for e in source.generate_entities():
         entities.append(e)
@@ -144,9 +157,8 @@ async def test_full_sync_updates_cursor(source):
     """Full sync should update cursor with last_entity_index and entity_count."""
     mock_cursor = MagicMock()
     mock_cursor.data = {}  # empty cursor -> full sync
-    source.set_cursor(mock_cursor)
 
-    async for _ in source.generate_entities():
+    async for _ in source.generate_entities(cursor=mock_cursor):
         pass
 
     mock_cursor.update.assert_called_once_with(
@@ -163,10 +175,11 @@ async def test_full_sync_updates_cursor(source):
 @pytest.mark.asyncio
 async def test_incremental_sync_only_new_entities(source_with_cursor):
     """Incremental sync should only yield new entities beyond cursor position."""
-    source_with_cursor.entity_count = 10  # grew from 5 to 10
+    source, cursor = source_with_cursor
+    source.entity_count = 10  # grew from 5 to 10
 
     entities = []
-    async for e in source_with_cursor.generate_entities():
+    async for e in source.generate_entities(cursor=cursor):
         entities.append(e)
 
     # 1 container + 5 new entities (indices 5-9)
@@ -183,12 +196,13 @@ async def test_incremental_sync_only_new_entities(source_with_cursor):
 @pytest.mark.asyncio
 async def test_incremental_sync_updates_cursor(source_with_cursor):
     """Incremental sync should update cursor to new last_entity_index."""
-    source_with_cursor.entity_count = 10
+    source, cursor = source_with_cursor
+    source.entity_count = 10
 
-    async for _ in source_with_cursor.generate_entities():
+    async for _ in source.generate_entities(cursor=cursor):
         pass
 
-    source_with_cursor.cursor.update.assert_called_once_with(
+    cursor.update.assert_called_once_with(
         last_entity_index=9,
         entity_count=10,
     )
@@ -202,9 +216,9 @@ async def test_incremental_sync_updates_cursor(source_with_cursor):
 @pytest.mark.asyncio
 async def test_noop_sync_only_container(source_with_cursor):
     """When cursor matches entity_count, only the container is yielded."""
-    # cursor at index 4, entity_count=5 -> start_index=5, range(5,5)=empty
+    source, cursor = source_with_cursor
     entities = []
-    async for e in source_with_cursor.generate_entities():
+    async for e in source.generate_entities(cursor=cursor):
         entities.append(e)
 
     assert len(entities) == 1
@@ -214,10 +228,11 @@ async def test_noop_sync_only_container(source_with_cursor):
 @pytest.mark.asyncio
 async def test_noop_sync_still_updates_cursor(source_with_cursor):
     """No-op sync should still update the cursor."""
-    async for _ in source_with_cursor.generate_entities():
+    source, cursor = source_with_cursor
+    async for _ in source.generate_entities(cursor=cursor):
         pass
 
-    source_with_cursor.cursor.update.assert_called_once_with(
+    cursor.update.assert_called_once_with(
         last_entity_index=4,
         entity_count=5,
     )
@@ -230,8 +245,7 @@ async def test_noop_sync_still_updates_cursor(source_with_cursor):
 
 @pytest.mark.asyncio
 async def test_no_cursor_object_full_sync(source):
-    """When no cursor is set at all, should do a full sync."""
-    # source fixture has no cursor set
+    """When no cursor is passed, should do a full sync."""
     entities = []
     async for e in source.generate_entities():
         entities.append(e)

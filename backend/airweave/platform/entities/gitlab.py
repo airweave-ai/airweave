@@ -13,13 +13,30 @@ References:
   • https://docs.gitlab.com/ee/api/repository_files.html
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, CodeFileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, CodeFileEntity
+
+
+def _parse_gl_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Parse GitLab ISO8601 timestamps into aware datetimes."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _require_gl_datetime(value: Optional[str], field_name: str) -> datetime:
+    """Parse a required timestamp, raising if it's missing."""
+    parsed = _parse_gl_datetime(value)
+    if parsed is None:
+        raise ValueError(f"GitLab response missing required datetime '{field_name}'.")
+    return parsed
 
 
 class GitLabProjectEntity(BaseEntity):
@@ -87,6 +104,35 @@ class GitLabProjectEntity(BaseEntity):
     def web_url(self) -> str:
         """Clickable project URL."""
         return self.web_url_value or f"https://gitlab.com/{self.path_with_namespace}"
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> GitLabProjectEntity:
+        """Build from a GitLab API project object."""
+        return cls(
+            breadcrumbs=[],
+            project_id=data["id"],
+            name=data["name"],
+            created_at=_require_gl_datetime(data.get("created_at"), "project.created_at"),
+            last_activity_at=_require_gl_datetime(
+                data.get("last_activity_at")
+                or data.get("updated_at")
+                or data.get("created_at"),
+                "project.last_activity_at",
+            ),
+            path=data["path"],
+            path_with_namespace=data["path_with_namespace"],
+            description=data.get("description"),
+            default_branch=data.get("default_branch"),
+            visibility=data["visibility"],
+            topics=data.get("topics", []),
+            namespace=data.get("namespace", {}),
+            star_count=data.get("star_count", 0),
+            forks_count=data.get("forks_count", 0),
+            open_issues_count=data.get("open_issues_count", 0),
+            archived=data.get("archived", False),
+            empty_repo=data.get("empty_repo", False),
+            web_url_value=data.get("web_url"),
+        )
 
 
 class GitLabUserEntity(BaseEntity):
@@ -296,6 +342,39 @@ class GitLabIssueEntity(BaseEntity):
             or f"https://gitlab.com/projects/{self.project_id}/-/issues/{self.iid}"
         )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        project_id: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> GitLabIssueEntity:
+        """Build from a GitLab API issue object."""
+        return cls(
+            breadcrumbs=breadcrumbs,
+            issue_id=data["id"],
+            title=data["title"],
+            created_at=_require_gl_datetime(data.get("created_at"), "issue.created_at"),
+            updated_at=_require_gl_datetime(
+                data.get("updated_at") or data.get("created_at"),
+                "issue.updated_at",
+            ),
+            description=data.get("description"),
+            state=data["state"],
+            closed_at=_parse_gl_datetime(data.get("closed_at")),
+            labels=data.get("labels", []),
+            author=data.get("author", {}),
+            assignees=data.get("assignees", []),
+            milestone=data.get("milestone"),
+            project_id=project_id,
+            iid=data["iid"],
+            web_url_value=data.get("web_url"),
+            user_notes_count=data.get("user_notes_count", 0),
+            upvotes=data.get("upvotes", 0),
+            downvotes=data.get("downvotes", 0),
+        )
+
 
 class GitLabMergeRequestEntity(BaseEntity):
     """Schema for GitLab merge request entity.
@@ -383,3 +462,43 @@ class GitLabMergeRequestEntity(BaseEntity):
         if self.web_url_value:
             return self.web_url_value
         return f"https://gitlab.com/projects/{self.project_id}/-/merge_requests/{self.iid}"
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        project_id: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> GitLabMergeRequestEntity:
+        """Build from a GitLab API merge request object."""
+        return cls(
+            breadcrumbs=breadcrumbs,
+            merge_request_id=data["id"],
+            title=data["title"],
+            created_at=_require_gl_datetime(data.get("created_at"), "merge_request.created_at"),
+            updated_at=_require_gl_datetime(
+                data.get("updated_at") or data.get("created_at"),
+                "merge_request.updated_at",
+            ),
+            description=data.get("description"),
+            state=data["state"],
+            merged_at=_parse_gl_datetime(data.get("merged_at")),
+            closed_at=_parse_gl_datetime(data.get("closed_at")),
+            labels=data.get("labels", []),
+            author=data.get("author", {}),
+            assignees=data.get("assignees", []),
+            reviewers=data.get("reviewers", []),
+            source_branch=data["source_branch"],
+            target_branch=data["target_branch"],
+            milestone=data.get("milestone"),
+            project_id=project_id,
+            iid=data["iid"],
+            web_url_value=data.get("web_url"),
+            merge_status=data.get("merge_status", "unchecked"),
+            draft=data.get("draft", False),
+            work_in_progress=data.get("work_in_progress", False),
+            upvotes=data.get("upvotes", 0),
+            downvotes=data.get("downvotes", 0),
+            user_notes_count=data.get("user_notes_count", 0),
+        )

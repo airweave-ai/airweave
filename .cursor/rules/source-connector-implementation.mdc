@@ -438,178 +438,163 @@ class MyConnectorSource(BaseSource):
     async def create(
         cls,
         *,
-        credentials: Optional[Dict[str, Any]] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
+        auth: "SourceAuthProvider",
+        logger: "ContextualLogger",
+        http_client: "AirweaveHttpClient",
+        config: "BaseModel",
     ) -> "MyConnectorSource":
         """Create and configure the source.
 
         Args:
-            credentials: Decrypted auth credentials (access_token, refresh_token, etc.)
-            config: Optional configuration (e.g., workspace filters)
-            **kwargs: Additional keyword arguments (token_provider, logger, etc.)
+            auth: Auth provider — call ``await auth.get_token()`` for a bearer token.
+            logger: Contextual logger with sync/search metadata.
+            http_client: Pre-built AirweaveHttpClient with rate limiting.
+            config: Typed config instance (the source's config_class).
 
         Returns:
             Configured source instance
         """
-        instance = cls()
-
-        if config:
-            instance.workspace_id = config.get("workspace_id")
-            instance.exclude_pattern = config.get("exclude_pattern", "")
-        else:
-            instance.workspace_id = None
-            instance.exclude_pattern = ""
-
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
+        instance.workspace_id = getattr(config, "workspace_id", None)
+        instance.exclude_pattern = getattr(config, "exclude_pattern", "")
         return instance
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor=None,
+        files=None,
+        node_selections=None,
+    ) -> AsyncGenerator[ChunkEntity, None]:
         """Generate all entities from the source.
 
-        This is the main entry point called by the sync engine.
-        Token is obtained via self.get_access_token() (delegates to the injected TokenProvider).
+        Args:
+            cursor: SyncCursor for incremental sync tracking.
+            files: FileService for downloading file attachments.
+            node_selections: Node selections for targeted sync.
         """
-        async with self.http_client() as client:
-            async for top_level in self._generate_top_level(client):
-                yield top_level
+        client = self.http_client
+        async for top_level in self._generate_top_level(client):
+            yield top_level
 
-                async for child in self._generate_children(client, top_level):
-                    yield child
+            async for child in self._generate_children(client, top_level):
+                yield child
 
-    async def validate(self) -> bool:
-        """Verify credentials by pinging the API.
-
-        Returns:
-            True if credentials are valid, False otherwise
-        """
-        return await self._validate_oauth2(
-            ping_url="https://api.example.com/v1/me",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+    async def validate(self) -> None:
+        """Verify credentials by pinging the API."""
+        token = await self.get_access_token()
+        response = await self.http_client.get(
+            "https://api.example.com/v1/me",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         )
+        response.raise_for_status()
 ```
 
 ### Critical Methods
 
 #### 1. The `create()` Classmethod
 
-This is called once when a sync starts. The `SourceLifecycleService` passes keyword arguments:
+Called once when a sync starts. `SourceLifecycleService` passes `auth`, `logger`, `http_client`, and `config` as keyword arguments:
 
 ```python
 @classmethod
 async def create(
     cls,
     *,
-    credentials: Optional[Dict[str, Any]] = None,
-    config: Optional[Dict[str, Any]] = None,
-    **kwargs: Any,
+    auth: "SourceAuthProvider",
+    logger: "ContextualLogger",
+    http_client: "AirweaveHttpClient",
+    config: "BaseModel",
 ) -> "MyConnectorSource":
     """Create and configure the source."""
-    instance = cls()
-
-    if config:
-        instance.workspace_filter = config.get("workspace_filter", "")
-        instance.include_archived = config.get("include_archived", False)
-    else:
-        instance.workspace_filter = ""
-        instance.include_archived = False
-
+    instance = cls(auth=auth, logger=logger, http_client=http_client)
+    instance.workspace_filter = getattr(config, "workspace_filter", "")
+    instance.include_archived = getattr(config, "include_archived", False)
     return instance
 ```
 
-**Note:** Do NOT store `access_token` as an instance attribute. Tokens are managed by the injected `TokenProvider` and accessed via `self.get_access_token()`.
+**Note:** Never store `access_token` as an instance attribute. Call `await self.get_access_token()` at request time — it delegates to the injected auth provider which handles refresh automatically.
 
 #### 2. The `generate_entities()` Method
 
-This is an async generator that yields entities:
+This is an async generator that yields entities. Operation-time deps (`cursor`, `files`, `node_selections`) are passed as keyword params:
 
 ```python
-async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+async def generate_entities(
+    self,
+    *,
+    cursor=None,
+    files=None,
+    node_selections=None,
+) -> AsyncGenerator[ChunkEntity, None]:
     """Generate all entities from the source.
 
     Key principles:
     - Generate hierarchically (parents before children)
     - Track breadcrumbs for relationships
     - Handle pagination
-    - Use rate limiting
     """
-    async with self.http_client() as client:
-        # Top-level entities
-        async for workspace in self._generate_workspaces(client):
-            yield workspace
+    client = self.http_client
+    # Top-level entities
+    async for workspace in self._generate_workspaces(client):
+        yield workspace
 
-            workspace_breadcrumb = Breadcrumb(
-                entity_id=workspace.entity_id,
-                name=workspace.name,
-                entity_type="WorkspaceEntity",
+        workspace_breadcrumb = Breadcrumb(
+            entity_id=workspace.entity_id,
+            name=workspace.name,
+            entity_type="WorkspaceEntity",
+        )
+
+        # Child entities
+        async for project in self._generate_projects(client, workspace):
+            yield project
+
+            project_breadcrumb = Breadcrumb(
+                entity_id=project.entity_id,
+                name=project.name,
+                entity_type="ProjectEntity",
             )
+            breadcrumbs = [workspace_breadcrumb, project_breadcrumb]
 
-            # Child entities
-            async for project in self._generate_projects(client, workspace):
-                yield project
-
-                project_breadcrumb = Breadcrumb(
-                    entity_id=project.entity_id,
-                    name=project.name,
-                    entity_type="ProjectEntity",
-                )
-                breadcrumbs = [workspace_breadcrumb, project_breadcrumb]
-
-                # Grandchild entities
-                async for task in self._generate_tasks(client, project, breadcrumbs):
-                    yield task
+            # Grandchild entities
+            async for task in self._generate_tasks(client, project, breadcrumbs):
+                yield task
 ```
 
-#### 3. Making API Requests with Token Refresh
+#### 3. Making API Requests
 
-Use `self.get_access_token()` (delegates to the injected `TokenProvider`) and `self.refresh_on_unauthorized()` for 401 recovery:
+Use `self.http_client` (a property returning the pre-built `AirweaveHttpClient`) and `self.get_access_token()` for bearer tokens. For 401 recovery, call `await self.auth.force_refresh()` (check `self.auth.supports_refresh` first):
 
 ```python
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=True
-)
 async def _get_with_auth(
     self,
-    client: httpx.AsyncClient,
     url: str,
-    params: Optional[Dict[str, Any]] = None
+    params: Optional[Dict[str, Any]] = None,
 ) -> Dict:
     """Make authenticated GET request with automatic token refresh."""
     access_token = await self.get_access_token()
-    if not access_token:
-        raise SourceAuthError(source=self.short_name, message="No access token available")
-
     headers = {"Authorization": f"Bearer {access_token}"}
 
-    try:
-        response = await client.get(url, headers=headers, params=params)
+    response = await self.http_client.get(url, headers=headers, params=params)
 
-        if response.status_code == 401:
-            self.logger.warning(f"Received 401 for {url}, forcing token refresh...")
-            new_token = await self.refresh_on_unauthorized()
-            headers = {"Authorization": f"Bearer {new_token}"}
-            response = await client.get(url, headers=headers, params=params)
+    if response.status_code == 401 and self.auth.supports_refresh:
+        self.logger.warning(f"Received 401 for {url}, forcing token refresh...")
+        new_token = await self.auth.force_refresh()
+        headers = {"Authorization": f"Bearer {new_token}"}
+        response = await self.http_client.get(url, headers=headers, params=params)
 
-        if response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
-            raise SourceRateLimitError(
-                source=self.short_name,
-                retry_after=int(retry_after) if retry_after else None,
-            )
+    if response.status_code == 429:
+        retry_after = response.headers.get("Retry-After")
+        raise SourceRateLimitError(
+            source=self.short_name,
+            retry_after=int(retry_after) if retry_after else None,
+        )
 
-        response.raise_for_status()
-        return response.json()
-
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code >= 500:
-            raise SourceServerError(source=self.short_name, status_code=e.response.status_code)
-        self.logger.error(f"HTTP error: {e.response.status_code} for {url}")
-        raise
+    response.raise_for_status()
+    return response.json()
 ```
 
-**Note:** `self.refresh_on_unauthorized()` calls `self._token_provider.force_refresh()` under the hood. If the token provider doesn't support refresh (e.g., `StaticTokenProvider`), it raises `TokenRefreshNotSupportedError`.
+**Note:** `self.http_client` is a property (not a callable). Do not do `self.http_client()` — that will raise `TypeError`.
 
 ### Handling Hierarchical Data
 
@@ -887,10 +872,9 @@ async def search(self, query: str, limit: int) -> AsyncGenerator[ChunkEntity, No
     Yields:
         ChunkEntity instances matching the query
     """
-    async with self.http_client() as client:
-        # Search the external API
-        async for entity in self._search_messages(client, query, limit):
-            yield entity
+    # self.http_client is a property returning the pre-built AirweaveHttpClient
+    async for entity in self._search_messages(self.http_client, query, limit):
+        yield entity
 ```
 
 #### 3. Implement `generate_entities()` as No-Op
@@ -898,7 +882,7 @@ async def search(self, query: str, limit: int) -> AsyncGenerator[ChunkEntity, No
 For federated sources, `generate_entities()` should raise an error:
 
 ```python
-async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+async def generate_entities(self, *, cursor=None, files=None, node_selections=None) -> AsyncGenerator[ChunkEntity, None]:
     """Not used for federated search sources."""
     self.logger.error("generate_entities() called on federated search source")
     raise NotImplementedError(

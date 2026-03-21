@@ -9,6 +9,8 @@ References:
     https://developers.google.com/drive/api/guides/manage-downloads
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +18,16 @@ from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import FileEntity
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse RFC3339 timestamps returned by Google APIs."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class GoogleDocsDocumentEntity(FileEntity):
@@ -117,6 +129,58 @@ class GoogleDocsDocumentEntity(FileEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> GoogleDocsDocumentEntity:
+        """Create entity from Google Drive API file metadata."""
+        file_id = data["id"]
+        export_mime = "application%2Fvnd.openxmlformats-officedocument.wordprocessingml.document"
+        export_url = (
+            f"https://www.googleapis.com/drive/v3/files/{file_id}/export?mimeType={export_mime}"
+        )
+
+        created_time = _parse_dt(data.get("createdTime")) or datetime.utcnow()
+        modified_time = _parse_dt(data.get("modifiedTime")) or created_time
+
+        doc_name = data.get("name", "Untitled Document")
+        doc_name_with_ext = f"{doc_name}.docx" if not doc_name.endswith(".docx") else doc_name
+
+        return cls(
+            breadcrumbs=[],
+            document_key=file_id,
+            title=doc_name,
+            created_timestamp=created_time,
+            modified_timestamp=modified_time,
+            name=doc_name_with_ext,
+            created_at=created_time,
+            updated_at=modified_time,
+            url=export_url,
+            size=int(data.get("size") or 0),
+            file_type="google_doc",
+            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            local_path=None,
+            description=data.get("description"),
+            starred=data.get("starred", False),
+            trashed=data.get("trashed", False),
+            explicitly_trashed=data.get("explicitlyTrashed", False),
+            shared=data.get("shared", False),
+            shared_with_me_time=_parse_dt(data.get("sharedWithMeTime")),
+            sharing_user=data.get("sharingUser"),
+            owners=data.get("owners", []),
+            permissions=data.get("permissions"),
+            parents=data.get("parents", []),
+            web_view_link=data.get("webViewLink"),
+            icon_link=data.get("iconLink"),
+            created_time=created_time,
+            modified_time=modified_time,
+            modified_by_me_time=_parse_dt(data.get("modifiedByMeTime")),
+            viewed_by_me_time=_parse_dt(data.get("viewedByMeTime")),
+            version=data.get("version"),
+            export_mime_type=(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ),
+            web_url_value=data.get("webViewLink"),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from airweave.domains.auth_provider.auth_result import AuthResult
 from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderAuthError,
@@ -604,15 +603,13 @@ async def test_get_creds_for_source_success():
 
 
 @pytest.mark.asyncio
-async def test_get_auth_result_blocked_source_returns_proxy():
+async def test_get_auth_result_blocked_source_raises_config_error():
     provider = await PipedreamAuthProvider.create(
         credentials={"client_id": "cid", "client_secret": "csec"},
         config={"project_id": "proj", "account_id": "acc"},
     )
-    result = await provider.get_auth_result("github", ["access_token"])
-    assert result.requires_proxy
-    assert result.proxy_config["reason"] == "blocked_source"
-    assert result.proxy_config["source"] == "github"
+    with pytest.raises(AuthProviderConfigError, match="not supported via Pipedream"):
+        await provider.get_auth_result("github", ["access_token"])
 
 
 @pytest.mark.asyncio
@@ -632,12 +629,11 @@ async def test_get_auth_result_direct_success():
 
     with patch.object(provider, "_get_account_with_credentials", fake_get_account):
         result = await provider.get_auth_result("slack", ["access_token"])
-    assert not result.requires_proxy
     assert result.credentials == {"access_token": "xoxb-tok"}
 
 
 @pytest.mark.asyncio
-async def test_get_auth_result_default_oauth_returns_proxy():
+async def test_get_auth_result_default_oauth_raises_config_error():
     provider = await PipedreamAuthProvider.create(
         credentials={"client_id": "cid", "client_secret": "csec"},
         config={"project_id": "proj", "account_id": "acc"},
@@ -647,10 +643,8 @@ async def test_get_auth_result_default_oauth_returns_proxy():
         raise PipedreamDefaultOAuthException("slack")
 
     with patch.object(provider, "_get_account_with_credentials", fake_get_account):
-        result = await provider.get_auth_result("slack", ["access_token"])
-    assert result.requires_proxy
-    assert result.proxy_config["reason"] == "default_oauth"
-    assert result.proxy_config["source"] == "slack"
+        with pytest.raises(AuthProviderConfigError, match="default OAuth client"):
+            await provider.get_auth_result("slack", ["access_token"])
 
 
 @pytest.mark.asyncio

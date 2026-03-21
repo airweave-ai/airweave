@@ -14,12 +14,26 @@ Reference:
   https://learn.microsoft.com/en-us/graph/api/resources/driveitem
 """
 
+from __future__ import annotations
+
+import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Microsoft Graph ISO8601 timestamps into timezone-aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
 
 
 class SharePointUserEntity(BaseEntity):
@@ -90,14 +104,6 @@ class SharePointGroupEntity(BaseEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/group
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the group ID)
-    # - breadcrumbs (empty - groups are top-level)
-    # - name (from display_name)
-    # - created_at (from createdDateTime)
-    # - updated_at (None - groups don't have update timestamp)
-
-    # API fields
     id: str = AirweaveField(
         ...,
         description="Group ID.",
@@ -138,8 +144,31 @@ class SharePointGroupEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> SharePointGroupEntity:
+        """Construct from a Microsoft Graph ``groups`` response item."""
+        group_id = data.get("id")
+        display_name = data.get("displayName", "Unknown Group")
+        created = _parse_dt(data.get("createdDateTime"))
+
+        return cls(
+            breadcrumbs=[],
+            id=group_id,
+            name=display_name,
+            created_at=created,
+            updated_at=None,
+            display_name=display_name,
+            description=data.get("description"),
+            mail=data.get("mail"),
+            mail_enabled=data.get("mailEnabled"),
+            security_enabled=data.get("securityEnabled"),
+            group_types=data.get("groupTypes", []),
+            visibility=data.get("visibility"),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the Outlook web URL for this group."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://outlook.office.com/groups/{self.id}"
@@ -184,6 +213,7 @@ class SharePointSiteEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the SharePoint web URL for this site."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://sharepoint.com/sites/{self.id}"
@@ -228,8 +258,36 @@ class SharePointDriveEntity(BaseEntity):
         None, description="ID of the site that contains this drive.", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, site_id: str, site_name: str
+    ) -> SharePointDriveEntity:
+        """Construct from a Microsoft Graph ``drives`` response item."""
+        drive_id = data.get("id")
+        drive_name = data.get("name", "Unknown Drive")
+        site_breadcrumb = Breadcrumb(
+            entity_id=site_id,
+            name=site_name,
+            entity_type="SharePointSiteEntity",
+        )
+
+        return cls(
+            breadcrumbs=[site_breadcrumb],
+            id=drive_id,
+            name=drive_name,
+            created_at=_parse_dt(data.get("createdDateTime")),
+            updated_at=_parse_dt(data.get("lastModifiedDateTime")),
+            description=data.get("description"),
+            drive_type=data.get("driveType"),
+            web_url_override=data.get("webUrl"),
+            owner=data.get("owner"),
+            quota=data.get("quota"),
+            site_id=site_id,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the SharePoint web URL for this drive."""
         if self.web_url_override:
             return self.web_url_override
         if self.site_id:
@@ -289,8 +347,60 @@ class SharePointDriveItemEntity(FileEntity):
         None, description="ID of the drive that contains this item.", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        site_id: str,
+        drive_id: str,
+        site_breadcrumb: Breadcrumb,
+        drive_breadcrumb: Breadcrumb,
+        download_url: Optional[str] = None,
+    ) -> Optional[SharePointDriveItemEntity]:
+        """Construct from a Microsoft Graph ``driveItem`` response.
+
+        Returns None for folders or items without a download URL.
+        """
+        if "folder" in data:
+            return None
+        if not download_url:
+            return None
+
+        file_info = data.get("file", {})
+        mime_type = file_info.get("mimeType") or "application/octet-stream"
+
+        if mime_type and "/" in mime_type:
+            file_type = mime_type.split("/")[0]
+        else:
+            ext = os.path.splitext(data.get("name", ""))[1].lower().lstrip(".")
+            file_type = ext if ext else "file"
+
+        return cls(
+            id=data["id"],
+            breadcrumbs=[site_breadcrumb, drive_breadcrumb],
+            name=data.get("name"),
+            created_at=_parse_dt(data.get("createdDateTime")),
+            updated_at=_parse_dt(data.get("lastModifiedDateTime")),
+            url=download_url,
+            size=data.get("size", 0),
+            file_type=file_type,
+            mime_type=mime_type,
+            local_path=None,
+            description=data.get("description"),
+            web_url_override=data.get("webUrl"),
+            file=file_info,
+            folder=data.get("folder"),
+            parent_reference=data.get("parentReference", {}),
+            created_by=data.get("createdBy"),
+            last_modified_by=data.get("lastModifiedBy"),
+            site_id=site_id,
+            drive_id=drive_id,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the SharePoint web URL for this drive item."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://sharepoint.com/_layouts/15/Doc.aspx?sourcedoc={self.id}"
@@ -303,14 +413,6 @@ class SharePointListEntity(BaseEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/list
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the list ID)
-    # - breadcrumbs (site breadcrumb)
-    # - name (from display_name)
-    # - created_at (from createdDateTime)
-    # - updated_at (from lastModifiedDateTime)
-
-    # API fields
     id: str = AirweaveField(
         ...,
         description="List ID.",
@@ -338,8 +440,31 @@ class SharePointListEntity(BaseEntity):
         None, description="ID of the site that contains this list.", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, site_id: str, site_breadcrumb: Breadcrumb
+    ) -> SharePointListEntity:
+        """Construct from a Microsoft Graph ``lists`` response item."""
+        list_id = data.get("id")
+        display_name = data.get("displayName", "Unknown List")
+
+        return cls(
+            breadcrumbs=[site_breadcrumb],
+            id=list_id,
+            name=display_name,
+            created_at=_parse_dt(data.get("createdDateTime")),
+            updated_at=_parse_dt(data.get("lastModifiedDateTime")),
+            display_name=display_name,
+            list_name=data.get("name"),
+            description=data.get("description"),
+            web_url_override=data.get("webUrl"),
+            list_info=data.get("list"),
+            site_id=site_id,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the SharePoint web URL for this list."""
         if self.web_url_override:
             return self.web_url_override
         if self.site_id:
@@ -354,14 +479,6 @@ class SharePointListItemEntity(BaseEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/listitem
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the list item ID)
-    # - breadcrumbs (site and list breadcrumbs)
-    # - name (from fields data or item ID)
-    # - created_at (from createdDateTime)
-    # - updated_at (from lastModifiedDateTime)
-
-    # API fields
     id: str = AirweaveField(
         ...,
         description="List item ID.",
@@ -397,8 +514,40 @@ class SharePointListItemEntity(BaseEntity):
         None, description="ID of the site that contains this item.", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        site_id: str,
+        list_id: str,
+        site_breadcrumb: Breadcrumb,
+        list_breadcrumb: Breadcrumb,
+    ) -> SharePointListItemEntity:
+        """Construct from a Microsoft Graph ``listItem`` response."""
+        item_id = data.get("id")
+        fields = data.get("fields", {})
+        item_name = fields.get("Title") or fields.get("Name") or f"ListItem {item_id}"
+
+        return cls(
+            breadcrumbs=[site_breadcrumb, list_breadcrumb],
+            id=item_id,
+            name=item_name,
+            created_at=_parse_dt(data.get("createdDateTime")),
+            updated_at=_parse_dt(data.get("lastModifiedDateTime")),
+            title=item_name,
+            fields=fields,
+            content_type=data.get("contentType"),
+            created_by=data.get("createdBy"),
+            last_modified_by=data.get("lastModifiedBy"),
+            web_url_override=data.get("webUrl"),
+            list_id=list_id,
+            site_id=site_id,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the SharePoint web URL for this list item."""
         if self.web_url_override:
             return self.web_url_override
         if self.site_id and self.list_id:
@@ -454,10 +603,43 @@ class SharePointPageEntity(BaseEntity):
         None, description="ID of the site that contains this page.", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        site_id: str,
+        site_breadcrumb: Breadcrumb,
+        content: str = "",
+    ) -> SharePointPageEntity:
+        """Construct from a Microsoft Graph ``sitePage`` response."""
+        page_id = data.get("id")
+        title = data.get("title", "Untitled Page")
+
+        return cls(
+            breadcrumbs=[site_breadcrumb],
+            id=page_id,
+            name=title,
+            created_at=_parse_dt(data.get("createdDateTime")),
+            updated_at=_parse_dt(data.get("lastModifiedDateTime")),
+            title=title,
+            page_name=data.get("name"),
+            content=content,
+            description=data.get("description"),
+            page_layout=data.get("pageLayout"),
+            web_url_override=data.get("webUrl"),
+            created_by=data.get("createdBy"),
+            last_modified_by=data.get("lastModifiedBy"),
+            publishing_state=data.get("publishingState"),
+            site_id=site_id,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the SharePoint web URL for this page."""
         if self.web_url_override:
             return self.web_url_override
         if self.site_id:
-            return f"https://sharepoint.com/sites/{self.site_id}/SitePages/{self.page_name or self.id}.aspx"
+            page = self.page_name or self.id
+            return f"https://sharepoint.com/sites/{self.site_id}/SitePages/{page}.aspx"
         return "https://sharepoint.com/"

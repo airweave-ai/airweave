@@ -1,5 +1,6 @@
 """Source registry — in-memory registry built once at startup from @source decorators."""
 
+import inspect
 import re
 
 from airweave.core.config import settings
@@ -103,6 +104,7 @@ class SourceRegistry(SourceRegistryProtocol):
         AttributeError at startup.
         """
         self._validate_template_config(source_cls)
+        self._validate_source_contract(source_cls)
 
         config_ref = source_cls.config_class
         auth_config_ref = source_cls.auth_config_class
@@ -137,6 +139,7 @@ class SourceRegistry(SourceRegistryProtocol):
             oauth_type=_enum_to_str(source_cls.oauth_type),
             requires_byoc=source_cls.requires_byoc,
             supports_continuous=source_cls.supports_continuous,
+            supports_cursor=source_cls.cursor_class is not None,
             federated_search=source_cls.federated_search,
             supports_temporal_relevance=source_cls.supports_temporal_relevance,
             supports_access_control=source_cls.supports_access_control,
@@ -191,6 +194,58 @@ class SourceRegistry(SourceRegistryProtocol):
             return ["access_token"], set()
 
         return [], set()
+
+    @staticmethod
+    def _validate_source_contract(source_cls: type) -> None:
+        """Validate that source method signatures conform to the BaseSource v2 contract.
+
+        Checks ``create()`` and ``generate_entities()`` for expected keyword-only
+        params. Warns (not errors) for sources not yet migrated so we can roll
+        this out incrementally.
+
+        Raises ValueError once all sources are migrated and we flip to strict mode.
+        """
+        short_name = source_cls.short_name
+
+        # --- create() ---
+        create_expected = {"auth", "logger", "http_client", "config"}
+        try:
+            create_sig = inspect.signature(source_cls.create)
+            create_params = {
+                name
+                for name, p in create_sig.parameters.items()
+                if p.kind in (p.KEYWORD_ONLY, p.POSITIONAL_OR_KEYWORD) and name != "cls"
+            }
+            missing_create = create_expected - create_params
+            if missing_create:
+                registry_logger.warning(
+                    f"Source '{short_name}' create() missing params: {sorted(missing_create)}. "
+                    f"Has: {sorted(create_params)}. "
+                    f"Migrate to v2 contract: create(*, auth, logger, http_client, config)."
+                )
+        except (ValueError, TypeError) as e:
+            registry_logger.warning(f"Could not inspect create() for '{short_name}': {e}")
+
+        # --- generate_entities() ---
+        gen_expected = {"cursor", "files", "node_selections"}
+        try:
+            gen_sig = inspect.signature(source_cls.generate_entities)
+            gen_params = {
+                name
+                for name, p in gen_sig.parameters.items()
+                if p.kind in (p.KEYWORD_ONLY, p.POSITIONAL_OR_KEYWORD) and name != "self"
+            }
+            missing_gen = gen_expected - gen_params
+            if missing_gen:
+                registry_logger.warning(
+                    f"Source '{short_name}' generate_entities() missing params: "
+                    f"{sorted(missing_gen)}. Has: {sorted(gen_params)}. "
+                    f"Migrate to v2 contract: generate_entities(*, cursor, files, node_selections)."
+                )
+        except (ValueError, TypeError) as e:
+            registry_logger.warning(
+                f"Could not inspect generate_entities() for '{short_name}': {e}"
+            )
 
     @staticmethod
     def _validate_template_config(source_cls: type) -> None:

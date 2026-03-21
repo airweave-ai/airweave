@@ -157,7 +157,3 @@ class SyncCursorService:
         except Exception as e:
             logger.error(f"Failed to delete cursor for sync {sync_id}: {e}")
             return False
-
-
-# Singleton instance
-sync_cursor_service = SyncCursorService()

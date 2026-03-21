@@ -63,9 +63,7 @@ class BitbucketBongo(BaseBongo):
     def _auth_headers(self, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         """Build Authorization headers based on available credentials."""
         headers: Dict[str, str] = {"Accept": "application/json"}
-        print(f"access_token: {self.access_token}")
         if self.access_token:
-            print(f"access_token: {self.access_token}")
             headers["Authorization"] = f"Bearer {self.access_token}"
         elif self.username and self.app_password:
             basic = base64.b64encode(f"{self.username}:{self.app_password}".encode()).decode()
@@ -86,16 +84,25 @@ class BitbucketBongo(BaseBongo):
         from monke.generation.bitbucket import generate_bitbucket_artifact
 
         for i in range(self.entity_count):
-            # Short unique token used in filename and content for verification
             token = str(uuid.uuid4())[:8]
 
-            filename, content, file_type = await generate_bitbucket_artifact(
-                self.openai_model, token
-            )
+            try:
+                filename, content, file_type = await generate_bitbucket_artifact(
+                    self.openai_model, token
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"LLM generation failed for file {i + 1}/{self.entity_count}: {type(e).__name__}: {e}"
+                ) from e
+
             filepath = f"monke-test/{filename}-{token}.{file_type}"
 
-            # Create file
-            await self._create_test_file(filepath, content)
+            try:
+                await self._create_test_file(filepath, content)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to create file '{filepath}' in Bitbucket: {type(e).__name__}: {e}"
+                ) from e
 
             entities.append(
                 {
@@ -111,7 +118,6 @@ class BitbucketBongo(BaseBongo):
 
             self.logger.info(f"📄 Created test file: {filepath}")
 
-            # Rate limiting
             if self.entity_count > 10:
                 await asyncio.sleep(0.5)
 

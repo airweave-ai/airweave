@@ -10,12 +10,24 @@ References:
   https://learn.microsoft.com/en-us/graph/api/resources/driveitem?view=graph-rest-1.0
 """
 
+import os
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Microsoft Graph ISO8601 timestamps into timezone-aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class OneDriveDriveEntity(BaseEntity):
@@ -63,6 +75,7 @@ class OneDriveDriveEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the OneDrive web URL for this drive."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://onedrive.live.com/?id={self.id}"
@@ -122,8 +135,64 @@ class OneDriveDriveItemEntity(FileEntity):
         embeddable=False,
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        drive_name: str,
+        drive_id: str,
+        download_url: Optional[str] = None,
+    ) -> Optional["OneDriveDriveItemEntity"]:
+        """Construct from a Microsoft Graph DriveItem response.
+
+        Returns None for folders or items without a download URL.
+        """
+        if "folder" in data:
+            return None
+        if not download_url:
+            return None
+
+        drive_breadcrumb = Breadcrumb(
+            entity_id=drive_id,
+            name=drive_name,
+            entity_type="OneDriveDriveEntity",
+        )
+
+        file_info = data.get("file", {})
+        parent_ref = data.get("parentReference", {})
+        mime_type = file_info.get("mimeType") or "application/octet-stream"
+        size = data.get("size", 0)
+
+        if mime_type and "/" in mime_type:
+            file_type = mime_type.split("/")[0]
+        else:
+            ext = os.path.splitext(data.get("name", ""))[1].lower().lstrip(".")
+            file_type = ext if ext else "file"
+
+        return cls(
+            id=data["id"],
+            breadcrumbs=[drive_breadcrumb],
+            name=data.get("name"),
+            created_at=_parse_dt(data.get("createdDateTime")),
+            updated_at=_parse_dt(data.get("lastModifiedDateTime")),
+            url=download_url,
+            size=size,
+            file_type=file_type,
+            mime_type=mime_type,
+            local_path=None,
+            description=None,
+            etag=data.get("eTag"),
+            ctag=data.get("cTag"),
+            web_url_override=data.get("webUrl"),
+            file=file_info,
+            folder=data.get("folder"),
+            parent_reference=parent_ref,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the OneDrive web URL for this drive item."""
         if self.web_url_override:
             return self.web_url_override
         return f"https://onedrive.live.com/?id={self.id}"

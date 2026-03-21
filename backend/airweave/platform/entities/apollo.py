@@ -4,13 +4,17 @@ MVP entities: Contacts, Accounts, Sequences, Email Activities.
 API reference: https://docs.apollo.io/
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import Field, computed_field, field_validator
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+_APP_URL = "https://app.apollo.io"
 
 
 def _parse_apollo_datetime(value: Any) -> Optional[datetime]:
@@ -67,6 +71,28 @@ class ApolloAccountEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> ApolloAccountEntity:
+        """Construct from Apollo /accounts/search response dict."""
+        acc_id = data["id"]
+        created_at = data.get("created_at")
+        updated_at = data.get("updated_at") or created_at
+        return cls(
+            entity_id=acc_id,
+            breadcrumbs=[],
+            account_id=acc_id,
+            name=data.get("name") or data.get("domain") or acc_id,
+            domain=data.get("domain"),
+            created_at=created_at,
+            updated_at=updated_at,
+            source=data.get("source"),
+            source_display_name=data.get("source_display_name"),
+            num_contacts=data.get("num_contacts"),
+            last_activity_date=data.get("last_activity_date"),
+            label_ids=data.get("label_ids") or [],
+            web_url_value=f"{_APP_URL}/accounts/{acc_id}",
+        )
 
     @field_validator("created_at", "updated_at", "last_activity_date", mode="before")
     @classmethod
@@ -125,6 +151,51 @@ class ApolloContactEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> ApolloContactEntity:
+        """Construct from Apollo /contacts/search response dict."""
+        contact_id = data["id"]
+        account_id = data.get("account_id")
+        account_data = data.get("account")
+        account_name = account_data.get("name") if isinstance(account_data, dict) else None
+
+        name = (
+            data.get("name")
+            or " ".join(filter(None, [data.get("first_name"), data.get("last_name")]))
+            or data.get("email")
+            or contact_id
+        ).strip() or contact_id
+
+        breadcrumbs: list[Breadcrumb] = []
+        if account_id and account_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=account_id,
+                    name=account_name,
+                    entity_type="ApolloAccountEntity",
+                )
+            )
+
+        return cls(
+            entity_id=contact_id,
+            breadcrumbs=breadcrumbs,
+            contact_id=contact_id,
+            name=name,
+            first_name=data.get("first_name"),
+            last_name=data.get("last_name"),
+            email=data.get("email"),
+            title=data.get("title"),
+            organization_name=data.get("organization_name") or account_name,
+            account_id=account_id,
+            account_name=account_name,
+            created_at=data.get("created_at"),
+            updated_at=data.get("updated_at"),
+            email_status=data.get("email_status"),
+            source_display_name=data.get("source_display_name"),
+            emailer_campaign_ids=data.get("emailer_campaign_ids") or [],
+            web_url_value=f"{_APP_URL}/contacts/{contact_id}",
+        )
+
     @field_validator("created_at", "updated_at", mode="before")
     @classmethod
     def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
@@ -170,6 +241,27 @@ class ApolloSequenceEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> ApolloSequenceEntity:
+        """Construct from Apollo /emailer_campaigns/search response dict."""
+        seq_id = data["id"]
+        return cls(
+            entity_id=seq_id,
+            breadcrumbs=[],
+            sequence_id=seq_id,
+            name=data.get("name") or seq_id,
+            created_at=data.get("created_at"),
+            active=data.get("active"),
+            archived=data.get("archived"),
+            num_steps=data.get("num_steps"),
+            unique_scheduled=data.get("unique_scheduled"),
+            unique_delivered=data.get("unique_delivered"),
+            unique_opened=data.get("unique_opened"),
+            unique_replied=data.get("unique_replied"),
+            permissions=data.get("permissions"),
+            web_url_value=f"{_APP_URL}/sequences/{seq_id}",
+        )
 
     @field_validator("created_at", mode="before")
     @classmethod
@@ -240,6 +332,59 @@ class ApolloEmailActivityEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> ApolloEmailActivityEntity:
+        """Construct from Apollo /emailer_messages/search response dict."""
+        msg_id = data["id"]
+        subject = data.get("subject") or "(No subject)"
+        to_name = data.get("to_name") or data.get("to_email") or "unknown"
+        campaign_id = data.get("emailer_campaign_id")
+        campaign_name = data.get("campaign_name")
+        contact_id = data.get("contact_id")
+
+        breadcrumbs: list[Breadcrumb] = []
+        if campaign_id and campaign_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=campaign_id,
+                    name=campaign_name,
+                    entity_type="ApolloSequenceEntity",
+                )
+            )
+        to_display = data.get("to_name") or data.get("to_email") or ""
+        if contact_id and to_display:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=contact_id,
+                    name=to_display,
+                    entity_type="ApolloContactEntity",
+                )
+            )
+
+        return cls(
+            entity_id=msg_id,
+            breadcrumbs=breadcrumbs,
+            message_id=msg_id,
+            name=f"Email: {subject} to {to_name}",
+            subject=subject,
+            status=data.get("status"),
+            from_email=data.get("from_email"),
+            from_name=data.get("from_name"),
+            to_email=data.get("to_email"),
+            to_name=data.get("to_name"),
+            body_text=data.get("body_text"),
+            campaign_name=campaign_name,
+            emailer_campaign_id=campaign_id,
+            contact_id=contact_id,
+            account_id=data.get("account_id"),
+            created_at=data.get("created_at"),
+            completed_at=data.get("completed_at"),
+            due_at=data.get("due_at"),
+            failure_reason=data.get("failure_reason"),
+            not_sent_reason=data.get("not_sent_reason"),
+            web_url_value=f"{_APP_URL}/sequences/{campaign_id}" if campaign_id else None,
+        )
 
     @field_validator("created_at", "completed_at", "due_at", mode="before")
     @classmethod

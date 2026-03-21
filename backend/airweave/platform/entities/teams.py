@@ -20,7 +20,17 @@ from typing import Any, Dict, List, Optional
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Microsoft Graph ISO8601 timestamps into timezone-aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
 
 
 class TeamsUserEntity(BaseEntity):
@@ -350,12 +360,61 @@ class TeamsMessageEntity(BaseEntity):
         None, description="Link to the message in Microsoft Teams.", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        team_id: Optional[str] = None,
+        channel_id: Optional[str] = None,
+        chat_id: Optional[str] = None,
+    ) -> "TeamsMessageEntity":
+        """Construct from a Microsoft Graph chatMessage resource."""
+        message_id = data["id"]
+        from_info = data.get("from", {})
+        body = data.get("body", {})
+        body_content = body.get("content", "")
+
+        subject = data.get("subject")
+        if subject:
+            name = subject
+        elif body_content:
+            name = body_content[:50] + "..." if len(body_content) > 50 else body_content
+        else:
+            name = f"Message {message_id}"
+
+        created_dt = _parse_dt(data.get("createdDateTime"))
+        updated_dt = _parse_dt(data.get("lastModifiedDateTime"))
+
+        return cls(
+            breadcrumbs=list(breadcrumbs),
+            id=message_id,
+            name=name,
+            created_at=created_dt,
+            updated_at=updated_dt,
+            team_id=team_id,
+            channel_id=channel_id,
+            chat_id=chat_id,
+            reply_to_id=data.get("replyToId"),
+            message_type=data.get("messageType"),
+            subject=subject or name,
+            body_content=body_content,
+            body_content_type=body.get("contentType"),
+            from_user=from_info,
+            last_edited_datetime=_parse_dt(data.get("lastEditedDateTime")),
+            deleted_datetime=_parse_dt(data.get("deletedDateTime")),
+            importance=data.get("importance"),
+            mentions=data.get("mentions", []),
+            attachments=data.get("attachments", []),
+            reactions=data.get("reactions", []),
+            web_url_override=data.get("webUrl"),
+            created_datetime=created_dt,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Return best-effort link to open the message."""
         if self.web_url_override:
             return self.web_url_override
-        # Fallback to generic Teams URL when Graph doesn't provide a deep link.
-        # We don't have enough context here (chat/conversation IDs) to construct
-        # a valid per-message deep link, and the /message/{id} path is invalid.
         return "https://teams.microsoft.com/"

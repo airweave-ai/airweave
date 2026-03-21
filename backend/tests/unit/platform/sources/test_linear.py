@@ -1,16 +1,40 @@
 """Unit tests for Linear source connector with continuous sync."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from airweave.platform.configs.config import LinearConfig
 from airweave.platform.entities.linear import (
     LinearCommentEntity,
     LinearIssueEntity,
     LinearProjectEntity,
     LinearTeamEntity,
     LinearUserEntity,
+    _parse_dt,
 )
 from airweave.platform.sources.linear import LinearSource
+
+
+def _mock_auth(token="test-token"):
+    auth = AsyncMock()
+    auth.get_token = AsyncMock(return_value=token)
+    auth.force_refresh = AsyncMock(return_value="refreshed-token")
+    auth.supports_refresh = True
+    auth.provider_kind = "oauth"
+    return auth
+
+
+def _mock_http_client():
+    client = AsyncMock()
+    client.get = AsyncMock()
+    client.post = AsyncMock()
+    return client
+
+
+def _mock_logger():
+    return MagicMock()
 
 
 def _graphql_response(collection_key: str, nodes: list, has_next_page: bool = False):
@@ -110,63 +134,38 @@ ISSUE_NODE = {
 
 @pytest.fixture
 def linear_source():
-    """Create a Linear source instance with test credentials."""
-    source = LinearSource()
-    source.access_token = "test-token"
-    source.exclude_path = ""
-    return source
+    """Create a Linear source instance via the v2 ``create()`` contract."""
 
+    async def _create():
+        return await LinearSource.create(
+            auth=_mock_auth(),
+            logger=_mock_logger(),
+            http_client=_mock_http_client(),
+            config=LinearConfig(),
+        )
 
-@pytest.fixture
-def linear_source_with_cursor(linear_source):
-    """Linear source with a cursor set for incremental sync."""
-    mock_cursor = MagicMock()
-    mock_cursor.data = {"last_synced_at": "2024-06-01T00:00:00Z"}
-    linear_source.set_cursor(mock_cursor)
-    return linear_source
+    return asyncio.run(_create())
 
 
 # ---------------------------------------------------------------------------
-# create / validate
+# create
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_create_sets_config():
-    """create() should set access_token and exclude_path from config."""
-    source = await LinearSource.create("my-token", {"exclude_path": "TEAM-"})
-    assert source.access_token == "my-token"
-    assert source.exclude_path == "TEAM-"
-
-
-@pytest.mark.asyncio
-async def test_create_empty_config():
-    """create() with no config should set empty exclude_path."""
-    source = await LinearSource.create("token", None)
-    assert source.exclude_path == ""
-
-
-# ---------------------------------------------------------------------------
-# cursor helper
-# ---------------------------------------------------------------------------
-
-
-def test_get_last_synced_at_no_cursor(linear_source):
-    """_get_last_synced_at returns None when no cursor is set."""
-    assert linear_source._get_last_synced_at() is None
-
-
-def test_get_last_synced_at_empty_cursor(linear_source):
-    """_get_last_synced_at returns None when cursor has empty last_synced_at."""
-    mock_cursor = MagicMock()
-    mock_cursor.data = {"last_synced_at": ""}
-    linear_source.set_cursor(mock_cursor)
-    assert linear_source._get_last_synced_at() is None
-
-
-def test_get_last_synced_at_with_value(linear_source_with_cursor):
-    """_get_last_synced_at returns the stored timestamp."""
-    assert linear_source_with_cursor._get_last_synced_at() == "2024-06-01T00:00:00Z"
+async def test_create_returns_instance():
+    """create() should return a LinearSource with injected deps."""
+    auth = _mock_auth()
+    http = _mock_http_client()
+    source = await LinearSource.create(
+        auth=auth,
+        logger=_mock_logger(),
+        http_client=http,
+        config=LinearConfig(),
+    )
+    assert isinstance(source, LinearSource)
+    assert source.auth is auth
+    assert source.http_client is http
 
 
 # ---------------------------------------------------------------------------
@@ -184,13 +183,7 @@ async def test_full_sync_generates_all_entity_types(linear_source):
         _graphql_response("issues", [ISSUE_NODE]),
     ]
 
-    with patch.object(
-        linear_source, "_post_with_auth", new_callable=AsyncMock, side_effect=responses
-    ), patch.object(linear_source, "http_client") as mock_ctx:
-        mock_client = MagicMock()
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
-
+    with patch.object(linear_source, "_post", new_callable=AsyncMock, side_effect=responses):
         entities = []
         async for e in linear_source.generate_entities():
             entities.append(e)
@@ -220,41 +213,12 @@ async def test_full_sync_generates_all_entity_types(linear_source):
 
 
 @pytest.mark.asyncio
-async def test_incremental_sync_passes_updated_filter(linear_source_with_cursor):
+async def test_incremental_sync_passes_updated_filter(linear_source):
     """Incremental sync should include updatedAt filter in GraphQL queries."""
+    mock_cursor = MagicMock()
+    mock_cursor.data = {"last_synced_at": "2024-06-01T00:00:00Z"}
+
     captured_queries = []
-    original_post = AsyncMock(
-        side_effect=[
-            _graphql_response("teams", []),
-            _graphql_response("projects", []),
-            _graphql_response("users", []),
-            _graphql_response("issues", []),
-        ]
-    )
-
-    async def capture_post(client, query):
-        captured_queries.append(query)
-        return await original_post(client, query)
-
-    with patch.object(
-        linear_source_with_cursor, "_post_with_auth", side_effect=capture_post
-    ), patch.object(linear_source_with_cursor, "http_client") as mock_ctx:
-        mock_client = MagicMock()
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
-
-        async for _ in linear_source_with_cursor.generate_entities():
-            pass
-
-    # All entity queries (teams, projects, users, issues) should contain updatedAt filter
-    for query in captured_queries[:4]:
-        assert "updatedAt" in query
-        assert "2024-06-01T00:00:00Z" in query
-
-
-@pytest.mark.asyncio
-async def test_incremental_sync_updates_cursor(linear_source_with_cursor):
-    """Incremental sync should update the cursor with the sync start timestamp."""
     responses = [
         _graphql_response("teams", []),
         _graphql_response("projects", []),
@@ -262,74 +226,62 @@ async def test_incremental_sync_updates_cursor(linear_source_with_cursor):
         _graphql_response("issues", []),
     ]
 
-    with patch.object(
-        linear_source_with_cursor, "_post_with_auth", new_callable=AsyncMock, side_effect=responses
-    ), patch.object(linear_source_with_cursor, "http_client") as mock_ctx:
-        mock_client = MagicMock()
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
+    async def capture_post(query):
+        captured_queries.append(query)
+        return responses[len(captured_queries) - 1]
 
-        async for _ in linear_source_with_cursor.generate_entities():
+    with patch.object(linear_source, "_post", side_effect=capture_post):
+        async for _ in linear_source.generate_entities(cursor=mock_cursor):
             pass
 
-    linear_source_with_cursor.cursor.update.assert_called_once()
-    call_kwargs = linear_source_with_cursor.cursor.update.call_args[1]
-    assert "last_synced_at" in call_kwargs
-    assert call_kwargs["last_synced_at"].endswith("+00:00")
-
-
-# ---------------------------------------------------------------------------
-# exclude_path filtering
-# ---------------------------------------------------------------------------
+    for query in captured_queries[:4]:
+        assert "updatedAt" in query
+        assert "2024-06-01T00:00:00Z" in query
 
 
 @pytest.mark.asyncio
-async def test_exclude_path_skips_matching_issues(linear_source):
-    """Issues matching exclude_path should be skipped."""
-    linear_source.exclude_path = "ENG-"
+async def test_incremental_sync_updates_cursor(linear_source):
+    """Incremental sync should update the cursor with the sync start timestamp."""
+    mock_cursor = MagicMock()
+    mock_cursor.data = {"last_synced_at": "2024-06-01T00:00:00Z"}
 
     responses = [
         _graphql_response("teams", []),
         _graphql_response("projects", []),
         _graphql_response("users", []),
-        _graphql_response("issues", [ISSUE_NODE]),
+        _graphql_response("issues", []),
     ]
 
-    with patch.object(
-        linear_source, "_post_with_auth", new_callable=AsyncMock, side_effect=responses
-    ), patch.object(linear_source, "http_client") as mock_ctx:
-        mock_client = MagicMock()
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
+    with patch.object(linear_source, "_post", new_callable=AsyncMock, side_effect=responses):
+        async for _ in linear_source.generate_entities(cursor=mock_cursor):
+            pass
 
-        entities = []
-        async for e in linear_source.generate_entities():
-            entities.append(e)
-
-    issues = [e for e in entities if isinstance(e, LinearIssueEntity)]
-    assert len(issues) == 0
+    mock_cursor.update.assert_called_once()
+    call_kwargs = mock_cursor.update.call_args[1]
+    assert "last_synced_at" in call_kwargs
+    assert call_kwargs["last_synced_at"].endswith("+00:00")
 
 
 # ---------------------------------------------------------------------------
-# parse_datetime
+# parse datetime (entity helpers)
 # ---------------------------------------------------------------------------
 
 
-def test_parse_datetime_valid(linear_source):
-    """_parse_datetime parses ISO8601 timestamps."""
-    dt = LinearSource._parse_datetime("2024-06-15T12:30:00Z")
+def test_parse_dt_valid():
+    """_parse_dt parses ISO8601 timestamps."""
+    dt = _parse_dt("2024-06-15T12:30:00Z")
     assert dt is not None
     assert dt.year == 2024
     assert dt.month == 6
     assert dt.day == 15
 
 
-def test_parse_datetime_none():
-    """_parse_datetime returns None for None/empty input."""
-    assert LinearSource._parse_datetime(None) is None
-    assert LinearSource._parse_datetime("") is None
+def test_parse_dt_none():
+    """_parse_dt returns None for None/empty input."""
+    assert _parse_dt(None) is None
+    assert _parse_dt("") is None
 
 
-def test_parse_datetime_invalid():
-    """_parse_datetime returns None for invalid strings."""
-    assert LinearSource._parse_datetime("not-a-date") is None
+def test_parse_dt_invalid():
+    """_parse_dt returns None for invalid strings."""
+    assert _parse_dt("not-a-date") is None

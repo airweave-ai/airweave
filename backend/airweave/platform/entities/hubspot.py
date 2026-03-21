@@ -4,6 +4,8 @@ Based on the HubSpot CRM API reference, we define entity schemas for common
 HubSpot objects like Contacts, Companies, Deals, and Tickets.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -11,6 +13,16 @@ from pydantic import computed_field, field_validator
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    """Safely convert a value to float, handling empty strings and None."""
+    if not value or value == "":
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
 
 
 def parse_hubspot_datetime(value: Any) -> Optional[datetime]:
@@ -85,6 +97,57 @@ class HubspotContactEntity(BaseEntity):
         """Normalize HubSpot datetime inputs to timezone-aware datetimes."""
         return parse_hubspot_datetime(value)
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        cleaned_properties: Dict[str, Any],
+        web_url_value: Optional[str] = None,
+    ) -> HubspotContactEntity:
+        """Build from a HubSpot API contact object.
+
+        Args:
+            data: Raw contact dict from the HubSpot CRM API (id, createdAt, …).
+            cleaned_properties: Pre-cleaned properties dict.
+            web_url_value: Pre-built HubSpot UI URL (requires portal ID).
+        """
+        first_name = cleaned_properties.get("firstname")
+        last_name = cleaned_properties.get("lastname")
+        email = cleaned_properties.get("email")
+
+        if first_name and last_name:
+            contact_name = f"{first_name} {last_name}"
+        elif first_name:
+            contact_name = first_name
+        elif last_name:
+            contact_name = last_name
+        elif email:
+            contact_name = email
+        else:
+            contact_name = f"Contact {data['id']}"
+
+        created_time = parse_hubspot_datetime(data.get("createdAt")) or datetime.utcnow()
+        updated_time = parse_hubspot_datetime(data.get("updatedAt")) or created_time
+
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=[],
+            name=contact_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            contact_id=data["id"],
+            display_name=contact_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            properties=cleaned_properties,
+            archived=data.get("archived", False),
+            web_url_value=web_url_value,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Link to the HubSpot contact UI."""
@@ -129,6 +192,42 @@ class HubspotCompanyEntity(BaseEntity):
         """Normalize HubSpot datetime inputs to timezone-aware datetimes."""
         return parse_hubspot_datetime(value)
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        cleaned_properties: Dict[str, Any],
+        web_url_value: Optional[str] = None,
+    ) -> HubspotCompanyEntity:
+        """Build from a HubSpot API company object.
+
+        Args:
+            data: Raw company dict from the HubSpot CRM API.
+            cleaned_properties: Pre-cleaned properties dict.
+            web_url_value: Pre-built HubSpot UI URL (requires portal ID).
+        """
+        company_name = cleaned_properties.get("name") or f"Company {data['id']}"
+
+        created_time = parse_hubspot_datetime(data.get("createdAt")) or datetime.utcnow()
+        updated_time = parse_hubspot_datetime(data.get("updatedAt")) or created_time
+
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=[],
+            name=company_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            company_id=data["id"],
+            company_name=company_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            domain=cleaned_properties.get("domain"),
+            properties=cleaned_properties,
+            archived=data.get("archived", False),
+            web_url_value=web_url_value,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Link to the HubSpot company UI."""
@@ -170,6 +269,42 @@ class HubspotDealEntity(BaseEntity):
     def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
         """Normalize HubSpot datetime inputs to timezone-aware datetimes."""
         return parse_hubspot_datetime(value)
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        cleaned_properties: Dict[str, Any],
+        web_url_value: Optional[str] = None,
+    ) -> HubspotDealEntity:
+        """Build from a HubSpot API deal object.
+
+        Args:
+            data: Raw deal dict from the HubSpot CRM API.
+            cleaned_properties: Pre-cleaned properties dict.
+            web_url_value: Pre-built HubSpot UI URL (requires portal ID).
+        """
+        deal_name = cleaned_properties.get("dealname") or f"Deal {data['id']}"
+
+        created_time = parse_hubspot_datetime(data.get("createdAt")) or datetime.utcnow()
+        updated_time = parse_hubspot_datetime(data.get("updatedAt")) or created_time
+
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=[],
+            name=deal_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            deal_id=data["id"],
+            deal_name=deal_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            amount=_safe_float(cleaned_properties.get("amount")),
+            properties=cleaned_properties,
+            archived=data.get("archived", False),
+            web_url_value=web_url_value,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -217,6 +352,43 @@ class HubspotTicketEntity(BaseEntity):
     def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
         """Normalize HubSpot datetime inputs to timezone-aware datetimes."""
         return parse_hubspot_datetime(value)
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        cleaned_properties: Dict[str, Any],
+        web_url_value: Optional[str] = None,
+    ) -> HubspotTicketEntity:
+        """Build from a HubSpot API ticket object.
+
+        Args:
+            data: Raw ticket dict from the HubSpot CRM API.
+            cleaned_properties: Pre-cleaned properties dict.
+            web_url_value: Pre-built HubSpot UI URL (requires portal ID).
+        """
+        ticket_name = cleaned_properties.get("subject") or f"Ticket {data['id']}"
+
+        created_time = parse_hubspot_datetime(data.get("createdAt")) or datetime.utcnow()
+        updated_time = parse_hubspot_datetime(data.get("updatedAt")) or created_time
+
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=[],
+            name=ticket_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            ticket_id=data["id"],
+            ticket_name=ticket_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            subject=cleaned_properties.get("subject"),
+            content=cleaned_properties.get("content"),
+            properties=cleaned_properties,
+            archived=data.get("archived", False),
+            web_url_value=web_url_value,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

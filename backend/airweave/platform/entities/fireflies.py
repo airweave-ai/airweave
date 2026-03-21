@@ -5,6 +5,8 @@ as searchable entities with title, organizer, participants, summary, and sentenc
 content.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -12,6 +14,27 @@ from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
+
+
+def _parse_epoch_ms(ms: Optional[float]) -> Optional[datetime]:
+    """Convert milliseconds since epoch to UTC datetime."""
+    if ms is None:
+        return None
+    try:
+        return datetime.utcfromtimestamp(ms / 1000.0)
+    except (OSError, ValueError):
+        return None
+
+
+def _normalize_action_items(value: Any) -> Optional[List[str]]:
+    """Normalize action_items from API (string or list) to List[str]."""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    if isinstance(value, str):
+        return [s.strip() for s in value.split("\n") if s.strip()] or None
+    return None
 
 
 class FirefliesTranscriptEntity(BaseEntity):
@@ -95,3 +118,43 @@ class FirefliesTranscriptEntity(BaseEntity):
     def web_url(self) -> str:
         """User-facing link to the transcript in Fireflies."""
         return self.transcript_url or ""
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> FirefliesTranscriptEntity:
+        """Build from a Fireflies GraphQL transcript object."""
+        transcript_id = data.get("id") or ""
+        title = data.get("title") or "Untitled meeting"
+        date_ms = data.get("date")
+        created_time = _parse_epoch_ms(date_ms)
+
+        summary = data.get("summary") or {}
+        sentences = data.get("sentences") or []
+        content_parts = [
+            raw
+            for s in sentences
+            if (raw := (s.get("raw_text") or s.get("text") or "").strip())
+        ]
+        content = "\n".join(content_parts) if content_parts else None
+
+        return cls(
+            entity_id=transcript_id,
+            breadcrumbs=[],
+            name=title,
+            created_at=created_time,
+            updated_at=created_time,
+            transcript_id=transcript_id,
+            title=title,
+            organizer_email=data.get("organizer_email"),
+            transcript_url=data.get("transcript_url"),
+            participants=data.get("participants") or [],
+            duration=data.get("duration"),
+            date=date_ms,
+            date_string=data.get("dateString"),
+            created_time=created_time,
+            speakers=data.get("speakers") or [],
+            summary_overview=summary.get("overview") or summary.get("short_summary"),
+            summary_keywords=summary.get("keywords") or [],
+            summary_action_items=_normalize_action_items(summary.get("action_items")),
+            content=content,
+            fireflies_users=data.get("fireflies_users") or [],
+        )

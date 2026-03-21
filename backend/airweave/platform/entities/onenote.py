@@ -12,12 +12,25 @@ Reference:
   https://learn.microsoft.com/en-us/graph/api/resources/onenotepage
 """
 
+from __future__ import annotations
+
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Microsoft Graph ISO8601 timestamps into timezone-aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class OneNoteNotebookEntity(BaseEntity):
@@ -82,8 +95,35 @@ class OneNoteNotebookEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> OneNoteNotebookEntity:
+        """Construct from a Microsoft Graph ``notebooks`` response object."""
+        notebook_id = data.get("id")
+        display_name = data.get("displayName", "Unknown Notebook")
+        created_at = _parse_dt(data.get("createdDateTime"))
+        updated_at = _parse_dt(data.get("lastModifiedDateTime"))
+        web_url_override = (data.get("links") or {}).get("oneNoteWebUrl", {}).get("href")
+
+        return cls(
+            breadcrumbs=[],
+            id=notebook_id,
+            name=display_name,
+            created_at=created_at,
+            updated_at=updated_at,
+            display_name=display_name,
+            is_default=data.get("isDefault"),
+            is_shared=data.get("isShared"),
+            user_role=data.get("userRole"),
+            created_by=data.get("createdBy"),
+            last_modified_by=data.get("lastModifiedBy"),
+            links=data.get("links"),
+            self_url=data.get("self"),
+            web_url_override=web_url_override,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the OneNote web URL for this notebook."""
         if self.web_url_override:
             return self.web_url_override
         if self.links and isinstance(self.links, dict):
@@ -199,8 +239,40 @@ class OneNoteSectionEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        notebook_id: str,
+        notebook_breadcrumb: Breadcrumb,
+    ) -> OneNoteSectionEntity:
+        """Construct from a Microsoft Graph ``sections`` response object."""
+        section_id = data.get("id")
+        display_name = data.get("displayName", "Unknown Section")
+        created_at = _parse_dt(data.get("createdDateTime"))
+        updated_at = _parse_dt(data.get("lastModifiedDateTime"))
+        web_url_override = (data.get("links") or {}).get("oneNoteWebUrl", {}).get("href")
+
+        return cls(
+            breadcrumbs=[notebook_breadcrumb],
+            id=section_id,
+            name=display_name,
+            created_at=created_at,
+            updated_at=updated_at,
+            notebook_id=notebook_id,
+            parent_section_group_id=data.get("parentSectionGroupId"),
+            display_name=display_name,
+            is_default=data.get("isDefault"),
+            created_by=data.get("createdBy"),
+            last_modified_by=data.get("lastModifiedBy"),
+            pages_url=data.get("pagesUrl"),
+            web_url_override=web_url_override,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the OneNote web URL for this section."""
         if self.web_url_override:
             return self.web_url_override
         if self.pages_url:
@@ -282,8 +354,51 @@ class OneNotePageFileEntity(FileEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        notebook_id: str,
+        section_id: str,
+        section_breadcrumbs: list[Breadcrumb],
+    ) -> OneNotePageFileEntity:
+        """Construct from a Microsoft Graph ``pages`` response object."""
+        page_id = data.get("id")
+        title = data.get("title", "Untitled Page")
+        content_url = data.get("contentUrl")
+        created_at = _parse_dt(data.get("createdDateTime"))
+        updated_at = _parse_dt(data.get("lastModifiedDateTime"))
+        page_name = f"{title}.html" if not title.endswith(".html") else title
+        web_url_override = (data.get("links") or {}).get("oneNoteWebUrl", {}).get("href")
+
+        return cls(
+            breadcrumbs=section_breadcrumbs,
+            id=page_id,
+            name=page_name,
+            created_at=created_at,
+            updated_at=updated_at,
+            url=content_url,
+            size=0,
+            file_type="html",
+            mime_type="text/html",
+            local_path=None,
+            notebook_id=notebook_id,
+            section_id=section_id,
+            title=title,
+            content_url=content_url,
+            level=data.get("level"),
+            order=data.get("order"),
+            created_by=data.get("createdBy"),
+            last_modified_by=data.get("lastModifiedBy"),
+            links=data.get("links"),
+            user_tags=data.get("userTags", []),
+            web_url_override=web_url_override,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the OneNote web URL for this page."""
         if self.web_url_override:
             return self.web_url_override
         if self.links and isinstance(self.links, dict):

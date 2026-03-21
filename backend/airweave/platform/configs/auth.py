@@ -1,9 +1,12 @@
 """Auth config."""
 
-from typing import Any, Optional, Self
+from __future__ import annotations
+
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from typing_extensions import Self
 
 from airweave.platform.configs._base import BaseConfig
 from airweave.platform.utils.ssrf import validate_host, validate_url
@@ -342,7 +345,9 @@ class SliteAuthConfig(APIKeyAuthConfig):
 class BitbucketAuthConfig(AuthConfig):
     """Bitbucket authentication credentials schema.
 
-    Requires API token authentication with Atlassian email.
+    For direct (API token) auth, provide access_token + email.
+    For OAuth via auth providers, only access_token is required;
+    workspace and repo_slug come from the source config instead.
     """
 
     access_token: str = Field(
@@ -360,15 +365,18 @@ class BitbucketAuthConfig(AuthConfig):
         min_length=10,
     )
 
-    email: str = Field(
+    email: Optional[str] = Field(
+        default=None,
         title="Email",
-        description="Your Atlassian email address (required for API token authentication)",
+        description="Your Atlassian email address (required for API token auth, "
+        "not needed for OAuth)",
     )
 
-    workspace: str = Field(
+    workspace: Optional[str] = Field(
+        default=None,
         title="Workspace",
-        description="Bitbucket workspace slug (e.g., 'my-workspace')",
-        min_length=1,
+        description="Bitbucket workspace slug (e.g., 'my-workspace'). "
+        "Can also be set in source config.",
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
     repo_slug: Optional[str] = Field(
@@ -381,11 +389,9 @@ class BitbucketAuthConfig(AuthConfig):
 
     @model_validator(mode="after")
     def validate_required_fields(self) -> Self:
-        """Ensure required authentication fields are provided."""
+        """Ensure access_token is provided."""
         if not self.access_token or not self.access_token.strip():
             raise ValueError("API token is required")
-        if not self.email or not self.email.strip():
-            raise ValueError("Atlassian email is required")
         return self
 
 

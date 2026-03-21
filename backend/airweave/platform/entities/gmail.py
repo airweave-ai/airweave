@@ -6,13 +6,58 @@ Defines entity schemas for Gmail resources:
   - Attachment
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import List, Optional
+from email.utils import parsedate_to_datetime
+from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, DeletionEntity, EmailEntity, FileEntity
+from airweave.platform.entities._base import (
+    BaseEntity,
+    Breadcrumb,
+    DeletionEntity,
+    EmailEntity,
+    FileEntity,
+)
+
+
+def _parse_header(headers: List[Dict[str, str]], name: str) -> Optional[str]:
+    """Return the value of the first header matching *name* (case-insensitive)."""
+    target = name.lower()
+    for h in headers:
+        if h.get("name", "").lower() == target:
+            return h.get("value")
+    return None
+
+
+def _parse_address_list(value: Optional[str]) -> List[str]:
+    """Split a comma-separated address header into a trimmed list."""
+    if not value:
+        return []
+    return [addr.strip() for addr in value.split(",")]
+
+
+def _parse_rfc2822_date(value: Optional[str]) -> Optional[datetime]:
+    """Parse an RFC 2822 Date header; returns *None* on failure."""
+    if not value:
+        return None
+    try:
+        return parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _internal_date_to_datetime(ms: Optional[str]) -> Optional[datetime]:
+    """Convert Gmail's internalDate (epoch millis string) to a datetime."""
+    if not ms:
+        return None
+    try:
+        return datetime.utcfromtimestamp(int(ms) / 1000)
+    except (TypeError, ValueError):
+        return None
 
 
 class GmailThreadEntity(BaseEntity):
@@ -52,6 +97,46 @@ class GmailThreadEntity(BaseEntity):
     label_ids: List[str] = AirweaveField(
         default_factory=list, description="Labels applied to this thread", embeddable=True
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        thread_id: str,
+    ) -> GmailThreadEntity:
+        """Build from a Gmail API thread detail JSON object.
+
+        Args:
+            data: Full thread resource from ``users.threads.get``.
+            thread_id: The Gmail thread ID.
+        """
+        snippet = data.get("snippet", "")
+        history_id = data.get("historyId")
+        messages = data.get("messages", []) or []
+
+        message_count = len(messages)
+        last_message_at: Optional[datetime] = None
+        if messages:
+            sorted_msgs = sorted(
+                messages, key=lambda m: int(m.get("internalDate", 0)), reverse=True
+            )
+            last_message_at = _internal_date_to_datetime(sorted_msgs[0].get("internalDate"))
+
+        label_ids = messages[0].get("labelIds", []) if messages else []
+        title = snippet[:50] + "..." if len(snippet) > 50 else snippet or "Thread"
+
+        return cls(
+            breadcrumbs=[],
+            thread_key=f"thread_{thread_id}",
+            gmail_thread_id=thread_id,
+            title=title,
+            last_message_at=last_message_at,
+            snippet=snippet,
+            history_id=history_id,
+            message_count=message_count,
+            label_ids=label_ids,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -120,6 +205,66 @@ class GmailMessageEntity(EmailEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        thread_id: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> GmailMessageEntity:
+        """Build from a Gmail API message detail JSON object.
+
+        Extracts headers (subject, from, to, cc, bcc, date) and timestamps.
+        Does **not** handle body extraction or file saving — that stays in the source.
+
+        Args:
+            data: Full message resource from ``users.messages.get``.
+            thread_id: Parent thread ID.
+            breadcrumbs: Breadcrumb chain (typically [thread_breadcrumb]).
+        """
+        message_id = data.get("id", "")
+        internal_date = _internal_date_to_datetime(data.get("internalDate"))
+
+        payload = data.get("payload", {}) or {}
+        headers = payload.get("headers", []) or []
+
+        subject = _parse_header(headers, "subject")
+        sender = _parse_header(headers, "from")
+        to_list = _parse_address_list(_parse_header(headers, "to"))
+        cc_list = _parse_address_list(_parse_header(headers, "cc"))
+        bcc_list = _parse_address_list(_parse_header(headers, "bcc"))
+        date = _parse_rfc2822_date(_parse_header(headers, "date"))
+
+        subject_value = subject or f"Message {message_id}"
+        sent_at = date or internal_date or datetime.utcfromtimestamp(0)
+        internal_ts = internal_date or sent_at
+        web_url = f"https://mail.google.com/mail/u/0/#inbox/{message_id}"
+
+        return cls(
+            breadcrumbs=breadcrumbs,
+            message_key=f"msg_{message_id}",
+            message_id=message_id,
+            subject=subject_value,
+            sent_at=sent_at,
+            internal_timestamp=internal_ts,
+            url=web_url,
+            size=data.get("sizeEstimate", 0),
+            file_type="html",
+            mime_type="text/html",
+            local_path=None,
+            thread_id=thread_id,
+            sender=sender,
+            to=to_list,
+            cc=cc_list,
+            bcc=bcc_list,
+            date=date,
+            snippet=data.get("snippet"),
+            label_ids=data.get("labelIds", []),
+            internal_date=internal_date,
+            web_url_value=web_url,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

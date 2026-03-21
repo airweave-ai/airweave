@@ -14,7 +14,23 @@ from typing import Any, Dict, List, Optional
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, DeletionEntity, EmailEntity, FileEntity
+from airweave.platform.entities._base import (
+    BaseEntity,
+    Breadcrumb,
+    DeletionEntity,
+    EmailEntity,
+    FileEntity,
+)
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Microsoft Graph ISO8601 timestamps into timezone-aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class OutlookMailFolderEntity(BaseEntity):
@@ -124,6 +140,71 @@ class OutlookMessageEntity(EmailEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        folder_name: str,
+        folder_breadcrumb: Breadcrumb,
+    ) -> "OutlookMessageEntity":
+        """Construct from a Microsoft Graph ``message`` resource."""
+        message_id = data["id"]
+        subject = data.get("subject")
+
+        from_data = data.get("from")
+        sender = from_data.get("emailAddress", {}).get("address") if from_data else None
+
+        to_recipients = [
+            r.get("emailAddress", {}).get("address")
+            for r in data.get("toRecipients", [])
+            if r.get("emailAddress") and r.get("emailAddress", {}).get("address")
+        ]
+        cc_recipients = [
+            r.get("emailAddress", {}).get("address")
+            for r in data.get("ccRecipients", [])
+            if r.get("emailAddress") and r.get("emailAddress", {}).get("address")
+        ]
+
+        sent_date = _parse_dt(data.get("sentDateTime"))
+        received_date = _parse_dt(data.get("receivedDateTime"))
+
+        body_obj = data.get("body") or {}
+        body_content = body_obj.get("content", "")
+        body_content_type = body_obj.get("contentType", "html").lower()
+
+        is_plain_text = body_content_type == "text"
+        file_type = "text" if is_plain_text else "html"
+        mime_type = "text/plain" if is_plain_text else "text/html"
+
+        subject_value = subject or f"Message {message_id}"
+        message_url = f"https://outlook.office.com/mail/inbox/id/{message_id}"
+
+        return cls(
+            id=message_id,
+            breadcrumbs=[folder_breadcrumb],
+            name=subject_value,
+            sent_date=sent_date,
+            received_date=received_date,
+            url=message_url,
+            size=len(body_content.encode("utf-8")) if body_content else 0,
+            file_type=file_type,
+            mime_type=mime_type,
+            local_path=None,
+            folder_name=folder_name,
+            subject=subject_value,
+            sender=sender,
+            to_recipients=to_recipients,
+            cc_recipients=cc_recipients,
+            body_preview=data.get("bodyPreview", ""),
+            is_read=data.get("isRead", False),
+            is_draft=data.get("isDraft", False),
+            importance=data.get("importance"),
+            has_attachments=data.get("hasAttachments", False),
+            internet_message_id=data.get("internetMessageId"),
+            web_url_override=data.get("webLink") or message_url,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

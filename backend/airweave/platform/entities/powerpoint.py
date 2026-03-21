@@ -8,6 +8,7 @@ Reference:
   https://learn.microsoft.com/en-us/graph/api/driveitem-get-content
 """
 
+import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -15,6 +16,16 @@ from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import FileEntity
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Microsoft Graph ISO8601 timestamps into timezone-aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class PowerPointPresentationEntity(FileEntity):
@@ -97,6 +108,52 @@ class PowerPointPresentationEntity(FileEntity):
         description="Information about sharing status of the presentation.",
         embeddable=True,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        graph_base_url: str,
+    ) -> "PowerPointPresentationEntity":
+        """Construct from a Microsoft Graph DriveItem response for a PowerPoint file."""
+        document_id = data.get("id")
+        file_name = data.get("name", "Unknown")
+        title, _ = os.path.splitext(file_name)
+
+        content_download_url = f"{graph_base_url}/me/drive/items/{document_id}/content"
+
+        parent_ref = data.get("parentReference", {})
+        folder_path = parent_ref.get("path", "")
+        if folder_path and "/root:" in folder_path:
+            folder_path = folder_path.split("/root:", 1)[1].lstrip(":")
+
+        mime_type = data.get("file", {}).get("mimeType") or (
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        )
+
+        return cls(
+            breadcrumbs=[],
+            name=file_name,
+            id=document_id,
+            title=title,
+            created_datetime=_parse_dt(data.get("createdDateTime")),
+            last_modified_datetime=_parse_dt(data.get("lastModifiedDateTime")),
+            url=content_download_url,
+            size=data.get("size", 0),
+            file_type="microsoft_powerpoint",
+            mime_type=mime_type,
+            local_path=None,
+            web_url_override=data.get("webUrl"),
+            content_download_url=content_download_url,
+            created_by=data.get("createdBy"),
+            last_modified_by=data.get("lastModifiedBy"),
+            parent_reference=parent_ref,
+            drive_id=parent_ref.get("driveId"),
+            folder_path=folder_path,
+            description=data.get("description"),
+            shared=data.get("shared"),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

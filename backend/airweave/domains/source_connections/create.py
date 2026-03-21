@@ -27,7 +27,8 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionCreateServiceProtocol,
     SourceConnectionRepositoryProtocol,
 )
-from airweave.domains.sources.exceptions import SourceCreationError, SourceValidationError
+from airweave.domains.sources.exceptions import SourceError, SourceNotFoundError
+from airweave.domains.sources.http_translation import http_exception_for_credential_validation
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
@@ -182,8 +183,15 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 credentials=validated_auth,
                 config=validated_config,
             )
-        except (SourceCreationError, SourceValidationError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except (SourceNotFoundError, SourceError) as exc:
+            raise http_exception_for_credential_validation(
+                exc, source_short_name=obj_in.short_name
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Validation failed for {obj_in.short_name}: {exc}",
+            ) from exc
         auth_fields = validated_auth.model_dump()
         return await self._create_authenticated_connection(
             db,
@@ -213,8 +221,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 credentials=obj_in.authentication.access_token,
                 config=validated_config,
             )
-        except (SourceCreationError, SourceValidationError) as exc:
-            raise HTTPException(status_code=400, detail=f"OAuth token is invalid: {exc}") from exc
+        except (SourceNotFoundError, SourceError) as exc:
+            raise http_exception_for_credential_validation(
+                exc, source_short_name=obj_in.short_name
+            ) from exc
 
         token_payload: dict[str, Any] = {
             "access_token": obj_in.authentication.access_token,

@@ -9,12 +9,22 @@ shared or per-resource metadata as needed.
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Salesforce ISO datetimes into timezone-aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class SalesforceAccountEntity(BaseEntity):
@@ -302,6 +312,91 @@ class SalesforceContactEntity(BaseEntity):
         default_factory=dict, description="Additional metadata about the contact", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        build_record_url_fn: Optional[Callable[[str, Optional[str]], Optional[str]]] = None,
+    ) -> "SalesforceContactEntity":
+        """Construct from a Salesforce Contact API record."""
+        contact_id = data["Id"]
+        contact_name = data.get("Name") or f"Contact {contact_id}"
+        created_time = _parse_dt(data.get("CreatedDate")) or datetime.utcnow()
+        updated_time = _parse_dt(data.get("LastModifiedDate")) or created_time
+
+        account_id = data.get("AccountId")
+        account_obj = data.get("Account") or {}
+        account_name = account_obj.get("Name")
+        breadcrumbs: List[Breadcrumb] = []
+        if account_id:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=account_id,
+                    name=account_name or f"Account {account_id}",
+                    entity_type=SalesforceAccountEntity.__name__,
+                )
+            )
+
+        web_url_value = build_record_url_fn("Contact", contact_id) if build_record_url_fn else None
+
+        return cls(
+            entity_id=contact_id,
+            breadcrumbs=breadcrumbs,
+            name=contact_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            contact_id=contact_id,
+            contact_name=contact_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url_value,
+            first_name=data.get("FirstName"),
+            last_name=data.get("LastName"),
+            email=data.get("Email"),
+            phone=data.get("Phone"),
+            mobile_phone=data.get("MobilePhone"),
+            fax=data.get("Fax"),
+            title=data.get("Title"),
+            department=data.get("Department"),
+            account_id=data.get("AccountId"),
+            lead_source=data.get("LeadSource"),
+            birthdate=data.get("Birthdate"),
+            description=data.get("Description"),
+            owner_id=data.get("OwnerId"),
+            last_activity_date=data.get("LastActivityDate"),
+            last_viewed_date=data.get("LastViewedDate"),
+            last_referenced_date=data.get("LastReferencedDate"),
+            is_deleted=data.get("IsDeleted", False),
+            is_email_bounced=data.get("IsEmailBounced", False),
+            is_unread_by_owner=data.get("IsUnreadByOwner", False),
+            jigsaw=data.get("Jigsaw"),
+            jigsaw_contact_id=data.get("JigsawContactId"),
+            clean_status=data.get("CleanStatus"),
+            level=data.get("Level__c"),
+            languages=data.get("Languages__c"),
+            has_opted_out_of_email=data.get("HasOptedOutOfEmail", False),
+            has_opted_out_of_fax=data.get("HasOptedOutOfFax", False),
+            do_not_call=data.get("DoNotCall", False),
+            mailing_street=data.get("MailingStreet"),
+            mailing_city=data.get("MailingCity"),
+            mailing_state=data.get("MailingState"),
+            mailing_postal_code=data.get("MailingPostalCode"),
+            mailing_country=data.get("MailingCountry"),
+            other_street=data.get("OtherStreet"),
+            other_city=data.get("OtherCity"),
+            other_state=data.get("OtherState"),
+            other_postal_code=data.get("OtherPostalCode"),
+            other_country=data.get("OtherCountry"),
+            assistant_name=data.get("AssistantName"),
+            assistant_phone=data.get("AssistantPhone"),
+            reports_to_id=data.get("ReportsToId"),
+            email_bounced_date=data.get("EmailBouncedDate"),
+            email_bounced_reason=data.get("EmailBouncedReason"),
+            individual_id=data.get("IndividualId"),
+            metadata=data,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the contact."""
@@ -413,6 +508,73 @@ class SalesforceOpportunityEntity(BaseEntity):
         description="Additional metadata about the opportunity",
         embeddable=False,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        build_record_url_fn: Optional[Callable[[str, Optional[str]], Optional[str]]] = None,
+    ) -> "SalesforceOpportunityEntity":
+        """Construct from a Salesforce Opportunity API record."""
+        opportunity_id = data["Id"]
+        opportunity_name = data.get("Name") or f"Opportunity {opportunity_id}"
+        created_time = _parse_dt(data.get("CreatedDate")) or datetime.utcnow()
+        updated_time = _parse_dt(data.get("LastModifiedDate")) or created_time
+
+        account_id = data.get("AccountId")
+        account_obj = data.get("Account") or {}
+        account_name = account_obj.get("Name")
+        breadcrumbs: List[Breadcrumb] = []
+        if account_id:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=account_id,
+                    name=account_name or f"Account {account_id}",
+                    entity_type=SalesforceAccountEntity.__name__,
+                )
+            )
+
+        web_url_value = (
+            build_record_url_fn("Opportunity", opportunity_id) if build_record_url_fn else None
+        )
+
+        return cls(
+            entity_id=opportunity_id,
+            breadcrumbs=breadcrumbs,
+            name=opportunity_name,
+            created_at=created_time,
+            updated_at=updated_time,
+            opportunity_id=opportunity_id,
+            opportunity_name=opportunity_name,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url_value,
+            account_id=data.get("AccountId"),
+            amount=data.get("Amount"),
+            close_date=data.get("CloseDate"),
+            stage_name=data.get("StageName"),
+            probability=data.get("Probability"),
+            forecast_category=data.get("ForecastCategory"),
+            forecast_category_name=data.get("ForecastCategoryName"),
+            campaign_id=data.get("CampaignId"),
+            has_opportunity_line_item=data.get("HasOpportunityLineItem", False),
+            pricebook2_id=data.get("Pricebook2Id"),
+            owner_id=data.get("OwnerId"),
+            last_activity_date=data.get("LastActivityDate"),
+            last_viewed_date=data.get("LastViewedDate"),
+            last_referenced_date=data.get("LastReferencedDate"),
+            is_deleted=data.get("IsDeleted", False),
+            is_won=data.get("IsWon", False),
+            is_closed=data.get("IsClosed", False),
+            has_open_activity=data.get("HasOpenActivity", False),
+            has_overdue_task=data.get("HasOverdueTask", False),
+            description=data.get("Description"),
+            type=data.get("Type"),
+            lead_source=data.get("LeadSource"),
+            next_step=data.get("NextStep"),
+            metadata=data,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

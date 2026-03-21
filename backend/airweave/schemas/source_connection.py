@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Any, Dict, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus
 
@@ -56,6 +56,8 @@ class ScheduleConfig(BaseModel):
 class DirectAuthentication(BaseModel):
     """Direct authentication with API keys or passwords."""
 
+    model_config = ConfigDict(extra="forbid")
+
     credentials: Dict[str, Any] = Field(..., description="Authentication credentials")
 
     @model_validator(mode="after")
@@ -69,9 +71,19 @@ class DirectAuthentication(BaseModel):
 class OAuthTokenAuthentication(BaseModel):
     """OAuth authentication with pre-obtained token."""
 
+    model_config = ConfigDict(extra="forbid")
+
     access_token: str = Field(..., description="OAuth access token")
     refresh_token: Optional[str] = Field(None, description="OAuth refresh token")
     expires_at: Optional[datetime] = Field(None, description="Token expiry time")
+
+    @field_validator("access_token")
+    @classmethod
+    def access_token_not_blank(cls, v: str) -> str:
+        """Reject empty or whitespace-only tokens (validated before upstream calls)."""
+        if not v or not v.strip():
+            raise ValueError("access_token cannot be empty or whitespace only")
+        return v
 
     @model_validator(mode="after")
     def validate_token(self):
@@ -88,6 +100,8 @@ class OAuthBrowserAuthentication(BaseModel):
     - OAuth2 BYOC: Provide client_id + client_secret
     - OAuth1 BYOC: Provide consumer_key + consumer_secret
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     redirect_uri: Optional[str] = Field(None, description="OAuth redirect URI")
 
@@ -134,6 +148,8 @@ class OAuthBrowserAuthentication(BaseModel):
 
 class AuthProviderAuthentication(BaseModel):
     """Authentication via external provider."""
+
+    model_config = ConfigDict(extra="forbid")
 
     provider_readable_id: str = Field(..., description="Auth provider readable ID")
     provider_config: Optional[Dict[str, Any]] = Field(

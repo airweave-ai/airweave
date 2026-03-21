@@ -85,11 +85,26 @@ def _build_connection_payload(config: TestConfig, context: TestContext) -> Dict[
     Returns:
         Dictionary payload for source connection creation
     """
+    _MONKE_ONLY_FIELDS = {
+        "openai_model",
+        "rate_limit_delay_ms",
+        "max_concurrency",
+        "post_create_sleep_seconds",
+        "audio_url",
+        "transcript_ready_timeout_seconds",
+        "event_type_id",
+        "attendee_time_zone",
+    }
+    source_config = {
+        k: v
+        for k, v in (config.connector.config_fields or {}).items()
+        if k not in _MONKE_ONLY_FIELDS
+    }
     base_payload = {
         "name": f"{config.connector.type.title()} Test {int(time.time())}",
         "short_name": config.connector.type,
         "readable_collection_id": context.collection_readable_id,
-        "config": config.connector.config_fields,
+        "config": source_config,
         "schedule": {"cron": None},  # Disable automatic schedules for tests
     }
 

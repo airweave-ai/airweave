@@ -1,19 +1,34 @@
 """Linear source implementation for Airweave platform."""
 
-import asyncio
+from __future__ import annotations
+
+import mimetypes
+import os
 import re
+import time
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import AsyncGenerator, Dict, List, Optional, Union
 from uuid import uuid4
 
 import httpx
 from tenacity import retry, stop_after_attempt
 
+from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.exceptions import (
+    SourceAuthError,
+    SourceError,
+    SourceRateLimitError,
+)
+from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+from airweave.domains.storage import FileSkippedException
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.config import LinearConfig
 from airweave.platform.cursors.linear import LinearCursor
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.linear import (
     LinearAttachmentEntity,
     LinearCommentEntity,
@@ -22,13 +37,36 @@ from airweave.platform.entities.linear import (
     LinearTeamEntity,
     LinearUserEntity,
 )
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.http_helpers import raise_for_status
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.domains.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+_GRAPHQL_URL = "https://api.linear.app/graphql"
+
+
+def _is_graphql_rate_limited(body: Dict) -> bool:
+    """Check if a Linear GraphQL response contains a RATELIMITED error."""
+    for err in body.get("errors", []):
+        if err.get("extensions", {}).get("code") == "RATELIMITED":
+            return True
+    return False
+
+
+def _parse_reset_header(response: httpx.Response, default: float = 60.0) -> float:
+    """Compute seconds-until-reset from ``X-RateLimit-Requests-Reset`` (epoch ms)."""
+    raw = response.headers.get("X-RateLimit-Requests-Reset")
+    if raw:
+        try:
+            reset_epoch_s = int(raw) / 1000.0
+            return max(1.0, reset_epoch_s - time.time())
+        except (ValueError, TypeError):
+            pass
+    return default
 
 
 @source(
@@ -48,96 +86,23 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     rate_limit_level=RateLimitLevel.ORG,
 )
 class LinearSource(BaseSource):
-    """Linear source connector integrates with the Linear GraphQL API to extract project data.
-
-    Connects to your Linear workspace.
-
-    It provides comprehensive access to teams, projects, issues, and
-    users with advanced rate limiting and error handling for optimal performance.
-    """
-
-    # Rate limiting constants
-    REQUESTS_PER_HOUR = 1200  # OAuth limit (vs 1500 for API keys)
-    REQUESTS_PER_SECOND = REQUESTS_PER_HOUR / 3600
-    RATE_LIMIT_PERIOD = 1.0
-    MAX_RETRIES = 3
-
-    def __init__(self):
-        """Initialize the LinearSource with rate limiting state."""
-        super().__init__()
-        self._request_times = []
-        self._lock = asyncio.Lock()
-        self._stats = {
-            "api_calls": 0,
-            "rate_limit_waits": 0,
-        }
+    """Linear source connector — syncs teams, projects, users, issues, comments, attachments."""
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
-    ) -> "LinearSource":
-        """Create instance of the Linear source with authentication token and config.
+        cls,
+        *,
+        auth: TokenProviderProtocol,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: LinearConfig,
+    ) -> LinearSource:
+        """Create a new Linear source instance."""
+        return cls(auth=auth, logger=logger, http_client=http_client)
 
-        Args:
-            access_token: OAuth access token for Linear API
-            config: Optional configuration parameters, like exclude_path
-
-        Returns:
-            Configured LinearSource instance
-        """
-        instance = cls()
-        instance.access_token = access_token
-
-        # Store config values as instance attributes
-        if config:
-            instance.exclude_path = config.get("exclude_path", "")
-        else:
-            instance.exclude_path = ""
-
-        return instance
-
-    def _get_last_synced_at(self) -> Optional[str]:
-        """Get the last sync timestamp from the cursor, if available."""
-        cursor_data = self.cursor.data if self.cursor else {}
-        return cursor_data.get("last_synced_at") or None
-
-    async def _wait_for_rate_limit(self):
-        """Implement adaptive rate limiting for Linear API requests.
-
-        Manages request timing to stay within API limits by dynamically
-        adjusting wait times based on current usage patterns.
-        """
-        async with self._lock:
-            current_time = asyncio.get_running_loop().time()
-
-            # Track hourly request count
-            hour_ago = current_time - 3600
-            self._request_times = [t for t in self._request_times if t > hour_ago]
-            hourly_count = len(self._request_times)
-
-            # Adaptive throttling based on usage
-            wait_time = 0
-            if hourly_count >= 1000:  # >83% of quota - heavy throttling
-                wait_time = 3.0
-            elif hourly_count >= 900:  # 75-83% of quota - medium throttling
-                wait_time = 2.0
-            elif hourly_count >= 600:  # 50-75% of quota - light throttling
-                wait_time = 1.0
-
-            # Apply throttling if needed
-            if wait_time > 0 and self._request_times:
-                last_request = max(self._request_times)
-                sleep_time = last_request + wait_time - current_time
-                if sleep_time > 0:
-                    self.logger.debug(
-                        f"Rate limit throttling ({hourly_count}/1200 requests). "
-                        f"Waiting {sleep_time:.2f}s"
-                    )
-                    self._stats["rate_limit_waits"] += 1
-                    await asyncio.sleep(sleep_time)
-
-            # Record this request
-            self._request_times.append(current_time)
+    # ------------------------------------------------------------------
+    # HTTP
+    # ------------------------------------------------------------------
 
     @retry(
         stop=stop_after_attempt(5),
@@ -145,73 +110,329 @@ class LinearSource(BaseSource):
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
-    async def _post_with_auth(self, client: httpx.AsyncClient, query: str) -> Dict:
-        """Send authenticated GraphQL query to Linear API with rate limiting.
+    async def _post(self, query: str) -> Dict:
+        """Authenticated GraphQL POST with 401 refresh and raise_for_status.
 
-        Args:
-            client: HTTP client to use for the request
-            query: GraphQL query string
-
-        Returns:
-            JSON response from the API
-
-        Raises:
-            httpx.HTTPStatusError: On API errors
+        Linear returns rate-limit errors as HTTP 400 with a GraphQL
+        ``RATELIMITED`` error code (not HTTP 429). We detect this before
+        ``raise_for_status`` so the tenacity retry fires correctly.
         """
-        await self._wait_for_rate_limit()
-        self._stats["api_calls"] += 1
+        token = await self.auth.get_token()
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        }
+        response = await self.http_client.post(_GRAPHQL_URL, headers=headers, json={"query": query})
 
-        try:
-            access_token = await self.get_access_token()
-            response = await client.post(
-                "https://api.linear.app/graphql",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {access_token}",
-                },
-                json={"query": query},
+        if response.status_code == 401 and self.auth.supports_refresh:
+            new_token = await self.auth.force_refresh()
+            headers["Authorization"] = f"Bearer {new_token}"
+            response = await self.http_client.post(
+                _GRAPHQL_URL, headers=headers, json={"query": query}
             )
-            response.raise_for_status()
 
-            # Monitor rate limit status
-            if "X-RateLimit-Requests-Remaining" in response.headers:
-                remaining = int(response.headers.get("X-RateLimit-Requests-Remaining", "0"))
-                self.logger.debug(f"Rate limit remaining: {remaining}")
+        body = response.json()
 
-            return response.json()
+        if response.status_code == 400 and _is_graphql_rate_limited(body):
+            retry_after = _parse_reset_header(response)
+            raise SourceRateLimitError(
+                retry_after=retry_after,
+                source_short_name=self.short_name,
+                message=f"Linear RATELIMITED (400). Retry after {retry_after:.0f}s",
+            )
+
+        raise_for_status(
+            response,
+            source_short_name=self.short_name,
+            token_provider_kind=self.auth.provider_kind,
+        )
+
+        return body
+
+    # ------------------------------------------------------------------
+    # Pagination
+    # ------------------------------------------------------------------
+
+    async def _paginated_query(
+        self,
+        query_template: str,
+        process_node_func,
+        page_size: int = 50,
+        entity_type: str = "items",
+    ) -> AsyncGenerator:
+        """Paginate through Linear GraphQL, yielding entities from process_node_func.
+
+        SourceAuthError propagates immediately (abort sync).
+        Other errors propagate to the caller (typically _generate_entities_safe).
+        """
+        has_next_page = True
+        after_cursor = None
+        items_processed = 0
+
+        while has_next_page:
+            pagination = f"first: {page_size}"
+            if after_cursor:
+                pagination += f', after: "{after_cursor}"'
+
+            query = query_template.format(pagination=pagination)
+            response = await self._post(query)
+
+            data = response.get("data", {})
+            collection_key = next(iter(data.keys()), None)
+
+            if not collection_key:
+                self.logger.warning(f"Unexpected response structure: {response}")
+                break
+
+            collection_data = data[collection_key]
+            nodes = collection_data.get("nodes", [])
+
+            batch_count = len(nodes)
+            items_processed += batch_count
+            self.logger.debug(
+                f"Processing batch of {batch_count} {entity_type} (total: {items_processed})"
+            )
+
+            for node in nodes:
+                async for entity in process_node_func(node):
+                    if entity:
+                        yield entity
+
+            page_info = collection_data.get("pageInfo", {})
+            has_next_page = page_info.get("hasNextPage", False)
+            after_cursor = page_info.get("endCursor")
+
+            if not nodes or not has_next_page:
+                break
+
+    # ------------------------------------------------------------------
+    # Entity generators
+    # ------------------------------------------------------------------
+
+    async def _generate_team_entities(
+        self, since: Optional[str] = None
+    ) -> AsyncGenerator[LinearTeamEntity, None]:
+        """Generate entities for all teams in the workspace."""
+        filter_clause = f'filter: {{{{ updatedAt: {{{{ gte: "{since}" }}}} }}}}, ' if since else ""
+        query_template = (
+            """
+        {{
+          teams("""
+            + filter_clause
+            + """{pagination}) {{
+            nodes {{
+              id
+              name
+              key
+              description
+              color
+              icon
+              private
+              timezone
+              createdAt
+              updatedAt
+              parent {{
+                id
+                name
+              }}
+              issueCount
+            }}
+            pageInfo {{
+              hasNextPage
+              endCursor
+            }}
+          }}
+        }}
+        """
+        )
+
+        async def process_team(team):
+            self.logger.debug(f"Processing team: {team.get('name')} ({team.get('key')})")
+            yield LinearTeamEntity.from_api(team)
+
+        async for entity in self._paginated_query(
+            query_template, process_team, entity_type="teams"
+        ):
+            yield entity
+
+    async def _generate_project_entities(
+        self, since: Optional[str] = None
+    ) -> AsyncGenerator[LinearProjectEntity, None]:
+        """Generate entities for all projects in the workspace."""
+        filter_clause = f'filter: {{{{ updatedAt: {{{{ gte: "{since}" }}}} }}}}, ' if since else ""
+        query_template = (
+            """
+        {{
+          projects("""
+            + filter_clause
+            + """{pagination}) {{
+            nodes {{
+              id
+              name
+              slugId
+              description
+              priority
+              startDate
+              targetDate
+              state
+              createdAt
+              updatedAt
+              completedAt
+              startedAt
+              progress
+              teams {{
+                nodes {{
+                  id
+                  name
+                }}
+              }}
+              lead {{
+                name
+              }}
+            }}
+            pageInfo {{
+              hasNextPage
+              endCursor
+            }}
+          }}
+        }}
+        """
+        )
+
+        async def process_project(project):
+            self.logger.debug(f"Processing project: {project.get('name')}")
+            yield LinearProjectEntity.from_api(project)
+
+        async for entity in self._paginated_query(
+            query_template, process_project, entity_type="projects"
+        ):
+            yield entity
+
+    async def _generate_user_entities(
+        self, since: Optional[str] = None
+    ) -> AsyncGenerator[LinearUserEntity, None]:
+        """Generate entities for all users in the workspace."""
+        filter_clause = f'filter: {{{{ updatedAt: {{{{ gte: "{since}" }}}} }}}}, ' if since else ""
+        query_template = (
+            """
+        {{
+          users("""
+            + filter_clause
+            + """{pagination}) {{
+            nodes {{
+              id
+              name
+              displayName
+              email
+              avatarUrl
+              description
+              timezone
+              active
+              admin
+              guest
+              lastSeen
+              statusEmoji
+              statusLabel
+              statusUntilAt
+              createdIssueCount
+              createdAt
+              updatedAt
+              teams {{
+                nodes {{
+                  id
+                  name
+                  key
+                }}
+              }}
+            }}
+            pageInfo {{
+              hasNextPage
+              endCursor
+            }}
+          }}
+        }}
+        """
+        )
+
+        async def process_user(user):
+            self.logger.debug(f"Processing user: {user.get('name')} ({user.get('displayName')})")
+            yield LinearUserEntity.from_api(user)
+
+        async for entity in self._paginated_query(
+            query_template, process_user, entity_type="users"
+        ):
+            yield entity
+
+    # ------------------------------------------------------------------
+    # Issues, comments, and attachments
+    # ------------------------------------------------------------------
+
+    async def _process_issue_comments(
+        self,
+        comments: List[Dict],
+        issue: LinearIssueEntity,
+        issue_breadcrumbs: List[Breadcrumb],
+    ) -> AsyncGenerator[LinearCommentEntity, None]:
+        """Yield comment entities for an issue."""
+        for comment in comments:
+            if not comment.get("body", "").strip():
+                continue
+            yield LinearCommentEntity.from_api(
+                comment,
+                issue_id=issue.issue_id,
+                issue_identifier=issue.identifier,
+                breadcrumbs=issue_breadcrumbs,
+                team_id=issue.team_id,
+                team_name=issue.team_name,
+                project_id=issue.project_id,
+                project_name=issue.project_name,
+            )
+
+    async def _download_description_attachment(
+        self,
+        entity: LinearAttachmentEntity,
+        files: FileService,
+    ) -> LinearAttachmentEntity | None:
+        """Download an inline attachment via FileService. Returns None on expected skips.
+
+        401 after refresh propagates (token is dead → abort sync).
+        Infrastructure failures (IOError, OSError) propagate.
+        Other HTTP errors skip the file.
+        """
+        try:
+            await files.download_from_url(
+                entity=entity,
+                client=self.http_client,
+                auth=self.auth,
+                logger=self.logger,
+            )
+            if not entity.local_path:
+                self.logger.warning(f"Download produced no local path for {entity.name}")
+                return None
+            return entity
+        except FileSkippedException as e:
+            self.logger.debug(f"Skipping attachment {entity.attachment_id}: {e.reason}")
+            return None
         except httpx.HTTPStatusError as e:
-            # Log error details
-            try:
-                error_content = e.response.json()
-                self.logger.error(f"GraphQL API error: {error_content}")
-            except Exception:
-                self.logger.error(f"HTTP Error content: {e.response.text}")
-            raise
+            if e.response.status_code == 401:
+                raise
+            self.logger.warning(
+                f"HTTP {e.response.status_code} downloading attachment {entity.attachment_id}: {e}"
+            )
+            return None
 
     async def _generate_attachment_entities_from_description(
         self,
-        client: httpx.AsyncClient,
         issue_id: str,
         issue_identifier: str,
         issue_description: str,
         breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[Union[LinearAttachmentEntity, None], None]:
-        """Extract and process attachments from markdown links in issue descriptions.
-
-        Args:
-            client: HTTP client to use for requests
-            issue_id: Linear issue ID
-            issue_identifier: Human-readable issue identifier
-            issue_description: Markdown text of issue description
-            breadcrumbs: List of parent breadcrumbs for navigation context
-
-        Yields:
-            Processed attachment entities from description links
-        """
+        files: FileService,
+    ) -> AsyncGenerator[LinearAttachmentEntity, None]:
+        """Extract and download attachments from markdown links in issue descriptions."""
         if not issue_description:
             return
 
-        # Regular expression to find markdown links [filename](url)
         markdown_link_pattern = r"\[([^\]]+)\]\(([^)]+)\)"
         matches = re.findall(markdown_link_pattern, issue_description)
 
@@ -221,168 +442,51 @@ class LinearSource(BaseSource):
         )
 
         for file_name, url in matches:
-            # Only process Linear upload URLs
-            if "uploads.linear.app" in url:
-                self.logger.debug(
-                    f"Processing attachment from description: {file_name} - URL: {url}"
-                )
+            if "uploads.linear.app" not in url:
+                continue
 
-                # Generate a unique ID for this attachment
-                attachment_id = str(uuid4())
+            self.logger.debug(f"Processing attachment from description: {file_name} - URL: {url}")
 
-                # Determine file type from URL/filename
-                import mimetypes
+            attachment_id = str(uuid4())
+            mime_type = mimetypes.guess_type(file_name)[0]
+            if mime_type and "/" in mime_type:
+                file_type = mime_type.split("/")[0]
+            else:
+                ext = os.path.splitext(file_name)[1].lower().lstrip(".")
+                file_type = ext if ext else "file"
 
-                mime_type = mimetypes.guess_type(file_name)[0]
-                if mime_type and "/" in mime_type:
-                    file_type = mime_type.split("/")[0]
-                else:
-                    import os
-
-                    ext = os.path.splitext(file_name)[1].lower().lstrip(".")
-                    file_type = ext if ext else "file"
-
-                # Create the attachment entity
-                attachment_entity = LinearAttachmentEntity(
-                    # Base fields
-                    entity_id=attachment_id,
-                    breadcrumbs=breadcrumbs.copy(),
-                    name=file_name,
-                    created_at=None,  # Description links don't have timestamps
-                    updated_at=None,  # Description links don't have timestamps
-                    # File fields
-                    url=url,
-                    size=0,  # Size unknown from description link
-                    file_type=file_type,
-                    mime_type=mime_type or "application/octet-stream",
-                    local_path=None,  # Will be set after download
-                    # API fields
-                    attachment_id=attachment_id,
-                    issue_id=issue_id,
-                    issue_identifier=issue_identifier,
-                    title=file_name,
-                    subtitle="Extracted from issue description",
-                    source={"type": "description_link"},
-                    web_url_value=url,
-                )
-
-                try:
-                    # Download file using file downloader
-                    await self.file_downloader.download_from_url(
-                        entity=attachment_entity,
-                        http_client_factory=self.http_client,
-                        access_token_provider=self.get_access_token,
-                        logger=self.logger,
-                    )
-
-                    # Verify download succeeded
-                    if not attachment_entity.local_path:
-                        raise ValueError(
-                            f"Download failed - no local path set for {attachment_entity.name}"
-                        )
-
-                    self.logger.debug(
-                        f"Successfully downloaded attachment: {attachment_entity.name}"
-                    )
-                    yield attachment_entity
-
-                except FileSkippedException as e:
-                    # Attachment intentionally skipped (unsupported type or size)
-                    self.logger.debug(f"Skipping attachment {attachment_id}: {e.reason}")
-                    continue
-
-                except Exception as e:
-                    self.logger.error(
-                        f"Error downloading attachment {attachment_id} from description: {str(e)}"
-                    )
-
-    async def _process_issue_comments(
-        self,
-        comments: List[Dict],
-        issue_id: str,
-        issue_identifier: str,
-        issue_breadcrumbs: List[Breadcrumb],
-        team_id: Optional[str],
-        team_name: Optional[str],
-        project_id: Optional[str],
-        project_name: Optional[str],
-    ) -> AsyncGenerator[LinearCommentEntity, None]:
-        """Process and yield comment entities for a given issue.
-
-        Args:
-            comments: List of comment data from Linear API
-            issue_id: ID of the parent issue
-            issue_identifier: Human-readable identifier of the parent issue
-            issue_breadcrumbs: Breadcrumbs including the issue context
-            team_id: ID of the team this issue belongs to
-            team_name: Name of the team this issue belongs to
-            project_id: ID of the project this issue belongs to, if any
-            project_name: Name of the project this issue belongs to, if any
-
-        Yields:
-            LinearCommentEntity instances for each valid comment
-        """
-        for comment in comments:
-            comment_id = comment.get("id")
-            comment_body = comment.get("body", "")
-
-            if not comment_body.strip():
-                continue  # Skip empty comments
-
-            # Extract user information
-            user = comment.get("user", {})
-            user_id = user.get("id") if user else None
-            user_name = user.get("name") if user else None
-
-            # Create comment URL
-            comment_url = f"https://linear.app/issue/{issue_identifier}#comment-{comment_id}"
-
-            # Create comment name from body preview
-            comment_preview = comment_body[:50] + "..." if len(comment_body) > 50 else comment_body
-            created_time = self._parse_datetime(comment.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(comment.get("updatedAt")) or created_time
-
-            # Create and yield LinearCommentEntity
-            comment_entity = LinearCommentEntity(
-                # Base fields
-                entity_id=comment_id,
-                breadcrumbs=issue_breadcrumbs.copy(),
-                name=comment_preview,
-                created_at=created_time,
-                updated_at=updated_time,
-                # API fields
-                comment_id=comment_id,
-                body_preview=comment_preview,
-                created_time=created_time,
-                updated_time=updated_time,
+            attachment_entity = LinearAttachmentEntity(
+                entity_id=attachment_id,
+                breadcrumbs=breadcrumbs.copy(),
+                name=file_name,
+                created_at=None,
+                updated_at=None,
+                url=url,
+                size=0,
+                file_type=file_type,
+                mime_type=mime_type or "application/octet-stream",
+                local_path=None,
+                attachment_id=attachment_id,
                 issue_id=issue_id,
                 issue_identifier=issue_identifier,
-                body=comment_body,
-                user_id=user_id,
-                user_name=user_name,
-                team_id=team_id,
-                team_name=team_name,
-                project_id=project_id,
-                project_name=project_name,
-                web_url_value=comment_url,
+                title=file_name,
+                subtitle="Extracted from issue description",
+                source={"type": "description_link"},
+                web_url_value=url,
             )
 
-            yield comment_entity
+            downloaded = await self._download_description_attachment(attachment_entity, files)
+            if downloaded:
+                yield downloaded
 
-    async def _generate_issue_entities(  # noqa: C901
-        self, client: httpx.AsyncClient, since: Optional[str] = None
+    async def _generate_issue_entities(
+        self,
+        since: Optional[str] = None,
+        files: FileService | None = None,
     ) -> AsyncGenerator[
         Union[LinearIssueEntity, LinearCommentEntity, LinearAttachmentEntity], None
     ]:
-        """Generate entities for all issues, their comments, and their attachments in the workspace.
-
-        Args:
-            client: HTTP client to use for requests
-            since: If provided, only fetch issues updated at or after this ISO 8601 timestamp
-
-        Yields:
-            Issue entities, comment entities, and attachment entities
-        """
+        """Generate entities for all issues, their comments, and their attachments."""
         updated_filter = f', updatedAt: {{{{ gte: "{since}" }}}}' if since else ""
         query_template = (
             """
@@ -437,630 +541,89 @@ class LinearSource(BaseSource):
         """
         )
 
-        # Define processor function for issue nodes
-        async def process_issue(issue):
-            issue_identifier = issue.get("identifier")
-
-            # Skip issues matching exclude_path
-            if self.exclude_path and issue_identifier and self.exclude_path in issue_identifier:
-                self.logger.debug(f"Skipping excluded issue: {issue_identifier}")
-                return
-
-            # Defensive check: skip archived issues (should already be filtered by GraphQL query)
-            if issue.get("archivedAt"):
+        async def process_issue(data):
+            if data.get("archivedAt"):
                 self.logger.warning(
-                    f"Archived issue {issue_identifier} passed GraphQL filter - skipping"
+                    f"Archived issue {data.get('identifier')} passed GraphQL filter — skipping"
                 )
                 return
 
-            issue_title = issue.get("title")
-            issue_description = issue.get("description", "")
+            self.logger.debug(f"Processing issue: {data.get('identifier')} — '{data.get('title')}'")
 
-            self.logger.debug(f"Processing issue: {issue_identifier} - '{issue_title}'")
+            issue = LinearIssueEntity.from_api(data)
+            yield issue
 
-            (
-                breadcrumbs,
-                team_id,
-                team_name,
-                project_id,
-                project_name,
-            ) = self._build_issue_context(issue)
+            issue_breadcrumbs = issue.breadcrumbs + [
+                Breadcrumb(
+                    entity_id=issue.issue_id,
+                    name=issue.title,
+                    entity_type=LinearIssueEntity.__name__,
+                )
+            ]
 
-            # Create issue URL
-            issue_url = f"https://linear.app/issue/{issue.get('identifier')}"
-            issue_id = issue.get("id")
-            issue_title = issue.get("title", "") or issue_identifier
-            created_time = self._parse_datetime(issue.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(issue.get("updatedAt")) or created_time
-            completed_at = self._parse_datetime(issue.get("completedAt"))
+            comments = data.get("comments", {}).get("nodes", [])
+            self.logger.debug(f"Processing {len(comments)} comments for issue {issue.identifier}")
+            async for comment in self._process_issue_comments(comments, issue, issue_breadcrumbs):
+                yield comment
 
-            # Create and yield LinearIssueEntity
-            issue_entity = LinearIssueEntity(
-                # Base fields
-                entity_id=issue_id,
-                breadcrumbs=breadcrumbs,
-                name=issue_title,
-                created_at=created_time,
-                updated_at=updated_time,
-                # API fields
-                issue_id=issue_id,
-                identifier=issue_identifier,
-                title=issue_title,
-                created_time=created_time,
-                updated_time=updated_time,
-                description=issue_description,
-                priority=issue.get("priority"),
-                state=issue.get("state", {}).get("name"),
-                completed_at=completed_at,
-                due_date=issue.get("dueDate"),
-                team_id=team_id,
-                team_name=team_name,
-                project_id=project_id,
-                project_name=project_name,
-                assignee=issue.get("assignee", {}).get("name") if issue.get("assignee") else None,
-                web_url_value=issue_url,
-            )
-
-            # First yield the issue entity
-            yield issue_entity
-
-            # Create issue breadcrumb for comments and attachments
-            issue_breadcrumb = Breadcrumb(
-                entity_id=issue_entity.entity_id,
-                name=issue_title,
-                entity_type=LinearIssueEntity.__name__,
-            )
-
-            # Combine breadcrumbs with issue breadcrumb
-            issue_breadcrumbs = breadcrumbs + [issue_breadcrumb]
-
-            # Process and yield comment entities
-            comments = issue.get("comments", {}).get("nodes", [])
-            self.logger.debug(f"Processing {len(comments)} comments for issue {issue_identifier}")
-
-            async for comment_entity in self._process_issue_comments(
-                comments,
-                issue_id,
-                issue_identifier,
-                issue_breadcrumbs,
-                team_id,
-                team_name,
-                project_id,
-                project_name,
-            ):
-                yield comment_entity
-
-            # Extract attachments from description
-            if issue_description:
+            if issue.description and files:
                 async for attachment in self._generate_attachment_entities_from_description(
-                    client, issue_id, issue_identifier, issue_description, issue_breadcrumbs
+                    issue.issue_id,
+                    issue.identifier,
+                    issue.description,
+                    issue_breadcrumbs,
+                    files,
                 ):
-                    if attachment:
-                        yield attachment
+                    yield attachment
 
-        # Use the paginated query helper
         async for entity in self._paginated_query(
-            client, query_template, process_issue, entity_type="issues"
+            query_template, process_issue, entity_type="issues"
         ):
             yield entity
 
-    async def _generate_project_entities(
-        self, client: httpx.AsyncClient, since: Optional[str] = None
-    ) -> AsyncGenerator[LinearProjectEntity, None]:
-        """Generate entities for all projects in the workspace.
-
-        Args:
-            client: HTTP client to use for requests
-            since: If provided, only fetch projects updated at or after this ISO 8601 timestamp
-
-        Yields:
-            Project entities
-        """
-        filter_clause = f'filter: {{{{ updatedAt: {{{{ gte: "{since}" }}}} }}}}, ' if since else ""
-        query_template = (
-            """
-        {{
-          projects("""
-            + filter_clause
-            + """{pagination}) {{
-            nodes {{
-              id
-              name
-              slugId
-              description
-              priority
-              startDate
-              targetDate
-              state
-              createdAt
-              updatedAt
-              completedAt
-              startedAt
-              progress
-              teams {{
-                nodes {{
-                  id
-                  name
-                }}
-              }}
-              lead {{
-                name
-              }}
-            }}
-            pageInfo {{
-              hasNextPage
-              endCursor
-            }}
-          }}
-        }}
-        """
-        )
-
-        # Define processor function for project nodes
-        async def process_project(project):
-            project_id = project.get("id")
-            project_name = project.get("name")
-
-            self.logger.debug(f"Processing project: {project_name}")
-
-            # Extract team data
-            team_ids: List[Optional[str]] = []
-            team_names: List[Optional[str]] = []
-            teams = project.get("teams", {}).get("nodes", [])
-
-            for team in teams:
-                team_ids.append(team.get("id"))
-                team_names.append(team.get("name"))
-
-            # Build breadcrumbs list
-            breadcrumbs: List[Breadcrumb] = []
-
-            # Add team breadcrumbs if available
-            for t_id, t_name in zip(team_ids, team_names, strict=False):
-                if t_id:
-                    team_breadcrumb = Breadcrumb(
-                        entity_id=t_id,
-                        name=t_name or "Team",
-                        entity_type=LinearTeamEntity.__name__,
-                    )
-                    breadcrumbs.append(team_breadcrumb)
-
-            # Create project URL
-            project_url = f"https://linear.app/project/{project.get('slugId')}"
-            created_time = self._parse_datetime(project.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(project.get("updatedAt")) or created_time
-
-            # Create and yield LinearProjectEntity
-            yield LinearProjectEntity(
-                # Base fields
-                entity_id=project_id,
-                breadcrumbs=breadcrumbs,
-                name=project_name or "",
-                created_at=created_time,
-                updated_at=updated_time,
-                # API fields
-                project_id=project_id,
-                project_name=project_name or "",
-                created_time=created_time,
-                updated_time=updated_time,
-                slug_id=project.get("slugId"),
-                description=project.get("description"),
-                priority=project.get("priority"),
-                state=project.get("state"),
-                completed_at=self._parse_datetime(project.get("completedAt")),
-                started_at=self._parse_datetime(project.get("startedAt")),
-                target_date=project.get("targetDate"),
-                start_date=project.get("startDate"),
-                team_ids=team_ids if team_ids else None,
-                team_names=team_names if team_names else None,
-                progress=project.get("progress"),
-                lead=project.get("lead", {}).get("name") if project.get("lead") else None,
-                web_url_value=project_url,
-            )
-
-        # Use the paginated query helper
-        try:
-            async for entity in self._paginated_query(
-                client, query_template, process_project, entity_type="projects"
-            ):
-                yield entity
-        except Exception as e:
-            self.logger.error(f"Error in project entity generation: {str(e)}")
-
-    async def _generate_team_entities(
-        self, client: httpx.AsyncClient, since: Optional[str] = None
-    ) -> AsyncGenerator[LinearTeamEntity, None]:
-        """Generate entities for all teams in the workspace.
-
-        Args:
-            client: HTTP client to use for requests
-            since: If provided, only fetch teams updated at or after this ISO 8601 timestamp
-
-        Yields:
-            Team entities
-        """
-        filter_clause = f'filter: {{{{ updatedAt: {{{{ gte: "{since}" }}}} }}}}, ' if since else ""
-        query_template = (
-            """
-        {{
-          teams("""
-            + filter_clause
-            + """{pagination}) {{
-            nodes {{
-              id
-              name
-              key
-              description
-              color
-              icon
-              private
-              timezone
-              createdAt
-              updatedAt
-              parent {{
-                id
-                name
-              }}
-              issueCount
-            }}
-            pageInfo {{
-              hasNextPage
-              endCursor
-            }}
-          }}
-        }}
-        """
-        )
-
-        # Define a processor function for team nodes
-        async def process_team(team):
-            team_id = team.get("id")
-            team_name = team.get("name")
-            team_key = team.get("key")
-            parent = team.get("parent")
-            team_parent_id = parent.get("id", "") if parent else ""
-            team_parent_name = parent.get("name", "") if parent else ""
-
-            self.logger.debug(f"Processing team: {team_name} ({team_key})")
-
-            # Create team URL
-            team_url = f"https://linear.app/team/{team.get('key')}"
-
-            # Build breadcrumbs list (self-reference for consistency)
-            breadcrumbs = [
-                Breadcrumb(
-                    entity_id=team_id,
-                    name=team_name or team_key or "Team",
-                    entity_type=LinearTeamEntity.__name__,
-                )
-            ]
-            created_time = self._parse_datetime(team.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(team.get("updatedAt")) or created_time
-
-            # Create and yield LinearTeamEntity
-            yield LinearTeamEntity(
-                # Base fields
-                entity_id=team_id,
-                breadcrumbs=breadcrumbs,
-                name=team_name or "",
-                created_at=created_time,
-                updated_at=updated_time,
-                # API fields
-                team_id=team_id,
-                team_name=team_name or "",
-                created_time=created_time,
-                updated_time=updated_time,
-                key=team_key,
-                description=team.get("description", ""),
-                color=team.get("color", ""),
-                icon=team.get("icon", ""),
-                private=team.get("private", False),
-                timezone=team.get("timezone", ""),
-                parent_id=team_parent_id,
-                parent_name=team_parent_name,
-                issue_count=team.get("issueCount", 0),
-                web_url_value=team_url,
-            )
-
-        try:
-            # Use the paginated query helper with our team processor
-            async for entity in self._paginated_query(
-                client, query_template, process_team, entity_type="teams"
-            ):
-                yield entity
-        except Exception as e:
-            self.logger.error(f"Error in team entity generation: {str(e)}")
-
-    async def _generate_user_entities(
-        self, client: httpx.AsyncClient, since: Optional[str] = None
-    ) -> AsyncGenerator[LinearUserEntity, None]:
-        """Generate entities for all users in the workspace.
-
-        Args:
-            client: HTTP client to use for requests
-            since: If provided, only fetch users updated at or after this ISO 8601 timestamp
-
-        Yields:
-            User entities
-        """
-        filter_clause = f'filter: {{{{ updatedAt: {{{{ gte: "{since}" }}}} }}}}, ' if since else ""
-        query_template = (
-            """
-        {{
-          users("""
-            + filter_clause
-            + """{pagination}) {{
-            nodes {{
-              id
-              name
-              displayName
-              email
-              avatarUrl
-              description
-              timezone
-              active
-              admin
-              guest
-              lastSeen
-              statusEmoji
-              statusLabel
-              statusUntilAt
-              createdIssueCount
-              createdAt
-              updatedAt
-              teams {{
-                nodes {{
-                  id
-                  name
-                  key
-                }}
-              }}
-            }}
-            pageInfo {{
-              hasNextPage
-              endCursor
-            }}
-          }}
-        }}
-        """
-        )
-
-        # Define processor function for user nodes
-        async def process_user(user):
-            user_id = user.get("id")
-            user_name = user.get("name")
-            display_name = user.get("displayName")
-
-            self.logger.debug(f"Processing user: {user_name} ({display_name})")
-
-            # Extract team data
-            team_ids = []
-            team_names = []
-            teams = user.get("teams", {}).get("nodes", [])
-
-            for team in teams:
-                team_ids.append(team.get("id"))
-                team_names.append(team.get("name"))
-
-            # Build breadcrumbs list - add team breadcrumbs
-            breadcrumbs: List[Breadcrumb] = []
-            for t_id, t_name in zip(team_ids, team_names, strict=False):
-                if t_id:
-                    team_breadcrumb = Breadcrumb(
-                        entity_id=t_id,
-                        name=t_name or "Team",
-                        entity_type=LinearTeamEntity.__name__,
-                    )
-                    breadcrumbs.append(team_breadcrumb)
-
-            # Create user URL
-            user_url = f"https://linear.app/u/{user.get('id')}"
-            display_label = display_name or user_name or user.get("email") or user_id
-            created_time = self._parse_datetime(user.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(user.get("updatedAt")) or created_time
-
-            # Create and yield LinearUserEntity
-            yield LinearUserEntity(
-                # Base fields
-                entity_id=user_id,
-                breadcrumbs=breadcrumbs,
-                name=user_name or display_label,
-                created_at=created_time,
-                updated_at=updated_time,
-                # API fields
-                user_id=user_id,
-                display_name=display_label,
-                created_time=created_time,
-                updated_time=updated_time,
-                email=user.get("email"),
-                avatar_url=user.get("avatarUrl"),
-                description=user.get("description"),
-                timezone=user.get("timezone"),
-                active=user.get("active"),
-                admin=user.get("admin"),
-                guest=user.get("guest"),
-                last_seen=user.get("lastSeen"),
-                status_emoji=user.get("statusEmoji"),
-                status_label=user.get("statusLabel"),
-                status_until_at=user.get("statusUntilAt"),
-                created_issue_count=user.get("createdIssueCount"),
-                team_ids=team_ids if team_ids else None,
-                team_names=team_names if team_names else None,
-                web_url_value=user_url,
-            )
-
-        # Use the paginated query helper
-        try:
-            async for entity in self._paginated_query(
-                client, query_template, process_user, entity_type="users"
-            ):
-                yield entity
-        except Exception as e:
-            self.logger.error(f"Error in user entity generation: {str(e)}")
-
-    @staticmethod
-    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
-        """Parse Linear ISO8601 timestamps into timezone-aware datetimes."""
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-
-    def _build_issue_context(
-        self, issue: Dict[str, Any]
-    ) -> tuple[List[Breadcrumb], Optional[str], Optional[str], Optional[str], Optional[str]]:
-        """Assemble breadcrumb trail and related metadata for an issue."""
-        breadcrumbs: List[Breadcrumb] = []
-        team = issue.get("team") or {}
-        team_id = team.get("id")
-        team_name = team.get("name")
-        if team_id:
-            breadcrumbs.append(
-                Breadcrumb(
-                    entity_id=team_id,
-                    name=team_name or "Team",
-                    entity_type=LinearTeamEntity.__name__,
-                )
-            )
-
-        project = issue.get("project") or {}
-        project_id = project.get("id")
-        project_name = project.get("name")
-        if project_id:
-            breadcrumbs.append(
-                Breadcrumb(
-                    entity_id=project_id,
-                    name=project_name or "Project",
-                    entity_type=LinearProjectEntity.__name__,
-                )
-            )
-
-        return breadcrumbs, team_id, team_name, project_id, project_name
-
-    async def _paginated_query(
-        self,
-        client: httpx.AsyncClient,
-        query_template: str,
-        process_node_func,
-        page_size: int = 50,
-        entity_type: str = "items",
-    ) -> AsyncGenerator:
-        """Execute a paginated GraphQL query against the Linear API.
-
-        Args:
-            client: HTTP client to use for requests
-            query_template: GraphQL query template with {pagination} placeholder
-            process_node_func: Function to process each node from the results
-            page_size: Number of items to request per page
-            entity_type: Type of entity being queried (for logging)
-
-        Yields:
-            Processed entities from the query results
-        """
-        has_next_page = True
-        cursor = None
-        items_processed = 0
-
-        while has_next_page:
-            # Build pagination parameters
-            pagination = f"first: {page_size}"
-            if cursor:
-                pagination += f', after: "{cursor}"'
-
-            # Insert pagination into query template
-            query = query_template.format(pagination=pagination)
-
-            try:
-                # Execute the query
-                response = await self._post_with_auth(client, query)
-
-                # Extract data - assumes response structure with nodes and pageInfo
-                data = response.get("data", {})
-                # The first key in data should be the entity collection (issues, teams, etc.)
-                collection_key = next(iter(data.keys()), None)
-
-                if not collection_key:
-                    self.logger.error(f"Unexpected response structure: {response}")
-                    break
-
-                collection_data = data[collection_key]
-                nodes = collection_data.get("nodes", [])
-
-                # Log the batch
-                batch_count = len(nodes)
-                items_processed += batch_count
-                self.logger.debug(
-                    f"Processing batch of {batch_count} {entity_type} (total: {items_processed})"
-                )
-
-                # Process each node
-                for node in nodes:
-                    # Use the provided function to process each node
-                    async for entity in process_node_func(node):
-                        if entity:  # Only yield non-None results
-                            yield entity
-
-                # Update pagination info for next iteration
-                page_info = collection_data.get("pageInfo", {})
-                has_next_page = page_info.get("hasNextPage", False)
-                cursor = page_info.get("endCursor")
-
-                # If no more results or empty response, exit
-                if not nodes or not has_next_page:
-                    break
-
-            except Exception as e:
-                self.logger.error(f"Error processing {entity_type} batch: {str(e)}")
-                break
+    # ------------------------------------------------------------------
+    # Error isolation
+    # ------------------------------------------------------------------
 
     async def _generate_entities_safe(
         self,
         generator: AsyncGenerator,
         entity_type: str,
     ) -> AsyncGenerator:
-        """Yield entities from a generator with error isolation.
+        """Yield entities with error isolation per entity type.
 
-        Catches exceptions from individual entity type generators so that
-        a failure in one type doesn't prevent other types from being synced.
+        SourceAuthError propagates (abort sync — credentials dead).
+        Other exceptions are logged and stop that entity type only.
         """
         try:
             self.logger.debug(f"Starting {entity_type} entity generation")
             async for entity in generator:
                 yield entity
-        except Exception as e:
-            self.logger.error(f"Failed to generate {entity_type} entities: {str(e)}")
+        except SourceAuthError:
+            raise
+        except SourceError as exc:
+            self.logger.warning(f"Failed to generate {entity_type} entities: {exc}")
+        except Exception as exc:
+            self.logger.warning(f"Unexpected error generating {entity_type} entities: {exc}")
+
+    # ------------------------------------------------------------------
+    # Main entry point
+    # ------------------------------------------------------------------
 
     async def generate_entities(
         self,
-    ) -> AsyncGenerator[
-        Union[
-            LinearTeamEntity,
-            LinearProjectEntity,
-            LinearUserEntity,
-            LinearIssueEntity,
-            LinearCommentEntity,
-            LinearAttachmentEntity,
-        ],
-        None,
-    ]:
-        """Main entry point to generate all entities from Linear.
-
-        This method coordinates the extraction of all entity types from Linear,
-        handling each entity type separately with proper error isolation.
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Generate all entities from Linear.
 
         On first sync (no cursor), all entities are fetched. On subsequent syncs,
         only entities updated since the last sync are fetched.
-
-        Deletion of trashed issues is handled by the platform's daily cleanup
-        schedule, which forces a full sync and runs orphan cleanup to remove
-        entities that no longer exist in the source.
-
-        Yields:
-            All Linear entities (teams, projects, users, issues, comments, attachments)
         """
-        last_synced_at = self._get_last_synced_at()
+        cursor_data = cursor.data if cursor else {}
+        last_synced_at = cursor_data.get("last_synced_at") or None
         sync_start = datetime.now(tz=timezone.utc).isoformat()
 
         if last_synced_at:
@@ -1068,80 +631,34 @@ class LinearSource(BaseSource):
         else:
             self.logger.info("Full sync (first run)")
 
-        async with self.http_client() as client:
-            async for entity in self._generate_entities_safe(
-                self._generate_team_entities(client, since=last_synced_at), "team"
-            ):
-                yield entity
+        async for entity in self._generate_entities_safe(
+            self._generate_team_entities(since=last_synced_at), "team"
+        ):
+            yield entity
 
-            async for entity in self._generate_entities_safe(
-                self._generate_project_entities(client, since=last_synced_at), "project"
-            ):
-                yield entity
+        async for entity in self._generate_entities_safe(
+            self._generate_project_entities(since=last_synced_at), "project"
+        ):
+            yield entity
 
-            async for entity in self._generate_entities_safe(
-                self._generate_user_entities(client, since=last_synced_at), "user"
-            ):
-                yield entity
+        async for entity in self._generate_entities_safe(
+            self._generate_user_entities(since=last_synced_at), "user"
+        ):
+            yield entity
 
-            async for entity in self._generate_entities_safe(
-                self._generate_issue_entities(client, since=last_synced_at),
-                "issue, comment, and attachment",
-            ):
-                yield entity
+        async for entity in self._generate_entities_safe(
+            self._generate_issue_entities(since=last_synced_at, files=files),
+            "issue, comment, and attachment",
+        ):
+            yield entity
 
-        if self.cursor:
-            self.cursor.update(last_synced_at=sync_start)
+        if cursor:
+            cursor.update(last_synced_at=sync_start)
 
-    async def validate(self) -> bool:
-        """Verify Linear OAuth2 token by POSTing a minimal GraphQL query to /graphql."""
-        try:
-            token = await self.get_access_token()
-            if not token:
-                self.logger.error("Linear validation failed: no access token available.")
-                return False
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
 
-            query = {"query": "query { viewer { id } }"}
-
-            async with self.http_client(timeout=10.0) as client:
-                headers = {
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                }
-                resp = await client.post(
-                    "https://api.linear.app/graphql", headers=headers, json=query
-                )
-
-                # Handle 401 by attempting a one-time refresh
-                if resp.status_code == 401:
-                    self.logger.debug(
-                        "Linear validate: 401 Unauthorized; attempting token refresh."
-                    )
-                    new_token = await self.refresh_on_unauthorized()
-                    if new_token:
-                        headers["Authorization"] = f"Bearer {new_token}"
-                        resp = await client.post(
-                            "https://api.linear.app/graphql", headers=headers, json=query
-                        )
-
-                if not (200 <= resp.status_code < 300):
-                    self.logger.warning(
-                        f"Linear validate failed: HTTP {resp.status_code} - {resp.text[:200]}"
-                    )
-                    return False
-
-                body = resp.json()
-                if body.get("errors"):
-                    self.logger.warning(f"Linear validate GraphQL errors: {body['errors']}")
-                    return False
-
-                viewer = (body.get("data") or {}).get("viewer") or {}
-                return bool(viewer.get("id"))
-
-        except httpx.RequestError as e:
-            self.logger.error(f"Linear validation request error: {e}")
-            return False
-        except Exception as e:
-            self.logger.error(f"Unexpected error during Linear validation: {e}")
-            return False
+    async def validate(self) -> None:
+        """Verify Linear OAuth2 token by POSTing a minimal GraphQL query."""
+        await self._post("query { viewer { id } }")

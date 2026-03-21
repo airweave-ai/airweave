@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 
+from airweave.core.exceptions import NotFoundException
 from airweave.domains.arf.fakes.reader import FakeArfReader
 from airweave.domains.arf.reader import ArfReader
 from airweave.domains.arf.replay_source import ArfReplaySource
@@ -115,10 +116,11 @@ async def test_validate_delegates():
     fake_reader = FakeArfReader()
     fake_reader.set_valid(True)
     source._reader = fake_reader
-    assert await source.validate() is True
+    await source.validate()  # should not raise
 
     fake_reader.set_valid(False)
-    assert await source.validate() is False
+    with pytest.raises(NotFoundException):
+        await source.validate()
 
 
 # ---------------------------------------------------------------------------

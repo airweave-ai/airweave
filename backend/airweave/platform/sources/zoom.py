@@ -12,15 +12,21 @@ Reference:
   https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/recordingGet
 """
 
-import asyncio
+from __future__ import annotations
+
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 
-import httpx
+from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.exceptions import SourceAuthError, SourceEntityNotFoundError
+from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import ZoomAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -30,12 +36,25 @@ from airweave.platform.entities.zoom import (
     ZoomRecordingEntity,
     ZoomTranscriptEntity,
 )
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.http_helpers import raise_for_status
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+
+def _parse_dt(dt_str: Optional[str]) -> Optional[datetime]:
+    if not dt_str:
+        return None
+    try:
+        if dt_str.endswith("Z"):
+            dt_str = dt_str.replace("Z", "+00:00")
+        return datetime.fromisoformat(dt_str)
+    except (ValueError, TypeError):
+        return None
 
 
 @source(
@@ -65,20 +84,29 @@ class ZoomSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
-    ) -> "ZoomSource":
-        """Create a new Zoom source instance with the provided OAuth access token.
+        cls,
+        *,
+        auth: TokenProviderProtocol,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: BaseModel,
+    ) -> ZoomSource:
+        """Create a ZoomSource instance."""
+        return cls(auth=auth, logger=logger, http_client=http_client)
 
-        Args:
-            access_token: OAuth access token for Zoom API
-            config: Optional configuration parameters
+    async def _authed_headers(self) -> Dict[str, str]:
+        token = await self.auth.get_token()
+        return {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
 
-        Returns:
-            Configured ZoomSource instance
-        """
-        instance = cls()
-        instance.access_token = access_token
-        return instance
+    async def _refresh_and_get_headers(self) -> Dict[str, str]:
+        new_token = await self.auth.force_refresh()
+        return {
+            "Authorization": f"Bearer {new_token}",
+            "Accept": "application/json",
+        }
 
     @retry(
         stop=stop_after_attempt(5),
@@ -86,179 +114,82 @@ class ZoomSource(BaseSource):
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
-    async def _get_with_auth(
-        self, client: httpx.AsyncClient, url: str, params: Optional[dict] = None
-    ) -> dict:
-        """Make an authenticated GET request to Zoom API.
+    async def _get(self, url: str, params: Optional[dict] = None) -> Any:
+        headers = await self._authed_headers()
+        response = await self.http_client.get(url, headers=headers, params=params)
 
-        Args:
-            client: HTTP client to use for the request
-            url: API endpoint URL
-            params: Optional query parameters
+        if response.status_code == 401 and self.auth.supports_refresh:
+            self.logger.warning("Received 401 from Zoom — attempting token refresh")
+            headers = await self._refresh_and_get_headers()
+            response = await self.http_client.get(url, headers=headers, params=params)
 
-        Returns:
-            JSON response data
-        """
-        access_token = await self.get_access_token()
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/json",
-        }
+        raise_for_status(
+            response,
+            source_short_name=self.short_name,
+            token_provider_kind=self.auth.provider_kind,
+        )
+        return response.json()
 
-        try:
-            response = await client.get(url, headers=headers, params=params)
-
-            # Handle 401 Unauthorized - token might have expired
-            if response.status_code == 401:
-                self.logger.warning(
-                    f"Got 401 Unauthorized from Zoom API at {url}, refreshing token..."
-                )
-                if self.token_provider:
-                    try:
-                        new_token = await self.token_provider.force_refresh()
-                        headers["Authorization"] = f"Bearer {new_token}"
-                        self.logger.debug(f"Retrying with refreshed token: {url}")
-                        response = await client.get(url, headers=headers, params=params)
-                    except TokenRefreshError as e:
-                        self.logger.error(f"Failed to refresh Zoom token: {str(e)}")
-                        response.raise_for_status()
-                else:
-                    self.logger.error("No token manager available to refresh expired token")
-                    response.raise_for_status()
-
-            # Handle 429 Rate Limit
-            if response.status_code == 429:
-                retry_after = response.headers.get("Retry-After", "60")
-                self.logger.warning(
-                    f"Rate limit hit for {url}, waiting {retry_after} seconds before retry"
-                )
-
-                await asyncio.sleep(float(retry_after))
-                response = await client.get(url, headers=headers, params=params)
-
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            self.logger.error(f"Error in API request to {url}: {str(e)}")
-            raise
-
-    def _parse_datetime(self, dt_str: Optional[str]) -> Optional[datetime]:
-        """Parse datetime string from Zoom API format.
-
-        Args:
-            dt_str: DateTime string from API
-
-        Returns:
-            Parsed datetime object or None
-        """
-        if not dt_str:
-            return None
-        try:
-            if dt_str.endswith("Z"):
-                dt_str = dt_str.replace("Z", "+00:00")
-            return datetime.fromisoformat(dt_str)
-        except (ValueError, TypeError) as e:
-            self.logger.warning(f"Error parsing datetime {dt_str}: {str(e)}")
-            return None
-
-    async def _get_current_user(self, client: httpx.AsyncClient) -> Dict[str, Any]:
-        """Get current authenticated user info.
-
-        Args:
-            client: HTTP client for API requests
-
-        Returns:
-            User info dictionary
-        """
+    async def _get_current_user(self) -> Dict[str, Any]:
         url = f"{self.ZOOM_BASE_URL}/users/me"
-        return await self._get_with_auth(client, url)
+        return await self._get(url)
 
     async def _generate_meeting_entities(
-        self, client: httpx.AsyncClient, user_id: str
+        self, user_id: str
     ) -> AsyncGenerator[ZoomMeetingEntity, None]:
-        """Generate ZoomMeetingEntity objects for user's meetings.
-
-        Args:
-            client: HTTP client for API requests
-            user_id: Zoom user ID
-
-        Yields:
-            ZoomMeetingEntity objects
-        """
         self.logger.info("Starting meeting entity generation")
         url = f"{self.ZOOM_BASE_URL}/users/{user_id}/meetings"
         params = {
             "page_size": 100,
-            "type": "scheduled",  # Get scheduled meetings
+            "type": "scheduled",
         }
 
-        try:
-            meeting_count = 0
-            next_page_token = None
+        meeting_count = 0
+        next_page_token = None
 
-            while True:
-                if next_page_token:
-                    params["next_page_token"] = next_page_token
+        while True:
+            if next_page_token:
+                params["next_page_token"] = next_page_token
 
-                self.logger.debug(f"Fetching meetings from: {url}")
-                data = await self._get_with_auth(client, url, params=params)
-                meetings = data.get("meetings", [])
-                self.logger.info(f"Retrieved {len(meetings)} meetings")
+            data = await self._get(url, params=params)
+            meetings = data.get("meetings", [])
 
-                for meeting_data in meetings:
-                    meeting_count += 1
-                    meeting_id = str(meeting_data.get("id"))
-                    topic = meeting_data.get("topic", f"Meeting {meeting_id}")
+            for meeting_data in meetings:
+                meeting_count += 1
+                meeting_id = str(meeting_data.get("id"))
+                topic = meeting_data.get("topic", f"Meeting {meeting_id}")
 
-                    self.logger.debug(f"Processing meeting #{meeting_count}: {topic}")
+                yield ZoomMeetingEntity(
+                    breadcrumbs=[],
+                    name=topic,
+                    created_at=_parse_dt(meeting_data.get("start_time")),
+                    updated_at=_parse_dt(meeting_data.get("created_at")),
+                    meeting_id=meeting_id,
+                    topic=topic,
+                    meeting_type=meeting_data.get("type"),
+                    start_time=_parse_dt(meeting_data.get("start_time")),
+                    duration=meeting_data.get("duration"),
+                    timezone=meeting_data.get("timezone"),
+                    agenda=meeting_data.get("agenda"),
+                    host_id=meeting_data.get("host_id"),
+                    host_email=meeting_data.get("host_email"),
+                    status=meeting_data.get("status"),
+                    join_url=meeting_data.get("join_url"),
+                    password=meeting_data.get("password"),
+                    uuid=meeting_data.get("uuid"),
+                )
 
-                    yield ZoomMeetingEntity(
-                        breadcrumbs=[],
-                        name=topic,
-                        created_at=self._parse_datetime(meeting_data.get("start_time")),
-                        updated_at=self._parse_datetime(meeting_data.get("created_at")),
-                        meeting_id=meeting_id,
-                        topic=topic,
-                        meeting_type=meeting_data.get("type"),
-                        start_time=self._parse_datetime(meeting_data.get("start_time")),
-                        duration=meeting_data.get("duration"),
-                        timezone=meeting_data.get("timezone"),
-                        agenda=meeting_data.get("agenda"),
-                        host_id=meeting_data.get("host_id"),
-                        host_email=meeting_data.get("host_email"),
-                        status=meeting_data.get("status"),
-                        join_url=meeting_data.get("join_url"),
-                        password=meeting_data.get("password"),
-                        uuid=meeting_data.get("uuid"),
-                    )
+            next_page_token = data.get("next_page_token")
+            if not next_page_token:
+                break
 
-                # Handle pagination
-                next_page_token = data.get("next_page_token")
-                if not next_page_token:
-                    break
-
-            self.logger.info(f"Completed meeting generation. Total meetings: {meeting_count}")
-
-        except Exception as e:
-            self.logger.error(f"Error generating meeting entities: {str(e)}")
-            # Re-raise so sync fails visibly; otherwise we yield 0 and orphan cleanup removes all
-            raise
+        self.logger.info(f"Completed meeting generation. Total meetings: {meeting_count}")
 
     async def _generate_past_meeting_entities(
-        self, client: httpx.AsyncClient, user_id: str
+        self, user_id: str
     ) -> AsyncGenerator[ZoomMeetingEntity, None]:
-        """Generate ZoomMeetingEntity objects for past meetings with participants.
-
-        Args:
-            client: HTTP client for API requests
-            user_id: Zoom user ID
-
-        Yields:
-            ZoomMeetingEntity objects
-        """
         self.logger.info("Starting past meeting entity generation")
 
-        # Get meetings from the last 30 days
         from_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
         to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -270,77 +201,53 @@ class ZoomSource(BaseSource):
             "to": to_date,
         }
 
-        try:
-            meeting_count = 0
-            next_page_token = None
+        meeting_count = 0
+        next_page_token = None
 
-            while True:
-                if next_page_token:
-                    params["next_page_token"] = next_page_token
+        while True:
+            if next_page_token:
+                params["next_page_token"] = next_page_token
 
-                self.logger.debug(f"Fetching past meetings from: {url}")
-                data = await self._get_with_auth(client, url, params=params)
-                meetings = data.get("meetings", [])
-                self.logger.info(f"Retrieved {len(meetings)} past meetings")
+            data = await self._get(url, params=params)
+            meetings = data.get("meetings", [])
 
-                for meeting_data in meetings:
-                    meeting_count += 1
-                    meeting_id = str(meeting_data.get("id"))
-                    topic = meeting_data.get("topic", f"Meeting {meeting_id}")
+            for meeting_data in meetings:
+                meeting_count += 1
+                meeting_id = str(meeting_data.get("id"))
+                topic = meeting_data.get("topic", f"Meeting {meeting_id}")
 
-                    self.logger.debug(f"Processing past meeting #{meeting_count}: {topic}")
+                yield ZoomMeetingEntity(
+                    breadcrumbs=[],
+                    name=topic,
+                    created_at=_parse_dt(meeting_data.get("start_time")),
+                    updated_at=_parse_dt(meeting_data.get("end_time")),
+                    meeting_id=meeting_id,
+                    topic=topic,
+                    meeting_type=meeting_data.get("type"),
+                    start_time=_parse_dt(meeting_data.get("start_time")),
+                    duration=meeting_data.get("duration"),
+                    timezone=meeting_data.get("timezone"),
+                    host_id=meeting_data.get("host_id"),
+                    host_email=meeting_data.get("host_email"),
+                    status="finished",
+                    uuid=meeting_data.get("uuid"),
+                )
 
-                    yield ZoomMeetingEntity(
-                        breadcrumbs=[],
-                        name=topic,
-                        created_at=self._parse_datetime(meeting_data.get("start_time")),
-                        updated_at=self._parse_datetime(meeting_data.get("end_time")),
-                        meeting_id=meeting_id,
-                        topic=topic,
-                        meeting_type=meeting_data.get("type"),
-                        start_time=self._parse_datetime(meeting_data.get("start_time")),
-                        duration=meeting_data.get("duration"),
-                        timezone=meeting_data.get("timezone"),
-                        host_id=meeting_data.get("host_id"),
-                        host_email=meeting_data.get("host_email"),
-                        status="finished",
-                        uuid=meeting_data.get("uuid"),
-                    )
+            next_page_token = data.get("next_page_token")
+            if not next_page_token:
+                break
 
-                # Handle pagination
-                next_page_token = data.get("next_page_token")
-                if not next_page_token:
-                    break
-
-            self.logger.info(f"Completed past meeting generation. Total meetings: {meeting_count}")
-
-        except Exception as e:
-            self.logger.error(f"Error generating past meeting entities: {str(e)}")
-            raise
+        self.logger.info(f"Completed past meeting generation. Total meetings: {meeting_count}")
 
     async def _generate_participant_entities(
         self,
-        client: httpx.AsyncClient,
         meeting_id: str,
         meeting_uuid: str,
         meeting_topic: str,
         meeting_breadcrumb: Breadcrumb,
     ) -> AsyncGenerator[ZoomMeetingParticipantEntity, None]:
-        """Generate ZoomMeetingParticipantEntity objects for a past meeting.
-
-        Args:
-            client: HTTP client for API requests
-            meeting_id: Meeting ID
-            meeting_uuid: Meeting UUID (for past meeting details)
-            meeting_topic: Meeting topic for breadcrumb
-            meeting_breadcrumb: Breadcrumb for the meeting
-
-        Yields:
-            ZoomMeetingParticipantEntity objects
-        """
         self.logger.info(f"Fetching participants for meeting: {meeting_topic}")
 
-        # Use meeting UUID for past meeting participants (double URL encode if needed)
         uuid_encoded = meeting_uuid.replace("/", "%2F").replace("+", "%2B")
         url = f"{self.ZOOM_BASE_URL}/past_meetings/{uuid_encoded}/participants"
         params = {"page_size": 100}
@@ -353,39 +260,32 @@ class ZoomSource(BaseSource):
                 if next_page_token:
                     params["next_page_token"] = next_page_token
 
-                self.logger.debug(f"Fetching participants from: {url}")
-                data = await self._get_with_auth(client, url, params=params)
+                data = await self._get(url, params=params)
                 participants = data.get("participants", [])
-                self.logger.info(f"Retrieved {len(participants)} participants for {meeting_topic}")
 
                 for participant_data in participants:
                     participant_count += 1
                     user_id = participant_data.get("user_id", participant_data.get("id", ""))
                     name = participant_data.get("name", "Unknown Participant")
-
-                    # Create unique participant ID
                     participant_id = f"{meeting_id}_{user_id}"
-
-                    self.logger.debug(f"Processing participant #{participant_count}: {name}")
 
                     yield ZoomMeetingParticipantEntity(
                         breadcrumbs=[meeting_breadcrumb],
                         name=name,
-                        created_at=self._parse_datetime(participant_data.get("join_time")),
-                        updated_at=self._parse_datetime(participant_data.get("leave_time")),
+                        created_at=_parse_dt(participant_data.get("join_time")),
+                        updated_at=_parse_dt(participant_data.get("leave_time")),
                         participant_id=participant_id,
                         participant_name=name,
                         meeting_id=meeting_id,
                         user_id=user_id,
                         user_email=participant_data.get("user_email"),
-                        join_time=self._parse_datetime(participant_data.get("join_time")),
-                        leave_time=self._parse_datetime(participant_data.get("leave_time")),
+                        join_time=_parse_dt(participant_data.get("join_time")),
+                        leave_time=_parse_dt(participant_data.get("leave_time")),
                         duration=participant_data.get("duration"),
                         registrant_id=participant_data.get("registrant_id"),
                         status=participant_data.get("status"),
                     )
 
-                # Handle pagination
                 next_page_token = data.get("next_page_token")
                 if not next_page_token:
                     break
@@ -394,34 +294,20 @@ class ZoomSource(BaseSource):
                 f"Completed participant generation for {meeting_topic}. Total: {participant_count}"
             )
 
-        except httpx.HTTPStatusError as e:
-            # 404 means no participant data available for this meeting
-            if e.response.status_code == 404:
-                self.logger.debug(f"No participant data available for meeting {meeting_id}")
-            else:
-                self.logger.error(f"Error fetching participants for {meeting_topic}: {str(e)}")
+        except SourceAuthError:
+            raise
+        except SourceEntityNotFoundError:
+            self.logger.debug(f"No participant data available for meeting {meeting_id}")
         except Exception as e:
-            self.logger.error(
-                f"Error generating participant entities for {meeting_topic}: {str(e)}"
-            )
+            self.logger.warning(f"Error generating participant entities for {meeting_topic}: {e}")
 
     async def _generate_recording_entities(
-        self, client: httpx.AsyncClient, user_id: str
+        self, user_id: str
     ) -> AsyncGenerator[ZoomRecordingEntity | ZoomTranscriptEntity, None]:
-        """Generate recording and transcript entities for user's cloud recordings.
-
-        Args:
-            client: HTTP client for API requests
-            user_id: Zoom user ID
-
-        Yields:
-            ZoomRecordingEntity and ZoomTranscriptEntity objects
-        """
         self.logger.info("Starting recording entity generation")
 
-        # Get recordings from the last 30 days
-        from_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
-        to_date = datetime.utcnow().strftime("%Y-%m-%d")
+        from_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+        to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         url = f"{self.ZOOM_BASE_URL}/users/{user_id}/recordings"
         params = {
@@ -430,196 +316,131 @@ class ZoomSource(BaseSource):
             "to": to_date,
         }
 
-        try:
-            recording_count = 0
-            transcript_count = 0
-            next_page_token = None
+        recording_count = 0
+        transcript_count = 0
+        next_page_token = None
 
-            while True:
-                if next_page_token:
-                    params["next_page_token"] = next_page_token
+        while True:
+            if next_page_token:
+                params["next_page_token"] = next_page_token
 
-                self.logger.debug(f"Fetching recordings from: {url}")
-                data = await self._get_with_auth(client, url, params=params)
-                meetings = data.get("meetings", [])
-                self.logger.info(f"Retrieved recordings for {len(meetings)} meetings")
+            data = await self._get(url, params=params)
+            meetings = data.get("meetings", [])
 
-                for meeting_data in meetings:
-                    meeting_id = str(meeting_data.get("id"))
-                    meeting_topic = meeting_data.get("topic", f"Meeting {meeting_id}")
+            for meeting_data in meetings:
+                meeting_id = str(meeting_data.get("id"))
+                meeting_topic = meeting_data.get("topic", f"Meeting {meeting_id}")
 
-                    meeting_breadcrumb = Breadcrumb(
-                        entity_id=meeting_id,
-                        name=meeting_topic,
-                        entity_type="ZoomMeetingEntity",
-                    )
+                meeting_breadcrumb = Breadcrumb(
+                    entity_id=meeting_id,
+                    name=meeting_topic,
+                    entity_type="ZoomMeetingEntity",
+                )
 
-                    recording_files = meeting_data.get("recording_files", [])
+                recording_files = meeting_data.get("recording_files", [])
 
-                    for recording_file in recording_files:
-                        recording_id = recording_file.get("id")
-                        file_type = recording_file.get("file_type", "")
-                        recording_type = recording_file.get("recording_type", "")
+                for recording_file in recording_files:
+                    recording_id = recording_file.get("id")
+                    file_type = recording_file.get("file_type", "")
+                    recording_type = recording_file.get("recording_type", "")
 
-                        # Check if this is a transcript file
-                        if file_type in ("TRANSCRIPT", "CC"):
-                            transcript_count += 1
-                            transcript_name = f"{meeting_topic} - Transcript"
+                    if file_type in ("TRANSCRIPT", "CC"):
+                        transcript_count += 1
+                        transcript_name = f"{meeting_topic} - Transcript"
 
-                            yield ZoomTranscriptEntity(
-                                breadcrumbs=[meeting_breadcrumb],
-                                name=transcript_name,
-                                created_at=self._parse_datetime(
-                                    recording_file.get("recording_start")
-                                ),
-                                updated_at=self._parse_datetime(
-                                    recording_file.get("recording_end")
-                                ),
-                                transcript_id=recording_id,
-                                transcript_name=transcript_name,
-                                meeting_id=meeting_id,
-                                meeting_topic=meeting_topic,
-                                recording_start=self._parse_datetime(
-                                    recording_file.get("recording_start")
-                                ),
-                                download_url=recording_file.get("download_url"),
-                                file_type=file_type,
-                            )
-                        else:
-                            recording_count += 1
-                            recording_name = f"{meeting_topic} - {recording_type or file_type}"
+                        yield ZoomTranscriptEntity(
+                            breadcrumbs=[meeting_breadcrumb],
+                            name=transcript_name,
+                            created_at=_parse_dt(recording_file.get("recording_start")),
+                            updated_at=_parse_dt(recording_file.get("recording_end")),
+                            transcript_id=recording_id,
+                            transcript_name=transcript_name,
+                            meeting_id=meeting_id,
+                            meeting_topic=meeting_topic,
+                            recording_start=_parse_dt(recording_file.get("recording_start")),
+                            download_url=recording_file.get("download_url"),
+                            file_type=file_type,
+                        )
+                    else:
+                        recording_count += 1
+                        recording_name = f"{meeting_topic} - {recording_type or file_type}"
 
-                            yield ZoomRecordingEntity(
-                                breadcrumbs=[meeting_breadcrumb],
-                                name=recording_name,
-                                created_at=self._parse_datetime(
-                                    recording_file.get("recording_start")
-                                ),
-                                updated_at=self._parse_datetime(
-                                    recording_file.get("recording_end")
-                                ),
-                                recording_id=recording_id,
-                                recording_name=recording_name,
-                                meeting_id=meeting_id,
-                                meeting_topic=meeting_topic,
-                                recording_start=self._parse_datetime(
-                                    recording_file.get("recording_start")
-                                ),
-                                recording_end=self._parse_datetime(
-                                    recording_file.get("recording_end")
-                                ),
-                                file_type=file_type,
-                                file_size=recording_file.get("file_size"),
-                                file_extension=recording_file.get("file_extension"),
-                                play_url=recording_file.get("play_url"),
-                                download_url=recording_file.get("download_url"),
-                                status=recording_file.get("status"),
-                                recording_type=recording_type,
-                            )
+                        yield ZoomRecordingEntity(
+                            breadcrumbs=[meeting_breadcrumb],
+                            name=recording_name,
+                            created_at=_parse_dt(recording_file.get("recording_start")),
+                            updated_at=_parse_dt(recording_file.get("recording_end")),
+                            recording_id=recording_id,
+                            recording_name=recording_name,
+                            meeting_id=meeting_id,
+                            meeting_topic=meeting_topic,
+                            recording_start=_parse_dt(recording_file.get("recording_start")),
+                            recording_end=_parse_dt(recording_file.get("recording_end")),
+                            file_type=file_type,
+                            file_size=recording_file.get("file_size"),
+                            file_extension=recording_file.get("file_extension"),
+                            play_url=recording_file.get("play_url"),
+                            download_url=recording_file.get("download_url"),
+                            status=recording_file.get("status"),
+                            recording_type=recording_type,
+                        )
 
-                # Handle pagination
-                next_page_token = data.get("next_page_token")
-                if not next_page_token:
-                    break
+            next_page_token = data.get("next_page_token")
+            if not next_page_token:
+                break
 
-            self.logger.info(
-                f"Completed recording generation. Recordings: {recording_count}, "
-                f"Transcripts: {transcript_count}"
-            )
+        self.logger.info(
+            f"Completed recording generation. Recordings: {recording_count}, "
+            f"Transcripts: {transcript_count}"
+        )
 
-        except Exception as e:
-            self.logger.error(f"Error generating recording entities: {str(e)}")
-            raise
-
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        """Generate all Zoom entities.
-
-        Yields entities in the following order:
-          - ZoomMeetingEntity for scheduled meetings
-          - ZoomMeetingEntity for past meetings
-          - ZoomMeetingParticipantEntity for participants in past meetings
-          - ZoomRecordingEntity for cloud recordings
-          - ZoomTranscriptEntity for meeting transcripts
-        """
-        self.logger.info("===== STARTING ZOOM ENTITY GENERATION =====")
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Generate entities for Zoom meetings, participants, and recordings."""
+        self.logger.info("Starting Zoom entity generation")
         entity_count = 0
 
-        try:
-            async with self.http_client() as client:
-                self.logger.info("HTTP client created, starting entity generation")
+        user = await self._get_current_user()
+        user_id = user.get("id", "me")
+        self.logger.info(f"Authenticated as user: {user.get('email', user_id)}")
 
-                # Get current user
-                user = await self._get_current_user(client)
-                user_id = user.get("id", "me")
-                self.logger.info(f"Authenticated as user: {user.get('email', user_id)}")
+        async for meeting_entity in self._generate_meeting_entities(user_id):
+            entity_count += 1
+            yield meeting_entity
 
-                # 1) Generate scheduled meeting entities
-                self.logger.info("Generating scheduled meeting entities...")
-                async for meeting_entity in self._generate_meeting_entities(client, user_id):
+        past_meetings = []
+        async for meeting_entity in self._generate_past_meeting_entities(user_id):
+            entity_count += 1
+            yield meeting_entity
+            past_meetings.append(meeting_entity)
+
+        for meeting in past_meetings:
+            if meeting.uuid:
+                meeting_breadcrumb = Breadcrumb(
+                    entity_id=meeting.meeting_id,
+                    name=meeting.topic,
+                    entity_type="ZoomMeetingEntity",
+                )
+                async for participant_entity in self._generate_participant_entities(
+                    meeting.meeting_id,
+                    meeting.uuid,
+                    meeting.topic,
+                    meeting_breadcrumb,
+                ):
                     entity_count += 1
-                    self.logger.debug(
-                        f"Yielding entity #{entity_count}: Meeting - {meeting_entity.topic}"
-                    )
-                    yield meeting_entity
+                    yield participant_entity
 
-                # 2) Generate past meeting entities and their participants
-                self.logger.info("Generating past meeting entities...")
-                past_meetings = []
-                async for meeting_entity in self._generate_past_meeting_entities(client, user_id):
-                    entity_count += 1
-                    self.logger.debug(
-                        f"Yielding entity #{entity_count}: Past Meeting - {meeting_entity.topic}"
-                    )
-                    yield meeting_entity
-                    past_meetings.append(meeting_entity)
+        async for recording_entity in self._generate_recording_entities(user_id):
+            entity_count += 1
+            yield recording_entity
 
-                # 3) Generate participant entities for past meetings
-                for meeting in past_meetings:
-                    if meeting.uuid:
-                        meeting_breadcrumb = Breadcrumb(
-                            entity_id=meeting.meeting_id,
-                            name=meeting.topic,
-                            entity_type="ZoomMeetingEntity",
-                        )
-                        async for participant_entity in self._generate_participant_entities(
-                            client,
-                            meeting.meeting_id,
-                            meeting.uuid,
-                            meeting.topic,
-                            meeting_breadcrumb,
-                        ):
-                            entity_count += 1
-                            self.logger.debug(
-                                f"Yielding entity #{entity_count}: "
-                                f"Participant - {participant_entity.participant_name}"
-                            )
-                            yield participant_entity
+        self.logger.info(f"Zoom entity generation complete: {entity_count} entities")
 
-                # 4) Generate recording and transcript entities
-                self.logger.info("Generating recording entities...")
-                async for recording_entity in self._generate_recording_entities(client, user_id):
-                    entity_count += 1
-                    self.logger.debug(
-                        f"Yielding entity #{entity_count}: {type(recording_entity).__name__}"
-                    )
-                    yield recording_entity
-
-        except Exception as e:
-            self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
-            raise
-        finally:
-            self.logger.info(
-                f"===== ZOOM ENTITY GENERATION COMPLETE: {entity_count} entities ====="
-            )
-
-    async def validate(self) -> bool:
-        """Verify Zoom OAuth2 token by pinging the users/me endpoint.
-
-        Returns:
-            True if token is valid, False otherwise
-        """
-        return await self._validate_oauth2(
-            ping_url=f"{self.ZOOM_BASE_URL}/users/me",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+    async def validate(self) -> None:
+        """Validate credentials by pinging the Zoom current-user endpoint."""
+        await self._get(f"{self.ZOOM_BASE_URL}/users/me")

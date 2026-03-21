@@ -1466,7 +1466,9 @@ async def admin_get_cursor(
     Returns:
         Cursor data dict, or 404 if no cursor exists
     """
-    from airweave.core.sync_cursor_service import sync_cursor_service
+    from airweave.domains.syncs.cursors.service import SyncCursorService
+
+    sync_cursor_service = SyncCursorService()
 
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 
@@ -1510,7 +1512,9 @@ async def admin_delete_cursor(
     Removes the sync cursor, which forces the next sync to do a full crawl
     instead of incremental. Useful for debugging or resetting sync state.
     """
-    from airweave.core.sync_cursor_service import sync_cursor_service
+    from airweave.domains.syncs.cursors.service import SyncCursorService
+
+    sync_cursor_service = SyncCursorService()
 
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 

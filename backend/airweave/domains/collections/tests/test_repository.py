@@ -38,6 +38,7 @@ _ENTRY_DEFAULTS: dict = {
     "oauth_type": None,
     "requires_byoc": False,
     "supports_continuous": False,
+    "supports_cursor": False,
     "federated_search": False,
     "supports_temporal_relevance": False,
     "supports_access_control": False,

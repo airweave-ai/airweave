@@ -325,6 +325,14 @@ def fake_sync_cursor_repo():
 
 
 @pytest.fixture
+def fake_sync_cursor_service():
+    """SyncCursorService instance (no constructor deps)."""
+    from airweave.domains.syncs.cursors.service import SyncCursorService
+
+    return SyncCursorService()
+
+
+@pytest.fixture
 def fake_sync_job_repo():
     """Fake SyncJobRepository."""
     from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
@@ -621,6 +629,7 @@ def test_container(
     fake_temporal_schedule_service,
     fake_sync_repo,
     fake_sync_cursor_repo,
+    fake_sync_cursor_service,
     fake_sync_job_repo,
     fake_sync_record_service,
     fake_sync_job_service,
@@ -702,6 +711,7 @@ def test_container(
         temporal_schedule_service=fake_temporal_schedule_service,
         sync_repo=fake_sync_repo,
         sync_cursor_repo=fake_sync_cursor_repo,
+        sync_cursor_service=fake_sync_cursor_service,
         sync_job_repo=fake_sync_job_repo,
         sync_record_service=fake_sync_record_service,
         sync_job_service=fake_sync_job_service,

@@ -14,6 +14,9 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
 from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.domains.sources.rate_limiting.helpers import (
+    set_source_rate_limit as _set_source_rate_limit,
+)
 from airweave.models.source_rate_limit import SourceRateLimit
 
 router = TrailingSlashRouter()
@@ -29,7 +32,7 @@ async def list_source_rate_limits(
     """Get all sources with their rate limit configurations.
 
     Returns list of all sources (from source table) merged with configured
-    limits (from source_rate_limits table), plus Pipedream proxy limit.
+    limits (from source_rate_limits table).
 
     Only accessible if SOURCE_RATE_LIMITING feature flag is enabled.
     """
@@ -50,9 +53,6 @@ async def list_source_rate_limits(
     # Build response with all sources
     results = []
     for source in sources:
-        if source.short_name == "pipedream_proxy":
-            continue
-
         limit_obj = limits_map.get(source.short_name)
         results.append(
             schemas.SourceRateLimitResponse(
@@ -67,30 +67,6 @@ async def list_source_rate_limits(
     # Sort: sources with rate_limit_level first, then "Not supported" sources
     results.sort(key=lambda x: (x.rate_limit_level is None, x.source_short_name))
 
-    # Add Pipedream proxy as first item (special source name)
-    # Always show the effective limit (custom or default) so UI reflects reality
-    pipedream_limit = limits_map.get("pipedream_proxy")
-    from airweave.core.source_rate_limiter_service import SourceRateLimiter
-
-    results.insert(
-        0,
-        schemas.SourceRateLimitResponse(
-            source_short_name="pipedream_proxy",
-            rate_limit_level="org",  # Always org-wide
-            limit=(
-                pipedream_limit.limit
-                if pipedream_limit
-                else SourceRateLimiter.PIPEDREAM_PROXY_LIMIT
-            ),  # Show default if not configured
-            window_seconds=(
-                pipedream_limit.window_seconds
-                if pipedream_limit
-                else SourceRateLimiter.PIPEDREAM_PROXY_WINDOW
-            ),  # Show default if not configured
-            id=pipedream_limit.id if pipedream_limit else None,
-        ),
-    )
-
     return results
 
 
@@ -102,18 +78,15 @@ async def set_source_rate_limit(
     db: AsyncSession = Depends(get_db),
     ctx: ApiContext = Depends(deps.get_context),
 ) -> schemas.SourceRateLimit:
-    """Set or update rate limit for a source or Pipedream proxy.
+    """Set or update rate limit for a source.
 
     Creates new limit if doesn't exist, updates if it does.
-    Works for both regular sources and the special 'pipedream_proxy' source.
     """
     # Check feature flag
     if not ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING):
         raise HTTPException(status_code=403, detail="Feature not enabled")
 
-    from airweave.core.source_rate_limit_helpers import set_source_rate_limit
-
-    result = await set_source_rate_limit(
+    result = await _set_source_rate_limit(
         db,
         org_id=ctx.organization.id,
         source_short_name=source_short_name,
@@ -134,7 +107,7 @@ async def delete_source_rate_limit(
 ) -> None:
     """Remove rate limit configuration for a source.
 
-    Reverts to no rate limiting for this source (or default Pipedream limit).
+    Reverts to no rate limiting for this source.
     """
     # Check feature flag
     if not ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING):

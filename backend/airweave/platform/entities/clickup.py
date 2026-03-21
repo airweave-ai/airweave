@@ -1,11 +1,42 @@
 """ClickUp entity schemas."""
 
+from __future__ import annotations
+
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
+
+
+def _parse_clickup_ts(timestamp: Any) -> Optional[datetime]:
+    """Parse ClickUp millisecond-epoch timestamp to datetime."""
+    if not timestamp:
+        return None
+    try:
+        ts = int(timestamp)
+        if ts > 1e10:
+            return datetime.fromtimestamp(ts / 1000)
+        return datetime.fromtimestamp(ts)
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_comment_text(comment_content: Any) -> str:
+    """Extract plain text from ClickUp's nested comment structure."""
+    if isinstance(comment_content, list):
+        parts = []
+        for part in comment_content:
+            if isinstance(part, dict) and "text" in part:
+                parts.append(part["text"])
+            elif isinstance(part, str):
+                parts.append(part)
+        return " ".join(parts)
+    if isinstance(comment_content, str):
+        return comment_content
+    return ""
 
 
 class ClickUpWorkspaceEntity(BaseEntity):
@@ -23,6 +54,7 @@ class ClickUpWorkspaceEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct clickable web URL for this workspace."""
         return f"https://app.clickup.com/{self.workspace_id}"
 
 
@@ -47,6 +79,7 @@ class ClickUpSpaceEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the ClickUp web URL for this space."""
         return f"https://app.clickup.com/{self.workspace_id}/v/b/{self.space_id}"
 
 
@@ -66,6 +99,7 @@ class ClickUpFolderEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the ClickUp web URL for this folder."""
         return f"https://app.clickup.com/{self.workspace_id}/v/f/{self.folder_id}"
 
 
@@ -103,6 +137,7 @@ class ClickUpListEntity(BaseEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct clickable web URL for this list."""
         return f"https://app.clickup.com/{self.workspace_id}/v/li/{self.list_id}"
 
 
@@ -152,8 +187,42 @@ class ClickUpTaskEntity(BaseEntity):
         None, description="Parent task ID if this is a subtask", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        list_meta: Dict[str, Any],
+        breadcrumbs: List[Breadcrumb],
+    ) -> ClickUpTaskEntity:
+        """Build from a ClickUp API task object (top-level, non-subtask)."""
+        return cls(
+            task_id=data["id"],
+            breadcrumbs=breadcrumbs,
+            name=data["name"],
+            created_at=_parse_clickup_ts(data.get("date_created")),
+            updated_at=_parse_clickup_ts(data.get("date_updated")),
+            status=data.get("status", {}),
+            priority=data.get("priority"),
+            assignees=data.get("assignees", []),
+            tags=data.get("tags", []),
+            due_date=data.get("due_date"),
+            start_date=data.get("start_date"),
+            time_estimate=data.get("time_estimate"),
+            time_spent=data.get("time_spent"),
+            custom_fields=data.get("custom_fields", []),
+            list_id=list_meta["id"],
+            folder_id=list_meta.get("folder_id"),
+            space_id=list_meta.get("space_id"),
+            workspace_id=list_meta.get("workspace_id"),
+            url=data.get("url") or f"https://app.clickup.com/t/{data['id']}",
+            description=data.get("description", ""),
+            parent=data.get("parent"),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Return the ClickUp web URL for this task."""
         return self.url
 
 
@@ -185,8 +254,36 @@ class ClickUpCommentEntity(BaseEntity):
         default_factory=list, description="List of reactions to the comment", embeddable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        task_id: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> ClickUpCommentEntity:
+        """Build from a ClickUp API comment object."""
+        text = _extract_comment_text(data.get("comment", []))
+        preview = text[:50] + "..." if len(text) > 50 else text
+        name = preview or f"Comment {data['id']}"
+
+        return cls(
+            comment_id=data["id"],
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=_parse_clickup_ts(data.get("date") or data.get("date_created")),
+            task_id=task_id,
+            user=data.get("user", {}),
+            text_content=text,
+            resolved=data.get("resolved", False),
+            assignee=data.get("assignee"),
+            assigned_by=data.get("assigned_by"),
+            reactions=data.get("reactions", []),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct clickable web URL for this comment."""
         return f"https://app.clickup.com/t/{self.task_id}"
 
 
@@ -223,8 +320,33 @@ class ClickUpSubtaskEntity(BaseEntity):
         None, description="Subtask URL", embeddable=False, unhashable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        nesting_level: int,
+    ) -> ClickUpSubtaskEntity:
+        """Build from a ClickUp API task object that has a parent (subtask)."""
+        return cls(
+            subtask_id=data["id"],
+            breadcrumbs=breadcrumbs,
+            name=data["name"],
+            created_at=_parse_clickup_ts(data.get("date_created")),
+            updated_at=_parse_clickup_ts(data.get("date_updated")),
+            parent_task_id=data.get("parent", ""),
+            status=data.get("status", {}),
+            assignees=data.get("assignees", []),
+            due_date=data.get("due_date"),
+            description=data.get("description", ""),
+            nesting_level=nesting_level,
+            url=data.get("url") or f"https://app.clickup.com/t/{data['id']}",
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct clickable web URL for this subtask."""
         return self.url or f"https://app.clickup.com/t/{self.subtask_id}"
 
 
@@ -302,4 +424,5 @@ class ClickUpFileEntity(FileEntity):
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
+        """Construct clickable web URL for this attachment."""
         return f"https://app.clickup.com/t/{self.task_id}"

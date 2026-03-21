@@ -7,6 +7,7 @@ differentiated action without inspecting ``__cause__``.
 Hierarchy
 ---------
 TokenProviderError (SourceError)         — base for all token-provider failures
+├── TokenExpiredError                    — token is known-dead, cannot be refreshed (fast abort)
 ├── TokenCredentialsInvalidError         — token / refresh_token expired or revoked
 ├── TokenProviderAccountGoneError        — external account record deleted (Composio / Pipedream)
 ├── TokenProviderConfigError             — fundamental misconfiguration
@@ -43,6 +44,18 @@ class TokenProviderError(SourceError):
         """Initialize TokenProviderError."""
         self.provider_kind = provider_kind
         super().__init__(message, source_short_name=source_short_name)
+
+
+class TokenExpiredError(TokenProviderError):
+    """Token is known to be expired/invalid and cannot be refreshed.
+
+    Raised by providers (e.g. JWT ``exp`` claim peek when
+    ``supports_refresh`` is ``False``) or by sources when
+    source-specific documentation indicates the token is dead.
+    Lets the pipeline abort immediately instead of waiting for a 401.
+    """
+
+    pass
 
 
 class TokenCredentialsInvalidError(TokenProviderError):

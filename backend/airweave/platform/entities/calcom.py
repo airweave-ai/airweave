@@ -8,6 +8,8 @@ API reference:
 - Bookings create: https://cal.com/docs/api-reference/v2/bookings/create-a-booking
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +17,16 @@ from pydantic import Field, computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, DeletionEntity
+
+
+def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
+    """Parse ISO8601 timestamp into a timezone-aware datetime (UTC) when possible."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class CalBookingEntity(BaseEntity):
@@ -191,6 +203,57 @@ class CalBookingEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> CalBookingEntity:
+        """Build a CalBookingEntity from a Cal.com API booking JSON object."""
+        created_at = _parse_iso8601(data.get("createdAt"))
+        updated_at = _parse_iso8601(data.get("updatedAt"))
+        start = _parse_iso8601(data.get("start"))
+        end = _parse_iso8601(data.get("end"))
+
+        duration_minutes = None
+        if data.get("duration") is not None:
+            try:
+                duration_minutes = int(data["duration"])
+            except (TypeError, ValueError):
+                pass
+
+        location = data.get("location") or data.get("meetingUrl")
+
+        return cls(
+            breadcrumbs=[],
+            uid=str(data.get("uid") or ""),
+            booking_id=int(data.get("id")),
+            title=str(data.get("title") or "Cal.com Booking"),
+            description=data.get("description"),
+            status=data.get("status"),
+            cancellation_reason=data.get("cancellationReason"),
+            cancelled_by_email=data.get("cancelledByEmail"),
+            rescheduling_reason=data.get("reschedulingReason"),
+            rescheduled_by_email=data.get("rescheduledByEmail"),
+            rescheduled_from_uid=data.get("rescheduledFromUid"),
+            rescheduled_to_uid=data.get("rescheduledToUid"),
+            start=start,
+            end=end,
+            duration_minutes=duration_minutes,
+            created_at=created_at,
+            updated_at=updated_at,
+            hosts=data.get("hosts") or [],
+            attendees=data.get("attendees") or [],
+            guests=data.get("guests") or [],
+            absent_host=data.get("absentHost"),
+            event_type_id=data.get("eventTypeId"),
+            event_type=data.get("eventType"),
+            location=location,
+            meeting_url=data.get("meetingUrl"),
+            metadata=data.get("metadata") or {},
+            rating=data.get("rating"),
+            ics_uid=data.get("icsUid"),
+            booking_fields_responses=data.get("bookingFieldsResponses") or {},
+            recurring_booking_uid=data.get("recurringBookingUid"),
+            web_url_value=None,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Best-effort user-facing link for this booking.
@@ -299,6 +362,23 @@ class CalEventTypeEntity(BaseEntity):
         ),
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> CalEventTypeEntity:
+        """Build a CalEventTypeEntity from a Cal.com API event-type JSON object."""
+        return cls(
+            breadcrumbs=[],
+            event_type_id=int(data.get("id")),
+            title=str(data.get("title") or "Cal.com Event Type"),
+            slug=str(data.get("slug") or ""),
+            description=data.get("description"),
+            length_in_minutes=int(data.get("lengthInMinutes") or 0),
+            metadata=data.get("metadata") or {},
+            booking_url=data.get("bookingUrl"),
+            schedule_id=data.get("scheduleId"),
+            hidden=bool(data.get("hidden", False)),
+            booking_requires_authentication=bool(data.get("bookingRequiresAuthentication", False)),
+        )
+
 
 class CalScheduleEntity(BaseEntity):
     """Schema for Cal.com schedules (availability definitions)."""
@@ -344,3 +424,17 @@ class CalScheduleEntity(BaseEntity):
         description=("Date-specific overrides to the base schedule (date plus startTime/endTime)."),
         embeddable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> CalScheduleEntity:
+        """Build a CalScheduleEntity from a Cal.com API schedule JSON object."""
+        return cls(
+            breadcrumbs=[],
+            schedule_id=int(data.get("id")),
+            owner_id=int(data.get("ownerId")),
+            name=str(data.get("name") or "Default schedule"),
+            time_zone=str(data.get("timeZone") or ""),
+            availability=data.get("availability") or [],
+            is_default=bool(data.get("isDefault", False)),
+            overrides=data.get("overrides") or [],
+        )

@@ -13,6 +13,8 @@ Reference:
     https://developers.google.com/calendar/api/v3/reference
 """
 
+from __future__ import annotations
+
 import urllib.parse
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -20,7 +22,17 @@ from typing import Any, Dict, List, Optional
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Parse Google Calendar RFC3339 timestamps into timezone-aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class GoogleCalendarCalendarEntity(BaseEntity):
@@ -58,6 +70,22 @@ class GoogleCalendarCalendarEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> GoogleCalendarCalendarEntity:
+        """Build from a Google Calendar API calendar resource JSON object."""
+        calendar_id = data["id"]
+        encoded = urllib.parse.quote(calendar_id)
+        return cls(
+            breadcrumbs=[],
+            calendar_key=calendar_id,
+            display_name=data.get("summary") or "Untitled Calendar",
+            summary=data.get("summary"),
+            description=data.get("description"),
+            location=data.get("location"),
+            time_zone=data.get("timeZone"),
+            web_url_value=f"https://calendar.google.com/calendar/u/0/r?cid={encoded}",
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -126,6 +154,29 @@ class GoogleCalendarListEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> GoogleCalendarListEntity:
+        """Build from a Google Calendar API calendarList entry JSON object."""
+        calendar_id = data["id"]
+        name = data.get("summaryOverride") or data.get("summary") or "Untitled Calendar"
+        web_url = f"https://calendar.google.com/calendar/u/0/r?cid={urllib.parse.quote(calendar_id)}"
+        return cls(
+            breadcrumbs=[],
+            calendar_key=calendar_id,
+            display_name=name,
+            summary=data.get("summary"),
+            summary_override=data.get("summaryOverride"),
+            color_id=data.get("colorId"),
+            background_color=data.get("backgroundColor"),
+            foreground_color=data.get("foregroundColor"),
+            hidden=data.get("hidden", False),
+            selected=data.get("selected", False),
+            access_role=data.get("accessRole"),
+            primary=data.get("primary", False),
+            deleted=data.get("deleted", False),
+            web_url_value=web_url,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -266,6 +317,57 @@ class GoogleCalendarEventEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        calendar_key: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> GoogleCalendarEventEntity:
+        """Build from a Google Calendar API event resource JSON object.
+
+        Args:
+            data: Event JSON from ``events.list``.
+            calendar_key: ID of the parent calendar.
+            breadcrumbs: Breadcrumb chain (typically [calendar_breadcrumb]).
+        """
+        event_id = data["id"]
+        start_info = data.get("start", {}) or {}
+        end_info = data.get("end", {}) or {}
+
+        created_time = _parse_datetime(data.get("created")) or datetime.utcnow()
+        updated_time = _parse_datetime(data.get("updated")) or created_time
+
+        return cls(
+            breadcrumbs=breadcrumbs,
+            event_key=event_id,
+            calendar_key=calendar_key,
+            title=data.get("summary") or f"Event {event_id}",
+            created_time=created_time,
+            updated_time=updated_time,
+            status=data.get("status"),
+            html_link=data.get("htmlLink"),
+            summary=data.get("summary"),
+            description=data.get("description"),
+            location=data.get("location"),
+            color_id=data.get("colorId"),
+            start_datetime=_parse_datetime(start_info.get("dateTime")),
+            start_date=start_info.get("date"),
+            end_datetime=_parse_datetime(end_info.get("dateTime")),
+            end_date=end_info.get("date"),
+            recurrence=data.get("recurrence"),
+            recurring_event_id=data.get("recurringEventId"),
+            organizer=data.get("organizer"),
+            creator=data.get("creator"),
+            attendees=data.get("attendees"),
+            transparency=data.get("transparency"),
+            visibility=data.get("visibility"),
+            conference_data=data.get("conferenceData"),
+            event_type=data.get("eventType"),
+            web_url_value=data.get("htmlLink"),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

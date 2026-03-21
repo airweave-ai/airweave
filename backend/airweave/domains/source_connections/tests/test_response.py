@@ -140,6 +140,7 @@ def _make_registry_entry(
         oauth_type=None,
         requires_byoc=False,
         supports_continuous=False,
+        supports_cursor=False,
         federated_search=federated_search,
         supports_temporal_relevance=True,
         supports_access_control=False,

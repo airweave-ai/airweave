@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 from airweave.platform.configs.auth import ServiceNowAuthConfig
+from airweave.platform.configs.config import ServiceNowConfig
 from airweave.platform.entities.servicenow import (
     ServiceNowCatalogItemEntity,
     ServiceNowChangeRequestEntity,
@@ -15,12 +17,15 @@ from airweave.platform.entities.servicenow import (
     ServiceNowKnowledgeArticleEntity,
     ServiceNowProblemEntity,
 )
-from airweave.platform.sources.servicenow import (
-    PAGE_LIMIT,
+from airweave.platform.entities.servicenow import (
+    _build_record_url,
     _display_value,
     _parse_bool,
     _parse_datetime,
     _raw_value,
+)
+from airweave.platform.sources.servicenow import (
+    PAGE_LIMIT,
     ServiceNowSource,
 )
 
@@ -37,6 +42,20 @@ def auth_config() -> ServiceNowAuthConfig:
         url="https://test-instance.service-now.com",
         username="test_user",
         password="test_pass",
+    )
+
+
+async def _make_source(
+    auth_config: ServiceNowAuthConfig,
+    *,
+    config: ServiceNowConfig | None = None,
+) -> ServiceNowSource:
+    auth = DirectCredentialProvider(auth_config, source_short_name="servicenow")
+    return await ServiceNowSource.create(
+        auth=auth,
+        logger=MagicMock(),
+        http_client=AsyncMock(),
+        config=config or ServiceNowConfig(),
     )
 
 
@@ -200,7 +219,7 @@ def test_auth_config_requires_url_or_subdomain() -> None:
 
 @pytest.mark.asyncio
 async def test_create_sets_base_url_and_auth(auth_config: ServiceNowAuthConfig) -> None:
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     assert source._base_url == "https://test-instance.service-now.com"
     assert source._auth_header.startswith("Basic ")
     decoded = __import__("base64").b64decode(source._auth_header.split()[1]).decode()
@@ -210,13 +229,13 @@ async def test_create_sets_base_url_and_auth(auth_config: ServiceNowAuthConfig) 
 @pytest.mark.asyncio
 async def test_create_strips_trailing_slash(auth_config: ServiceNowAuthConfig) -> None:
     auth_config.url = "https://test.service-now.com/"
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     assert source._base_url == "https://test.service-now.com"
 
 
 @pytest.mark.asyncio
 async def test_create_with_config(auth_config: ServiceNowAuthConfig) -> None:
-    source = await ServiceNowSource.create(auth_config, config={"foo": "bar"})
+    source = await _make_source(auth_config, config=ServiceNowConfig())
     assert source._base_url == "https://test-instance.service-now.com"
 
 
@@ -228,40 +247,40 @@ async def test_create_from_subdomain_credentials() -> None:
         username="u",
         password="p",
     )
-    source = await ServiceNowSource.create(creds)
+    source = await _make_source(creds)
     assert source._base_url == "https://composio-instance.service-now.com"
     decoded = __import__("base64").b64decode(source._auth_header.split()[1]).decode()
     assert decoded == "u:p"
 
 
 # ---------------------------------------------------------------------------
-# _table_url / _build_record_url
+# _table_url / record URL helper (entity module)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_table_url_and_build_record_url(auth_config: ServiceNowAuthConfig) -> None:
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     assert source._table_url("incident") == (
         "https://test-instance.service-now.com/api/now/table/incident"
     )
-    url = source._build_record_url("incident", "abc123")
+    url = _build_record_url(source._base_url, "incident", "abc123")
     assert "incident" in url and "abc123" in url
 
 
 @pytest.mark.asyncio
-async def test_get_with_auth_returns_json(auth_config: ServiceNowAuthConfig) -> None:
-    """Covers _get_with_auth: request, raise_for_status, return response.json()."""
-    source = await ServiceNowSource.create(auth_config)
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
-    mock_response.json.return_value = {"result": [{"sys_id": "x"}]}
-    mock_client = MagicMock()
-    mock_client.get = AsyncMock(return_value=mock_response)
-    result = await source._get_with_auth(mock_client, "https://test/api/incident", {"a": 1})
+async def test_get_returns_json(auth_config: ServiceNowAuthConfig) -> None:
+    """Covers _get: request, raise_for_status, return response.json()."""
+    source = await _make_source(auth_config)
+    mock_response = httpx.Response(
+        200,
+        json={"result": [{"sys_id": "x"}]},
+        request=httpx.Request("GET", "https://test/api/incident"),
+    )
+    source.http_client.get = AsyncMock(return_value=mock_response)
+    result = await source._get("https://test/api/incident", {"a": 1})
     assert result == {"result": [{"sys_id": "x"}]}
-    mock_response.raise_for_status.assert_called_once()
-    mock_client.get.assert_called_once()
+    source.http_client.get.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -287,20 +306,20 @@ def _incident_result(sys_id: str = "inc-1", number: str = "INC0010001") -> dict:
 
 @pytest.mark.asyncio
 async def test_generate_entities_incidents(auth_config: ServiceNowAuthConfig) -> None:
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     incident_payload = {"result": [_incident_result()]}
     empty = {"result": []}
 
     call_count = 0
 
-    async def fake_get_with_auth(client: MagicMock, url: str, params: Any = None) -> dict:
+    async def fake_get(url: str, params: Any = None) -> dict:
         nonlocal call_count
         call_count += 1
         if "incident" in url:
             return incident_payload
         return empty
 
-    with patch.object(source, "_get_with_auth", side_effect=fake_get_with_auth):
+    with patch.object(source, "_get", side_effect=fake_get):
         entities: list = []
         async for e in source.generate_entities():
             entities.append(e)
@@ -317,19 +336,19 @@ async def test_generate_incidents_with_dict_assignee_and_caller(
     auth_config: ServiceNowAuthConfig,
 ) -> None:
     """Covers assigned_to/caller_id as dict (display_value/value) and non-dict branches."""
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     rec = _incident_result("inc-2", "INC0010002")
     rec["assigned_to"] = {"display_value": "Jane Doe", "value": "user-123"}
     rec["caller_id"] = {"display_value": "John Caller", "value": "user-456"}
     payload = {"result": [rec]}
     empty = {"result": []}
 
-    async def fake_get(client: MagicMock, url: str, params: Any = None) -> dict:
+    async def fake_get(url: str, params: Any = None) -> dict:
         if "incident" in url:
             return payload
         return empty
 
-    with patch.object(source, "_get_with_auth", side_effect=fake_get):
+    with patch.object(source, "_get", side_effect=fake_get):
         entities = [e async for e in source.generate_entities()]
     incidents = [e for e in entities if isinstance(e, ServiceNowIncidentEntity)]
     assert len(incidents) == 1
@@ -340,12 +359,12 @@ async def test_generate_incidents_with_dict_assignee_and_caller(
 @pytest.mark.asyncio
 async def test_fetch_table_paginated_two_pages(auth_config: ServiceNowAuthConfig) -> None:
     """Covers pagination: first page full, second page partial."""
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     full_page = {"result": [{"sys_id": f"x{i}"} for i in range(PAGE_LIMIT)]}
     second_page = {"result": [{"sys_id": "y1"}]}
     call_count = 0
 
-    async def fake_get(client: MagicMock, url: str, params: Any = None) -> dict:
+    async def fake_get(url: str, params: Any = None) -> dict:
         nonlocal call_count
         call_count += 1
         offset = (params or {}).get("sysparm_offset", 0)
@@ -353,11 +372,10 @@ async def test_fetch_table_paginated_two_pages(auth_config: ServiceNowAuthConfig
             return full_page
         return second_page
 
-    with patch.object(source, "_get_with_auth", side_effect=fake_get):
+    with patch.object(source, "_get", side_effect=fake_get):
         collected = []
-        async with source.http_client() as client:
-            async for rec in source._fetch_table_paginated(client, "incident", ["sys_id"]):
-                collected.append(rec)
+        async for rec in source._fetch_table_paginated("incident", ["sys_id"]):
+            collected.append(rec)
     assert len(collected) == PAGE_LIMIT + 1
     assert call_count == 2
 
@@ -426,10 +444,10 @@ def _catalog_item_result(sys_id: str = "cat1") -> dict:
 @pytest.mark.asyncio
 async def test_generate_all_entity_types(auth_config: ServiceNowAuthConfig) -> None:
     """Runs all five generators so KB, change_request, problem, sc_cat_item are covered."""
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     empty = {"result": []}
 
-    async def fake_get(client: MagicMock, url: str, params: Any = None) -> dict:
+    async def fake_get(url: str, params: Any = None) -> dict:
         if "incident" in url:
             return {"result": [_incident_result("inc-1", "INC001")]}
         if "kb_knowledge" in url:
@@ -442,7 +460,7 @@ async def test_generate_all_entity_types(auth_config: ServiceNowAuthConfig) -> N
             return {"result": [_catalog_item_result()]}
         return empty
 
-    with patch.object(source, "_get_with_auth", side_effect=fake_get):
+    with patch.object(source, "_get", side_effect=fake_get):
         entities = [e async for e in source.generate_entities()]
     by_type = {
         ServiceNowIncidentEntity: 0,
@@ -468,20 +486,20 @@ async def test_generate_catalog_items_category_and_active_branches(
     auth_config: ServiceNowAuthConfig,
 ) -> None:
     """Covers category as non-dict and active as dict with value."""
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     rec = _catalog_item_result("cat2")
     rec["category"] = "string_category"
     rec["active"] = {"value": "false"}
     empty = {"result": []}
 
-    async def fake_get(client: MagicMock, url: str, params: Any = None) -> dict:
+    async def fake_get(url: str, params: Any = None) -> dict:
         if "sc_cat_item" in url:
             return {"result": [rec]}
         if "incident" in url or "kb_knowledge" in url or "change_request" in url or "problem" in url:
             return empty
         return empty
 
-    with patch.object(source, "_get_with_auth", side_effect=fake_get):
+    with patch.object(source, "_get", side_effect=fake_get):
         entities = [e async for e in source.generate_entities()]
     catalog = [e for e in entities if isinstance(e, ServiceNowCatalogItemEntity)]
     assert len(catalog) == 1
@@ -497,37 +515,36 @@ async def test_generate_catalog_items_category_and_active_branches(
 
 @pytest.mark.asyncio
 async def test_validate_success(auth_config: ServiceNowAuthConfig) -> None:
-    source = await ServiceNowSource.create(auth_config)
-    with patch.object(source, "_get_with_auth", new_callable=AsyncMock, return_value={"result": []}):
-        result = await source.validate()
-    assert result is True
+    source = await _make_source(auth_config)
+    with patch.object(source, "_get", new_callable=AsyncMock, return_value={"result": []}):
+        await source.validate()
 
 
 @pytest.mark.asyncio
 async def test_validate_failure(auth_config: ServiceNowAuthConfig) -> None:
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     with patch.object(
         source,
-        "_get_with_auth",
+        "_get",
         new_callable=AsyncMock,
         side_effect=httpx.HTTPStatusError("401", request=MagicMock(), response=MagicMock()),
     ):
-        result = await source.validate()
-    assert result is False
+        with pytest.raises(httpx.HTTPStatusError):
+            await source.validate()
 
 
 @pytest.mark.asyncio
 async def test_validate_failure_generic_exception(auth_config: ServiceNowAuthConfig) -> None:
     """Covers validate() except block and logger.warning."""
-    source = await ServiceNowSource.create(auth_config)
+    source = await _make_source(auth_config)
     with patch.object(
         source,
-        "_get_with_auth",
+        "_get",
         new_callable=AsyncMock,
         side_effect=RuntimeError("connection failed"),
     ):
-        result = await source.validate()
-    assert result is False
+        with pytest.raises(RuntimeError, match="connection failed"):
+            await source.validate()
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ ensures asyncio task count stays O(batch_size), not O(N_items).
 
 import asyncio
 from typing import Any, AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -18,12 +19,28 @@ from airweave.platform.sources._base import BaseSource
 # ---------------------------------------------------------------------------
 
 
+def _mock_auth():
+    auth = AsyncMock()
+    auth.get_token = AsyncMock(return_value="test-token")
+    auth.supports_refresh = False
+    auth.provider_kind = "static"
+    return auth
+
+
+def _mock_http_client():
+    return AsyncMock()
+
+
+def _mock_logger():
+    return MagicMock()
+
+
 class _TestSource(BaseSource):
     """Minimal BaseSource subclass to access process_entities_concurrent."""
 
     @classmethod
-    async def create(cls, credentials=None, config=None):
-        return cls()
+    async def create(cls, credentials=None, config=None, *, auth, logger, http_client):
+        return cls(auth=auth, logger=logger, http_client=http_client)
 
     async def generate_entities(self):
         yield  # pragma: no cover
@@ -52,6 +69,15 @@ async def _collect(agen: AsyncGenerator) -> list:
     async for item in agen:
         out.append(item)
     return out
+
+
+async def _make_test_source() -> _TestSource:
+    """Build a _TestSource with mocked construction deps."""
+    return await _TestSource.create(
+        auth=_mock_auth(),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+    )
 
 
 def _worker_single(item: Any) -> AsyncGenerator:
@@ -92,7 +118,7 @@ def _worker_failing(item: Any) -> AsyncGenerator:
 @pytest.mark.asyncio
 async def test_basic_unordered():
     """20 items, batch_size=5, all entities arrive (any order)."""
-    src = _TestSource()
+    src = await _make_test_source()
     items = list(range(20))
     results = await _collect(
         src.process_entities_concurrent(items, _worker_single, batch_size=5)
@@ -105,7 +131,7 @@ async def test_basic_unordered():
 @pytest.mark.asyncio
 async def test_basic_preserve_order():
     """20 items, batch_size=5, entities arrive in input order."""
-    src = _TestSource()
+    src = await _make_test_source()
     items = list(range(20))
     results = await _collect(
         src.process_entities_concurrent(
@@ -122,7 +148,7 @@ async def test_task_count_bounded():
 
     This is the core regression test for the 33K-task explosion bug.
     """
-    src = _TestSource()
+    src = await _make_test_source()
     max_observed_tasks = 0
 
     async def _slow_worker(item):
@@ -149,7 +175,7 @@ async def test_task_count_bounded():
 @pytest.mark.asyncio
 async def test_empty_items():
     """0 items, no crash, yields nothing."""
-    src = _TestSource()
+    src = await _make_test_source()
     results = await _collect(
         src.process_entities_concurrent([], _worker_single, batch_size=5)
     )
@@ -159,7 +185,7 @@ async def test_empty_items():
 @pytest.mark.asyncio
 async def test_single_item():
     """1 item, batch_size=5, works correctly."""
-    src = _TestSource()
+    src = await _make_test_source()
     results = await _collect(
         src.process_entities_concurrent([42], _worker_single, batch_size=5)
     )
@@ -170,7 +196,7 @@ async def test_single_item():
 @pytest.mark.asyncio
 async def test_sync_iterable():
     """Pass a plain range as items."""
-    src = _TestSource()
+    src = await _make_test_source()
     results = await _collect(
         src.process_entities_concurrent(range(10), _worker_single, batch_size=3)
     )
@@ -180,7 +206,7 @@ async def test_sync_iterable():
 @pytest.mark.asyncio
 async def test_async_iterable():
     """Pass an async generator as items."""
-    src = _TestSource()
+    src = await _make_test_source()
 
     async def _async_items():
         for i in range(10):
@@ -195,7 +221,7 @@ async def test_async_iterable():
 @pytest.mark.asyncio
 async def test_stop_on_error():
     """Worker raises, stop_on_error=True, propagates."""
-    src = _TestSource()
+    src = await _make_test_source()
     items = [1, 2, -1, 4, 5]
     with pytest.raises(ValueError, match="boom"):
         await _collect(
@@ -208,7 +234,7 @@ async def test_stop_on_error():
 @pytest.mark.asyncio
 async def test_error_continue():
     """Worker raises on one item, stop_on_error=False, other entities still arrive."""
-    src = _TestSource()
+    src = await _make_test_source()
     items = [1, 2, -1, 4, 5]
     results = await _collect(
         src.process_entities_concurrent(
@@ -222,7 +248,7 @@ async def test_error_continue():
 @pytest.mark.asyncio
 async def test_worker_yields_multiple():
     """Single item, worker yields 3 entities, all arrive."""
-    src = _TestSource()
+    src = await _make_test_source()
     results = await _collect(
         src.process_entities_concurrent([7], _worker_multi, batch_size=2)
     )
@@ -234,7 +260,7 @@ async def test_worker_yields_multiple():
 @pytest.mark.asyncio
 async def test_producer_iterator_failure_still_drains():
     """If the items iterator raises mid-iteration, already-queued items still complete."""
-    src = _TestSource()
+    src = await _make_test_source()
 
     async def _exploding_items():
         for i in range(10):

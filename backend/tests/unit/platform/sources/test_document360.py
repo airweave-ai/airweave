@@ -3,20 +3,47 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+
+from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 from airweave.platform.configs.auth import Document360AuthConfig
+from airweave.platform.configs.config import Document360Config
 from airweave.platform.entities.document360 import (
     Document360ArticleEntity,
     Document360CategoryEntity,
     Document360ProjectVersionEntity,
 )
+from airweave.platform.entities.document360 import _parse_dt as _parse_iso_datetime
 from airweave.platform.sources.document360 import (
     DEFAULT_BASE_URL,
     Document360Source,
-    _parse_iso_datetime,
 )
 
 # Document360AuthConfig requires api_token min length 10
 VALID_API_TOKEN = "test-token-12"
+
+
+def _mock_logger():
+    return MagicMock()
+
+
+def _mock_http_client():
+    return AsyncMock()
+
+
+async def _make_source(
+    *,
+    api_token: str = "test-token-12345",
+    config: Document360Config | None = None,
+):
+    creds = Document360AuthConfig(api_token=api_token)
+    auth = DirectCredentialProvider(creds, source_short_name="document360")
+    return await Document360Source.create(
+        auth=auth,
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=config or Document360Config(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -108,28 +135,28 @@ def test_parse_iso_datetime_none_or_empty():
 
 @pytest.mark.asyncio
 async def test_create_sets_credentials_and_default_config():
-    credentials = Document360AuthConfig(api_token="test-token-12345")
-    source = await Document360Source.create(credentials, None)
-    assert source.api_token == "test-token-12345"
-    assert source.base_url == DEFAULT_BASE_URL
-    assert source.lang_code == "en"
+    source = await _make_source(api_token="test-token-12345")
+    assert source._api_token == "test-token-12345"
+    assert source._base_url == DEFAULT_BASE_URL
+    assert source._lang_code == "en"
 
 
 @pytest.mark.asyncio
 async def test_create_sets_custom_base_url_and_lang():
-    credentials = Document360AuthConfig(api_token="test-token-12345")
-    config = {"base_url": "https://apihub.us.document360.io", "lang_code": "es"}
-    source = await Document360Source.create(credentials, config)
-    assert source.base_url == "https://apihub.us.document360.io"
-    assert source.lang_code == "es"
+    config = Document360Config(
+        base_url="https://apihub.us.document360.io",
+        lang_code="es",
+    )
+    source = await _make_source(api_token="test-token-12345", config=config)
+    assert source._base_url == "https://apihub.us.document360.io"
+    assert source._lang_code == "es"
 
 
 @pytest.mark.asyncio
 async def test_create_strips_trailing_slash_from_base_url():
-    credentials = Document360AuthConfig(api_token=VALID_API_TOKEN)
-    config = {"base_url": "https://apihub.document360.io/"}
-    source = await Document360Source.create(credentials, config)
-    assert source.base_url == "https://apihub.document360.io"
+    config = Document360Config(base_url="https://apihub.document360.io/")
+    source = await _make_source(api_token=VALID_API_TOKEN, config=config)
+    assert source._base_url == "https://apihub.document360.io"
 
 
 # ---------------------------------------------------------------------------
@@ -139,8 +166,7 @@ async def test_create_strips_trailing_slash_from_base_url():
 
 @pytest.mark.asyncio
 async def test_api_url_builds_full_url():
-    credentials = Document360AuthConfig(api_token=VALID_API_TOKEN)
-    source = await Document360Source.create(credentials, None)
+    source = await _make_source(api_token=VALID_API_TOKEN)
     url = source._api_url("/ProjectVersions")
     assert url == f"{DEFAULT_BASE_URL}/v2/ProjectVersions"
     url2 = source._api_url("ProjectVersions")
@@ -148,25 +174,23 @@ async def test_api_url_builds_full_url():
 
 
 # ---------------------------------------------------------------------------
-# Document360Source._get_with_auth (success / API error)
+# Document360Source._get (success / API error)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_with_auth_raises_on_success_false():
-    credentials = Document360AuthConfig(api_token=VALID_API_TOKEN)
-    source = await Document360Source.create(credentials, None)
+async def test_get_raises_on_success_false():
+    source = await _make_source(api_token=VALID_API_TOKEN)
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.raise_for_status = MagicMock()
+    mock_response.is_success = True
     mock_response.json.return_value = {
         "success": False,
         "errors": [{"description": "Category not found"}],
     }
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
-        async with source.http_client() as client:
-            with pytest.raises(ValueError, match="Document360 API error"):
-                await source._get_with_auth(client, "/ProjectVersions")
+    source.http_client.get = AsyncMock(return_value=mock_response)
+    with pytest.raises(ValueError, match="Document360 API error"):
+        await source._get("/ProjectVersions")
 
 
 # ---------------------------------------------------------------------------
@@ -175,41 +199,30 @@ async def test_get_with_auth_raises_on_success_false():
 
 
 @pytest.mark.asyncio
-async def test_validate_returns_false_when_no_token():
-    credentials = Document360AuthConfig(api_token=VALID_API_TOKEN)
-    source = await Document360Source.create(credentials, None)
-    source.api_token = None
-    result = await source.validate()
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_validate_returns_true_on_success():
-    credentials = Document360AuthConfig(api_token=VALID_API_TOKEN)
-    source = await Document360Source.create(credentials, None)
+async def test_validate_delegates_to_get_project_versions():
+    """validate() should call _get with ProjectVersions; failures come from _get / HTTP."""
+    source = await _make_source(api_token=VALID_API_TOKEN)
     mock_get = AsyncMock(return_value={"success": True, "data": []})
-    with patch.object(source, "_get_with_auth", mock_get):
-        with patch.object(source, "http_client") as mock_ctx:
-            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
-            mock_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
-            result = await source.validate()
-    assert result is True
+    with patch.object(source, "_get", mock_get):
+        await source.validate()
+    mock_get.assert_awaited_once_with("/ProjectVersions")
 
 
 @pytest.mark.asyncio
-async def test_validate_returns_false_on_http_error():
-    import httpx
+async def test_validate_succeeds_on_success():
+    source = await _make_source(api_token=VALID_API_TOKEN)
+    mock_get = AsyncMock(return_value={"success": True, "data": []})
+    with patch.object(source, "_get", mock_get):
+        await source.validate()
 
-    credentials = Document360AuthConfig(api_token=VALID_API_TOKEN)
-    source = await Document360Source.create(credentials, None)
-    with patch.object(source, "http_client") as mock_ctx:
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
-        with patch.object(
-            source, "_get_with_auth", side_effect=httpx.HTTPStatusError("err", request=MagicMock(), response=MagicMock())
-        ):
-            result = await source.validate()
-    assert result is False
+
+@pytest.mark.asyncio
+async def test_validate_propagates_http_error():
+    source = await _make_source(api_token=VALID_API_TOKEN)
+    err = httpx.HTTPStatusError("err", request=MagicMock(), response=MagicMock())
+    with patch.object(source, "_get", side_effect=err):
+        with pytest.raises(httpx.HTTPStatusError):
+            await source.validate()
 
 
 # ---------------------------------------------------------------------------
@@ -219,10 +232,9 @@ async def test_validate_returns_false_on_http_error():
 
 @pytest.mark.asyncio
 async def test_generate_entities_yields_versions_and_categories_and_articles():
-    credentials = Document360AuthConfig(api_token=VALID_API_TOKEN)
-    source = await Document360Source.create(credentials, None)
+    source = await _make_source(api_token=VALID_API_TOKEN)
 
-    async def mock_get(client, path, params=None):
+    async def mock_get(path, params=None):
         if "ProjectVersions" in path and "categories" not in path and "articles" not in path:
             return {"success": True, "data": [{"id": "pv1", "version_number": 1.0, "version_code_name": "v1"}]}
         if "categories" in path:
@@ -269,7 +281,7 @@ async def test_generate_entities_yields_versions_and_categories_and_articles():
             }
         return {"success": True, "data": []}
 
-    with patch.object(source, "_get_with_auth", side_effect=mock_get):
+    with patch.object(source, "_get", side_effect=mock_get):
         entities = []
         async for e in source.generate_entities():
             entities.append(e)

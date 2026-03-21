@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Save, Trash2, Building2, User, Loader2, RotateCcw, Clock, Activity } from 'lucide-react';
+import { Save, Trash2, Building2, User, Loader2, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -32,14 +30,6 @@ export const SourceRateLimits = () => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
 
-    // Separate state for Pipedream proxy
-    const [pipedreamLimit, setPipedreamLimit] = useState<string>('1000');
-    const [pipedreamWindow, setPipedreamWindow] = useState<string>('300');
-    const [pipedreamId, setPipedreamId] = useState<string | null>(null);
-    const [originalPipedreamLimit, setOriginalPipedreamLimit] = useState<string>('1000');
-    const [originalPipedreamWindow, setOriginalPipedreamWindow] = useState<string>('300');
-    const [isSavingPipedream, setIsSavingPipedream] = useState(false);
-
     useEffect(() => {
         fetchLimits();
     }, []);
@@ -54,19 +44,7 @@ export const SourceRateLimits = () => {
             }
 
             const data = await response.json();
-
-            // Extract Pipedream proxy (first item)
-            if (data.length > 0 && data[0].source_short_name === 'pipedream_proxy') {
-                const pipedream = data[0];
-                setPipedreamLimit(String(pipedream.limit));
-                setPipedreamWindow(String(pipedream.window_seconds));
-                setOriginalPipedreamLimit(String(pipedream.limit));
-                setOriginalPipedreamWindow(String(pipedream.window_seconds));
-                setPipedreamId(pipedream.id);
-                setLimits(data.slice(1)); // Rest are regular sources
-            } else {
-                setLimits(data);
-            }
+            setLimits(data);
         } catch (error) {
             toast.error('Failed to load rate limits');
             console.error(error);
@@ -163,39 +141,6 @@ export const SourceRateLimits = () => {
         }
     };
 
-    const handleSavePipedream = async () => {
-        const limit = parseInt(pipedreamLimit);
-        const windowSeconds = parseInt(pipedreamWindow);
-
-        if (isNaN(limit) || isNaN(windowSeconds) || limit <= 0 || windowSeconds <= 0) {
-            toast.error('Please enter valid positive numbers');
-            return;
-        }
-
-        try {
-            setIsSavingPipedream(true);
-
-            const response = await apiClient.put('/source-rate-limits/pipedream_proxy', undefined, {
-                limit,
-                window_seconds: windowSeconds,
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to update Pipedream proxy limit');
-            }
-
-            toast.success('Updated Pipedream proxy limit');
-            setOriginalPipedreamLimit(String(limit));
-            setOriginalPipedreamWindow(String(windowSeconds));
-            fetchLimits();
-        } catch (error) {
-            toast.error('Failed to update Pipedream proxy limit');
-            console.error(error);
-        } finally {
-            setIsSavingPipedream(false);
-        }
-    };
-
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -212,101 +157,6 @@ export const SourceRateLimits = () => {
                     <p className="text-xs text-muted-foreground">
                         Configure rate limits to prevent exhausting API quotas across your organization
                     </p>
-                </div>
-
-                {/* Pipedream Proxy - Compact inline design */}
-                <div className={cn(
-                    "rounded-lg border transition-all duration-200",
-                    isDark ? "bg-gray-900/50" : "bg-white"
-                )}>
-                    <div className="p-4 space-y-3">
-                        {/* Header */}
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className={cn(
-                                    "h-7 w-7 rounded-md flex items-center justify-center",
-                                    isDark ? "bg-blue-500/10" : "bg-blue-50"
-                                )}>
-                                    <Building2 className={cn("h-3.5 w-3.5", isDark ? "text-blue-400" : "text-blue-600")} />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-medium">Pipedream Proxy</h3>
-                                    <p className="text-[11px] text-muted-foreground">Organization-wide limit</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Compact inline controls */}
-                        <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-2 flex-1">
-                                <span className="text-xs text-muted-foreground whitespace-nowrap">Limit:</span>
-                                <Input
-                                    type="number"
-                                    value={pipedreamLimit}
-                                    onChange={(e) => setPipedreamLimit(e.target.value)}
-                                    placeholder="1000"
-                                    min="1"
-                                    className="h-7 w-24 text-xs"
-                                />
-                                <span className="text-[11px] text-muted-foreground">requests</span>
-                                <span className="text-xs text-muted-foreground">/</span>
-                                <span className="text-[11px] text-muted-foreground">5 min</span>
-                            </div>
-                            <div className="flex gap-1.5">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <button
-                                            onClick={handleSavePipedream}
-                                            disabled={
-                                                isSavingPipedream ||
-                                                (pipedreamLimit === originalPipedreamLimit && pipedreamWindow === originalPipedreamWindow)
-                                            }
-                                            className={cn(
-                                                "h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-medium transition-all duration-200",
-                                                isSavingPipedream || (pipedreamLimit === originalPipedreamLimit && pipedreamWindow === originalPipedreamWindow)
-                                                    ? "opacity-40 cursor-not-allowed"
-                                                    : isDark
-                                                        ? "bg-primary/90 hover:bg-primary text-white"
-                                                        : "bg-primary hover:bg-primary/90 text-white"
-                                            )}
-                                        >
-                                            {isSavingPipedream ? (
-                                                <Loader2 className="h-3 w-3 animate-spin" />
-                                            ) : (
-                                                <Save className="h-3 w-3" />
-                                            )}
-                                        </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p className="text-xs">Save changes</p></TooltipContent>
-                                </Tooltip>
-                                {pipedreamId && (
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                onClick={async () => {
-                                                    await handleDeleteRow('pipedream_proxy');
-                                                    setPipedreamLimit('1000');
-                                                    setPipedreamWindow('300');
-                                                    setOriginalPipedreamLimit('1000');
-                                                    setOriginalPipedreamWindow('300');
-                                                }}
-                                                disabled={isSavingPipedream}
-                                                className={cn(
-                                                    "h-7 w-7 rounded-md flex items-center justify-center transition-all duration-200",
-                                                    isDark
-                                                        ? "hover:bg-gray-800 text-muted-foreground"
-                                                        : "hover:bg-gray-100 text-muted-foreground"
-                                                )}
-                                            >
-                                                <RotateCcw className="h-3 w-3" />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent><p className="text-xs">Restore default</p></TooltipContent>
-                                    </Tooltip>
-                                )}
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 {/* Source Limits - Minimal, list-based design */}
@@ -466,4 +316,3 @@ export const SourceRateLimits = () => {
         </TooltipProvider>
     );
 };
-

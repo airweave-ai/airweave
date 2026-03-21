@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import computed_field, field_validator
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 
 
 def parse_pipedrive_datetime(value: Any) -> Optional[datetime]:
@@ -29,26 +29,57 @@ def parse_pipedrive_datetime(value: Any) -> Optional[datetime]:
         return value
 
     if isinstance(value, str):
-        # Try common Pipedrive datetime formats
         formats = [
-            "%Y-%m-%d %H:%M:%S",  # Standard Pipedrive format
-            "%Y-%m-%d",  # Date only
-            "%Y-%m-%dT%H:%M:%S.%fZ",  # ISO format with microseconds
-            "%Y-%m-%dT%H:%M:%SZ",  # ISO format
-            "%Y-%m-%dT%H:%M:%S",  # ISO format without Z
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+            "%Y-%m-%dT%H:%M:%S.%fZ",
+            "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%dT%H:%M:%S",
         ]
         for fmt in formats:
             try:
                 return datetime.strptime(value, fmt)
             except ValueError:
                 continue
-        # Try ISO format with timezone
         try:
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             return None
 
     return None
+
+
+def _clean_properties(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove null, empty string, and internal fields from properties."""
+    cleaned = {}
+    skip_keys = {"id", "company_id", "creator_user_id", "owner_id", "user_id"}
+    for key, value in data.items():
+        if key in skip_keys:
+            continue
+        if value is None or value == "":
+            continue
+        if isinstance(value, dict) and set(value.keys()) <= {"id", "name", "value"}:
+            continue
+        cleaned[key] = value
+    return cleaned
+
+
+def _build_record_url(
+    company_domain: Optional[str], record_type: str, record_id: str
+) -> Optional[str]:
+    """Build a Pipedrive UI URL for the given record."""
+    if not company_domain:
+        return None
+    base = f"https://{company_domain}.pipedrive.com"
+    url_patterns = {
+        "person": f"{base}/person/{record_id}",
+        "organization": f"{base}/organization/{record_id}",
+        "deal": f"{base}/deal/{record_id}",
+        "activity": f"{base}/activities/list/user/everyone/filter/all/activity/{record_id}",
+        "product": f"{base}/settings/products",
+        "lead": f"{base}/leads/inbox/{record_id}",
+    }
+    return url_patterns.get(record_type, f"{base}/{record_type}/{record_id}")
 
 
 class PipedrivePersonEntity(BaseEntity):
@@ -110,6 +141,72 @@ class PipedrivePersonEntity(BaseEntity):
         """Normalize Pipedrive datetime inputs to timezone-aware datetimes."""
         return parse_pipedrive_datetime(value)
 
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, company_domain: Optional[str] = None
+    ) -> "PipedrivePersonEntity":
+        """Construct from a Pipedrive API persons response."""
+        person_id = str(data.get("id"))
+        name = data.get("name") or f"Person {person_id}"
+
+        emails = data.get("email") or []
+        primary_email = None
+        if isinstance(emails, list) and emails:
+            primary_email = emails[0].get("value") if isinstance(emails[0], dict) else emails[0]
+        elif isinstance(emails, str):
+            primary_email = emails
+
+        phones = data.get("phone") or []
+        primary_phone = None
+        if isinstance(phones, list) and phones:
+            primary_phone = phones[0].get("value") if isinstance(phones[0], dict) else phones[0]
+        elif isinstance(phones, str):
+            primary_phone = phones
+
+        org_id = data.get("org_id")
+        org_name = None
+        if isinstance(org_id, dict):
+            org_name = org_id.get("name")
+            org_id = org_id.get("value")
+
+        created_time = parse_pipedrive_datetime(data.get("add_time")) or datetime.utcnow()
+        updated_time = parse_pipedrive_datetime(data.get("update_time")) or created_time
+
+        breadcrumbs: List[Breadcrumb] = []
+        if org_id and org_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(org_id),
+                    name=org_name,
+                    entity_type="PipedriveOrganizationEntity",
+                )
+            )
+
+        owner_id_raw = data.get("owner_id")
+        owner_id = owner_id_raw.get("id") if isinstance(owner_id_raw, dict) else owner_id_raw
+
+        return cls(
+            entity_id=f"person_{person_id}",
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=created_time,
+            updated_at=updated_time,
+            person_id=person_id,
+            display_name=name,
+            created_time=created_time,
+            updated_time=updated_time,
+            first_name=data.get("first_name"),
+            last_name=data.get("last_name"),
+            email=primary_email,
+            phone=primary_phone,
+            organization_id=org_id,
+            organization_name=org_name,
+            owner_id=owner_id,
+            properties=_clean_properties(data),
+            active_flag=data.get("active_flag", True),
+            web_url_value=_build_record_url(company_domain, "person", person_id),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Link to the Pipedrive person UI."""
@@ -164,6 +261,38 @@ class PipedriveOrganizationEntity(BaseEntity):
     def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
         """Normalize Pipedrive datetime inputs to timezone-aware datetimes."""
         return parse_pipedrive_datetime(value)
+
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, company_domain: Optional[str] = None
+    ) -> "PipedriveOrganizationEntity":
+        """Construct from a Pipedrive API organizations response."""
+        org_id = str(data.get("id"))
+        name = data.get("name") or f"Organization {org_id}"
+
+        created_time = parse_pipedrive_datetime(data.get("add_time")) or datetime.utcnow()
+        updated_time = parse_pipedrive_datetime(data.get("update_time")) or created_time
+
+        owner_id_raw = data.get("owner_id")
+        owner_id = owner_id_raw.get("id") if isinstance(owner_id_raw, dict) else owner_id_raw
+
+        return cls(
+            entity_id=f"organization_{org_id}",
+            breadcrumbs=[],
+            name=name,
+            created_at=created_time,
+            updated_at=updated_time,
+            organization_id=org_id,
+            organization_name=name,
+            created_time=created_time,
+            updated_time=updated_time,
+            address=data.get("address"),
+            owner_id=owner_id,
+            people_count=data.get("people_count"),
+            properties=_clean_properties(data),
+            active_flag=data.get("active_flag", True),
+            web_url_value=_build_record_url(company_domain, "organization", org_id),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -247,6 +376,80 @@ class PipedriveDealEntity(BaseEntity):
     def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
         """Normalize Pipedrive datetime inputs to timezone-aware datetimes."""
         return parse_pipedrive_datetime(value)
+
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, company_domain: Optional[str] = None
+    ) -> "PipedriveDealEntity":
+        """Construct from a Pipedrive API deals response."""
+        deal_id = str(data.get("id"))
+        title = data.get("title") or f"Deal {deal_id}"
+
+        person_id = data.get("person_id")
+        person_name = None
+        if isinstance(person_id, dict):
+            person_name = person_id.get("name")
+            person_id = person_id.get("value")
+
+        org_id = data.get("org_id")
+        org_name = None
+        if isinstance(org_id, dict):
+            org_name = org_id.get("name")
+            org_id = org_id.get("value")
+
+        created_time = parse_pipedrive_datetime(data.get("add_time")) or datetime.utcnow()
+        updated_time = parse_pipedrive_datetime(data.get("update_time")) or created_time
+        expected_close = parse_pipedrive_datetime(data.get("expected_close_date"))
+
+        breadcrumbs: List[Breadcrumb] = []
+        if org_id and org_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(org_id),
+                    name=org_name,
+                    entity_type="PipedriveOrganizationEntity",
+                )
+            )
+        if person_id and person_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(person_id),
+                    name=person_name,
+                    entity_type="PipedrivePersonEntity",
+                )
+            )
+
+        owner_id_raw = data.get("user_id")
+        owner_id = owner_id_raw.get("id") if isinstance(owner_id_raw, dict) else owner_id_raw
+
+        return cls(
+            entity_id=f"deal_{deal_id}",
+            breadcrumbs=breadcrumbs,
+            name=title,
+            created_at=created_time,
+            updated_at=updated_time,
+            deal_id=deal_id,
+            deal_title=title,
+            created_time=created_time,
+            updated_time=updated_time,
+            value=data.get("value"),
+            currency=data.get("currency"),
+            status=data.get("status"),
+            stage_id=data.get("stage_id"),
+            stage_name=None,
+            pipeline_id=data.get("pipeline_id"),
+            pipeline_name=None,
+            person_id=person_id,
+            person_name=person_name,
+            organization_id=org_id,
+            organization_name=org_name,
+            owner_id=owner_id,
+            expected_close_date=expected_close,
+            probability=data.get("probability"),
+            properties=_clean_properties(data),
+            active_flag=data.get("active", True),
+            web_url_value=_build_record_url(company_domain, "deal", deal_id),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -333,6 +536,79 @@ class PipedriveActivityEntity(BaseEntity):
         """Normalize Pipedrive datetime inputs to timezone-aware datetimes."""
         return parse_pipedrive_datetime(value)
 
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, company_domain: Optional[str] = None
+    ) -> "PipedriveActivityEntity":
+        """Construct from a Pipedrive API activities response."""
+        activity_id = str(data.get("id"))
+        subject = data.get("subject") or f"Activity {activity_id}"
+
+        deal_id = data.get("deal_id")
+        deal_title = data.get("deal_title")
+        person_id = data.get("person_id")
+        person_name = data.get("person_name")
+        org_id = data.get("org_id")
+        org_name = data.get("org_name")
+
+        created_time = parse_pipedrive_datetime(data.get("add_time")) or datetime.utcnow()
+        updated_time = parse_pipedrive_datetime(data.get("update_time")) or created_time
+        due_date = parse_pipedrive_datetime(data.get("due_date"))
+
+        breadcrumbs: List[Breadcrumb] = []
+        if org_id and org_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(org_id),
+                    name=org_name,
+                    entity_type="PipedriveOrganizationEntity",
+                )
+            )
+        if person_id and person_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(person_id),
+                    name=person_name,
+                    entity_type="PipedrivePersonEntity",
+                )
+            )
+        if deal_id and deal_title:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(deal_id),
+                    name=deal_title,
+                    entity_type="PipedriveDealEntity",
+                )
+            )
+
+        return cls(
+            entity_id=f"activity_{activity_id}",
+            breadcrumbs=breadcrumbs,
+            name=subject,
+            created_at=created_time,
+            updated_at=updated_time,
+            activity_id=activity_id,
+            activity_subject=subject,
+            created_time=created_time,
+            updated_time=updated_time,
+            activity_type=data.get("type"),
+            due_date=due_date,
+            due_time=data.get("due_time"),
+            duration=data.get("duration"),
+            done=data.get("done", False),
+            note=data.get("note"),
+            deal_id=deal_id,
+            deal_title=deal_title,
+            person_id=person_id,
+            person_name=person_name,
+            organization_id=org_id,
+            organization_name=org_name,
+            owner_id=data.get("user_id"),
+            properties=_clean_properties(data),
+            active_flag=data.get("active_flag", True),
+            web_url_value=_build_record_url(company_domain, "activity", activity_id),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Link to the Pipedrive activity UI."""
@@ -399,6 +675,54 @@ class PipedriveProductEntity(BaseEntity):
     def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
         """Normalize Pipedrive datetime inputs to timezone-aware datetimes."""
         return parse_pipedrive_datetime(value)
+
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, company_domain: Optional[str] = None
+    ) -> "PipedriveProductEntity":
+        """Construct from a Pipedrive API products response."""
+        product_id = str(data.get("id"))
+        name = data.get("name") or f"Product {product_id}"
+
+        created_time = parse_pipedrive_datetime(data.get("add_time")) or datetime.utcnow()
+        updated_time = parse_pipedrive_datetime(data.get("update_time")) or created_time
+
+        prices: Dict[str, Any] = {}
+        if data.get("prices"):
+            for price in data.get("prices", []):
+                if isinstance(price, dict):
+                    currency = price.get("currency")
+                    if currency:
+                        prices[currency] = {
+                            "price": price.get("price"),
+                            "cost": price.get("cost"),
+                            "overhead_cost": price.get("overhead_cost"),
+                        }
+
+        owner_id_raw = data.get("owner_id")
+        owner_id = owner_id_raw.get("id") if isinstance(owner_id_raw, dict) else owner_id_raw
+
+        return cls(
+            entity_id=f"product_{product_id}",
+            breadcrumbs=[],
+            name=name,
+            created_at=created_time,
+            updated_at=updated_time,
+            product_id=product_id,
+            product_name=name,
+            created_time=created_time,
+            updated_time=updated_time,
+            code=data.get("code"),
+            description=data.get("description"),
+            unit=data.get("unit"),
+            tax=data.get("tax"),
+            category=data.get("category"),
+            owner_id=owner_id,
+            prices=prices,
+            properties=_clean_properties(data),
+            active_flag=data.get("active_flag", True),
+            web_url_value=_build_record_url(company_domain, "product", product_id),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -470,6 +794,77 @@ class PipedriveLeadEntity(BaseEntity):
     def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
         """Normalize Pipedrive datetime inputs to timezone-aware datetimes."""
         return parse_pipedrive_datetime(value)
+
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, company_domain: Optional[str] = None
+    ) -> "PipedriveLeadEntity":
+        """Construct from a Pipedrive API leads response."""
+        lead_id = str(data.get("id"))
+        title = data.get("title") or f"Lead {lead_id}"
+
+        person_id = data.get("person_id")
+        person_name = None
+        if isinstance(person_id, dict):
+            person_name = person_id.get("name")
+            person_id = person_id.get("value")
+
+        org_id = data.get("organization_id")
+        org_name = None
+        if isinstance(org_id, dict):
+            org_name = org_id.get("name")
+            org_id = org_id.get("value")
+
+        value_obj = data.get("value") or {}
+        value = value_obj.get("amount") if isinstance(value_obj, dict) else None
+        currency = value_obj.get("currency") if isinstance(value_obj, dict) else None
+
+        created_time = parse_pipedrive_datetime(data.get("add_time")) or datetime.utcnow()
+        updated_time = parse_pipedrive_datetime(data.get("update_time")) or created_time
+        expected_close = parse_pipedrive_datetime(data.get("expected_close_date"))
+
+        breadcrumbs: List[Breadcrumb] = []
+        if org_id and org_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(org_id),
+                    name=org_name,
+                    entity_type="PipedriveOrganizationEntity",
+                )
+            )
+        if person_id and person_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(person_id),
+                    name=person_name,
+                    entity_type="PipedrivePersonEntity",
+                )
+            )
+
+        return cls(
+            entity_id=f"lead_{lead_id}",
+            breadcrumbs=breadcrumbs,
+            name=title,
+            created_at=created_time,
+            updated_at=updated_time,
+            lead_id=lead_id,
+            lead_title=title,
+            created_time=created_time,
+            updated_time=updated_time,
+            value=value,
+            currency=currency,
+            expected_close_date=expected_close,
+            person_id=person_id,
+            person_name=person_name,
+            organization_id=org_id,
+            organization_name=org_name,
+            owner_id=data.get("owner_id"),
+            source_name=data.get("source_name"),
+            label_ids=data.get("label_ids"),
+            properties=_clean_properties(data),
+            is_archived=data.get("is_archived", False),
+            web_url_value=_build_record_url(company_domain, "lead", lead_id),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -549,6 +944,91 @@ class PipedriveNoteEntity(BaseEntity):
     def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
         """Normalize Pipedrive datetime inputs to timezone-aware datetimes."""
         return parse_pipedrive_datetime(value)
+
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, company_domain: Optional[str] = None
+    ) -> "PipedriveNoteEntity":
+        """Construct from a Pipedrive API notes response."""
+        note_id = str(data.get("id"))
+        content = data.get("content") or ""
+
+        title = content[:50].strip() if content else f"Note {note_id}"
+        if len(content) > 50:
+            title += "..."
+
+        deal_id = data.get("deal_id")
+        deal_title = None
+        if isinstance(data.get("deal"), dict):
+            deal_title = data["deal"].get("title")
+
+        person_id = data.get("person_id")
+        person_name = (
+            data.get("person", {}).get("name") if isinstance(data.get("person"), dict) else None
+        )
+
+        org_id = data.get("org_id")
+        org_name = (
+            data.get("organization", {}).get("name")
+            if isinstance(data.get("organization"), dict)
+            else None
+        )
+
+        created_time = parse_pipedrive_datetime(data.get("add_time")) or datetime.utcnow()
+        updated_time = parse_pipedrive_datetime(data.get("update_time")) or created_time
+
+        breadcrumbs: List[Breadcrumb] = []
+        if org_id and org_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(org_id),
+                    name=org_name,
+                    entity_type="PipedriveOrganizationEntity",
+                )
+            )
+        if person_id and person_name:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(person_id),
+                    name=person_name,
+                    entity_type="PipedrivePersonEntity",
+                )
+            )
+        if deal_id and deal_title:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=str(deal_id),
+                    name=deal_title,
+                    entity_type="PipedriveDealEntity",
+                )
+            )
+
+        return cls(
+            entity_id=f"note_{note_id}",
+            breadcrumbs=breadcrumbs,
+            name=title,
+            created_at=created_time,
+            updated_at=updated_time,
+            note_id=note_id,
+            note_title=title,
+            created_time=created_time,
+            updated_time=updated_time,
+            content=content,
+            deal_id=deal_id,
+            deal_title=deal_title,
+            person_id=person_id,
+            person_name=person_name,
+            organization_id=org_id,
+            organization_name=org_name,
+            lead_id=data.get("lead_id"),
+            user_id=data.get("user_id"),
+            pinned_to_deal_flag=data.get("pinned_to_deal_flag", False),
+            pinned_to_person_flag=data.get("pinned_to_person_flag", False),
+            pinned_to_organization_flag=data.get("pinned_to_organization_flag", False),
+            properties=_clean_properties(data),
+            active_flag=data.get("active_flag", True),
+            web_url_value=None,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

@@ -22,12 +22,20 @@ Reference:
     https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-ancestors/
 """
 
-from typing import Any, Dict, Optional
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
+
+
+def _strip_html(html: str) -> str:
+    """Remove HTML tags, returning plain text."""
+    return re.sub(r"<[^>]+>", "", html)
 
 
 class ConfluenceSpaceEntity(BaseEntity):
@@ -67,6 +75,30 @@ class ConfluenceSpaceEntity(BaseEntity):
     site_url: Optional[str] = AirweaveField(
         None, description="Base Confluence site URL.", embeddable=False, unhashable=True
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        site_url: str = "",
+    ) -> ConfluenceSpaceEntity:
+        """Build from a Confluence API space JSON object."""
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=[],
+            name=data.get("name"),
+            created_at=data.get("createdAt"),
+            updated_at=data.get("updatedAt"),
+            space_id=data["id"],
+            space_name=data["name"],
+            space_key=data["key"],
+            space_type=data.get("type"),
+            description=data.get("description"),
+            status=data.get("status"),
+            homepage_id=data.get("homepageId"),
+            site_url=site_url,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -124,6 +156,42 @@ class ConfluencePageEntity(FileEntity):
         None, description="Base Confluence site URL.", embeddable=False, unhashable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        space_key: str,
+        site_url: str = "",
+        base_url: str = "",
+    ) -> ConfluencePageEntity:
+        """Build from a Confluence API page-detail JSON object (with body-format=storage)."""
+        body_content = data.get("body", {}).get("storage", {}).get("value", "")
+        page_title = data.get("title", "Untitled Page")
+        page_id = data["id"]
+
+        return cls(
+            entity_id=page_id,
+            breadcrumbs=breadcrumbs,
+            name=page_title,
+            created_at=data.get("createdAt"),
+            updated_at=data.get("updatedAt"),
+            url=f"{base_url}/wiki/api/v2/pages/{page_id}" if base_url else "",
+            size=0,
+            file_type="html",
+            mime_type="text/html",
+            local_path=None,
+            content_id=page_id,
+            title=data.get("title", "Untitled"),
+            space_id=data.get("space", {}).get("id"),
+            space_key=space_key,
+            body=body_content,
+            version=data.get("version", {}).get("number"),
+            status=data.get("status"),
+            site_url=site_url,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Construct clickable web URL for this page."""
@@ -172,6 +240,32 @@ class ConfluenceBlogPostEntity(BaseEntity):
         None, description="Base Confluence site URL.", embeddable=False, unhashable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        space_key: Optional[str] = None,
+        site_url: Optional[str] = None,
+    ) -> ConfluenceBlogPostEntity:
+        """Build from a Confluence API blog-post JSON object."""
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=breadcrumbs,
+            name=data.get("title", "Untitled Blog Post"),
+            created_at=data.get("createdAt"),
+            updated_at=data.get("updatedAt"),
+            content_id=data["id"],
+            title=data.get("title"),
+            space_id=data.get("spaceId"),
+            space_key=space_key,
+            body=data.get("body", {}).get("storage", {}).get("value"),
+            version=data.get("version", {}).get("number"),
+            status=data.get("status"),
+            site_url=site_url,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Construct clickable web URL for this blog post."""
@@ -217,11 +311,45 @@ class ConfluenceCommentEntity(BaseEntity):
         None, description="Base Confluence site URL.", embeddable=False, unhashable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        parent_space_key: Optional[str] = None,
+        site_url: Optional[str] = None,
+    ) -> ConfluenceCommentEntity:
+        """Build from a Confluence API inline-comment JSON object."""
+        comment_text = data.get("body", {}).get("storage", {}).get("value", "")
+        text_preview = _strip_html(comment_text)[:50]
+        name = text_preview + "..." if len(text_preview) == 50 else text_preview
+        if not name:
+            name = f"Comment {data['id']}"
+
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=data.get("createdAt"),
+            updated_at=data.get("updatedAt"),
+            comment_id=data["id"],
+            parent_content_id=data.get("container", {}).get("id"),
+            parent_space_key=parent_space_key,
+            text=comment_text,
+            created_by=data.get("createdBy"),
+            status=data.get("status"),
+            site_url=site_url,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Construct clickable web URL for the parent page (comments don't have direct URLs)."""
         if self.site_url and self.parent_space_key and self.parent_content_id:
-            return f"{self.site_url}/wiki/spaces/{self.parent_space_key}/pages/{self.parent_content_id}#comment-{self.comment_id}"
+            return (
+                f"{self.site_url}/wiki/spaces/{self.parent_space_key}"
+                f"/pages/{self.parent_content_id}#comment-{self.comment_id}"
+            )
         return f"https://your-domain.atlassian.net/wiki/spaces/SPACE/pages/PAGE#comment-{self.comment_id}"
 
 
@@ -255,6 +383,28 @@ class ConfluenceDatabaseEntity(BaseEntity):
         None, description="Status of the database content item.", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        space_key: str,
+    ) -> ConfluenceDatabaseEntity:
+        """Build from a Confluence API database JSON object."""
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=breadcrumbs,
+            name=data.get("title", "Untitled Database"),
+            created_at=data.get("createdAt"),
+            updated_at=data.get("updatedAt"),
+            content_id=data["id"],
+            title=data.get("title"),
+            space_key=space_key,
+            description=data.get("description"),
+            status=data.get("status"),
+        )
+
 
 class ConfluenceFolderEntity(BaseEntity):
     """Schema for a Confluence Folder object.
@@ -282,6 +432,27 @@ class ConfluenceFolderEntity(BaseEntity):
     status: Optional[str] = AirweaveField(
         None, description="Status of the folder (e.g., 'current').", embeddable=False
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        space_key: str,
+    ) -> ConfluenceFolderEntity:
+        """Build from a Confluence API folder JSON object."""
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=breadcrumbs,
+            name=data.get("title", "Untitled Folder"),
+            created_at=data.get("createdAt"),
+            updated_at=data.get("updatedAt"),
+            content_id=data["id"],
+            title=data.get("title"),
+            space_key=space_key,
+            status=data.get("status"),
+        )
 
 
 class ConfluenceLabelEntity(BaseEntity):
@@ -314,6 +485,24 @@ class ConfluenceLabelEntity(BaseEntity):
     site_url: Optional[str] = AirweaveField(
         None, description="Base Confluence site URL.", embeddable=False, unhashable=True
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+    ) -> ConfluenceLabelEntity:
+        """Build from a Confluence API label JSON object."""
+        return cls(
+            entity_id=data["id"],
+            breadcrumbs=[],
+            name=data.get("name"),
+            created_at=None,
+            updated_at=None,
+            label_id=data["id"],
+            label_name=data["name"],
+            label_type=data.get("type"),
+            owner_id=data.get("ownerId"),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

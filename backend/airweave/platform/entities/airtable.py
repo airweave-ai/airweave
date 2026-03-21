@@ -1,12 +1,32 @@
 """Airtable entity schemas."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
+
+
+def _find_primary_field(fields: List[Dict[str, Any]]) -> Optional[str]:
+    """Return the name of the primary field from a table's field definitions."""
+    for field in fields:
+        if field.get("type") == "primaryField" or field.get("isPrimary"):
+            return field.get("name")
+    return fields[0].get("name") if fields else None
+
+
+def _extract_record_name(record_id: str, fields: Dict[str, Any]) -> str:
+    """Pick a human-readable name from the first non-empty field value."""
+    for value in fields.values():
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:100]
+        if value and not isinstance(value, (dict, list)):
+            return str(value)[:100]
+    return record_id
 
 
 class AirtableUserEntity(BaseEntity):
@@ -21,6 +41,19 @@ class AirtableUserEntity(BaseEntity):
     scopes: Optional[List[str]] = AirweaveField(
         default=None, description="OAuth scopes granted to the token", embeddable=False
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> AirtableUserEntity:
+        """Construct from Airtable ``/meta/whoami`` response."""
+        user_id = data.get("id", "unknown")
+        email = data.get("email")
+        return cls(
+            user_id=user_id,
+            display_name=email or user_id,
+            breadcrumbs=[],
+            email=email,
+            scopes=data.get("scopes"),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -43,6 +76,18 @@ class AirtableBaseEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> AirtableBaseEntity:
+        """Construct from a base dict in the ``/meta/bases`` response."""
+        base_id = data["id"]
+        return cls(
+            base_id=base_id,
+            breadcrumbs=[],
+            name=data.get("name", base_id),
+            permission_level=data.get("permissionLevel"),
+            url=f"https://airtable.com/{base_id}",
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -70,6 +115,28 @@ class AirtableTableEntity(BaseEntity):
         None, description="Number of views in this table", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        base_id: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> AirtableTableEntity:
+        """Construct from a table dict in the ``/meta/bases/{id}/tables`` response."""
+        table_id = data["id"]
+        fields = data.get("fields", [])
+        return cls(
+            table_id=table_id,
+            breadcrumbs=list(breadcrumbs),
+            name=data.get("name") or table_id,
+            base_id=base_id,
+            description=data.get("description"),
+            fields_schema=fields,
+            primary_field_name=_find_primary_field(fields),
+            view_count=len(data.get("views", [])),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Link back to the table inside the base."""
@@ -93,6 +160,30 @@ class AirtableRecordEntity(BaseEntity):
     fields: Dict[str, Any] = AirweaveField(
         default_factory=dict, description="Raw Airtable fields map", embeddable=True
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        base_id: str,
+        table_id: str,
+        table_name: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> AirtableRecordEntity:
+        """Construct from a record dict in the list-records response."""
+        record_id = data["id"]
+        fields = data.get("fields", {})
+        return cls(
+            record_id=record_id,
+            breadcrumbs=list(breadcrumbs),
+            name=_extract_record_name(record_id, fields),
+            created_at=data.get("createdTime"),
+            base_id=base_id,
+            table_id=table_id,
+            table_name=table_name,
+            fields=fields,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -124,6 +215,36 @@ class AirtableCommentEntity(BaseEntity):
         None, description="Author display name", embeddable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        record_id: str,
+        base_id: str,
+        table_id: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> AirtableCommentEntity:
+        """Construct from a comment dict in the list-comments response."""
+        comment_id = data["id"]
+        text = data.get("text", "")
+        preview = text[:50] + "..." if len(text) > 50 else text
+        author = data.get("author", {})
+        return cls(
+            comment_id=comment_id,
+            breadcrumbs=list(breadcrumbs),
+            name=preview or f"Comment {comment_id}",
+            created_at=data.get("createdTime"),
+            updated_at=data.get("lastUpdatedTime"),
+            record_id=record_id,
+            base_id=base_id,
+            table_id=table_id,
+            text=text,
+            author_id=author.get("id"),
+            author_email=author.get("email"),
+            author_name=author.get("name"),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Link to the parent record where the comment resides."""
@@ -145,6 +266,44 @@ class AirtableAttachmentEntity(FileEntity):
     field_name: str = AirweaveField(
         ..., description="Field name that contains this attachment", embeddable=True
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        base_id: str,
+        table_id: str,
+        table_name: str,
+        record_id: str,
+        field_name: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> Optional[AirtableAttachmentEntity]:
+        """Construct from an attachment dict. Returns None if no download URL."""
+        url = data.get("url")
+        if not url:
+            return None
+
+        att_id = data.get("id", f"{record_id}:{field_name}")
+        filename = data.get("filename") or data.get("name") or "attachment"
+        mime_type = data.get("type") or "application/octet-stream"
+        file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
+
+        return cls(
+            attachment_id=att_id,
+            breadcrumbs=list(breadcrumbs),
+            name=filename,
+            url=url,
+            size=data.get("size", 0),
+            file_type=file_type,
+            mime_type=mime_type,
+            local_path=None,
+            base_id=base_id,
+            table_id=table_id,
+            table_name=table_name,
+            record_id=record_id,
+            field_name=field_name,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

@@ -39,6 +39,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: pytest-unit
+        name: pytest (unit)
+        entry: bash -c 'cd backend && poetry run pytest tests/unit -q --no-cov'
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+  - repo: local
+    hooks:
       - id: eslint
         name: eslint
         entry: bash -c 'cd frontend && npx eslint'

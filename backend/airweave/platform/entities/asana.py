@@ -1,12 +1,14 @@
 """Asana entity schemas."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import Field, computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
 
 
 class AsanaWorkspaceEntity(BaseEntity):
@@ -23,6 +25,15 @@ class AsanaWorkspaceEntity(BaseEntity):
         description="URL to access the workspace in the Asana application",
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> AsanaWorkspaceEntity:
+        """Construct from Asana API response dict."""
+        return cls(
+            **data,
+            breadcrumbs=[],
+            permalink_url=data.get("permalink_url") or f"https://app.asana.com/0/{data['gid']}",
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -119,6 +130,22 @@ class AsanaProjectEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        workspace: Dict[str, Any],
+        breadcrumbs: list[Breadcrumb],
+    ) -> AsanaProjectEntity:
+        """Construct from Asana API response dict."""
+        return cls(
+            **data,
+            breadcrumbs=breadcrumbs,
+            workspace_gid=workspace["gid"],
+            workspace_name=workspace["name"],
+            is_public=data.get("public", False),
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Construct clickable web URL for this project."""
@@ -144,10 +171,19 @@ class AsanaSectionEntity(BaseEntity):
         embeddable=True,
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        project_gid: str,
+        breadcrumbs: list[Breadcrumb],
+    ) -> AsanaSectionEntity:
+        """Construct from Asana API response dict."""
+        return cls(**data, project_gid=project_gid, breadcrumbs=breadcrumbs)
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Construct clickable web URL for this section's project."""
-        # Sections don't have direct URLs, return project URL
         return f"https://app.asana.com/0/{self.project_gid}/list"
 
 
@@ -269,6 +305,22 @@ class AsanaTaskEntity(BaseEntity):
         None, description="The workspace this task is associated with", embeddable=True
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        project_gid: str,
+        breadcrumbs: list[Breadcrumb],
+        section_gid: str | None = None,
+    ) -> AsanaTaskEntity:
+        """Construct from Asana API response dict."""
+        return cls(
+            **data,
+            project_gid=project_gid,
+            section_gid=section_gid,
+            breadcrumbs=breadcrumbs,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Construct clickable web URL for this task."""
@@ -311,12 +363,24 @@ class AsanaCommentEntity(BaseEntity):
         default_factory=list, description="Previews of attachments referenced in the comment"
     )
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        task_gid: str,
+        breadcrumbs: list[Breadcrumb],
+    ) -> AsanaCommentEntity:
+        """Construct from Asana API story response dict (filtered to comments)."""
+        return cls(
+            **data,
+            task_gid=task_gid,
+            author=data["created_by"],
+            breadcrumbs=breadcrumbs,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
-        """Construct clickable web URL for the parent task (comments don't have direct URLs)."""
-        # Comments don't have direct URLs, return parent task URL
-        # We'll need to store project_gid separately or construct differently
-        # For now, return a task-only URL (won't work without project context)
+        """Construct clickable web URL for the parent task."""
         return f"https://app.asana.com/0/0/{self.task_gid}"
 
 

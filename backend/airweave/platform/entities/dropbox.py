@@ -1,11 +1,13 @@
 """Dropbox entity schemas."""
 
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
 
 
 class DropboxAccountEntity(BaseEntity):
@@ -97,6 +99,40 @@ class DropboxAccountEntity(BaseEntity):
         """Link to Dropbox home."""
         return "https://www.dropbox.com/home"
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> DropboxAccountEntity:
+        """Build from a Dropbox /users/get_current_account API response."""
+        name_data = data.get("name", {})
+        space_usage = data.get("space_usage")
+        account_type_obj = data.get("account_type")
+
+        return cls(
+            breadcrumbs=[],
+            account_id=data.get("account_id") or "dropbox-account",
+            display_name=name_data.get("display_name") or "Dropbox Account",
+            abbreviated_name=name_data.get("abbreviated_name"),
+            familiar_name=name_data.get("familiar_name"),
+            given_name=name_data.get("given_name"),
+            surname=name_data.get("surname"),
+            email=data.get("email"),
+            email_verified=data.get("email_verified", False),
+            disabled=data.get("disabled", False),
+            account_type=account_type_obj.get(".tag") if account_type_obj else None,
+            is_teammate=data.get("is_teammate", False),
+            is_paired=data.get("is_paired", False),
+            team_member_id=data.get("team_member_id"),
+            locale=data.get("locale"),
+            country=data.get("country"),
+            profile_photo_url=data.get("profile_photo_url"),
+            referral_link=data.get("referral_link"),
+            space_used=space_usage.get("used") if space_usage else None,
+            space_allocated=(
+                space_usage.get("allocation", {}).get("allocated") if space_usage else None
+            ),
+            team_info=data.get("team"),
+            root_info=data.get("root_info"),
+        )
+
 
 class DropboxFolderEntity(BaseEntity):
     """Schema for Dropbox folder entities matching the Dropbox API.
@@ -145,6 +181,27 @@ class DropboxFolderEntity(BaseEntity):
         """Web URL pointing to the folder in Dropbox."""
         path = self.path_display or ""
         return f"https://www.dropbox.com/home{path}"
+
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, breadcrumbs: list[Breadcrumb]
+    ) -> DropboxFolderEntity:
+        """Build from a Dropbox files/list_folder entry with .tag == 'folder'."""
+        folder_id = data.get("id", "")
+        folder_path = data.get("path_lower", "")
+        sharing_info = data.get("sharing_info", {})
+        return cls(
+            id=folder_id if folder_id else f"folder-{folder_path}",
+            breadcrumbs=breadcrumbs,
+            name=data.get("name", "Unnamed Folder"),
+            path_lower=data.get("path_lower"),
+            path_display=data.get("path_display"),
+            sharing_info=sharing_info,
+            read_only=sharing_info.get("read_only", False),
+            traverse_only=sharing_info.get("traverse_only", False),
+            no_access=sharing_info.get("no_access", False),
+            property_groups=data.get("property_groups"),
+        )
 
 
 class DropboxFileEntity(FileEntity):

@@ -3,21 +3,53 @@
 from urllib.parse import urlparse
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
+from airweave.domains.sources.exceptions import SourceEntityNotFoundError
 from airweave.platform.configs.config import IntercomConfig
 from airweave.platform.entities.intercom import (
     IntercomConversationEntity,
     IntercomConversationMessageEntity,
     IntercomTicketEntity,
 )
-from airweave.platform.sources.intercom import (
-    IntercomSource,
-    _now,
-    _parse_timestamp,
+from airweave.platform.entities.intercom import (
+    _parse_intercom_ts as _parse_timestamp,
     _strip_html,
 )
+from airweave.platform.sources.intercom import IntercomSource
+
+
+def _mock_auth(token="token-123"):
+    auth = AsyncMock()
+    auth.get_token = AsyncMock(return_value=token)
+    auth.supports_refresh = True
+    auth.provider_kind = "oauth"
+    return auth
+
+
+def _mock_logger():
+    return MagicMock()
+
+
+def _mock_http_client():
+    return AsyncMock()
+
+
+async def _make_intercom_source(config: IntercomConfig | None = None):
+    cfg = config if config is not None else IntercomConfig()
+    return await IntercomSource.create(
+        auth=_mock_auth(),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=cfg,
+    )
+
+
+def _now():
+    """Replacement for removed helper — UTC now."""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -27,28 +59,23 @@ from airweave.platform.sources.intercom import (
 
 @pytest.mark.asyncio
 async def test_create_stores_token_and_config():
-    """create() should set access_token and exclude_closed_conversations from config."""
-    source = await IntercomSource.create("token-123", {"exclude_closed_conversations": True})
-    assert source.access_token == "token-123"
-    assert source.exclude_closed_conversations is True
+    """create() should set _exclude_closed from IntercomConfig."""
+    source = await IntercomSource.create(
+        auth=_mock_auth("token-123"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=IntercomConfig(exclude_closed_conversations=True),
+    )
+    assert source._exclude_closed is True
 
 
 @pytest.mark.asyncio
 async def test_create_defaults_exclude_closed():
-    """create() with no config should set exclude_closed_conversations to False."""
-    source = await IntercomSource.create("token", None)
-    assert source.exclude_closed_conversations is False
-    source2 = await IntercomSource.create("token", {})
-    assert source2.exclude_closed_conversations is False
-
-
-@pytest.mark.asyncio
-async def test_create_raises_when_no_token():
-    """create() should raise ValueError when access_token is empty."""
-    with pytest.raises(ValueError, match="Access token is required"):
-        await IntercomSource.create("", None)
-    with pytest.raises(ValueError, match="Access token is required"):
-        await IntercomSource.create(None, None)
+    """create() with default config should set _exclude_closed to False."""
+    source = await _make_intercom_source(IntercomConfig())
+    assert source._exclude_closed is False
+    source2 = await _make_intercom_source(IntercomConfig(exclude_closed_conversations=False))
+    assert source2._exclude_closed is False
 
 
 # ---------------------------------------------------------------------------
@@ -92,14 +119,14 @@ def test_now_returns_utc():
 
 
 # ---------------------------------------------------------------------------
-# _get_auth_headers, _build_conversation_url, _build_ticket_url
+# _build_conversation_url, _build_ticket_url
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_build_conversation_url():
     """_build_conversation_url should return Intercom app URL."""
-    source = await IntercomSource.create("t", None)
+    source = await _make_intercom_source()
     url = source._build_conversation_url("12345")
     parsed = urlparse(url)
     assert parsed.hostname == "app.intercom.com"
@@ -111,7 +138,7 @@ async def test_build_conversation_url():
 @pytest.mark.asyncio
 async def test_build_ticket_url():
     """_build_ticket_url should return Intercom tickets URL."""
-    source = await IntercomSource.create("t", None)
+    source = await _make_intercom_source()
     url = source._build_ticket_url("ticket-99")
     parsed = urlparse(url)
     assert parsed.hostname == "app.intercom.com"
@@ -127,17 +154,13 @@ async def test_build_ticket_url():
 
 @pytest.mark.asyncio
 async def test_validate_success():
-    """validate() should return True when GET /me returns 200."""
-    source = await IntercomSource.create("valid-token", None)
+    """validate() should complete when GET /me returns 200."""
+    source = await _make_intercom_source()
 
-    with patch.object(source, "_validate_oauth2", new_callable=AsyncMock) as mock_validate:
-        mock_validate.return_value = True
-        result = await source.validate()
-    assert result is True
-    mock_validate.assert_called_once()
-    call_kw = mock_validate.call_args[1]
-    assert call_kw["ping_url"] == "https://api.intercom.io/me"
-    assert "Intercom-Version" in (call_kw.get("headers") or {})
+    with patch.object(source, "_get", new_callable=AsyncMock, return_value={}) as mock_get:
+        await source.validate()
+    mock_get.assert_awaited_once()
+    assert mock_get.call_args[0][0] == "https://api.intercom.io/me"
 
 
 # ---------------------------------------------------------------------------
@@ -148,8 +171,8 @@ async def test_validate_success():
 @pytest.mark.asyncio
 async def test_generate_conversations_maps_api_to_entity():
     """Conversation list payload should map to IntercomConversationEntity."""
-    source = await IntercomSource.create("t", None)
-    source.exclude_closed_conversations = False
+    source = await _make_intercom_source()
+    source._exclude_closed = False
 
     list_response = {
         "conversations": [
@@ -170,7 +193,7 @@ async def test_generate_conversations_maps_api_to_entity():
         "pages": {},
     }
 
-    async def fake_get(client, url, params=None):
+    async def fake_get(url, params=None):
         if "/conversations?" in url or url.endswith("/conversations"):
             return list_response
         if "/conversations/1911149811" in url:
@@ -192,8 +215,8 @@ async def test_generate_conversations_maps_api_to_entity():
         raise ValueError(f"Unexpected URL: {url}")
 
     entities = []
-    with patch.object(source, "_get_with_auth", side_effect=fake_get):
-        async for entity in source._generate_conversations(AsyncMock()):
+    with patch.object(source, "_get", side_effect=fake_get):
+        async for entity in source._generate_conversations():
             entities.append(entity)
 
     conv_entities = [e for e in entities if isinstance(e, IntercomConversationEntity)]
@@ -218,7 +241,9 @@ async def test_generate_conversations_maps_api_to_entity():
 @pytest.mark.asyncio
 async def test_generate_conversations_skips_closed_when_configured():
     """When exclude_closed_conversations is True, closed conversations are skipped."""
-    source = await IntercomSource.create("t", {"exclude_closed_conversations": True})
+    source = await _make_intercom_source(
+        IntercomConfig(exclude_closed_conversations=True),
+    )
 
     list_response = {
         "conversations": [
@@ -230,7 +255,7 @@ async def test_generate_conversations_skips_closed_when_configured():
 
     call_count = 0
 
-    async def fake_get(client, url, params=None):
+    async def fake_get(url, params=None):
         nonlocal call_count
         if "conversations?" in url or url.rstrip("/").endswith("conversations"):
             return list_response
@@ -240,8 +265,8 @@ async def test_generate_conversations_skips_closed_when_configured():
         return {"conversation_parts": {"conversation_parts": []}}
 
     entities = []
-    with patch.object(source, "_get_with_auth", side_effect=fake_get):
-        async for entity in source._generate_conversations(AsyncMock()):
+    with patch.object(source, "_get", side_effect=fake_get):
+        async for entity in source._generate_conversations():
             entities.append(entity)
 
     conv_entities = [e for e in entities if isinstance(e, IntercomConversationEntity)]
@@ -259,7 +284,7 @@ async def test_generate_conversations_skips_closed_when_configured():
 @pytest.mark.asyncio
 async def test_generate_tickets_maps_api_to_entity():
     """Tickets search payload should map to IntercomTicketEntity."""
-    source = await IntercomSource.create("t", None)
+    source = await _make_intercom_source()
 
     search_response = {
         "tickets": [
@@ -278,15 +303,15 @@ async def test_generate_tickets_maps_api_to_entity():
         "pages": {},
     }
 
-    async def fake_post(client, url, json_body):
+    async def fake_post(url, json_body):
         assert "tickets/search" in url
         return search_response
 
     entities = []
-    with patch.object(source, "_post_with_auth", side_effect=fake_post), patch.object(
+    with patch.object(source, "_post", side_effect=fake_post), patch.object(
         source, "_get_ticket_parts", new_callable=AsyncMock, return_value=[]
     ):
-        async for entity in source._generate_tickets(AsyncMock()):
+        async for entity in source._generate_tickets():
             entities.append(entity)
 
     assert len(entities) == 1
@@ -305,18 +330,14 @@ async def test_generate_tickets_maps_api_to_entity():
 @pytest.mark.asyncio
 async def test_generate_tickets_handles_404_gracefully():
     """_generate_tickets should not raise when tickets API returns 404 (e.g. plan)."""
-    source = await IntercomSource.create("t", None)
+    source = await _make_intercom_source()
 
-    async def fake_post_404(client, url, json_body):
-        raise httpx.HTTPStatusError(
-            "Not Found",
-            request=MagicMock(),
-            response=MagicMock(status_code=404),
-        )
+    async def fake_post_404(url, json_body):
+        raise SourceEntityNotFoundError("Not found (404)", source_short_name="intercom")
 
     entities = []
-    with patch.object(source, "_post_with_auth", side_effect=fake_post_404):
-        async for entity in source._generate_tickets(AsyncMock()):
+    with patch.object(source, "_post", side_effect=fake_post_404):
+        async for entity in source._generate_tickets():
             entities.append(entity)
     assert len(entities) == 0
 

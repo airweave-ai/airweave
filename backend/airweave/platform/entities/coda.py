@@ -4,13 +4,28 @@ Maps Coda API resources (docs, pages, tables, rows) to Airweave entities
 for hybrid documentation and database content.
 """
 
-from datetime import datetime
-from typing import Any, Dict, Optional
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse ISO datetime string to timezone-naive UTC datetime."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except (ValueError, AttributeError):
+        return None
 
 
 class CodaDocEntity(BaseEntity):
@@ -66,6 +81,26 @@ class CodaDocEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> CodaDocEntity:
+        """Build from a Coda API doc JSON object."""
+        workspace = data.get("workspace", {}) or {}
+        folder = data.get("folder", {}) or {}
+        doc_id = data.get("id") or ""
+        return cls(
+            entity_id=doc_id,
+            breadcrumbs=[],
+            doc_id=doc_id,
+            name=data.get("name") or "Untitled",
+            owner=data.get("owner"),
+            owner_name=data.get("ownerName"),
+            created_at=_parse_dt(data.get("createdAt")),
+            updated_at=_parse_dt(data.get("updatedAt")),
+            workspace_name=workspace.get("name") if isinstance(workspace, dict) else None,
+            folder_name=folder.get("name") if isinstance(folder, dict) else None,
+            browser_link=data.get("browserLink") or "",
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:
@@ -131,6 +166,33 @@ class CodaPageEntity(BaseEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        doc_id: str,
+        doc_name: str,
+        breadcrumbs: List[Breadcrumb],
+        content: Optional[str] = None,
+    ) -> CodaPageEntity:
+        """Build from a Coda API page JSON object."""
+        page_id = data.get("id") or ""
+        return cls(
+            entity_id=page_id,
+            breadcrumbs=breadcrumbs,
+            page_id=page_id,
+            name=data.get("name") or "Untitled",
+            subtitle=data.get("subtitle"),
+            doc_id=doc_id,
+            doc_name=doc_name,
+            content=content or None,
+            content_type=data.get("contentType"),
+            created_at=_parse_dt(data.get("createdAt")),
+            updated_at=_parse_dt(data.get("updatedAt")),
+            browser_link=data.get("browserLink") or "",
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

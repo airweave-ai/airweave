@@ -13,13 +13,22 @@ References:
   • https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28 (PR review comments)
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, CodeFileEntity, DeletionEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, CodeFileEntity, DeletionEntity
+
+
+def _parse_gh_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Parse GitHub ISO8601 timestamps to timezone-aware datetimes."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 class GitHubRepositoryEntity(BaseEntity):
@@ -79,6 +88,27 @@ class GitHubRepositoryEntity(BaseEntity):
     def web_url(self) -> str:
         """Clickable GitHub page for the repository."""
         return f"https://github.com/{self.full_name}"
+
+    @classmethod
+    def from_api(cls, data: Dict[str, Any]) -> GitHubRepositoryEntity:
+        """Build from a GitHub API repository object."""
+        return cls(
+            breadcrumbs=[],
+            repo_id=data["id"],
+            name=data["name"],
+            created_at=_parse_gh_datetime(data["created_at"]),
+            updated_at=_parse_gh_datetime(data["updated_at"]),
+            full_name=data["full_name"],
+            description=data.get("description"),
+            default_branch=data["default_branch"],
+            language=data.get("language"),
+            fork=data["fork"],
+            size=data["size"],
+            stars_count=data.get("stargazers_count"),
+            watchers_count=data.get("watchers_count"),
+            forks_count=data.get("forks_count"),
+            open_issues_count=data.get("open_issues_count"),
+        )
 
 
 class GitHubDirectoryEntity(BaseEntity):
@@ -233,6 +263,52 @@ class GitHubPullRequestEntity(BaseEntity):
         """Clickable URL for the pull request."""
         return self.web_url_value or ""
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        repo_name: str,
+        repo_owner: str,
+        changed_files_list: Optional[List[str]] = None,
+        breadcrumbs: List[Breadcrumb],
+    ) -> GitHubPullRequestEntity:
+        """Build from a GitHub API pull request object."""
+        pr_number = data["number"]
+        full_repo = f"{repo_owner}/{repo_name}"
+
+        labels = [lbl["name"] for lbl in data.get("labels", []) if lbl.get("name")]
+        assignees = [a["login"] for a in data.get("assignees", []) if a.get("login")]
+        reviewers = [
+            r["login"] for r in data.get("requested_reviewers", []) if r.get("login")
+        ]
+
+        return cls(
+            breadcrumbs=breadcrumbs,
+            pr_id=f"{full_repo}#{pr_number}",
+            title=data["title"],
+            body=data.get("body"),
+            number=pr_number,
+            state=data["state"],
+            author=data.get("user", {}).get("login"),
+            labels=labels or None,
+            assignees=assignees or None,
+            reviewers=reviewers or None,
+            base_branch=data.get("base", {}).get("ref"),
+            head_branch=data.get("head", {}).get("ref"),
+            additions=data.get("additions"),
+            deletions=data.get("deletions"),
+            changed_files=data.get("changed_files"),
+            changed_files_list=changed_files_list,
+            merge_commit_sha=data.get("merge_commit_sha"),
+            created_time=_parse_gh_datetime(data["created_at"]),
+            updated_time=_parse_gh_datetime(data["updated_at"]),
+            merged_at=_parse_gh_datetime(data.get("merged_at")),
+            repo_name=repo_name,
+            repo_owner=repo_owner,
+            web_url_value=data.get("html_url"),
+        )
+
 
 class GitHubPRCommentEntity(BaseEntity):
     """Schema for a review comment on a GitHub pull request.
@@ -285,6 +361,47 @@ class GitHubPRCommentEntity(BaseEntity):
     def web_url(self) -> str:
         """Clickable URL for the review comment."""
         return self.web_url_value or ""
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        repo_name: str,
+        repo_owner: str,
+        pr_number: int,
+        breadcrumbs: List[Breadcrumb],
+    ) -> GitHubPRCommentEntity:
+        """Build from a GitHub API review comment object."""
+        comment_id = data["id"]
+        author = data.get("user", {}).get("login", "unknown")
+        path = data.get("path", "")
+
+        label_parts = []
+        if author:
+            label_parts.append(author)
+        if path:
+            label_parts.append(path)
+        label = (
+            f"Comment by {' on '.join(label_parts)}" if label_parts else f"Comment {comment_id}"
+        )
+
+        full_repo = f"{repo_owner}/{repo_name}"
+        return cls(
+            breadcrumbs=breadcrumbs,
+            comment_id=f"{full_repo}#{pr_number}/comment/{comment_id}",
+            comment_label=label,
+            body=data.get("body"),
+            path=path,
+            diff_hunk=data.get("diff_hunk"),
+            author=author,
+            pr_number=pr_number,
+            created_time=_parse_gh_datetime(data["created_at"]),
+            updated_time=_parse_gh_datetime(data["updated_at"]),
+            repo_name=repo_name,
+            repo_owner=repo_owner,
+            web_url_value=data.get("html_url"),
+        )
 
 
 class GithubRepoEntity(BaseEntity):

@@ -6,13 +6,46 @@ Zephyr Scale is a test management plugin for Jira that creates separate entities
 (Test Cases, Test Cycles, Test Plans) accessible via the Zephyr Scale API.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Parse Jira/Zephyr timestamp strings into aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _extract_text_from_adf(adf_data: Any) -> str:
+    """Extract plain text from Atlassian Document Format (ADF)."""
+    text_parts: List[str] = []
+
+    def extract_recursive(node: Any) -> None:
+        if isinstance(node, dict):
+            if node.get("type") == "text":
+                text_parts.append(node.get("text", ""))
+            elif node.get("type") == "emoji" and "text" in node.get("attrs", {}):
+                text_parts.append(node.get("attrs", {}).get("text", ""))
+            if "content" in node and isinstance(node["content"], list):
+                for child in node["content"]:
+                    extract_recursive(child)
+        elif isinstance(node, list):
+            for item in node:
+                extract_recursive(item)
+
+    extract_recursive(adf_data)
+    return " ".join(text_parts)
 
 
 class JiraProjectEntity(BaseEntity):
@@ -87,6 +120,57 @@ class JiraIssueEntity(BaseEntity):
         """UI link for the Jira issue."""
         return self.web_url_value or ""
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        project_breadcrumb: Breadcrumb,
+        project_key: str,
+        site_url: str | None = None,
+    ) -> JiraIssueEntity:
+        """Build a JiraIssueEntity from the raw Jira API response dict."""
+        fields = data.get("fields", {})
+        issue_key = data.get("key", "unknown")
+
+        issue_type_obj = fields.get("issuetype") or {}
+        issue_type_name = issue_type_obj.get("name") if issue_type_obj else None
+
+        status_obj = fields.get("status") or {}
+        status_name = status_obj.get("name") if status_obj else None
+
+        description = fields.get("description")
+        description_text = None
+        if description:
+            if isinstance(description, dict):
+                description_text = _extract_text_from_adf(description)
+            else:
+                description_text = description
+
+        issue_id = str(data["id"])
+        summary = fields.get("summary") or issue_key
+        created_time = _parse_datetime(fields.get("created")) or datetime.utcnow()
+        updated_time = _parse_datetime(fields.get("updated")) or created_time
+        web_url_value = f"{site_url}/browse/{issue_key}" if site_url else None
+
+        return cls(
+            entity_id=issue_id,
+            breadcrumbs=[project_breadcrumb],
+            name=summary,
+            created_at=created_time,
+            updated_at=updated_time,
+            issue_id=issue_id,
+            issue_key=issue_key,
+            summary=summary,
+            description=description_text,
+            status=status_name,
+            issue_type=issue_type_name,
+            project_key=project_key,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url_value,
+        )
+
 
 # =============================================================================
 # Zephyr Scale Entities
@@ -154,6 +238,51 @@ class ZephyrTestCaseEntity(BaseEntity):
         """UI link for the Zephyr Scale test case."""
         return self.web_url_value or ""
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        project_breadcrumb: Breadcrumb,
+        project_key: str,
+        site_url: str | None = None,
+    ) -> ZephyrTestCaseEntity:
+        """Build a ZephyrTestCaseEntity from the raw Zephyr Scale API response."""
+        key = data.get("key", "unknown")
+        tc_id = str(data.get("id", key))
+        created_time = _parse_datetime(data.get("createdOn")) or datetime.utcnow()
+        updated_time = _parse_datetime(data.get("updatedOn")) or created_time
+
+        status = data.get("status") or {}
+        priority = data.get("priority") or {}
+        folder = data.get("folder") or {}
+
+        web_url_value = (
+            f"{site_url}/plugins/servlet/ac/com.kanoah.test-manager/"
+            f"testcase-details?testCaseKey={key}"
+            if site_url
+            else None
+        )
+
+        return cls(
+            entity_id=tc_id,
+            breadcrumbs=[project_breadcrumb],
+            name=data.get("name", key),
+            created_at=created_time,
+            updated_at=updated_time,
+            test_case_id=tc_id,
+            test_case_key=key,
+            objective=data.get("objective"),
+            precondition=data.get("precondition"),
+            status_name=status.get("name") if isinstance(status, dict) else None,
+            priority_name=priority.get("name") if isinstance(priority, dict) else None,
+            folder_path=folder.get("name") if isinstance(folder, dict) else None,
+            project_key=project_key,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url_value,
+        )
+
 
 class ZephyrTestCycleEntity(BaseEntity):
     """Schema for a Zephyr Scale Test Cycle.
@@ -208,6 +337,48 @@ class ZephyrTestCycleEntity(BaseEntity):
         """UI link for the Zephyr Scale test cycle."""
         return self.web_url_value or ""
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        project_breadcrumb: Breadcrumb,
+        project_key: str,
+        site_url: str | None = None,
+    ) -> ZephyrTestCycleEntity:
+        """Build a ZephyrTestCycleEntity from the raw Zephyr Scale API response."""
+        key = data.get("key", "unknown")
+        tc_id = str(data.get("id", key))
+        created_time = _parse_datetime(data.get("createdOn")) or datetime.utcnow()
+        updated_time = _parse_datetime(data.get("updatedOn")) or created_time
+
+        status = data.get("status") or {}
+        folder = data.get("folder") or {}
+
+        web_url_value = (
+            f"{site_url}/plugins/servlet/ac/com.kanoah.test-manager/"
+            f"testcycle-details?testCycleKey={key}"
+            if site_url
+            else None
+        )
+
+        return cls(
+            entity_id=tc_id,
+            breadcrumbs=[project_breadcrumb],
+            name=data.get("name", key),
+            created_at=created_time,
+            updated_at=updated_time,
+            test_cycle_id=tc_id,
+            test_cycle_key=key,
+            description=data.get("description"),
+            status_name=status.get("name") if isinstance(status, dict) else None,
+            folder_path=folder.get("name") if isinstance(folder, dict) else None,
+            project_key=project_key,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url_value,
+        )
+
 
 class ZephyrTestPlanEntity(BaseEntity):
     """Schema for a Zephyr Scale Test Plan.
@@ -261,3 +432,45 @@ class ZephyrTestPlanEntity(BaseEntity):
     def web_url(self) -> str:
         """UI link for the Zephyr Scale test plan."""
         return self.web_url_value or ""
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        project_breadcrumb: Breadcrumb,
+        project_key: str,
+        site_url: str | None = None,
+    ) -> ZephyrTestPlanEntity:
+        """Build a ZephyrTestPlanEntity from the raw Zephyr Scale API response."""
+        key = data.get("key", "unknown")
+        tp_id = str(data.get("id", key))
+        created_time = _parse_datetime(data.get("createdOn")) or datetime.utcnow()
+        updated_time = _parse_datetime(data.get("updatedOn")) or created_time
+
+        status = data.get("status") or {}
+        folder = data.get("folder") or {}
+
+        web_url_value = (
+            f"{site_url}/plugins/servlet/ac/com.kanoah.test-manager/"
+            f"testplan-details?testPlanKey={key}"
+            if site_url
+            else None
+        )
+
+        return cls(
+            entity_id=tp_id,
+            breadcrumbs=[project_breadcrumb],
+            name=data.get("name", key),
+            created_at=created_time,
+            updated_at=updated_time,
+            test_plan_id=tp_id,
+            test_plan_key=key,
+            objective=data.get("objective"),
+            status_name=status.get("name") if isinstance(status, dict) else None,
+            folder_path=folder.get("name") if isinstance(folder, dict) else None,
+            project_key=project_key,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=web_url_value,
+        )

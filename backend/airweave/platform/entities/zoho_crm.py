@@ -1,32 +1,55 @@
-"""Zoho CRM entity schemas.
+"""Zoho CRM entity schemas."""
 
-Based on the Zoho CRM REST API v8, we define entity schemas for
-Zoho CRM objects including the full sales suite:
-- Accounts, Contacts, Deals (core CRM)
-- Leads (pre-qualified prospects)
-- Products (product catalog)
-- Quotes, Sales Orders, Invoices (sales documents)
-
-These schemas follow the same style as other CRM connectors (e.g., Salesforce, HubSpot),
-where each entity class inherits from BaseEntity and adds relevant fields with
-shared or per-resource metadata as needed.
-"""
+from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Zoho CRM ISO8601 timestamps into timezone-aware datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _extract_ref(data: Dict[str, Any], key: str) -> Tuple[Optional[str], Optional[str]]:
+    """Extract (id, name) from a nested Zoho reference field that may be a dict or None."""
+    ref = data.get(key)
+    if isinstance(ref, dict):
+        return ref.get("id"), ref.get("name")
+    return None, None
+
+
+def _build_record_url(org_id: Optional[str], module: str, record_id: str) -> Optional[str]:
+    """Construct a Zoho CRM record URL."""
+    if not record_id:
+        return None
+    return f"https://crm.zoho.com/crm/org{org_id or ''}/tab/{module}/{record_id}"
+
+
+def _account_breadcrumb(account_id: Optional[str], account_name: Optional[str]) -> List[Breadcrumb]:
+    if not account_id:
+        return []
+    return [
+        Breadcrumb(
+            entity_id=account_id,
+            name=account_name or f"Account {account_id}",
+            entity_type="ZohoCRMAccountEntity",
+        )
+    ]
 
 
 class ZohoCRMAccountEntity(BaseEntity):
-    """Schema for Zoho CRM Account entities.
-
-    Reference:
-        https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
-    """
+    """Schema for Zoho CRM Account entities."""
 
     account_id: str = AirweaveField(
         ..., description="Unique Zoho CRM ID for the account.", is_entity_id=True
@@ -47,7 +70,6 @@ class ZohoCRMAccountEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     website: Optional[str] = AirweaveField(
         None, description="Account website URL", embeddable=False
     )
@@ -116,6 +138,58 @@ class ZohoCRMAccountEntity(BaseEntity):
         embeddable=False,
     )
 
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, org_id: Optional[str] = None
+    ) -> ZohoCRMAccountEntity:
+        """Construct from a Zoho CRM Accounts API record."""
+        account_id = str(data.get("id", ""))
+        account_name = data.get("Account_Name") or f"Account {account_id}"
+        created = _parse_dt(data.get("Created_Time")) or datetime.utcnow()
+        updated = _parse_dt(data.get("Modified_Time")) or created
+        owner_id, owner_name = _extract_ref(data, "Owner")
+        parent_account_id, _ = _extract_ref(data, "Parent_Account")
+
+        return cls(
+            entity_id=account_id,
+            breadcrumbs=[],
+            name=account_name,
+            created_at=created,
+            updated_at=updated,
+            account_id=account_id,
+            account_name=account_name,
+            created_time=created,
+            updated_time=updated,
+            web_url_value=_build_record_url(org_id, "Accounts", account_id),
+            website=data.get("Website"),
+            phone=data.get("Phone"),
+            fax=data.get("Fax"),
+            industry=data.get("Industry"),
+            annual_revenue=data.get("Annual_Revenue"),
+            employees=data.get("Employees"),
+            ownership=data.get("Ownership"),
+            ticker_symbol=data.get("Ticker_Symbol"),
+            description=data.get("Description"),
+            rating=data.get("Rating"),
+            parent_account_id=parent_account_id,
+            account_type=data.get("Account_Type"),
+            billing_street=data.get("Billing_Street"),
+            billing_city=data.get("Billing_City"),
+            billing_state=data.get("Billing_State"),
+            billing_code=data.get("Billing_Code"),
+            billing_country=data.get("Billing_Country"),
+            shipping_street=data.get("Shipping_Street"),
+            shipping_city=data.get("Shipping_City"),
+            shipping_state=data.get("Shipping_State"),
+            shipping_code=data.get("Shipping_Code"),
+            shipping_country=data.get("Shipping_Country"),
+            account_number=data.get("Account_Number"),
+            sic_code=data.get("SIC_Code"),
+            owner_id=owner_id,
+            owner_name=owner_name,
+            metadata=data,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the account."""
@@ -123,11 +197,7 @@ class ZohoCRMAccountEntity(BaseEntity):
 
 
 class ZohoCRMContactEntity(BaseEntity):
-    """Schema for Zoho CRM Contact entities.
-
-    Reference:
-        https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
-    """
+    """Schema for Zoho CRM Contact entities."""
 
     contact_id: str = AirweaveField(
         ..., description="Unique Zoho CRM ID for the contact.", is_entity_id=True
@@ -148,7 +218,6 @@ class ZohoCRMContactEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     first_name: Optional[str] = AirweaveField(
         None, description="Contact's first name", embeddable=True
     )
@@ -233,6 +302,65 @@ class ZohoCRMContactEntity(BaseEntity):
         default_factory=dict, description="Additional metadata about the contact", embeddable=False
     )
 
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, org_id: Optional[str] = None
+    ) -> ZohoCRMContactEntity:
+        """Construct from a Zoho CRM Contacts API record."""
+        contact_id = str(data.get("id", ""))
+        first_name = data.get("First_Name") or ""
+        last_name = data.get("Last_Name") or ""
+        contact_name = f"{first_name} {last_name}".strip() or f"Contact {contact_id}"
+        created = _parse_dt(data.get("Created_Time")) or datetime.utcnow()
+        updated = _parse_dt(data.get("Modified_Time")) or created
+        owner_id, owner_name = _extract_ref(data, "Owner")
+        account_id, account_name_val = _extract_ref(data, "Account_Name")
+        reports_to_id, _ = _extract_ref(data, "Reporting_To")
+
+        return cls(
+            entity_id=contact_id,
+            breadcrumbs=_account_breadcrumb(account_id, account_name_val),
+            name=contact_name,
+            created_at=created,
+            updated_at=updated,
+            contact_id=contact_id,
+            contact_name=contact_name,
+            created_time=created,
+            updated_time=updated,
+            web_url_value=_build_record_url(org_id, "Contacts", contact_id),
+            first_name=first_name or None,
+            last_name=last_name or None,
+            email=data.get("Email"),
+            secondary_email=data.get("Secondary_Email"),
+            phone=data.get("Phone"),
+            mobile=data.get("Mobile"),
+            fax=data.get("Fax"),
+            title=data.get("Title"),
+            department=data.get("Department"),
+            account_id=account_id,
+            account_name=account_name_val,
+            lead_source=data.get("Lead_Source"),
+            date_of_birth=data.get("Date_of_Birth"),
+            description=data.get("Description"),
+            owner_id=owner_id,
+            owner_name=owner_name,
+            mailing_street=data.get("Mailing_Street"),
+            mailing_city=data.get("Mailing_City"),
+            mailing_state=data.get("Mailing_State"),
+            mailing_zip=data.get("Mailing_Zip"),
+            mailing_country=data.get("Mailing_Country"),
+            other_street=data.get("Other_Street"),
+            other_city=data.get("Other_City"),
+            other_state=data.get("Other_State"),
+            other_zip=data.get("Other_Zip"),
+            other_country=data.get("Other_Country"),
+            assistant=data.get("Assistant"),
+            asst_phone=data.get("Asst_Phone"),
+            reports_to_id=reports_to_id,
+            email_opt_out=data.get("Email_Opt_Out", False),
+            metadata=data,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the contact."""
@@ -240,11 +368,7 @@ class ZohoCRMContactEntity(BaseEntity):
 
 
 class ZohoCRMDealEntity(BaseEntity):
-    """Schema for Zoho CRM Deal entities (pipelines).
-
-    Reference:
-        https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
-    """
+    """Schema for Zoho CRM Deal entities (pipelines)."""
 
     deal_id: str = AirweaveField(
         ..., description="Unique Zoho CRM ID for the deal.", is_entity_id=True
@@ -265,7 +389,6 @@ class ZohoCRMDealEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     account_id: Optional[str] = AirweaveField(
         None, description="ID of the associated account", embeddable=False
     )
@@ -318,6 +441,50 @@ class ZohoCRMDealEntity(BaseEntity):
         embeddable=False,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any], *, org_id: Optional[str] = None) -> ZohoCRMDealEntity:
+        """Construct from a Zoho CRM Deals API record."""
+        deal_id = str(data.get("id", ""))
+        deal_name = data.get("Deal_Name") or f"Deal {deal_id}"
+        created = _parse_dt(data.get("Created_Time")) or datetime.utcnow()
+        updated = _parse_dt(data.get("Modified_Time")) or created
+        owner_id, owner_name = _extract_ref(data, "Owner")
+        account_id, account_name_val = _extract_ref(data, "Account_Name")
+        contact_id, contact_name_val = _extract_ref(data, "Contact_Name")
+        _, campaign_source = _extract_ref(data, "Campaign_Source")
+
+        return cls(
+            entity_id=deal_id,
+            breadcrumbs=_account_breadcrumb(account_id, account_name_val),
+            name=deal_name,
+            created_at=created,
+            updated_at=updated,
+            deal_id=deal_id,
+            deal_name=deal_name,
+            created_time=created,
+            updated_time=updated,
+            web_url_value=_build_record_url(org_id, "Deals", deal_id),
+            account_id=account_id,
+            account_name=account_name_val,
+            contact_id=contact_id,
+            contact_name=contact_name_val,
+            amount=data.get("Amount"),
+            closing_date=data.get("Closing_Date"),
+            stage=data.get("Stage"),
+            probability=data.get("Probability"),
+            expected_revenue=data.get("Expected_Revenue"),
+            pipeline=data.get("Pipeline"),
+            campaign_source=campaign_source,
+            owner_id=owner_id,
+            owner_name=owner_name,
+            lead_source=data.get("Lead_Source"),
+            deal_type=data.get("Type"),
+            next_step=data.get("Next_Step"),
+            description=data.get("Description"),
+            reason_for_loss=data.get("Reason_For_Loss__s"),
+            metadata=data,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the deal."""
@@ -328,9 +495,6 @@ class ZohoCRMLeadEntity(BaseEntity):
     """Schema for Zoho CRM Lead entities.
 
     Leads are pre-qualified prospects that haven't been converted to contacts yet.
-
-    Reference:
-        https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
     """
 
     lead_id: str = AirweaveField(
@@ -352,7 +516,6 @@ class ZohoCRMLeadEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     first_name: Optional[str] = AirweaveField(
         None, description="Lead's first name", embeddable=True
     )
@@ -408,6 +571,56 @@ class ZohoCRMLeadEntity(BaseEntity):
         embeddable=False,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any], *, org_id: Optional[str] = None) -> ZohoCRMLeadEntity:
+        """Construct from a Zoho CRM Leads API record."""
+        lead_id = str(data.get("id", ""))
+        first_name = data.get("First_Name") or ""
+        last_name = data.get("Last_Name") or ""
+        lead_name = f"{first_name} {last_name}".strip() or f"Lead {lead_id}"
+        created = _parse_dt(data.get("Created_Time")) or datetime.utcnow()
+        updated = _parse_dt(data.get("Modified_Time")) or created
+        owner_id, owner_name = _extract_ref(data, "Owner")
+
+        return cls(
+            entity_id=lead_id,
+            breadcrumbs=[],
+            name=lead_name,
+            created_at=created,
+            updated_at=updated,
+            lead_id=lead_id,
+            lead_name=lead_name,
+            created_time=created,
+            updated_time=updated,
+            web_url_value=_build_record_url(org_id, "Leads", lead_id),
+            first_name=first_name or None,
+            last_name=last_name or None,
+            company=data.get("Company"),
+            email=data.get("Email"),
+            phone=data.get("Phone"),
+            mobile=data.get("Mobile"),
+            fax=data.get("Fax"),
+            title=data.get("Title"),
+            website=data.get("Website"),
+            lead_source=data.get("Lead_Source"),
+            lead_status=data.get("Lead_Status"),
+            industry=data.get("Industry"),
+            annual_revenue=data.get("Annual_Revenue"),
+            no_of_employees=data.get("No_of_Employees"),
+            rating=data.get("Rating"),
+            description=data.get("Description"),
+            street=data.get("Street"),
+            city=data.get("City"),
+            state=data.get("State"),
+            zip_code=data.get("Zip_Code"),
+            country=data.get("Country"),
+            owner_id=owner_id,
+            owner_name=owner_name,
+            converted=data.get("$converted", False),
+            email_opt_out=data.get("Email_Opt_Out", False),
+            metadata=data,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the lead."""
@@ -418,9 +631,6 @@ class ZohoCRMProductEntity(BaseEntity):
     """Schema for Zoho CRM Product entities.
 
     Products represent items in the product catalog.
-
-    Reference:
-        https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
     """
 
     product_id: str = AirweaveField(
@@ -442,7 +652,6 @@ class ZohoCRMProductEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     product_code: Optional[str] = AirweaveField(
         None, description="Product code/SKU", embeddable=True
     )
@@ -503,6 +712,52 @@ class ZohoCRMProductEntity(BaseEntity):
         embeddable=False,
     )
 
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, org_id: Optional[str] = None
+    ) -> ZohoCRMProductEntity:
+        """Construct from a Zoho CRM Products API record."""
+        product_id = str(data.get("id", ""))
+        product_name = data.get("Product_Name") or f"Product {product_id}"
+        created = _parse_dt(data.get("Created_Time")) or datetime.utcnow()
+        updated = _parse_dt(data.get("Modified_Time")) or created
+        owner_id, owner_name = _extract_ref(data, "Owner")
+        _, vendor_name = _extract_ref(data, "Vendor_Name")
+
+        return cls(
+            entity_id=product_id,
+            breadcrumbs=[],
+            name=product_name,
+            created_at=created,
+            updated_at=updated,
+            product_id=product_id,
+            product_name=product_name,
+            created_time=created,
+            updated_time=updated,
+            web_url_value=_build_record_url(org_id, "Products", product_id),
+            product_code=data.get("Product_Code"),
+            product_category=data.get("Product_Category"),
+            manufacturer=data.get("Manufacturer"),
+            vendor_name=vendor_name,
+            unit_price=data.get("Unit_Price"),
+            sales_start_date=data.get("Sales_Start_Date"),
+            sales_end_date=data.get("Sales_End_Date"),
+            support_start_date=data.get("Support_Start_Date"),
+            support_expiry_date=data.get("Support_Expiry_Date"),
+            qty_in_stock=data.get("Qty_in_Stock"),
+            qty_in_demand=data.get("Qty_in_Demand"),
+            qty_ordered=data.get("Qty_Ordered"),
+            reorder_level=data.get("Reorder_Level"),
+            commission_rate=data.get("Commission_Rate"),
+            tax=data.get("Tax"),
+            taxable=data.get("Taxable", False),
+            product_active=data.get("Product_Active", True),
+            description=data.get("Description"),
+            owner_id=owner_id,
+            owner_name=owner_name,
+            metadata=data,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the product."""
@@ -513,9 +768,6 @@ class ZohoCRMQuoteEntity(BaseEntity):
     """Schema for Zoho CRM Quote entities.
 
     Quotes are sales proposals sent to potential customers.
-
-    Reference:
-        https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
     """
 
     quote_id: str = AirweaveField(
@@ -537,7 +789,6 @@ class ZohoCRMQuoteEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     quote_number: Optional[str] = AirweaveField(None, description="Quote number", embeddable=True)
     quote_stage: Optional[str] = AirweaveField(None, description="Quote stage", embeddable=True)
     account_id: Optional[str] = AirweaveField(
@@ -616,6 +867,62 @@ class ZohoCRMQuoteEntity(BaseEntity):
         embeddable=False,
     )
 
+    @classmethod
+    def from_api(cls, data: Dict[str, Any], *, org_id: Optional[str] = None) -> ZohoCRMQuoteEntity:
+        """Construct from a Zoho CRM Quotes API record."""
+        quote_id = str(data.get("id", ""))
+        quote_name = data.get("Subject") or f"Quote {quote_id}"
+        created = _parse_dt(data.get("Created_Time")) or datetime.utcnow()
+        updated = _parse_dt(data.get("Modified_Time")) or created
+        owner_id, owner_name = _extract_ref(data, "Owner")
+        account_id, account_name_val = _extract_ref(data, "Account_Name")
+        contact_id, contact_name_val = _extract_ref(data, "Contact_Name")
+        deal_id, deal_name_val = _extract_ref(data, "Deal_Name")
+
+        return cls(
+            entity_id=quote_id,
+            breadcrumbs=_account_breadcrumb(account_id, account_name_val),
+            name=quote_name,
+            created_at=created,
+            updated_at=updated,
+            quote_id=quote_id,
+            quote_name=quote_name,
+            created_time=created,
+            updated_time=updated,
+            web_url_value=_build_record_url(org_id, "Quotes", quote_id),
+            quote_number=data.get("Quote_Number"),
+            quote_stage=data.get("Quote_Stage"),
+            account_id=account_id,
+            account_name=account_name_val,
+            contact_id=contact_id,
+            contact_name=contact_name_val,
+            deal_id=deal_id,
+            deal_name=deal_name_val,
+            valid_till=data.get("Valid_Till"),
+            sub_total=data.get("Sub_Total"),
+            discount=data.get("Discount"),
+            tax=data.get("Tax"),
+            adjustment=data.get("Adjustment"),
+            grand_total=data.get("Grand_Total"),
+            carrier=data.get("Carrier"),
+            shipping_charge=data.get("Shipping_Charge"),
+            terms_and_conditions=data.get("Terms_and_Conditions"),
+            description=data.get("Description"),
+            billing_street=data.get("Billing_Street"),
+            billing_city=data.get("Billing_City"),
+            billing_state=data.get("Billing_State"),
+            billing_code=data.get("Billing_Code"),
+            billing_country=data.get("Billing_Country"),
+            shipping_street=data.get("Shipping_Street"),
+            shipping_city=data.get("Shipping_City"),
+            shipping_state=data.get("Shipping_State"),
+            shipping_code=data.get("Shipping_Code"),
+            shipping_country=data.get("Shipping_Country"),
+            owner_id=owner_id,
+            owner_name=owner_name,
+            metadata=data,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the quote."""
@@ -626,9 +933,6 @@ class ZohoCRMSalesOrderEntity(BaseEntity):
     """Schema for Zoho CRM Sales Order entities.
 
     Sales Orders are confirmed orders from customers.
-
-    Reference:
-        https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
     """
 
     sales_order_id: str = AirweaveField(
@@ -650,7 +954,6 @@ class ZohoCRMSalesOrderEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     so_number: Optional[str] = AirweaveField(
         None, description="Sales order number", embeddable=True
     )
@@ -736,6 +1039,68 @@ class ZohoCRMSalesOrderEntity(BaseEntity):
         embeddable=False,
     )
 
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, org_id: Optional[str] = None
+    ) -> ZohoCRMSalesOrderEntity:
+        """Construct from a Zoho CRM Sales_Orders API record."""
+        so_id = str(data.get("id", ""))
+        so_name = data.get("Subject") or f"Sales Order {so_id}"
+        created = _parse_dt(data.get("Created_Time")) or datetime.utcnow()
+        updated = _parse_dt(data.get("Modified_Time")) or created
+        owner_id, owner_name = _extract_ref(data, "Owner")
+        account_id, account_name_val = _extract_ref(data, "Account_Name")
+        contact_id, contact_name_val = _extract_ref(data, "Contact_Name")
+        deal_id, deal_name_val = _extract_ref(data, "Deal_Name")
+        quote_id, quote_name_val = _extract_ref(data, "Quote_Name")
+
+        return cls(
+            entity_id=so_id,
+            breadcrumbs=_account_breadcrumb(account_id, account_name_val),
+            name=so_name,
+            created_at=created,
+            updated_at=updated,
+            sales_order_id=so_id,
+            sales_order_name=so_name,
+            created_time=created,
+            updated_time=updated,
+            web_url_value=_build_record_url(org_id, "Sales_Orders", so_id),
+            so_number=data.get("SO_Number"),
+            status=data.get("Status"),
+            account_id=account_id,
+            account_name=account_name_val,
+            contact_id=contact_id,
+            contact_name=contact_name_val,
+            deal_id=deal_id,
+            deal_name=deal_name_val,
+            quote_id=quote_id,
+            quote_name=quote_name_val,
+            due_date=data.get("Due_Date"),
+            sub_total=data.get("Sub_Total"),
+            discount=data.get("Discount"),
+            tax=data.get("Tax"),
+            adjustment=data.get("Adjustment"),
+            grand_total=data.get("Grand_Total"),
+            carrier=data.get("Carrier"),
+            shipping_charge=data.get("Shipping_Charge"),
+            excise_duty=data.get("Excise_Duty"),
+            terms_and_conditions=data.get("Terms_and_Conditions"),
+            description=data.get("Description"),
+            billing_street=data.get("Billing_Street"),
+            billing_city=data.get("Billing_City"),
+            billing_state=data.get("Billing_State"),
+            billing_code=data.get("Billing_Code"),
+            billing_country=data.get("Billing_Country"),
+            shipping_street=data.get("Shipping_Street"),
+            shipping_city=data.get("Shipping_City"),
+            shipping_state=data.get("Shipping_State"),
+            shipping_code=data.get("Shipping_Code"),
+            shipping_country=data.get("Shipping_Country"),
+            owner_id=owner_id,
+            owner_name=owner_name,
+            metadata=data,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """Browser URL for the sales order."""
@@ -746,9 +1111,6 @@ class ZohoCRMInvoiceEntity(BaseEntity):
     """Schema for Zoho CRM Invoice entities.
 
     Invoices are billing documents sent to customers.
-
-    Reference:
-        https://www.zoho.com/crm/developer/docs/api/v8/modules-api.html
     """
 
     invoice_id: str = AirweaveField(
@@ -770,7 +1132,6 @@ class ZohoCRMInvoiceEntity(BaseEntity):
         unhashable=True,
     )
 
-    # API fields
     invoice_number: Optional[str] = AirweaveField(
         None, description="Invoice number", embeddable=True
     )
@@ -858,6 +1219,69 @@ class ZohoCRMInvoiceEntity(BaseEntity):
         description="Additional metadata about the invoice",
         embeddable=False,
     )
+
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, org_id: Optional[str] = None
+    ) -> ZohoCRMInvoiceEntity:
+        """Construct from a Zoho CRM Invoices API record."""
+        invoice_id = str(data.get("id", ""))
+        invoice_name = data.get("Subject") or f"Invoice {invoice_id}"
+        created = _parse_dt(data.get("Created_Time")) or datetime.utcnow()
+        updated = _parse_dt(data.get("Modified_Time")) or created
+        owner_id, owner_name = _extract_ref(data, "Owner")
+        account_id, account_name_val = _extract_ref(data, "Account_Name")
+        contact_id, contact_name_val = _extract_ref(data, "Contact_Name")
+        deal_id, deal_name_val = _extract_ref(data, "Deal_Name")
+        sales_order_id, sales_order_name_val = _extract_ref(data, "Sales_Order")
+
+        return cls(
+            entity_id=invoice_id,
+            breadcrumbs=_account_breadcrumb(account_id, account_name_val),
+            name=invoice_name,
+            created_at=created,
+            updated_at=updated,
+            invoice_id=invoice_id,
+            invoice_name=invoice_name,
+            created_time=created,
+            updated_time=updated,
+            web_url_value=_build_record_url(org_id, "Invoices", invoice_id),
+            invoice_number=data.get("Invoice_Number"),
+            invoice_date=data.get("Invoice_Date"),
+            status=data.get("Status"),
+            account_id=account_id,
+            account_name=account_name_val,
+            contact_id=contact_id,
+            contact_name=contact_name_val,
+            deal_id=deal_id,
+            deal_name=deal_name_val,
+            sales_order_id=sales_order_id,
+            sales_order_name=sales_order_name_val,
+            due_date=data.get("Due_Date"),
+            purchase_order=data.get("Purchase_Order"),
+            sub_total=data.get("Sub_Total"),
+            discount=data.get("Discount"),
+            tax=data.get("Tax"),
+            adjustment=data.get("Adjustment"),
+            grand_total=data.get("Grand_Total"),
+            shipping_charge=data.get("Shipping_Charge"),
+            excise_duty=data.get("Excise_Duty"),
+            terms_and_conditions=data.get("Terms_and_Conditions"),
+            description=data.get("Description"),
+            billing_street=data.get("Billing_Street"),
+            billing_city=data.get("Billing_City"),
+            billing_state=data.get("Billing_State"),
+            billing_code=data.get("Billing_Code"),
+            billing_country=data.get("Billing_Country"),
+            shipping_street=data.get("Shipping_Street"),
+            shipping_city=data.get("Shipping_City"),
+            shipping_state=data.get("Shipping_State"),
+            shipping_code=data.get("Shipping_Code"),
+            shipping_country=data.get("Shipping_Country"),
+            owner_id=owner_id,
+            owner_name=owner_name,
+            metadata=data,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

@@ -13,6 +13,8 @@ Design principles:
 from dataclasses import dataclass, replace
 from typing import Any, Optional
 
+from airweave.domains.syncs.cursors.service import SyncCursorService
+
 from airweave.core.protocols import (
     CircuitBreaker,
     ContextCache,
@@ -183,6 +185,8 @@ class Container:
     # Sync domain
     sync_repo: SyncRepositoryProtocol
     sync_cursor_repo: SyncCursorRepositoryProtocol
+    # Sync cursor service — cursor CRUD operations
+    sync_cursor_service: SyncCursorService
     sync_job_repo: SyncJobRepositoryProtocol
     sync_record_service: SyncRecordServiceProtocol
     sync_job_service: SyncJobServiceProtocol

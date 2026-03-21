@@ -104,10 +104,10 @@ class BaseAuthProvider(ABC):
         optional_fields: Optional[Set[str]] = None,
         source_config_field_mappings: Optional[Dict[str, str]] = None,
     ) -> AuthResult:
-        """Get auth result with explicit mode (direct vs proxy).
+        """Get auth result with credentials for a source.
 
         Default implementation calls get_creds_for_source and returns direct mode.
-        Subclasses can override to return proxy mode when needed.
+        Subclasses can override for custom behavior.
 
         Args:
             source_short_name: The short name of the source
@@ -116,7 +116,7 @@ class BaseAuthProvider(ABC):
             source_config_field_mappings: Mapping of config fields extractable from auth response
 
         Returns:
-            AuthResult with explicit mode, credentials, and optional source config
+            AuthResult with credentials and optional source config
         """
         credentials = await self.get_creds_for_source(
             source_short_name, source_auth_config_fields, optional_fields

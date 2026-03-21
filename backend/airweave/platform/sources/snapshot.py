@@ -23,20 +23,28 @@ Note: This source is behind a feature flag (Internal label).
 For automatic ARF replay during syncs, use execution_config.behavior.replay_from_arf=True instead.
 """
 
+from __future__ import annotations
+
 import importlib
 import json
 import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
+from airweave.core.logging import ContextualLogger
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage import StorageBackend, StoragePaths
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import SnapshotAuthConfig
 from airweave.platform.configs.config import SnapshotConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
-from airweave.domains.storage import StorageBackend, StoragePaths
 from airweave.schemas.source_connection import AuthenticationMethod
 
 # Regex to parse Azure blob URLs
@@ -64,64 +72,47 @@ class SnapshotSource(BaseSource):
     3. Storage-relative path (for blob): uses StorageBackend abstraction
     """
 
-    def __init__(self):
-        """Initialize snapshot source."""
-        super().__init__()
-        self.path: str = ""
-        self.restore_files: bool = True
-        self._storage: Optional[StorageBackend] = None
-        self._temp_dir: Optional[Path] = None
-        self._is_local_path: bool = False
-        self._is_azure_url: bool = False
-        self._azure_account: Optional[str] = None
-        self._azure_container: Optional[str] = None
-        self._azure_blob_prefix: Optional[str] = None
-        self._azure_client: Optional[Any] = None  # BlobServiceClient
-
     @classmethod
     async def create(
         cls,
-        credentials: Optional[Union[Dict[str, Any], SnapshotAuthConfig]] = None,
-        config: Optional[Union[Dict[str, Any], SnapshotConfig]] = None,
-    ) -> "SnapshotSource":
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: SnapshotConfig,
+    ) -> SnapshotSource:
         """Create a new snapshot source instance.
 
         Args:
-            credentials: Optional SnapshotAuthConfig (placeholder for API compatibility)
-            config: SnapshotConfig with path to raw data directory
+            auth: Auth provider (placeholder for this internal source).
+            logger: Contextual logger with sync metadata.
+            http_client: Pre-built HTTP client (unused — reads from storage).
+            config: SnapshotConfig with path to raw data directory.
 
         Returns:
-            Configured SnapshotSource instance
+            Configured SnapshotSource instance.
         """
-        instance = cls()
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
+        instance.path = config.path
+        instance.restore_files = config.restore_files
+        instance._storage = None
+        instance._temp_dir = None
+        instance._is_local_path = False
+        instance._is_azure_url = False
+        instance._azure_account = None
+        instance._azure_container = None
+        instance._azure_blob_prefix = None
+        instance._azure_client = None
 
-        # Extract config
-        if config is None:
-            raise ValueError("config with 'path' is required for SnapshotSource")
-
-        if isinstance(config, dict):
-            instance.path = config.get("path", "")
-            instance.restore_files = config.get("restore_files", True)
-        else:
-            instance.path = config.path
-            instance.restore_files = config.restore_files
-
-        if not instance.path:
-            raise ValueError("path is required in config")
-
-        # Check if this is a full Azure blob URL
         azure_match = AZURE_BLOB_URL_PATTERN.match(instance.path)
         if azure_match:
             instance._is_azure_url = True
             instance._azure_account = azure_match.group(1)
             instance._azure_container = azure_match.group(2)
             instance._azure_blob_prefix = azure_match.group(3)
-            instance._is_local_path = False
         else:
-            # Determine if this is a local filesystem path or storage-relative path
-            # Local paths start with / or contain typical filesystem patterns
             instance._is_local_path = instance.path.startswith("/") or (
-                os.name == "nt" and ":" in instance.path[:3]  # Windows drive letter
+                os.name == "nt" and ":" in instance.path[:3]
             )
 
         return instance
@@ -448,7 +439,13 @@ class SnapshotSource(BaseSource):
     # Main interface
     # =========================================================================
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from raw data storage.
 
         Reads manifest and iterates over all entity JSON files,
@@ -494,36 +491,41 @@ class SnapshotSource(BaseSource):
                 self.logger.warning(f"Failed to reconstruct entity from {file_path}: {e}")
                 continue
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate that the snapshot path exists and is readable."""
         self.logger.info(f"Validating snapshot source with path: {self.path}")
 
         if not self.path:
-            self.logger.error("Snapshot validation failed: path is empty")
-            return False
+            self.logger.warning("Snapshot validation failed: path is empty")
+            raise ValueError("Snapshot validation failed: path is empty")
 
         # Check path exists based on storage type
         if self._is_local_path:
             if not self._local_path().exists():
-                self.logger.error(f"Snapshot validation failed: path does not exist: {self.path}")
-                return False
+                self.logger.warning(f"Snapshot validation failed: path does not exist: {self.path}")
+                raise ValueError(f"Snapshot validation failed: path does not exist: {self.path}")
         elif self._is_azure_url:
             # Direct Azure URL access
             if not await self._azure_blob_exists("manifest.json"):
-                self.logger.error(f"Snapshot validation failed: manifest not found at {self.path}")
-                return False
+                self.logger.warning(
+                    f"Snapshot validation failed: manifest not found at {self.path}"
+                )
+                raise ValueError(f"Snapshot validation failed: manifest not found at {self.path}")
         else:
             # Storage-relative path
             if not await self.storage.exists(f"{self.path}/manifest.json"):
-                self.logger.error(f"Snapshot validation failed: manifest not found at {self.path}")
-                return False
+                self.logger.warning(
+                    f"Snapshot validation failed: manifest not found at {self.path}"
+                )
+                raise ValueError(f"Snapshot validation failed: manifest not found at {self.path}")
 
         try:
             manifest = await self._read_json("manifest.json")
-            return "sync_id" in manifest
         except Exception as e:
-            self.logger.error(f"Snapshot validation failed: {e}")
-            return False
+            self.logger.warning(f"Snapshot validation failed: {e}")
+            raise
+        if "sync_id" not in manifest:
+            raise ValueError("Snapshot validation failed: manifest missing sync_id")
 
     def cleanup(self) -> None:
         """Clean up temp files and close Azure client."""

@@ -7,6 +7,8 @@ The Graph API handles circular group references and deep nesting automatically
 via /groups/{id}/transitiveMembers.
 """
 
+from __future__ import annotations
+
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 import httpx
@@ -25,16 +27,19 @@ class EntraGroupExpander:
 
     Args:
         access_token_provider: Async callable returning a valid OAuth2 token.
+        http_client: Pre-built AirweaveHttpClient with rate limiting.
         logger: Logger instance.
     """
 
     def __init__(
         self,
         access_token_provider: Callable,
+        http_client: Any,
         logger: Any,
     ):
         """Initialize the group expander with an OAuth2 token provider."""
         self._get_token = access_token_provider
+        self._http_client = http_client
         self.logger = logger
         self._group_cache: Dict[str, List[MembershipTuple]] = {}
         self._expanding: set = set()
@@ -53,14 +58,12 @@ class EntraGroupExpander:
 
     async def expand_group(  # noqa: C901
         self,
-        client: httpx.AsyncClient,
         group_id: str,
         group_display_name: str = "",
     ) -> AsyncGenerator[MembershipTuple, None]:
         """Expand an Entra ID group to all its direct members, recursing into nested groups.
 
         Args:
-            client: httpx AsyncClient.
             group_id: Entra ID group object ID.
             group_display_name: Display name for logging.
 
@@ -96,7 +99,7 @@ class EntraGroupExpander:
             while current_url:
                 self._stats["api_calls"] += 1
                 headers = await self._headers()
-                response = await client.get(
+                response = await self._http_client.get(
                     current_url,
                     headers=headers,
                     params=params,
@@ -138,9 +141,7 @@ class EntraGroupExpander:
                         collected.append(membership)
                         yield membership
 
-                        async for nested_membership in self.expand_group(
-                            client, nested_id, nested_name
-                        ):
+                        async for nested_membership in self.expand_group(nested_id, nested_name):
                             collected.append(nested_membership)
                             yield nested_membership
 
@@ -151,7 +152,7 @@ class EntraGroupExpander:
             if e.response.status_code == 404:
                 self.logger.warning(f"Group not found: {group_id}")
             else:
-                self.logger.error(f"Error expanding group {group_id}: {e}")
+                self.logger.warning(f"Error expanding group {group_id}: {e}")
                 raise
         finally:
             self._expanding.discard(cache_key)
@@ -163,14 +164,12 @@ class EntraGroupExpander:
 
     async def expand_groups_for_site(
         self,
-        client: httpx.AsyncClient,
         group_ids: List[str],
         group_names: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[MembershipTuple, None]:
         """Expand multiple groups.
 
         Args:
-            client: httpx AsyncClient.
             group_ids: List of Entra ID group object IDs to expand.
             group_names: Optional map of group_id -> display_name.
 
@@ -180,7 +179,7 @@ class EntraGroupExpander:
         group_names = group_names or {}
         for gid in group_ids:
             display_name = group_names.get(gid, "")
-            async for membership in self.expand_group(client, gid, display_name):
+            async for membership in self.expand_group(gid, display_name):
                 yield membership
 
     def log_stats(self) -> None:

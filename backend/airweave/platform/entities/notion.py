@@ -1,13 +1,117 @@
 """Notion entity schemas."""
 
-from datetime import datetime
+from __future__ import annotations
+
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from pydantic import computed_field
 
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
+
+# ---------------------------------------------------------------------------
+# Module-level helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_rich_text_plain(rich_text: List[dict]) -> str:
+    """Extract plain text from Notion rich-text array."""
+    if not rich_text or not isinstance(rich_text, list):
+        return ""
+
+    text_parts = []
+    for text_obj in rich_text:
+        if not text_obj or not isinstance(text_obj, dict):
+            continue
+        plain_text = text_obj.get("plain_text", "")
+        if plain_text:
+            text_parts.append(plain_text)
+
+    return " ".join(text_parts)
+
+
+def _parse_notion_datetime(datetime_str: Optional[str]) -> Optional[datetime]:
+    """Parse a Notion ISO-8601 datetime string into a naive UTC datetime."""
+    if not datetime_str:
+        return None
+    try:
+        if datetime_str.endswith("Z"):
+            datetime_str = datetime_str[:-1] + "+00:00"
+        dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except (ValueError, AttributeError):
+        return None
+
+
+def _extract_page_title(page: dict) -> str:
+    """Extract the title from a Notion page object."""
+    properties = page.get("properties", {})
+    for _prop_name, prop_value in properties.items():
+        if prop_value.get("type") == "title":
+            title_content = prop_value.get("title", [])
+            return _extract_rich_text_plain(title_content)
+    return "Untitled"
+
+
+def _format_database_schema(properties: dict) -> Dict[str, Any]:
+    """Format database schema properties for better searchability."""
+    formatted: Dict[str, Any] = {}
+    for prop_name, prop_config in properties.items():
+        prop_type = prop_config.get("type", "")
+        prop_info: Dict[str, Any] = {
+            "type": prop_type,
+            "name": prop_config.get("name", prop_name),
+        }
+        if prop_type in ["select", "status"]:
+            options = prop_config.get(prop_type, {}).get("options", [])
+            prop_info["options"] = [opt.get("name", "") for opt in options if opt.get("name")]
+        elif prop_type == "multi_select":
+            options = prop_config.get("multi_select", {}).get("options", [])
+            prop_info["options"] = [opt.get("name", "") for opt in options if opt.get("name")]
+        elif prop_type == "number":
+            format_type = prop_config.get("number", {}).get("format", "number")
+            prop_info["format"] = format_type
+        formatted[prop_name] = prop_info
+    return formatted
+
+
+_MIME_TYPE_MAP: Dict[str, str] = {
+    "pdf": "application/pdf",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "svg": "image/svg+xml",
+    "tiff": "image/tiff",
+    "tif": "image/tiff",
+    "ico": "image/vnd.microsoft.icon",
+    "heic": "image/heic",
+    "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "avi": "video/x-msvideo",
+    "mkv": "video/x-matroska",
+    "wmv": "video/x-ms-wmv",
+    "flv": "video/x-flv",
+    "webm": "video/webm",
+    "mpeg": "video/mpeg",
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+    "aac": "audio/aac",
+    "ogg": "audio/ogg",
+    "wma": "audio/x-ms-wma",
+    "m4a": "audio/mp4",
+    "m4b": "audio/mp4",
+    "mid": "audio/midi",
+    "midi": "audio/midi",
+    "txt": "text/plain",
+    "json": "application/json",
+}
 
 
 class NotionDatabaseEntity(BaseEntity):
@@ -96,6 +200,43 @@ class NotionDatabaseEntity(BaseEntity):
                 text_parts.append(" ".join(desc_parts))
 
         return " | ".join(text_parts) if text_parts else ""
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+    ) -> NotionDatabaseEntity:
+        """Build from a Notion API database object."""
+        database_id = data["id"]
+        title = _extract_rich_text_plain(data.get("title", []))
+        description = _extract_rich_text_plain(data.get("description", []))
+        created_time = _parse_notion_datetime(data.get("created_time"))
+        updated_time = _parse_notion_datetime(data.get("last_edited_time"))
+        parent = data.get("parent", {})
+        formatted_schema = _format_database_schema(data.get("properties", {}))
+
+        return cls(
+            entity_id=database_id,
+            breadcrumbs=breadcrumbs,
+            name=title or "Untitled Database",
+            created_at=created_time,
+            updated_at=updated_time,
+            database_id=database_id,
+            title=title or "Untitled Database",
+            created_time=created_time,
+            updated_time=updated_time,
+            description=description,
+            properties=formatted_schema,
+            parent_id=parent.get("page_id", ""),
+            parent_type=parent.get("type", "workspace"),
+            icon=data.get("icon"),
+            cover=data.get("cover"),
+            archived=data.get("archived", False),
+            is_inline=data.get("is_inline", False),
+            url=data.get("url", ""),
+        )
 
 
 class NotionPageEntity(BaseEntity):
@@ -212,6 +353,57 @@ class NotionPageEntity(BaseEntity):
 
         return " | ".join(text_parts) if text_parts else ""
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        content: Optional[str] = None,
+        formatted_properties: Optional[Dict[str, Any]] = None,
+        properties_text: Optional[str] = None,
+        property_entities: Optional[List[Any]] = None,
+        content_blocks_count: int = 0,
+        max_depth: int = 0,
+    ) -> NotionPageEntity:
+        """Build from a Notion API page object.
+
+        Async-computed fields (content, formatted_properties, properties_text,
+        property_entities) are passed as kwargs because they require API calls
+        that must happen in the source.
+        """
+        page_id = data["id"]
+        title = _extract_page_title(data)
+        created_time = _parse_notion_datetime(data.get("created_time"))
+        updated_time = _parse_notion_datetime(data.get("last_edited_time"))
+        parent = data.get("parent", {})
+
+        return cls(
+            entity_id=page_id,
+            breadcrumbs=breadcrumbs,
+            name=title,
+            created_at=created_time,
+            updated_at=updated_time,
+            page_id=page_id,
+            parent_id=parent.get("page_id") or parent.get("database_id") or "",
+            parent_type=parent.get("type", "workspace"),
+            title=title,
+            created_time=created_time,
+            updated_time=updated_time,
+            content=content,
+            properties=formatted_properties or {},
+            properties_text=properties_text,
+            property_entities=property_entities or [],
+            files=[],
+            icon=data.get("icon"),
+            cover=data.get("cover"),
+            archived=data.get("archived", False),
+            in_trash=data.get("in_trash", False),
+            url=data.get("url", ""),
+            content_blocks_count=content_blocks_count,
+            max_depth=max_depth,
+        )
+
 
 class NotionPropertyEntity(BaseEntity):
     """Schema for a Notion database page property."""
@@ -290,6 +482,73 @@ class NotionFileEntity(FileEntity):
         if self.file_type == "file" and self.expiry_time:
             return utc_now_naive() >= self.expiry_time
         return False
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        parent_id: str,
+        breadcrumbs: List[Breadcrumb],
+    ) -> NotionFileEntity:
+        """Build from a Notion API file/image block-content object.
+
+        Handles the three Notion file hosting variants: ``file`` (S3-hosted
+        with expiry), ``file_upload`` (new upload API), and ``external``.
+        """
+        file_type_notion = data.get("type", "external")
+
+        if file_type_notion == "file":
+            file_data = data.get("file", {})
+            url = file_data.get("url", "")
+            expiry_time = _parse_notion_datetime(file_data.get("expiry_time"))
+            file_id = url
+            download_url = url
+        elif file_type_notion == "file_upload":
+            file_data = data.get("file_upload", {})
+            file_id = file_data.get("id", "")
+            download_url = f"https://api.notion.com/v1/files/{file_id}"
+            url = download_url
+            expiry_time = None
+        else:
+            file_data = data.get("external", {})
+            url = file_data.get("url", "")
+            file_id = url
+            download_url = url
+            expiry_time = None
+
+        name = data.get("name", "")
+        if not name and url:
+            parsed_url = urlparse(url)
+            name = parsed_url.path.split("/")[-1] if parsed_url.path else "Untitled File"
+
+        caption = _extract_rich_text_plain(data.get("caption", []))
+        display_name = name or "Untitled File"
+
+        mime_type = None
+        if name:
+            ext = name.lower().split(".")[-1] if "." in name else ""
+            mime_type = _MIME_TYPE_MAP.get(ext)
+
+        general_file_type = mime_type.split("/")[0] if mime_type else "file"
+
+        return cls(
+            entity_id=f"file_{parent_id}_{hash(file_id)}",
+            breadcrumbs=breadcrumbs,
+            name=display_name,
+            created_at=None,
+            updated_at=None,
+            url=download_url,
+            size=0,
+            file_type=general_file_type,
+            mime_type=mime_type or "application/octet-stream",
+            local_path=None,
+            file_id=file_id,
+            file_name=display_name,
+            expiry_time=expiry_time,
+            caption=caption,
+            web_url_value=url,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

@@ -1,5 +1,8 @@
 """Trello source implementation for syncing boards, lists, cards, and checklists."""
 
+from __future__ import annotations
+
+import base64
 import hashlib
 import hmac
 import secrets
@@ -8,10 +11,15 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from urllib.parse import quote
 
-import httpx
 from tenacity import retry, stop_after_attempt
 
+from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.exceptions import SourceAuthError
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import TrelloAuthConfig
 from airweave.platform.configs.config import TrelloConfig
 from airweave.platform.decorators import source
@@ -23,7 +31,9 @@ from airweave.platform.entities.trello import (
     TrelloListEntity,
     TrelloMemberEntity,
 )
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.http_helpers import raise_for_status
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
@@ -57,75 +67,37 @@ class TrelloSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, credentials: Dict[str, Any], config: Optional[Dict[str, Any]] = None
-    ) -> "TrelloSource":
-        """Create a new Trello source.
+        cls,
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: TrelloConfig,
+    ) -> TrelloSource:
+        """Create a TrelloSource with authenticated API credentials."""
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
 
-        Args:
-            credentials: OAuth1 credentials with oauth_token and oauth_token_secret
-            config: Optional configuration parameters
-
-        Returns:
-            Configured TrelloSource instance
-        """
-        instance = cls()
-
-        # Extract OAuth1 credentials
-        if isinstance(credentials, dict):
-            instance.oauth_token = credentials.get("oauth_token")
-            instance.oauth_token_secret = credentials.get("oauth_token_secret")
-            # Also get consumer key/secret if provided (needed for OAuth1 signing)
-            instance.consumer_key = credentials.get("consumer_key")
-            instance.consumer_secret = credentials.get("consumer_secret")
+        if hasattr(auth, "credentials"):
+            creds = auth.credentials
+            instance.oauth_token = creds.oauth_token
+            instance.oauth_token_secret = creds.oauth_token_secret
+            instance.consumer_key = getattr(creds, "consumer_key", None)
+            instance.consumer_secret = getattr(creds, "consumer_secret", None)
         else:
-            # Pydantic model
-            instance.oauth_token = getattr(credentials, "oauth_token", None)
-            instance.oauth_token_secret = getattr(credentials, "oauth_token_secret", None)
-            instance.consumer_key = getattr(credentials, "consumer_key", None)
-            instance.consumer_secret = getattr(credentials, "consumer_secret", None)
+            instance.oauth_token = None
+            instance.oauth_token_secret = None
+            instance.consumer_key = None
+            instance.consumer_secret = None
 
-        if not instance.oauth_token or not instance.oauth_token_secret:
-            raise ValueError("Trello requires oauth_token and oauth_token_secret")
-
-        # If consumer credentials not in credentials, get from integration settings
-        if not instance.consumer_key or not instance.consumer_secret:
-            from airweave.platform.auth.settings import integration_settings
-
-            try:
-                oauth_settings = await integration_settings.get_by_short_name("trello")
-                from airweave.platform.auth.schemas import OAuth1Settings
-
-                if isinstance(oauth_settings, OAuth1Settings):
-                    instance.consumer_key = oauth_settings.consumer_key
-                    instance.consumer_secret = oauth_settings.consumer_secret
-            except Exception:
-                # If we can't get settings, that's okay - they might be in credentials
-                pass
-
-        # Store config values as instance attributes
-        if config:
-            instance.board_filter = config.get("board_filter", "")
-        else:
-            instance.board_filter = ""
-
+        instance.board_filter = config.board_filter if hasattr(config, "board_filter") else ""
         return instance
 
     def _percent_encode(self, value: str) -> str:
-        """Percent-encode a value for OAuth1 signature.
-
-        OAuth1 requires specific encoding per RFC 3986.
-        """
+        """Percent-encode a value for OAuth1 signature per RFC 3986."""
         return quote(str(value), safe="~")
 
     def _build_oauth1_params(self, include_token: bool = True) -> Dict[str, str]:
-        """Build OAuth1 protocol parameters for API requests.
-
-        Args:
-            include_token: Whether to include the oauth_token parameter
-
-        Returns:
-            Dict of OAuth1 parameters
-        """
+        """Build OAuth1 protocol parameters for API requests."""
         params = {
             "oauth_consumer_key": self.consumer_key or "placeholder",
             "oauth_signature_method": "HMAC-SHA1",
@@ -145,17 +117,7 @@ class TrelloSource(BaseSource):
         url: str,
         params: Dict[str, str],
     ) -> str:
-        """Sign an OAuth1 request using HMAC-SHA1.
-
-        Args:
-            method: HTTP method (GET, POST, etc.)
-            url: Base URL without query parameters
-            params: All parameters (OAuth + query params)
-
-        Returns:
-            Base64-encoded signature
-        """
-        # Build signature base string
+        """Sign an OAuth1 request using HMAC-SHA1."""
         sorted_params = sorted(params.items())
         param_str = "&".join(
             f"{self._percent_encode(k)}={self._percent_encode(v)}" for k, v in sorted_params
@@ -168,32 +130,20 @@ class TrelloSource(BaseSource):
         ]
         base_string = "&".join(base_parts)
 
-        # Build signing key: consumer_secret&token_secret
         consumer_sec = self.consumer_secret or ""
         token_sec = self.oauth_token_secret or ""
         signing_key = f"{self._percent_encode(consumer_sec)}&{self._percent_encode(token_sec)}"
 
-        # Sign with HMAC-SHA1
         signature_bytes = hmac.new(
             signing_key.encode("utf-8"),
             base_string.encode("utf-8"),
             hashlib.sha1,
         ).digest()
 
-        # Base64 encode
-        import base64
-
         return base64.b64encode(signature_bytes).decode("utf-8")
 
     def _build_auth_header(self, oauth_params: Dict[str, str]) -> str:
-        """Build OAuth1 Authorization header.
-
-        Args:
-            oauth_params: OAuth parameters including signature
-
-        Returns:
-            Authorization header value
-        """
+        """Build OAuth1 Authorization header."""
         sorted_items = sorted(oauth_params.items())
         param_strings = [
             f'{self._percent_encode(k)}="{self._percent_encode(v)}"' for k, v in sorted_items
@@ -206,56 +156,40 @@ class TrelloSource(BaseSource):
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
-    async def _get_with_oauth1(
+    async def _get(
         self,
-        client: httpx.AsyncClient,
         url: str,
         query_params: Optional[Dict[str, Any]] = None,
-    ) -> Dict:
-        """Make authenticated GET request using OAuth1.
-
-        Args:
-            client: HTTP client
-            url: API endpoint URL
-            query_params: Optional query parameters
-
-        Returns:
-            JSON response
-
-        Raises:
-            httpx.HTTPStatusError: On HTTP errors
-        """
-        # Build OAuth parameters
+    ) -> Any:
+        """Make authenticated GET request using OAuth1."""
         oauth_params = self._build_oauth1_params(include_token=True)
 
-        # Merge with query parameters for signing
         all_params = {**oauth_params}
         if query_params:
-            # Convert all query params to strings for signing
             all_params.update({k: str(v) for k, v in query_params.items()})
 
-        # Sign the request
         signature = self._sign_request("GET", url, all_params)
         oauth_params["oauth_signature"] = signature
 
-        # Build Authorization header (only OAuth params)
         auth_header = self._build_auth_header(oauth_params)
 
-        # Make request with query params in URL
         try:
-            response = await client.get(
+            response = await self.http_client.get(
                 url,
                 headers={"Authorization": auth_header},
                 params=query_params,
             )
-            response.raise_for_status()
+            raise_for_status(
+                response,
+                source_short_name=self.short_name,
+                token_provider_kind=self.auth.provider_kind,
+            )
             return response.json()
 
-        except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP error from Trello API: {e.response.status_code} for {url}")
+        except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Unexpected error accessing Trello API: {url}, {str(e)}")
+            self.logger.warning(f"Unexpected error accessing Trello API: {url}, {str(e)}")
             raise
 
     @staticmethod
@@ -268,13 +202,9 @@ class TrelloSource(BaseSource):
         except ValueError:
             return None
 
-    async def _generate_board_entities(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[BaseEntity, None]:
+    async def _generate_board_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate board entities for the authenticated user."""
-        # Get boards for the authenticated user
-        boards_data = await self._get_with_oauth1(
-            client,
+        boards_data = await self._get(
             f"{self.API_BASE}/members/me/boards",
             query_params={
                 "fields": "id,name,desc,closed,url,shortUrl,prefs,idOrganization,pinned",
@@ -282,7 +212,6 @@ class TrelloSource(BaseSource):
         )
 
         for board in boards_data:
-            # Skip if board name matches filter
             if self.board_filter and self.board_filter in board.get("name", ""):
                 self.logger.info(f"Skipping filtered board: {board.get('name')}")
                 continue
@@ -292,13 +221,11 @@ class TrelloSource(BaseSource):
             web_url = board.get("url") or board.get("shortUrl")
 
             yield TrelloBoardEntity(
-                # Base fields
                 entity_id=board["id"],
                 breadcrumbs=[],
                 name=board_name,
                 created_at=snapshot_time,
                 updated_at=snapshot_time,
-                # API fields
                 trello_id=board["id"],
                 board_name=board_name,
                 created_time=snapshot_time,
@@ -314,11 +241,10 @@ class TrelloSource(BaseSource):
             )
 
     async def _generate_list_entities(
-        self, client: httpx.AsyncClient, board: Dict, board_breadcrumb: Breadcrumb
+        self, board: Dict, board_breadcrumb: Breadcrumb
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate list entities for a board."""
-        lists_data = await self._get_with_oauth1(
-            client,
+        lists_data = await self._get(
             f"{self.API_BASE}/boards/{board['id']}/lists",
             query_params={"fields": "id,name,closed,pos,idBoard,subscribed"},
         )
@@ -329,13 +255,11 @@ class TrelloSource(BaseSource):
             board_url = board.get("shortUrl") or board.get("url")
 
             yield TrelloListEntity(
-                # Base fields
                 entity_id=list_item["id"],
                 breadcrumbs=[board_breadcrumb],
                 name=list_name,
                 created_at=snapshot_time,
                 updated_at=snapshot_time,
-                # API fields
                 trello_id=list_item["id"],
                 list_name=list_name,
                 created_time=snapshot_time,
@@ -348,39 +272,28 @@ class TrelloSource(BaseSource):
                 subscribed=list_item.get("subscribed"),
             )
 
-    async def _get_members_for_card(
-        self, client: httpx.AsyncClient, card_id: str
-    ) -> List[Dict[str, Any]]:
-        """Get member details for a card.
-
-        Args:
-            client: HTTP client
-            card_id: Card ID
-
-        Returns:
-            List of member dictionaries
-        """
+    async def _get_members_for_card(self, card_id: str) -> List[Dict[str, Any]]:
+        """Get member details for a card."""
         try:
-            members_data = await self._get_with_oauth1(
-                client,
+            members_data = await self._get(
                 f"{self.API_BASE}/cards/{card_id}/members",
                 query_params={"fields": "id,username,fullName,initials,avatarUrl"},
             )
             return members_data
+        except SourceAuthError:
+            raise
         except Exception as e:
             self.logger.warning(f"Failed to fetch members for card {card_id}: {e}")
             return []
 
     async def _generate_card_entities(
         self,
-        client: httpx.AsyncClient,
         board: Dict,
         list_item: Dict,
         list_breadcrumbs: List[Breadcrumb],
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate card entities for a list."""
-        cards_data = await self._get_with_oauth1(
-            client,
+        cards_data = await self._get(
             f"{self.API_BASE}/lists/{list_item['id']}/cards",
             query_params={
                 "fields": "id,name,desc,closed,due,dueComplete,dateLastActivity,"
@@ -390,8 +303,7 @@ class TrelloSource(BaseSource):
         )
 
         for card in cards_data:
-            # Fetch member details for the card
-            members = await self._get_members_for_card(client, card["id"])
+            members = await self._get_members_for_card(card["id"])
 
             updated_time = self._parse_datetime(card.get("dateLastActivity")) or datetime.utcnow()
             created_time = (
@@ -403,13 +315,11 @@ class TrelloSource(BaseSource):
             card_web_url = card.get("url") or card.get("shortUrl")
 
             yield TrelloCardEntity(
-                # Base fields
                 entity_id=card["id"],
                 breadcrumbs=list_breadcrumbs,
                 name=card_name,
                 created_at=created_time,
                 updated_at=updated_time,
-                # API fields
                 trello_id=card["id"],
                 card_name=card_name,
                 created_time=created_time,
@@ -440,14 +350,11 @@ class TrelloSource(BaseSource):
 
     async def _generate_checklist_entities(
         self,
-        client: httpx.AsyncClient,
         card: Dict,
         card_breadcrumbs: List[Breadcrumb],
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate checklist entities for a card."""
-        # Get checklists for the card
-        checklists_data = await self._get_with_oauth1(
-            client,
+        checklists_data = await self._get(
             f"{self.API_BASE}/cards/{card['id']}/checklists",
             query_params={"fields": "id,name,pos,idBoard,idCard,checkItems"},
         )
@@ -458,13 +365,11 @@ class TrelloSource(BaseSource):
             web_url = card.get("url") or card.get("shortUrl")
 
             yield TrelloChecklistEntity(
-                # Base fields
                 entity_id=checklist["id"],
                 breadcrumbs=card_breadcrumbs,
                 name=checklist_name,
                 created_at=snapshot_time,
                 updated_at=snapshot_time,
-                # API fields
                 trello_id=checklist["id"],
                 checklist_name=checklist_name,
                 created_time=snapshot_time,
@@ -477,32 +382,25 @@ class TrelloSource(BaseSource):
                 check_items=checklist.get("checkItems", []),
             )
 
-    async def _generate_member_entities(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[BaseEntity, None]:
+    async def _generate_member_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate member entity for the authenticated user."""
-        # Get authenticated user's member info
-        member_data = await self._get_with_oauth1(
-            client,
+        member_data = await self._get(
             f"{self.API_BASE}/members/me",
             query_params={
                 "fields": "id,username,fullName,initials,avatarUrl,bio,url,idBoards,memberType"
             },
         )
 
-        # Get member name from full_name or username
         member_name = member_data.get("fullName") or member_data.get("username", "unknown")
         snapshot_time = datetime.utcnow()
         member_url = member_data.get("url")
 
         yield TrelloMemberEntity(
-            # Base fields
             entity_id=member_data["id"],
             breadcrumbs=[],
             name=member_name,
             created_at=snapshot_time,
             updated_at=snapshot_time,
-            # API fields
             username=member_data.get("username", "unknown"),
             trello_id=member_data["id"],
             display_name=member_name,
@@ -518,7 +416,13 @@ class TrelloSource(BaseSource):
             member_type=member_data.get("memberType"),
         )
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Trello.
 
         Hierarchy: Board → List → Card → Checklist
@@ -526,95 +430,72 @@ class TrelloSource(BaseSource):
         """
         self.logger.info("Starting Trello sync")
 
-        async with self.http_client() as client:
-            # Generate authenticated user's member entity
-            async for member_entity in self._generate_member_entities(client):
-                yield member_entity
+        async for member_entity in self._generate_member_entities():
+            yield member_entity
 
-            # Generate board entities
-            async for board_entity in self._generate_board_entities(client):
-                self.logger.debug(f"Processing board: {board_entity.name}")
-                yield board_entity
+        async for board_entity in self._generate_board_entities():
+            self.logger.debug(f"Processing board: {board_entity.name}")
+            yield board_entity
 
-                board_breadcrumb = Breadcrumb(
-                    entity_id=board_entity.entity_id,
-                    name=board_entity.name,
-                    entity_type=TrelloBoardEntity.__name__,
+            board_breadcrumb = Breadcrumb(
+                entity_id=board_entity.entity_id,
+                name=board_entity.name,
+                entity_type=TrelloBoardEntity.__name__,
+            )
+
+            async for list_entity in self._generate_list_entities(
+                {
+                    "id": board_entity.entity_id,
+                    "name": board_entity.name,
+                    "url": getattr(board_entity, "url", None),
+                    "shortUrl": getattr(board_entity, "short_url", None),
+                },
+                board_breadcrumb,
+            ):
+                self.logger.debug(f"Processing list: {list_entity.name}")
+                yield list_entity
+
+                list_breadcrumb = Breadcrumb(
+                    entity_id=list_entity.entity_id,
+                    name=list_entity.name,
+                    entity_type=TrelloListEntity.__name__,
                 )
+                list_breadcrumbs = [board_breadcrumb, list_breadcrumb]
 
-                # Generate lists for this board
-                async for list_entity in self._generate_list_entities(
-                    client,
+                async for card_entity in self._generate_card_entities(
+                    {"id": board_entity.entity_id, "name": board_entity.name},
                     {
-                        "id": board_entity.entity_id,
-                        "name": board_entity.name,
-                        "url": getattr(board_entity, "url", None),
-                        "shortUrl": getattr(board_entity, "short_url", None),
+                        "id": list_entity.entity_id,
+                        "name": list_entity.name,
+                        "url": getattr(list_entity, "web_url", None),
                     },
-                    board_breadcrumb,
+                    list_breadcrumbs,
                 ):
-                    self.logger.debug(f"Processing list: {list_entity.name}")
-                    yield list_entity
+                    self.logger.debug(f"Processing card: {card_entity.name}")
+                    yield card_entity
 
-                    list_breadcrumb = Breadcrumb(
-                        entity_id=list_entity.entity_id,
-                        name=list_entity.name,
-                        entity_type=TrelloListEntity.__name__,
+                    card_breadcrumb = Breadcrumb(
+                        entity_id=card_entity.entity_id,
+                        name=card_entity.name,
+                        entity_type=TrelloCardEntity.__name__,
                     )
-                    list_breadcrumbs = [board_breadcrumb, list_breadcrumb]
+                    card_breadcrumbs = [*list_breadcrumbs, card_breadcrumb]
 
-                    # Generate cards for this list
-                    async for card_entity in self._generate_card_entities(
-                        client,
-                        {"id": board_entity.entity_id, "name": board_entity.name},
+                    async for checklist_entity in self._generate_checklist_entities(
                         {
-                            "id": list_entity.entity_id,
-                            "name": list_entity.name,
-                            "url": getattr(list_entity, "web_url", None),
+                            "id": card_entity.entity_id,
+                            "name": card_entity.name,
+                            "idBoard": card_entity.id_board,
+                            "url": getattr(card_entity, "web_url", None),
+                            "shortUrl": getattr(card_entity, "short_url", None),
                         },
-                        list_breadcrumbs,
+                        card_breadcrumbs,
                     ):
-                        self.logger.debug(f"Processing card: {card_entity.name}")
-                        yield card_entity
-
-                        # Generate checklists for this card
-                        card_breadcrumb = Breadcrumb(
-                            entity_id=card_entity.entity_id,
-                            name=card_entity.name,
-                            entity_type=TrelloCardEntity.__name__,
-                        )
-                        card_breadcrumbs = [*list_breadcrumbs, card_breadcrumb]
-
-                        async for checklist_entity in self._generate_checklist_entities(
-                            client,
-                            {
-                                "id": card_entity.entity_id,
-                                "name": card_entity.name,
-                                "idBoard": card_entity.id_board,
-                                "url": getattr(card_entity, "web_url", None),
-                                "shortUrl": getattr(card_entity, "short_url", None),
-                            },
-                            card_breadcrumbs,
-                        ):
-                            self.logger.debug(f"Processing checklist: {checklist_entity.name}")
-                            yield checklist_entity
+                        self.logger.debug(f"Processing checklist: {checklist_entity.name}")
+                        yield checklist_entity
 
         self.logger.info("Trello sync completed")
 
-    async def validate(self) -> bool:
-        """Verify OAuth1 credentials by calling the /members/me endpoint.
-
-        Returns:
-            True if credentials are valid, False otherwise
-        """
-        try:
-            async with self.http_client() as client:
-                await self._get_with_oauth1(
-                    client,
-                    f"{self.API_BASE}/members/me",
-                    query_params={"fields": "id,username"},
-                )
-            return True
-        except Exception as e:
-            self.logger.error(f"OAuth1 validation failed: {str(e)}")
-            return False
+    async def validate(self) -> None:
+        """Verify OAuth1 credentials by calling the /members/me endpoint."""
+        await self._get(f"{self.API_BASE}/members/me", query_params={"fields": "id,username"})

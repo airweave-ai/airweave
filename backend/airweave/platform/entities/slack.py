@@ -1,12 +1,24 @@
 """Slack entity schemas."""
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+
+def _parse_slack_ts(ts_str: Any) -> Optional[datetime]:
+    """Parse Slack message timestamp string to datetime."""
+    if not ts_str:
+        return None
+    try:
+        return datetime.fromtimestamp(float(ts_str))
+    except (ValueError, TypeError):
+        return None
 
 
 class SlackMessageEntity(BaseEntity):
@@ -74,6 +86,47 @@ class SlackMessageEntity(BaseEntity):
     web_url_value: Optional[str] = AirweaveField(
         None, description="Permalink to open the message.", embeddable=False, unhashable=True
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+    ) -> SlackMessageEntity:
+        """Build from a Slack search.messages match object."""
+        channel_info = data.get("channel", {})
+        ts = data.get("ts", "0")
+        created_at = _parse_slack_ts(ts)
+
+        text = data.get("text", "")
+        preview = text[:50] + "..." if len(text) > 50 else text
+        name = preview or f"Slack message {ts}"
+
+        return cls(
+            entity_id=data.get("iid", data.get("ts", "")),
+            breadcrumbs=breadcrumbs,
+            name=name,
+            created_at=created_at,
+            updated_at=None,
+            text=text or name,
+            user=data.get("user"),
+            username=data.get("username"),
+            ts=ts,
+            channel_id=channel_info.get("id", "unknown"),
+            channel_name=channel_info.get("name"),
+            channel_is_private=channel_info.get("is_private", False),
+            type=data.get("type", "message"),
+            permalink=data.get("permalink"),
+            team=data.get("team"),
+            previous_message=data.get("previous"),
+            next_message=data.get("next"),
+            score=float(data.get("score", 0)),
+            iid=data.get("iid"),
+            url=data.get("permalink"),
+            message_time=created_at or datetime.utcnow(),
+            web_url_value=data.get("permalink"),
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

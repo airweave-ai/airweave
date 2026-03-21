@@ -117,7 +117,7 @@ class BaseEntity(BaseModel):
         None, description="Access control - who can view this entity (not expanded)"
     )
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="ignore")
 
     @model_validator(mode="after")
     def validate_flagged_fields(self) -> "BaseEntity":  # noqa: C901

@@ -27,7 +27,8 @@ The sync module orchestrates data flow from sources to destinations using a high
 
 **Key Responsibilities**:
 - Builds SyncContext (frozen data) via SyncContextBuilder
-- Builds live services (source, destinations, trackers) via sub-builders directly
+- Builds source + cursor directly via `_build_source()` (uses SourceLifecycleService)
+- Builds live services (destinations, trackers) via sub-builders
 - Assembles SyncRuntime from the services
 - Configures contextual logging with sync metadata
 - Wires pipelines, handlers, worker pool, and stream
@@ -60,7 +61,7 @@ Built by the factory, held by the orchestrator, injected into pipeline/handler c
 
 ### Builders
 - **SyncContextBuilder** (`builders/sync.py`): Builds data-only SyncContext
-- **SourceContextBuilder** (`builders/source.py`): Builds source + cursor (returns tuple)
+- **SyncFactory._build_source()**: Builds source + cursor directly (previously `SourceContextBuilder`, now inlined into the factory)
 - **DestinationsContextBuilder** (`builders/destinations.py`): Builds destinations + entity_map
 - **TrackingContextBuilder** (`builders/tracking.py`): Builds entity_tracker
 
@@ -234,8 +235,8 @@ if auth_type in (AuthType.oauth2_with_refresh, AuthType.oauth2_with_refresh_rota
 ### 1. Initialization Phase
 ```
 SyncFactory.create_orchestrator()
-├── Create SyncContext
-│   ├── Initialize source with OAuth token
+├── Create SyncContext (frozen data)
+│   ├── Build source + cursor via _build_source() (SourceLifecycleService)
 │   ├── Create destinations
 │   ├── Setup embedding model
 │   ├── Build DAG router

@@ -6,16 +6,24 @@ entities beyond the cursor position. The entity_count can be increased via
 config update to simulate new data appearing between syncs.
 """
 
+from __future__ import annotations
+
 import random
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import AsyncGenerator
 
+from airweave.core.logging import ContextualLogger
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import StubAuthConfig
 from airweave.platform.configs.config import IncrementalStubConfig
 from airweave.platform.cursors import IncrementalStubCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.stub import SmallStubEntity, StubContainerEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 
@@ -77,23 +85,31 @@ class IncrementalStubSource(BaseSource):
     On subsequent syncs, only generates entities beyond the last cursor position.
     """
 
-    def __init__(self):
-        """Initialize the incremental stub source."""
-        super().__init__()
+    def __init__(
+        self,
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+    ) -> None:
+        """Initialize with default stub configuration."""
+        super().__init__(auth=auth, logger=logger, http_client=http_client)
         self.seed: int = 42
         self.entity_count: int = 5
 
     @classmethod
     async def create(
         cls,
-        credentials: Optional[StubAuthConfig] = None,
-        config: Optional[Dict[str, Any]] = None,
-    ) -> "IncrementalStubSource":
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: IncrementalStubConfig,
+    ) -> IncrementalStubSource:
         """Create a new incremental stub source instance."""
-        instance = cls()
-        config = config or {}
-        instance.seed = config.get("seed", 42)
-        instance.entity_count = config.get("entity_count", 5)
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
+        instance.seed = config.seed
+        instance.entity_count = config.entity_count
         return instance
 
     def _generate_entity(self, index: int, breadcrumbs: list[Breadcrumb]) -> SmallStubEntity:
@@ -114,13 +130,15 @@ class IncrementalStubSource(BaseSource):
             breadcrumbs=breadcrumbs,
         )
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        """Generate entities with incremental cursor support.
-
-        First sync: yields container + all entities, sets cursor to last index.
-        Incremental sync: yields container + only new entities beyond cursor.
-        """
-        cursor_data = self.cursor.data if self.cursor else {}
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Generate entities with incremental cursor support."""
+        cursor_data = cursor.data if cursor else {}
         last_index = cursor_data.get("last_entity_index", -1)
         is_incremental = last_index >= 0
 
@@ -136,7 +154,6 @@ class IncrementalStubSource(BaseSource):
             )
             start_index = 0
 
-        # Always yield the container entity
         container_id = f"inc-stub-container-{self.seed}"
         container = StubContainerEntity(
             container_id=container_id,
@@ -156,7 +173,6 @@ class IncrementalStubSource(BaseSource):
         )
         breadcrumbs = [container_breadcrumb]
 
-        # Generate entities from start_index to entity_count
         new_count = 0
         for i in range(start_index, self.entity_count):
             entity = self._generate_entity(i, breadcrumbs)
@@ -167,16 +183,11 @@ class IncrementalStubSource(BaseSource):
             f"Generated {new_count} entities (indices {start_index}-{self.entity_count - 1})"
         )
 
-        # Update cursor
-        if self.cursor and self.entity_count > 0:
-            self.cursor.update(
+        if cursor and self.entity_count > 0:
+            cursor.update(
                 last_entity_index=self.entity_count - 1,
                 entity_count=self.entity_count,
             )
 
-    async def validate(self) -> bool:
-        """Validate the incremental stub source configuration.
-
-        Always returns True since stub source doesn't require external validation.
-        """
-        return True
+    async def validate(self) -> None:
+        """Validate the incremental stub source configuration."""

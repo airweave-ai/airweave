@@ -12,14 +12,41 @@ References:
     https://developers.google.com/drive/api/v3/reference/files  (File)
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, DeletionEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, DeletionEntity, FileEntity
 from airweave.platform.entities.utils import _determine_file_type_from_mime
+
+_GOOGLE_EXPORT_MAP: Dict[str, tuple[str, str]] = {
+    "application/vnd.google-apps.document": (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".docx",
+    ),
+    "application/vnd.google-apps.spreadsheet": (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xlsx",
+    ),
+    "application/vnd.google-apps.presentation": (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".pptx",
+    ),
+}
+
+
+def _parse_drive_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Google Drive RFC3339 timestamp into an aware datetime."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class GoogleDriveDriveEntity(BaseEntity):
@@ -145,6 +172,68 @@ class GoogleDriveFileEntity(FileEntity):
         if not self.file_type or self.file_type == "unknown":
             self.file_type = _determine_file_type_from_mime(self.mime_type)
 
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+    ) -> GoogleDriveFileEntity:
+        """Build from a Google Drive API file object.
+
+        Args:
+            data: Raw file metadata dict from the Drive API.
+            breadcrumbs: Parent hierarchy breadcrumbs.
+        """
+        mime_type = data.get("mimeType", "")
+        file_name = data.get("name", "Untitled")
+        file_id = data["id"]
+
+        if mime_type.startswith("application/vnd.google-apps."):
+            export_mime_type, file_extension = _GOOGLE_EXPORT_MAP.get(
+                mime_type, ("application/pdf", ".pdf")
+            )
+            download_url = (
+                f"https://www.googleapis.com/drive/v3/files/{file_id}"
+                f"/export?mimeType={export_mime_type}"
+            )
+            if not file_name.lower().endswith(file_extension):
+                file_name = f"{file_name}{file_extension}"
+        else:
+            download_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+
+        created_time = _parse_drive_dt(data.get("createdTime")) or datetime.utcnow()
+        modified_time = _parse_drive_dt(data.get("modifiedTime")) or created_time
+
+        return cls(
+            breadcrumbs=breadcrumbs,
+            file_id=file_id,
+            title=data.get("name", "Untitled"),
+            created_time=created_time,
+            modified_time=modified_time,
+            name=file_name,
+            created_at=created_time,
+            updated_at=modified_time,
+            url=download_url,
+            size=int(data["size"]) if data.get("size") else 0,
+            file_type=_determine_file_type_from_mime(mime_type),
+            mime_type=mime_type or "application/octet-stream",
+            local_path=None,
+            description=data.get("description"),
+            starred=data.get("starred", False),
+            trashed=data.get("trashed", False),
+            explicitly_trashed=data.get("explicitlyTrashed", False),
+            parents=data.get("parents", []),
+            owners=data.get("owners", []),
+            shared=data.get("shared", False),
+            web_view_link=data.get("webViewLink"),
+            icon_link=data.get("iconLink"),
+            md5_checksum=data.get("md5Checksum"),
+            shared_with_me_time=_parse_drive_dt(data.get("sharedWithMeTime")),
+            modified_by_me_time=_parse_drive_dt(data.get("modifiedByMeTime")),
+            viewed_by_me_time=_parse_drive_dt(data.get("viewedByMeTime")),
+        )
+
     def model_dump(self, *args, **kwargs) -> dict[str, Any]:
         """Override model_dump to convert size to string."""
         data = super().model_dump(*args, **kwargs)
@@ -179,6 +268,34 @@ class GoogleDriveFileDeletionEntity(DeletionEntity):
     drive_id: Optional[str] = AirweaveField(
         None, description="Drive identifier that contained the file.", embeddable=False
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        change: Dict[str, Any],
+    ) -> GoogleDriveFileDeletionEntity:
+        """Build from a Google Drive Changes API change object.
+
+        Args:
+            change: A single change dict from the Drive Changes API. Must contain
+                    a resolvable ``fileId`` (either top-level or nested in ``file``).
+        """
+        file_obj = change.get("file") or {}
+        file_id = change.get("fileId") or file_obj.get("id")
+        label = file_obj.get("name") or file_id
+
+        drive_id = file_obj.get("driveId") or change.get("driveId")
+        parents = file_obj.get("parents") or []
+        if not drive_id and parents:
+            drive_id = parents[0]
+
+        return cls(
+            breadcrumbs=[],
+            file_id=file_id,
+            label=f"Deleted file {label}",
+            drive_id=drive_id,
+            deletion_status="removed",
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

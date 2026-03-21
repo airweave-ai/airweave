@@ -1,13 +1,25 @@
 """Asana source implementation for syncing workspaces, projects, tasks, and comments."""
 
+from __future__ import annotations
+
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
-from airweave.platform.configs.auth import AsanaAuthConfig
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.exceptions import (
+    SourceAuthError,
+    SourceEntityForbiddenError,
+    SourceEntityNotFoundError,
+    SourceError,
+)
+from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+from airweave.domains.storage import FileSkippedException
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.config import AsanaConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -19,13 +31,60 @@ from airweave.platform.entities.asana import (
     AsanaTaskEntity,
     AsanaWorkspaceEntity,
 )
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.http_helpers import raise_for_status
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.domains.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+_API = "https://app.asana.com/api/1.0"
+
+
+class _ResultTooLarge(Exception):
+    """Asana returned 400 indicating the response payload exceeds internal limits."""
+
+
+_WORKSPACE_FIELDS = "gid,name,is_organization,email_domains,resource_type"
+
+_PROJECT_FIELDS = (
+    "gid,name,color,archived,created_at,modified_at,"
+    "current_status,current_status.text,current_status.color,"
+    "default_view,due_on,html_notes,notes,public,start_on,"
+    "owner,owner.name,team,team.name,members,members.name,"
+    "followers,followers.name,custom_fields,custom_field_settings,"
+    "default_access_level,icon,permalink_url"
+)
+
+_SECTION_FIELDS = "gid,name,created_at,projects,projects.name"
+
+_TASK_FIELDS = (
+    "gid,name,actual_time_minutes,approval_status,"
+    "assignee,assignee.name,assignee_status,completed,"
+    "completed_at,completed_by,completed_by.name,"
+    "created_at,modified_at,dependencies,dependents,"
+    "due_at,due_on,start_at,start_on,external,"
+    "html_notes,notes,is_rendered_as_separator,liked,"
+    "memberships,num_likes,num_subtasks,parent,parent.name,"
+    "permalink_url,resource_subtype,tags,tags.name,"
+    "custom_fields,followers,followers.name,workspace,workspace.name"
+)
+
+_STORY_FIELDS = (
+    "gid,created_at,created_by,created_by.name,"
+    "resource_subtype,text,html_text,is_pinned,"
+    "is_edited,sticker_name,num_likes,liked,type,previews"
+)
+
+_ATTACHMENT_LIST_FIELDS = "gid,name,resource_type"
+
+_ATTACHMENT_DETAIL_FIELDS = (
+    "gid,name,resource_type,created_at,modified_at,"
+    "download_url,permanent,host,parent,parent.name,"
+    "size,view_url,mime_type"
+)
 
 
 @source(
@@ -37,43 +96,30 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.AUTH_PROVIDER,
     ],
     oauth_type=OAuthType.WITH_REFRESH,
-    auth_config_class=AsanaAuthConfig,
+    auth_config_class=None,
     config_class=AsanaConfig,
     labels=["Project Management"],
     supports_continuous=False,
     rate_limit_level=RateLimitLevel.ORG,
 )
 class AsanaSource(BaseSource):
-    """Asana source connector integrates with the Asana API to extract and synchronize data.
-
-    Connects to your Asana workspaces.
-
-    It supports syncing workspaces, projects, tasks, sections, comments, and file attachments.
-    """
+    """Asana source connector — syncs workspaces, projects, tasks, sections, comments, files."""
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
-    ) -> "AsanaSource":
-        """Create a new Asana source.
+        cls,
+        *,
+        auth: TokenProviderProtocol,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: AsanaConfig,
+    ) -> AsanaSource:
+        """Create a new Asana source instance."""
+        return cls(auth=auth, logger=logger, http_client=http_client)
 
-        Args:
-            access_token: OAuth access token for Asana API
-            config: Optional configuration parameters, like exclude_path
-
-        Returns:
-            Configured AsanaSource instance
-        """
-        instance = cls()
-        instance.access_token = access_token
-
-        # Store config values as instance attributes
-        if config:
-            instance.exclude_path = config.get("exclude_path", "")
-        else:
-            instance.exclude_path = ""
-
-        return instance
+    # ------------------------------------------------------------------
+    # HTTP
+    # ------------------------------------------------------------------
 
     @retry(
         stop=stop_after_attempt(5),
@@ -81,574 +127,334 @@ class AsanaSource(BaseSource):
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
-    async def _get_with_auth(
-        self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict:
-        """Make authenticated GET request to Asana API with retry logic.
+    async def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict:
+        """Authenticated GET with retry on 429/5xx/timeout and 401 refresh."""
+        token = await self.auth.get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        response = await self.http_client.get(url, headers=headers, params=params)
 
-        Retries on:
-        - 429 rate limits (respects Retry-After header from both real API and AirweaveHttpClient)
-        - Timeout errors (exponential backoff)
+        if response.status_code == 401 and self.auth.supports_refresh:
+            new_token = await self.auth.force_refresh()
+            headers = {"Authorization": f"Bearer {new_token}"}
+            response = await self.http_client.get(url, headers=headers, params=params)
 
-        Max 5 attempts with intelligent wait strategy.
-
-        Args:
-            client: HTTP client to use for the request
-            url: API endpoint URL
-            params: Optional query parameters including opt_fields
-        """
-        # Get a valid token (will refresh if needed)
-        access_token = await self.get_access_token()
-        if not access_token:
-            raise ValueError("No access token available")
-
-        headers = {"Authorization": f"Bearer {access_token}"}
+        if response.status_code == 400 and "too large" in response.text.lower():
+            raise _ResultTooLarge()
 
         try:
-            response = await client.get(url, headers=headers, params=params)
-
-            # Handle 401 Unauthorized - token might have expired
-            if response.status_code == 401:
-                self.logger.warning(f"Received 401 Unauthorized for {url}, refreshing token...")
-
-                # If we have a token manager, try to refresh
-                if self.token_provider:
-                    try:
-                        new_token = await self.token_provider.force_refresh()
-                        headers = {"Authorization": f"Bearer {new_token}"}
-
-                        # Retry the request with the new token
-                        self.logger.debug(f"Retrying request with refreshed token: {url}")
-                        response = await client.get(url, headers=headers, params=params)
-
-                    except TokenRefreshError as e:
-                        self.logger.error(f"Failed to refresh token: {str(e)}")
-                        response.raise_for_status()
-                else:
-                    # No token manager, can't refresh
-                    self.logger.error("No token manager available to refresh expired token")
-                    response.raise_for_status()
-
-            # Raise for other HTTP errors
-            response.raise_for_status()
-            return response.json()
-
-        except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP error from Asana API: {e.response.status_code} for {url}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error accessing Asana API: {url}, {str(e)}")
-            raise
-
-    async def _generate_workspace_entities(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[AsanaWorkspaceEntity, None]:
-        """Generate workspace entities."""
-        # Request all available fields for workspaces
-        workspace_fields = ["gid", "name", "is_organization", "email_domains", "resource_type"]
-        workspaces_data = await self._get_with_auth(
-            client,
-            "https://app.asana.com/api/1.0/workspaces",
-            params={"opt_fields": ",".join(workspace_fields)},
-        )
-
-        for workspace in workspaces_data.get("data", []):
-            yield AsanaWorkspaceEntity(
-                gid=workspace["gid"],
-                name=workspace["name"],
-                breadcrumbs=[],  # Root entity
-                is_organization=workspace.get("is_organization", False),
-                email_domains=workspace.get("email_domains", []),
-                permalink_url=f"https://app.asana.com/0/{workspace['gid']}",
+            raise_for_status(
+                response,
+                source_short_name=self.short_name,
+                token_provider_kind=self.auth.provider_kind,
             )
+        except SourceAuthError as e:
+            self.logger.warning(f"Failed to fetch data from {url}: {e}")
+            raise
+        return response.json()
 
-    async def _generate_project_entities(
-        self, client: httpx.AsyncClient, workspace: Dict, workspace_breadcrumb: Breadcrumb
+    async def _paginate(
+        self,
+        url: str,
+        opt_fields: str,
+        limit: int = 100,
+        _min_limit: int = 10,
+        _offset: str | None = None,
+    ) -> AsyncGenerator[Dict, None]:
+        """Paginate through Asana list endpoints, yielding each item.
+
+        If Asana returns 400 "result too large" (payload exceeds internal
+        limits despite pagination), halves the page size and retries
+        recursively down to ``_min_limit``.
+        """
+        offset: str | None = _offset
+
+        while True:
+            params: Dict[str, Any] = {"opt_fields": opt_fields, "limit": limit}
+            if offset:
+                params["offset"] = offset
+
+            try:
+                data = await self._get(url, params=params)
+            except _ResultTooLarge:
+                if limit > _min_limit:
+                    smaller = max(limit // 2, _min_limit)
+                    self.logger.warning(
+                        f"Result too large at limit={limit}, retrying at limit={smaller}"
+                    )
+                    async for item in self._paginate(
+                        url, opt_fields, limit=smaller, _min_limit=_min_limit, _offset=offset
+                    ):
+                        yield item
+                    return
+                raise
+
+            for item in data.get("data", []):
+                yield item
+
+            next_page = data.get("next_page")
+            if next_page and next_page.get("offset"):
+                offset = next_page["offset"]
+            else:
+                return
+
+    # ------------------------------------------------------------------
+    # Entity generators
+    # ------------------------------------------------------------------
+
+    async def _generate_workspaces(self) -> AsyncGenerator[AsanaWorkspaceEntity, None]:
+        """Generate workspace entities."""
+        data = await self._get(f"{_API}/workspaces", params={"opt_fields": _WORKSPACE_FIELDS})
+        for ws in data.get("data", []):
+            yield AsanaWorkspaceEntity.from_api(ws)
+
+    async def _generate_projects(
+        self, workspace: Dict, breadcrumb: Breadcrumb
     ) -> AsyncGenerator[AsanaProjectEntity, None]:
         """Generate project entities for a workspace."""
-        # Request all available fields for projects, including timestamps
-        project_fields = [
-            "gid",
-            "name",
-            "color",
-            "archived",
-            "created_at",
-            "modified_at",
-            "current_status",
-            "current_status.text",
-            "current_status.color",
-            "default_view",
-            "due_on",
-            "html_notes",
-            "notes",
-            "public",
-            "start_on",
-            "owner",
-            "owner.name",
-            "team",
-            "team.name",
-            "members",
-            "members.name",
-            "followers",
-            "followers.name",
-            "custom_fields",
-            "custom_field_settings",
-            "default_access_level",
-            "icon",
-            "permalink_url",
-        ]
-        projects_data = await self._get_with_auth(
-            client,
-            f"https://app.asana.com/api/1.0/workspaces/{workspace['gid']}/projects",
-            params={"opt_fields": ",".join(project_fields)},
+        data = await self._get(
+            f"{_API}/workspaces/{workspace['gid']}/projects",
+            params={"opt_fields": _PROJECT_FIELDS},
         )
-
-        for project in projects_data.get("data", []):
-            project_name = project["name"]
-
-            # Skip projects matching exclude_path
-            if self.exclude_path and self.exclude_path in project_name:
-                self.logger.debug(f"Skipping excluded project: {project_name}")
-                continue
-
-            yield AsanaProjectEntity(
-                gid=project["gid"],
-                name=project["name"],
-                created_at=project.get("created_at"),
-                modified_at=project.get("modified_at"),
-                breadcrumbs=[workspace_breadcrumb],
-                workspace_gid=workspace["gid"],
-                workspace_name=workspace["name"],
-                color=project.get("color"),
-                archived=project.get("archived", False),
-                current_status=project.get("current_status"),
-                default_view=project.get("default_view"),
-                due_date=project.get("due_on"),
-                due_on=project.get("due_on"),
-                html_notes=project.get("html_notes"),
-                notes=project.get("notes"),
-                is_public=project.get("public", False),
-                start_on=project.get("start_on"),
-                owner=project.get("owner"),
-                team=project.get("team"),
-                members=project.get("members", []),
-                followers=project.get("followers", []),
-                custom_fields=project.get("custom_fields", []),
-                custom_field_settings=project.get("custom_field_settings", []),
-                default_access_level=project.get("default_access_level"),
-                icon=project.get("icon"),
-                permalink_url=project.get("permalink_url"),
+        for project in data.get("data", []):
+            yield AsanaProjectEntity.from_api(
+                project, workspace=workspace, breadcrumbs=[breadcrumb]
             )
 
-    async def _generate_section_entities(
-        self, client: httpx.AsyncClient, project: Dict, project_breadcrumbs: List[Breadcrumb]
+    async def _generate_sections(
+        self, project_gid: str, breadcrumbs: List[Breadcrumb]
     ) -> AsyncGenerator[AsanaSectionEntity, None]:
         """Generate section entities for a project."""
-        # Request all available fields for sections
-        section_fields = ["gid", "name", "created_at", "projects", "projects.name"]
-        sections_data = await self._get_with_auth(
-            client,
-            f"https://app.asana.com/api/1.0/projects/{project['gid']}/sections",
-            params={"opt_fields": ",".join(section_fields)},
+        data = await self._get(
+            f"{_API}/projects/{project_gid}/sections",
+            params={"opt_fields": _SECTION_FIELDS},
         )
-
-        for section in sections_data.get("data", []):
-            yield AsanaSectionEntity(
-                gid=section["gid"],
-                name=section["name"],
-                created_at=section.get("created_at"),
-                breadcrumbs=project_breadcrumbs,
-                project_gid=project["gid"],
-                projects=section.get("projects", []),
+        for section in data.get("data", []):
+            yield AsanaSectionEntity.from_api(
+                section, project_gid=project_gid, breadcrumbs=breadcrumbs
             )
 
-    async def _generate_task_entities(
+    async def _generate_tasks(
         self,
-        client: httpx.AsyncClient,
-        project: Dict,
+        project_gid: str,
+        breadcrumbs: List[Breadcrumb],
         section: Optional[Dict] = None,
-        breadcrumbs: List[Breadcrumb] = None,
     ) -> AsyncGenerator[AsanaTaskEntity, None]:
-        """Generate task entities for a project or section with pagination."""
+        """Generate task entities with pagination."""
         url = (
-            f"https://app.asana.com/api/1.0/sections/{section['gid']}/tasks"
+            f"{_API}/sections/{section['gid']}/tasks"
             if section
-            else f"https://app.asana.com/api/1.0/projects/{project['gid']}/tasks"
+            else f"{_API}/projects/{project_gid}/tasks"
         )
+        section_gid = section["gid"] if section else None
 
-        # Request ALL available fields for tasks, especially timestamps
-        task_fields = [
-            "gid",
-            "name",
-            "actual_time_minutes",
-            "approval_status",
-            "assignee",
-            "assignee.name",
-            "assignee_status",
-            "completed",
-            "completed_at",
-            "completed_by",
-            "completed_by.name",
-            "created_at",
-            "modified_at",  # Important timestamps
-            "dependencies",
-            "dependents",
-            "due_at",
-            "due_on",
-            "start_at",
-            "start_on",  # All date/time fields
-            "external",
-            "html_notes",
-            "notes",
-            "is_rendered_as_separator",
-            "liked",
-            "memberships",
-            "num_likes",
-            "num_subtasks",
-            "parent",
-            "parent.name",
-            "permalink_url",
-            "resource_subtype",
-            "tags",
-            "tags.name",
-            "custom_fields",
-            "followers",
-            "followers.name",
-            "workspace",
-            "workspace.name",
-        ]
+        task_breadcrumbs = breadcrumbs
+        if section:
+            task_breadcrumbs = [
+                *breadcrumbs,
+                Breadcrumb(
+                    entity_id=section["gid"],
+                    name=section["name"],
+                    entity_type="AsanaSectionEntity",
+                ),
+            ]
 
-        # Use pagination to handle large result sets
-        # Asana API default limit is 20, max is 100
-        params = {"opt_fields": ",".join(task_fields), "limit": 100}
-        offset = None
+        async for task in self._paginate(url, _TASK_FIELDS):
+            yield AsanaTaskEntity.from_api(
+                task,
+                project_gid=project_gid,
+                breadcrumbs=task_breadcrumbs,
+                section_gid=section_gid,
+            )
 
-        try:
-            while True:
-                if offset:
-                    params["offset"] = offset
-
-                tasks_data = await self._get_with_auth(client, url, params=params)
-
-                for task in tasks_data.get("data", []):
-                    # If we have a section, add it to the breadcrumbs
-                    task_breadcrumbs = breadcrumbs
-                    if section:
-                        section_breadcrumb = Breadcrumb(
-                            entity_id=section["gid"],
-                            name=section["name"],
-                            entity_type="AsanaSectionEntity",
-                        )
-                        task_breadcrumbs = [*breadcrumbs, section_breadcrumb]
-
-                    yield AsanaTaskEntity(
-                        gid=task["gid"],
-                        name=task["name"],
-                        created_at=task.get("created_at"),
-                        modified_at=task.get("modified_at"),
-                        breadcrumbs=task_breadcrumbs,
-                        project_gid=project["gid"],
-                        section_gid=section["gid"] if section else None,
-                        actual_time_minutes=task.get("actual_time_minutes"),
-                        approval_status=task.get("approval_status"),
-                        assignee=task.get("assignee"),
-                        assignee_status=task.get("assignee_status"),
-                        completed=task.get("completed", False),
-                        completed_at=task.get("completed_at"),
-                        completed_by=task.get("completed_by"),
-                        dependencies=task.get("dependencies", []),
-                        dependents=task.get("dependents", []),
-                        due_at=task.get("due_at"),
-                        due_on=task.get("due_on"),
-                        external=task.get("external"),
-                        html_notes=task.get("html_notes"),
-                        notes=task.get("notes"),
-                        is_rendered_as_separator=task.get("is_rendered_as_separator", False),
-                        liked=task.get("liked", False),
-                        memberships=task.get("memberships", []),
-                        num_likes=task.get("num_likes", 0),
-                        num_subtasks=task.get("num_subtasks", 0),
-                        parent=task.get("parent"),
-                        permalink_url=task.get("permalink_url"),
-                        resource_subtype=task.get("resource_subtype", "default_task"),
-                        start_at=task.get("start_at"),
-                        start_on=task.get("start_on"),
-                        tags=task.get("tags", []),
-                        custom_fields=task.get("custom_fields", []),
-                        followers=task.get("followers", []),
-                        workspace=task.get("workspace"),
-                    )
-
-                # Check for next page
-                next_page = tasks_data.get("next_page")
-                if next_page and next_page.get("offset"):
-                    offset = next_page["offset"]
-                else:
-                    break  # No more pages
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 400:
-                # Handle "result too large" error - log warning and skip this section/project
-                context = f"section {section['gid']}" if section else f"project {project['gid']}"
-                self.logger.warning(
-                    f"Skipping tasks for {context}: result too large even with pagination. "
-                    f"Some tasks may be missing."
-                )
-                return
-            raise
-
-    async def _generate_comment_entities(
-        self, client: httpx.AsyncClient, task: Dict, task_breadcrumbs: List[Breadcrumb]
+    async def _generate_comments(
+        self, task_gid: str, breadcrumbs: List[Breadcrumb]
     ) -> AsyncGenerator[AsanaCommentEntity, None]:
         """Generate comment entities for a task."""
-        # Request all available fields for stories/comments
-        story_fields = [
-            "gid",
-            "created_at",
-            "created_by",
-            "created_by.name",
-            "resource_subtype",
-            "text",
-            "html_text",
-            "is_pinned",
-            "is_edited",
-            "sticker_name",
-            "num_likes",
-            "liked",
-            "type",
-            "previews",
-        ]
-        stories_data = await self._get_with_auth(
-            client,
-            f"https://app.asana.com/api/1.0/tasks/{task['gid']}/stories",
-            params={"opt_fields": ",".join(story_fields)},
+        data = await self._get(
+            f"{_API}/tasks/{task_gid}/stories",
+            params={"opt_fields": _STORY_FIELDS},
         )
-
-        for story in stories_data.get("data", []):
+        for story in data.get("data", []):
             if story.get("resource_subtype") != "comment_added":
                 continue
+            yield AsanaCommentEntity.from_api(story, task_gid=task_gid, breadcrumbs=breadcrumbs)
 
-            yield AsanaCommentEntity(
-                gid=story["gid"],
-                created_at=story.get("created_at"),
-                breadcrumbs=task_breadcrumbs,
-                # API fields
-                task_gid=task["gid"],
-                author=story["created_by"],
-                resource_subtype="comment_added",
-                text=story.get("text"),
-                html_text=story.get("html_text"),
-                is_pinned=story.get("is_pinned", False),
-                is_edited=story.get("is_edited", False),
-                sticker_name=story.get("sticker_name"),
-                num_likes=story.get("num_likes", 0),
-                liked=story.get("liked", False),
-                type=story.get("type", "comment"),
-                previews=story.get("previews", []),
-            )
+    # ------------------------------------------------------------------
+    # Attachments
+    # ------------------------------------------------------------------
 
-    async def _generate_file_entities(
+    async def _generate_attachments(
         self,
-        client: httpx.AsyncClient,
         task: Dict,
-        task_breadcrumbs: List[Breadcrumb],
+        breadcrumbs: List[Breadcrumb],
+        files: FileService,
     ) -> AsyncGenerator[AsanaFileEntity, None]:
-        """Generate file attachment entities for a task."""
-        # Request basic attachment list first
-        attachment_list_fields = ["gid", "name", "resource_type"]
-        attachments_data = await self._get_with_auth(
-            client,
-            f"https://app.asana.com/api/1.0/tasks/{task['gid']}/attachments",
-            params={"opt_fields": ",".join(attachment_list_fields)},
+        """List and download file attachments for a task."""
+        data = await self._get(
+            f"{_API}/tasks/{task['gid']}/attachments",
+            params={"opt_fields": _ATTACHMENT_LIST_FIELDS},
+        )
+        for stub in data.get("data", []):
+            entity = await self._fetch_and_download_attachment(
+                stub["gid"], task, breadcrumbs, files
+            )
+            if entity:
+                yield entity
+
+    async def _fetch_attachment_detail(self, gid: str) -> Optional[Dict]:
+        """Fetch full attachment metadata. Returns None on 403/404."""
+        try:
+            resp = await self._get(
+                f"{_API}/attachments/{gid}",
+                params={"opt_fields": _ATTACHMENT_DETAIL_FIELDS},
+            )
+            return resp.get("data")
+        except (SourceEntityForbiddenError, SourceEntityNotFoundError) as exc:
+            self.logger.warning(f"Skipping attachment {gid}: {exc}")
+            return None
+
+    def _build_file_entity(
+        self, detail: Dict, task: Dict, breadcrumbs: List[Breadcrumb]
+    ) -> AsanaFileEntity:
+        """Construct AsanaFileEntity from attachment detail dict."""
+        mime_type = detail.get("mime_type", "application/octet-stream")
+        project_gid = next(
+            (bc.entity_id for bc in breadcrumbs if bc.entity_type == "AsanaProjectEntity"),
+            None,
+        )
+        return AsanaFileEntity(
+            **detail,
+            breadcrumbs=breadcrumbs,
+            url=detail.get("download_url"),
+            file_type=mime_type.split("/")[0] if "/" in mime_type else "file",
+            mime_type=mime_type,
+            local_path=None,
+            task_gid=task["gid"],
+            task_name=task["name"],
+            project_gid=project_gid,
         )
 
-        for attachment in attachments_data.get("data", []):
-            # Request all available fields for individual attachment, including timestamps
-            attachment_fields = [
-                "gid",
-                "name",
-                "resource_type",
-                "created_at",
-                "modified_at",
-                "download_url",
-                "permanent",
-                "host",
-                "parent",
-                "parent.name",
-                "size",
-                "view_url",
-                "mime_type",
-            ]
-            attachment_response = await self._get_with_auth(
-                client,
-                f"https://app.asana.com/api/1.0/attachments/{attachment['gid']}",
-                params={"opt_fields": ",".join(attachment_fields)},
+    async def _download_attachment(
+        self, entity: AsanaFileEntity, files: FileService
+    ) -> AsanaFileEntity | None:
+        """Download an attachment via FileService. Returns None on expected skips.
+
+        401 after refresh propagates (token is dead → abort sync).
+        Infrastructure failures (IOError, OSError) propagate.
+        Other HTTP errors (429 exhausted, 5xx, 403, 404) skip the file.
+        """
+        try:
+            await files.download_from_url(
+                entity=entity,
+                client=self.http_client,
+                auth=self.auth,
+                logger=self.logger,
             )
-
-            attachment_detail = attachment_response.get("data")
-
-            if (
-                "download_url" not in attachment_detail
-                or attachment_detail.get("download_url") is None
-            ):
-                self.logger.warning(
-                    f"No download URL found for attachment {attachment['gid']} "
-                    f"in task {task['gid']}"
-                )
-                continue
-
-            # Determine file type from mime_type or filename
-            mime_type = attachment_detail.get("mime_type", "application/octet-stream")
-            file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
-
-            # Extract project_gid safely from breadcrumbs
-            # Breadcrumbs: workspace (0), project (1), [optional section], task (last)
-            project_gid = None
-            for bc in task_breadcrumbs:
-                if bc.entity_type == "AsanaProjectEntity":
-                    project_gid = bc.entity_id
-                    break
-
-            # Create the file entity with metadata
-            file_entity = AsanaFileEntity(
-                gid=attachment_detail["gid"],
-                name=attachment_detail.get("name", "unknown"),
-                created_at=attachment_detail.get("created_at"),
-                breadcrumbs=task_breadcrumbs,
-                # FileEntity fields
-                url=attachment_detail.get("download_url"),  # Required by FileEntity
-                size=attachment_detail.get("size", 0),
-                file_type=file_type,
-                mime_type=mime_type,
-                local_path=None,
-                # Asana-specific fields
-                task_gid=task["gid"],
-                task_name=task["name"],
-                project_gid=project_gid,
-                resource_type=attachment_detail.get("resource_type"),
-                host=attachment_detail.get("host"),
-                parent=attachment_detail.get("parent"),
-                view_url=attachment_detail.get("view_url"),
-                permanent=attachment_detail.get("permanent", False),
+            if not entity.local_path:
+                self.logger.warning(f"Download produced no local path for {entity.name}")
+                return None
+            return entity
+        except FileSkippedException as e:
+            self.logger.debug(f"Skipping attachment {entity.gid}: {e.reason}")
+            return None
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                raise
+            self.logger.warning(
+                f"HTTP {e.response.status_code} downloading attachment {entity.gid}: {e}"
             )
+            return None
 
-            # Download file using downloader
-            try:
-                await self.file_downloader.download_from_url(
-                    entity=file_entity,
-                    http_client_factory=self.http_client,
-                    access_token_provider=self.get_access_token,
-                    logger=self.logger,
-                )
+    async def _fetch_and_download_attachment(
+        self,
+        gid: str,
+        task: Dict,
+        breadcrumbs: List[Breadcrumb],
+        files: FileService,
+    ) -> AsanaFileEntity | None:
+        """Fetch detail → build entity → download. Returns None on any skip."""
+        detail = await self._fetch_attachment_detail(gid)
+        if not detail or not detail.get("download_url"):
+            if detail:
+                self.logger.warning(f"No download URL for attachment {gid}")
+            return None
 
-                # Verify download succeeded
-                if not file_entity.local_path:
-                    raise ValueError(f"Download failed - no local path set for {file_entity.name}")
+        entity = self._build_file_entity(detail, task, breadcrumbs)
+        return await self._download_attachment(entity, files)
 
+    # ------------------------------------------------------------------
+    # Orchestration helpers
+    # ------------------------------------------------------------------
+
+    async def _yield_task_tree(
+        self,
+        task_entity: AsanaTaskEntity,
+        project_breadcrumbs: List[Breadcrumb],
+        files: FileService | None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Yield a task entity plus its comments and attachments."""
+        yield task_entity
+
+        task_breadcrumbs = [
+            *project_breadcrumbs,
+            Breadcrumb(
+                entity_id=task_entity.gid,
+                name=task_entity.name,
+                entity_type="AsanaTaskEntity",
+            ),
+        ]
+        task_dict = {"gid": task_entity.gid, "name": task_entity.name}
+
+        try:
+            async for comment in self._generate_comments(task_entity.gid, task_breadcrumbs):
+                yield comment
+        except SourceAuthError:
+            raise
+        except SourceEntityForbiddenError:
+            self.logger.warning(f"No access to comments for task {task_entity.gid}, skipping")
+        except SourceError as exc:
+            self.logger.warning(f"Failed to fetch comments for task {task_entity.gid}: {exc}")
+
+        if files:
+            async for file_entity in self._generate_attachments(task_dict, task_breadcrumbs, files):
                 yield file_entity
 
-            except FileSkippedException as e:
-                # File intentionally skipped (unsupported type, too large, etc.) - not an error
-                self.logger.debug(f"Skipping attachment {attachment_detail['gid']}: {e.reason}")
-                continue
+    # ------------------------------------------------------------------
+    # Main entry point
+    # ------------------------------------------------------------------
 
-            except Exception as e:
-                self.logger.error(
-                    f"Failed to download attachment {attachment_detail['gid']} "
-                    f"for task {task['gid']}: {e}"
-                )
-                # Continue with next attachment, don't fail entire sync
-
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Asana."""
-        async with self.http_client() as client:
-            async for workspace_entity in self._generate_workspace_entities(client):
-                yield workspace_entity
+        async for ws in self._generate_workspaces():
+            yield ws
+            ws_bc = Breadcrumb(entity_id=ws.gid, name=ws.name, entity_type="AsanaWorkspaceEntity")
+            ws_dict = {"gid": ws.gid, "name": ws.name}
 
-                workspace_breadcrumb = Breadcrumb(
-                    entity_id=workspace_entity.gid,
-                    name=workspace_entity.name,
-                    entity_type="AsanaWorkspaceEntity",
+            async for proj in self._generate_projects(ws_dict, ws_bc):
+                yield proj
+                proj_bc = Breadcrumb(
+                    entity_id=proj.gid, name=proj.name, entity_type="AsanaProjectEntity"
                 )
+                proj_bcs = [ws_bc, proj_bc]
 
-                async for project_entity in self._generate_project_entities(
-                    client,
-                    {"gid": workspace_entity.gid, "name": workspace_entity.name},
-                    workspace_breadcrumb,
-                ):
-                    yield project_entity
+                async for section in self._generate_sections(proj.gid, proj_bcs):
+                    yield section
+                    sec_dict = {"gid": section.gid, "name": section.name}
 
-                    project_breadcrumb = Breadcrumb(
-                        entity_id=project_entity.gid,
-                        name=project_entity.name,
-                        entity_type="AsanaProjectEntity",
-                    )
-                    project_breadcrumbs = [workspace_breadcrumb, project_breadcrumb]
+                    async for task in self._generate_tasks(proj.gid, proj_bcs, section=sec_dict):
+                        async for entity in self._yield_task_tree(task, proj_bcs, files):
+                            yield entity
 
-                    async for section_entity in self._generate_section_entities(
-                        client,
-                        {"gid": project_entity.gid},
-                        project_breadcrumbs,
-                    ):
-                        yield section_entity
+                async for task in self._generate_tasks(proj.gid, proj_bcs):
+                    async for entity in self._yield_task_tree(task, proj_bcs, files):
+                        yield entity
 
-                        # Generate tasks within section with full breadcrumb path
-                        async for task_entity in self._generate_task_entities(
-                            client,
-                            {"gid": project_entity.gid},
-                            {"gid": section_entity.gid, "name": section_entity.name},
-                            project_breadcrumbs,
-                        ):
-                            yield task_entity
-
-                            # Generate file attachments for the task
-                            task_breadcrumb = Breadcrumb(
-                                entity_id=task_entity.gid,
-                                name=task_entity.name,
-                                entity_type="AsanaTaskEntity",
-                            )
-                            task_breadcrumbs = [*project_breadcrumbs, task_breadcrumb]
-
-                            async for file_entity in self._generate_file_entities(
-                                client,
-                                {
-                                    "gid": task_entity.gid,
-                                    "name": task_entity.name,
-                                },
-                                task_breadcrumbs,
-                            ):
-                                yield file_entity
-
-                    # Generate tasks not in any section
-                    async for task_entity in self._generate_task_entities(
-                        client,
-                        {"gid": project_entity.gid},
-                        breadcrumbs=project_breadcrumbs,
-                    ):
-                        yield task_entity
-
-                        # Generate file attachments for the task
-                        task_breadcrumb = Breadcrumb(
-                            entity_id=task_entity.gid,
-                            name=task_entity.name,
-                            entity_type="AsanaTaskEntity",
-                        )
-                        task_breadcrumbs = [*project_breadcrumbs, task_breadcrumb]
-
-                        async for file_entity in self._generate_file_entities(
-                            client,
-                            {
-                                "gid": task_entity.gid,
-                                "name": task_entity.name,
-                            },
-                            task_breadcrumbs,
-                        ):
-                            yield file_entity
-
-    async def validate(self) -> bool:
-        """Verify OAuth2 token by pinging Asana's /users/me endpoint."""
-        return await self._validate_oauth2(
-            ping_url="https://app.asana.com/api/1.0/users/me",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+    async def validate(self) -> None:
+        """Validate credentials by pinging Asana's /users/me endpoint."""
+        await self._get(f"{_API}/users/me")

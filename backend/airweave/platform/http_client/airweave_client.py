@@ -1,48 +1,36 @@
 """AirweaveHttpClient - Universal HTTP client wrapper with rate limiting.
 
-This client wraps any httpx-compatible client (httpx.AsyncClient or PipedreamProxyClient)
-and adds source rate limiting to prevent exhausting customer API quotas.
+This client wraps an httpx.AsyncClient and adds source rate limiting to prevent
+exhausting customer API quotas.
 """
 
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Optional, Union
+from typing import Optional
 from uuid import UUID
 
 import httpx
 
-from airweave.core.exceptions import SourceRateLimitExceededException
 from airweave.core.logging import ContextualLogger
-from airweave.core.source_rate_limiter_service import source_rate_limiter
+from airweave.domains.sources.rate_limiting.exceptions import InternalRateLimitExceeded
+from airweave.domains.sources.rate_limiting.service import SourceRateLimiter
 from airweave.platform.utils.ssrf import SSRFViolation, validate_url
-
-if TYPE_CHECKING:
-    from airweave.platform.http_client.pipedream_proxy import PipedreamProxyClient
 
 
 class AirweaveHttpClient:
     """Universal HTTP client wrapper for Airweave sources.
 
-    Wraps any httpx-compatible client and adds rate limiting before requests.
-    Works with both httpx.AsyncClient and PipedreamProxyClient via composition.
-
-    The client checks:
-    1. Is SOURCE_RATE_LIMITING feature enabled? → No = skip check
-    2. Is rate_limit_level set? → No = skip check
-    3. Is limit configured in DB? → No = skip check
-    4. Otherwise → enforce limit
-
-    When limit is exceeded, converts SourceRateLimitExceededException to
-    httpx.HTTPStatusError with 429 status so sources see identical behavior
-    to actual API rate limits.
+    Wraps an httpx.AsyncClient and adds rate limiting before requests.
+    Rate limiter is injected at construction — no global singleton access.
     """
 
     def __init__(
         self,
-        wrapped_client: Union[httpx.AsyncClient, PipedreamProxyClient],
+        wrapped_client: httpx.AsyncClient,
         org_id: UUID,
         source_short_name: str,
+        rate_limiter: Optional[SourceRateLimiter] = None,
         source_connection_id: Optional[UUID] = None,
         feature_flag_enabled: bool = True,
         logger: Optional[ContextualLogger] = None,
@@ -50,16 +38,18 @@ class AirweaveHttpClient:
         """Initialize wrapper around an existing HTTP client.
 
         Args:
-            wrapped_client: The client to wrap (httpx.AsyncClient or PipedreamProxyClient)
-            org_id: Organization ID for rate limiting
-            source_short_name: Source identifier (e.g., "google_drive", "notion")
-            source_connection_id: Source connection ID (used for connection-level sources)
-            feature_flag_enabled: Whether SOURCE_RATE_LIMITING feature is enabled
-            logger: Contextual logger with sync/search metadata (required)
+            wrapped_client: The httpx.AsyncClient to wrap.
+            org_id: Organization ID for rate limiting.
+            source_short_name: Source identifier (e.g., "google_drive", "notion").
+            rate_limiter: Injected SourceRateLimiter instance.
+            source_connection_id: Source connection ID (for connection-level sources).
+            feature_flag_enabled: Whether SOURCE_RATE_LIMITING feature is enabled.
+            logger: Contextual logger with sync/search metadata.
         """
         self._client = wrapped_client
         self._org_id = org_id
         self._source_short_name = source_short_name
+        self._rate_limiter = rate_limiter
         self._source_connection_id = source_connection_id
         self._feature_flag_enabled = feature_flag_enabled
         self._logger = logger
@@ -93,61 +83,33 @@ class AirweaveHttpClient:
         client.event_hooks.setdefault("request", []).append(ssrf_hook)
 
     async def _check_rate_limit_and_convert_to_429(self, method: str, url: str) -> None:
-        """Check rate limits and convert exceptions to HTTP 429 if exceeded.
-
-        Checks TWO limits when using Pipedream proxy:
-        1. Pipedream proxy limit (1000 req/5min org-wide) - checked first
-        2. Source-specific limit (if configured in DB)
+        """Check source-specific rate limit and convert exceptions to HTTP 429 if exceeded.
 
         Args:
             method: HTTP method
             url: Request URL
 
         Raises:
-            httpx.HTTPStatusError: With 429 status if any limit exceeded
+            httpx.HTTPStatusError: With 429 status if limit exceeded
         """
-        # Skip if feature flag is disabled
-        if not self._feature_flag_enabled:
+        if not self._feature_flag_enabled or not self._rate_limiter:
             return
 
         try:
-            # Step 1: Check Pipedream proxy limit FIRST (if using proxy)
-            from airweave.platform.http_client.pipedream_proxy import PipedreamProxyClient
-
-            if isinstance(self._client, PipedreamProxyClient):
-                if self._logger:
-                    self._logger.debug(
-                        "[AirweaveHttpClient] Using Pipedream proxy - checking proxy limit first"
-                    )
-                await source_rate_limiter.check_pipedream_proxy_limit(self._org_id)
-            else:
-                if self._logger:
-                    self._logger.debug(
-                        "[AirweaveHttpClient] Using regular HTTP client (not Pipedream proxy)"
-                    )
-
-            # Step 2: Check source-specific limit
-            await source_rate_limiter.check_and_increment(
+            await self._rate_limiter.check_and_increment(
                 org_id=self._org_id,
                 source_short_name=self._source_short_name,
                 source_connection_id=self._source_connection_id,
             )
-        except SourceRateLimitExceededException as e:
-            # Convert to HTTP 429 so sources treat it like API rate limit
+        except InternalRateLimitExceeded as e:
             fake_response = httpx.Response(
                 status_code=429,
                 headers={"Retry-After": str(int(e.retry_after))},
                 request=httpx.Request(method, url),
             )
 
-            # Different message for Pipedream vs source limits
-            if e.source_short_name == "pipedream_proxy":
-                message = "Pipedream proxy rate limit exceeded (1000 req/5min org-wide)"
-            else:
-                message = f"Source rate limit exceeded for {e.source_short_name}"
-
             raise httpx.HTTPStatusError(
-                message,
+                f"Source rate limit exceeded for {e.source_short_name}",
                 request=fake_response.request,
                 response=fake_response,
             )

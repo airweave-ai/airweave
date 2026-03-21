@@ -10,7 +10,7 @@ ENTITIES and QUERIES accept cached usage data (30s TTL).
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 from uuid import UUID
 
@@ -81,7 +81,10 @@ class _OrgCache:
 
     @property
     def is_stale(self) -> bool:
-        return self.fetched_at is None or datetime.now(UTC) - self.fetched_at > _USAGE_CACHE_TTL
+        return (
+            self.fetched_at is None
+            or datetime.now(timezone.utc) - self.fetched_at > _USAGE_CACHE_TTL
+        )
 
 
 class UsageLimitChecker(UsageLimitCheckerProtocol):
@@ -138,7 +141,7 @@ class UsageLimitChecker(UsageLimitCheckerProtocol):
 
             if cache.is_stale:
                 cache.usage = await self._get_usage(db, organization_id)
-                cache.fetched_at = datetime.now(UTC)
+                cache.fetched_at = datetime.now(timezone.utc)
 
             if cache.usage_limit is None:
                 cache.usage_limit = await self._infer_limit(db, organization_id)

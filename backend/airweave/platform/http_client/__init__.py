@@ -1,5 +1,5 @@
 """HTTP client implementations for Airweave platform."""
 
-from .pipedream_proxy import PipedreamProxyClient
+from .airweave_client import AirweaveHttpClient
 
-__all__ = ["PipedreamProxyClient"]
+__all__ = ["AirweaveHttpClient"]

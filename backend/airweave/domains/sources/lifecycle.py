@@ -5,8 +5,13 @@ set_*() calls that were duplicated across sync builders, search factories, and
 credential services.
 """
 
-from typing import Any, Callable, Dict, Optional, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
 
 import httpx
 from pydantic import BaseModel
@@ -15,12 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
-from airweave.core.logging import ContextualLogger
+from airweave.core.logging import ContextualLogger, LoggerConfigurator
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider._base import BaseAuthProvider
-from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
-from airweave.domains.auth_provider.providers.pipedream import PipedreamAuthProvider
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import (
     IntegrationCredentialRepositoryProtocol,
@@ -32,17 +35,17 @@ from airweave.domains.source_connections.protocols import (
 from airweave.domains.sources.exceptions import (
     SourceCreationError,
     SourceNotFoundError,
-    SourceValidationError,
 )
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
 )
+from airweave.domains.sources.rate_limiting.service import SourceRateLimiter
 from airweave.domains.sources.token_providers.auth_provider import AuthProviderTokenProvider
+from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData, SourceRegistryEntry
-from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 
@@ -65,22 +68,25 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         cred_repo: IntegrationCredentialRepositoryProtocol,
         oauth2_service: OAuth2ServiceProtocol,
     ) -> None:
-        """Initialize with all required dependencies.
-
-        Args:
-            source_registry: In-memory registry of source metadata (built at startup).
-            auth_provider_registry: In-memory registry of auth provider metadata.
-            sc_repo: Source connection repository (wraps crud.source_connection).
-            conn_repo: Connection repository (wraps crud.connection).
-            cred_repo: Integration credential repository (wraps crud.integration_credential).
-            oauth2_service: OAuth2 token refresh service.
-        """
+        """Initialize with all required dependencies."""
         self._source_registry = source_registry
         self._auth_provider_registry = auth_provider_registry
         self._sc_repo = sc_repo
         self._conn_repo = conn_repo
         self._cred_repo = cred_repo
         self._oauth2_service = oauth2_service
+
+        from airweave.core.redis_client import redis_client
+        from airweave.domains.sources.rate_limiting.config_provider import (
+            DatabaseRateLimitConfigProvider,
+        )
+
+        redis = redis_client.client
+        self._rate_limiter = SourceRateLimiter(
+            redis=redis,
+            source_registry=source_registry,
+            config_provider=DatabaseRateLimitConfigProvider(redis=redis),
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -121,24 +127,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             access_token=access_token,
         )
 
-        # 3. Process credentials for source consumption
-        entry = self._source_registry.get(source_connection_data.short_name)
-        source_credentials = self._normalize_credentials(
-            raw_credentials=auth_config.credentials,
-            entry=entry,
-            logger=logger,
-        )
-
-        # 4. Create source instance
-        source = await source_connection_data.source_class.create(
-            source_credentials, config=source_connection_data.config_fields
-        )
-
-        # 5. Configure source
-        self._configure_logger(source, logger)
-        self._configure_http_client_factory(source, auth_config)
-        await self._configure_token_provider(
-            source=source,
+        # 3. Resolve auth provider
+        token_provider = await self._resolve_token_provider(
             source_connection_data=source_connection_data,
             source_credentials=auth_config.credentials,
             ctx=ctx,
@@ -147,12 +137,24 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             auth_config=auth_config,
         )
 
-        self._wrap_source_with_airweave_client(
-            source=source,
+        # 4. Build HTTP client with rate limiting
+        http_client = self._build_http_client(
             source_short_name=source_connection_data.short_name,
             source_connection_id=source_connection_data.source_connection_id,
             ctx=ctx,
             logger=logger,
+        )
+
+        # 5. Parse config_fields into typed config
+        entry = self._source_registry.get(source_connection_data.short_name)
+        config = self._build_typed_config(entry, source_connection_data.config_fields)
+
+        # 6. Create source instance with all deps injected
+        source = await source_connection_data.source_class.create(
+            auth=token_provider,
+            logger=logger,
+            http_client=http_client,
+            config=config,
         )
 
         return source
@@ -165,36 +167,54 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     ) -> None:
         """Validate credentials by creating a lightweight source and calling .validate().
 
-        No HTTP wrapping, no rate limiting — just create + validate.
-        The source's own access_token (set during create()) is used for
-        any API calls made during validation.
+        Wraps credentials in a StaticTokenProvider / DirectCredentialProvider
+        and provides a plain httpx client (no rate limiting) so the source
+        contract is satisfied.
 
         Raises:
             SourceNotFoundError: If source short_name is not in the registry.
-            SourceCreationError: If source_class.create() fails.
-            SourceValidationError: If source.validate() returns False or raises.
+            Exception: If source_class.create() or source.validate() fails.
         """
+        from uuid import UUID as _UUID
+
         try:
             entry = self._source_registry.get(short_name)
         except KeyError:
             raise SourceNotFoundError(short_name)
 
         source_class = entry.source_class_ref
-
         normalized = self._normalize_credentials(credentials, entry)
 
-        try:
-            source = await source_class.create(normalized, config=config)
-        except Exception as exc:
-            raise SourceCreationError(short_name, str(exc)) from exc
+        if isinstance(normalized, str):
+            auth = StaticTokenProvider(normalized, source_short_name=short_name)
+        else:
+            auth = DirectCredentialProvider(normalized, source_short_name=short_name)
+
+        validation_logger = LoggerConfigurator.configure_logger(
+            f"validate:{short_name}", prefix=f"[validate:{short_name}]"
+        )
+        validation_client = AirweaveHttpClient(
+            wrapped_client=httpx.AsyncClient(),
+            org_id=_UUID(int=0),
+            source_short_name=short_name,
+            rate_limiter=None,
+            source_connection_id=None,
+            feature_flag_enabled=False,
+            logger=validation_logger,
+        )
+
+        typed_config = self._build_typed_config(entry, config or {})
 
         try:
-            is_valid = await source.validate()
-        except Exception as exc:
-            raise SourceValidationError(short_name, f"validation raised: {exc}") from exc
-
-        if not is_valid:
-            raise SourceValidationError(short_name, "validate() returned False")
+            source = await source_class.create(
+                auth=auth,
+                logger=validation_logger,
+                http_client=validation_client,
+                config=typed_config,
+            )
+            await source.validate()
+        finally:
+            await validation_client.aclose()
 
     # ------------------------------------------------------------------
     # Private: data loading
@@ -276,9 +296,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             logger.debug("Using directly injected access token")
             return AuthConfig(
                 credentials=access_token,
-                http_client_factory=None,
                 auth_provider_instance=None,
-                auth_mode=AuthProviderMode.DIRECT,
             )
 
         # Case 2: Auth provider connection
@@ -343,30 +361,9 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if auth_result.source_config:
             self._merge_source_config(source_connection_data, auth_result.source_config)
 
-        if auth_result.requires_proxy:
-            logger.info(f"Auth provider requires proxy mode: {auth_result.proxy_config}")
-
-            http_client_factory = None
-            if isinstance(auth_provider_instance, PipedreamAuthProvider):
-                http_client_factory = await self._create_pipedream_proxy_factory(
-                    auth_provider_instance=auth_provider_instance,
-                    source_connection_data=source_connection_data,
-                    ctx=ctx,
-                    logger=logger,
-                )
-
-            return AuthConfig(
-                credentials="PROXY_MODE",
-                http_client_factory=http_client_factory,
-                auth_provider_instance=auth_provider_instance,
-                auth_mode=AuthProviderMode.PROXY,
-            )
-
         return AuthConfig(
             credentials=auth_result.credentials,
-            http_client_factory=None,
             auth_provider_instance=auth_provider_instance,
-            auth_mode=AuthProviderMode.DIRECT,
         )
 
     async def _get_database_credentials(
@@ -398,16 +395,12 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             )
             return AuthConfig(
                 credentials=processed,
-                http_client_factory=None,
                 auth_provider_instance=None,
-                auth_mode=AuthProviderMode.DIRECT,
             )
 
         return AuthConfig(
             credentials=decrypted_credential,
-            http_client_factory=None,
             auth_provider_instance=None,
-            auth_mode=AuthProviderMode.DIRECT,
         )
 
     # ------------------------------------------------------------------
@@ -469,57 +462,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             )
 
         return auth_provider_instance
-
-    @staticmethod
-    async def _create_pipedream_proxy_factory(
-        auth_provider_instance: PipedreamAuthProvider,
-        source_connection_data: SourceConnectionData,
-        ctx: ApiContext,
-        logger: ContextualLogger,
-    ) -> Optional[Callable]:
-        """Create a factory function for Pipedream proxy clients."""
-        try:
-            async with httpx.AsyncClient() as client:
-                access_token = await auth_provider_instance._ensure_valid_token()
-                headers = {
-                    "Authorization": f"Bearer {access_token}",
-                    "x-pd-environment": auth_provider_instance.environment,
-                }
-
-                pipedream_app_slug = auth_provider_instance._get_pipedream_app_slug(
-                    source_connection_data.short_name
-                )
-
-                response = await client.get(
-                    f"https://api.pipedream.com/v1/apps/{pipedream_app_slug}",
-                    headers=headers,
-                )
-
-                if response.status_code == 404:
-                    logger.warning(f"App {pipedream_app_slug} not found in Pipedream")
-                    return None
-
-                response.raise_for_status()
-                app_info = response.json()
-
-        except Exception as e:
-            logger.error(f"Failed to get app info from Pipedream: {e}")
-            return None
-
-        def create_proxy_client(**httpx_kwargs) -> PipedreamProxyClient:
-            return PipedreamProxyClient(
-                project_id=auth_provider_instance.project_id,
-                account_id=auth_provider_instance.account_id,
-                external_user_id=auth_provider_instance.external_user_id,
-                environment=auth_provider_instance.environment,
-                pipedream_token=None,
-                token_provider=auth_provider_instance._ensure_valid_token,
-                app_info=app_info,
-                **httpx_kwargs,
-            )
-
-        logger.info(f"Configured Pipedream proxy for {source_connection_data.short_name}")
-        return create_proxy_client
 
     async def _handle_auth_config_credentials(
         self,
@@ -642,65 +584,77 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     # Private: source configuration helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _configure_logger(source: BaseSource, logger: ContextualLogger) -> None:
-        if hasattr(source, "set_logger"):
-            source.set_logger(logger)
-
-    @staticmethod
-    def _configure_http_client_factory(source: BaseSource, auth_config: AuthConfig) -> None:
-        if auth_config.http_client_factory:
-            source.set_http_client_factory(auth_config.http_client_factory)
-
-    async def _configure_token_provider(
+    async def _resolve_token_provider(
         self,
-        source: BaseSource,
         source_connection_data: SourceConnectionData,
         source_credentials: SourceCredentials,
         ctx: ApiContext,
         logger: ContextualLogger,
         access_token: Optional[str],
         auth_config: AuthConfig,
-    ) -> None:
-        """Set up the appropriate TokenProvider for this source."""
-        auth_mode = auth_config.auth_mode
+    ) -> "SourceAuthProvider":
+        """Resolve the appropriate auth provider for this source.
+
+        Always returns a concrete SourceAuthProvider — never None.
+        Non-OAuth sources get a StaticTokenProvider (string creds) or
+        DirectCredentialProvider (structured creds).
+        """
+        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
+
         auth_provider_instance: Optional[BaseAuthProvider] = auth_config.auth_provider_instance
         short_name = source_connection_data.short_name
 
         if access_token is not None:
-            source.set_token_provider(
-                StaticTokenProvider(access_token, source_short_name=short_name)
-            )
-            return
+            return StaticTokenProvider(access_token, source_short_name=short_name)
 
-        if auth_mode == AuthProviderMode.PROXY:
-            return
+        # Normalize credentials: convert raw dicts to typed auth config models
+        # so sources that use attribute access (e.g. auth.credentials.api_key) work
+        entry = self._source_registry.get(short_name)
+        source_credentials = self._normalize_credentials(source_credentials, entry, logger)
 
         oauth_type = source_connection_data.oauth_type
+
         if not oauth_type:
-            return
+            if isinstance(source_credentials, str):
+                return StaticTokenProvider(source_credentials, source_short_name=short_name)
+            return DirectCredentialProvider(source_credentials, source_short_name=short_name)
 
         try:
             if auth_provider_instance:
-                token_provider = AuthProviderTokenProvider(
+                return AuthProviderTokenProvider(
                     auth_provider_instance=auth_provider_instance,
                     source_short_name=short_name,
                     source_registry=self._source_registry,
                     logger=logger,
                 )
-            else:
-                token_provider = OAuthTokenProvider(
-                    credentials=source_credentials,
-                    oauth_type=oauth_type,
-                    oauth2_service=self._oauth2_service,
-                    source_short_name=short_name,
-                    connection_id=source_connection_data.connection_id,
-                    ctx=ctx,
-                    logger=logger,
-                    config_fields=source_connection_data.config_fields,
-                )
 
-            source.set_token_provider(token_provider)
+            # Sources that support both OAuth and API key auth (e.g. calcom, coda)
+            # may have structured credentials without access_token when using
+            # API key mode — route those to DirectCredentialProvider.
+            if isinstance(source_credentials, BaseModel):
+                if _credentials_have_access_token(source_credentials):
+                    return OAuthTokenProvider(
+                        credentials=source_credentials,
+                        oauth_type=oauth_type,
+                        oauth2_service=self._oauth2_service,
+                        source_short_name=short_name,
+                        connection_id=source_connection_data.connection_id,
+                        ctx=ctx,
+                        logger=logger,
+                        config_fields=source_connection_data.config_fields,
+                    )
+                return DirectCredentialProvider(source_credentials, source_short_name=short_name)
+
+            return OAuthTokenProvider(
+                credentials=source_credentials,
+                oauth_type=oauth_type,
+                oauth2_service=self._oauth2_service,
+                source_short_name=short_name,
+                connection_id=source_connection_data.connection_id,
+                ctx=ctx,
+                logger=logger,
+                config_fields=source_connection_data.config_fields,
+            )
 
         except Exception as e:
             raise SourceCreationError(short_name, f"token provider setup failed: {e}") from e
@@ -709,45 +663,41 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     # Private: rate limiting wrapper
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _wrap_source_with_airweave_client(
-        source: BaseSource,
+    def _build_http_client(
+        self,
         source_short_name: str,
         source_connection_id: UUID,
         ctx: ApiContext,
         logger: ContextualLogger,
-    ) -> None:
-        """Wrap source HTTP client with AirweaveHttpClient for rate limiting.
-
-        ALL sources are wrapped. The client checks internally:
-        1. Is SOURCE_RATE_LIMITING feature enabled? -> No = skip check
-        2. Is rate_limit_level set? -> No = skip check
-        3. Is limit configured in DB? -> No = skip check
-        4. Otherwise -> enforce limit
-        """
+    ) -> AirweaveHttpClient:
+        """Build an AirweaveHttpClient with rate limiting for this source."""
         feature_enabled = ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING)
-        original_factory = source._http_client_factory
 
-        def airweave_client_factory(**kwargs):
-            if original_factory:
-                base_client = original_factory(**kwargs)
-            else:
-                base_client = httpx.AsyncClient(**kwargs)
-
-            return AirweaveHttpClient(
-                wrapped_client=base_client,
-                org_id=ctx.organization.id,
-                source_short_name=source_short_name,
-                source_connection_id=source_connection_id,
-                feature_flag_enabled=feature_enabled,
-                logger=logger,
-            )
-
-        source.set_http_client_factory(airweave_client_factory)
+        client = AirweaveHttpClient(
+            wrapped_client=httpx.AsyncClient(),
+            org_id=ctx.organization.id,
+            source_short_name=source_short_name,
+            rate_limiter=self._rate_limiter,
+            source_connection_id=source_connection_id,
+            feature_flag_enabled=feature_enabled,
+            logger=logger,
+        )
         logger.debug(
-            f"AirweaveHttpClient configured for {source.__class__.__name__} "
+            f"AirweaveHttpClient built for {source_short_name} "
             f"(feature_flag_enabled={feature_enabled})"
         )
+        return client
+
+    def _build_typed_config(
+        self,
+        entry: SourceRegistryEntry,
+        config_fields: Dict[str, Any],
+    ) -> BaseModel:
+        """Parse raw config_fields dict into the source's typed config class."""
+        from airweave.platform.configs.config import SourceConfig
+
+        config_class = entry.config_ref or SourceConfig
+        return config_class.model_validate(config_fields or {})
 
     # ------------------------------------------------------------------
     # Private: config field helpers
@@ -797,3 +747,15 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             if key not in existing_config or existing_config[key] is None:
                 existing_config[key] = value
         source_connection_data.config_fields = existing_config
+
+
+def _credentials_have_access_token(creds: object) -> bool:
+    """Check whether credentials contain a usable access_token field.
+
+    TODO: Remove this once we have proper named integration credentials.
+    """
+    if isinstance(creds, dict):
+        return bool(creds.get("access_token"))
+    if hasattr(creds, "access_token"):
+        return bool(getattr(creds, "access_token", None))
+    return False

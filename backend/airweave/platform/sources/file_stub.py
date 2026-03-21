@@ -10,13 +10,20 @@ Each file embeds an optional ``custom_content_prefix`` (tracking token) so
 tests can search for that string to verify end-to-end extraction.
 """
 
+from __future__ import annotations
+
 import io
 import os
 import random
 import tempfile
 from datetime import datetime, timedelta
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import AsyncGenerator, List, Optional, Tuple
 
+from airweave.core.logging import ContextualLogger
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import FileStubAuthConfig
 from airweave.platform.configs.config import FileStubConfig
 from airweave.platform.decorators import source
@@ -28,6 +35,7 @@ from airweave.platform.entities.file_stub import (
     PptxFileStubEntity,
     ScannedPdfFileStubEntity,
 )
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 
@@ -231,50 +239,38 @@ class ContentGenerator:
         num_pages = self.rng.randint(1, 3)
 
         for page_idx in range(num_pages):
-            # Create a white image
             img = Image.new("RGB", (img_w, img_h), color=(255, 255, 255))
             draw = ImageDraw.Draw(img)
 
-            # At 300 DPI: 67px ≈ 16pt, 54px ≈ 13pt
-            # Try common system fonts across platforms (macOS, Linux, Windows).
-            # Pillow's load_default() returns a tiny bitmap font that ignores
-            # size, so we MUST find a real truetype font for OCR-readable text.
             font = _load_truetype_font(size=67)
             small_font = _load_truetype_font(size=54)
 
             y = 120
 
-            # Title
             if page_idx == 0:
                 title = self.generate_title()
                 draw.text((120, y), title, fill=(0, 0, 0), font=font)
                 y += 100
 
-                # Embed the tracking token prominently
                 if self.custom_content_prefix:
                     draw.text((120, y), self.custom_content_prefix, fill=(0, 0, 0), font=font)
                     y += 100
 
-            # Section heading
             section_title = f"Section {page_idx + 1}: {self.generate_title()}"
             draw.text((120, y), section_title, fill=(0, 0, 0), font=font)
             y += 90
 
-            # Body text lines
             for _ in range(self.rng.randint(8, 15)):
                 line = self._generate_sentence(self.rng.randint(6, 12))
-                # Truncate to fit page width
                 draw.text((120, y), line[:80], fill=(30, 30, 30), font=small_font)
                 y += 70
                 if y > img_h - 160:
                     break
 
-            # Save image to temp file for fpdf
             img_buf = io.BytesIO()
             img.save(img_buf, format="JPEG", quality=95)
             img_buf.seek(0)
 
-            # Write temp jpeg file (fpdf needs a path)
             tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
             tmp.write(img_buf.getvalue())
             tmp.close()
@@ -297,7 +293,6 @@ class ContentGenerator:
 
         prs = Presentation()
 
-        # Title slide
         slide = prs.slides.add_slide(prs.slide_layouts[0])
         slide.shapes.title.text = self.generate_title()
         subtitle = slide.placeholders[1]
@@ -306,7 +301,6 @@ class ContentGenerator:
         else:
             subtitle.text = self._generate_sentence(8)
 
-        # Content slides
         num_slides = self.rng.randint(2, 4)
         for i in range(num_slides):
             slide = prs.slides.add_slide(prs.slide_layouts[1])
@@ -367,30 +361,24 @@ class FileStubSource(BaseSource):
     PPTX, and DOCX. All files embed the tracking token for search assertions.
     """
 
-    def __init__(self):
-        """Initialize with default seed and no tracking prefix."""
-        super().__init__()
-        self.seed: int = 42
-        self.custom_content_prefix: Optional[str] = None
-        self.generator: Optional[ContentGenerator] = None
-        self._temp_dir: Optional[str] = None
-
     @classmethod
     async def create(
         cls,
-        credentials: Optional[FileStubAuthConfig] = None,
-        config: Optional[Dict[str, Any]] = None,
-    ) -> "FileStubSource":
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: FileStubConfig,
+    ) -> FileStubSource:
         """Create a configured FileStubSource from credentials and config."""
-        instance = cls()
-        config = config or {}
-
-        instance.seed = config.get("seed", 42)
-        instance.custom_content_prefix = config.get("custom_content_prefix", None)
-        instance.generator = ContentGenerator(
-            seed=instance.seed,
-            custom_content_prefix=instance.custom_content_prefix,
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
+        instance._seed = config.seed
+        instance._custom_content_prefix = config.custom_content_prefix
+        instance._generator = ContentGenerator(
+            seed=config.seed,
+            custom_content_prefix=config.custom_content_prefix,
         )
+        instance._temp_dir: Optional[str] = None
         return instance
 
     async def _write_binary(self, data: bytes, extension: str, name: str) -> str:
@@ -402,21 +390,27 @@ class FileStubSource(BaseSource):
             f.write(data)
         return filepath
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Yield a container + one entity per file type."""
-        gen = self.generator
-        assert gen is not None
+        gen = self._generator
+        seed = self._seed
 
-        self.logger.info(f"FileStubSource: seed={self.seed}")
+        self.logger.info(f"FileStubSource: seed={seed}")
 
         # Container
-        container_id = f"file-stub-container-{self.seed}"
+        container_id = f"file-stub-container-{seed}"
         container = FileStubContainerEntity(
             container_id=container_id,
-            container_name=f"File Stub Container (seed={self.seed})",
+            container_name=f"File Stub Container (seed={seed})",
             description="Container for file converter pipeline tests",
             created_at=datetime(2024, 1, 1, 0, 0, 0),
-            seed=self.seed,
+            seed=seed,
             entity_count=4,
             breadcrumbs=[],
         )
@@ -434,10 +428,10 @@ class FileStubSource(BaseSource):
 
         # ── 1. Born-digital PDF ──────────────────────────────────────────
         pdf_bytes, page_count = gen.generate_pdf_content()
-        name = f"born_digital_pdf_{self.seed}"
+        name = f"born_digital_pdf_{seed}"
         filepath = await self._write_binary(pdf_bytes, ".pdf", name)
         yield PdfFileStubEntity(
-            stub_id=f"born-digital-pdf-{self.seed}",
+            stub_id=f"born-digital-pdf-{seed}",
             file_name=f"{name}.pdf",
             description="Born-digital PDF with embedded text layer",
             author=gen._pick(AUTHORS),
@@ -456,10 +450,10 @@ class FileStubSource(BaseSource):
 
         # ── 2. Scanned (image-only) PDF ─────────────────────────────────
         scan_bytes, scan_pages = gen.generate_scanned_pdf_content()
-        name = f"scanned_pdf_{self.seed}"
+        name = f"scanned_pdf_{seed}"
         filepath = await self._write_binary(scan_bytes, ".pdf", name)
         yield ScannedPdfFileStubEntity(
-            stub_id=f"scanned-pdf-{self.seed}",
+            stub_id=f"scanned-pdf-{seed}",
             file_name=f"{name}.pdf",
             description="Image-only scanned PDF requiring OCR",
             author=gen._pick(AUTHORS),
@@ -478,10 +472,10 @@ class FileStubSource(BaseSource):
 
         # ── 3. PPTX ─────────────────────────────────────────────────────
         pptx_bytes, slide_count = gen.generate_pptx_content()
-        name = f"presentation_{self.seed}"
+        name = f"presentation_{seed}"
         filepath = await self._write_binary(pptx_bytes, ".pptx", name)
         yield PptxFileStubEntity(
-            stub_id=f"pptx-{self.seed}",
+            stub_id=f"pptx-{seed}",
             file_name=f"{name}.pptx",
             description="PPTX presentation with slide text",
             author=gen._pick(AUTHORS),
@@ -500,10 +494,10 @@ class FileStubSource(BaseSource):
 
         # ── 4. DOCX ─────────────────────────────────────────────────────
         docx_bytes, approx_pages = gen.generate_docx_content()
-        name = f"document_{self.seed}"
+        name = f"document_{seed}"
         filepath = await self._write_binary(docx_bytes, ".docx", name)
         yield DocxFileStubEntity(
-            stub_id=f"docx-{self.seed}",
+            stub_id=f"docx-{seed}",
             file_name=f"{name}.docx",
             description="DOCX document with paragraph text",
             author=gen._pick(AUTHORS),
@@ -521,6 +515,5 @@ class FileStubSource(BaseSource):
 
         self.logger.info("FileStubSource: generated all 4 file entities")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Always valid - no external dependencies."""
-        return True

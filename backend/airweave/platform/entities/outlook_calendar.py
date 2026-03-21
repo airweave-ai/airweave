@@ -7,12 +7,47 @@ Reference:
   https://learn.microsoft.com/en-us/graph/api/resources/event?view=graph-rest-1.0
 """
 
+from __future__ import annotations
+
+import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb, FileEntity
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse Microsoft Graph simple datetime strings."""
+    if not value:
+        return None
+    try:
+        if "T" in value:
+            if value.endswith("Z"):
+                value = value.replace("Z", "+00:00")
+            return datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def _parse_datetime_field(dt_obj: Optional[Dict]) -> Optional[datetime]:
+    """Parse structured ``{dateTime, timeZone}`` datetime from Microsoft Graph."""
+    if not dt_obj or not dt_obj.get("dateTime"):
+        return None
+    try:
+        dt_str = dt_obj["dateTime"]
+        if "T" in dt_str:
+            if dt_str.endswith("Z"):
+                dt_str = dt_str.replace("Z", "+00:00")
+            elif "+" not in dt_str and "-" not in dt_str[-6:]:
+                dt_str += "+00:00"
+            return datetime.fromisoformat(dt_str)
+    except (ValueError, TypeError):
+        pass
+    return None
 
 
 class OutlookCalendarCalendarEntity(BaseEntity):
@@ -247,6 +282,69 @@ class OutlookCalendarEventEntity(BaseEntity):
         unhashable=True,
     )
 
+    @classmethod
+    def from_api(
+        cls, data: Dict[str, Any], *, cal_breadcrumb: Breadcrumb
+    ) -> OutlookCalendarEventEntity:
+        """Construct from a Microsoft Graph event resource."""
+        event_id = data["id"]
+        subject = data.get("subject", "No Subject")
+        start_info = data.get("start", {})
+        end_info = data.get("end", {})
+        body = data.get("body") or {}
+        created_dt = _parse_dt(data.get("createdDateTime"))
+        updated_dt = _parse_dt(data.get("lastModifiedDateTime"))
+        web_link = data.get("webLink")
+
+        return cls(
+            entity_id=event_id,
+            breadcrumbs=[cal_breadcrumb],
+            name=subject,
+            created_at=created_dt,
+            updated_at=updated_dt,
+            id=event_id,
+            subject=subject,
+            body_preview=data.get("bodyPreview"),
+            body_content=body.get("content"),
+            body_content_type=body.get("contentType"),
+            start_datetime=_parse_datetime_field(start_info),
+            start_timezone=start_info.get("timeZone"),
+            end_datetime=_parse_datetime_field(end_info),
+            end_timezone=end_info.get("timeZone"),
+            is_all_day=data.get("isAllDay", False),
+            is_cancelled=data.get("isCancelled", False),
+            is_draft=data.get("isDraft", False),
+            is_online_meeting=data.get("isOnlineMeeting", False),
+            is_organizer=data.get("isOrganizer", False),
+            is_reminder_on=data.get("isReminderOn", True),
+            show_as=data.get("showAs"),
+            importance=data.get("importance"),
+            sensitivity=data.get("sensitivity"),
+            response_status=data.get("responseStatus"),
+            organizer=data.get("organizer"),
+            attendees=data.get("attendees"),
+            location=data.get("location"),
+            locations=data.get("locations", []),
+            categories=data.get("categories", []),
+            web_link=web_link,
+            online_meeting_url=data.get("onlineMeetingUrl"),
+            online_meeting_provider=data.get("onlineMeetingProvider"),
+            online_meeting=data.get("onlineMeeting"),
+            series_master_id=data.get("seriesMasterId"),
+            recurrence=data.get("recurrence"),
+            reminder_minutes_before_start=data.get("reminderMinutesBeforeStart"),
+            has_attachments=data.get("hasAttachments", False),
+            ical_uid=data.get("iCalUId"),
+            change_key=data.get("changeKey"),
+            original_start_timezone=data.get("originalStartTimeZone"),
+            original_end_timezone=data.get("originalEndTimeZone"),
+            allow_new_time_proposals=data.get("allowNewTimeProposals", True),
+            hide_attendees=data.get("hideAttendees", False),
+            created_datetime=created_dt,
+            last_modified_datetime=updated_dt,
+            web_url_override=web_link,
+        )
+
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """URL exposed to clients for opening the event."""
@@ -303,6 +401,52 @@ class OutlookCalendarAttachmentEntity(FileEntity):
         embeddable=False,
         unhashable=True,
     )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        event_id: str,
+        breadcrumbs: List[Breadcrumb],
+        event_web_url: Optional[str] = None,
+    ) -> Optional[OutlookCalendarAttachmentEntity]:
+        """Construct from a Microsoft Graph attachment resource.
+
+        Returns None for non-file attachments.
+        """
+        attachment_type = data.get("@odata.type", "")
+        if "#microsoft.graph.fileAttachment" not in attachment_type:
+            return None
+
+        attachment_id = data["id"]
+        attachment_name = data.get("name", "unknown")
+        mime_type = data.get("contentType") or "application/octet-stream"
+        size = data.get("size", 0)
+
+        if mime_type and "/" in mime_type:
+            file_type = mime_type.split("/")[0]
+        else:
+            ext = os.path.splitext(attachment_name)[1].lower().lstrip(".")
+            file_type = ext if ext else "file"
+
+        return cls(
+            composite_id=f"{event_id}_attachment_{attachment_id}",
+            breadcrumbs=list(breadcrumbs),
+            name=attachment_name,
+            url=f"outlook://calendar/attachment/{event_id}/{attachment_id}",
+            size=size,
+            file_type=file_type,
+            mime_type=mime_type,
+            local_path=None,
+            event_id=event_id,
+            attachment_id=attachment_id,
+            content_type=data.get("contentType"),
+            is_inline=data.get("isInline", False),
+            content_id=data.get("contentId"),
+            last_modified_at=data.get("lastModifiedDateTime"),
+            event_web_url=event_web_url,
+        )
 
     @computed_field(return_type=str)
     def web_url(self) -> str:

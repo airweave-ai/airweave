@@ -14,14 +14,22 @@ References:
     https://developers.google.com/drive/api/v3/reference/files  (Files)
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.exceptions import SourceAuthError, SourceError
+from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+from airweave.domains.storage import FileSkippedException
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.config import GoogleDriveConfig
 from airweave.platform.cursors import GoogleDriveCursor
 from airweave.platform.decorators import source
@@ -30,13 +38,15 @@ from airweave.platform.entities.google_drive import (
     GoogleDriveDriveEntity,
     GoogleDriveFileDeletionEntity,
     GoogleDriveFileEntity,
+    _parse_drive_dt,
 )
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.http_helpers import raise_for_status
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.domains.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -69,51 +79,42 @@ class GoogleDriveSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
-    ) -> "GoogleDriveSource":
-        """Create a new Google Drive source instance with the provided OAuth access token."""
-        instance = cls()
-        instance.access_token = access_token
-
-        config = config or {}
-        instance.include_patterns = config.get("include_patterns", [])
-
-        # Concurrency configuration
-        instance.batch_size = int(config.get("batch_size", 30))
-        instance.batch_generation = bool(config.get("batch_generation", True))
-        instance.max_queue_size = int(config.get("max_queue_size", 200))
-        instance.preserve_order = bool(config.get("preserve_order", False))
-        instance.stop_on_error = bool(config.get("stop_on_error", False))
-
+        cls,
+        *,
+        auth: TokenProviderProtocol,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: GoogleDriveConfig,
+    ) -> GoogleDriveSource:
+        """Create a new Google Drive source instance."""
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
+        instance.include_patterns = config.include_patterns if config else []
+        instance.batch_size = 30
+        instance.batch_generation = True
+        instance.max_queue_size = 200
+        instance.preserve_order = False
+        instance.stop_on_error = False
         return instance
 
     @staticmethod
     def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
         """Parse Google Drive RFC3339 timestamps into aware datetimes."""
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
+        return _parse_drive_dt(value)
 
-    async def validate(self) -> bool:
-        """Validate the Google Drive source connection."""
-        return await self._validate_oauth2(
-            ping_url="https://www.googleapis.com/drive/v3/drives?pageSize=1",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+    async def validate(self) -> None:
+        """Validate credentials by pinging the shared drives list."""
+        await self._get(
+            "https://www.googleapis.com/drive/v3/drives",
+            params={"pageSize": "1"},
         )
 
     @retry(
-        stop=stop_after_attempt(5),  # Increased for aggressive rate limits
+        stop=stop_after_attempt(5),
         retry=retry_if_rate_limit_or_timeout,
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
-    async def _get_with_auth(  # noqa: C901
-        self, client: httpx.AsyncClient, url: str, params: Optional[Dict] = None
-    ) -> Dict:
+    async def _get(self, url: str, params: Optional[Dict] = None) -> Dict:
         """Make an authenticated GET request to the Google Drive API with retry logic.
 
         Retries on:
@@ -122,78 +123,23 @@ class GoogleDriveSource(BaseSource):
 
         Max 5 attempts with intelligent wait strategy.
         """
-        # Get a valid token (will refresh if needed)
-        access_token = await self.get_access_token()
-        if not access_token:
-            raise ValueError("No access token available")
+        token = await self.auth.get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        response = await self.http_client.get(url, headers=headers, params=params, timeout=30.0)
 
-        headers = {"Authorization": f"Bearer {access_token}"}
+        if response.status_code == 401 and self.auth.supports_refresh:
+            new_token = await self.auth.force_refresh()
+            headers = {"Authorization": f"Bearer {new_token}"}
+            response = await self.http_client.get(url, headers=headers, params=params, timeout=30.0)
 
-        try:
-            try:
-                self.logger.debug(f"API GET {url} params={params if params else {}}")
-            except Exception:
-                pass
-            # Add a longer timeout (30 seconds)
-            resp = await client.get(url, headers=headers, params=params, timeout=30.0)
+        raise_for_status(
+            response,
+            source_short_name=self.short_name,
+            token_provider_kind=self.auth.provider_kind,
+        )
+        return response.json()
 
-            # Handle 401 Unauthorized - token might have expired
-            if resp.status_code == 401:
-                self.logger.warning(f"Received 401 Unauthorized for {url}, refreshing token...")
-
-                # If we have a token manager, try to refresh
-                if self.token_provider:
-                    try:
-                        # Force refresh the token
-                        new_token = await self.token_provider.force_refresh()
-                        headers = {"Authorization": f"Bearer {new_token}"}
-
-                        # Retry the request with the new token
-                        resp = await client.get(url, headers=headers, params=params, timeout=30.0)
-
-                    except TokenRefreshError as e:
-                        self.logger.error(f"Failed to refresh token: {str(e)}")
-                        raise httpx.HTTPStatusError(
-                            "Authentication failed and token refresh was unsuccessful",
-                            request=resp.request,
-                            response=resp,
-                        ) from e
-                else:
-                    # No token manager, can't refresh
-                    self.logger.error("No token manager available to refresh expired token")
-                    resp.raise_for_status()
-
-            # Raise for other HTTP errors
-            resp.raise_for_status()
-            return resp.json()
-
-        except httpx.ConnectTimeout:
-            self.logger.error(f"Connection timeout accessing Google Drive API: {url}")
-            raise
-        except httpx.ReadTimeout:
-            self.logger.error(f"Read timeout accessing Google Drive API: {url}")
-            raise
-        except httpx.HTTPStatusError as e:
-            # Log differently for rate limits (which will be retried)
-            if e.response.status_code == 429:
-                retry_after = e.response.headers.get("Retry-After", "unknown")
-                self.logger.warning(
-                    f"Rate limit hit (429) for Google Drive API: {url} "
-                    f"(will retry after {retry_after}s)"
-                )
-            else:
-                self.logger.error(
-                    f"HTTP status error {e.response.status_code} from Google Drive API: {url}"
-                )
-            raise  # Re-raise for ALL HTTP errors (tenacity will retry 429s)
-        except httpx.HTTPError as e:
-            self.logger.error(f"HTTP error when accessing Google Drive API: {url}, {str(e)}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error accessing Google Drive API: {url}, {str(e)}")
-            raise
-
-    async def _list_drives(self, client: httpx.AsyncClient) -> AsyncGenerator[Dict, None]:
+    async def _list_drives(self) -> AsyncGenerator[Dict, None]:
         """List all shared drives (Drive objects) using pagination.
 
         GET https://www.googleapis.com/drive/v3/drives
@@ -201,18 +147,17 @@ class GoogleDriveSource(BaseSource):
         url = "https://www.googleapis.com/drive/v3/drives"
         params = {"pageSize": 100}
         while url:
-            data = await self._get_with_auth(client, url, params=params)
+            data = await self._get(url, params=params)
             drives = data.get("drives", [])
             self.logger.debug(f"List drives page: returned {len(drives)} drives")
             for drive_obj in drives:
                 yield drive_obj
 
-            # Handle pagination
             next_page_token = data.get("nextPageToken")
             if not next_page_token:
-                break  # no more results
+                break
             params["pageToken"] = next_page_token
-            url = "https://www.googleapis.com/drive/v3/drives"  # keep the same base URL
+            url = "https://www.googleapis.com/drive/v3/drives"
 
     def _build_drive_entity(self, drive_obj: Dict) -> GoogleDriveDriveEntity:
         """Build a GoogleDriveDriveEntity from API response."""
@@ -228,19 +173,15 @@ class GoogleDriveSource(BaseSource):
             org_unit_id=drive_obj.get("orgUnitId"),
         )
 
-    async def _generate_drive_entities(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[GoogleDriveDriveEntity, None]:
+    async def _generate_drive_entities(self) -> AsyncGenerator[GoogleDriveDriveEntity, None]:
         """Generate GoogleDriveDriveEntity objects for each shared drive."""
-        async for drive_obj in self._list_drives(client):
+        async for drive_obj in self._list_drives():
             yield GoogleDriveDriveEntity(
-                # Base fields
                 entity_id=drive_obj["id"],
                 breadcrumbs=[],
                 name=drive_obj.get("name", "Untitled Drive"),
                 created_at=drive_obj.get("createdTime"),
-                updated_at=None,  # Drives don't have modified time
-                # API fields
+                updated_at=None,
                 kind=drive_obj.get("kind"),
                 color_rgb=drive_obj.get("colorRgb"),
                 hidden=drive_obj.get("hidden", False),
@@ -248,20 +189,18 @@ class GoogleDriveSource(BaseSource):
             )
 
     # --- Changes API helpers ---
-    async def _get_start_page_token(self, client: httpx.AsyncClient) -> str:
+    async def _get_start_page_token(self) -> str:
         url = "https://www.googleapis.com/drive/v3/changes/startPageToken"
         params = {
             "supportsAllDrives": "true",
         }
-        data = await self._get_with_auth(client, url, params=params)
+        data = await self._get(url, params=params)
         token = data.get("startPageToken")
         if not token:
             raise ValueError("Failed to retrieve startPageToken from Drive API")
         return token
 
-    async def _iterate_changes(
-        self, client: httpx.AsyncClient, start_token: str
-    ) -> AsyncGenerator[Dict, None]:
+    async def _iterate_changes(self, start_token: str) -> AsyncGenerator[Dict, None]:
         """Iterate over all changes since the provided page token.
 
         Yields individual change objects. Stores the latest newStartPageToken on the instance
@@ -286,7 +225,7 @@ class GoogleDriveSource(BaseSource):
         latest_new_start: Optional[str] = None
 
         while True:
-            data = await self._get_with_auth(client, url, params=params)
+            data = await self._get(url, params=params)
             for change in data.get("changes", []) or []:
                 yield change
 
@@ -298,14 +237,13 @@ class GoogleDriveSource(BaseSource):
             else:
                 break
 
-        # Persist for caller
         self._latest_new_start_page_token = latest_new_start
 
     def _get_cursor_start_page_token(self) -> Optional[str]:
         """Return the stored startPageToken if available."""
-        if not self.cursor:
+        if not self._cursor:
             return None
-        token = self.cursor.data.get("start_page_token")
+        token = self._cursor.data.get("start_page_token")
         if not token:
             return None
         return token
@@ -322,21 +260,20 @@ class GoogleDriveSource(BaseSource):
         Returns:
             True if file should be processed (new or changed), False if unchanged
         """
-        if not self.cursor:
-            return True  # No cursor = treat as changed
+        if not self._cursor:
+            return True
 
         file_id = file_obj.get("id")
         if not file_id:
             return True
 
-        cursor_data = self.cursor.data
+        cursor_data = self._cursor.data
         file_metadata = cursor_data.get("file_metadata", {})
         stored_meta = file_metadata.get(file_id)
 
         if not stored_meta:
-            return True  # New file
+            return True
 
-        # Compare metadata
         current_modified = file_obj.get("modifiedTime")
         current_md5 = file_obj.get("md5Checksum")
         current_size = file_obj.get("size")
@@ -348,7 +285,7 @@ class GoogleDriveSource(BaseSource):
         ):
             return True
 
-        return False  # Unchanged
+        return False
 
     def _store_file_metadata(self, file_obj: Dict) -> None:
         """Store file metadata in cursor for future change detection.
@@ -356,14 +293,14 @@ class GoogleDriveSource(BaseSource):
         Args:
             file_obj: File metadata from Google Drive API
         """
-        if not self.cursor:
+        if not self._cursor:
             return
 
         file_id = file_obj.get("id")
         if not file_id:
             return
 
-        cursor_data = self.cursor.data
+        cursor_data = self._cursor.data
         file_metadata = cursor_data.get("file_metadata", {})
 
         file_metadata[file_id] = {
@@ -372,35 +309,37 @@ class GoogleDriveSource(BaseSource):
             "size": file_obj.get("size"),
         }
 
-        self.cursor.update(file_metadata=file_metadata)
+        self._cursor.update(file_metadata=file_metadata)
 
     async def _emit_changes_since_token(
-        self, client: httpx.AsyncClient, start_token: str
+        self,
+        start_token: str,
+        files: FileService | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Emit change entities (modifications, additions, and deletions) since the given token."""
         self.logger.info(
-            f"📊 Processing Drive changes since token {start_token[:20]}... (incremental sync)"
+            f"Processing Drive changes since token {start_token[:20]}... (incremental sync)"
         )
-        # Reset token tracker before iterating
         self._latest_new_start_page_token = None
         try:
-            async for change in self._iterate_changes(client, start_token):
-                entity = await self._build_entity_from_change(change)
+            async for change in self._iterate_changes(start_token):
+                entity = await self._build_entity_from_change(change, files=files)
                 if entity:
                     yield entity
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 410:
-                # Token expired or invalid
+        except SourceAuthError:
+            raise
+        except SourceError as exc:
+            if "HTTP 410" in str(exc):
                 self.logger.warning(
                     "Stored startPageToken is no longer valid (410). Fetching a fresh token."
                 )
-                if self.cursor:
+                if self._cursor:
                     try:
-                        fresh_token = await self._get_start_page_token(client)
+                        fresh_token = await self._get_start_page_token()
                         if fresh_token:
-                            self.cursor.update(start_page_token=fresh_token)
+                            self._cursor.update(start_page_token=fresh_token)
                     except Exception as token_error:
-                        self.logger.error(
+                        self.logger.warning(
                             f"Failed to refresh startPageToken after 410: {token_error}"
                         )
             else:
@@ -426,22 +365,13 @@ class GoogleDriveSource(BaseSource):
             )
             return None
 
-        label = file_obj.get("name") or file_id
+        return GoogleDriveFileDeletionEntity.from_api(change)
 
-        drive_id = file_obj.get("driveId") or change.get("driveId")
-        parents = file_obj.get("parents") or []
-        if not drive_id and parents:
-            drive_id = parents[0]
-
-        return GoogleDriveFileDeletionEntity(
-            breadcrumbs=[],
-            file_id=file_id,
-            label=f"Deleted file {label}",
-            drive_id=drive_id,
-            deletion_status="removed",
-        )
-
-    async def _build_entity_from_change(self, change: Dict) -> Optional[BaseEntity]:
+    async def _build_entity_from_change(
+        self,
+        change: Dict,
+        files: FileService | None = None,
+    ) -> Optional[BaseEntity]:
         """Convert a Drive change object into an entity (file or deletion).
 
         Handles both deletions and modifications/additions. Uses metadata comparison
@@ -449,6 +379,7 @@ class GoogleDriveSource(BaseSource):
 
         Args:
             change: Change object from Google Drive Changes API
+            files: Optional file service for downloading changed files
 
         Returns:
             GoogleDriveFileEntity for changed files, GoogleDriveFileDeletionEntity for deletions,
@@ -459,48 +390,42 @@ class GoogleDriveSource(BaseSource):
         trashed = bool(file_obj.get("trashed")) or bool(file_obj.get("explicitlyTrashed"))
         change_type = change.get("changeType")
 
-        # Handle deletions first
         is_deletion = removed or trashed or (change_type and change_type.lower() == "removed")
         if is_deletion:
             return self._build_deletion_entity_from_change(change)
 
-        # Handle modifications/additions
         if not file_obj.get("id"):
             return None
 
-        # Skip folders (only process files)
         if file_obj.get("mimeType") == "application/vnd.google-apps.folder":
             return None
 
-        # Check if file actually changed using metadata
         if not self._has_file_changed(file_obj):
             self.logger.debug(f"File {file_obj.get('name')} unchanged (metadata match) - skipping")
             return None
 
-        # File changed - download and process
         self.logger.debug(f"File {file_obj.get('name')} changed - processing")
-        return await self._process_changed_file(file_obj)
+        return await self._process_changed_file(file_obj, files=files)
 
-    async def _store_next_start_page_token(self, client: httpx.AsyncClient) -> None:
+    async def _store_next_start_page_token(self) -> None:
         """Persist the next startPageToken for future incremental runs."""
-        if not self.cursor:
+        if not self._cursor:
             return
 
         next_token = getattr(self, "_latest_new_start_page_token", None)
         if not next_token:
             try:
-                next_token = await self._get_start_page_token(client)
+                next_token = await self._get_start_page_token()
             except Exception as exc:
-                self.logger.error(f"Failed to fetch startPageToken: {exc}")
+                self.logger.warning(f"Failed to fetch startPageToken: {exc}")
                 return
 
         if next_token:
-            self.cursor.update(start_page_token=next_token)
+            self._cursor.update(start_page_token=next_token)
             self.logger.debug(f"Saved startPageToken for next run: {next_token}")
 
     async def _list_files(
         self,
-        client: httpx.AsyncClient,
         corpora: str,
         include_all_drives: bool,
         drive_id: Optional[str] = None,
@@ -509,7 +434,6 @@ class GoogleDriveSource(BaseSource):
         """Generic method to list files with configurable parameters.
 
         Args:
-            client: HTTP client to use for requests
             corpora: Google Drive API corpora parameter ("drive" or "user")
             include_all_drives: Whether to include items from all drives
             drive_id: ID of the shared drive to list files from (only for corpora="drive")
@@ -535,14 +459,16 @@ class GoogleDriveSource(BaseSource):
             f"drive_id={drive_id}, base_q={params['q']}, context={context}"
         )
 
-        total_files_from_api = 0  # Track total files returned by API
+        total_files_from_api = 0
         page_count = 0
 
         while url:
             try:
-                data = await self._get_with_auth(client, url, params=params)
+                data = await self._get(url, params=params)
+            except SourceAuthError:
+                raise
             except Exception as e:
-                self.logger.error(f"Error fetching files: {str(e)}")
+                self.logger.warning(f"Error fetching files: {str(e)}")
                 break
 
             files_in_page = data.get("files", [])
@@ -550,31 +476,26 @@ class GoogleDriveSource(BaseSource):
             files_count = len(files_in_page)
             total_files_from_api += files_count
 
-            # Log how many files the API returned in this page
             self.logger.debug(
-                f"\n\nGoogle Drive API returned {files_count} files in page {page_count} "
-                f"({context})\n\n"
+                f"Google Drive API returned {files_count} files in page {page_count} ({context})"
             )
 
             for file_obj in files_in_page:
                 yield file_obj
 
-            # Handle pagination
             next_page_token = data.get("nextPageToken")
             if not next_page_token:
                 break
             params["pageToken"] = next_page_token
             url = "https://www.googleapis.com/drive/v3/files"
 
-        # Log total count when done
         self.logger.debug(
-            f"\n\nGoogle Drive API returned {total_files_from_api} total files across "
-            f"{page_count} pages ({context})\n\n"
+            f"Google Drive API returned {total_files_from_api} total files across "
+            f"{page_count} pages ({context})"
         )
 
     async def _list_folders(
         self,
-        client: httpx.AsyncClient,
         corpora: str,
         include_all_drives: bool,
         drive_id: Optional[str],
@@ -593,7 +514,6 @@ class GoogleDriveSource(BaseSource):
             "fields": "nextPageToken, files(id, name, parents)",
         }
 
-        # Base folder query
         if parent_id:
             q = (
                 f"'{parent_id}' in parents and "
@@ -614,7 +534,7 @@ class GoogleDriveSource(BaseSource):
         )
 
         while url:
-            data = await self._get_with_auth(client, url, params=params)
+            data = await self._get(url, params=params)
             folders = data.get("files", [])
             self.logger.debug(
                 f"List folders page: parent_id={parent_id}, returned {len(folders)} folders"
@@ -630,7 +550,6 @@ class GoogleDriveSource(BaseSource):
 
     async def _list_files_in_folder(
         self,
-        client: httpx.AsyncClient,
         corpora: str,
         include_all_drives: bool,
         drive_id: Optional[str],
@@ -673,7 +592,7 @@ class GoogleDriveSource(BaseSource):
         )
 
         while url:
-            data = await self._get_with_auth(client, url, params=params)
+            data = await self._get(url, params=params)
             files_in_page = data.get("files", [])
             self.logger.debug(
                 (
@@ -706,7 +625,6 @@ class GoogleDriveSource(BaseSource):
 
     async def _resolve_pattern_to_roots(  # noqa: C901
         self,
-        client: httpx.AsyncClient,
         corpora: str,
         include_all_drives: bool,
         drive_id: Optional[str],
@@ -718,7 +636,6 @@ class GoogleDriveSource(BaseSource):
         Folder segments are treated as exact names.
         The last segment may be a filename glob; if omitted, includes all files recursively.
         """
-        # Normalize pattern and split
         self.logger.debug(f"Resolve pattern: '{pattern}'")
         norm = pattern.strip().strip("/")
         segments = norm.split("/") if norm else []
@@ -726,7 +643,6 @@ class GoogleDriveSource(BaseSource):
         if not segments:
             return [], None
 
-        # Determine if last segment is a file glob (has '.' or wildcard) -> treat as filename glob
         last = segments[-1]
         filename_glob: Optional[str] = None
         folder_segments = segments
@@ -743,7 +659,6 @@ class GoogleDriveSource(BaseSource):
             safe_name = name.replace("'", "\\'")
 
             if parent_ids:
-                # Search under specific parent folders
                 for pid in parent_ids:
                     url = "https://www.googleapis.com/drive/v3/files"
                     q = (
@@ -762,7 +677,7 @@ class GoogleDriveSource(BaseSource):
                         params["driveId"] = drive_id
 
                     while url:
-                        data = await self._get_with_auth(client, url, params=params)
+                        data = await self._get(url, params=params)
                         for f in data.get("files", []):
                             found.append(f["id"])
                         npt = data.get("nextPageToken")
@@ -775,7 +690,6 @@ class GoogleDriveSource(BaseSource):
                     f"parents -> {len(found)} matches"
                 )
             else:
-                # Search folders by exact name anywhere in scope
                 url = "https://www.googleapis.com/drive/v3/files"
                 q = (
                     "mimeType = 'application/vnd.google-apps.folder' and "
@@ -793,7 +707,7 @@ class GoogleDriveSource(BaseSource):
                     params["driveId"] = drive_id
 
                 while url:
-                    data = await self._get_with_auth(client, url, params=params)
+                    data = await self._get(url, params=params)
                     for f in data.get("files", []):
                         found.append(f["id"])
                     npt = data.get("nextPageToken")
@@ -806,7 +720,6 @@ class GoogleDriveSource(BaseSource):
                 )
             return found
 
-        # Traverse folder hierarchy
         parent_ids: Optional[List[str]] = None
         for seg in folder_segments:
             ids = await find_folders_by_name(parent_ids, seg)
@@ -814,7 +727,6 @@ class GoogleDriveSource(BaseSource):
             if not parent_ids:
                 break
 
-        # If no folder segments (pattern was just filename glob) return empty roots
         if not folder_segments:
             return [], filename_glob or "*"
 
@@ -826,7 +738,6 @@ class GoogleDriveSource(BaseSource):
 
     async def _traverse_and_yield_files(
         self,
-        client: httpx.AsyncClient,
         corpora: str,
         include_all_drives: bool,
         drive_id: Optional[str],
@@ -853,9 +764,8 @@ class GoogleDriveSource(BaseSource):
             folder_id = queue.popleft()
 
             self.logger.debug(f"Scanning folder: {folder_id}")
-            # Files directly in this folder
             async for file_obj in self._list_files_in_folder(
-                client, corpora, include_all_drives, drive_id, folder_id, name_token
+                corpora, include_all_drives, drive_id, folder_id, name_token
             ):
                 file_name = file_obj.get("name", "")
                 if filename_glob:
@@ -872,39 +782,13 @@ class GoogleDriveSource(BaseSource):
                     )
                     yield file_obj
 
-            # Subfolders
             async for subfolder in self._list_folders(
-                client, corpora, include_all_drives, drive_id, folder_id
+                corpora, include_all_drives, drive_id, folder_id
             ):
                 self.logger.debug(
                     f"Enqueue subfolder: {subfolder.get('name')} ({subfolder.get('id')})"
                 )
                 queue.append(subfolder["id"])
-
-    def _get_export_format_and_extension(self, mime_type: str) -> tuple[str, str]:
-        """Get the appropriate export MIME type and file extension for Google native files.
-
-        Returns:
-            tuple: (export_mime_type, file_extension)
-        """
-        # Mapping of Google MIME types to their corresponding export formats
-        google_export_map = {
-            "application/vnd.google-apps.document": (
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                ".docx",
-            ),
-            "application/vnd.google-apps.spreadsheet": (
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ".xlsx",
-            ),
-            "application/vnd.google-apps.presentation": (
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                ".pptx",
-            ),
-        }
-
-        # Return the specific format if available, otherwise fallback to PDF
-        return google_export_map.get(mime_type, ("application/pdf", ".pdf"))
 
     def _build_file_entity(
         self, file_obj: Dict, parent_breadcrumb: Optional[Breadcrumb]
@@ -913,14 +797,12 @@ class GoogleDriveSource(BaseSource):
 
         Returns None for files that should be skipped (e.g., trashed files, videos).
         """
-        # Skip all video files to prevent tmp storage issues
         mime_type = file_obj.get("mimeType", "")
         if mime_type.startswith("video/"):
             file_name = file_obj.get("name", "unknown")
             self.logger.debug(f"Skipping video file ({mime_type}): {file_name}")
             return None
 
-        # Skip files larger than 200MB using metadata from the listing API
         MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024
         file_size = int(file_obj["size"]) if file_obj.get("size") else 0
         if file_size > MAX_FILE_SIZE_BYTES:
@@ -929,81 +811,56 @@ class GoogleDriveSource(BaseSource):
             self.logger.info(f"Skipping oversized file ({size_mb:.1f}MB, max 200MB): {file_name}")
             return None
 
-        # Create download URL based on file type
-        download_url = None
-
-        # Get the original file name
-        file_name = file_obj.get("name", "Untitled")
-        mime_type = file_obj.get("mimeType", "")
-
-        if mime_type.startswith("application/vnd.google-apps."):
-            # For Google native files, get the appropriate export format
-            export_mime_type, file_extension = self._get_export_format_and_extension(mime_type)
-
-            # Create export URL with the appropriate MIME type
-            download_url = f"https://www.googleapis.com/drive/v3/files/{file_obj['id']}/export?mimeType={export_mime_type}"
-
-            # Add the appropriate extension if it's not already there
-            if not file_name.lower().endswith(file_extension):
-                file_name = f"{file_name}{file_extension}"
-
-        elif not file_obj.get("trashed", False):
-            # For regular files, use direct download or webContentLink
-            download_url = f"https://www.googleapis.com/drive/v3/files/{file_obj['id']}?alt=media"
-
-        # Return None if download_url is None (typically for trashed files)
-        if not download_url:
+        if not mime_type.startswith("application/vnd.google-apps.") and file_obj.get(
+            "trashed", False
+        ):
             return None
-
-        # Determine general file type from mime_type
-        from airweave.platform.entities.utils import _determine_file_type_from_mime
-
-        file_type = _determine_file_type_from_mime(mime_type)
-
-        created_time = self._parse_datetime(file_obj.get("createdTime")) or datetime.utcnow()
-        modified_time = self._parse_datetime(file_obj.get("modifiedTime")) or created_time
-        modified_by_me_time = self._parse_datetime(file_obj.get("modifiedByMeTime"))
-        viewed_by_me_time = self._parse_datetime(file_obj.get("viewedByMeTime"))
-        shared_with_me_time = self._parse_datetime(file_obj.get("sharedWithMeTime"))
 
         breadcrumbs = [parent_breadcrumb] if parent_breadcrumb else []
         if not breadcrumbs and getattr(self, "_my_drive_breadcrumb", None):
             breadcrumbs = [self._my_drive_breadcrumb]
 
-        return GoogleDriveFileEntity(
-            breadcrumbs=breadcrumbs,
-            file_id=file_obj["id"],
-            title=file_obj.get("name", "Untitled"),
-            created_time=created_time,
-            modified_time=modified_time,
-            name=file_name,  # Use the modified name with extension
-            created_at=created_time,
-            updated_at=modified_time,
-            url=download_url,
-            size=int(file_obj["size"]) if file_obj.get("size") else 0,
-            file_type=file_type,
-            mime_type=mime_type or "application/octet-stream",
-            local_path=None,
-            description=file_obj.get("description"),
-            starred=file_obj.get("starred", False),
-            trashed=file_obj.get("trashed", False),
-            explicitly_trashed=file_obj.get("explicitlyTrashed", False),
-            parents=file_obj.get("parents", []),
-            owners=file_obj.get("owners", []),
-            shared=file_obj.get("shared", False),
-            web_view_link=file_obj.get("webViewLink"),
-            icon_link=file_obj.get("iconLink"),
-            md5_checksum=file_obj.get("md5Checksum"),
-            shared_with_me_time=shared_with_me_time,
-            modified_by_me_time=modified_by_me_time,
-            viewed_by_me_time=viewed_by_me_time,
-        )
+        return GoogleDriveFileEntity.from_api(file_obj, breadcrumbs=breadcrumbs)
+
+    # ------------------------------
+    # File download helper
+    # ------------------------------
+    async def _download_file(
+        self,
+        file_entity: GoogleDriveFileEntity,
+        files: FileService | None,
+    ) -> bool:
+        """Download a file via FileService. Returns True if download succeeded.
+
+        401 propagates (dead token). Other HTTP errors log a warning.
+        """
+        if not files:
+            return False
+        try:
+            await files.download_from_url(
+                entity=file_entity,
+                client=self.http_client,
+                auth=self.auth,
+                logger=self.logger,
+            )
+            return bool(file_entity.local_path)
+        except FileSkippedException as e:
+            self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+            return False
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                raise
+            self.logger.warning(f"Failed to download {file_entity.name}: {e}")
+            return False
 
     # ------------------------------
     # Concurrency-aware processing
     # ------------------------------
     async def _process_file_batch(
-        self, file_obj: Dict, parent_breadcrumb: Optional[Breadcrumb]
+        self,
+        file_obj: Dict,
+        parent_breadcrumb: Optional[Breadcrumb],
+        files: FileService | None = None,
     ) -> Optional[GoogleDriveFileEntity]:
         """Build & process a single file (used by concurrent driver)."""
         try:
@@ -1012,40 +869,26 @@ class GoogleDriveSource(BaseSource):
                 return None
             self.logger.debug(f"Processing file entity: {file_entity.file_id} '{file_entity.name}'")
 
-            # Download file using downloader
-            try:
-                await self.file_downloader.download_from_url(
-                    entity=file_entity,
-                    http_client_factory=self.http_client,
-                    access_token_provider=self.get_access_token,
-                    logger=self.logger,
-                )
-
-                # Verify download succeeded
-                if not file_entity.local_path:
-                    raise ValueError(f"Download failed - no local path set for {file_entity.name}")
-
-                # Store metadata for future change detection
+            if await self._download_file(file_entity, files):
                 self._store_file_metadata(file_obj)
-
                 self.logger.debug(f"Successfully downloaded file: {file_entity.name}")
                 return file_entity
 
-            except FileSkippedException as e:
-                # Skipped unsupported or oversized file
-                self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
-                return None
+            return None
 
-            except Exception as e:
-                self.logger.error(f"Failed to download file {file_entity.name}: {e}")
-                return None
-
+        except SourceAuthError:
+            raise
         except Exception as e:
-            self.logger.error(f"Failed to process file {file_obj.get('name', 'unknown')}: {str(e)}")
+            self.logger.warning(
+                f"Failed to process file {file_obj.get('name', 'unknown')}: {str(e)}"
+            )
             return None
 
     async def _process_changed_file(
-        self, file_obj: Dict, parent_breadcrumb: Optional[Breadcrumb] = None
+        self,
+        file_obj: Dict,
+        parent_breadcrumb: Optional[Breadcrumb] = None,
+        files: FileService | None = None,
     ) -> Optional[GoogleDriveFileEntity]:
         """Process a file that has changed based on metadata.
 
@@ -1055,42 +898,23 @@ class GoogleDriveSource(BaseSource):
         Args:
             file_obj: File metadata from Google Drive API
             parent_breadcrumb: Optional breadcrumb for parent folder
+            files: Optional file service for downloading
 
         Returns:
             GoogleDriveFileEntity if processing succeeded, None if skipped or failed
         """
-        # Build entity
         file_entity = self._build_file_entity(file_obj, parent_breadcrumb)
         if not file_entity:
             return None
 
         self.logger.debug(f"Processing changed file: {file_entity.file_id} '{file_entity.name}'")
 
-        # Download file
-        try:
-            await self.file_downloader.download_from_url(
-                entity=file_entity,
-                http_client_factory=self.http_client,
-                access_token_provider=self.get_access_token,
-                logger=self.logger,
-            )
-
-            if not file_entity.local_path:
-                raise ValueError(f"Download failed for {file_entity.name}")
-
-            # Store metadata for future comparison
+        if await self._download_file(file_entity, files):
             self._store_file_metadata(file_obj)
-
             self.logger.debug(f"Successfully processed changed file: {file_entity.name}")
             return file_entity
 
-        except FileSkippedException as e:
-            self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
-            return None
-
-        except Exception as e:
-            self.logger.error(f"Failed to download changed file {file_entity.name}: {e}")
-            return None
+        return None
 
     def _setup_breadcrumbs(self, drive_objs: List[Dict[str, Any]]) -> None:
         """Setup breadcrumbs for drives and My Drive.
@@ -1115,24 +939,24 @@ class GoogleDriveSource(BaseSource):
 
     async def _generate_file_entities(  # noqa: C901
         self,
-        client: httpx.AsyncClient,
         corpora: str,
         include_all_drives: bool,
         drive_id: Optional[str] = None,
         context: str = "",
         parent_breadcrumb: Optional[Breadcrumb] = None,
+        files: FileService | None = None,
     ) -> AsyncGenerator[GoogleDriveFileEntity, None]:
         """Generate file entities from a file listing."""
         try:
             if getattr(self, "batch_generation", False):
-                # Concurrent flow
+
                 async def _worker(file_obj: Dict):
-                    ent = await self._process_file_batch(file_obj, parent_breadcrumb)
+                    ent = await self._process_file_batch(file_obj, parent_breadcrumb, files)
                     if ent is not None:
                         yield ent
 
                 async for processed in self.process_entities_concurrent(
-                    items=self._list_files(client, corpora, include_all_drives, drive_id, context),
+                    items=self._list_files(corpora, include_all_drives, drive_id, context),
                     worker=_worker,
                     batch_size=getattr(self, "batch_size", 30),
                     preserve_order=getattr(self, "preserve_order", False),
@@ -1141,57 +965,40 @@ class GoogleDriveSource(BaseSource):
                 ):
                     yield processed
             else:
-                # Sequential flow
                 async for file_obj in self._list_files(
-                    client, corpora, include_all_drives, drive_id, context
+                    corpora, include_all_drives, drive_id, context
                 ):
                     try:
                         file_entity = self._build_file_entity(file_obj, parent_breadcrumb)
                         if not file_entity:
                             continue
 
-                        # Download file using downloader
-                        try:
-                            await self.file_downloader.download_from_url(
-                                entity=file_entity,
-                                http_client_factory=self.http_client,
-                                access_token_provider=self.get_access_token,
-                                logger=self.logger,
-                            )
-
-                            # Verify download succeeded
-                            if not file_entity.local_path:
-                                raise ValueError(
-                                    f"Download failed - no local path set for {file_entity.name}"
-                                )
-
-                            # Store metadata for future change detection
+                        if await self._download_file(file_entity, files):
                             self._store_file_metadata(file_obj)
-
                             yield file_entity
 
-                        except FileSkippedException as e:
-                            # Skipped unsupported or oversized file
-                            self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
-                            continue
-
-                        except Exception as e:
-                            self.logger.error(f"Failed to download file {file_entity.name}: {e}")
-                            continue
-
+                    except SourceAuthError:
+                        raise
                     except Exception as e:
                         error_context = f"in drive {drive_id}" if drive_id else "in MY DRIVE"
-                        self.logger.error(
+                        self.logger.warning(
                             f"Failed to process file {file_obj.get('name', 'unknown')} "
                             f"{error_context}: {str(e)}"
                         )
                         continue
 
+        except SourceAuthError:
+            raise
         except Exception as e:
-            self.logger.error(f"Critical exception in _generate_file_entities: {str(e)}")
-            # Don't re-raise - let the generator complete
+            self.logger.warning(f"Critical exception in _generate_file_entities: {str(e)}")
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
+    async def generate_entities(  # noqa: C901
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Google Drive entities.
 
         Behavior:
@@ -1200,288 +1007,119 @@ class GoogleDriveSource(BaseSource):
         - If a cursor token exists: perform INCREMENTAL sync using the Changes API. Emit
           deletion entities for removed files and upsert entities for changed files.
         """
+        self._cursor = cursor
+
         try:
             start_page_token = self._get_cursor_start_page_token()
             if start_page_token:
-                self.logger.debug(f"📊 Incremental sync using startPageToken={start_page_token}")
+                self.logger.debug(f"Incremental sync using startPageToken={start_page_token}")
             else:
-                self.logger.debug("🔄 Full sync (no stored startPageToken)")
+                self.logger.debug("Full sync (no stored startPageToken)")
 
-            async with self.http_client() as client:
-                patterns: List[str] = getattr(self, "include_patterns", []) or []
-                self.logger.debug(f"Include patterns: {patterns}")
+            patterns: List[str] = getattr(self, "include_patterns", []) or []
+            self.logger.debug(f"Include patterns: {patterns}")
 
-                drive_objs: List[Dict[str, Any]] = []
-                try:
-                    async for drive_obj in self._list_drives(client):
-                        drive_objs.append(drive_obj)
-                        yield self._build_drive_entity(drive_obj)
-                except Exception as e:
-                    self.logger.error(f"Error generating drive entities: {str(e)}")
+            drive_objs: List[Dict[str, Any]] = []
+            try:
+                async for drive_obj in self._list_drives():
+                    drive_objs.append(drive_obj)
+                    yield self._build_drive_entity(drive_obj)
+            except SourceAuthError:
+                raise
+            except Exception as e:
+                self.logger.warning(f"Error generating drive entities: {str(e)}")
 
-                # Setup breadcrumbs for navigation
-                self._setup_breadcrumbs(drive_objs)
-                drive_breadcrumbs = self._drive_breadcrumbs
-                drive_ids = [drive["id"] for drive in drive_objs]
+            self._setup_breadcrumbs(drive_objs)
+            drive_breadcrumbs = self._drive_breadcrumbs
+            drive_ids = [drive["id"] for drive in drive_objs]
 
-                # INCREMENTAL MODE: Use Changes API exclusively
-                if start_page_token:
-                    self.logger.info(
-                        "📊 Incremental sync mode - processing changes only"
-                        f" (token={start_page_token[:20]}...)"
-                    )
-                    async for change_entity in self._emit_changes_since_token(
-                        client, start_page_token
-                    ):
-                        yield change_entity
+            # INCREMENTAL MODE: Use Changes API exclusively
+            if start_page_token:
+                self.logger.info(
+                    "Incremental sync mode - processing changes only"
+                    f" (token={start_page_token[:20]}...)"
+                )
+                async for change_entity in self._emit_changes_since_token(
+                    start_page_token, files=files
+                ):
+                    yield change_entity
 
-                else:
-                    # FULL SYNC MODE: List all files (first run or forced full sync)
-                    self.logger.info("🔄 Full sync mode - listing all files")
+            else:
+                # FULL SYNC MODE: List all files (first run or forced full sync)
+                self.logger.info("Full sync mode - listing all files")
 
-                    # If no include patterns: default behavior (all files in drives + My Drive)
-                    if not patterns:
-                        for drive_id in drive_ids:
-                            try:
-                                drive_breadcrumb = drive_breadcrumbs.get(drive_id)
-                                async for file_entity in self._generate_file_entities(
-                                    client,
-                                    corpora="drive",
-                                    include_all_drives=True,
-                                    drive_id=drive_id,
-                                    context=f"drive {drive_id}",
-                                    parent_breadcrumb=drive_breadcrumb,
-                                ):
-                                    yield file_entity
-                            except Exception as e:
-                                self.logger.error(
-                                    f"Error processing shared drive {drive_id}: {str(e)}"
-                                )
-                                continue
-
-                        try:
-                            async for mydrive_file_entity in self._generate_file_entities(
-                                client,
-                                corpora="user",
-                                include_all_drives=False,
-                                context="MY DRIVE",
-                                parent_breadcrumb=self._my_drive_breadcrumb,
-                            ):
-                                yield mydrive_file_entity
-                        except Exception as e:
-                            self.logger.error(f"Error processing My Drive files: {str(e)}")
-
-                    # INCLUDE MODE: Resolve patterns and traverse only matched subtrees
-                    # Shared drives first
+                # If no include patterns: default behavior (all files in drives + My Drive)
+                if not patterns:
                     for drive_id in drive_ids:
                         try:
                             drive_breadcrumb = drive_breadcrumbs.get(drive_id)
-                            # Resolve and traverse per pattern to keep logic simple and precise
-                            for p in patterns:
-                                roots, fname_glob = await self._resolve_pattern_to_roots(
-                                    client,
-                                    corpora="drive",
-                                    include_all_drives=True,
-                                    drive_id=drive_id,
-                                    pattern=p,
-                                )
-                                if roots:
-                                    if getattr(self, "batch_generation", False):
-                                        # Concurrent traversal
-                                        async def _worker_traverse(
-                                            file_obj: Dict, breadcrumb=drive_breadcrumb
-                                        ):
-                                            ent = await self._process_file_batch(
-                                                file_obj, breadcrumb
-                                            )
-                                            if ent is not None:
-                                                yield ent
-
-                                        items_gen = self._traverse_and_yield_files(
-                                            client,
-                                            corpora="drive",
-                                            include_all_drives=True,
-                                            drive_id=drive_id,
-                                            start_folder_ids=list(set(roots)),
-                                            filename_glob=fname_glob,
-                                            context=f"drive {drive_id}",
-                                        )
-
-                                        async for processed in self.process_entities_concurrent(
-                                            items=items_gen,
-                                            worker=_worker_traverse,
-                                            batch_size=getattr(self, "batch_size", 30),
-                                            preserve_order=getattr(self, "preserve_order", False),
-                                            stop_on_error=getattr(self, "stop_on_error", False),
-                                            max_queue_size=getattr(self, "max_queue_size", 200),
-                                        ):
-                                            yield processed
-                                    else:
-                                        # Sequential traversal
-                                        async for file_obj in self._traverse_and_yield_files(
-                                            client,
-                                            corpora="drive",
-                                            include_all_drives=True,
-                                            drive_id=drive_id,
-                                            start_folder_ids=list(set(roots)),
-                                            filename_glob=fname_glob,
-                                            context=f"drive {drive_id}",
-                                        ):
-                                            file_entity = self._build_file_entity(
-                                                file_obj, drive_breadcrumb
-                                            )
-                                            if not file_entity:
-                                                continue
-
-                                            # Download file using downloader
-                                            try:
-                                                await self.file_downloader.download_from_url(
-                                                    entity=file_entity,
-                                                    http_client_factory=self.http_client,
-                                                    access_token_provider=self.get_access_token,
-                                                    logger=self.logger,
-                                                )
-
-                                                # Verify download succeeded
-                                                if not file_entity.local_path:
-                                                    raise ValueError(
-                                                        f"Download failed - no local path set "
-                                                        f"for {file_entity.name}"
-                                                    )
-
-                                                yield file_entity
-
-                                            except FileSkippedException as e:
-                                                # Skipped unsupported or oversized file
-                                                self.logger.debug(
-                                                    f"Skipping file {file_entity.name}: {e.reason}"
-                                                )
-                                                continue
-
-                                            except Exception as e:
-                                                self.logger.error(
-                                                    f"Download failed {file_entity.name}: {e}"
-                                                )
-                                                continue
-
-                            # Filename-only patterns (no folder segments) -> global name search
-                            filename_only_patterns = [p for p in patterns if "/" not in p]
-                            import fnmatch as _fn
-
-                            for pat in filename_only_patterns:
-                                if getattr(self, "batch_generation", False):
-
-                                    async def _worker_match(
-                                        file_obj: Dict,
-                                        pattern=pat,
-                                        breadcrumb=drive_breadcrumb,
-                                    ):
-                                        name = file_obj.get("name", "")
-                                        if _fn.fnmatch(name, pattern):
-                                            ent = await self._process_file_batch(
-                                                file_obj, breadcrumb
-                                            )
-                                            if ent is not None:
-                                                yield ent
-
-                                    async for processed in self.process_entities_concurrent(
-                                        items=self._list_files(
-                                            client,
-                                            corpora="drive",
-                                            include_all_drives=True,
-                                            drive_id=drive_id,
-                                            context=f"drive {drive_id}",
-                                        ),
-                                        worker=_worker_match,
-                                        batch_size=getattr(self, "batch_size", 30),
-                                        preserve_order=getattr(self, "preserve_order", False),
-                                        stop_on_error=getattr(self, "stop_on_error", False),
-                                        max_queue_size=getattr(self, "max_queue_size", 200),
-                                    ):
-                                        yield processed
-                                else:
-                                    async for file_obj in self._list_files(
-                                        client,
-                                        corpora="drive",
-                                        include_all_drives=True,
-                                        drive_id=drive_id,
-                                        context=f"drive {drive_id}",
-                                    ):
-                                        name = file_obj.get("name", "")
-                                        if _fn.fnmatch(name, pat):
-                                            file_entity = self._build_file_entity(
-                                                file_obj, drive_breadcrumb
-                                            )
-                                            if not file_entity:
-                                                continue
-
-                                            # Download file using downloader
-                                            try:
-                                                await self.file_downloader.download_from_url(
-                                                    entity=file_entity,
-                                                    http_client_factory=self.http_client,
-                                                    access_token_provider=self.get_access_token,
-                                                    logger=self.logger,
-                                                )
-
-                                                # Verify download succeeded
-                                                if not file_entity.local_path:
-                                                    raise ValueError(
-                                                        f"Download failed - no local path set "
-                                                        f"for {file_entity.name}"
-                                                    )
-
-                                                yield file_entity
-
-                                            except FileSkippedException as e:
-                                                # Skipped unsupported or oversized file
-                                                self.logger.debug(
-                                                    f"Skipping file {file_entity.name}: {e.reason}"
-                                                )
-                                                continue
-
-                                            except Exception as e:
-                                                self.logger.error(
-                                                    f"Download failed {file_entity.name}: {e}"
-                                                )
-                                                continue
-
+                            async for file_entity in self._generate_file_entities(
+                                corpora="drive",
+                                include_all_drives=True,
+                                drive_id=drive_id,
+                                context=f"drive {drive_id}",
+                                parent_breadcrumb=drive_breadcrumb,
+                                files=files,
+                            ):
+                                yield file_entity
+                        except SourceAuthError:
+                            raise
                         except Exception as e:
-                            self.logger.error(f"Include mode error for drive {drive_id}: {str(e)}")
+                            self.logger.warning(
+                                f"Error processing shared drive {drive_id}: {str(e)}"
+                            )
+                            continue
 
-                    # My Drive include patterns
                     try:
+                        async for mydrive_file_entity in self._generate_file_entities(
+                            corpora="user",
+                            include_all_drives=False,
+                            context="MY DRIVE",
+                            parent_breadcrumb=self._my_drive_breadcrumb,
+                            files=files,
+                        ):
+                            yield mydrive_file_entity
+                    except SourceAuthError:
+                        raise
+                    except Exception as e:
+                        self.logger.warning(f"Error processing My Drive files: {str(e)}")
+
+                # INCLUDE MODE: Resolve patterns and traverse only matched subtrees
+                # Shared drives first
+                for drive_id in drive_ids:
+                    try:
+                        drive_breadcrumb = drive_breadcrumbs.get(drive_id)
                         for p in patterns:
                             roots, fname_glob = await self._resolve_pattern_to_roots(
-                                client,
-                                corpora="user",
-                                include_all_drives=False,
-                                drive_id=None,
+                                corpora="drive",
+                                include_all_drives=True,
+                                drive_id=drive_id,
                                 pattern=p,
                             )
                             if roots:
                                 if getattr(self, "batch_generation", False):
 
-                                    async def _worker_traverse_user(
-                                        file_obj: Dict, breadcrumb=self._my_drive_breadcrumb
+                                    async def _worker_traverse(
+                                        file_obj: Dict, breadcrumb=drive_breadcrumb
                                     ):
-                                        ent = await self._process_file_batch(file_obj, breadcrumb)
+                                        ent = await self._process_file_batch(
+                                            file_obj, breadcrumb, files
+                                        )
                                         if ent is not None:
                                             yield ent
 
-                                    items_gen_user = self._traverse_and_yield_files(
-                                        client,
-                                        corpora="user",
-                                        include_all_drives=False,
-                                        drive_id=None,
+                                    items_gen = self._traverse_and_yield_files(
+                                        corpora="drive",
+                                        include_all_drives=True,
+                                        drive_id=drive_id,
                                         start_folder_ids=list(set(roots)),
                                         filename_glob=fname_glob,
-                                        context="MY DRIVE",
+                                        context=f"drive {drive_id}",
                                     )
 
                                     async for processed in self.process_entities_concurrent(
-                                        items=items_gen_user,
-                                        worker=_worker_traverse_user,
+                                        items=items_gen,
+                                        worker=_worker_traverse,
                                         batch_size=getattr(self, "batch_size", 30),
                                         preserve_order=getattr(self, "preserve_order", False),
                                         stop_on_error=getattr(self, "stop_on_error", False),
@@ -1490,48 +1128,27 @@ class GoogleDriveSource(BaseSource):
                                         yield processed
                                 else:
                                     async for file_obj in self._traverse_and_yield_files(
-                                        client,
-                                        corpora="user",
-                                        include_all_drives=False,
-                                        drive_id=None,
+                                        corpora="drive",
+                                        include_all_drives=True,
+                                        drive_id=drive_id,
                                         start_folder_ids=list(set(roots)),
                                         filename_glob=fname_glob,
-                                        context="MY DRIVE",
+                                        context=f"drive {drive_id}",
                                     ):
                                         file_entity = self._build_file_entity(
-                                            file_obj, self._my_drive_breadcrumb
+                                            file_obj, drive_breadcrumb
                                         )
                                         if not file_entity:
                                             continue
 
-                                        # Download file using downloader
                                         try:
-                                            await self.file_downloader.download_from_url(
-                                                entity=file_entity,
-                                                http_client_factory=self.http_client,
-                                                access_token_provider=self.get_access_token,
-                                                logger=self.logger,
-                                            )
-
-                                            # Verify download succeeded
-                                            if not file_entity.local_path:
-                                                raise ValueError(
-                                                    f"Download failed - no local path set "
-                                                    f"for {file_entity.name}"
-                                                )
-
-                                            yield file_entity
-
-                                        except FileSkippedException as e:
-                                            # Skipped unsupported or oversized file
-                                            self.logger.debug(
-                                                f"Skipping file {file_entity.name}: {e.reason}"
-                                            )
-                                            continue
-
+                                            if await self._download_file(file_entity, files):
+                                                yield file_entity
+                                        except SourceAuthError:
+                                            raise
                                         except Exception as e:
-                                            self.logger.error(
-                                                f"Failed to download file {file_entity.name}: {e}"
+                                            self.logger.warning(
+                                                f"Download failed {file_entity.name}: {e}"
                                             )
                                             continue
 
@@ -1541,26 +1158,27 @@ class GoogleDriveSource(BaseSource):
                         for pat in filename_only_patterns:
                             if getattr(self, "batch_generation", False):
 
-                                async def _worker_match_user(
+                                async def _worker_match(
                                     file_obj: Dict,
                                     pattern=pat,
-                                    breadcrumb=self._my_drive_breadcrumb,
+                                    breadcrumb=drive_breadcrumb,
                                 ):
                                     name = file_obj.get("name", "")
                                     if _fn.fnmatch(name, pattern):
-                                        ent = await self._process_file_batch(file_obj, breadcrumb)
+                                        ent = await self._process_file_batch(
+                                            file_obj, breadcrumb, files
+                                        )
                                         if ent is not None:
                                             yield ent
 
                                 async for processed in self.process_entities_concurrent(
                                     items=self._list_files(
-                                        client,
-                                        corpora="user",
-                                        include_all_drives=False,
-                                        drive_id=None,
-                                        context="MY DRIVE",
+                                        corpora="drive",
+                                        include_all_drives=True,
+                                        drive_id=drive_id,
+                                        context=f"drive {drive_id}",
                                     ),
-                                    worker=_worker_match_user,
+                                    worker=_worker_match,
                                     batch_size=getattr(self, "batch_size", 30),
                                     preserve_order=getattr(self, "preserve_order", False),
                                     stop_on_error=getattr(self, "stop_on_error", False),
@@ -1569,60 +1187,171 @@ class GoogleDriveSource(BaseSource):
                                     yield processed
                             else:
                                 async for file_obj in self._list_files(
-                                    client,
-                                    corpora="user",
-                                    include_all_drives=False,
-                                    drive_id=None,
-                                    context="MY DRIVE",
+                                    corpora="drive",
+                                    include_all_drives=True,
+                                    drive_id=drive_id,
+                                    context=f"drive {drive_id}",
                                 ):
                                     name = file_obj.get("name", "")
                                     if _fn.fnmatch(name, pat):
                                         file_entity = self._build_file_entity(
-                                            file_obj, self._my_drive_breadcrumb
+                                            file_obj, drive_breadcrumb
                                         )
                                         if not file_entity:
                                             continue
 
-                                        # Download file using downloader
                                         try:
-                                            await self.file_downloader.download_from_url(
-                                                entity=file_entity,
-                                                http_client_factory=self.http_client,
-                                                access_token_provider=self.get_access_token,
-                                                logger=self.logger,
-                                            )
-
-                                            # Verify download succeeded
-                                            if not file_entity.local_path:
-                                                raise ValueError(
-                                                    f"Download failed - no local path set "
-                                                    f"for {file_entity.name}"
-                                                )
-
-                                            yield file_entity
-
-                                        except FileSkippedException as e:
-                                            # Skipped unsupported or oversized file
-                                            self.logger.debug(
-                                                f"Skipping file {file_entity.name}: {e.reason}"
-                                            )
-                                            continue
-
+                                            if await self._download_file(file_entity, files):
+                                                yield file_entity
+                                        except SourceAuthError:
+                                            raise
                                         except Exception as e:
-                                            self.logger.error(
-                                                f"Failed to download file {file_entity.name}: {e}"
+                                            self.logger.warning(
+                                                f"Download failed {file_entity.name}: {e}"
                                             )
                                             continue
 
+                    except SourceAuthError:
+                        raise
                     except Exception as e:
-                        self.logger.error(f"Include mode error for My Drive: {str(e)}")
+                        self.logger.warning(f"Include mode error for drive {drive_id}: {str(e)}")
 
-                # Store the next start page token for future incremental syncs
-                await self._store_next_start_page_token(client)
+                # My Drive include patterns
+                try:
+                    for p in patterns:
+                        roots, fname_glob = await self._resolve_pattern_to_roots(
+                            corpora="user",
+                            include_all_drives=False,
+                            drive_id=None,
+                            pattern=p,
+                        )
+                        if roots:
+                            if getattr(self, "batch_generation", False):
 
+                                async def _worker_traverse_user(
+                                    file_obj: Dict, breadcrumb=self._my_drive_breadcrumb
+                                ):
+                                    ent = await self._process_file_batch(
+                                        file_obj, breadcrumb, files
+                                    )
+                                    if ent is not None:
+                                        yield ent
+
+                                items_gen_user = self._traverse_and_yield_files(
+                                    corpora="user",
+                                    include_all_drives=False,
+                                    drive_id=None,
+                                    start_folder_ids=list(set(roots)),
+                                    filename_glob=fname_glob,
+                                    context="MY DRIVE",
+                                )
+
+                                async for processed in self.process_entities_concurrent(
+                                    items=items_gen_user,
+                                    worker=_worker_traverse_user,
+                                    batch_size=getattr(self, "batch_size", 30),
+                                    preserve_order=getattr(self, "preserve_order", False),
+                                    stop_on_error=getattr(self, "stop_on_error", False),
+                                    max_queue_size=getattr(self, "max_queue_size", 200),
+                                ):
+                                    yield processed
+                            else:
+                                async for file_obj in self._traverse_and_yield_files(
+                                    corpora="user",
+                                    include_all_drives=False,
+                                    drive_id=None,
+                                    start_folder_ids=list(set(roots)),
+                                    filename_glob=fname_glob,
+                                    context="MY DRIVE",
+                                ):
+                                    file_entity = self._build_file_entity(
+                                        file_obj, self._my_drive_breadcrumb
+                                    )
+                                    if not file_entity:
+                                        continue
+
+                                    try:
+                                        if await self._download_file(file_entity, files):
+                                            yield file_entity
+                                    except SourceAuthError:
+                                        raise
+                                    except Exception as e:
+                                        self.logger.warning(
+                                            f"Failed to download file {file_entity.name}: {e}"
+                                        )
+                                        continue
+
+                    filename_only_patterns = [p for p in patterns if "/" not in p]
+                    import fnmatch as _fn
+
+                    for pat in filename_only_patterns:
+                        if getattr(self, "batch_generation", False):
+
+                            async def _worker_match_user(
+                                file_obj: Dict,
+                                pattern=pat,
+                                breadcrumb=self._my_drive_breadcrumb,
+                            ):
+                                name = file_obj.get("name", "")
+                                if _fn.fnmatch(name, pattern):
+                                    ent = await self._process_file_batch(
+                                        file_obj, breadcrumb, files
+                                    )
+                                    if ent is not None:
+                                        yield ent
+
+                            async for processed in self.process_entities_concurrent(
+                                items=self._list_files(
+                                    corpora="user",
+                                    include_all_drives=False,
+                                    drive_id=None,
+                                    context="MY DRIVE",
+                                ),
+                                worker=_worker_match_user,
+                                batch_size=getattr(self, "batch_size", 30),
+                                preserve_order=getattr(self, "preserve_order", False),
+                                stop_on_error=getattr(self, "stop_on_error", False),
+                                max_queue_size=getattr(self, "max_queue_size", 200),
+                            ):
+                                yield processed
+                        else:
+                            async for file_obj in self._list_files(
+                                corpora="user",
+                                include_all_drives=False,
+                                drive_id=None,
+                                context="MY DRIVE",
+                            ):
+                                name = file_obj.get("name", "")
+                                if _fn.fnmatch(name, pat):
+                                    file_entity = self._build_file_entity(
+                                        file_obj, self._my_drive_breadcrumb
+                                    )
+                                    if not file_entity:
+                                        continue
+
+                                    try:
+                                        if await self._download_file(file_entity, files):
+                                            yield file_entity
+                                    except SourceAuthError:
+                                        raise
+                                    except Exception as e:
+                                        self.logger.warning(
+                                            f"Failed to download file {file_entity.name}: {e}"
+                                        )
+                                        continue
+
+                except SourceAuthError:
+                    raise
+                except Exception as e:
+                    self.logger.warning(f"Include mode error for My Drive: {str(e)}")
+
+            # Store the next start page token for future incremental syncs
+            await self._store_next_start_page_token()
+
+        except SourceAuthError:
+            raise
         except Exception as e:
-            self.logger.error(f"Critical error in generate_entities: {str(e)}")
-            # Re-raise as SyncFailureError to explicitly fail the sync
+            self.logger.warning(f"Critical error in generate_entities: {str(e)}")
             from airweave.platform.sync.exceptions import SyncFailureError
 
             raise SyncFailureError(f"Google Drive sync failed: {str(e)}") from e

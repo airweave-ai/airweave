@@ -195,6 +195,7 @@ def _source_entry(
         oauth_type=None,
         requires_byoc=False,
         supports_continuous=supports_continuous,
+        supports_cursor=False,
         federated_search=federated_search,
         supports_temporal_relevance=False,
         supports_access_control=False,

@@ -1,11 +1,14 @@
 """Unit tests for the Slite source connector."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 
+from airweave.domains.sources.exceptions import SourceAuthError
+from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 from airweave.platform.configs.auth import SliteAuthConfig
+from airweave.platform.configs.config import SliteConfig
 from airweave.platform.entities.slite import SliteNoteEntity
 from airweave.platform.sources.slite import SliteSource
 from airweave.schemas.source_connection import AuthenticationMethod
@@ -33,16 +36,19 @@ def slite_credentials():
     return SliteAuthConfig(api_key="test_slite_api_key_xyz")
 
 
-async def _make_slite_source(credentials: SliteAuthConfig, config: dict | None = None) -> SliteSource:
-    """Create Slite source (async)."""
-    return await SliteSource.create(credentials, config=config)
+def _mock_auth(credentials: SliteAuthConfig) -> DirectCredentialProvider:
+    return DirectCredentialProvider(credentials, source_short_name="slite")
 
 
-def _make_mock_client(*, get_responses=None):
-    """Build a mock httpx.AsyncClient that returns given responses for get."""
-    get_responses = list(get_responses or [])
+def _mock_logger():
+    return MagicMock()
 
-    async def get(*args, **kwargs):
+
+def _mock_http_client_get_queue(get_responses: list):
+    """AsyncMock AirweaveHttpClient with .get returning queued httpx.Response objects."""
+    get_responses = list(get_responses)
+
+    async def get_side_effect(*args, **kwargs):
         if not get_responses:
             return _response(200, {})
         resp = get_responses.pop(0)
@@ -50,27 +56,24 @@ def _make_mock_client(*, get_responses=None):
             raise resp
         return resp
 
-    client = AsyncMock(spec=httpx.AsyncClient)
-    client.get = AsyncMock(side_effect=get)
-    client.__aenter__ = AsyncMock(return_value=client)
-    client.__aexit__ = AsyncMock(return_value=False)
-    return client
+    mock_http = AsyncMock()
+    mock_http.get = AsyncMock(side_effect=get_side_effect)
+    return mock_http
 
 
-def _mock_http_factory(source: SliteSource, mock_client):
-    """Return an async context manager that yields mock_client."""
-
-    class Ctx:
-        async def __aenter__(self):
-            return mock_client
-
-        async def __aexit__(self, *args):
-            pass
-
-    def factory(**kwargs):
-        return Ctx()
-
-    return factory
+async def _make_slite_source(
+    credentials: SliteAuthConfig,
+    *,
+    http_client=None,
+    include_archived: bool = False,
+) -> SliteSource:
+    """Create Slite source (async), v2 contract."""
+    return await SliteSource.create(
+        auth=_mock_auth(credentials),
+        logger=_mock_logger(),
+        http_client=http_client or AsyncMock(),
+        config=SliteConfig(include_archived=include_archived),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -80,13 +83,13 @@ def _mock_http_factory(source: SliteSource, mock_client):
 
 @pytest.mark.asyncio
 async def test_slite_source_create(slite_credentials):
-    """SliteSource.create sets api_key and include_archived from credentials and config."""
+    """SliteSource.create sets _api_key and _include_archived from credentials and config."""
     source = await _make_slite_source(slite_credentials)
-    assert source.api_key == "test_slite_api_key_xyz"
-    assert source.include_archived is False
+    assert source._api_key == "test_slite_api_key_xyz"
+    assert source._include_archived is False
 
-    source2 = await _make_slite_source(slite_credentials, config={"include_archived": True})
-    assert source2.include_archived is True
+    source2 = await _make_slite_source(slite_credentials, include_archived=True)
+    assert source2._include_archived is True
 
 
 @pytest.mark.asyncio
@@ -123,12 +126,10 @@ async def test_list_notes_page_returns_notes(slite_credentials):
         "hasNextPage": False,
         "nextCursor": None,
     }
-    mock_client = _make_mock_client(get_responses=[_response(200, page_payload)])
-    source = await _make_slite_source(slite_credentials)
-    source.set_http_client_factory(_mock_http_factory(source, mock_client))
+    mock_http = _mock_http_client_get_queue([_response(200, page_payload)])
+    source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
-    async with source.http_client() as client:
-        page = await source._list_notes_page(client)
+    page = await source._list_notes_page()
 
     assert page["notes"] == page_payload["notes"]
     assert page["hasNextPage"] is False
@@ -153,14 +154,12 @@ async def test_get_note_by_id_returns_note_with_content(slite_credentials):
         "updatedAt": "2024-01-02T00:00:00.000Z",
         "archivedAt": None,
     }
-    mock_client = _make_mock_client(
-        get_responses=[_response(200, full_note, url=f"{SLITE_BASE}/notes/note1")]
+    mock_http = _mock_http_client_get_queue(
+        [_response(200, full_note, url=f"{SLITE_BASE}/notes/note1")]
     )
-    source = await _make_slite_source(slite_credentials)
-    source.set_http_client_factory(_mock_http_factory(source, mock_client))
+    source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
-    async with source.http_client() as client:
-        note = await source._get_note_by_id(client, "note1")
+    note = await source._get_note_by_id("note1")
 
     assert note["id"] == "note1"
     assert note["title"] == "My doc"
@@ -201,19 +200,17 @@ async def test_generate_note_entities_yields_slite_note_entity(slite_credentials
         "updatedAt": "2024-01-01T00:00:00.000Z",
         "archivedAt": None,
     }
-    mock_client = _make_mock_client(
-        get_responses=[
+    mock_http = _mock_http_client_get_queue(
+        [
             _response(200, list_page),
             _response(200, full_note, url=f"{SLITE_BASE}/notes/n1"),
         ]
     )
-    source = await _make_slite_source(slite_credentials)
-    source.set_http_client_factory(_mock_http_factory(source, mock_client))
+    source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
     entities = []
-    async with source.http_client() as client:
-        async for e in source._generate_note_entities(client):
-            entities.append(e)
+    async for e in source._generate_note_entities():
+        entities.append(e)
 
     assert len(entities) == 1
     ent = entities[0]
@@ -245,14 +242,12 @@ async def test_generate_note_entities_skips_archived_when_not_included(slite_cre
         "hasNextPage": False,
         "nextCursor": None,
     }
-    mock_client = _make_mock_client(get_responses=[_response(200, list_page)])
-    source = await _make_slite_source(slite_credentials)
-    source.set_http_client_factory(_mock_http_factory(source, mock_client))
+    mock_http = _mock_http_client_get_queue([_response(200, list_page)])
+    source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
     entities = []
-    async with source.http_client() as client:
-        async for e in source._generate_note_entities(client):
-            entities.append(e)
+    async for e in source._generate_note_entities():
+        entities.append(e)
 
     assert len(entities) == 0
 
@@ -291,14 +286,13 @@ async def test_generate_entities_yields_notes(slite_credentials):
         "updatedAt": "2024-01-01T00:00:00.000Z",
         "archivedAt": None,
     }
-    mock_client = _make_mock_client(
-        get_responses=[
+    mock_http = _mock_http_client_get_queue(
+        [
             _response(200, list_page),
             _response(200, full_note, url=f"{SLITE_BASE}/notes/n1"),
         ]
     )
-    source = await _make_slite_source(slite_credentials)
-    source.set_http_client_factory(_mock_http_factory(source, mock_client))
+    source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
     entities = []
     async for e in source.generate_entities():
@@ -316,37 +310,34 @@ async def test_generate_entities_yields_notes(slite_credentials):
 
 @pytest.mark.asyncio
 async def test_validate_success(slite_credentials):
-    """validate returns True when list notes returns notes key."""
-    mock_client = _make_mock_client(
-        get_responses=[_response(200, {"notes": [], "total": 0, "hasNextPage": False, "nextCursor": None})]
+    """validate completes when list notes returns notes key."""
+    mock_http = _mock_http_client_get_queue(
+        [_response(200, {"notes": [], "total": 0, "hasNextPage": False, "nextCursor": None})]
     )
-    source = await _make_slite_source(slite_credentials)
-    source.set_http_client_factory(_mock_http_factory(source, mock_client))
+    source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
-    result = await source.validate()
-    assert result is True
+    await source.validate()
 
 
 @pytest.mark.asyncio
-async def test_validate_failure_missing_notes_key(slite_credentials):
-    """validate returns False when response does not contain notes key."""
-    mock_client = _make_mock_client(get_responses=[_response(200, {"data": []})])
-    source = await _make_slite_source(slite_credentials)
-    source.set_http_client_factory(_mock_http_factory(source, mock_client))
+async def test_validate_succeeds_when_response_omits_notes_key(slite_credentials):
+    """validate only awaits _list_notes_page; JSON shape beyond HTTP success is not checked."""
+    mock_http = _mock_http_client_get_queue([_response(200, {"data": []})])
+    source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
-    result = await source.validate()
-    assert result is False
+    await source.validate()
 
 
 @pytest.mark.asyncio
-async def test_validate_failure_http_error(slite_credentials):
-    """validate returns False when API returns 401."""
-    mock_client = _make_mock_client(get_responses=[_response(401, {"message": "Invalid apiKey"})])
-    source = await _make_slite_source(slite_credentials)
-    source.set_http_client_factory(_mock_http_factory(source, mock_client))
+async def test_validate_failure_http_error_raises_source_auth_error(slite_credentials):
+    """validate re-raises SourceAuthError when API returns 401."""
+    mock_http = _mock_http_client_get_queue(
+        [_response(401, {"message": "Invalid apiKey"})]
+    )
+    source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
-    result = await source.validate()
-    assert result is False
+    with pytest.raises(SourceAuthError):
+        await source.validate()
 
 
 # ---------------------------------------------------------------------------
