@@ -1,7 +1,4 @@
-"""Temporal activity for checking and notifying expiring API keys.
-
-Activity classes with explicit dependency injection.
-"""
+"""Temporal activity for checking and notifying expiring API keys."""
 
 from dataclasses import dataclass
 from datetime import timedelta
@@ -20,11 +17,7 @@ from airweave.models.api_key import APIKey
 
 @dataclass
 class CheckAndNotifyExpiringKeysActivity:
-    """Check for expiring API keys and send notification emails.
-
-    Dependencies:
-        email_service: EmailService protocol for sending notifications.
-    """
+    """Check for expiring API keys and send notification emails."""
 
     email_service: EmailService
 
@@ -34,16 +27,6 @@ class CheckAndNotifyExpiringKeysActivity:
         threshold_name: str,
         days_until_exp: int,
     ) -> bool:
-        """Send expiration notification email for a single API key.
-
-        Args:
-            api_key: The API key object.
-            threshold_name: Type of notification (14_days, 3_days, expired).
-            days_until_exp: Days until expiration.
-
-        Returns:
-            True if notification sent successfully, False otherwise.
-        """
         if not api_key.created_by_email:
             return False
 
@@ -82,15 +65,11 @@ class CheckAndNotifyExpiringKeysActivity:
 
     @activity.defn(name="check_and_notify_expiring_keys_activity")
     async def run(self) -> dict[str, int]:
-        """Check for expiring API keys and send notification emails.
-
-        Returns:
-            Counts of notifications sent (e.g., {"14_days": 2, "3_days": 1, "expired": 0})
-        """
+        """Scan for expiring API keys and send notification emails."""
         logger.info("Starting API key expiration check")
 
         now = utc_now_naive()
-        notification_counts = {
+        notification_counts: dict[str, int] = {
             "14_days": 0,
             "3_days": 0,
             "expired": 0,

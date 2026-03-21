@@ -87,8 +87,6 @@ async def test_run(case: RunCase):
     collection = MagicMock()
     source_connection = MagicMock()
     ctx = _mock_ctx()
-    dense_embedder = MagicMock()
-    sparse_embedder = MagicMock()
 
     mock_orchestrator = MagicMock()
     mock_orchestrator.run = AsyncMock(return_value=case.orchestrator_result)
@@ -123,8 +121,6 @@ async def test_run(case: RunCase):
                     collection=collection,
                     source_connection=source_connection,
                     ctx=ctx,
-                    dense_embedder=dense_embedder,
-                    sparse_embedder=sparse_embedder,
                 )
         else:
             result = await svc.run(
@@ -133,8 +129,6 @@ async def test_run(case: RunCase):
                 collection=collection,
                 source_connection=source_connection,
                 ctx=ctx,
-                dense_embedder=dense_embedder,
-                sparse_embedder=sparse_embedder,
             )
             assert result is case.orchestrator_result
             mock_orchestrator.run.assert_awaited_once()
@@ -187,8 +181,6 @@ async def test_run_forwards_optional_kwargs():
             collection=MagicMock(),
             source_connection=MagicMock(),
             ctx=_mock_ctx(),
-            dense_embedder=MagicMock(),
-            sparse_embedder=MagicMock(),
             access_token="tok-123",
             force_full_sync=True,
             execution_config=exec_config,

@@ -61,8 +61,6 @@ class SyncFactory:
         collection: schemas.CollectionRecord,
         connection: schemas.Connection,
         ctx: BaseContext,
-        dense_embedder: DenseEmbedderProtocol,
-        sparse_embedder: SparseEmbedderProtocol,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
@@ -136,8 +134,8 @@ class SyncFactory:
             event_bus=container_mod.container.event_bus,
             usage_checker=container_mod.container.usage_checker,
             cursor=cursor,
-            dense_embedder=dense_embedder,
-            sparse_embedder=sparse_embedder,
+            dense_embedder=container_mod.container.dense_embedder,
+            sparse_embedder=container_mod.container.sparse_embedder,
             destinations=destinations,
         )
 

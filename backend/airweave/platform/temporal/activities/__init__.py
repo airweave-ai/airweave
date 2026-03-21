@@ -13,15 +13,23 @@ These are used by workflows when calling execute_activity() with a function refe
 from airweave.platform.temporal.activities.api_key_notifications import (
     CheckAndNotifyExpiringKeysActivity,
 )
-from airweave.platform.temporal.activities.cleanup import (
-    CleanupSyncDataActivity,
-    SelfDestructOrphanedSyncActivity,
-)
-from airweave.platform.temporal.activities.sync import (
+from airweave.platform.temporal.activities.cleanup_stuck_sync_jobs import (
     CleanupStuckSyncJobsActivity,
+)
+from airweave.platform.temporal.activities.cleanup_sync_data import (
+    CleanupSyncDataActivity,
+)
+from airweave.platform.temporal.activities.create_sync_job import (
     CreateSyncJobActivity,
+)
+from airweave.platform.temporal.activities.mark_sync_job_cancelled import (
     MarkSyncJobCancelledActivity,
+)
+from airweave.platform.temporal.activities.run_sync import (
     RunSyncActivity,
+)
+from airweave.platform.temporal.activities.self_destruct_orphaned_sync import (
+    SelfDestructOrphanedSyncActivity,
 )
 
 # -----------------------------------------------------------------------------

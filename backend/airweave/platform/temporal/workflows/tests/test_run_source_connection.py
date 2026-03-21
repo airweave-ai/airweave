@@ -1,0 +1,230 @@
+"""Tests for RunSourceConnectionWorkflow."""
+
+import uuid
+
+import pytest
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
+
+from airweave.platform.temporal.workflows.run_source_connection import (
+    RunSourceConnectionWorkflow,
+)
+
+from .conftest import (
+    SYNC_ID,
+    ActivityRecorder,
+    make_collection_dict,
+    make_connection_dict,
+    make_ctx_dict,
+    make_sync_dict,
+    make_sync_job_dict,
+    mock_create_sync_job,
+    mock_mark_cancelled,
+    mock_run_sync,
+    mock_self_destruct,
+)
+
+TASK_QUEUE = "test-run-source-connection"
+
+
+async def _run_workflow(
+    env: WorkflowEnvironment,
+    activities: list,
+    sync_dict: dict | None = None,
+    sync_job_dict: dict | None = None,
+    collection_dict: dict | None = None,
+    connection_dict: dict | None = None,
+    ctx_dict: dict | None = None,
+    access_token: str | None = None,
+    force_full_sync: bool = False,
+) -> None:
+    """Start a worker and execute the workflow in the test environment."""
+    async with Worker(
+        env.client,
+        task_queue=TASK_QUEUE,
+        workflows=[RunSourceConnectionWorkflow],
+        activities=activities,
+    ):
+        await env.client.execute_workflow(
+            RunSourceConnectionWorkflow.run,
+            args=[
+                sync_dict or make_sync_dict(),
+                sync_job_dict,
+                collection_dict or make_collection_dict(),
+                connection_dict or make_connection_dict(),
+                ctx_dict or make_ctx_dict(),
+                access_token,
+                force_full_sync,
+            ],
+            id=f"test-wf-{uuid.uuid4()}",
+            task_queue=TASK_QUEUE,
+        )
+
+
+# ------------------------------------------------------------------
+# Happy path
+# ------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_happy_path_with_provided_sync_job():
+    """When sync_job_dict is provided, skip create and go straight to run_sync."""
+    recorder = ActivityRecorder()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        await _run_workflow(
+            env,
+            activities=[
+                mock_run_sync(recorder),
+                mock_self_destruct(recorder),
+                mock_mark_cancelled(recorder),
+            ],
+            sync_job_dict=make_sync_job_dict(),
+        )
+
+    assert recorder.called("run_sync")
+    assert not recorder.called("create_sync_job")
+
+
+@pytest.mark.unit
+async def test_scheduled_run_creates_sync_job_then_executes():
+    """When sync_job_dict is None (scheduled run), create job first, then run sync."""
+    recorder = ActivityRecorder()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        await _run_workflow(
+            env,
+            activities=[
+                mock_create_sync_job(recorder),
+                mock_run_sync(recorder),
+                mock_self_destruct(recorder),
+                mock_mark_cancelled(recorder),
+            ],
+            sync_job_dict=None,
+        )
+
+    assert recorder.called("create_sync_job")
+    assert recorder.called("run_sync")
+
+
+# ------------------------------------------------------------------
+# Phase 1: ensure sync job edge cases
+# ------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_skips_when_sync_job_already_running():
+    """When create_sync_job returns _skipped, workflow exits without running sync."""
+    recorder = ActivityRecorder()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        await _run_workflow(
+            env,
+            activities=[
+                mock_create_sync_job(
+                    recorder,
+                    return_value={"_skipped": True, "reason": "Already has 1 running job(s)"},
+                ),
+                mock_run_sync(recorder),
+                mock_self_destruct(recorder),
+                mock_mark_cancelled(recorder),
+            ],
+            sync_job_dict=None,
+        )
+
+    assert recorder.called("create_sync_job")
+    assert not recorder.called("run_sync")
+
+
+@pytest.mark.unit
+async def test_skips_when_create_sync_job_raises():
+    """When create_sync_job activity fails, workflow exits gracefully."""
+    recorder = ActivityRecorder()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        await _run_workflow(
+            env,
+            activities=[
+                mock_create_sync_job(recorder, raise_error=RuntimeError("db down")),
+                mock_run_sync(recorder),
+                mock_self_destruct(recorder),
+                mock_mark_cancelled(recorder),
+            ],
+            sync_job_dict=None,
+        )
+
+    assert not recorder.called("run_sync")
+
+
+# ------------------------------------------------------------------
+# Phase 2: orphan detection
+# ------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_orphaned_sync_triggers_self_destruct():
+    """When create_sync_job returns _orphaned, workflow self-destructs."""
+    recorder = ActivityRecorder()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        await _run_workflow(
+            env,
+            activities=[
+                mock_create_sync_job(
+                    recorder,
+                    return_value={"_orphaned": True, "sync_id": SYNC_ID, "reason": "Sync gone"},
+                ),
+                mock_run_sync(recorder),
+                mock_self_destruct(recorder),
+                mock_mark_cancelled(recorder),
+            ],
+            sync_job_dict=None,
+        )
+
+    assert recorder.called("self_destruct")
+    assert not recorder.called("run_sync")
+
+
+# ------------------------------------------------------------------
+# Phase 4: failure routing
+# ------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_orphaned_sync_error_during_execution_triggers_self_destruct():
+    """When run_sync raises ORPHANED_SYNC, workflow self-destructs instead of failing."""
+    recorder = ActivityRecorder()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        await _run_workflow(
+            env,
+            activities=[
+                mock_run_sync(
+                    recorder,
+                    raise_error=RuntimeError("ORPHANED_SYNC: Source connection not found"),
+                ),
+                mock_self_destruct(recorder),
+                mock_mark_cancelled(recorder),
+            ],
+            sync_job_dict=make_sync_job_dict(),
+        )
+
+    assert recorder.called("self_destruct")
+
+
+@pytest.mark.unit
+async def test_non_orphan_sync_error_propagates():
+    """When run_sync raises a non-orphan error, workflow fails with that error."""
+    from temporalio.client import WorkflowFailureError
+
+    recorder = ActivityRecorder()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        with pytest.raises(WorkflowFailureError) as exc_info:
+            await _run_workflow(
+                env,
+                activities=[
+                    mock_run_sync(recorder, raise_error=RuntimeError("Something broke")),
+                    mock_self_destruct(recorder),
+                    mock_mark_cancelled(recorder),
+                ],
+                sync_job_dict=make_sync_job_dict(),
+            )
+
+    cause = exc_info.value.__cause__
+    root_message = str(cause.__cause__) if cause and cause.__cause__ else str(cause)
+    assert "Something broke" in root_message
+    assert not recorder.called("self_destruct")
