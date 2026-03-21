@@ -1,9 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme-provider";
 import { SearchBox, type SearchTier } from "@/search/SearchBox";
 import { SearchResponse } from "@/search/SearchResponse";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
+import { injectMockEvents } from "@/search/mockEvents";
 interface SearchProps {
     collectionReadableId: string;
     disabled?: boolean;
@@ -30,6 +31,10 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
     const [requestId, setRequestId] = useState<string | null>(null);
     const [events, setEvents] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const mockCleanupRef = useRef<(() => void) | null>(null);
+
+    // ⚠️  DEMO MODE — set to true to use mock events instead of the real backend
+    const DEMO_MODE = true;
 
     const handleSearchResult = useCallback((response: any, _responseType: 'raw' | 'completion', responseTimeMs: number) => {
         setSearchResponse(response);
@@ -43,11 +48,32 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
         setResponseTime(null);
         setEvents([]);
         setRequestId(null);
-    }, [showResponsePanel]);
+
+        if (DEMO_MODE) {
+            mockCleanupRef.current?.();
+            mockCleanupRef.current = injectMockEvents(setEvents, 1);
+        }
+    }, [showResponsePanel, DEMO_MODE]);
 
     const handleSearchEnd = useCallback(() => {
         setIsSearching(false);
+        mockCleanupRef.current?.();
+        mockCleanupRef.current = null;
     }, []);
+
+    // In demo mode, watch for the 'done' event to finalize the search lifecycle
+    const prevEventsLenRef = useRef(0);
+    if (DEMO_MODE && events.length > prevEventsLenRef.current) {
+        const latest = events[events.length - 1] as any;
+        if (latest?.type === 'done' && isSearching) {
+            setTimeout(() => {
+                setIsSearching(false);
+                setSearchResponse({ results: [], responseTime: latest.duration_ms });
+                setResponseTime(latest.duration_ms);
+            }, 0);
+        }
+    }
+    prevEventsLenRef.current = events.length;
 
 
     return (
@@ -62,6 +88,7 @@ export const Search = ({ collectionReadableId, disabled = false }: SearchProps) 
                 <SearchBox
                     collectionId={collectionReadableId}
                     disabled={disabled}
+                    demoMode={DEMO_MODE}
                     agenticEnabled
                     tier={tier}
                     onTierChange={setTier}
