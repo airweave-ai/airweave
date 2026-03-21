@@ -48,6 +48,7 @@ interface SearchBoxProps {
     agenticEnabled?: boolean;
     tier?: SearchTier;
     onTierChange?: (tier: SearchTier) => void;
+    demoMode?: boolean;
 }
 
 class TransientStreamError extends Error {
@@ -103,6 +104,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     agenticEnabled = true,
     tier = "classic",
     onTierChange,
+    demoMode = false,
 }) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
@@ -275,6 +277,10 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
         setIsSearching(true);
         onSearchStart?.(currentResponseType);
+
+        if (demoMode) {
+            return;
+        }
 
         const startTime = performance.now();
 
@@ -477,7 +483,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 if (abortRef.current === abortController) abortRef.current = null;
             }
         }
-    }, [hasQuery, collectionId, query, tier, retrievalStrategy, thinking, filterGroups, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, usageAllowed, isCheckingUsage, disabled, checkUsageAllowed]);
+    }, [hasQuery, collectionId, query, tier, retrievalStrategy, thinking, filterGroups, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, usageAllowed, isCheckingUsage, disabled, checkUsageAllowed, demoMode]);
 
     // Tooltip helpers
     const handleTooltipMouseEnter = useCallback((tooltipId: string) => {
