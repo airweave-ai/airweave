@@ -107,6 +107,38 @@ def fix_security_scheme(openapi_schema: Dict[str, Any]) -> Dict[str, Any]:
     return openapi_schema
 
 
+def remove_unreferenced_schemas(openapi_schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove schemas not referenced by any endpoint or other schema.
+
+    This prevents orphaned legacy schemas (e.g., the old RetrievalStrategy
+    with 'neural') from leaking into generated SDKs.
+    """
+    if "components" not in openapi_schema or "schemas" not in openapi_schema["components"]:
+        return openapi_schema
+
+    schemas = openapi_schema["components"]["schemas"]
+    spec_json = json.dumps(openapi_schema)
+
+    # Iterate until no more removals (handles transitive references)
+    changed = True
+    while changed:
+        changed = False
+        to_remove = []
+        for name in schemas:
+            ref = f'"#/components/schemas/{name}"'
+            # Count references excluding the schema's own definition
+            count = spec_json.count(ref)
+            if count == 0:
+                to_remove.append(name)
+        for name in to_remove:
+            del schemas[name]
+            changed = True
+        if changed:
+            spec_json = json.dumps(openapi_schema)
+
+    return openapi_schema
+
+
 def add_tag_display_names(openapi_schema: Dict[str, Any]) -> Dict[str, Any]:
     """Add display names to tags in the OpenAPI schema."""
     # Mapping from tag name to display name
@@ -158,6 +190,10 @@ def generate_openapi():
     # Fix the security scheme
     print("Updating security scheme...")
     filtered_schema = fix_security_scheme(filtered_schema)
+
+    # Remove unreferenced schemas (e.g., legacy RetrievalStrategy with "neural")
+    print("Removing unreferenced schemas...")
+    filtered_schema = remove_unreferenced_schemas(filtered_schema)
 
     # Add display names to tags
     print("Adding display names to tags...")
