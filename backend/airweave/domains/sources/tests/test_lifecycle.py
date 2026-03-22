@@ -499,8 +499,7 @@ async def test_get_database_credentials(case: DBCredCase):
             )
     elif case.auth_config_class:
         with patch.object(service, "_handle_auth_config_credentials",
-                         new_callable=AsyncMock) as mock_handle:
-            mock_handle.return_value = {"api_key": "sk"}
+                         return_value={"api_key": "sk"}) as mock_handle:
             result = await service._get_database_credentials(
                 db=MagicMock(), source_connection_data=data, ctx=ctx, logger=ctx.logger
             )
@@ -526,83 +525,41 @@ async def test_get_database_credentials(case: DBCredCase):
 class HandleAuthConfigCase:
     id: str
     has_auth_config_ref: bool = True
-    has_refresh_token: bool = False
-    refresh_token_value: str = ""
     expect_raw_passthrough: bool = False
 
 
 HANDLE_AUTH_CONFIG_TABLE = [
     HandleAuthConfigCase(id="no-auth-config-ref-passthrough",
                          has_auth_config_ref=False, expect_raw_passthrough=True),
-    HandleAuthConfigCase(id="no-refresh-token-returns-validated",
-                         has_auth_config_ref=True, has_refresh_token=False),
-    HandleAuthConfigCase(id="with-refresh-token-refreshes",
-                         has_auth_config_ref=True, has_refresh_token=True,
-                         refresh_token_value="ref-tok"),
+    HandleAuthConfigCase(id="with-auth-config-ref-validates",
+                         has_auth_config_ref=True),
 ]
 
 
 @pytest.mark.parametrize("case", HANDLE_AUTH_CONFIG_TABLE, ids=lambda c: c.id)
-@pytest.mark.asyncio
-async def test_handle_auth_config_credentials(case: HandleAuthConfigCase):
+def test_handle_auth_config_credentials(case: HandleAuthConfigCase):
     mock_auth_config = MagicMock()
-    if case.has_refresh_token:
-        mock_validated = MagicMock()
-        mock_validated.refresh_token = case.refresh_token_value
-    else:
-        mock_validated = MagicMock(spec=[])
+    mock_validated = MagicMock(spec=[])
     mock_auth_config.model_validate.return_value = mock_validated
 
     entry = _entry_with_class("src", _StubSourceValid)
     if case.has_auth_config_ref:
         object.__setattr__(entry, "auth_config_ref", mock_auth_config)
 
-    oauth2_fake = FakeOAuth2Service()
-    if case.has_refresh_token:
-        oauth2_fake.seed_refresh("src", "new-access-tok")
-
-    service = _make_service(source_entries=[entry], oauth2_service=oauth2_fake)
-    decrypted = {"access_token": "old", "refresh_token": case.refresh_token_value}
+    service = _make_service(source_entries=[entry])
+    decrypted = {"access_token": "old", "refresh_token": "ref-tok"}
     data = _sc_data(short_name="src", auth_config_class="Cfg")
 
-    result = await service._handle_auth_config_credentials(
-        db=MagicMock(), source_connection_data=data,
-        decrypted_credential=decrypted, ctx=_make_ctx(), connection_id=uuid4(),
+    result = service._handle_auth_config_credentials(
+        source_connection_data=data,
+        decrypted_credential=decrypted,
     )
 
     if case.expect_raw_passthrough:
         assert result == decrypted
-    elif case.has_refresh_token:
-        assert result is mock_auth_config.model_validate.return_value
-        expected_dict = {**decrypted, "access_token": "new-access-tok"}
-        mock_auth_config.model_validate.assert_called_with(expected_dict)
-        assert len(oauth2_fake._calls) == 1
     else:
         assert result is mock_validated
-
-
-@pytest.mark.asyncio
-async def test_handle_auth_config_oauth2_error_propagates():
-    mock_auth_config = MagicMock()
-    mock_validated = MagicMock()
-    mock_validated.refresh_token = "ref"
-    mock_auth_config.model_validate.return_value = mock_validated
-
-    entry = _entry_with_class("src", _StubSourceValid)
-    object.__setattr__(entry, "auth_config_ref", mock_auth_config)
-
-    oauth2_fake = FakeOAuth2Service()
-    oauth2_fake.set_error(RuntimeError("token server down"))
-
-    service = _make_service(source_entries=[entry], oauth2_service=oauth2_fake)
-    data = _sc_data(short_name="src")
-
-    with pytest.raises(RuntimeError, match="token server down"):
-        await service._handle_auth_config_credentials(
-            db=MagicMock(), source_connection_data=data,
-            decrypted_credential={"access_token": "x", "refresh_token": "ref"},
-            ctx=_make_ctx(), connection_id=uuid4(),
-        )
+        mock_auth_config.model_validate.assert_called_once_with(decrypted)
 
 
 # ===========================================================================

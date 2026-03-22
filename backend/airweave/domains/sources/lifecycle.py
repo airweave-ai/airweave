@@ -380,12 +380,9 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         )
 
         if source_connection_data.auth_config_class:
-            processed = await self._handle_auth_config_credentials(
-                db=db,
+            processed = self._handle_auth_config_credentials(
                 source_connection_data=source_connection_data,
                 decrypted_credential=decrypted.raw,
-                ctx=ctx,
-                connection_id=source_connection_data.connection_id,
             )
             return AuthConfig(
                 credentials=processed,
@@ -456,18 +453,21 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         return auth_provider_instance
 
-    async def _handle_auth_config_credentials(
+    def _handle_auth_config_credentials(
         self,
-        db: AsyncSession,
         source_connection_data: SourceConnectionData,
         decrypted_credential: dict,
-        ctx: ApiContext,
-        connection_id: UUID,
     ) -> Union[dict, BaseModel]:
-        """Handle credentials that require auth config (e.g. OAuth refresh).
+        """Validate and convert raw credentials to the source's auth config model.
 
-        Uses source_registry.auth_config_ref instead of resource_locator.get_auth_config().
-        Uses injected oauth2_service instead of module-level singleton.
+        OAuthTokenProvider handles all token refresh (including the initial one
+        via _needs_initial_refresh), so this method only validates/converts the
+        credential shape — it does NOT refresh tokens.
+
+        Refreshing here was harmful for WITH_ROTATING_REFRESH providers (Jira,
+        Confluence, Microsoft) because the consumed refresh token was staged on
+        the factory's uncommitted session, causing OAuthTokenProvider's own
+        refresh to load the stale (consumed) token from the DB and fail.
         """
         short_name = source_connection_data.short_name
         entry = self._source_registry.get(short_name)
@@ -476,22 +476,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if not auth_config_class:
             return decrypted_credential
 
-        source_credentials = auth_config_class.model_validate(decrypted_credential)
-
-        if hasattr(source_credentials, "refresh_token") and source_credentials.refresh_token:
-            oauth2_response = await self._oauth2_service.refresh_access_token(
-                db,
-                short_name,
-                ctx,
-                connection_id,
-                decrypted_credential,
-                source_connection_data.config_fields,
-            )
-            updated_credentials = decrypted_credential.copy()
-            updated_credentials["access_token"] = oauth2_response.access_token
-            return auth_config_class.model_validate(updated_credentials)
-
-        return source_credentials
+        return auth_config_class.model_validate(decrypted_credential)
 
     # ------------------------------------------------------------------
     # Private: credential processing
