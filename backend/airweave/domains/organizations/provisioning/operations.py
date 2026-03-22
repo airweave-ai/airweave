@@ -4,6 +4,9 @@ Called from the ``users.py`` endpoint when a user logs in for the first
 time or when an existing user's Auth0 organizations need syncing.
 """
 
+from typing import cast
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -84,7 +87,7 @@ class ProvisioningOperations:
         """
         user_email = user.email
         user_auth0_id = user.auth0_id
-        user_id = user.id
+        user_id = cast(UUID, user.id)
         try:
             auth0_orgs = await self._identity.get_user_organizations(user_auth0_id)
             auth0_org_ids = {org["id"] for org in auth0_orgs} if auth0_orgs else set()
@@ -95,7 +98,9 @@ class ProvisioningOperations:
 
             async with UnitOfWork(db) as uow:
                 for auth0_org in auth0_orgs or []:
-                    await self._sync_single_organization(db, user, auth0_org)
+                    await self._sync_single_organization(
+                        db, user_id=user_id, user_auth0_id=user_auth0_id, auth0_org=auth0_org
+                    )
 
                 local_memberships = await self._user_org_repo.get_user_memberships_with_auth0_ids(
                     db, user_id=user_id
@@ -105,7 +110,7 @@ class ProvisioningOperations:
                         await self._user_org_repo.delete_membership(
                             db,
                             user_id=user_id,
-                            organization_id=membership.organization_id,
+                            organization_id=cast(UUID, membership.organization_id),
                         )
                         logger.info(
                             f"Removed stale membership for user {user_email} "
@@ -126,9 +131,18 @@ class ProvisioningOperations:
     # ------------------------------------------------------------------
 
     async def _sync_single_organization(
-        self, db: AsyncSession, user: User, auth0_org: dict
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        user_auth0_id: str,
+        auth0_org: dict,
     ) -> None:
-        """Sync one identity provider org → local DB (add or update role)."""
+        """Sync one identity provider org → local DB (add or update role).
+
+        Accepts pre-extracted scalars instead of the User ORM model to avoid
+        lazy-load greenlet errors when the session expires the model mid-UoW.
+        """
         local_org = await self._org_repo.get_by_auth0_id(db, auth0_org_id=auth0_org["id"])
 
         if not local_org:
@@ -140,44 +154,46 @@ class ProvisioningOperations:
             )
             logger.info(f"Created local org for identity org: {auth0_org['id']}")
 
+        local_org_id = cast(UUID, local_org.id)
+
         member_roles = await self._identity.get_member_roles(
-            org_id=auth0_org["id"], user_id=user.auth0_id
+            org_id=auth0_org["id"], user_id=user_auth0_id
         )
         auth0_role = logic.determine_user_role(member_roles)
 
         existing = await self._user_org_repo.get_membership(
-            db, org_id=local_org.id, user_id=user.id
+            db, org_id=local_org_id, user_id=user_id
         )
         if existing:
             if existing.role != auth0_role:
                 await self._user_org_repo.update_role(
                     db,
-                    user_id=user.id,
-                    organization_id=local_org.id,
+                    user_id=user_id,
+                    organization_id=local_org_id,
                     role=auth0_role,
                 )
                 logger.info(
-                    f"Updated role for user {user.id} in org {local_org.id}: "
+                    f"Updated role for user {user_id} in org {local_org.id}: "
                     f"{existing.role} → {auth0_role}"
                 )
             return
 
-        is_primary = await self._user_org_repo.count_user_orgs(db, user_id=user.id) == 0
+        is_primary = await self._user_org_repo.count_user_orgs(db, user_id=user_id) == 0
 
         await self._user_org_repo.create(
             db,
-            user_id=user.id,
-            organization_id=local_org.id,
+            user_id=user_id,
+            organization_id=local_org_id,
             role=auth0_role,
             is_primary=is_primary,
         )
-        logger.info(f"Created membership for user {user.id} in org {local_org.id} as {auth0_role}")
+        logger.info(f"Created membership for user {user_id} in org {local_org_id} as {auth0_role}")
 
     async def _create_user_with_new_org(self, db: AsyncSession, user_data: dict) -> User:
         user_create = schemas.UserCreate(**user_data)
-        user, _org = await crud.user.create_with_organization(db, obj_in=user_create)
-        logger.info(f"Created user {user.email} with new org")
-        return user
+        schema_user, _org = await crud.user.create_with_organization(db, obj_in=user_create)
+        logger.info(f"Created user {schema_user.email} with new org")
+        return cast(User, schema_user)
 
     async def _create_user_with_existing_orgs(
         self, db: AsyncSession, user_data: dict, auth0_orgs: list[dict]
@@ -187,8 +203,13 @@ class ProvisioningOperations:
                 user_create = schemas.UserCreate(**user_data)
                 user = await self._user_repo.create(db, obj_in=user_create)
 
+                uid = cast(UUID, user.id)
+                auth0_id = user.auth0_id
+
                 for auth0_org in auth0_orgs:
-                    await self._sync_single_organization(db, user, auth0_org)
+                    await self._sync_single_organization(
+                        db, user_id=uid, user_auth0_id=auth0_id, auth0_org=auth0_org
+                    )
 
                 await uow.commit()
                 user = await self._user_repo.refresh(db, user=user)
