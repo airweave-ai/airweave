@@ -213,6 +213,103 @@ class TestSyncUserOrganizations:
         assert len(create_calls) == 1
 
     @pytest.mark.asyncio
+    async def test_sync_updates_role_when_identity_differs(self):
+        """When the identity provider returns 'owner' but local is 'member', update."""
+        identity = FakeIdentityProvider()
+        identity.seed_user_organizations("auth0|u1", [{"id": "org_remote", "name": "remote-org"}])
+
+        org_repo = FakeOrganizationRepository()
+        user_org_repo = FakeUserOrganizationRepository()
+        org_id = uuid4()
+        user_id = uuid4()
+
+        local_org = _OrgModelStub(org_id=org_id, auth0_org_id="org_remote")
+        org_repo.seed(org_id, local_org)
+        user_org_repo.seed_membership(user_id, org_id, role="member")
+
+        identity.seed_member_roles("org_remote", "auth0|u1", [{"name": "owner"}])
+
+        user_repo = FakeUserRepository()
+        ops = _make_ops(
+            identity=identity,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            user_repo=user_repo,
+        )
+
+        user = _UserStub(user_id=user_id)
+
+        db = AsyncMock()
+        await ops.sync_user_organizations(db, user)
+
+        update_calls = [c for c in user_org_repo._calls if c[0] == "update_role"]
+        assert len(update_calls) == 1
+        _, u_id, o_id, new_role = update_calls[0]
+        assert u_id == user_id
+        assert o_id == org_id
+        assert new_role == "owner"
+
+    @pytest.mark.asyncio
+    async def test_sync_does_not_update_when_roles_match(self):
+        """When identity provider role matches local role, no update should occur."""
+        identity = FakeIdentityProvider()
+        identity.seed_user_organizations("auth0|u1", [{"id": "org_remote", "name": "remote-org"}])
+
+        org_repo = FakeOrganizationRepository()
+        user_org_repo = FakeUserOrganizationRepository()
+        org_id = uuid4()
+        user_id = uuid4()
+
+        local_org = _OrgModelStub(org_id=org_id, auth0_org_id="org_remote")
+        org_repo.seed(org_id, local_org)
+        user_org_repo.seed_membership(user_id, org_id, role="admin")
+
+        identity.seed_member_roles("org_remote", "auth0|u1", [{"name": "admin"}])
+
+        user_repo = FakeUserRepository()
+        ops = _make_ops(
+            identity=identity,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            user_repo=user_repo,
+        )
+
+        user = _UserStub(user_id=user_id)
+
+        db = AsyncMock()
+        await ops.sync_user_organizations(db, user)
+
+        update_calls = [c for c in user_org_repo._calls if c[0] == "update_role"]
+        assert len(update_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_sync_assigns_member_when_no_identity_roles(self):
+        """When identity provider returns empty roles, new membership gets 'member'."""
+        identity = FakeIdentityProvider()
+        identity.seed_user_organizations("auth0|u1", [{"id": "org_remote", "name": "remote-org"}])
+        # No seed_member_roles → returns []
+
+        org_repo = FakeOrganizationRepository()
+        user_org_repo = FakeUserOrganizationRepository()
+        user_repo = FakeUserRepository()
+
+        ops = _make_ops(
+            identity=identity,
+            org_repo=org_repo,
+            user_org_repo=user_org_repo,
+            user_repo=user_repo,
+        )
+        user = _UserStub()
+
+        db = AsyncMock()
+        await ops.sync_user_organizations(db, user)
+
+        create_calls = [c for c in user_org_repo._calls if c[0] == "create"]
+        assert len(create_calls) == 1
+        _, _uid, _oid, role = create_calls[0]
+        assert role == "member"
+
+    @pytest.mark.asyncio
     async def test_existing_membership_not_duplicated(self):
         """When the user already has a membership, don't create another."""
         identity = FakeIdentityProvider()

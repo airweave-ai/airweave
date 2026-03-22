@@ -17,6 +17,7 @@ class FakeIdentityProvider(IdentityProvider):
     def __init__(self) -> None:
         self._organizations: dict[str, dict] = {}
         self._user_orgs: dict[str, list[dict]] = {}
+        self._member_roles: dict[tuple[str, str], list[dict]] = {}
         self._invitations: list[dict] = []
         self._roles: list[dict] = [
             {"id": "role_owner", "name": "owner"},
@@ -33,6 +34,10 @@ class FakeIdentityProvider(IdentityProvider):
 
     def seed_organization(self, org_id: str, data: dict) -> None:
         self._organizations[org_id] = data
+
+    def seed_member_roles(self, org_id: str, user_id: str, roles: list[dict]) -> None:
+        """Pre-populate roles returned by ``get_member_roles(org_id, user_id)``."""
+        self._member_roles[(org_id, user_id)] = roles
 
     # --- Assertion helpers ---
 
@@ -55,6 +60,7 @@ class FakeIdentityProvider(IdentityProvider):
         self._calls.clear()
         self._organizations.clear()
         self._user_orgs.clear()
+        self._member_roles.clear()
         self._invitations.clear()
         self.fail_with = None
 
@@ -106,7 +112,7 @@ class FakeIdentityProvider(IdentityProvider):
     async def get_member_roles(self, org_id: str, user_id: str) -> list[dict]:
         self._calls.append(("get_member_roles", org_id, user_id))
         self._check_fail()
-        return [{"name": "member"}]
+        return self._member_roles.get((org_id, user_id), [])
 
     async def set_member_roles(self, org_id: str, user_id: str, role_ids: list[str]) -> None:
         self._calls.append(("set_member_roles", org_id, user_id, ",".join(role_ids)))

@@ -42,16 +42,19 @@ def generate_org_name(display_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def determine_user_role(member_roles: list[dict]) -> str:
-    """Pick the best role from an identity provider roles list.
+ROLE_PRIORITY: tuple[str, ...] = ("owner", "admin", "member")
 
-    Prioritises ``admin`` > first named role > ``member`` default.
+
+def determine_user_role(member_roles: list[dict]) -> str:
+    """Pick the highest-priority role from an identity provider roles list.
+
+    Priority: ``owner`` > ``admin`` > ``member``.
+    Falls back to ``"member"`` when the list is empty.
     """
-    role_names: list[str] = [r["name"] for r in member_roles if r.get("name")]
-    if "admin" in role_names:
-        return "admin"
-    if role_names:
-        return role_names[0]
+    role_names: set[str] = {r["name"] for r in member_roles if r.get("name")}
+    for role in ROLE_PRIORITY:
+        if role in role_names:
+            return role
     return "member"
 
 

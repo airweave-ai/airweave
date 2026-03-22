@@ -124,6 +124,13 @@ class OrganizationLifecycleOperations:
         try:
             await self._identity.add_user_to_organization(auth0_org_id, owner_user.auth0_id)
 
+            all_roles = await self._identity.get_roles()
+            owner_role_id = next((r["id"] for r in all_roles if r["name"] == "owner"), None)
+            if owner_role_id:
+                await self._identity.set_member_roles(
+                    auth0_org_id, owner_user.auth0_id, [owner_role_id]
+                )
+
             all_conns = await self._identity.get_all_connections()
             for conn_id in logic.select_default_connections(all_conns):
                 await self._identity.add_enabled_connection(auth0_org_id, conn_id)

@@ -159,7 +159,26 @@ class TestCreateHappyPath:
 
         identity.assert_called("create_organization")
         identity.assert_called("add_user_to_organization")
+        identity.assert_called("get_roles")
+        identity.assert_called("set_member_roles")
         identity.assert_called("get_all_connections")
+
+    @pytest.mark.asyncio
+    async def test_sets_owner_role_in_identity_provider(self):
+        """After adding the owner, their Auth0 role must be set to 'owner'."""
+        identity = FakeIdentityProvider()
+        ops = _make_operations(identity=identity)
+        user = _make_user(auth0_id="auth0|owner99")
+
+        fake_org = _make_org_schema()
+        with patch.object(ops, "_create_local", new_callable=AsyncMock, return_value=fake_org):
+            await ops.create_organization(AsyncMock(), ORG_DATA, user)
+
+        set_calls = [c for c in identity._calls if c[0] == "set_member_roles"]
+        assert len(set_calls) == 1
+        _, org_id, user_id, role_ids_csv = set_calls[0]
+        assert user_id == "auth0|owner99"
+        assert role_ids_csv == "role_owner"
 
     @pytest.mark.asyncio
     async def test_calls_payment_provider(self):

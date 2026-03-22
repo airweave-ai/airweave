@@ -7,6 +7,7 @@ Tests every edge case and boundary condition.
 import pytest
 
 from airweave.domains.organizations.logic import (
+    ROLE_PRIORITY,
     can_manage_members,
     can_user_delete_org,
     can_user_leave_org,
@@ -72,11 +73,27 @@ class TestGenerateOrgName:
 
 
 class TestDetermineUserRole:
+    def test_owner_wins_over_admin_and_member(self):
+        roles = [{"name": "member"}, {"name": "admin"}, {"name": "owner"}]
+        assert determine_user_role(roles) == "owner"
+
+    def test_owner_wins_over_admin(self):
+        assert determine_user_role([{"name": "admin"}, {"name": "owner"}]) == "owner"
+
     def test_admin_wins_over_member(self):
         assert determine_user_role([{"name": "member"}, {"name": "admin"}]) == "admin"
 
-    def test_single_role(self):
-        assert determine_user_role([{"name": "editor"}]) == "editor"
+    def test_single_owner(self):
+        assert determine_user_role([{"name": "owner"}]) == "owner"
+
+    def test_single_admin(self):
+        assert determine_user_role([{"name": "admin"}]) == "admin"
+
+    def test_single_member(self):
+        assert determine_user_role([{"name": "member"}]) == "member"
+
+    def test_unknown_role_defaults_to_member(self):
+        assert determine_user_role([{"name": "editor"}]) == "member"
 
     def test_empty_defaults_to_member(self):
         assert determine_user_role([]) == "member"
@@ -85,10 +102,13 @@ class TestDetermineUserRole:
         assert determine_user_role([{"id": "r1"}, {"name": "admin"}]) == "admin"
 
     def test_none_names_filtered(self):
-        assert determine_user_role([{"name": None}, {"name": "viewer"}]) == "viewer"
+        assert determine_user_role([{"name": None}, {"name": "admin"}]) == "admin"
 
     def test_all_none_defaults_to_member(self):
         assert determine_user_role([{"name": None}]) == "member"
+
+    def test_priority_constant_is_owner_admin_member(self):
+        assert ROLE_PRIORITY == ("owner", "admin", "member")
 
 
 # ---------------------------------------------------------------------------
