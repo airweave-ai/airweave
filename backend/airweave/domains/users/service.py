@@ -101,10 +101,6 @@ class UserService(UserServiceProtocol):
         """
         incoming_auth0_id = auth0_user.id if auth0_user else user_data.auth0_id
 
-        # Safe to update: the endpoint already verified that the Auth0 JWT email
-        # matches user_data.email. Auth0 only includes the email claim after the
-        # provider (Google, GitHub, etc.) has verified it. The Auth0 Post-Login
-        # Action additionally gates account linking on email_verified=true.
         if incoming_auth0_id and existing_user.auth0_id != incoming_auth0_id:
             existing_user = await self._user_repo.update_user_no_auth(
                 db,
@@ -112,20 +108,18 @@ class UserService(UserServiceProtocol):
                 obj_in=schemas.UserUpdate(auth0_id=incoming_auth0_id),
             )
 
-        # Snapshot while the ORM object is still attached and attributes are loaded.
-        # After sync_user_organizations the session may expire/detach the object,
-        # making attribute access raise MissingGreenlet in async context.
-        user_snapshot = schemas.User.model_validate(existing_user)
+        # Convert to Pydantic IMMEDIATELY while the ORM object is still attached.
+        # From here on we only pass Pydantic schemas — never ORM models — across
+        # async boundaries, preventing MissingGreenlet errors.
+        user_schema = schemas.User.model_validate(existing_user)
 
         try:
-            updated_user = await self._org_service.sync_user_organizations(db, existing_user)
+            synced_user = await self._org_service.sync_user_organizations(db, user_schema)
             logger.info(f"Synced Auth0 organizations for existing user: {user_data.email}")
-            return CreateOrUpdateResult(
-                user=schemas.User.model_validate(updated_user), is_new=False
-            )
+            return CreateOrUpdateResult(user=synced_user, is_new=False)
         except Exception as e:
             logger.warning(f"Failed to sync Auth0 organizations for user {user_data.email}: {e}")
-            return CreateOrUpdateResult(user=user_snapshot, is_new=False)
+            return CreateOrUpdateResult(user=user_schema, is_new=False)
 
     async def _provision_new_user(
         self,
@@ -139,13 +133,15 @@ class UserService(UserServiceProtocol):
             if auth0_user:
                 user_dict["auth0_id"] = auth0_user.id
 
-            user = await self._org_service.provision_new_user(db, user_dict, create_org=False)
-            logger.info(f"Created new user {user.email}.")
+            user_schema = await self._org_service.provision_new_user(
+                db, user_dict, create_org=False
+            )
+            logger.info(f"Created new user {user_schema.email}.")
 
-            self._track_analytics(user)
-            await self._send_welcome(user)
+            self._track_analytics(user_schema)
+            await self._send_welcome_from_schema(user_schema)
 
-            return CreateOrUpdateResult(user=schemas.User.model_validate(user), is_new=True)
+            return CreateOrUpdateResult(user=user_schema, is_new=True)
 
         except Exception as e:
             logger.error(f"Failed to create user with Auth0 integration: {e}")
@@ -166,15 +162,8 @@ class UserService(UserServiceProtocol):
         except Exception as e:
             logger.warning(f"Failed to track user creation analytics: {e}")
 
-    async def _send_welcome(self, user: Any) -> None:
-        """Best-effort welcome email for a new user (ORM model)."""
-        try:
-            await self._email.send_welcome(user.email, user.full_name or user.email)
-        except Exception as e:
-            logger.warning(f"Failed to send welcome email to {user.email}: {e}")
-
     async def _send_welcome_from_schema(self, user: schemas.User) -> None:
-        """Best-effort welcome email for a new user (Pydantic schema)."""
+        """Best-effort welcome email for a new user."""
         try:
             await self._email.send_welcome(user.email, user.full_name or user.email)
         except Exception as e:

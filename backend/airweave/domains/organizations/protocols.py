@@ -261,10 +261,10 @@ class OrganizationServiceProtocol(Protocol):
 
     async def provision_new_user(
         self, db: AsyncSession, user_data: dict, *, create_org: bool = False
-    ) -> User:
+    ) -> schemas.User:
         """Provision a new user, optionally creating an organization."""
         ...
 
-    async def sync_user_organizations(self, db: AsyncSession, user: User) -> User:
+    async def sync_user_organizations(self, db: AsyncSession, user: schemas.User) -> schemas.User:
         """Sync user organizations from the identity provider."""
         ...

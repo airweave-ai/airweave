@@ -299,11 +299,11 @@ class OrganizationService(OrganizationServiceProtocol):
 
     async def provision_new_user(
         self, db: AsyncSession, user_data: dict, *, create_org: bool = False
-    ) -> User:
+    ) -> schemas.User:
         """Provision new user via delegated provisioning operations."""
         return await self._provisioning.provision_new_user(db, user_data, create_org=create_org)
 
-    async def sync_user_organizations(self, db: AsyncSession, user: User) -> User:
+    async def sync_user_organizations(self, db: AsyncSession, user: schemas.User) -> schemas.User:
         """Sync user organizations via delegated provisioning operations."""
         return await self._provisioning.sync_user_organizations(db, user)
 
