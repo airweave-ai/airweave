@@ -20,7 +20,6 @@ const EXPIRATION_PRESETS = [
   { days: 60, label: "60 days" },
   { days: 90, label: "90 days", recommended: true },
   { days: 180, label: "180 days" },
-  { days: 365, label: "365 days" },
 ];
 
 export function APIKeysSettings() {
@@ -44,6 +43,8 @@ export function APIKeysSettings() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [keyToDelete, setKeyToDelete] = useState<APIKey | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
+  const [keyToRotate, setKeyToRotate] = useState<APIKey | null>(null);
   const [rotatingKeyId, setRotatingKeyId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -80,16 +81,24 @@ export function APIKeysSettings() {
     );
   };
 
-  const handleRotateKey = async (apiKey: APIKey) => {
-    setRotatingKeyId(apiKey.id);
+  const handleRotateClick = (apiKey: APIKey) => {
+    setKeyToRotate(apiKey);
+    setRotateDialogOpen(true);
+  };
+
+  const handleConfirmRotate = async () => {
+    if (!keyToRotate) return;
+    setRotatingKeyId(keyToRotate.id);
+    setRotateDialogOpen(false);
     try {
-      const newKey = await rotateAPIKey(apiKey.id);
+      const newKey = await rotateAPIKey(keyToRotate.id);
       toast.success("Key rotated successfully");
       setNewlyCreatedKey(newKey);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to rotate key");
     } finally {
       setRotatingKeyId(null);
+      setKeyToRotate(null);
     }
   };
 
@@ -111,9 +120,11 @@ export function APIKeysSettings() {
     }
   };
 
-  const maskKey = (key: string) => {
-    if (!key || key.length < 8) return key;
-    return `${key.substring(0, 8)}${"•".repeat(32)}`;
+  const displayKeyPrefix = (apiKey: APIKey) => {
+    if (apiKey.key_prefix) {
+      return `${apiKey.key_prefix}${"•".repeat(32)}`;
+    }
+    return `${"?".repeat(8)}${"•".repeat(32)}`;
   };
 
   const getDaysRemaining = (expirationDate: string) => {
@@ -126,8 +137,10 @@ export function APIKeysSettings() {
 
   const getStatusColor = (daysRemaining: number) => {
     if (daysRemaining < 0) return "text-red-500";
-    if (daysRemaining <= 7) return "text-amber-500";
-    return "text-slate-500 dark:text-slate-400";
+    if (daysRemaining <= 7) return "text-red-400";
+    if (daysRemaining <= 30) return "text-orange-500";
+    if (daysRemaining <= 60) return "text-amber-500";
+    return "text-green-600 dark:text-green-400";
   };
 
   if (!canManage) {
@@ -198,7 +211,7 @@ export function APIKeysSettings() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleCopyKey(newlyCreatedKey.decrypted_key)}
+              onClick={() => newlyCreatedKey.decrypted_key && handleCopyKey(newlyCreatedKey.decrypted_key)}
               className="h-[34px] gap-2 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700"
             >
               {copiedKey === newlyCreatedKey.decrypted_key ? (
@@ -238,7 +251,8 @@ export function APIKeysSettings() {
         <div className="space-y-3">
           {apiKeys.map((apiKey) => {
             const daysRemaining = getDaysRemaining(apiKey.expiration_date);
-            const isExpired = daysRemaining < 0;
+            const isExpired = daysRemaining < 0 || apiKey.status === "expired";
+            const isRevoked = apiKey.status === "revoked";
             const isExpiringSoon = daysRemaining >= 0 && daysRemaining <= 7;
 
             return (
@@ -246,7 +260,7 @@ export function APIKeysSettings() {
                 key={apiKey.id}
                 className={cn(
                   "rounded-lg border bg-white dark:bg-slate-900/50",
-                  isExpired
+                  isExpired || isRevoked
                     ? "border-red-200 dark:border-red-900/50"
                     : "border-slate-200 dark:border-slate-800"
                 )}
@@ -257,14 +271,19 @@ export function APIKeysSettings() {
                     <div className="flex-1 min-w-0 space-y-3">
                       <div className="flex items-center gap-3">
                         <code className="text-xs font-mono font-medium">
-                          {maskKey(apiKey.decrypted_key)}
+                          {displayKeyPrefix(apiKey)}
                         </code>
                         {isExpired && (
                           <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                             Expired
                           </span>
                         )}
-                        {isExpiringSoon && !isExpired && (
+                        {isRevoked && !isExpired && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                            Revoked
+                          </span>
+                        )}
+                        {isExpiringSoon && !isExpired && !isRevoked && (
                           <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                             Expiring soon
                           </span>
@@ -286,21 +305,8 @@ export function APIKeysSettings() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleCopyKey(apiKey.decrypted_key)}
-                        className="h-8 w-8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
-                        title="Copy key"
-                      >
-                        {copiedKey === apiKey.decrypted_key ? (
-                          <CheckCircle2 className="h-4 w-4" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRotateKey(apiKey)}
-                        disabled={rotatingKeyId === apiKey.id}
+                        onClick={() => handleRotateClick(apiKey)}
+                        disabled={rotatingKeyId === apiKey.id || isRevoked || isExpired}
                         className="h-8 w-8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
                         title="Rotate key"
                       >
@@ -408,7 +414,7 @@ export function APIKeysSettings() {
           {keyToDelete && (
             <div className="my-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-3">
               <code className="text-sm font-mono">
-                {maskKey(keyToDelete.decrypted_key)}
+                {displayKeyPrefix(keyToDelete)}
               </code>
             </div>
           )}
@@ -437,6 +443,43 @@ export function APIKeysSettings() {
                   Delete key
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rotate Confirmation Dialog */}
+      <Dialog open={rotateDialogOpen} onOpenChange={setRotateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rotate API key</DialogTitle>
+            <DialogDescription>
+              A new key will be created and the current key will be immediately revoked.
+              Make sure your integrations are ready to use the new key.
+            </DialogDescription>
+          </DialogHeader>
+
+          {keyToRotate && (
+            <div className="my-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-3">
+              <code className="text-sm font-mono">
+                {displayKeyPrefix(keyToRotate)}
+              </code>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRotateDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmRotate}
+              className="bg-slate-800 hover:bg-slate-700 dark:bg-slate-200 dark:hover:bg-slate-300 text-slate-50 dark:text-slate-900"
+            >
+              <RotateCw className="mr-2 h-4 w-4" />
+              Rotate key
             </Button>
           </DialogFooter>
         </DialogContent>
