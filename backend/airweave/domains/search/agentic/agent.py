@@ -16,7 +16,6 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Optional
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
@@ -42,6 +41,7 @@ from airweave.core.events.search import (
     ThinkingDiagnostics,
     ToolCalledDiagnostics,
 )
+from airweave.core.exceptions import CollectionNotFoundException, InvalidInputError
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.llm import LLMProtocol
 from airweave.core.protocols.reranker import RerankerProtocol
@@ -148,6 +148,8 @@ class Agent:
                 f"duration_ms={duration_ms}"
             )
             return result
+        except (CollectionNotFoundException, InvalidInputError):
+            raise
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)
             ctx.logger.error(
@@ -195,13 +197,15 @@ class Agent:
         # ── SETUP ──────────────────────────────────────────────────────
         collection = await self._collection_repo.get_by_readable_id(db, readable_id, ctx)
         if not collection:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Collection '{readable_id}' not found",
-            )
+            raise CollectionNotFoundException(f"Collection '{readable_id}' not found")
         collection_id = str(collection.id)
 
         metadata = await self._metadata_builder.build(db, ctx, readable_id)
+        if not metadata.sources:
+            raise InvalidInputError(
+                f"Collection '{readable_id}' has no sources. "
+                "Add a source connection before searching."
+            )
         system_prompt = build_system_prompt(metadata, config.MAX_ITERATIONS)
         user_filter = request.filter or []
         messages: list[dict] = [build_user_message(request.query, user_filter)]

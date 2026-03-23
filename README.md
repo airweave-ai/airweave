@@ -117,7 +117,7 @@ npm install @airweave/sdk       # TypeScript
 from airweave import AirweaveSDK
 
 client = AirweaveSDK(api_key="YOUR_API_KEY")
-results = client.collections.search(
+results = client.collections.search.instant(
     readable_id="my-collection",
     query="Find recent failed payments"
 )

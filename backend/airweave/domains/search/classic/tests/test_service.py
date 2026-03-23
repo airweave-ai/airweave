@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 
 from airweave.adapters.event_bus.fake import FakeEventBus
 from airweave.adapters.llm.fakes import FakeLLM
 from airweave.adapters.reranker.fakes.reranker import FakeReranker
 from airweave.api.context import ApiContext
 from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent
+from airweave.core.exceptions import CollectionNotFoundException
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
@@ -193,15 +193,16 @@ class TestClassicSearchService:
 
     @pytest.mark.asyncio
     async def test_collection_not_found_raises_404(self) -> None:
-        """Collection repo returns None -> HTTPException with 404."""
+        """Collection repo returns None -> CollectionNotFoundException."""
         svc, llm, executor, repo, bus = _make_service()
 
         # Do not seed any collection — repo returns None
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(CollectionNotFoundException):
             await svc.search(AsyncMock(), _make_ctx(), "nonexistent", _make_request())
 
-        assert exc_info.value.status_code == 404
+        # No SearchFailedEvent should be emitted for user errors
+        assert len(bus.events) == 0
 
     @pytest.mark.asyncio
     async def test_empty_primary_falls_back_to_user_query(self) -> None:

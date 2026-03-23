@@ -317,8 +317,176 @@ components:
           type: integer
 
 paths:
+  /collections/{readable_id}/search/instant:
+    post:
+      x-fern-sdk-group-name:
+        - collections
+        - search
+      x-fern-sdk-method-name: instant
+      x-fern-examples:
+        - path-parameters:
+            readable_id: "customer-support-tickets-x7k9m"
+          request:
+            query: "How do I reset my password?"
+            retrieval_strategy: "hybrid"
+            limit: 10
+          response:
+            body:
+              results:
+                - entity_id: "page-abc123"
+                  name: "Production Deployment Guide"
+                  relevance_score: 0.94
+                  textual_representation: "# Production Deployment Guide\n\nThis document covers the standard deployment process for production releases."
+                  created_at: "2025-02-10T09:15:00Z"
+                  updated_at: "2025-03-18T16:30:00Z"
+                  breadcrumbs:
+                    - entity_id: "ws-1"
+                      name: "Acme Workspace"
+                      entity_type: "NotionWorkspaceEntity"
+                    - entity_id: "db-eng"
+                      name: "Engineering"
+                      entity_type: "NotionDatabaseEntity"
+                  airweave_system_metadata:
+                    source_name: "notion"
+                    entity_type: "NotionPageEntity"
+                    original_entity_id: "page-abc123"
+                    chunk_index: 0
+                    sync_id: "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f80"
+                    sync_job_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                  access:
+                    viewers: null
+                    is_public: null
+                  web_url: "https://notion.so/Deployment-Guide-abc123"
+                  url: null
+                  raw_source_fields:
+                    icon: "🚀"
+                    archived: false
+                    parent_type: "database_id"
+
+  /collections/{readable_id}/search/classic:
+    post:
+      x-fern-sdk-group-name:
+        - collections
+        - search
+      x-fern-sdk-method-name: classic
+      x-fern-examples:
+        - path-parameters:
+            readable_id: "customer-support-tickets-x7k9m"
+          request:
+            query: "quarterly revenue report"
+            limit: 10
+          response:
+            body:
+              results:
+                - entity_id: "page-abc123"
+                  name: "Production Deployment Guide"
+                  relevance_score: 0.94
+                  textual_representation: "# Production Deployment Guide\n\nThis document covers the standard deployment process for production releases."
+                  created_at: "2025-02-10T09:15:00Z"
+                  updated_at: "2025-03-18T16:30:00Z"
+                  breadcrumbs:
+                    - entity_id: "ws-1"
+                      name: "Acme Workspace"
+                      entity_type: "NotionWorkspaceEntity"
+                    - entity_id: "db-eng"
+                      name: "Engineering"
+                      entity_type: "NotionDatabaseEntity"
+                  airweave_system_metadata:
+                    source_name: "notion"
+                    entity_type: "NotionPageEntity"
+                    original_entity_id: "page-abc123"
+                    chunk_index: 0
+                    sync_id: "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f80"
+                    sync_job_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                  access:
+                    viewers: null
+                    is_public: null
+                  web_url: "https://notion.so/Deployment-Guide-abc123"
+                  url: null
+                  raw_source_fields:
+                    icon: "🚀"
+                    archived: false
+                    parent_type: "database_id"
+
+  /collections/{readable_id}/search/agentic:
+    post:
+      x-fern-sdk-group-name:
+        - collections
+        - search
+      x-fern-sdk-method-name: agentic
+      x-fern-examples:
+        - path-parameters:
+            readable_id: "customer-support-tickets-x7k9m"
+          request:
+            query: "find all deployment-related docs from last month"
+            thinking: true
+          response:
+            body:
+              results:
+                - entity_id: "page-abc123"
+                  name: "Production Deployment Guide"
+                  relevance_score: 0.94
+                  textual_representation: "# Production Deployment Guide\n\nThis document covers the standard deployment process for production releases."
+                  created_at: "2025-02-10T09:15:00Z"
+                  updated_at: "2025-03-18T16:30:00Z"
+                  breadcrumbs:
+                    - entity_id: "ws-1"
+                      name: "Acme Workspace"
+                      entity_type: "NotionWorkspaceEntity"
+                    - entity_id: "db-eng"
+                      name: "Engineering"
+                      entity_type: "NotionDatabaseEntity"
+                  airweave_system_metadata:
+                    source_name: "notion"
+                    entity_type: "NotionPageEntity"
+                    original_entity_id: "page-abc123"
+                    chunk_index: 0
+                    sync_id: "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f80"
+                    sync_job_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                  access:
+                    viewers: null
+                    is_public: null
+                  web_url: "https://notion.so/Deployment-Guide-abc123"
+                  url: null
+                  raw_source_fields:
+                    icon: "🚀"
+                    archived: false
+                    parent_type: "database_id"
+                - entity_id: "msg-def456"
+                  name: "Deployment checklist update"
+                  relevance_score: 0.87
+                  textual_representation: "Updated the deployment checklist to include the new canary step. Make sure to verify metrics before promoting to 100%."
+                  created_at: "2025-03-15T11:22:00Z"
+                  updated_at: "2025-03-15T11:22:00Z"
+                  breadcrumbs:
+                    - entity_id: "team-1"
+                      name: "Acme"
+                      entity_type: "SlackWorkspaceEntity"
+                    - entity_id: "chan-eng"
+                      name: "#engineering"
+                      entity_type: "SlackChannelEntity"
+                  airweave_system_metadata:
+                    source_name: "slack"
+                    entity_type: "SlackMessageEntity"
+                    original_entity_id: "msg-def456"
+                    chunk_index: 0
+                    sync_id: "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8091"
+                    sync_job_id: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                  access:
+                    viewers: null
+                    is_public: null
+                  web_url: "https://acme.slack.com/archives/C0123ABC/p1710500520"
+                  url: null
+                  raw_source_fields:
+                    channel_name: "#engineering"
+                    username: "alice"
+
   /collections/{readable_id}/search/agentic/stream:
     post:
+      x-fern-sdk-group-name:
+        - collections
+        - search
+      x-fern-sdk-method-name: stream_agentic
       x-fern-streaming:
         format: sse
       responses:
