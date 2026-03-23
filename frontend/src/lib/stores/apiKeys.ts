@@ -8,9 +8,12 @@ export interface APIKey {
   modified_at: string;
   last_used_date: string | null;
   expiration_date: string;
+  status: "active" | "expired" | "revoked";
+  revoked_at: string | null;
+  key_prefix: string | null;
   created_by_email: string | null;
   modified_by_email: string | null;
-  decrypted_key: string;
+  decrypted_key: string | null;
 }
 
 interface CreateAPIKeyRequest {
@@ -138,11 +141,9 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
 
       const newKey = await response.json();
 
-      // Add the new key to the beginning of the array
-      set((state) => ({
-        apiKeys: [newKey, ...state.apiKeys],
-        isLoading: false
-      }));
+      // Refresh the full list to reflect revoked status on old key
+      await get().fetchAPIKeys(true);
+      set({ isLoading: false });
 
       return newKey;
     } catch (err) {

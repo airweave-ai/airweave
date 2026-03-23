@@ -98,8 +98,9 @@ export const QueryToolAndLiveDoc = ({ collectionReadableId }: QueryToolAndLiveDo
                 if (response.ok) {
                     const data = await response.json();
                     // Get the first API key if available
-                    if (Array.isArray(data) && data.length > 0 && data[0].decrypted_key) {
-                        setApiKey(data[0].decrypted_key);
+                    if (Array.isArray(data) && data.length > 0) {
+                        const prefix = data[0].key_prefix || "????????";
+                        setApiKey(`${prefix}...`);
                     }
                 }
             } catch (err) {

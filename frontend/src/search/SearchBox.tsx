@@ -159,8 +159,9 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 const response = await apiClient.get("/api-keys");
                 if (response.ok) {
                     const data = await response.json();
-                    if (Array.isArray(data) && data.length > 0 && data[0].decrypted_key) {
-                        setApiKey(data[0].decrypted_key);
+                    if (Array.isArray(data) && data.length > 0) {
+                        const prefix = data[0].key_prefix || "????????";
+                        setApiKey(`${prefix}...`);
                     }
                 }
             } catch (err) {
