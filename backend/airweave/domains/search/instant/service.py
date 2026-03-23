@@ -13,10 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent, SearchTier
-from airweave.core.exceptions import CollectionNotFoundException, InvalidInputError
+from airweave.core.exceptions import CollectionNotFoundException, InvalidInputError, NotFoundException
 from airweave.core.protocols.event_bus import EventBus
-from airweave.domains.search.exceptions import FederatedSearchError
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+from airweave.domains.sources.exceptions import SourceAuthError, SourceCreationError
 from airweave.domains.search.protocols import (
     InstantSearchServiceProtocol,
     SearchPlanExecutorProtocol,
@@ -66,10 +66,14 @@ class InstantSearchService(InstantSearchServiceProtocol):
                 f"results={len(result.results)} duration_ms={duration_ms}"
             )
             return result
-        except (CollectionNotFoundException, InvalidInputError, FederatedSearchError):
+        except (
+            CollectionNotFoundException,
+            InvalidInputError,
+            SourceAuthError,
+            SourceCreationError,
+            NotFoundException,
+        ):
             # User/config errors — don't emit SearchFailedEvent.
-            # CollectionNotFoundException → 404, InvalidInputError → 422,
-            # FederatedSearchError → broken source connection (not a search failure).
             raise
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)
