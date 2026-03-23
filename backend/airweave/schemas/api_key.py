@@ -18,7 +18,7 @@ class APIKeyCreate(BaseModel):
 
     expiration_days: Optional[int] = Field(
         default=90,
-        description="Number of days until the API key expires (default: 90, max: 365)",
+        description="Number of days until the API key expires (default: 90, max: 180)",
     )
 
     @field_validator("expiration_days")
@@ -39,12 +39,12 @@ class APIKeyCreate(BaseModel):
 
         """
         if v is None:
-            return 90  # Default to 90 days
+            return 90
 
         if v < 1:
             raise ValueError("Expiration days must be at least 1.")
-        if v > 365:
-            raise ValueError("Expiration days cannot be more than 365.")
+        if v > 180:
+            raise ValueError("Expiration days cannot be more than 180.")
         return v
 
     model_config = ConfigDict(from_attributes=True)
@@ -66,7 +66,11 @@ class APIKeyInDBBase(APIKeyBase):
     created_at: datetime
     modified_at: datetime
     last_used_date: Optional[datetime] = None
+    last_used_ip: Optional[str] = None
     expiration_date: datetime
+    status: str = "active"
+    revoked_at: Optional[datetime] = None
+    key_prefix: Optional[str] = None
     created_by_email: Optional[EmailStr] = None
     modified_by_email: Optional[EmailStr] = None
 
@@ -77,5 +81,32 @@ class APIKey(APIKeyInDBBase):
     """Schema for API keys returned to clients - includes decrypted key."""
 
     decrypted_key: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class APIKeyUsageLogEntry(BaseModel):
+    """Single usage log entry for an API key."""
+
+    id: UUID
+    api_key_id: Optional[UUID] = None
+    organization_id: UUID
+    timestamp: datetime
+    ip_address: str
+    endpoint: str
+    user_agent: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class APIKeyUsageStats(BaseModel):
+    """Aggregated usage statistics for an API key."""
+
+    api_key_id: UUID
+    total_requests: int
+    first_used: Optional[datetime] = None
+    last_used: Optional[datetime] = None
+    unique_ips: int = 0
+    unique_endpoints: int = 0
 
     model_config = ConfigDict(from_attributes=True)
