@@ -14,6 +14,7 @@ class FakeContextCache(ContextCache):
         self._orgs: dict[UUID, schemas.Organization] = {}
         self._users: dict[str, schemas.User] = {}
         self._api_keys: dict[str, UUID] = {}
+        self._api_key_auth: dict[str, dict] = {}
         self._invalidations: list[tuple[str, str]] = []
 
     # --- Read ---
@@ -27,6 +28,9 @@ class FakeContextCache(ContextCache):
     async def get_api_key_org_id(self, api_key: str) -> Optional[UUID]:
         return self._api_keys.get(api_key)
 
+    async def get_api_key_auth(self, api_key: str) -> Optional[dict]:
+        return self._api_key_auth.get(api_key)
+
     # --- Write ---
 
     async def set_organization(self, organization: schemas.Organization) -> None:
@@ -37,6 +41,9 @@ class FakeContextCache(ContextCache):
 
     async def set_api_key_org_id(self, api_key: str, org_id: UUID) -> None:
         self._api_keys[api_key] = org_id
+
+    async def set_api_key_auth(self, api_key: str, auth_data: dict) -> None:
+        self._api_key_auth[api_key] = auth_data
 
     # --- Invalidation ---
 
@@ -50,6 +57,7 @@ class FakeContextCache(ContextCache):
 
     async def invalidate_api_key(self, api_key: str) -> None:
         self._api_keys.pop(api_key, None)
+        self._api_key_auth.pop(api_key, None)
         self._invalidations.append(("api_key", api_key))
 
     # --- Test helpers ---

@@ -157,7 +157,13 @@ class TestApiKeyCacheIntegration:
     @pytest.mark.asyncio
     async def test_cache_hit_returns_org_id(self):
         cache = FakeContextCache()
-        cache._api_keys["my-secret-key"] = ORG_ID
+        key_id = str(uuid4())
+        cache._api_key_auth["my-secret-key"] = {
+            "org_id": str(ORG_ID),
+            "key_id": key_id,
+            "exp": "2099-01-01T00:00:00",
+            "status": "active",
+        }
 
         resolver = _make_resolver(cache=cache)
         result = await resolver._authenticate_api_key(
@@ -166,4 +172,4 @@ class TestApiKeyCacheIntegration:
 
         assert result.method == AuthMethod.API_KEY
         assert result.api_key_org_id == str(ORG_ID)
-        assert result.metadata["api_key_id"] == "cached"
+        assert result.metadata["api_key_id"] == key_id
