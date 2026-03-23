@@ -20,6 +20,7 @@ from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.exceptions import (
     AirweaveException,
+    ConflictException,
     InvalidInputError,
     InvalidStateError,
     NotFoundException,
@@ -437,6 +438,7 @@ async def airweave_exception_handler(request: Request, exc: AirweaveException) -
     # Add new base classes here as they're introduced (BadRequestError, etc.).
     status_map = {
         TokenRefreshError: 401,
+        ConflictException: 409,
     }
 
     for exc_type, code in status_map.items():
