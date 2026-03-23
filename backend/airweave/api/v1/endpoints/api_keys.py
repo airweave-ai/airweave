@@ -2,15 +2,17 @@
 
 from uuid import UUID
 
-from fastapi import Body, Depends, HTTPException
+from fastapi import Body, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.inject import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core import credentials
 from airweave.core.datetime_utils import utc_now_naive
+from airweave.core.protocols.cache import ContextCache
 from airweave.domains.organizations import logic
 
 router = TrailingSlashRouter()
@@ -26,7 +28,7 @@ async def create_api_key(
     """Create a new API key for the current user.
 
     Returns a temporary plain key for the user to store securely.
-    This is not stored in the database.
+    This is the only time the full key is visible.
 
     Args:
     ----
@@ -36,12 +38,12 @@ async def create_api_key(
 
     Returns:
     -------
-        schemas.APIKey: The created API key object, including the key.
+        schemas.APIKey: The created API key object, including the
+            decrypted key (visible only on creation).
 
     """
     api_key_obj = await crud.api_key.create(db=db, obj_in=api_key_in, ctx=ctx)
 
-    # Audit log: API key creation (flows to Azure LAW)
     expiration_days = (api_key_obj.expiration_date - api_key_obj.created_at).days
     audit_logger = ctx.logger.with_context(event_type="api_key_created")
     audit_logger.info(
@@ -50,23 +52,12 @@ async def create_api_key(
         f"({api_key_obj.expiration_date.isoformat()})"
     )
 
-    # Decrypt the key for the response
     decrypted_data = credentials.decrypt(api_key_obj.encrypted_key)
     decrypted_key = decrypted_data["key"]
 
-    api_key_data = {
-        "id": api_key_obj.id,
-        "organization_id": ctx.organization.id,
-        "created_at": api_key_obj.created_at,
-        "modified_at": api_key_obj.modified_at,
-        "last_used_date": None,  # New key has no last used date
-        "expiration_date": api_key_obj.expiration_date,
-        "created_by_email": api_key_obj.created_by_email,
-        "modified_by_email": api_key_obj.modified_by_email,
-        "decrypted_key": decrypted_key,
-    }
-
-    return schemas.APIKey(**api_key_data)
+    result = schemas.APIKey.model_validate(api_key_obj, from_attributes=True)
+    result.decrypted_key = decrypted_key
+    return result
 
 
 @router.get("/{id}", response_model=schemas.APIKey)
@@ -78,6 +69,8 @@ async def read_api_key(
 ) -> schemas.APIKey:
     """Retrieve an API key by ID.
 
+    The decrypted key is NOT returned — only the key_prefix is visible.
+
     Args:
     ----
         db (AsyncSession): The database session.
@@ -86,38 +79,17 @@ async def read_api_key(
 
     Returns:
     -------
-        schemas.APIKey: The API key object with decrypted key.
+        schemas.APIKey: The API key object (without decrypted key).
 
     Raises:
     ------
-        HTTPException: If the API key is not found.
+        NotFoundException: If the API key is not found.
+
     """
     api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
-    if api_key is None:
-        raise HTTPException(status_code=404, detail="Not found")
-
-    # Audit log: API key read (flows to Azure LAW)
-    audit_logger = ctx.logger.with_context(event_type="api_key_read")
-    audit_logger.info(
-        f"API key read: {api_key.id} by {ctx.tracking_email} for org {ctx.organization.id}"
-    )
-    # Decrypt the key for the response
-    decrypted_data = credentials.decrypt(api_key.encrypted_key)
-    decrypted_key = decrypted_data["key"]
-
-    api_key_data = {
-        "id": api_key.id,
-        "organization_id": ctx.organization.id,
-        "created_at": api_key.created_at,
-        "modified_at": api_key.modified_at,
-        "last_used_date": api_key.last_used_date if hasattr(api_key, "last_used_date") else None,
-        "expiration_date": api_key.expiration_date,
-        "created_by_email": api_key.created_by_email,
-        "modified_by_email": api_key.modified_by_email,
-        "decrypted_key": decrypted_key,
-    }
-
-    return schemas.APIKey(**api_key_data)
+    result = schemas.APIKey.model_validate(api_key, from_attributes=True)
+    result.decrypted_key = None
+    return result
 
 
 @router.get("/", response_model=list[schemas.APIKey])
@@ -130,6 +102,8 @@ async def read_api_keys(
 ) -> list[schemas.APIKey]:
     """Retrieve all API keys for the current user.
 
+    Decrypted keys are NOT returned — only the key_prefix is visible.
+
     Args:
     ----
         db (AsyncSession): The database session.
@@ -139,7 +113,9 @@ async def read_api_keys(
 
     Returns:
     -------
-        List[schemas.APIKey]: A list of API keys with decrypted keys.
+        list[schemas.APIKey]: A list of API keys (without decrypted
+            keys).
+
     """
     api_keys = await crud.api_key.get_multi(db=db, skip=skip, limit=limit, ctx=ctx)
     # Audit log: API keys listed (flows to Azure LAW)
@@ -151,24 +127,9 @@ async def read_api_keys(
 
     result = []
     for api_key in api_keys:
-        # Decrypt each key
-        decrypted_data = credentials.decrypt(api_key.encrypted_key)
-        decrypted_key = decrypted_data["key"]
-
-        api_key_data = {
-            "id": api_key.id,
-            "organization_id": ctx.organization.id,
-            "created_at": api_key.created_at,
-            "modified_at": api_key.modified_at,
-            "last_used_date": (
-                api_key.last_used_date if hasattr(api_key, "last_used_date") else None
-            ),
-            "expiration_date": api_key.expiration_date,
-            "created_by_email": api_key.created_by_email,
-            "modified_by_email": api_key.modified_by_email,
-            "decrypted_key": decrypted_key,
-        }
-        result.append(schemas.APIKey(**api_key_data))
+        schema = schemas.APIKey.model_validate(api_key, from_attributes=True)
+        schema.decrypted_key = None
+        result.append(schema)
 
     return result
 
@@ -179,57 +140,115 @@ async def rotate_api_key(
     db: AsyncSession = Depends(deps.get_db),
     id: UUID,
     ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
+    cache: ContextCache = Inject(ContextCache),
 ) -> schemas.APIKey:
-    """Rotate an API key by creating a new one.
+    """Rotate an API key: create a new one and immediately revoke the old one.
 
-    This endpoint creates a new API key with a fresh 90-day expiration.
-    The old key remains active until its original expiration date.
-    Users can manage multiple keys or delete the old one manually if desired.
+    The new key inherits the original lifetime of the old key (i.e.
+    the duration from ``created_at`` to ``expiration_date``), clamped
+    to [1, 180] days.
 
     Args:
     ----
         db (AsyncSession): The database session.
         id (UUID): The ID of the API key to rotate.
         ctx (ApiContext): The current authentication context.
+        cache (ContextCache): The cache for invalidating the old key.
 
     Returns:
     -------
-        schemas.APIKey: The newly created API key with decrypted key value.
+        schemas.APIKey: The newly created API key with decrypted key.
 
     Raises:
     ------
-        HTTPException: If the API key is not found or user doesn't have access.
+        NotFoundException: If the API key is not found.
 
     """
-    # Verify old key exists and user has access
     old_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
-    if old_key is None:
-        raise HTTPException(status_code=404, detail="Not found")
-    old_key_schema = schemas.APIKey.model_validate(old_key, from_attributes=True)
 
-    # Create new key with default 90-day expiration
-    new_key_obj = await crud.api_key.create(
-        db=db,
-        obj_in=schemas.APIKeyCreate(),  # Uses default 90 days
-        ctx=ctx,
+    # Inherit the original lifetime (created_at → expiration_date)
+    original_days = (old_key.expiration_date - old_key.created_at).days
+    new_key_create = schemas.APIKeyCreate(
+        expiration_days=max(1, min(original_days, 180)),
     )
 
-    # Decrypt the new key for the response
+    new_key_obj = await crud.api_key.create(db=db, obj_in=new_key_create, ctx=ctx)
+
+    await crud.api_key.revoke(db=db, api_key_id=old_key.id)
+
+    # Invalidate old key's cache entry
+    try:
+        old_decrypted = credentials.decrypt(old_key.encrypted_key)
+        old_plaintext = old_decrypted["key"]
+        await cache.invalidate_api_key(old_plaintext)
+    except Exception:
+        pass  # Let TTL expire it
+
     decrypted_data = credentials.decrypt(new_key_obj.encrypted_key)
     decrypted_key = decrypted_data["key"]
 
     new_key_schema = schemas.APIKey.model_validate(new_key_obj, from_attributes=True)
     new_key_schema.decrypted_key = decrypted_key
 
-    # Audit log: API key rotation (flows to Azure LAW)
     audit_logger = ctx.logger.with_context(event_type="api_key_rotated")
     audit_logger.info(
-        f"API key rotated: old={old_key_schema.id}, new={new_key_schema.id} "
+        f"API key rotated: old={old_key.id}, new={new_key_obj.id} "
         f"by {new_key_schema.created_by_email} for org {ctx.organization.id}, "
         f"new key expires {new_key_schema.expiration_date.isoformat()}"
     )
 
     return new_key_schema
+
+
+@router.post("/{id}/revoke", response_model=schemas.APIKey)
+async def revoke_api_key(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    id: UUID,
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
+    cache: ContextCache = Inject(ContextCache),
+) -> schemas.APIKey:
+    """Explicitly revoke an API key without creating a replacement.
+
+    Use this for suspected compromise. The key is immediately invalid.
+
+    Args:
+    ----
+        db (AsyncSession): The database session.
+        id (UUID): The ID of the API key to revoke.
+        ctx (ApiContext): The current authentication context.
+        cache (ContextCache): The cache for invalidating the key.
+
+    Returns:
+    -------
+        schemas.APIKey: The revoked API key object.
+
+    Raises:
+    ------
+        NotFoundException: If the API key is not found.
+        ConflictException: If the key is already revoked or expired.
+
+    """
+    api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
+
+    revoked = await crud.api_key.revoke(db=db, api_key_id=api_key.id)
+
+    # Invalidate cache
+    try:
+        decrypted_data = credentials.decrypt(api_key.encrypted_key)
+        plaintext_key = decrypted_data["key"]
+        await cache.invalidate_api_key(plaintext_key)
+    except Exception:
+        pass
+
+    audit_logger = ctx.logger.with_context(event_type="api_key_revoked")
+    audit_logger.info(
+        f"API key revoked: {api_key.id} by {ctx.tracking_email} for org {ctx.organization.id}"
+    )
+
+    result = schemas.APIKey.model_validate(revoked, from_attributes=True)
+    result.decrypted_key = None
+    return result
 
 
 @router.delete("/", response_model=schemas.APIKey)
@@ -238,8 +257,96 @@ async def delete_api_key(
     db: AsyncSession = Depends(deps.get_db),
     id: UUID,
     ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
+    cache: ContextCache = Inject(ContextCache),
 ) -> schemas.APIKey:
     """Delete an API key.
+
+    Args:
+    ----
+        db (AsyncSession): The database session.
+        id (UUID): The ID of the API key.
+        ctx (ApiContext): The current authentication context.
+        cache (ContextCache): The cache for invalidating the key.
+
+    Returns:
+    -------
+        schemas.APIKey: The deleted API key object.
+
+    Raises:
+    ------
+        NotFoundException: If the API key is not found.
+
+    """
+    api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
+
+    # Build response before deletion
+    result = schemas.APIKey.model_validate(api_key, from_attributes=True)
+    result.decrypted_key = None
+
+    # Decrypt internally for cache invalidation (never exposed to client)
+    plaintext_key = None
+    try:
+        decrypted_data = credentials.decrypt(api_key.encrypted_key)
+        plaintext_key = decrypted_data["key"]
+    except Exception:
+        pass
+
+    was_expired = api_key.expiration_date < utc_now_naive()
+    audit_logger = ctx.logger.with_context(event_type="api_key_deleted")
+    audit_logger.info(
+        f"API key deleted: {api_key.id} by {ctx.tracking_email} for org {ctx.organization.id} "
+        f"(was_expired={was_expired})"
+    )
+
+    if plaintext_key:
+        await cache.invalidate_api_key(plaintext_key)
+    await crud.api_key.remove(db=db, id=id, ctx=ctx)
+
+    return result
+
+
+@router.get("/{id}/usage", response_model=list[schemas.APIKeyUsageLogEntry])
+async def read_api_key_usage(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    id: UUID,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
+) -> list[schemas.APIKeyUsageLogEntry]:
+    """Get paginated usage log for an API key.
+
+    Args:
+    ----
+        db (AsyncSession): The database session.
+        id (UUID): The ID of the API key.
+        skip (int): Number of records to skip for pagination.
+        limit (int): Maximum number of records to return (1–200).
+        ctx (ApiContext): The current authentication context.
+
+    Returns:
+    -------
+        list[schemas.APIKeyUsageLogEntry]: Paginated usage log entries,
+            most recent first.
+
+    """
+    await crud.api_key.get(db=db, id=id, ctx=ctx)
+
+    log_entries = await crud.api_key.get_usage_log(db, api_key_id=id, skip=skip, limit=limit)
+    return [
+        schemas.APIKeyUsageLogEntry.model_validate(entry, from_attributes=True)
+        for entry in log_entries
+    ]
+
+
+@router.get("/{id}/usage/stats", response_model=schemas.APIKeyUsageStats)
+async def read_api_key_usage_stats(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    id: UUID,
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
+) -> schemas.APIKeyUsageStats:
+    """Get aggregated usage statistics for an API key.
 
     Args:
     ----
@@ -249,43 +356,10 @@ async def delete_api_key(
 
     Returns:
     -------
-        schemas.APIKey: The revoked API key object.
-
-    Raises:
-    ------
-        HTTPException: If the API key is not found.
+        schemas.APIKeyUsageStats: Aggregate usage statistics including
+            total requests, unique IPs, and unique endpoints.
 
     """
-    api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
-    if api_key is None:
-        raise HTTPException(status_code=404, detail="Not found")
+    await crud.api_key.get(db=db, id=id, ctx=ctx)
 
-    # Decrypt the key for the response
-    decrypted_data = credentials.decrypt(api_key.encrypted_key)
-    decrypted_key = decrypted_data["key"]
-
-    # Create a copy of the data before deletion
-    api_key_data = {
-        "id": api_key.id,
-        "organization_id": ctx.organization.id,
-        "created_at": api_key.created_at,
-        "modified_at": api_key.modified_at,
-        "last_used_date": api_key.last_used_date if hasattr(api_key, "last_used_date") else None,
-        "expiration_date": api_key.expiration_date,
-        "created_by_email": api_key.created_by_email,
-        "modified_by_email": api_key.modified_by_email,
-        "decrypted_key": decrypted_key,
-    }
-
-    # Audit log: API key deletion (flows to Azure LAW)
-    was_expired = api_key.expiration_date < utc_now_naive()
-    audit_logger = ctx.logger.with_context(event_type="api_key_deleted")
-    audit_logger.info(
-        f"API key deleted: {api_key.id} by {ctx.tracking_email} for org {ctx.organization.id} "
-        f"(was_expired={was_expired})"
-    )
-
-    # Now delete the API key
-    await crud.api_key.remove(db=db, id=id, ctx=ctx)
-
-    return schemas.APIKey(**api_key_data)
+    return await crud.api_key.get_usage_stats(db, api_key_id=id)
