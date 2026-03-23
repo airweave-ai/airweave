@@ -15,6 +15,7 @@ from airweave.api.context import ApiContext
 from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent, SearchTier
 from airweave.core.exceptions import CollectionNotFoundException, InvalidInputError
 from airweave.core.protocols.event_bus import EventBus
+from airweave.domains.search.exceptions import FederatedSearchError
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.search.protocols import (
     InstantSearchServiceProtocol,
@@ -65,9 +66,10 @@ class InstantSearchService(InstantSearchServiceProtocol):
                 f"results={len(result.results)} duration_ms={duration_ms}"
             )
             return result
-        except (CollectionNotFoundException, InvalidInputError):
-            # User errors — don't emit SearchFailedEvent, let exception handlers
-            # return the proper 404/422 response.
+        except (CollectionNotFoundException, InvalidInputError, FederatedSearchError):
+            # User/config errors — don't emit SearchFailedEvent.
+            # CollectionNotFoundException → 404, InvalidInputError → 422,
+            # FederatedSearchError → broken source connection (not a search failure).
             raise
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)

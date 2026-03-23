@@ -43,6 +43,7 @@ from airweave.core.events.search import (
 )
 from airweave.core.exceptions import CollectionNotFoundException, InvalidInputError
 from airweave.core.protocols.event_bus import EventBus
+from airweave.domains.search.exceptions import FederatedSearchError
 from airweave.core.protocols.llm import LLMProtocol
 from airweave.core.protocols.reranker import RerankerProtocol
 from airweave.core.protocols.tokenizer import TokenizerProtocol
@@ -148,7 +149,7 @@ class Agent:
                 f"duration_ms={duration_ms}"
             )
             return result
-        except (CollectionNotFoundException, InvalidInputError):
+        except (CollectionNotFoundException, InvalidInputError, FederatedSearchError):
             raise
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)
