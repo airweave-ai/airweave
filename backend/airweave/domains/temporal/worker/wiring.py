@@ -22,9 +22,12 @@ def create_activities() -> list:
     from airweave.core.container import container
     from airweave.domains.temporal.activities import (
         CheckAndNotifyExpiringKeysActivity,
+        CleanupRevokedKeysActivity,
         CleanupStuckSyncJobsActivity,
         CleanupSyncDataActivity,
         CreateSyncJobActivity,
+        ExpirePastDueKeysActivity,
+        PruneUsageLogActivity,
         RunSyncActivity,
         SelfDestructOrphanedSyncActivity,
         TransitionSyncJobActivity,
@@ -86,6 +89,10 @@ def create_activities() -> list:
         CheckAndNotifyExpiringKeysActivity(
             email_service=email_service,
         ).run,
+        # API key cleanup (no dependencies — uses crud directly)
+        CleanupRevokedKeysActivity().run,
+        ExpirePastDueKeysActivity().run,
+        PruneUsageLogActivity().run,
     ]
 
 
@@ -96,6 +103,7 @@ def get_workflows() -> list:
         List of workflow classes.
     """
     from airweave.domains.temporal.workflows import (
+        APIKeyCleanupWorkflow,
         APIKeyExpirationCheckWorkflow,
         CleanupStuckSyncJobsWorkflow,
         CleanupSyncDataWorkflow,
@@ -107,4 +115,5 @@ def get_workflows() -> list:
         CleanupStuckSyncJobsWorkflow,
         CleanupSyncDataWorkflow,
         APIKeyExpirationCheckWorkflow,
+        APIKeyCleanupWorkflow,
     ]
