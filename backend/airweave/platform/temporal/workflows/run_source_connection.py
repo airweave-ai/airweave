@@ -191,6 +191,8 @@ class RunSourceConnectionWorkflow:
                 cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
                 retry_policy=FAIL_FAST,
             )
+        except asyncio.CancelledError as e:
+            await self._handle_sync_failure(e, sync_dict, sync_job_dict, ctx_dict)
         except Exception as e:
             await self._handle_sync_failure(e, sync_dict, sync_job_dict, ctx_dict)
 
