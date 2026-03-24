@@ -197,8 +197,10 @@ async def test_orphaned_sync_triggers_self_destruct():
 
 @pytest.mark.unit
 async def test_orphaned_sync_error_during_execution_triggers_self_destruct():
-    """When run_sync raises OrphanedSyncError, workflow self-destructs instead of failing."""
-    from airweave.domains.temporal.exceptions import OrphanedSyncError
+    """When run_sync raises an orphaned-sync ApplicationError, workflow self-destructs."""
+    from temporalio.exceptions import ApplicationError, ApplicationErrorCategory
+
+    from airweave.domains.temporal.exceptions import ORPHANED_SYNC_ERROR_TYPE
 
     recorder = ActivityRecorder()
     async with await WorkflowEnvironment.start_time_skipping() as env:
@@ -207,7 +209,14 @@ async def test_orphaned_sync_error_during_execution_triggers_self_destruct():
             activities=[
                 mock_run_sync(
                     recorder,
-                    raise_error=OrphanedSyncError(SYNC_ID, "Source connection not found"),
+                    raise_error=ApplicationError(
+                        f"Orphaned sync {SYNC_ID}: Source connection not found",
+                        SYNC_ID,
+                        "Source connection not found",
+                        type=ORPHANED_SYNC_ERROR_TYPE,
+                        non_retryable=True,
+                        category=ApplicationErrorCategory.BENIGN,
+                    ),
                 ),
                 mock_self_destruct(recorder),
                 mock_transition_sync_job(recorder),

@@ -27,7 +27,7 @@ with workflow.unsafe.imports_passed_through():
         transition_sync_job_activity,
     )
     from airweave.domains.temporal.activity_results import CreateSyncJobResult
-    from airweave.domains.temporal.exceptions import OrphanedSyncError
+    from airweave.domains.temporal.exceptions import ORPHANED_SYNC_ERROR_TYPE
 
 # ---------------------------------------------------------------------------
 # Execution policies
@@ -98,7 +98,7 @@ class RunSourceConnectionWorkflow:
                 await self._transition("cancelled", sync_job_dict, ctx_dict, lifecycle, shield=True)
                 raise
             if self._is_orphaned_sync_error(e):
-                reason = str(e.__cause__) if e.__cause__ else str(e)
+                reason = self._extract_orphaned_reason(e)
                 await self._self_destruct(sync_dict, ctx_dict, reason)
                 return
             await self._transition("failed", sync_job_dict, ctx_dict, lifecycle, error=str(e))
@@ -286,7 +286,24 @@ class RunSourceConnectionWorkflow:
 
     @staticmethod
     def _is_orphaned_sync_error(error: Exception) -> bool:
-        """Check whether a Temporal ActivityError wraps an OrphanedSyncError."""
+        """Check whether a Temporal ActivityError wraps an OrphanedSyncError.
+
+        The activity converts OrphanedSyncError to an explicit ApplicationError
+        with type=ORPHANED_SYNC_ERROR_TYPE, so we match on that string.
+        """
         if isinstance(error, ActivityError) and isinstance(error.cause, ApplicationError):
-            return error.cause.type == OrphanedSyncError.__name__
+            return error.cause.type == ORPHANED_SYNC_ERROR_TYPE
         return False
+
+    @staticmethod
+    def _extract_orphaned_reason(error: BaseException) -> str:
+        """Extract the reason string from an orphaned sync ActivityError.
+
+        The activity stores (sync_id, reason) in ApplicationError.details.
+        Falls back to the error message if details are unavailable.
+        """
+        if isinstance(error, ActivityError) and isinstance(error.cause, ApplicationError):
+            details = error.cause.details
+            if len(details) >= 2:
+                return str(details[1])
+        return str(error)

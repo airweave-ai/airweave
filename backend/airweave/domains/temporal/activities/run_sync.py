@@ -14,6 +14,7 @@ from typing import Any, AsyncIterator, Dict, Optional
 from uuid import UUID
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError, ApplicationErrorCategory
 
 from airweave import crud, schemas
 from airweave.core.context import BaseContext
@@ -23,7 +24,7 @@ from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.syncs.protocols import SyncServiceProtocol
 from airweave.domains.temporal.activities.heartbeat import HeartbeatMonitor
-from airweave.domains.temporal.exceptions import OrphanedSyncError
+from airweave.domains.temporal.exceptions import ORPHANED_SYNC_ERROR_TYPE, OrphanedSyncError
 from airweave.domains.temporal.metrics import worker_metrics
 
 
@@ -179,7 +180,7 @@ class RunSyncActivity:
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
     ) -> None:
-        """Run the sync service. Converts NotFoundException to OrphanedSyncError."""
+        """Run the sync service. Converts orphaned-sync conditions to ApplicationError."""
         execution_config = await self._load_execution_config(sync_job, ctx)
 
         try:
@@ -195,11 +196,19 @@ class RunSyncActivity:
             )
         except NotFoundException as e:
             if "Source connection record not found" in str(e) or "Connection not found" in str(e):
+                orphaned = OrphanedSyncError(str(sync.id))
                 ctx.logger.info(
                     f"Source connection for sync {sync.id} not found -- "
                     f"resource was likely deleted during execution"
                 )
-                raise OrphanedSyncError(str(sync.id)) from e
+                raise ApplicationError(
+                    str(orphaned),
+                    orphaned.sync_id,
+                    orphaned.reason,
+                    type=ORPHANED_SYNC_ERROR_TYPE,
+                    non_retryable=True,
+                    category=ApplicationErrorCategory.BENIGN,
+                ) from e
             raise
 
     async def _load_execution_config(

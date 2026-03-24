@@ -2,12 +2,18 @@
 
 from airweave.core.exceptions import AirweaveException, InvalidInputError
 
+ORPHANED_SYNC_ERROR_TYPE = "OrphanedSyncError"
+"""ApplicationError.type value used for orphaned sync detection across the
+activity → workflow serialization boundary."""
+
 
 class OrphanedSyncError(AirweaveException):
     """Raised when a sync's source connection no longer exists.
 
-    Activities raise this; workflows catch it (via Temporal's ApplicationError
-    serialization) to trigger self-destruct cleanup.
+    Domain code raises this. The activity boundary layer converts it to an
+    explicit ``ApplicationError`` with ``type=ORPHANED_SYNC_ERROR_TYPE``,
+    ``non_retryable=True``, and ``category=BENIGN`` so the workflow can
+    detect it via the type field without importing this class.
     """
 
     def __init__(self, sync_id: str, reason: str = "Source connection not found"):

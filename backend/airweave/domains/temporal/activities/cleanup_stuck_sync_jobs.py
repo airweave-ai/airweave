@@ -24,6 +24,7 @@ _CANCELLING_PENDING_CUTOFF = timedelta(minutes=3)
 _RUNNING_CUTOFF = timedelta(minutes=15)
 _POST_CANCEL_SLEEP_S = 2
 _STUCK_CANCEL_REASON = "Cancelled by cleanup job (stuck in transitional state)"
+_STUCK_RUNNING_REASON = "Timed out by cleanup job (no activity for 15+ minutes)"
 _REDIS_SNAPSHOT_KEY_PREFIX = "sync_progress_snapshot"
 
 
@@ -167,10 +168,15 @@ class CleanupStuckSyncJobsActivity:
             return latest_entity_time is None or latest_entity_time < running_cutoff
 
     async def _cancel_stuck_job(self, job, now, db, logger) -> bool:
-        """Cancel a single stuck job via Temporal and update database."""
+        """Cancel a single stuck job via Temporal and update database.
+
+        RUNNING jobs transition to FAILED (RUNNING → CANCELLED is invalid).
+        CANCELLING/PENDING jobs transition to CANCELLED (valid transitions).
+        """
         job_id = str(job.id)
         sync_id = str(job.sync_id)
         org_id = str(job.organization_id)
+        current_status = SyncJobStatus(job.status)
 
         logger.info(
             f"Attempting to cancel stuck job {job_id} "
@@ -201,14 +207,22 @@ class CleanupStuckSyncJobsActivity:
                 logger.info(f"Successfully requested Temporal cancellation for job {job_id}")
                 await asyncio.sleep(_POST_CANCEL_SLEEP_S)
 
-            await self.state_machine.transition(
-                sync_job_id=UUID(job_id),
-                target=SyncJobStatus.CANCELLED,
-                ctx=ctx,
-                error=_STUCK_CANCEL_REASON,
-            )
+            if current_status == SyncJobStatus.RUNNING:
+                await self.state_machine.transition(
+                    sync_job_id=UUID(job_id),
+                    target=SyncJobStatus.FAILED,
+                    ctx=ctx,
+                    error=_STUCK_RUNNING_REASON,
+                )
+            else:
+                await self.state_machine.transition(
+                    sync_job_id=UUID(job_id),
+                    target=SyncJobStatus.CANCELLED,
+                    ctx=ctx,
+                    error=_STUCK_CANCEL_REASON,
+                )
 
-            logger.info(f"Successfully cancelled stuck job {job_id}")
+            logger.info(f"Successfully cleaned up stuck job {job_id}")
             return True
 
         except Exception as e:

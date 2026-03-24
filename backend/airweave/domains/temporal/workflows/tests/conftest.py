@@ -173,19 +173,6 @@ def mock_self_destruct(recorder: ActivityRecorder):
     return _mock
 
 
-def mock_mark_cancelled(recorder: ActivityRecorder):
-    @activity.defn(name="mark_sync_job_cancelled_activity")
-    async def _mock(
-        sync_job_id: str,
-        ctx_dict: Dict[str, Any],
-        reason: Optional[str] = None,
-        when_iso: Optional[str] = None,
-    ) -> None:
-        recorder.record("mark_cancelled", (sync_job_id,))
-
-    return _mock
-
-
 def mock_transition_sync_job(recorder: ActivityRecorder):
     @activity.defn(name="transition_sync_job_activity")
     async def _mock(

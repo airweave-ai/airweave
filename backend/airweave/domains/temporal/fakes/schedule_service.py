@@ -74,3 +74,5 @@ class FakeTemporalScheduleService(TemporalScheduleServiceProtocol):
     async def ensure_system_schedules(self) -> None:
         """Record call."""
         self._calls.append(("ensure_system_schedules",))
+        if self._should_raise:
+            raise self._should_raise

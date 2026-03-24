@@ -306,22 +306,26 @@ EntityTracker records action
 
 **Detection Points**:
 1. **Early** (in `create_sync_job_activity`): Checks if sync exists before creating job
-   - Returns `{"_orphaned": True, "sync_id": sync_id}` if not found
+   - Returns `CreateSyncJobResult(orphaned=True, sync_id=..., reason=...)` if not found
 2. **Late** (in `run_sync_activity`): Catches `NotFoundException` during execution
-   - Raises `Exception("ORPHANED_SYNC: Source connection record not found")`
+   - Domain code raises `OrphanedSyncError(sync_id)` (in `exceptions.py`)
+   - Activity boundary converts to explicit `ApplicationError` with:
+     - `type=ORPHANED_SYNC_ERROR_TYPE` (shared constant in `exceptions.py`)
+     - `non_retryable=True` (permanent condition)
+     - `category=ApplicationErrorCategory.BENIGN` (suppresses error metrics/logs)
+     - Structured `details`: `(sync_id, reason)` accessible on workflow side
 
-Custom exception types don't serialize cleanly, so we use a string marker.
+**Temporal serialization**: The workflow detects orphaned syncs by checking
+`error.cause.type == ORPHANED_SYNC_ERROR_TYPE` on the `ApplicationError` inside
+the `ActivityError` wrapper. Structured details are accessed via `error.cause.details`.
+The `BENIGN` category prevents orphaned syncs from polluting error metrics and
+OpenTelemetry traces since they are expected operational behavior.
 
 **Self-Destruct Flow**:
 ```python
-if sync_job_dict.get("_orphaned") or "ORPHANED_SYNC" in str(e):
-    # Call self_destruct_orphaned_sync_activity
-    await workflow.execute_activity(
-        self_destruct_orphaned_sync_activity,
-        args=[sync_dict["id"], ctx_dict, reason],
-        start_to_close_timeout=timedelta(minutes=5),
-        retry_policy=RetryPolicy(maximum_attempts=3),
-    )
+if self._is_orphaned_sync_error(e):
+    reason = self._extract_orphaned_reason(e)  # from ApplicationError.details
+    await self._self_destruct(sync_dict, ctx_dict, reason)
     return  # Exit gracefully without error
 ```
 
@@ -346,7 +350,7 @@ Each activity is a `@dataclass` with explicit DI, one class per file:
 |------|-------|---------------|
 | `run_sync.py` | `RunSyncActivity` | Execute a sync job with heartbeating and stall detection |
 | `create_sync_job.py` | `CreateSyncJobActivity` | Create sync job record (for scheduled runs) |
-| `mark_sync_job_cancelled.py` | `MarkSyncJobCancelledActivity` | Mark a job as CANCELLED in the database |
+| `transition_sync_job.py` | `TransitionSyncJobActivity` | Terminal state transitions via SyncJobStateMachine |
 | `cleanup_stuck_sync_jobs.py` | `CleanupStuckSyncJobsActivity` | Detect and cancel stuck jobs |
 | `self_destruct_orphaned_sync.py` | `SelfDestructOrphanedSyncActivity` | Clean up schedules for orphaned syncs |
 | `cleanup_sync_data.py` | `CleanupSyncDataActivity` | Remove Vespa + ARF data for deleted syncs |

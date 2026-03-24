@@ -9,7 +9,7 @@ Idempotent: re-writing the current status is a no-op (no DB write, no event).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from airweave.core.context import BaseContext
@@ -20,8 +20,11 @@ from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
 from airweave.schemas.sync_job import SyncJobUpdate
+
+if TYPE_CHECKING:
+    from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
 
 # ---------------------------------------------------------------------------
 # Transition graph
@@ -131,7 +134,7 @@ def validate_transition(
 
 
 @dataclass
-class SyncJobStateMachine:
+class SyncJobStateMachine(SyncJobStateMachineProtocol):
     """Validates transitions, writes to DB, and publishes lifecycle events.
 
     Idempotent: if the job is already in the target state, returns
