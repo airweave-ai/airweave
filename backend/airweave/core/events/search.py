@@ -285,6 +285,9 @@ class SearchFailedEvent(DomainEvent):
     message: str
     duration_ms: int
 
+    # Classification (SearchErrorCategory value as string to avoid circular imports)
+    error_category: Optional[str] = None
+
     # Diagnostics (agentic only, None for instant/classic)
     diagnostics: Optional[FailedDiagnostics] = None
 

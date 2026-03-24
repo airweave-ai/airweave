@@ -131,6 +131,7 @@ export interface DoneEvent extends BaseSSEEvent {
 export interface ErrorEvent extends BaseSSEEvent {
     type: 'error';
     message: string;
+    error_category?: string;
     duration_ms?: number;
 }
 

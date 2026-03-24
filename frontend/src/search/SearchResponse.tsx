@@ -171,9 +171,23 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     const results = searchResponse?.results || [];
     const hasError = Boolean(searchResponse?.error);
     const isTransientError = Boolean(searchResponse?.errorIsTransient);
-    const errorDisplayMessage = isTransientError
-        ? "Something went wrong, please try again."
-        : searchResponse?.error;
+    const errorCategory: string | undefined = searchResponse?.errorCategory;
+    const errorDisplayMessage = (() => {
+        if (!hasError) return undefined;
+        // Category-specific messages for user errors
+        const categoryMessages: Record<string, string> = {
+            collection_not_found: "Collection not found. Check the collection name and try again.",
+            no_sources: "This collection has no sources. Add a source connection before searching.",
+            invalid_request: "Invalid request. Check your parameters and try again.",
+            source_auth_expired: "A connected source requires re-authentication.",
+            federated_source_error: "A connected source is temporarily unavailable. Please try again.",
+        };
+        if (errorCategory && categoryMessages[errorCategory]) {
+            return categoryMessages[errorCategory];
+        }
+        if (isTransientError) return "Something went wrong, please try again.";
+        return searchResponse?.error;
+    })();
 
     // Memoized style
     const syntaxStyle = useMemo(() => isDark ? materialOceanic : oneLight, [isDark]);

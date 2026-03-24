@@ -6,21 +6,24 @@ via the shared SearchPlanExecutor. Emits lifecycle events.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent, SearchTier
+from airweave.core.exceptions import CollectionNotFoundException, InvalidInputError
 from airweave.core.protocols.event_bus import EventBus
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+from airweave.domains.errors.search_error_classifier import classify_search_error
 from airweave.domains.search.protocols import (
     InstantSearchServiceProtocol,
     SearchPlanExecutorProtocol,
 )
 from airweave.domains.search.types import SearchPlan, SearchQuery, SearchResults
+from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 
 if TYPE_CHECKING:
     from airweave.schemas.search_v2 import InstantSearchRequest
@@ -36,11 +39,13 @@ class InstantSearchService(InstantSearchServiceProtocol):
         self,
         executor: SearchPlanExecutorProtocol,
         collection_repo: CollectionRepositoryProtocol,
+        sc_repo: SourceConnectionRepositoryProtocol,
         event_bus: EventBus,
     ) -> None:
-        """Initialize with executor, collection repo, and event bus."""
+        """Initialize with executor, collection repo, source connection repo, and event bus."""
         self._executor = executor
         self._collection_repo = collection_repo
+        self._sc_repo = sc_repo
         self._event_bus = event_bus
 
     async def search(
@@ -63,21 +68,26 @@ class InstantSearchService(InstantSearchServiceProtocol):
             )
             return result
         except Exception as e:
+            classification = classify_search_error(e)
             duration_ms = int((time.monotonic() - start_time) * 1000)
-            ctx.logger.error(
-                f"Instant search failed collection={readable_id} "
-                f"duration_ms={duration_ms} error={e}"
+            ctx.logger.log(
+                logging.WARNING if classification.is_user_error else logging.ERROR,
+                f"Instant search {'user error' if classification.is_user_error else 'failed'} "
+                f"collection={readable_id} category={classification.category.value} "
+                f"duration_ms={duration_ms} error={e}",
             )
-            await self._event_bus.publish(
-                SearchFailedEvent(
-                    organization_id=ctx.organization.id,
-                    request_id=ctx.request_id,
-                    tier=SearchTier.INSTANT,
-                    plan=ctx.billing_plan,
-                    message=str(e),
-                    duration_ms=duration_ms,
+            if not classification.is_user_error:
+                await self._event_bus.publish(
+                    SearchFailedEvent(
+                        organization_id=ctx.organization.id,
+                        request_id=ctx.request_id,
+                        tier=SearchTier.INSTANT,
+                        plan=ctx.billing_plan,
+                        message=classification.user_message,
+                        duration_ms=duration_ms,
+                        error_category=classification.category.value,
+                    )
                 )
-            )
             raise
 
     async def _execute(
@@ -91,7 +101,18 @@ class InstantSearchService(InstantSearchServiceProtocol):
         """Internal execution — resolve collection, build plan, execute."""
         collection = await self._collection_repo.get_by_readable_id(db, readable_id, ctx)
         if not collection:
-            raise HTTPException(status_code=404, detail=f"Collection '{readable_id}' not found")
+            raise CollectionNotFoundException(f"Collection '{readable_id}' not found")
+
+        source_connections = await self._sc_repo.get_by_collection_ids(
+            db,
+            organization_id=ctx.organization.id,
+            readable_collection_ids=[readable_id],
+        )
+        if not source_connections:
+            raise InvalidInputError(
+                f"Collection '{readable_id}' has no sources. "
+                "Add a source connection before searching."
+            )
 
         plan = SearchPlan(
             query=SearchQuery(primary=request.query),
