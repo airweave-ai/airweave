@@ -10,12 +10,8 @@ import pytest
 
 from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.state_machine import (
-    InvalidTransitionError,
-    LifecycleData,
-    SyncJobStateMachine,
-    validate_transition,
-)
+from airweave.domains.syncs.state_machine import SyncJobStateMachine
+from airweave.domains.syncs.types import InvalidTransitionError, LifecycleData
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -109,9 +105,9 @@ INVALID_TRANSITIONS = [
 def test_validate_transition(case: TransitionCase) -> None:
     if case.should_raise:
         with pytest.raises(InvalidTransitionError):
-            validate_transition(case.current, case.target)
+            SyncJobStateMachine._validate_transition(case.current, case.target)
     else:
-        validate_transition(case.current, case.target)
+        SyncJobStateMachine._validate_transition(case.current, case.target)
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +200,7 @@ async def test_transition_invalid_raises(mock_db_ctx, sm):
 
 @pytest.mark.asyncio
 @patch("airweave.domains.syncs.state_machine.get_db_context")
-async def test_transition_not_found(mock_db_ctx, sm):
+async def test_transition_not_found_raises(mock_db_ctx, sm):
     machine, repo, event_bus = sm
     db = AsyncMock()
     mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=db)
@@ -213,13 +209,13 @@ async def test_transition_not_found(mock_db_ctx, sm):
     repo.get.return_value = None
 
     ctx = _make_ctx()
-    result = await machine.transition(
-        sync_job_id=JOB_ID,
-        target=SyncJobStatus.RUNNING,
-        ctx=ctx,
-    )
+    with pytest.raises(ValueError, match="not found"):
+        await machine.transition(
+            sync_job_id=JOB_ID,
+            target=SyncJobStatus.RUNNING,
+            ctx=ctx,
+        )
 
-    assert result.applied is False
     repo.update.assert_not_called()
 
 

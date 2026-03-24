@@ -15,7 +15,7 @@ from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.types import SyncProvisionResult
+from airweave.domains.syncs.types import LifecycleData, SyncProvisionResult, TransitionResult
 from airweave.models.sync import Sync
 from airweave.models.sync_cursor import SyncCursor
 from airweave.models.sync_job import SyncJob
@@ -25,7 +25,6 @@ from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
 
 if TYPE_CHECKING:
     from airweave.core.context import BaseContext
-    from airweave.domains.syncs.state_machine import LifecycleData, TransitionResult
 
 
 class SyncJobRepositoryProtocol(Protocol):

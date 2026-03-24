@@ -9,7 +9,7 @@ Idempotent: re-writing the current status is a no-op (no DB write, no event).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 from uuid import UUID
 
 from airweave.core.context import BaseContext
@@ -20,11 +20,16 @@ from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
+from airweave.domains.syncs.protocols import (
+    SyncJobRepositoryProtocol,
+    SyncJobStateMachineProtocol,
+)
+from airweave.domains.syncs.types import (
+    InvalidTransitionError,
+    LifecycleData,
+    TransitionResult,
+)
 from airweave.schemas.sync_job import SyncJobUpdate
-
-if TYPE_CHECKING:
-    from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
 
 # ---------------------------------------------------------------------------
 # Transition graph
@@ -56,76 +61,6 @@ _LIFECYCLE_EVENT_FACTORY = {
     SyncJobStatus.FAILED: SyncLifecycleEvent.failed,
     SyncJobStatus.CANCELLED: SyncLifecycleEvent.cancelled,
 }
-
-# ---------------------------------------------------------------------------
-# Value objects
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class LifecycleData:
-    """Identifiers needed to publish a SyncLifecycleEvent."""
-
-    organization_id: UUID
-    sync_id: UUID
-    sync_job_id: UUID
-    collection_id: UUID
-    source_connection_id: UUID
-    source_type: str = ""
-    collection_name: str = ""
-    collection_readable_id: str = ""
-
-
-@dataclass(frozen=True)
-class TransitionResult:
-    """Outcome of a transition attempt."""
-
-    applied: bool
-    previous: SyncJobStatus
-    current: SyncJobStatus
-
-
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
-
-
-class InvalidTransitionError(Exception):
-    """Raised when a status transition violates the state machine graph."""
-
-    def __init__(
-        self,
-        current: SyncJobStatus,
-        target: SyncJobStatus,
-        sync_job_id: UUID | str | None = None,
-    ) -> None:
-        """Initialize with current/target status and optional job ID."""
-        self.current = current
-        self.target = target
-        self.sync_job_id = sync_job_id
-        job = f" for job {sync_job_id}" if sync_job_id else ""
-        super().__init__(f"Invalid transition {current.value} → {target.value}{job}")
-
-
-# ---------------------------------------------------------------------------
-# Pure validation (usable without DB/event bus)
-# ---------------------------------------------------------------------------
-
-
-def validate_transition(
-    current: SyncJobStatus,
-    target: SyncJobStatus,
-    sync_job_id: UUID | str | None = None,
-) -> None:
-    """Raise InvalidTransitionError if the transition is not allowed.
-
-    Same-status re-writes are allowed (idempotent).
-    """
-    if target == current:
-        return
-    allowed = _VALID_TRANSITIONS.get(current, set())
-    if target not in allowed:
-        raise InvalidTransitionError(current, target, sync_job_id)
 
 
 # ---------------------------------------------------------------------------
@@ -173,16 +108,12 @@ class SyncJobStateMachine(SyncJobStateMachineProtocol):
 
         Raises:
             InvalidTransitionError: If the transition is illegal.
+            ValueError: If the sync job is not found.
         """
         async with get_db_context() as db:
             db_job = await self.sync_job_repo.get(db=db, id=sync_job_id, ctx=ctx)
             if not db_job:
-                logger.error(f"Sync job {sync_job_id} not found")
-                return TransitionResult(
-                    applied=False,
-                    previous=SyncJobStatus.PENDING,
-                    current=SyncJobStatus.PENDING,
-                )
+                raise ValueError(f"Sync job {sync_job_id} not found")
 
             current = SyncJobStatus(db_job.status)
 
@@ -190,7 +121,7 @@ class SyncJobStateMachine(SyncJobStateMachineProtocol):
                 logger.debug(f"Sync job {sync_job_id} already in {target.value} (idempotent skip)")
                 return TransitionResult(applied=False, previous=current, current=current)
 
-            validate_transition(current, target, sync_job_id)
+            self._validate_transition(current, target, sync_job_id)
 
             update = self._build_update(target, error=error, stats=stats)
             await self.sync_job_repo.update(db=db, db_obj=db_job, obj_in=update, ctx=ctx)
@@ -206,6 +137,19 @@ class SyncJobStateMachine(SyncJobStateMachineProtocol):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_transition(
+        current: SyncJobStatus,
+        target: SyncJobStatus,
+        sync_job_id: UUID | str | None = None,
+    ) -> None:
+        """Raise InvalidTransitionError if the transition is not allowed."""
+        if target == current:
+            return
+        allowed = _VALID_TRANSITIONS.get(current, set())
+        if target not in allowed:
+            raise InvalidTransitionError(current, target, sync_job_id)
 
     @staticmethod
     def _build_update(

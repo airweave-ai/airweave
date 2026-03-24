@@ -14,7 +14,6 @@ from airweave.api.context import ApiContext
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
-from airweave.db.session import get_db_context
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -275,8 +274,6 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
                 detail=f"Cannot cancel job in {sync_job.status} state",
             )
 
-        original_status = sync_job.status
-
         await self._state_machine.transition(
             sync_job_id=job_id, target=SyncJobStatus.CANCELLING, ctx=ctx
         )
@@ -286,19 +283,6 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
         )
 
         if not cancel_result["success"]:
-            # Compensating revert — bypasses state machine (backward transition)
-            from airweave.schemas.sync_job import SyncJobUpdate as _SyncJobUpdate
-
-            async with get_db_context() as revert_db:
-                revert_job = await self._sync_job_repo.get(revert_db, job_id, ctx)
-                if revert_job:
-                    await self._sync_job_repo.update(
-                        revert_db,
-                        revert_job,
-                        _SyncJobUpdate(status=original_status),
-                        ctx,
-                    )
-                    await revert_db.commit()
             raise HTTPException(
                 status_code=502, detail="Failed to request cancellation from Temporal"
             )

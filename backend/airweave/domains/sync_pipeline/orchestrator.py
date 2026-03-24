@@ -22,7 +22,7 @@ from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
-from airweave.domains.syncs.state_machine import LifecycleData
+from airweave.domains.temporal.metrics import worker_metrics
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
@@ -81,8 +81,6 @@ class SyncOrchestrator:
         # Format: sync_{sync_id}_job_{sync_job_id} for easier parsing in metrics
         pool_id = f"sync_{self.sync_context.sync.id}_job_{self.sync_context.sync_job.id}"
         try:
-            from airweave.domains.temporal.metrics import worker_metrics
-
             worker_metrics.register_worker_pool(pool_id, self.worker_pool)
         except Exception as e:
             self.sync_context.logger.warning(
@@ -146,8 +144,6 @@ class SyncOrchestrator:
 
             # Unregister worker pool from metrics
             try:
-                from airweave.domains.temporal.metrics import worker_metrics
-
                 worker_metrics.unregister_worker_pool(pool_id)
             except Exception as e:
                 self.sync_context.logger.warning(
@@ -190,10 +186,8 @@ class SyncOrchestrator:
             sync_job_id=ctx.sync_job.id,
             target=SyncJobStatus.RUNNING,
             ctx=ctx,
-            lifecycle_data=self._lifecycle_data(),
+            lifecycle_data=ctx.lifecycle_data,
         )
-
-        self.sync_context.sync_job.started_at = utc_now_naive()
 
     async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
@@ -533,9 +527,6 @@ class SyncOrchestrator:
             stats=stats,
         )
 
-        # Track sync completed
-        from airweave.analytics import business_events
-
         entities_processed = 0
         entities_synced = 0  # NEW: actual work done (for billing)
         duration_ms = 0
@@ -729,18 +720,4 @@ class SyncOrchestrator:
             source_short_name=self.sync_context.connection.short_name,
             source_connection_id=self.sync_context.connection.id,
             duration_ms=duration_ms,
-        )
-
-    def _lifecycle_data(self) -> LifecycleData:
-        """Build LifecycleData from the current SyncContext."""
-        ctx = self.sync_context
-        return LifecycleData(
-            organization_id=ctx.organization_id,
-            sync_id=ctx.sync.id,
-            sync_job_id=ctx.sync_job.id,
-            collection_id=ctx.collection.id,
-            source_connection_id=ctx.source_connection_id,
-            source_type=ctx.source_short_name,
-            collection_name=ctx.collection.name,
-            collection_readable_id=ctx.collection.readable_id,
         )

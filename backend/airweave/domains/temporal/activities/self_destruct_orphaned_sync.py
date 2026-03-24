@@ -5,9 +5,8 @@ from typing import Any, Dict
 
 from temporalio import activity
 
-from airweave import schemas
-from airweave.core.context import BaseContext
 from airweave.domains.temporal import schedule_ids
+from airweave.domains.temporal.activities.context import build_activity_context
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 
 
@@ -41,10 +40,7 @@ class SelfDestructOrphanedSyncActivity:
         Returns:
             Summary of cleanup actions performed
         """
-        organization = schemas.Organization(**ctx_dict["organization"])
-
-        ctx = BaseContext(organization=organization)
-        ctx.logger = ctx.logger.with_context(sync_id=sync_id)
+        ctx = build_activity_context(ctx_dict, sync_id=sync_id)
 
         ctx.logger.info(f"Starting self-destruct cleanup for sync {sync_id}. Reason: {reason}")
 

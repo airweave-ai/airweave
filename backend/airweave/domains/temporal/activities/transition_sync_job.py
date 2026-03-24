@@ -12,12 +12,11 @@ from uuid import UUID
 
 from temporalio import activity
 
-from airweave import schemas
-from airweave.core.context import BaseContext
 from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
 from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
-from airweave.domains.syncs.state_machine import LifecycleData
+from airweave.domains.syncs.types import LifecycleData
+from airweave.domains.temporal.activities.context import build_activity_context
 
 _STATUS_MAP: dict[str, SyncJobStatus] = {
     "completed": SyncJobStatus.COMPLETED,
@@ -62,9 +61,7 @@ class TransitionSyncJobActivity:
         if target is None:
             raise ValueError(f"Unknown transition: {transition!r}")
 
-        organization = schemas.Organization(**ctx_dict["organization"])
-        ctx = BaseContext(organization=organization)
-        ctx.logger = ctx.logger.with_context(sync_job_id=sync_job_id)
+        ctx = build_activity_context(ctx_dict, sync_job_id=sync_job_id)
 
         stats = SyncStats(**stats_dict) if stats_dict else None
 

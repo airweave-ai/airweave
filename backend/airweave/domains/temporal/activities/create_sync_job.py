@@ -10,7 +10,6 @@ from uuid import UUID
 from temporalio import activity
 
 from airweave import schemas
-from airweave.core.context import BaseContext
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols import EventBus
@@ -22,6 +21,7 @@ from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
     SyncRepositoryProtocol,
 )
+from airweave.domains.temporal.activities.context import build_activity_context
 from airweave.domains.temporal.activity_results import CreateSyncJobResult
 
 
@@ -65,9 +65,7 @@ class CreateSyncJobActivity:
             CreateSyncJobResult with sync_job_dict, or orphaned/skipped flags.
         """
         organization = schemas.Organization(**ctx_dict["organization"])
-
-        ctx = BaseContext(organization=organization)
-        ctx.logger = ctx.logger.with_context(sync_id=sync_id)
+        ctx = build_activity_context(ctx_dict, sync_id=sync_id)
 
         ctx.logger.info(f"Creating sync job for sync {sync_id} (force_full_sync={force_full_sync})")
 

@@ -47,6 +47,7 @@ def create_activities() -> list:
     return [
         RunSyncActivity(
             sync_service=sync_service,
+            sync_repo=sync_repo,
             collection_repo=collection_repo,
         ).run,
         CreateSyncJobActivity(

@@ -22,7 +22,8 @@ from airweave.core.exceptions import NotFoundException
 from airweave.db.session import get_db_context
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.sync_pipeline.config import SyncConfig
-from airweave.domains.syncs.protocols import SyncServiceProtocol
+from airweave.domains.syncs.protocols import SyncRepositoryProtocol, SyncServiceProtocol
+from airweave.domains.temporal.activities.context import build_activity_context
 from airweave.domains.temporal.activities.heartbeat import HeartbeatMonitor
 from airweave.domains.temporal.exceptions import ORPHANED_SYNC_ERROR_TYPE, OrphanedSyncError
 from airweave.domains.temporal.metrics import worker_metrics
@@ -80,6 +81,7 @@ class RunSyncActivity:
     """
 
     sync_service: SyncServiceProtocol
+    sync_repo: SyncRepositoryProtocol
     collection_repo: CollectionRepositoryProtocol
 
     @activity.defn(name="run_sync_activity")
@@ -98,8 +100,7 @@ class RunSyncActivity:
         connection = schemas.Connection(**connection_dict)
         organization = schemas.Organization(**ctx_dict["organization"])
 
-        ctx = BaseContext(organization=organization)
-        ctx.logger = ctx.logger.with_context(sync_job_id=str(sync_job.id))
+        ctx = build_activity_context(ctx_dict, sync_job_id=str(sync_job.id))
 
         sync, collection = await self._resolve_from_db(sync_dict, collection_dict, ctx)
 
@@ -129,7 +130,9 @@ class RunSyncActivity:
         collection_id = UUID(collection_dict["id"])
 
         async with get_db_context() as db:
-            sync = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=True)
+            sync = await self.sync_repo.get(db=db, id=sync_id, ctx=ctx)
+            if not sync:
+                raise ValueError(f"Sync {sync_id} not found in database")
 
             collection_model = await self.collection_repo.get(db=db, id=collection_id, ctx=ctx)
             if not collection_model:

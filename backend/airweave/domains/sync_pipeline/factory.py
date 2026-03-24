@@ -104,7 +104,7 @@ class SyncFactory(SyncFactoryProtocol):
         usage_checker: UsageLimitCheckerProtocol,
         usage_ledger: UsageLedgerProtocol,
         storage_backend: StorageBackend,
-        state_machine: "SyncJobStateMachineProtocol",
+        state_machine: SyncJobStateMachineProtocol,
     ) -> None:
         """Initialize with all required service and repository dependencies."""
         # Repositories

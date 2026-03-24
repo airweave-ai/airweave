@@ -55,10 +55,13 @@ export const SourceButton = ({ id, name, shortName, supportsBrowseTree, onClick,
         alt={`${shortName} icon`}
         className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 object-contain"
         onError={(e) => {
-          // Fallback to initials if icon fails to load
           e.currentTarget.style.display = 'none';
-          e.currentTarget.parentElement!.classList.add(getColorClass(shortName));
-          e.currentTarget.parentElement!.innerHTML = `<span class="text-white font-semibold text-xs sm:text-sm">${shortName.substring(0, 2).toUpperCase()}</span>`;
+          const parent = e.currentTarget.parentElement!;
+          parent.classList.add(getColorClass(shortName));
+          const span = document.createElement('span');
+          span.className = 'text-white font-semibold text-xs sm:text-sm';
+          span.textContent = shortName.substring(0, 2).toUpperCase();
+          parent.appendChild(span);
         }}
       />
     </div>
