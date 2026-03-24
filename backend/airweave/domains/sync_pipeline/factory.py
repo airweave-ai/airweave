@@ -238,6 +238,7 @@ class SyncFactory(SyncFactoryProtocol):
             usage_ledger=self._usage_ledger,
             sync_cursor_service=self._sync_cursor_service,
             state_machine=self._state_machine,
+            lifecycle_data=sync_context.lifecycle_data,
         )
 
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")

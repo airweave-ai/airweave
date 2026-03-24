@@ -22,6 +22,7 @@ from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
+from airweave.domains.syncs.types import LifecycleData
 from airweave.domains.temporal.metrics import worker_metrics
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
@@ -56,6 +57,7 @@ class SyncOrchestrator:
         usage_ledger: UsageLedgerProtocol,
         sync_cursor_service: SyncCursorService,
         state_machine: SyncJobStateMachineProtocol,
+        lifecycle_data: LifecycleData,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
@@ -69,6 +71,7 @@ class SyncOrchestrator:
         self._usage_ledger = usage_ledger
         self._sync_cursor_service = sync_cursor_service
         self._state_machine = state_machine
+        self._lifecycle_data = lifecycle_data
 
         # Batch config from context
         self.should_batch = sync_context.should_batch
@@ -181,12 +184,11 @@ class SyncOrchestrator:
 
         await self.stream.start()
 
-        ctx = self.sync_context
         await self._state_machine.transition(
-            sync_job_id=ctx.sync_job.id,
+            sync_job_id=self.sync_context.sync_job.id,
             target=SyncJobStatus.RUNNING,
-            ctx=ctx,
-            lifecycle_data=ctx.lifecycle_data,
+            ctx=self.sync_context,
+            lifecycle_data=self._lifecycle_data,
         )
 
     async def _process_entities(self) -> None:  # noqa: C901
@@ -524,6 +526,7 @@ class SyncOrchestrator:
             sync_job_id=self.sync_context.sync_job.id,
             target=SyncJobStatus.COMPLETED,
             ctx=self.sync_context,
+            lifecycle_data=self._lifecycle_data,
             stats=stats,
         )
 
@@ -661,6 +664,7 @@ class SyncOrchestrator:
             sync_job_id=self.sync_context.sync_job.id,
             target=SyncJobStatus.FAILED,
             ctx=self.sync_context,
+            lifecycle_data=self._lifecycle_data,
             error=error_message,
             stats=stats,
         )
@@ -700,6 +704,7 @@ class SyncOrchestrator:
             sync_job_id=self.sync_context.sync_job.id,
             target=SyncJobStatus.CANCELLED,
             ctx=self.sync_context,
+            lifecycle_data=self._lifecycle_data,
         )
 
         # 4. Track sync cancelled
