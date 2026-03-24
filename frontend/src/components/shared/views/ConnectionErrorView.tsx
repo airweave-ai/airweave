@@ -11,6 +11,7 @@
  */
 
 import React, { useEffect, useState } from "react";
+import { useImageFallback } from "@/hooks/use-image-fallback";
 import { DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Copy, Check } from "lucide-react";
@@ -52,6 +53,12 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
     const [isDetailsCopied, setIsDetailsCopied] = useState(false);
+
+    const sourceIconSrc = getAppIconUrl(
+        viewData?.sourceShortName || viewData?.serviceName?.toLowerCase() || "unknown-service",
+        resolvedTheme
+    );
+    const { error: sourceIconError, onError: onSourceIconError } = useImageFallback(sourceIconSrc);
 
     // Destructure error information from viewData
     const {
@@ -137,21 +144,26 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
                             "w-64 h-64 flex items-center justify-center border border-black rounded-lg p-2",
                             isDark ? "border-gray-700" : "border-gray-800"
                         )}>
-                            <img
-                                src={getAppIconUrl(sourceShortName, resolvedTheme)}
-                                alt={`${serviceName} icon`}
-                                className="w-full h-full object-contain"
-                                onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                    e.currentTarget.parentElement!.innerHTML = `
-                                    <div class="w-full h-full rounded-lg flex items-center justify-center ${isDark ? 'bg-blue-900' : 'bg-blue-100'}">
-                                      <span class="text-5xl font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}">
-                                        ${sourceShortName.substring(0, 2).toUpperCase()}
-                                      </span>
-                                    </div>
-                                  `;
-                                }}
-                            />
+                            {sourceIconError ? (
+                                <div className={cn(
+                                    "w-full h-full rounded-lg flex items-center justify-center",
+                                    isDark ? "bg-blue-900" : "bg-blue-100"
+                                )}>
+                                    <span className={cn(
+                                        "text-5xl font-bold",
+                                        isDark ? "text-blue-400" : "text-blue-600"
+                                    )}>
+                                        {sourceShortName.substring(0, 2).toUpperCase()}
+                                    </span>
+                                </div>
+                            ) : (
+                                <img
+                                    src={sourceIconSrc}
+                                    alt={`${serviceName} icon`}
+                                    className="w-full h-full object-contain"
+                                    onError={onSourceIconError}
+                                />
+                            )}
                         </div>
                     </div>
 

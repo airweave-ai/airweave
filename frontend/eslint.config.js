@@ -33,6 +33,20 @@ export default tseslint.config(
         "property": "random",
         "message": "Use crypto.getRandomValues() or crypto.randomUUID() instead of Math.random().",
       }],
+      "no-restricted-syntax": ["error",
+        {
+          "selector": "AssignmentExpression[left.property.name='innerHTML']",
+          "message": "Do not assign to innerHTML — use React state-driven rendering to prevent XSS (CASA-41).",
+        },
+        {
+          "selector": "AssignmentExpression[left.computed=true][left.property.value='innerHTML']",
+          "message": "Do not assign to innerHTML — use React state-driven rendering to prevent XSS (CASA-41).",
+        },
+        {
+          "selector": "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          "message": "Do not use dangerouslySetInnerHTML — use React state-driven rendering to prevent XSS (CASA-41).",
+        },
+      ],
     },
   }
 );

@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import { useImageFallback } from "@/hooks/use-image-fallback";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -34,6 +35,9 @@ export const EditAuthProviderView: React.FC<EditAuthProviderViewProps> = ({
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
     const { fetchAuthProviderConnections } = useAuthProvidersStore();
+
+    const providerIconSrc = getAuthProviderIconUrl(authProviderShortName || "", resolvedTheme);
+    const { error: providerIconError, onError: onProviderIconError } = useImageFallback(providerIconSrc);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -249,21 +253,26 @@ export const EditAuthProviderView: React.FC<EditAuthProviderViewProps> = ({
                                 "w-64 h-64 flex items-center justify-center border rounded-lg p-2",
                                 isDark ? "border-gray-700" : "border-gray-300"
                             )}>
-                                <img
-                                    src={getAuthProviderIconUrl(authProviderShortName, resolvedTheme)}
-                                    alt={`${authProviderName} icon`}
-                                    className="w-full h-full object-contain"
-                                    onError={(e) => {
-                                        e.currentTarget.style.display = 'none';
-                                        e.currentTarget.parentElement!.innerHTML = `
-                                            <div class="w-full h-full rounded-lg flex items-center justify-center ${isDark ? 'bg-blue-900' : 'bg-blue-100'}">
-                                                <span class="text-5xl font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}">
-                                                    ${authProviderShortName.substring(0, 2).toUpperCase()}
-                                                </span>
-                                            </div>
-                                        `;
-                                    }}
-                                />
+                                {providerIconError ? (
+                                    <div className={cn(
+                                        "w-full h-full rounded-lg flex items-center justify-center",
+                                        isDark ? "bg-blue-900" : "bg-blue-100"
+                                    )}>
+                                        <span className={cn(
+                                            "text-5xl font-bold",
+                                            isDark ? "text-blue-400" : "text-blue-600"
+                                        )}>
+                                            {authProviderShortName.substring(0, 2).toUpperCase()}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <img
+                                        src={providerIconSrc}
+                                        alt={`${authProviderName} icon`}
+                                        className="w-full h-full object-contain"
+                                        onError={onProviderIconError}
+                                    />
+                                )}
                             </div>
                         </div>
                     )}

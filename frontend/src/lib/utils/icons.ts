@@ -1,4 +1,14 @@
-import { useTheme } from "@/lib/theme-provider";
+const FALLBACK_COLORS = [
+  "bg-blue-500", "bg-green-500", "bg-purple-500", "bg-orange-500",
+  "bg-pink-500", "bg-indigo-500", "bg-red-500", "bg-yellow-500",
+];
+
+export function getColorClass(shortName: string): string {
+  const index = shortName
+    .split("")
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0) % FALLBACK_COLORS.length;
+  return FALLBACK_COLORS[index];
+}
 
 export function getAppIconUrl(shortName: string, theme?: string): string {
   try {

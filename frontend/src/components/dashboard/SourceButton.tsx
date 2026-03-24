@@ -1,9 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus } from "lucide-react";
-import { getAppIconUrl } from "@/lib/utils/icons";
+import { getAppIconUrl, getColorClass } from "@/lib/utils/icons";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
+import { useImageFallback } from "@/hooks/use-image-fallback";
 import {
   Tooltip,
   TooltipContent,
@@ -29,43 +30,8 @@ export const SourceButton = ({ id, name, shortName, supportsBrowseTree, onClick,
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
-  // Get color class based on shortName
-  const getColorClass = (shortName: string) => {
-    const colors = [
-      "bg-blue-500",
-      "bg-green-500",
-      "bg-purple-500",
-      "bg-orange-500",
-      "bg-pink-500",
-      "bg-indigo-500",
-      "bg-red-500",
-      "bg-yellow-500",
-    ];
-
-    // Hash the short name to get a consistent color
-    const index = shortName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
-    return colors[index];
-  };
-
-  // Source icon component
-  const SourceIcon = () => (
-    <div className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 overflow-hidden rounded-md flex-shrink-0">
-      <img
-        src={getAppIconUrl(shortName, resolvedTheme)}
-        alt={`${shortName} icon`}
-        className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 object-contain"
-        onError={(e) => {
-          e.currentTarget.style.display = 'none';
-          const parent = e.currentTarget.parentElement!;
-          parent.classList.add(getColorClass(shortName));
-          const span = document.createElement('span');
-          span.className = 'text-white font-semibold text-xs sm:text-sm';
-          span.textContent = shortName.substring(0, 2).toUpperCase();
-          parent.appendChild(span);
-        }}
-      />
-    </div>
-  );
+  const iconSrc = getAppIconUrl(shortName, resolvedTheme);
+  const { error: iconError, onError: onIconError } = useImageFallback(iconSrc);
 
   // Determine which action is blocking and get tooltip content
   const getTooltipContent = () => {
@@ -124,7 +90,23 @@ export const SourceButton = ({ id, name, shortName, supportsBrowseTree, onClick,
     >
       <div className="p-2 sm:p-3 md:p-4 flex items-center justify-between">
         <div className="flex items-center gap-2 sm:gap-3">
-          <SourceIcon />
+          <div className={cn(
+            "flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 overflow-hidden rounded-md flex-shrink-0",
+            iconError && getColorClass(shortName)
+          )}>
+            {iconError ? (
+              <span className="text-white font-semibold text-xs sm:text-sm">
+                {shortName.substring(0, 2).toUpperCase()}
+              </span>
+            ) : (
+              <img
+                src={iconSrc}
+                alt={`${shortName} icon`}
+                className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 object-contain"
+                onError={onIconError}
+              />
+            )}
+          </div>
           <span className={cn(
             "text-xs sm:text-sm font-medium truncate",
             disabled && "text-muted-foreground"

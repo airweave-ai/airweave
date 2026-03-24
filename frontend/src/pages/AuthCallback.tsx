@@ -21,6 +21,7 @@ import { useSearchParams } from "react-router-dom";
 import { apiClient } from "@/lib/api";
 import { CONNECTION_ERROR_STORAGE_KEY } from "@/lib/error-utils";
 import { useAuth } from "@/lib/auth-context";
+import { safeRedirectPath } from "@/lib/utils/url-validation";
 
 /** ------------------------------------------------------------------
  * Helpers to decode/parse `state` from the OAuth redirect
@@ -183,7 +184,7 @@ async function handleSemanticMcpOAuthCallback(
     sessionStorage.setItem("oauth_dialog_state", JSON.stringify(updatedState));
 
     // Redirect back to SemanticMcp with restore flag
-    const returnPath = savedState.originPath || "/semantic-mcp";
+    const returnPath = safeRedirectPath(savedState.originPath ?? "", "/semantic-mcp");
     window.location.href = `${returnPath}?restore_dialog=true`;
   } catch (error) {
     console.error("❌ Error in SemanticMcp OAuth callback:", error);
@@ -206,7 +207,7 @@ async function handleSemanticMcpOAuthCallback(
     sessionStorage.removeItem("oauth_dialog_state");
 
     // Redirect back to SemanticMcp with error flag
-    const returnPath = savedState.originPath || "/semantic-mcp";
+    const returnPath = safeRedirectPath(savedState.originPath ?? "", "/semantic-mcp");
     window.location.href = `${returnPath}?error=oauth`;
   }
 }
@@ -257,7 +258,7 @@ async function handleOriginalOAuthCallback(
       localStorage.setItem(CONNECTION_ERROR_STORAGE_KEY, JSON.stringify(errorData));
 
       // Immediate redirect to dashboard with error flag
-      const returnPath = savedState.originPath || "/";
+      const returnPath = safeRedirectPath(savedState.originPath ?? "", "/");
       window.location.href = `${returnPath}?connected=error`;
       return;
     }
@@ -285,7 +286,7 @@ async function handleOriginalOAuthCallback(
     sessionStorage.setItem("oauth_dialog_state", JSON.stringify(updatedState));
 
     // Redirect back to original page with flag to restore dialog
-    const returnPath = savedState.originPath || "/";
+    const returnPath = safeRedirectPath(savedState.originPath ?? "", "/");
     window.location.href = `${returnPath}?restore_dialog=true`;
   } catch (error) {
     console.error("❌ Error processing OAuth callback:", error);
@@ -317,7 +318,7 @@ async function handleOriginalOAuthCallback(
     localStorage.setItem(CONNECTION_ERROR_STORAGE_KEY, JSON.stringify(errorData));
 
     // Redirect with error flag - this will trigger the error UI
-    const returnPath = parsedState.originPath || "/dashboard";
+    const returnPath = safeRedirectPath(parsedState.originPath ?? "", "/dashboard");
     window.location.href = `${returnPath}?connected=error`;
   }
 }
@@ -391,7 +392,7 @@ export function AuthCallback() {
               sessionStorage.removeItem("oauth_dialog_state");
 
               // Redirect back with error flag
-              const returnPath = savedState.originPath || "/semantic-mcp";
+              const returnPath = safeRedirectPath(savedState.originPath ?? "", "/semantic-mcp");
               window.location.href = `${returnPath}?error=oauth`;
               return;
             }
@@ -411,7 +412,7 @@ export function AuthCallback() {
               sessionStorage.setItem("semantic_mcp_error", JSON.stringify(errorDetails));
               sessionStorage.removeItem("oauth_dialog_state");
 
-              const returnPath = savedState.originPath || "/semantic-mcp";
+              const returnPath = safeRedirectPath(savedState.originPath ?? "", "/semantic-mcp");
               window.location.href = `${returnPath}?error=oauth`;
               return;
             }

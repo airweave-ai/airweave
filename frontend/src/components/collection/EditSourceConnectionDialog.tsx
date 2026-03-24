@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useImageFallback } from "@/hooks/use-image-fallback";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,6 +48,9 @@ export const EditSourceConnectionDialog: React.FC<EditSourceConnectionDialogProp
     isDark,
     resolvedTheme
 }) => {
+    const editIconSrc = getAppIconUrl(sourceConnection?.short_name || "", resolvedTheme);
+    const { error: editIconError, onError: onEditIconError } = useImageFallback(editIconSrc);
+
     // Check if auth fields should be shown
     const showAuthFields = sourceDetails?.auth_fields?.fields &&
         sourceDetails.auth_fields.fields.length > 0 &&
@@ -98,21 +102,26 @@ export const EditSourceConnectionDialog: React.FC<EditSourceConnectionDialogProp
                                     "w-12 h-12 flex-shrink-0 flex items-center justify-center border rounded-lg p-1.5",
                                     isDark ? "border-gray-700" : "border-gray-300"
                                 )}>
-                                    <img
-                                        src={getAppIconUrl(sourceConnection.short_name, resolvedTheme)}
-                                        alt={`${sourceConnection.name} icon`}
-                                        className="w-full h-full object-contain"
-                                        onError={(e) => {
-                                            e.currentTarget.style.display = 'none';
-                                            e.currentTarget.parentElement!.innerHTML = `
-                                                <div class="w-full h-full rounded-lg flex items-center justify-center ${isDark ? 'bg-blue-900' : 'bg-blue-100'}">
-                                                    <span class="text-xs font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}">
-                                                        ${sourceConnection.short_name.substring(0, 2).toUpperCase()}
-                                                    </span>
-                                                </div>
-                                            `;
-                                        }}
-                                    />
+                                    {editIconError ? (
+                                        <div className={cn(
+                                            "w-full h-full rounded-lg flex items-center justify-center",
+                                            isDark ? "bg-blue-900" : "bg-blue-100"
+                                        )}>
+                                            <span className={cn(
+                                                "text-xs font-bold",
+                                                isDark ? "text-blue-400" : "text-blue-600"
+                                            )}>
+                                                {sourceConnection.short_name.substring(0, 2).toUpperCase()}
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <img
+                                            src={editIconSrc}
+                                            alt={`${sourceConnection.name} icon`}
+                                            className="w-full h-full object-contain"
+                                            onError={onEditIconError}
+                                        />
+                                    )}
                                 </div>
                                 <DialogTitle className="text-2xl font-semibold text-left">
                                     Edit {sourceConnection.name}

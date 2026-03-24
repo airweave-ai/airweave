@@ -4,6 +4,7 @@ import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
 import { apiClient } from "@/lib/api";
 import { getAppIconUrl } from "@/lib/utils/icons";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
 import { useAuthProvidersStore } from "@/lib/stores/authProviders";
@@ -201,7 +202,21 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ context }) =
                             <div key={field.name}>
                                 <label className="text-sm font-medium">{field.title || field.name}</label>
                                 {field.description && <p className="text-xs text-muted-foreground">{field.description}</p>}
-                                {field.type === 'array' ? (
+                                {field.enum_values ? (
+                                    <Select
+                                        value={configValues[field.name] || ''}
+                                        onValueChange={(value) => handleFieldChange(setConfigValues)(field.name, value)}
+                                    >
+                                        <SelectTrigger className={cn("w-full mt-1", isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300")}>
+                                            <SelectValue placeholder={`Select ${field.title?.toLowerCase() || field.name}`} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {field.enum_values.map((option: string) => (
+                                                <SelectItem key={option} value={option}>{option}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : field.type === 'array' ? (
                                     <TagInput
                                         value={(Array.isArray(configValues[field.name]) ? configValues[field.name] : []) as string[]}
                                         onChange={(tags) => {
@@ -242,7 +257,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ context }) =
                                     const filteredConnections = authProviderConnections.filter(
                                         conn => supportedAuthProviders.includes(conn.short_name)
                                     );
-                                    
+
                                     return filteredConnections.length > 0 ? (
                                         <div className="space-y-2">
                                             {filteredConnections.map(conn => (
@@ -260,7 +275,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ context }) =
                                         </div>
                                     ) : (
                                         <p className="text-sm text-muted-foreground">
-                                            {authProviderConnections.length > 0 
+                                            {authProviderConnections.length > 0
                                                 ? "This source is not supported by your connected auth providers."
                                                 : "No auth providers connected."}
                                         </p>

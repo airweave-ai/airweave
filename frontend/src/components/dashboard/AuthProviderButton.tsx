@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Plus, Check } from "lucide-react";
-import { getAuthProviderIconUrl } from "@/lib/utils/icons";
+import { getAuthProviderIconUrl, getColorClass } from "@/lib/utils/icons";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
+import { useImageFallback } from "@/hooks/use-image-fallback";
 
 interface AuthProviderButtonProps {
     id: string;
@@ -40,40 +41,8 @@ export const AuthProviderButton = ({
         }
     };
 
-    // Get color class based on shortName for fallback
-    const getColorClass = (shortName: string) => {
-        const colors = [
-            "bg-blue-500",
-            "bg-green-500",
-            "bg-purple-500",
-            "bg-orange-500",
-            "bg-pink-500",
-            "bg-indigo-500",
-            "bg-red-500",
-            "bg-yellow-500",
-        ];
-
-        // Hash the short name to get a consistent color
-        const index = shortName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
-        return colors[index];
-    };
-
-    // Auth provider icon component
-    const AuthProviderIcon = () => (
-        <div className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 overflow-hidden rounded-md flex-shrink-0">
-            <img
-                src={getAuthProviderIconUrl(shortName, resolvedTheme)}
-                alt={`${shortName} icon`}
-                className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 object-contain"
-                onError={(e) => {
-                    // Fallback to initials if icon fails to load
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.parentElement!.classList.add(getColorClass(shortName));
-                    e.currentTarget.parentElement!.innerHTML = `<span class="text-white font-semibold text-xs sm:text-sm">${shortName.substring(0, 2).toUpperCase()}</span>`;
-                }}
-            />
-        </div>
-    );
+    const iconSrc = getAuthProviderIconUrl(shortName, resolvedTheme);
+    const { error: iconError, onError: onIconError } = useImageFallback(iconSrc);
 
     return (
         <div
@@ -91,7 +60,23 @@ export const AuthProviderButton = ({
         >
             <div className="p-2 sm:p-3 md:p-4 flex items-center justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">
-                    <AuthProviderIcon />
+                    <div className={cn(
+                        "flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 overflow-hidden rounded-md flex-shrink-0",
+                        iconError && getColorClass(shortName)
+                    )}>
+                        {iconError ? (
+                            <span className="text-white font-semibold text-xs sm:text-sm">
+                                {shortName.substring(0, 2).toUpperCase()}
+                            </span>
+                        ) : (
+                            <img
+                                src={iconSrc}
+                                alt={`${shortName} icon`}
+                                className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 object-contain"
+                                onError={onIconError}
+                            />
+                        )}
+                    </div>
                     <div className="flex flex-col">
                         <span className="text-xs sm:text-sm font-medium truncate">{name}</span>
                         {isComingSoon && (

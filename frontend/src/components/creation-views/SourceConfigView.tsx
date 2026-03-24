@@ -11,6 +11,7 @@ import { AuthMethodSelector } from './AuthMethodSelector';
 import { AuthProviderSelector } from './AuthProviderSelector';
 import { useAuthProvidersStore } from '@/lib/stores/authProviders';
 import { ValidatedInput } from '@/components/ui/validated-input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TagInput } from '@/components/ui/tag-input';
 import { sourceConnectionNameValidation, getAuthFieldValidation, clientIdValidation, clientSecretValidation, redirectUrlValidation } from '@/lib/validation/rules';
 import ReactMarkdown from 'react-markdown';
@@ -731,7 +732,27 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                                 </ReactMarkdown>
                               </div>
                             )}
-                            {field.type === 'array' ? (
+                            {field.enum_values ? (
+                              <Select
+                                value={(configData[field.name] as string) || ''}
+                                onValueChange={(value) => setConfigData({ ...configData, [field.name]: value })}
+                              >
+                                <SelectTrigger className={cn(
+                                  "w-full px-4 py-2 rounded-lg text-sm",
+                                  "border bg-transparent",
+                                  isDark
+                                    ? "border-gray-800 text-white"
+                                    : "border-gray-200 text-gray-900"
+                                )}>
+                                  <SelectValue placeholder={`Select ${field.title?.toLowerCase() || field.name}`} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {field.enum_values.map((option: string) => (
+                                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : field.type === 'array' ? (
                               <TagInput
                                 value={(Array.isArray(configData[field.name]) ? configData[field.name] : []) as string[]}
                                 onChange={(tags) => setConfigData({ ...configData, [field.name]: tags })}

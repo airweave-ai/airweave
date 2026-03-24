@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useImageFallback } from "@/hooks/use-image-fallback";
 import type { DialogViewProps } from "@/components/types/dialog";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
@@ -205,6 +206,12 @@ export const AuthProviderDetailView: React.FC<AuthProviderDetailViewProps> = ({
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
     const { fetchAuthProviderConnections } = useAuthProvidersStore();
+
+    const awLogoSrc = isDark ? "/airweave-logo-svg-white-darkbg.svg" : "/airweave-logo-svg-lightbg-blacklogo.svg";
+    const { error: awLogoError, onError: onAwLogoError } = useImageFallback(awLogoSrc);
+
+    const providerIconSrc = getAuthProviderIconUrl(authProviderShortName || "", resolvedTheme);
+    const { error: providerIconError, onError: onProviderIconError } = useImageFallback(providerIconSrc);
 
     const [loading, setLoading] = useState(true);
     const [connectionDetails, setConnectionDetails] = useState<any>(null);
@@ -555,21 +562,26 @@ export const AuthProviderDetailView: React.FC<AuthProviderDetailViewProps> = ({
                                             isDark ? "bg-gray-800/50" : "bg-white/80",
                                             "shadow-lg ring-2 ring-green-400/30"
                                         )}>
-                                            <img
-                                                src={isDark ? "/airweave-logo-svg-white-darkbg.svg" : "/airweave-logo-svg-lightbg-blacklogo.svg"}
-                                                alt="Airweave"
-                                                className="w-full h-full object-contain"
-                                                onError={(e) => {
-                                                    e.currentTarget.style.display = 'none';
-                                                    e.currentTarget.parentElement!.innerHTML = `
-                                                        <div class="w-full h-full rounded flex items-center justify-center ${isDark ? 'bg-blue-900' : 'bg-blue-100'}">
-                                                            <span class="text-xl font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}">
-                                                                AW
-                                                            </span>
-                                                        </div>
-                                                    `;
-                                                }}
-                                            />
+                                            {awLogoError ? (
+                                                <div className={cn(
+                                                    "w-full h-full rounded flex items-center justify-center",
+                                                    isDark ? "bg-blue-900" : "bg-blue-100"
+                                                )}>
+                                                    <span className={cn(
+                                                        "text-xl font-bold",
+                                                        isDark ? "text-blue-400" : "text-blue-600"
+                                                    )}>
+                                                        AW
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <img
+                                                    src={awLogoSrc}
+                                                    alt="Airweave"
+                                                    className="w-full h-full object-contain"
+                                                    onError={onAwLogoError}
+                                                />
+                                            )}
                                         </div>
 
                                         {/* Connection Icon - Bottom Right */}
@@ -649,21 +661,26 @@ export const AuthProviderDetailView: React.FC<AuthProviderDetailViewProps> = ({
                                             isDark ? "bg-gray-800/50" : "bg-white/80",
                                             "shadow-lg ring-2 ring-green-400/30"
                                         )}>
-                                            <img
-                                                src={getAuthProviderIconUrl(authProviderShortName, resolvedTheme)}
-                                                alt={authProviderName}
-                                                className="w-full h-full object-contain"
-                                                onError={(e) => {
-                                                    e.currentTarget.style.display = 'none';
-                                                    e.currentTarget.parentElement!.innerHTML = `
-                                                        <div class="w-full h-full rounded-lg flex items-center justify-center ${isDark ? 'bg-blue-900' : 'bg-blue-100'}">
-                                                            <span class="text-xl font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}">
-                                                                ${authProviderShortName.substring(0, 2).toUpperCase()}
-                                                            </span>
-                                                        </div>
-                                                    `;
-                                                }}
-                                            />
+                                            {providerIconError ? (
+                                                <div className={cn(
+                                                    "w-full h-full rounded-lg flex items-center justify-center",
+                                                    isDark ? "bg-blue-900" : "bg-blue-100"
+                                                )}>
+                                                    <span className={cn(
+                                                        "text-xl font-bold",
+                                                        isDark ? "text-blue-400" : "text-blue-600"
+                                                    )}>
+                                                        {authProviderShortName.substring(0, 2).toUpperCase()}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <img
+                                                    src={providerIconSrc}
+                                                    alt={authProviderName}
+                                                    className="w-full h-full object-contain"
+                                                    onError={onProviderIconError}
+                                                />
+                                            )}
                                         </div>
 
                                         {/* Connection Icon - Bottom Right */}

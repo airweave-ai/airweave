@@ -26,7 +26,7 @@ export function ConnectPreview({
   config,
   connectUrl,
 }: ConnectPreviewProps) {
-  const { iframeRef } = useIframeBridge({ sessionToken, config, isOpen });
+  const { iframeRef } = useIframeBridge({ sessionToken, config, isOpen, connectUrl });
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {

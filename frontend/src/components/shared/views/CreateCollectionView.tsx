@@ -19,6 +19,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
+import { useImageFallback } from "@/hooks/use-image-fallback";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -86,6 +87,9 @@ export const CreateCollectionView: React.FC<CreateCollectionViewProps> = ({
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
     const navigate = useNavigate();
+
+    const sourceIconSrc = getAppIconUrl(sourceShortName || "", resolvedTheme);
+    const { error: sourceIconError, onError: onSourceIconError } = useImageFallback(sourceIconSrc);
 
     /** Form submission state */
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -293,21 +297,26 @@ export const CreateCollectionView: React.FC<CreateCollectionViewProps> = ({
                                 "w-64 h-64 flex items-center justify-center border border-black rounded-lg p-2",
                                 isDark ? "border-gray-700" : "border-gray-800"
                             )}>
-                                <img
-                                    src={getAppIconUrl(sourceShortName, resolvedTheme)}
-                                    alt={`${sourceName} icon`}
-                                    className="w-full h-full object-contain"
-                                    onError={(e) => {
-                                        e.currentTarget.style.display = 'none';
-                                        e.currentTarget.parentElement!.innerHTML = `
-                        <div class="w-full h-full rounded-lg flex items-center justify-center ${isDark ? 'bg-blue-900' : 'bg-blue-100'}">
-                          <span class="text-5xl font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}">
-                            ${sourceShortName.substring(0, 2).toUpperCase()}
-                          </span>
-                        </div>
-                      `;
-                                    }}
-                                />
+                                {sourceIconError ? (
+                                    <div className={cn(
+                                        "w-full h-full rounded-lg flex items-center justify-center",
+                                        isDark ? "bg-blue-900" : "bg-blue-100"
+                                    )}>
+                                        <span className={cn(
+                                            "text-5xl font-bold",
+                                            isDark ? "text-blue-400" : "text-blue-600"
+                                        )}>
+                                            {sourceShortName.substring(0, 2).toUpperCase()}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <img
+                                        src={sourceIconSrc}
+                                        alt={`${sourceName} icon`}
+                                        className="w-full h-full object-contain"
+                                        onError={onSourceIconError}
+                                    />
+                                )}
                             </div>
                         </div>
                     )}
