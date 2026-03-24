@@ -39,7 +39,7 @@ async def build_activity_context(ctx_dict: Dict[str, Any], **log_dimensions: Any
 
 async def _fetch_organization(org_id: UUID) -> schemas.Organization:
     """Fetch an enriched Organization schema from DB by ID."""
-    from airweave.crud import crud
+    from airweave import crud
     from airweave.db.session import get_db_context
 
     async with get_db_context() as db:
