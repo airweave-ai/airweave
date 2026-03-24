@@ -40,7 +40,7 @@ class SelfDestructOrphanedSyncActivity:
         Returns:
             Summary of cleanup actions performed
         """
-        ctx = build_activity_context(ctx_dict, sync_id=sync_id)
+        ctx = await build_activity_context(ctx_dict, sync_id=sync_id)
 
         ctx.logger.info(f"Starting self-destruct cleanup for sync {sync_id}. Reason: {reason}")
 

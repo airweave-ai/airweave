@@ -98,9 +98,9 @@ class RunSyncActivity:
         """Execute a sync job. Raises on failure; returns None on success."""
         sync_job = schemas.SyncJob(**sync_job_dict)
         connection = schemas.Connection(**connection_dict)
-        organization = schemas.Organization(**ctx_dict["organization"])
 
-        ctx = build_activity_context(ctx_dict, sync_job_id=str(sync_job.id))
+        ctx = await build_activity_context(ctx_dict, sync_job_id=str(sync_job.id))
+        organization = ctx.organization
 
         sync, collection = await self._resolve_from_db(sync_dict, collection_dict, ctx)
 

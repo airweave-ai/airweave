@@ -67,8 +67,8 @@ class CreateSyncJobActivity:
         Returns:
             CreateSyncJobResult with sync_job_dict, or orphaned/skipped flags.
         """
-        organization = schemas.Organization(**ctx_dict["organization"])
-        ctx = build_activity_context(ctx_dict, sync_id=sync_id)
+        ctx = await build_activity_context(ctx_dict, sync_id=sync_id)
+        organization = ctx.organization
 
         ctx.logger.info(f"Creating sync job for sync {sync_id} (force_full_sync={force_full_sync})")
 

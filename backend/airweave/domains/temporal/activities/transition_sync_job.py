@@ -61,7 +61,7 @@ class TransitionSyncJobActivity:
         if target is None:
             raise ValueError(f"Unknown transition: {transition!r}")
 
-        ctx = build_activity_context(ctx_dict, sync_job_id=sync_job_id)
+        ctx = await build_activity_context(ctx_dict, sync_job_id=sync_job_id)
 
         stats = SyncStats(**stats_dict) if stats_dict else None
 

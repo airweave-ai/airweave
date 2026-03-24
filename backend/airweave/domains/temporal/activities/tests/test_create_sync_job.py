@@ -129,3 +129,125 @@ async def test_skips_when_job_already_running(activity, sync_job_repo):
 
     assert result.skipped is True
     assert result.reason is not None and "Already has" in result.reason
+
+
+@pytest.mark.unit
+async def test_force_full_sync_waits_for_running_jobs(activity, sync_job_repo):
+    """force_full_sync=True waits for running jobs then creates a new one."""
+    running_job = MagicMock()
+    running_job.sync_id = UUID(SYNC_ID)
+    running_job.organization_id = UUID(ORG_ID)
+    running_job.status = "RUNNING"
+    sync_job_repo.seed_jobs_for_sync(UUID(SYNC_ID), [running_job])
+
+    call_count = 0
+    original_get_active = sync_job_repo.get_active_for_sync
+
+    async def get_active_declining(db, sync_id, ctx):
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 1:
+            return [running_job]
+        return []
+
+    sync_job_repo.get_active_for_sync = get_active_declining
+
+    with (
+        patch(f"{MODULE}.get_db_context", _fake_db),
+        patch(f"{MODULE}.activity") as mock_activity,
+        patch(f"{MODULE}.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        result = await activity.run(
+            sync_id=SYNC_ID,
+            ctx_dict=make_ctx_dict(),
+            force_full_sync=True,
+        )
+
+    assert result.sync_job_dict is not None
+    assert result.orphaned is False
+    assert result.skipped is False
+
+
+@pytest.mark.unit
+async def test_force_full_sync_timeout_raises(activity, sync_job_repo):
+    """force_full_sync=True raises after timeout when jobs never complete."""
+    running_job = MagicMock()
+    running_job.sync_id = UUID(SYNC_ID)
+    running_job.organization_id = UUID(ORG_ID)
+    running_job.status = "RUNNING"
+    sync_job_repo.seed_jobs_for_sync(UUID(SYNC_ID), [running_job])
+
+    async def always_running(db, sync_id, ctx):
+        return [running_job]
+
+    sync_job_repo.get_active_for_sync = always_running
+
+    with (
+        patch(f"{MODULE}.get_db_context", _fake_db),
+        patch(f"{MODULE}.activity") as mock_activity,
+        patch(f"{MODULE}.asyncio.sleep", new_callable=AsyncMock),
+        patch.object(
+            activity,
+            "_wait_for_running_jobs",
+            side_effect=Exception("Timeout waiting for running jobs"),
+        ),
+        pytest.raises(Exception, match="Timeout"),
+    ):
+        await activity.run(
+            sync_id=SYNC_ID,
+            ctx_dict=make_ctx_dict(),
+            force_full_sync=True,
+        )
+
+
+@pytest.mark.unit
+async def test_publish_pending_event_success(activity, event_bus, sc_repo, conn_repo, collection_repo):
+    """Pending event is published when source connection, connection, and collection are found."""
+    from datetime import datetime, timezone
+
+    from airweave.models.connection import Connection
+    from airweave.models.source_connection import SourceConnection
+
+    sc = MagicMock(spec=SourceConnection)
+    sc.id = UUID("00000000-0000-0000-0000-000000000050")
+    sc.connection_id = UUID("00000000-0000-0000-0000-000000000040")
+    sc.readable_collection_id = "test-collection"
+    sc_repo.seed_by_sync_id(UUID(SYNC_ID), sc)
+
+    conn = MagicMock(spec=Connection)
+    conn.id = UUID("00000000-0000-0000-0000-000000000040")
+    conn.short_name = "test_source"
+    conn_repo.seed(UUID("00000000-0000-0000-0000-000000000040"), conn)
+
+    col = MagicMock()
+    col.id = UUID("00000000-0000-0000-0000-000000000030")
+    col.name = "test-collection"
+    col.readable_id = "test-collection"
+    collection_repo.seed_readable("test-collection", col)
+
+    with patch(f"{MODULE}.get_db_context", _fake_db):
+        result = await activity.run(
+            sync_id=SYNC_ID,
+            ctx_dict=make_ctx_dict(),
+        )
+
+    assert len(event_bus.events) == 1
+
+
+@pytest.mark.unit
+async def test_publish_pending_event_failure_tolerated(activity, event_bus, sc_repo):
+    """publish_pending_event failure is caught and doesn't fail the activity."""
+
+    async def raise_error(*args, **kwargs):
+        raise RuntimeError("event bus broken")
+
+    sc_repo.get_by_sync_id = raise_error
+
+    with patch(f"{MODULE}.get_db_context", _fake_db):
+        result = await activity.run(
+            sync_id=SYNC_ID,
+            ctx_dict=make_ctx_dict(),
+        )
+
+    assert result.sync_job_dict is not None
+    assert len(event_bus.events) == 0

@@ -273,8 +273,10 @@ class RunSourceConnectionWorkflow:
         ctx_dict: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Extract lifecycle event fields from input dicts (built once, reused)."""
+        org_data = ctx_dict.get("organization")
+        org_id = org_data["id"] if org_data else ctx_dict.get("organization_id", "")
         return {
-            "organization_id": ctx_dict["organization"]["id"],
+            "organization_id": org_id,
             "sync_id": sync_dict["id"],
             "sync_job_id": sync_job_dict["id"],
             "collection_id": collection_dict["id"],
