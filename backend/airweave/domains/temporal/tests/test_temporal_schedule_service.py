@@ -15,6 +15,7 @@ import pytest
 from fastapi import HTTPException
 from temporalio.service import RPCError, RPCStatusCode
 
+from airweave.domains.temporal.exceptions import InvalidCronExpressionError
 from airweave.domains.temporal.schedule_service import TemporalScheduleService
 
 
@@ -194,9 +195,8 @@ async def test_check_schedule_exists(case: CheckExistsCase):
         mock_handle.describe = AsyncMock(return_value=desc)
         mock_client.get_schedule_handle.return_value = mock_handle
 
-    svc._client = mock_client
-
-    result = await svc._check_schedule_exists("test-schedule")
+    with patch.object(svc, "_get_client", new=AsyncMock(return_value=mock_client)):
+        result = await svc._check_schedule_exists("test-schedule")
     assert result["exists"] == case.expected_exists
     assert result["running"] == case.expected_running
 
@@ -211,10 +211,10 @@ async def test_check_schedule_exists_propagates_non_not_found_errors():
         side_effect=_rpc_error("connection refused", RPCStatusCode.UNAVAILABLE)
     )
     mock_client.get_schedule_handle.return_value = mock_handle
-    svc._client = mock_client
 
-    with pytest.raises(RPCError):
-        await svc._check_schedule_exists("test-schedule")
+    with patch.object(svc, "_get_client", new=AsyncMock(return_value=mock_client)):
+        with pytest.raises(RPCError):
+            await svc._check_schedule_exists("test-schedule")
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +249,6 @@ async def test_create_schedule(case: CreateScheduleCase):
 
     mock_client = AsyncMock()
     mock_client.create_schedule = AsyncMock()
-    svc._client = mock_client
 
     exists_status = {
         "exists": case.already_exists,
@@ -257,7 +256,10 @@ async def test_create_schedule(case: CreateScheduleCase):
         "schedule_info": {"schedule_id": "existing"} if case.already_exists else None,
     }
 
-    with patch.object(svc, "_check_schedule_exists", new=AsyncMock(return_value=exists_status)):
+    with (
+        patch.object(svc, "_get_client", new=AsyncMock(return_value=mock_client)),
+        patch.object(svc, "_check_schedule_exists", new=AsyncMock(return_value=exists_status)),
+    ):
         result = await svc._create_schedule(
             sync_id=SYNC_ID,
             cron_expression="*/5 * * * *",
@@ -320,18 +322,17 @@ async def test_update_schedule(case: UpdateScheduleCase):
     mock_handle = AsyncMock()
     mock_handle.update = AsyncMock()
     mock_client.get_schedule_handle.return_value = mock_handle
-    svc._client = mock_client
 
     db = AsyncMock()
     uow = AsyncMock()
     ctx = _mock_ctx()
 
     if not case.is_valid:
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(InvalidCronExpressionError):
             await svc._update_schedule("sched-1", case.cron, SYNC_ID, db, uow, ctx)
-        assert exc_info.value.status_code == 422
     else:
-        await svc._update_schedule("sched-1", case.cron, SYNC_ID, db, uow, ctx)
+        with patch.object(svc, "_get_client", new=AsyncMock(return_value=mock_client)):
+            await svc._update_schedule("sched-1", case.cron, SYNC_ID, db, uow, ctx)
         mock_handle.update.assert_called_once()
         sync_repo.update.assert_called_once()
 
@@ -353,9 +354,9 @@ async def test_delete_schedule_by_id():
     mock_handle = AsyncMock()
     mock_handle.delete = AsyncMock()
     mock_client.get_schedule_handle.return_value = mock_handle
-    svc._client = mock_client
 
-    await svc._delete_schedule_by_id("sched-1", SYNC_ID, AsyncMock(), _mock_ctx())
+    with patch.object(svc, "_get_client", new=AsyncMock(return_value=mock_client)):
+        await svc._delete_schedule_by_id("sched-1", SYNC_ID, AsyncMock(), _mock_ctx())
 
     mock_handle.delete.assert_called_once()
     sync_repo.update.assert_called_once()
@@ -540,9 +541,8 @@ async def test_create_or_update_schedule(case: CreateOrUpdateCase):
         mock_croniter.is_valid.return_value = case.cron_valid
 
         if not case.cron_valid:
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(InvalidCronExpressionError):
                 await svc.create_or_update_schedule(SYNC_ID, case.cron, db, ctx, uow)
-            assert exc_info.value.status_code == 422
             return
 
         if not case.sync_exists:
@@ -690,13 +690,13 @@ async def test_delete_schedule_handle(case: DeleteHandleCase):
     mock_handle = AsyncMock()
     mock_handle.delete = AsyncMock(side_effect=case.delete_side_effect)
     mock_client.get_schedule_handle.return_value = mock_handle
-    svc._client = mock_client
 
-    if case.expect_raises:
-        with pytest.raises(RPCError):
+    with patch.object(svc, "_get_client", new=AsyncMock(return_value=mock_client)):
+        if case.expect_raises:
+            with pytest.raises(RPCError):
+                await svc.delete_schedule_handle("sched-123")
+        else:
             await svc.delete_schedule_handle("sched-123")
-    else:
-        await svc.delete_schedule_handle("sched-123")
 
     mock_client.get_schedule_handle.assert_called_once_with("sched-123")
 
@@ -809,7 +809,6 @@ async def test_ensure_system_schedules_calls_both():
     """ensure_system_schedules should create both cleanup and API key schedules."""
     svc = _build_svc()
     mock_client = MagicMock()
-    svc._client = mock_client
 
     call_ids = []
 
@@ -818,7 +817,8 @@ async def test_ensure_system_schedules_calls_both():
 
     svc._ensure_singleton_schedule = track_ensure
 
-    await svc.ensure_system_schedules()
+    with patch.object(svc, "_get_client", new=AsyncMock(return_value=mock_client)):
+        await svc.ensure_system_schedules()
 
     assert "cleanup-stuck-sync-jobs" in call_ids
     assert "api-key-expiration-notifications" in call_ids

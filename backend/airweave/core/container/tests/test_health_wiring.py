@@ -34,17 +34,17 @@ def _patches():
     """Context-manager stack that stubs out infra singletons."""
     engine = MagicMock(name="engine")
     redis_mod = MagicMock(name="redis_client_module")
-    temporal_cls = MagicMock(name="TemporalClient")
+    temporal_fn = MagicMock(name="get_cached_client")
     return (
         patch("airweave.db.session.health_check_engine", engine),
         patch("airweave.core.redis_client.redis_client", redis_mod),
         patch(
-            "airweave.domains.temporal.client.TemporalClient",
-            temporal_cls,
+            "airweave.core.container.factory.get_cached_temporal_client",
+            temporal_fn,
         ),
         engine,
         redis_mod,
-        temporal_cls,
+        temporal_fn,
     )
 
 

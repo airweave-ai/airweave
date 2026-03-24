@@ -9,7 +9,7 @@ Idempotent: re-writing the current status is a no-op (no DB write, no event).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 from uuid import UUID
 
 from airweave.core.context import BaseContext
@@ -54,7 +54,7 @@ _VALID_TRANSITIONS: dict[SyncJobStatus, set[SyncJobStatus]] = {
     SyncJobStatus.CANCELLED: set(),
 }
 
-_LIFECYCLE_EVENT_FACTORY = {
+_LIFECYCLE_EVENT_FACTORY: dict[SyncJobStatus, Callable[..., SyncLifecycleEvent]] = {
     SyncJobStatus.PENDING: SyncLifecycleEvent.pending,
     SyncJobStatus.RUNNING: SyncLifecycleEvent.running,
     SyncJobStatus.COMPLETED: SyncLifecycleEvent.completed,

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -390,6 +391,14 @@ def fake_sync_job_service():
 
 
 @pytest.fixture
+def fake_sync_job_state_machine() -> MagicMock:
+    """Fake SyncJobStateMachine (AsyncMock)."""
+    sm = MagicMock()
+    sm.transition = AsyncMock()
+    return sm
+
+
+@pytest.fixture
 def fake_sync_service():
     """Fake SyncService."""
     from airweave.domains.syncs.fakes.sync_service import FakeSyncService
@@ -702,6 +711,7 @@ def test_container(
     fake_sync_job_repo,
     fake_sync_record_service,
     fake_sync_job_service,
+    fake_sync_job_state_machine,
     fake_sync_service,
     fake_sync_lifecycle,
     fake_billing_service,
@@ -792,6 +802,7 @@ def test_container(
         sync_job_repo=fake_sync_job_repo,
         sync_record_service=fake_sync_record_service,
         sync_job_service=fake_sync_job_service,
+        sync_job_state_machine=fake_sync_job_state_machine,
         sync_service=fake_sync_service,
         sync_lifecycle=fake_sync_lifecycle,
         billing_service=fake_billing_service,

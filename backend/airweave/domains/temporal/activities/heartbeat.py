@@ -45,8 +45,8 @@ def emit_stack_dump(
         if not task.done():
             task_name = task.get_name()
             coro = task.get_coro()
-            if hasattr(coro, "cr_frame") and coro.cr_frame:
-                frame = coro.cr_frame
+            if coro is not None and hasattr(coro, "cr_frame") and coro.cr_frame:
+                frame = coro.cr_frame  # type: ignore[union-attr]
                 traces.append(f"\nTask: {task_name}")
                 loc = f"{frame.f_code.co_filename}:{frame.f_lineno}"
                 traces.append(f"  at {loc} in {frame.f_code.co_name}")
@@ -204,7 +204,8 @@ async def check_redis_snapshot(sync_job_id: UUID) -> dict[str, Any] | None:
         snapshot_key = f"{REDIS_SNAPSHOT_KEY_PREFIX}:{sync_job_id}"
         snapshot_raw = await redis_client.client.get(snapshot_key)
         if snapshot_raw:
-            return json.loads(snapshot_raw)
+            result: dict[str, Any] = json.loads(snapshot_raw)
+            return result
     except Exception:
         pass
     return None

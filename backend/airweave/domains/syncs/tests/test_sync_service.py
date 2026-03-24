@@ -12,7 +12,6 @@ from uuid import uuid4
 import pytest
 
 from airweave.core.shared_models import SyncJobStatus
-from airweave.domains.syncs.fakes.sync_job_service import FakeSyncJobService
 from airweave.domains.syncs.service import SyncService
 
 
@@ -78,7 +77,7 @@ RUN_CASES = [
 @pytest.mark.asyncio
 @pytest.mark.parametrize("case", RUN_CASES, ids=lambda c: c.name)
 async def test_run(case: RunCase):
-    fake_job_svc = FakeSyncJobService()
+    fake_state_machine = AsyncMock()
     fake_factory = MagicMock()
 
     mock_orchestrator = MagicMock()
@@ -94,7 +93,7 @@ async def test_run(case: RunCase):
         )
 
     svc = SyncService(
-        sync_job_service=fake_job_svc,
+        state_machine=fake_state_machine,
         sync_factory=fake_factory,
     )
 
@@ -133,14 +132,13 @@ async def test_run(case: RunCase):
             mock_orchestrator.run.assert_awaited_once()
 
     if case.expect_job_failed:
-        assert len(fake_job_svc._calls) == 1
-        call = fake_job_svc._calls[0]
-        assert call[0] == "update_status"
-        assert call[1] == sync_job.id
-        assert call[2] == SyncJobStatus.FAILED
-        assert call[5] == str(case.factory_error)
+        fake_state_machine.transition.assert_awaited_once()
+        call_kwargs = fake_state_machine.transition.call_args.kwargs
+        assert call_kwargs["sync_job_id"] == sync_job.id
+        assert call_kwargs["target"] == SyncJobStatus.FAILED
+        assert call_kwargs["error"] == str(case.factory_error)
     else:
-        assert len(fake_job_svc._calls) == 0
+        fake_state_machine.transition.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +149,7 @@ async def test_run(case: RunCase):
 @pytest.mark.asyncio
 async def test_run_forwards_optional_kwargs():
     """force_full_sync, execution_config reach the factory."""
-    fake_job_svc = FakeSyncJobService()
+    fake_state_machine = AsyncMock()
     fake_factory = MagicMock()
 
     mock_orchestrator = MagicMock()
@@ -161,7 +159,7 @@ async def test_run_forwards_optional_kwargs():
     )
 
     svc = SyncService(
-        sync_job_service=fake_job_svc,
+        state_machine=fake_state_machine,
         sync_factory=fake_factory,
     )
 
@@ -195,8 +193,8 @@ async def test_run_forwards_optional_kwargs():
 
 
 def test_stores_injected_deps():
-    fake_job = FakeSyncJobService()
+    fake_sm = MagicMock()
     fake_factory = MagicMock()
-    svc = SyncService(sync_job_service=fake_job, sync_factory=fake_factory)
-    assert svc._sync_job_service is fake_job
+    svc = SyncService(state_machine=fake_sm, sync_factory=fake_factory)
+    assert svc._state_machine is fake_sm
     assert svc._sync_factory is fake_factory

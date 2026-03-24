@@ -285,7 +285,7 @@ class RunSourceConnectionWorkflow:
         }
 
     @staticmethod
-    def _is_orphaned_sync_error(error: Exception) -> bool:
+    def _is_orphaned_sync_error(error: BaseException) -> bool:
         """Check whether a Temporal ActivityError wraps an OrphanedSyncError.
 
         The activity converts OrphanedSyncError to an explicit ApplicationError

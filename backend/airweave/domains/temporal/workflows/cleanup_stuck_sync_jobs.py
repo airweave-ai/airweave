@@ -31,7 +31,7 @@ class CleanupStuckSyncJobsWorkflow:
     async def run(self) -> None:
         """Run the cleanup workflow."""
         await workflow.execute_activity(
-            cleanup_stuck_sync_jobs_activity,
+            cleanup_stuck_sync_jobs_activity,  # type: ignore[arg-type]
             start_to_close_timeout=_CLEANUP_TIMEOUT,
             retry_policy=_CLEANUP_RETRY,
         )

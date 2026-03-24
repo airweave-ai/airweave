@@ -72,11 +72,11 @@ class TransitionSyncJobActivity:
             "collection_id",
             "source_connection_id",
         }
-        ld_kwargs = {
+        ld_kwargs: Dict[str, Any] = {
             k: UUID(v) if k in _UUID_FIELDS and isinstance(v, str) else v
             for k, v in lifecycle_data.items()
         }
-        ld = LifecycleData(**ld_kwargs)
+        ld = LifecycleData(**ld_kwargs)  # type: ignore[arg-type]
 
         ctx.logger.info(f"Transitioning sync job {sync_job_id} to {transition}")
 

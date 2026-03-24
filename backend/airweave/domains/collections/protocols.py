@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.collection import Collection
 from airweave.models.vector_db_deployment_metadata import VectorDbDeploymentMetadata
@@ -25,12 +26,12 @@ class CollectionListResult:
 class CollectionRepositoryProtocol(Protocol):
     """Data access for collection records."""
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Collection]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[Collection]:
         """Get a collection by ID within an organization."""
         ...
 
     async def get_by_readable_id(
-        self, db: AsyncSession, readable_id: str, ctx: ApiContext
+        self, db: AsyncSession, readable_id: str, ctx: BaseContext
     ) -> Optional[Collection]:
         """Get a collection by human-readable ID within an organization."""
         ...

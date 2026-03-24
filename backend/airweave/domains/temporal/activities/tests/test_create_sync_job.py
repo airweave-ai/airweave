@@ -17,7 +17,7 @@ from airweave.domains.temporal.activities.create_sync_job import CreateSyncJobAc
 
 from .conftest import ORG_ID, SYNC_ID, make_ctx_dict
 
-MODULE = "airweave.db.session"
+MODULE = "airweave.domains.temporal.activities.create_sync_job"
 
 
 @asynccontextmanager
@@ -85,9 +85,10 @@ async def test_creates_sync_job(activity, sync_job_repo):
             ctx_dict=make_ctx_dict(),
         )
 
-    assert "id" in result
-    assert result.get("_orphaned") is None
-    assert result.get("_skipped") is None
+    assert result.sync_job_dict is not None
+    assert "id" in result.sync_job_dict
+    assert result.orphaned is False
+    assert result.skipped is False
 
     create_calls = [c for c in sync_job_repo._calls if c[0] == "create"]
     assert len(create_calls) == 1

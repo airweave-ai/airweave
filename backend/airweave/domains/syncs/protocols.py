@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional, Protocol, Tuple
+from typing import List, Optional, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.sources.types import SourceRegistryEntry
@@ -23,14 +24,11 @@ from airweave.schemas.source_connection import ScheduleConfig, SourceConnectionJ
 from airweave.schemas.sync import SyncCreate, SyncUpdate
 from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
 
-if TYPE_CHECKING:
-    from airweave.core.context import BaseContext
-
 
 class SyncJobRepositoryProtocol(Protocol):
     """Data access for sync job records."""
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SyncJob]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[SyncJob]:
         """Get a sync job by ID within org scope."""
         ...
 
@@ -39,13 +37,13 @@ class SyncJobRepositoryProtocol(Protocol):
         ...
 
     async def get_active_for_sync(
-        self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, sync_id: UUID, ctx: BaseContext
     ) -> List[SyncJob]:
         """Get all active (PENDING, RUNNING, CANCELLING) jobs for a sync."""
         ...
 
     async def get_all_by_sync_id(
-        self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
+        self, db: AsyncSession, sync_id: UUID, ctx: BaseContext
     ) -> List[SyncJob]:
         """Get all jobs for a specific sync."""
         ...
@@ -54,7 +52,7 @@ class SyncJobRepositoryProtocol(Protocol):
         self,
         db: AsyncSession,
         obj_in: SyncJobCreate,
-        ctx: ApiContext,
+        ctx: BaseContext,
         uow: Optional[UnitOfWork] = None,
     ) -> SyncJob:
         """Create a new sync job."""
@@ -65,7 +63,7 @@ class SyncJobRepositoryProtocol(Protocol):
         db: AsyncSession,
         db_obj: SyncJob,
         obj_in: SyncJobUpdate,
-        ctx: ApiContext,
+        ctx: BaseContext,
     ) -> SyncJob:
         """Update an existing sync job."""
         ...
@@ -74,12 +72,12 @@ class SyncJobRepositoryProtocol(Protocol):
 class SyncRepositoryProtocol(Protocol):
     """Data access for sync records."""
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[schemas.Sync]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[schemas.Sync]:
         """Get a sync by ID, including connections."""
         ...
 
     async def get_without_connections(
-        self, db: AsyncSession, id: UUID, ctx: ApiContext
+        self, db: AsyncSession, id: UUID, ctx: BaseContext
     ) -> Optional[Sync]:
         """Get a sync by ID without connections."""
         ...
@@ -180,12 +178,12 @@ class SyncJobStateMachineProtocol(Protocol):
         self,
         sync_job_id: UUID,
         target: SyncJobStatus,
-        ctx: "BaseContext",
+        ctx: BaseContext,
         *,
-        lifecycle_data: Optional["LifecycleData"] = None,
+        lifecycle_data: Optional[LifecycleData] = None,
         error: Optional[str] = None,
         stats: Optional[SyncStats] = None,
-    ) -> "TransitionResult":
+    ) -> TransitionResult:
         """Execute a validated, idempotent status transition."""
         ...
 
@@ -199,7 +197,7 @@ class SyncServiceProtocol(Protocol):
         sync_job: schemas.SyncJob,
         collection: schemas.CollectionRecord,
         source_connection: schemas.Connection,
-        ctx: ApiContext,
+        ctx: BaseContext,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
         access_token: Optional[str] = None,

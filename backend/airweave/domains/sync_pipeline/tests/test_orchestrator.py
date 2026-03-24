@@ -47,6 +47,7 @@ def _make_orchestrator(**overrides):
         usage_checker=usage_checker,
         usage_ledger=usage_ledger,
         sync_cursor_service=overrides.pop("sync_cursor_service", MagicMock()),
+        state_machine=overrides.pop("state_machine", MagicMock()),
     )
 
 

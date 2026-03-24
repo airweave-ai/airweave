@@ -31,6 +31,7 @@ def _build_factory(**overrides):
         "usage_checker": MagicMock(),
         "usage_ledger": MagicMock(),
         "storage_backend": MagicMock(),
+        "state_machine": MagicMock(),
     }
     defaults.update(overrides)
     return SyncFactory(**defaults)
@@ -63,6 +64,7 @@ def test_constructor_stores_all_deps():
         "usage_checker": MagicMock(),
         "usage_ledger": MagicMock(),
         "storage_backend": MagicMock(),
+        "state_machine": MagicMock(),
     }
     f = SyncFactory(**deps)
     assert f._sc_repo is deps["sc_repo"]

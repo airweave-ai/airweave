@@ -26,7 +26,6 @@ from airweave.domains.source_connections.fakes.response import FakeResponseBuild
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.syncs.fakes.sync_cursor_repository import FakeSyncCursorRepository
 from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
-from airweave.domains.syncs.fakes.sync_job_service import FakeSyncJobService
 from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
 from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
 from airweave.domains.syncs.types import CONTINUOUS_SOURCE_DEFAULT_CRON, SyncProvisionResult
@@ -144,7 +143,7 @@ def _build_service(
     connection_repo=None,
     sync_cursor_repo=None,
     sync_service=None,
-    sync_job_service=None,
+    state_machine=None,
     sync_job_repo=None,
     temporal_workflow_service=None,
     temporal_schedule_service=None,
@@ -157,7 +156,7 @@ def _build_service(
         connection_repo=connection_repo or FakeConnectionRepository(),
         sync_cursor_repo=sync_cursor_repo or FakeSyncCursorRepository(),
         sync_service=sync_service or FakeSyncRecordService(),
-        sync_job_service=sync_job_service or FakeSyncJobService(),
+        state_machine=state_machine or AsyncMock(),
         sync_job_repo=sync_job_repo or FakeSyncJobRepository(),
         temporal_workflow_service=temporal_workflow_service or FakeTemporalWorkflowService(),
         temporal_schedule_service=temporal_schedule_service or FakeTemporalScheduleService(),
@@ -571,7 +570,7 @@ async def test_cancel_job_errors(case: CancelCase):
     """Test cancel_job() error paths."""
     sc_repo = FakeSourceConnectionRepository()
     sync_job_repo = FakeSyncJobRepository()
-    sync_job_service = FakeSyncJobService()
+    state_machine = AsyncMock()
     temporal_workflow_service = FakeTemporalWorkflowService()
 
     if case.sc:
@@ -586,7 +585,7 @@ async def test_cancel_job_errors(case: CancelCase):
     svc = _build_service(
         sc_repo=sc_repo,
         sync_job_repo=sync_job_repo,
-        sync_job_service=sync_job_service,
+        state_machine=state_machine,
         temporal_workflow_service=temporal_workflow_service,
     )
 
@@ -607,7 +606,7 @@ async def test_cancel_job_happy_path():
     """Successful cancel: workflow found, job transitions to CANCELLING."""
     sc_repo = FakeSourceConnectionRepository()
     sync_job_repo = FakeSyncJobRepository()
-    sync_job_service = FakeSyncJobService()
+    state_machine = AsyncMock()
     temporal_workflow_service = FakeTemporalWorkflowService()
 
     sc = _source_connection()
@@ -623,7 +622,7 @@ async def test_cancel_job_happy_path():
     svc = _build_service(
         sc_repo=sc_repo,
         sync_job_repo=sync_job_repo,
-        sync_job_service=sync_job_service,
+        state_machine=state_machine,
         temporal_workflow_service=temporal_workflow_service,
     )
 
@@ -638,8 +637,9 @@ async def test_cancel_job_happy_path():
         )
 
     assert result == expected_result
-    statuses = [c[2] for c in sync_job_service._calls if c[0] == "update_status"]
-    assert statuses == [SyncJobStatus.CANCELLING]
+    assert state_machine.transition.await_count == 1
+    call_kwargs = state_machine.transition.call_args.kwargs
+    assert call_kwargs["target"] == SyncJobStatus.CANCELLING
     assert len(temporal_workflow_service._calls) == 1
 
 
@@ -650,7 +650,7 @@ async def test_cancel_job_workflow_not_found():
 
     sc_repo = FakeSourceConnectionRepository()
     sync_job_repo = FakeSyncJobRepository()
-    sync_job_service = FakeSyncJobService()
+    state_machine = AsyncMock()
     temporal_workflow_service = FakeTemporalWorkflowService()
 
     sc = _source_connection()
@@ -666,7 +666,7 @@ async def test_cancel_job_workflow_not_found():
     svc = _build_service(
         sc_repo=sc_repo,
         sync_job_repo=sync_job_repo,
-        sync_job_service=sync_job_service,
+        state_machine=state_machine,
         temporal_workflow_service=temporal_workflow_service,
     )
 
@@ -677,8 +677,9 @@ async def test_cancel_job_workflow_not_found():
     with patch(f"{_mod}.SyncJob.model_validate", return_value=mock_sj_schema):
         await svc.cancel_job(db_mock, source_connection_id=SC_ID, job_id=JOB_ID, ctx=_ctx())
 
-    statuses = [c[2] for c in sync_job_service._calls if c[0] == "update_status"]
-    assert statuses == [SyncJobStatus.CANCELLING, SyncJobStatus.CANCELLED]
+    assert state_machine.transition.await_count == 2
+    targets = [c.kwargs["target"] for c in state_machine.transition.call_args_list]
+    assert targets == [SyncJobStatus.CANCELLING, SyncJobStatus.CANCELLED]
 
 
 # ---------------------------------------------------------------------------

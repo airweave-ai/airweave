@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from typing import Any, Dict
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio import activity
 
 from airweave import schemas
+from airweave.core.context import BaseContext
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols import EventBus
@@ -23,6 +25,7 @@ from airweave.domains.syncs.protocols import (
 )
 from airweave.domains.temporal.activities.context import build_activity_context
 from airweave.domains.temporal.activity_results import CreateSyncJobResult
+from airweave.models.sync_job import SyncJob
 
 
 @dataclass
@@ -122,7 +125,13 @@ class CreateSyncJobActivity:
                 sync_id=sync_id,
             )
 
-    async def _wait_for_running_jobs(self, db, sync_id, ctx, running_jobs):
+    async def _wait_for_running_jobs(
+        self,
+        db: AsyncSession,
+        sync_id: str,
+        ctx: BaseContext,
+        running_jobs: list[SyncJob],
+    ) -> None:
         """Wait for running jobs to complete before daily cleanup."""
         ctx.logger.info(
             f"🔄 Daily cleanup sync for {sync_id}: "
@@ -158,7 +167,14 @@ class CreateSyncJobActivity:
         )
         raise Exception(f"Timeout waiting for running jobs to complete after {max_wait_time}s")
 
-    async def _publish_pending_event(self, db, sync_id, organization, sync_job, ctx):
+    async def _publish_pending_event(
+        self,
+        db: AsyncSession,
+        sync_id: str,
+        organization: schemas.Organization,
+        sync_job: SyncJob,
+        ctx: BaseContext,
+    ) -> None:
         """Publish PENDING lifecycle event."""
         try:
             source_conn = await self.sc_repo.get_by_sync_id(
@@ -166,28 +182,28 @@ class CreateSyncJobActivity:
                 sync_id=UUID(sync_id),
                 ctx=ctx,
             )
-            if source_conn:
+            if source_conn and source_conn.connection_id:
                 connection = await self.conn_repo.get(
                     db=db,
                     id=source_conn.connection_id,
                     ctx=ctx,
                 )
-                collection = await self.collection_repo.get(
+                collection = await self.collection_repo.get_by_readable_id(
                     db=db,
-                    id=source_conn.collection_id,
+                    readable_id=str(source_conn.readable_collection_id),
                     ctx=ctx,
                 )
                 if connection and collection:
                     await self.event_bus.publish(
                         SyncLifecycleEvent.pending(
                             organization_id=organization.id,
-                            source_connection_id=source_conn.id,
-                            sync_job_id=sync_job.id,
+                            source_connection_id=UUID(str(source_conn.id)),
+                            sync_job_id=UUID(str(sync_job.id)),
                             sync_id=UUID(sync_id),
-                            collection_id=collection.id,
+                            collection_id=UUID(str(collection.id)),
                             source_type=connection.short_name,
                             collection_name=collection.name,
-                            collection_readable_id=collection.readable_id,
+                            collection_readable_id=str(collection.readable_id),
                         )
                     )
         except Exception as event_err:

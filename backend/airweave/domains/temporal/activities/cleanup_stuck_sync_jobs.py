@@ -6,8 +6,10 @@ import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio import activity
 
 from airweave import crud, schemas
@@ -19,6 +21,7 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.models.sync_job import SyncJob
 
 _CANCELLING_PENDING_CUTOFF = timedelta(minutes=3)
 _RUNNING_CUTOFF = timedelta(minutes=15)
@@ -114,7 +117,9 @@ class CleanupStuckSyncJobsActivity:
             logger.error(f"Error during cleanup activity: {e}", exc_info=True)
             raise
 
-    async def _is_running_job_stuck(self, job, running_cutoff, db, logger) -> bool:
+    async def _is_running_job_stuck(
+        self, job: SyncJob, running_cutoff: datetime, db: AsyncSession, logger: Any
+    ) -> bool:
         """Check if a running job is stuck (no recent activity)."""
         if job.sync_config:
             handlers = job.sync_config.get("handlers", {})
@@ -138,7 +143,7 @@ class CleanupStuckSyncJobsActivity:
 
             if not last_update_str:
                 latest_entity_time = await crud.entity.get_latest_entity_time_for_job(
-                    db=db, sync_job_id=job.id
+                    db=db, sync_job_id=UUID(str(job.id))
                 )
                 return latest_entity_time is None or latest_entity_time < running_cutoff
 
@@ -163,11 +168,13 @@ class CleanupStuckSyncJobsActivity:
         except Exception as e:
             logger.warning(f"Error checking job {job_id_str}: {e}, falling back to DB check")
             latest_entity_time = await crud.entity.get_latest_entity_time_for_job(
-                db=db, sync_job_id=job.id
+                db=db, sync_job_id=UUID(str(job.id))
             )
             return latest_entity_time is None or latest_entity_time < running_cutoff
 
-    async def _cancel_stuck_job(self, job, now, db, logger) -> bool:
+    async def _cancel_stuck_job(
+        self, job: SyncJob, now: datetime, db: AsyncSession, logger: Any
+    ) -> bool:
         """Cancel a single stuck job via Temporal and update database.
 
         RUNNING jobs transition to FAILED (RUNNING → CANCELLED is invalid).

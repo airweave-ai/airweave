@@ -100,7 +100,7 @@ async def test_start_passes_runtime_to_get_client(
     mock_worker_cls.return_value.run = AsyncMock()
 
     with patch(
-        "airweave.domains.temporal.client.TemporalClient.get_client",
+        "airweave.domains.temporal.client.get_client",
         new_callable=AsyncMock,
     ) as mock_get_client:
         mock_get_client.return_value = MagicMock()
@@ -145,7 +145,7 @@ def test_get_sandbox_runner_disabled(mock_runtime_cls):
 # ── stop() tests ────────────────────────────────────────────────────
 
 
-@patch("airweave.domains.temporal.client.TemporalClient.close", new_callable=AsyncMock)
+@patch("airweave.domains.temporal.client.close", new_callable=AsyncMock)
 @patch("temporalio.runtime.Runtime")
 async def test_stop_shuts_down_worker_and_control_server(mock_runtime_cls, mock_client_close):
     """stop() shuts down the worker, stops the control server, and closes the client."""
@@ -168,7 +168,7 @@ async def test_stop_shuts_down_worker_and_control_server(mock_runtime_cls, mock_
     assert worker._state.running is False
 
 
-@patch("airweave.domains.temporal.client.TemporalClient.close", new_callable=AsyncMock)
+@patch("airweave.domains.temporal.client.close", new_callable=AsyncMock)
 @patch("temporalio.runtime.Runtime")
 async def test_stop_skips_shutdown_when_not_running(mock_runtime_cls, mock_client_close):
     """stop() skips worker shutdown if no worker is active."""

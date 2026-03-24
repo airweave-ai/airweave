@@ -29,6 +29,9 @@ def create_activities() -> list:
         TransitionSyncJobActivity,
     )
 
+    if container is None:
+        raise RuntimeError("Container not initialized — cannot wire activities")
+
     email_service = container.email_service
     event_bus = container.event_bus
     sync_service = container.sync_service
