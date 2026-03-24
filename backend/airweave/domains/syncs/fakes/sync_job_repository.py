@@ -1,5 +1,6 @@
 """Fake sync job repository for testing."""
 
+import uuid as uuid_mod
 from typing import List, Optional
 from uuid import UUID
 
@@ -68,10 +69,11 @@ class FakeSyncJobRepository:
     ) -> SyncJob:
         """Create a fake SyncJob from the schema and store it."""
         self._calls.append(("create", db, obj_in, ctx, uow))
-        job = SyncJob(
-            **obj_in.model_dump(),
-            organization_id=ctx.organization.id,
-        )
+        valid_fields = {c.key for c in SyncJob.__table__.columns}
+        dumped = {k: v for k, v in obj_in.model_dump().items() if k in valid_fields}
+        if "id" not in dumped or dumped["id"] is None:
+            dumped["id"] = uuid_mod.uuid4()
+        job = SyncJob(**dumped, organization_id=ctx.organization.id)
         self._store[job.id] = job
         self._created.append(job)
         return job

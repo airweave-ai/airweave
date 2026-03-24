@@ -57,6 +57,7 @@ from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.domains.syncs.cursors.service import SyncCursorService
+from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
 from airweave.domains.usage.protocols import UsageLedgerProtocol, UsageLimitCheckerProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.sources._base import BaseSource
@@ -103,6 +104,7 @@ class SyncFactory(SyncFactoryProtocol):
         usage_checker: UsageLimitCheckerProtocol,
         usage_ledger: UsageLedgerProtocol,
         storage_backend: StorageBackend,
+        state_machine: "SyncJobStateMachineProtocol",
     ) -> None:
         """Initialize with all required service and repository dependencies."""
         # Repositories
@@ -127,6 +129,7 @@ class SyncFactory(SyncFactoryProtocol):
         self._usage_checker = usage_checker
         self._usage_ledger = usage_ledger
         self._storage_backend = storage_backend
+        self._state_machine = state_machine
 
     async def create_orchestrator(
         self,
@@ -234,6 +237,7 @@ class SyncFactory(SyncFactoryProtocol):
             usage_checker=self._usage_checker,
             usage_ledger=self._usage_ledger,
             sync_cursor_service=self._sync_cursor_service,
+            state_machine=self._state_machine,
         )
 
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")

@@ -1,15 +1,11 @@
 """Temporal workflow lifecycle service.
 
 Manages starting, cancelling, and cleaning up Temporal workflows.
-Replaces the core/temporal_service.py singleton.
 
 Does NOT cover:
 - Schedule management (see TemporalScheduleService)
-- Workflow/activity definitions (platform/temporal/workflows/)
-- Worker runtime (platform/temporal/worker/)
-
-# [code blue] core/temporal_service.py can be deleted once all consumers
-# are migrated to use this via the container.
+- Workflow/activity definitions (domains/temporal/workflows/)
+- Worker runtime (domains/temporal/worker/)
 """
 
 import uuid
@@ -22,9 +18,9 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.logging import logger
+from airweave.domains.temporal.client import get_client as get_temporal_client
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
-from airweave.platform.temporal.client import temporal_client
-from airweave.platform.temporal.workflows import (
+from airweave.domains.temporal.workflows import (
     CleanupSyncDataWorkflow,
     RunSourceConnectionWorkflow,
 )
@@ -36,7 +32,7 @@ class TemporalWorkflowService(TemporalWorkflowServiceProtocol):
     Thin wrapper over the Temporal SDK client. Consumers interact with
     this service to launch sync workflows, request cancellations, or
     kick off fire-and-forget cleanup workflows. The actual workflow and
-    activity logic lives in platform/temporal/.
+    activity logic lives in domains/temporal/.
     """
 
     async def run_source_connection_workflow(
@@ -63,7 +59,7 @@ class TemporalWorkflowService(TemporalWorkflowServiceProtocol):
         Returns:
             The workflow handle.
         """
-        client = await temporal_client.get_client()
+        client = await get_temporal_client()
         workflow_id = f"sync-{sync_job.id}"
 
         ctx.logger.info(f"Starting Temporal workflow {workflow_id} for sync job {sync_job.id}")
@@ -98,7 +94,7 @@ class TemporalWorkflowService(TemporalWorkflowServiceProtocol):
         Returns:
             dict with 'success' and 'workflow_found' boolean keys.
         """
-        client = await temporal_client.get_client()
+        client = await get_temporal_client()
         workflow_id = f"sync-{sync_job_id}"
         try:
             handle = client.get_workflow_handle(workflow_id)
@@ -130,7 +126,7 @@ class TemporalWorkflowService(TemporalWorkflowServiceProtocol):
         Returns:
             WorkflowHandle if started, None on failure.
         """
-        client = await temporal_client.get_client()
+        client = await get_temporal_client()
         workflow_id = f"cleanup-sync-data-{uuid.uuid4().hex[:12]}"
 
         try:
@@ -153,7 +149,7 @@ class TemporalWorkflowService(TemporalWorkflowServiceProtocol):
         if not settings.TEMPORAL_ENABLED:
             return False
         try:
-            await temporal_client.get_client()
+            await get_temporal_client()
             return True
         except Exception as e:
             logger.warning(f"Temporal not available: {e}")

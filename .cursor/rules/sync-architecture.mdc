@@ -1,5 +1,5 @@
 ---
-globs: **/sync_pipeline/**
+globs: **/sync_pipeline/**,**/domains/temporal/**
 alwaysApply: false
 ---
 # Airweave Sync Architecture - Deep Dive
@@ -333,6 +333,54 @@ if sync_job_dict.get("_orphaned") or "ORPHANED_SYNC" in str(e):
 
 **Result**: No "Source connection record not found" errors, graceful workflow exits, automatic schedule cleanup.
 
+
+## Temporal Module Structure
+
+Activities and workflows live under `domains/temporal/` with single-responsibility modules.
+
+### Activities (`domains/temporal/activities/`)
+
+Each activity is a `@dataclass` with explicit DI, one class per file:
+
+| File | Class | Responsibility |
+|------|-------|---------------|
+| `run_sync.py` | `RunSyncActivity` | Execute a sync job with heartbeating and stall detection |
+| `create_sync_job.py` | `CreateSyncJobActivity` | Create sync job record (for scheduled runs) |
+| `mark_sync_job_cancelled.py` | `MarkSyncJobCancelledActivity` | Mark a job as CANCELLED in the database |
+| `cleanup_stuck_sync_jobs.py` | `CleanupStuckSyncJobsActivity` | Detect and cancel stuck jobs |
+| `self_destruct_orphaned_sync.py` | `SelfDestructOrphanedSyncActivity` | Clean up schedules for orphaned syncs |
+| `cleanup_sync_data.py` | `CleanupSyncDataActivity` | Remove Vespa + ARF data for deleted syncs |
+| `api_key_notifications.py` | `CheckAndNotifyExpiringKeysActivity` | Email notifications for expiring API keys |
+
+`activities/__init__.py` re-exports both class names and `.run` method references (used by workflows).
+
+### Workflows (`domains/temporal/workflows/`)
+
+Each workflow is one class per file, using `workflow.unsafe.imports_passed_through()` for activity imports and named timeout/retry constants:
+
+| File | Class |
+|------|-------|
+| `run_source_connection.py` | `RunSourceConnectionWorkflow` — four-phase orchestration |
+| `cleanup_stuck_sync_jobs.py` | `CleanupStuckSyncJobsWorkflow` — periodic stuck-job cleanup |
+| `cleanup_sync_data.py` | `CleanupSyncDataWorkflow` — post-deletion data cleanup |
+| `api_key_notifications.py` | `APIKeyExpirationCheckWorkflow` |
+
+### Worker Wiring (`domains/temporal/worker/`)
+
+`wiring.py` is the DI wiring point: reads dependencies from `container` and instantiates activity dataclasses. `get_workflows()` returns the list of workflow classes.
+
+### Domain Services (`domains/temporal/`)
+
+- `service.py` — `TemporalWorkflowService`: start/cancel workflows
+- `schedule_service.py` — `TemporalScheduleService`: CRUD for Temporal schedules
+- `protocols.py` — Protocol definitions for the above
+
+### Tests
+
+Co-located alongside source code:
+- `activities/tests/` — activity unit tests with fake dependencies
+- `workflows/tests/` — workflow tests using `WorkflowEnvironment.start_time_skipping()` and mock activities
+- `worker/tests/` — worker startup and config tests
 
 ## Best Practices
 

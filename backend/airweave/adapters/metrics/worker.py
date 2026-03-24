@@ -7,13 +7,14 @@ ProcessCollector for Temporal worker instrumentation.
 from prometheus_client import CollectorRegistry, Gauge, Info, ProcessCollector
 
 from airweave.core.protocols.metrics import WorkerMetrics
-from airweave.platform.temporal.worker_metrics_snapshot import WorkerMetricsSnapshot
+from airweave.domains.temporal.metrics import WorkerMetricsSnapshot
 
 
 class PrometheusWorkerMetrics(WorkerMetrics):
     """Prometheus-backed Temporal worker metrics."""
 
     def __init__(self, registry: CollectorRegistry) -> None:
+        """Initialize Prometheus gauges and process collector on the given registry."""
         self._registry = registry
         self._previous_connector_labels: dict[str, set[str]] = {}
 
@@ -109,6 +110,7 @@ class PrometheusWorkerMetrics(WorkerMetrics):
     # -- WorkerMetrics protocol method --
 
     def update(self, snapshot: WorkerMetricsSnapshot) -> None:
+        """Push a snapshot into all Prometheus gauges."""
         wid = snapshot.worker_id
 
         # Static info
@@ -174,16 +176,20 @@ class FakeWorkerMetrics(WorkerMetrics):
     """In-memory spy implementing the WorkerMetrics protocol."""
 
     def __init__(self) -> None:
+        """Initialize empty snapshot list."""
         self.snapshots: list[WorkerMetricsSnapshot] = []
 
     def update(self, snapshot: WorkerMetricsSnapshot) -> None:
+        """Record a snapshot for later assertion."""
         self.snapshots.append(snapshot)
 
     # -- test helpers --
 
     @property
     def last_snapshot(self) -> WorkerMetricsSnapshot | None:
+        """Return the most recently recorded snapshot, or None."""
         return self.snapshots[-1] if self.snapshots else None
 
     def clear(self) -> None:
+        """Discard all recorded snapshots."""
         self.snapshots.clear()

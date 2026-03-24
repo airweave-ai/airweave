@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from airweave.platform.temporal.worker_metrics_snapshot import WorkerMetricsSnapshot
+    from airweave.domains.temporal.metrics import WorkerMetricsSnapshot
 
 
 # ---------------------------------------------------------------------------
@@ -25,10 +25,21 @@ if TYPE_CHECKING:
 class DbPool(Protocol):
     """Structural protocol for a SQLAlchemy-style connection pool."""
 
-    def size(self) -> int: ...
-    def checkedout(self) -> int: ...
-    def checkedin(self) -> int: ...
-    def overflow(self) -> int: ...
+    def size(self) -> int:
+        """Total number of connections managed by the pool."""
+        ...
+
+    def checkedout(self) -> int:
+        """Connections currently in use."""
+        ...
+
+    def checkedin(self) -> int:
+        """Connections available (idle) in the pool."""
+        ...
+
+    def overflow(self) -> int:
+        """Connections created beyond pool_size."""
+        ...
 
 
 # ---------------------------------------------------------------------------

@@ -1,11 +1,6 @@
-"""Reimplemented Temporal schedule service.
+"""Temporal schedule service.
 
-Replaces platform/temporal/schedule_service.py singleton. Uses injected
-repos instead of direct crud.* calls and removes the
-source_connection_helpers dependency.
-
-# [code blue] platform/temporal/schedule_service.py can be deleted once
-# all consumers are migrated to use this via the container.
+Creates, updates, and deletes Temporal schedules for sync workflows.
 """
 
 import re
@@ -15,12 +10,12 @@ from typing import Optional
 from uuid import UUID
 
 from croniter import croniter
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio.client import (
     Client,
     Schedule,
     ScheduleActionStartWorkflow,
+    ScheduleIntervalSpec,
     ScheduleSpec,
     ScheduleState,
     ScheduleUpdate,
@@ -39,9 +34,17 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
 )
 from airweave.domains.syncs.protocols import SyncRepositoryProtocol
+from airweave.domains.temporal import schedule_ids as sched_ids
+from airweave.domains.temporal.client import get_client as get_temporal_client
+from airweave.domains.temporal.exceptions import InvalidCronExpressionError
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
-from airweave.platform.temporal.client import temporal_client
-from airweave.platform.temporal.workflows import RunSourceConnectionWorkflow
+from airweave.domains.temporal.workflows import (
+    CleanupStuckSyncJobsWorkflow,
+    RunSourceConnectionWorkflow,
+)
+from airweave.domains.temporal.workflows.api_key_notifications import (
+    APIKeyExpirationCheckWorkflow,
+)
 
 _MINUTE_LEVEL_RE = re.compile(r"^(\*/([1-5]?\d)|([0-5]?\d)) \* \* \* \*$")
 
@@ -70,17 +73,14 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         self._sc_repo = sc_repo
         self._collection_repo = collection_repo
         self._connection_repo = connection_repo
-        self._client: Optional[Client] = None
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
     async def _get_client(self) -> Client:
-        """Get (or cache) the Temporal client."""
-        if self._client is None:
-            self._client = await temporal_client.get_client()
-        return self._client
+        """Get the Temporal client (module-level singleton handles caching)."""
+        return await get_temporal_client()
 
     async def _check_schedule_exists(self, schedule_id: str) -> dict:
         """Check if a schedule exists and is running.
@@ -126,19 +126,19 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         client = await self._get_client()
 
         if schedule_type == "minute":
-            schedule_id = f"minute-sync-{sync_id}"
+            schedule_id = sched_ids.minute_schedule_id(sync_id)
             jitter = timedelta(seconds=10)
             workflow_id_prefix = "minute-sync-workflow"
             note = f"Minute-level sync schedule for sync {sync_id}"
             sync_type = "incremental"
         elif schedule_type == "cleanup":
-            schedule_id = f"daily-cleanup-{sync_id}"
+            schedule_id = sched_ids.cleanup_schedule_id(sync_id)
             jitter = timedelta(minutes=30)
             workflow_id_prefix = "daily-cleanup-workflow"
             note = f"Daily cleanup schedule for sync {sync_id}"
             sync_type = "full"
         else:
-            schedule_id = f"sync-{sync_id}"
+            schedule_id = sched_ids.sync_schedule_id(sync_id)
             jitter = timedelta(minutes=5)
             workflow_id_prefix = "sync-workflow"
             note = f"Regular sync schedule for sync {sync_id}"
@@ -208,10 +208,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
     ) -> None:
         """Update an existing Temporal schedule with a new cron expression."""
         if not croniter.is_valid(cron_expression):
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid CRON expression: {cron_expression}",
-            )
+            raise InvalidCronExpressionError(cron_expression)
 
         client = await self._get_client()
         handle = client.get_schedule_handle(schedule_id)
@@ -361,10 +358,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         Returns the schedule ID.
         """
         if not croniter.is_valid(cron_schedule):
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid CRON expression: {cron_schedule}",
-            )
+            raise InvalidCronExpressionError(cron_schedule)
 
         sync = await self._sync_repo.get_without_connections(db, sync_id, ctx)
         if not sync:
@@ -425,12 +419,11 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         ctx: ApiContext,
     ) -> None:
         """Delete all schedules (regular + minute + daily cleanup) for a sync."""
-        for prefix in ("sync-", "minute-sync-", "daily-cleanup-"):
-            schedule_id = f"{prefix}{sync_id}"
+        for sid in sched_ids.all_schedule_ids(sync_id):
             try:
-                await self._delete_schedule_by_id(schedule_id, sync_id, db, ctx)
+                await self._delete_schedule_by_id(sid, sync_id, db, ctx)
             except Exception as e:
-                logger.info(f"Schedule {schedule_id} not deleted (may not exist): {e}")
+                logger.info(f"Schedule {sid} not deleted (may not exist): {e}")
 
     async def delete_schedule_handle(self, schedule_id: str) -> None:
         """Delete a Temporal schedule by ID without touching the DB.
@@ -457,11 +450,6 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         Covers the stuck-job cleanup schedule and the API key expiration
         notification schedule. Called once during API server startup.
         """
-        from airweave.platform.temporal.workflows import CleanupStuckSyncJobsWorkflow
-        from airweave.platform.temporal.workflows.api_key_notifications import (
-            APIKeyExpirationCheckWorkflow,
-        )
-
         client = await self._get_client()
 
         await self._ensure_singleton_schedule(
@@ -492,8 +480,6 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         note: str,
     ) -> None:
         """Create a singleton schedule if it doesn't already exist."""
-        from temporalio.client import ScheduleIntervalSpec
-
         try:
             handle = client.get_schedule_handle(schedule_id)
             await handle.describe()

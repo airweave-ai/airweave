@@ -97,7 +97,7 @@
             "name": "Temporal Worker",
             "type": "debugpy",
             "request": "launch",
-            "module": "airweave.platform.temporal.worker",
+            "module": "airweave.domains.temporal.worker",
             "python": "${command:python.interpreterPath}",
             "console": "integratedTerminal",
             "consoleName": "✨ Temporal Worker",

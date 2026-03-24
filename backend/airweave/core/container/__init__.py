@@ -64,7 +64,7 @@ Initialized via `initialize_container()` at application startup.
 
 Import and use this in:
 - api/deps.py: For FastAPI dependency functions
-- platform/temporal/worker/wiring.py: For Temporal activity construction
+- domains/temporal/worker/wiring.py: For Temporal activity construction
 
 Do NOT import this in domain code. Domains receive dependencies
 via function parameters, never by importing the container directly.

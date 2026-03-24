@@ -12,8 +12,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus, SyncStatus
+from airweave.domains.temporal import schedule_ids as temporal_schedule_ids
+from airweave.domains.temporal.client import get_client as get_temporal_client
 from airweave.models._base import OrganizationBase, UserMixin
-from airweave.platform.temporal.client import temporal_client
 
 if TYPE_CHECKING:
     from airweave.models.entity import Entity
@@ -90,7 +91,7 @@ def cancel_running_sync_jobs(connection: SAConnection, sync_id: UUID) -> None:
     """
 
     async def _cancel_workflow(workflow_job_id: str) -> None:
-        client = await temporal_client.get_client()
+        client = await get_temporal_client()
         workflow_id = f"sync-{workflow_job_id}"
         try:
             handle = client.get_workflow_handle(workflow_id)
@@ -151,11 +152,7 @@ def cleanup_temporal_schedules(sync_id: UUID) -> None:
     Best-effort: failures are logged but do not propagate.
     """
     try:
-        schedule_ids = [
-            f"sync-{sync_id}",
-            f"minute-sync-{sync_id}",
-            f"daily-cleanup-{sync_id}",
-        ]
+        sids = temporal_schedule_ids.all_schedule_ids(sync_id)
 
         async def _cleanup() -> None:
             # [code blue] todo: replace ORM listener with EventBus subscriber
@@ -164,7 +161,7 @@ def cleanup_temporal_schedules(sync_id: UUID) -> None:
             if container_mod.container is None:
                 return
             schedule_svc = container_mod.container.temporal_schedule_service
-            for sid in schedule_ids:
+            for sid in sids:
                 await schedule_svc.delete_schedule_handle(sid)
 
         try:

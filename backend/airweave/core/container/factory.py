@@ -127,11 +127,13 @@ from airweave.domains.sync_pipeline.subscribers.progress_relay import SyncProgre
 from airweave.domains.syncs.cursors.repository import SyncCursorRepository
 from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.service import SyncService
+from airweave.domains.syncs.state_machine import SyncJobStateMachine
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
 from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
 from airweave.domains.syncs.sync_record_service import SyncRecordService
 from airweave.domains.syncs.sync_repository import SyncRepository
+from airweave.domains.temporal.client import get_cached_client as get_cached_temporal_client
 from airweave.domains.temporal.schedule_service import TemporalScheduleService
 from airweave.domains.temporal.service import TemporalWorkflowService
 from airweave.domains.usage.ledger import UsageLedger
@@ -142,7 +144,6 @@ from airweave.domains.usage.subscribers.billing_listener import UsageBillingList
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.platform.auth.settings import integration_settings
-from airweave.platform.temporal.client import TemporalClient
 
 
 def create_container(settings: Settings) -> Container:
@@ -443,10 +444,11 @@ def create_container(settings: Settings) -> Container:
         usage_checker=usage_checker,
         usage_ledger=usage_ledger,
         storage_backend=storage_backend,
+        state_machine=sync_deps["sync_job_state_machine"],
     )
 
     sync_service = SyncService(
-        sync_job_service=sync_deps["sync_job_service"],
+        state_machine=sync_deps["sync_job_state_machine"],
         sync_factory=sync_factory,
     )
 
@@ -584,6 +586,7 @@ def create_container(settings: Settings) -> Container:
         payment_gateway=billing_services["payment_gateway"],
         sync_record_service=sync_deps["sync_record_service"],
         sync_job_service=sync_deps["sync_job_service"],
+        sync_job_state_machine=sync_deps["sync_job_state_machine"],
         sync_service=sync_service,
         sync_lifecycle=sync_deps["sync_lifecycle"],
         sync_factory=sync_factory,
@@ -621,7 +624,7 @@ def _create_health_service(settings: Settings) -> HealthService:
     probes = {
         "postgres": PostgresHealthProbe(health_check_engine),
         "redis": RedisHealthProbe(redis_client.client),
-        "temporal": TemporalHealthProbe(lambda: TemporalClient._client),
+        "temporal": TemporalHealthProbe(get_cached_temporal_client),
     }
 
     unknown = critical_names - probes.keys()
@@ -979,6 +982,10 @@ def _create_sync_services(
     entity_repo = EntityRepository()
 
     sync_job_service = SyncJobService(sync_job_repo=sync_job_repo)
+    sync_job_state_machine = SyncJobStateMachine(
+        sync_job_repo=sync_job_repo,
+        event_bus=event_bus,
+    )
 
     temporal_workflow_service = TemporalWorkflowService()
 
@@ -1010,7 +1017,7 @@ def _create_sync_services(
         connection_repo=conn_repo,
         sync_cursor_repo=sync_cursor_repo,
         sync_service=sync_record_service,
-        sync_job_service=sync_job_service,
+        state_machine=sync_job_state_machine,
         sync_job_repo=sync_job_repo,
         temporal_workflow_service=temporal_workflow_service,
         temporal_schedule_service=temporal_schedule_service,
@@ -1021,6 +1028,7 @@ def _create_sync_services(
     return {
         "sync_record_service": sync_record_service,
         "sync_job_service": sync_job_service,
+        "sync_job_state_machine": sync_job_state_machine,
         "sync_lifecycle": sync_lifecycle,
         "temporal_workflow_service": temporal_workflow_service,
         "temporal_schedule_service": temporal_schedule_service,

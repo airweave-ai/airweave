@@ -1,10 +1,7 @@
 """Tests for FakeWorkerMetrics adapter."""
 
 from airweave.adapters.metrics import FakeWorkerMetrics
-from airweave.platform.temporal.worker_metrics_snapshot import (
-    ConnectorSnapshot,
-    WorkerMetricsSnapshot,
-)
+from airweave.domains.temporal.metrics import ConnectorSnapshot, WorkerMetricsSnapshot
 
 
 def _make_snapshot(**overrides) -> WorkerMetricsSnapshot:

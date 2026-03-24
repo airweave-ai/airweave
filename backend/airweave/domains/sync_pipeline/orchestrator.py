@@ -7,10 +7,11 @@ from typing import Optional
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
-from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
+from airweave.core.events.sync import (
+    AccessControlMembershipBatchProcessedEvent,
+)
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
-from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.pipeline import AccessControlPipeline
 from airweave.domains.sync_pipeline.contexts import SyncContext
@@ -20,6 +21,8 @@ from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, Syn
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.service import SyncCursorService
+from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
+from airweave.domains.syncs.state_machine import LifecycleData
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
@@ -52,6 +55,7 @@ class SyncOrchestrator:
         usage_checker: UsageLimitCheckerProtocol,
         usage_ledger: UsageLedgerProtocol,
         sync_cursor_service: SyncCursorService,
+        state_machine: SyncJobStateMachineProtocol,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
@@ -64,6 +68,7 @@ class SyncOrchestrator:
         self._usage_checker = usage_checker
         self._usage_ledger = usage_ledger
         self._sync_cursor_service = sync_cursor_service
+        self._state_machine = state_machine
 
         # Batch config from context
         self.should_batch = sync_context.should_batch
@@ -76,7 +81,7 @@ class SyncOrchestrator:
         # Format: sync_{sync_id}_job_{sync_job_id} for easier parsing in metrics
         pool_id = f"sync_{self.sync_context.sync.id}_job_{self.sync_context.sync_job.id}"
         try:
-            from airweave.platform.temporal.worker_metrics import worker_metrics
+            from airweave.domains.temporal.metrics import worker_metrics
 
             worker_metrics.register_worker_pool(pool_id, self.worker_pool)
         except Exception as e:
@@ -141,7 +146,7 @@ class SyncOrchestrator:
 
             # Unregister worker pool from metrics
             try:
-                from airweave.platform.temporal.worker_metrics import worker_metrics
+                from airweave.domains.temporal.metrics import worker_metrics
 
                 worker_metrics.unregister_worker_pool(pool_id)
             except Exception as e:
@@ -178,18 +183,17 @@ class SyncOrchestrator:
         """Initialize sync job and start all components."""
         self.sync_context.logger.info("Starting sync job")
 
-        # Start the stream (worker pool doesn't need starting)
         await self.stream.start()
 
-        started_at = utc_now_naive()
-        await sync_job_service.update_status(
-            sync_job_id=self.sync_context.sync_job.id,
-            status=SyncJobStatus.RUNNING,
-            ctx=self.sync_context,
-            started_at=started_at,
+        ctx = self.sync_context
+        await self._state_machine.transition(
+            sync_job_id=ctx.sync_job.id,
+            target=SyncJobStatus.RUNNING,
+            ctx=ctx,
+            lifecycle_data=self._lifecycle_data(),
         )
 
-        self.sync_context.sync_job.started_at = started_at
+        self.sync_context.sync_job.started_at = utc_now_naive()
 
     async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
@@ -522,11 +526,10 @@ class SyncOrchestrator:
         # downstream consumers (search, metadata builders) see the real source.
         await self._update_snapshot_short_name()
 
-        await sync_job_service.update_status(
+        await self._state_machine.transition(
             sync_job_id=self.sync_context.sync_job.id,
-            status=SyncJobStatus.COMPLETED,
+            target=SyncJobStatus.COMPLETED,
             ctx=self.sync_context,
-            completed_at=utc_now_naive(),
             stats=stats,
         )
 
@@ -663,12 +666,11 @@ class SyncOrchestrator:
 
         stats = self.runtime.entity_tracker.get_stats()
 
-        await sync_job_service.update_status(
+        await self._state_machine.transition(
             sync_job_id=self.sync_context.sync_job.id,
-            status=SyncJobStatus.FAILED,
+            target=SyncJobStatus.FAILED,
             ctx=self.sync_context,
             error=error_message,
-            failed_at=utc_now_naive(),
             stats=stats,
         )
 
@@ -703,12 +705,10 @@ class SyncOrchestrator:
         # 2. Cancel stream to stop producer
         await self.stream.cancel()
 
-        # 3. Update job status to final CANCELLED state
-        await sync_job_service.update_status(
+        await self._state_machine.transition(
             sync_job_id=self.sync_context.sync_job.id,
-            status=SyncJobStatus.CANCELLED,
+            target=SyncJobStatus.CANCELLED,
             ctx=self.sync_context,
-            completed_at=utc_now_naive(),
         )
 
         # 4. Track sync cancelled
@@ -729,4 +729,18 @@ class SyncOrchestrator:
             source_short_name=self.sync_context.connection.short_name,
             source_connection_id=self.sync_context.connection.id,
             duration_ms=duration_ms,
+        )
+
+    def _lifecycle_data(self) -> LifecycleData:
+        """Build LifecycleData from the current SyncContext."""
+        ctx = self.sync_context
+        return LifecycleData(
+            organization_id=ctx.organization_id,
+            sync_id=ctx.sync.id,
+            sync_job_id=ctx.sync_job.id,
+            collection_id=ctx.collection.id,
+            source_connection_id=ctx.source_connection_id,
+            source_type=ctx.source_short_name,
+            collection_name=ctx.collection.name,
+            collection_readable_id=ctx.collection.readable_id,
         )

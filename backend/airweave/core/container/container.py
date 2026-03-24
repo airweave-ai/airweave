@@ -96,6 +96,7 @@ from airweave.domains.syncs.protocols import (
     SyncCursorRepositoryProtocol,
     SyncJobRepositoryProtocol,
     SyncJobServiceProtocol,
+    SyncJobStateMachineProtocol,
     SyncLifecycleServiceProtocol,
     SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
@@ -204,6 +205,7 @@ class Container:
     sync_job_repo: SyncJobRepositoryProtocol
     sync_record_service: SyncRecordServiceProtocol
     sync_job_service: SyncJobServiceProtocol
+    sync_job_state_machine: SyncJobStateMachineProtocol
     sync_service: SyncServiceProtocol
     sync_lifecycle: SyncLifecycleServiceProtocol
     sync_factory: SyncFactoryProtocol

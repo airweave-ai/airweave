@@ -227,7 +227,7 @@ services:
       - SVIX_AUTH_TOKEN=${SVIX_AUTH_TOKEN:-}
     volumes:
       - ../backend:/app
-    entrypoint: [ "python", "-m", "airweave.platform.temporal.worker" ]
+    entrypoint: [ "python", "-m", "airweave.domains.temporal.worker" ]
     depends_on:
       postgres:
         condition: service_healthy

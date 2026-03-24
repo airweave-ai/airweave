@@ -7,10 +7,7 @@ are fully isolated (no shared module-level gauges).
 from prometheus_client import CollectorRegistry, ProcessCollector
 
 from airweave.adapters.metrics import PrometheusWorkerMetrics
-from airweave.platform.temporal.worker_metrics_snapshot import (
-    ConnectorSnapshot,
-    WorkerMetricsSnapshot,
-)
+from airweave.domains.temporal.metrics import ConnectorSnapshot, WorkerMetricsSnapshot
 
 
 def _make_adapter() -> tuple[PrometheusWorkerMetrics, CollectorRegistry]:

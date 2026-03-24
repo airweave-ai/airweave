@@ -220,6 +220,6 @@ root_package = "airweave"
 # allowed_importers = [
 #     "airweave.api.deps",
 #     "airweave.main",
-#     "airweave.platform.temporal.worker",
-#     "airweave.platform.temporal.worker.wiring",
+#     "airweave.domains.temporal.worker",
+#     "airweave.domains.temporal.worker.wiring",
 # ]

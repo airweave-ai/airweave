@@ -4,7 +4,7 @@ This keeps the /metrics endpoint off the public API surface. In Kubernetes
 only a ServiceMonitor targets this port — the public ingress never sees it.
 
 Follows the same aiohttp pattern as the Temporal worker control server
-(platform/temporal/worker/control_server.py).
+(domains/temporal/worker/control_server.py).
 """
 
 from aiohttp import web

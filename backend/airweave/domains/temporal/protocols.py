@@ -17,8 +17,8 @@ class TemporalWorkflowServiceProtocol(Protocol):
     Responsible only for starting, cancelling, and cleaning up Temporal
     workflows. Does NOT cover schedule management (see
     TemporalScheduleServiceProtocol), workflow/activity definitions
-    (platform/temporal/workflows/), or the worker runtime
-    (platform/temporal/worker/).
+    (domains/temporal/workflows/), or the worker runtime
+    (domains/temporal/worker/).
     """
 
     async def run_source_connection_workflow(

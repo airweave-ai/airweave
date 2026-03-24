@@ -136,7 +136,7 @@ def test_cancel_workflow_success_path(sync_job_db, quiet_logger):
     mock_client.get_workflow_handle.return_value = mock_handle
 
     with patch(
-        "airweave.models.sync.temporal_client.get_client",
+        "airweave.models.sync.get_temporal_client",
         new=AsyncMock(return_value=mock_client),
     ):
         cancel_running_sync_jobs(sync_job_db, sync_id)
@@ -164,7 +164,7 @@ def test_cancel_workflow_exception_path(sync_job_db, quiet_logger):
     mock_client.get_workflow_handle.return_value = mock_handle
 
     with patch(
-        "airweave.models.sync.temporal_client.get_client",
+        "airweave.models.sync.get_temporal_client",
         new=AsyncMock(return_value=mock_client),
     ):
         cancel_running_sync_jobs(sync_job_db, sync_id)

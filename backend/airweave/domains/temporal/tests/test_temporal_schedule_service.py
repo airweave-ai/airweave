@@ -639,18 +639,17 @@ async def test_delete_all_schedules_for_sync(case: DeleteAllCase):
 
 
 @pytest.mark.asyncio
-async def test_get_client_caches():
+async def test_get_client_delegates():
+    """_get_client() delegates to the module-level get_temporal_client()."""
     svc = _build_svc()
     mock_client = MagicMock()
 
-    with patch("airweave.domains.temporal.schedule_service.temporal_client") as mock_tc:
-        mock_tc.get_client = AsyncMock(return_value=mock_client)
-
-        c1 = await svc._get_client()
-        c2 = await svc._get_client()
-
-        assert c1 is c2
-        mock_tc.get_client.assert_called_once()
+    with patch(
+        "airweave.domains.temporal.schedule_service.get_temporal_client",
+        new=AsyncMock(return_value=mock_client),
+    ):
+        result = await svc._get_client()
+        assert result is mock_client
 
 
 # ---------------------------------------------------------------------------

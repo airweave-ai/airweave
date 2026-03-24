@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
+from airweave.db.session import get_db_context
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -26,7 +26,7 @@ from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.syncs.protocols import (
     SyncCursorRepositoryProtocol,
     SyncJobRepositoryProtocol,
-    SyncJobServiceProtocol,
+    SyncJobStateMachineProtocol,
     SyncLifecycleServiceProtocol,
     SyncRecordServiceProtocol,
 )
@@ -54,7 +54,7 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
         connection_repo: ConnectionRepositoryProtocol,
         sync_cursor_repo: SyncCursorRepositoryProtocol,
         sync_service: SyncRecordServiceProtocol,
-        sync_job_service: SyncJobServiceProtocol,
+        state_machine: SyncJobStateMachineProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
         temporal_schedule_service: TemporalScheduleServiceProtocol,
@@ -67,7 +67,7 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
         self._connection_repo = connection_repo
         self._sync_cursor_repo = sync_cursor_repo
         self._sync_service = sync_service
-        self._sync_job_service = sync_job_service
+        self._state_machine = state_machine
         self._sync_job_repo = sync_job_repo
         self._temporal_workflow_service = temporal_workflow_service
         self._temporal_schedule_service = temporal_schedule_service
@@ -277,8 +277,8 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
 
         original_status = sync_job.status
 
-        await self._sync_job_service.update_status(
-            sync_job_id=job_id, status=SyncJobStatus.CANCELLING, ctx=ctx
+        await self._state_machine.transition(
+            sync_job_id=job_id, target=SyncJobStatus.CANCELLING, ctx=ctx
         )
 
         cancel_result = await self._temporal_workflow_service.cancel_sync_job_workflow(
@@ -286,23 +286,29 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
         )
 
         if not cancel_result["success"]:
-            fallback = (
-                SyncJobStatus.RUNNING
-                if original_status == SyncJobStatus.RUNNING
-                else SyncJobStatus.PENDING
-            )
-            await self._sync_job_service.update_status(sync_job_id=job_id, status=fallback, ctx=ctx)
+            # Compensating revert — bypasses state machine (backward transition)
+            from airweave.schemas.sync_job import SyncJobUpdate as _SyncJobUpdate
+
+            async with get_db_context() as revert_db:
+                revert_job = await self._sync_job_repo.get(revert_db, job_id, ctx)
+                if revert_job:
+                    await self._sync_job_repo.update(
+                        revert_db,
+                        revert_job,
+                        _SyncJobUpdate(status=original_status),
+                        ctx,
+                    )
+                    await revert_db.commit()
             raise HTTPException(
                 status_code=502, detail="Failed to request cancellation from Temporal"
             )
 
         if not cancel_result["workflow_found"]:
             ctx.logger.info(f"Workflow not found for job {job_id} - marking CANCELLED directly")
-            await self._sync_job_service.update_status(
+            await self._state_machine.transition(
                 sync_job_id=job_id,
-                status=SyncJobStatus.CANCELLED,
+                target=SyncJobStatus.CANCELLED,
                 ctx=ctx,
-                completed_at=utc_now_naive(),
                 error="Workflow not found in Temporal - may have already completed",
             )
 

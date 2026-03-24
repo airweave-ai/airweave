@@ -1,7 +1,9 @@
 """Protocols for the syncs domain."""
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import List, Optional, Protocol, Tuple
+from typing import TYPE_CHECKING, List, Optional, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,10 @@ from airweave.models.sync_job import SyncJob
 from airweave.schemas.source_connection import ScheduleConfig, SourceConnectionJob
 from airweave.schemas.sync import SyncCreate, SyncUpdate
 from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
+
+if TYPE_CHECKING:
+    from airweave.core.context import BaseContext
+    from airweave.domains.syncs.state_machine import LifecycleData, TransitionResult
 
 
 class SyncJobRepositoryProtocol(Protocol):
@@ -165,6 +171,23 @@ class SyncJobServiceProtocol(Protocol):
         failed_at: Optional[datetime] = None,
     ) -> None:
         """Update sync job status with provided details."""
+        ...
+
+
+class SyncJobStateMachineProtocol(Protocol):
+    """Validated, idempotent sync job status transitions."""
+
+    async def transition(
+        self,
+        sync_job_id: UUID,
+        target: SyncJobStatus,
+        ctx: "BaseContext",
+        *,
+        lifecycle_data: Optional["LifecycleData"] = None,
+        error: Optional[str] = None,
+        stats: Optional[SyncStats] = None,
+    ) -> "TransitionResult":
+        """Execute a validated, idempotent status transition."""
         ...
 
 

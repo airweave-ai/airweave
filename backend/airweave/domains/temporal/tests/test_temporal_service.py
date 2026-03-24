@@ -75,10 +75,9 @@ async def test_run_source_connection_workflow(case: RunWorkflowCase):
     connection = _mock_schema("my-connection")
 
     with patch(
-        "airweave.domains.temporal.service.temporal_client"
-    ) as mock_tc:
-        mock_tc.get_client = AsyncMock(return_value=mock_client)
-
+        "airweave.domains.temporal.service.get_temporal_client",
+        new=AsyncMock(return_value=mock_client),
+    ):
         result = await svc.run_source_connection_workflow(
             sync=sync,
             sync_job=sync_job,
@@ -143,10 +142,9 @@ async def test_cancel_sync_job_workflow(case: CancelCase):
     mock_client.get_workflow_handle.return_value = mock_handle
 
     with patch(
-        "airweave.domains.temporal.service.temporal_client"
-    ) as mock_tc:
-        mock_tc.get_client = AsyncMock(return_value=mock_client)
-
+        "airweave.domains.temporal.service.get_temporal_client",
+        new=AsyncMock(return_value=mock_client),
+    ):
         result = await svc.cancel_sync_job_workflow(job_id, ctx)
 
         assert result["success"] == case.expected_success
@@ -184,10 +182,9 @@ async def test_start_cleanup_sync_data_workflow(case: CleanupCase):
         mock_client.start_workflow = AsyncMock(return_value=MagicMock())
 
     with patch(
-        "airweave.domains.temporal.service.temporal_client"
-    ) as mock_tc:
-        mock_tc.get_client = AsyncMock(return_value=mock_client)
-
+        "airweave.domains.temporal.service.get_temporal_client",
+        new=AsyncMock(return_value=mock_client),
+    ):
         result = await svc.start_cleanup_sync_data_workflow(
             sync_ids=["id1", "id2"],
             collection_id="col-1",
@@ -228,13 +225,13 @@ async def test_is_temporal_enabled(case: EnabledCase):
 
     with (
         patch("airweave.domains.temporal.service.settings") as mock_settings,
-        patch("airweave.domains.temporal.service.temporal_client") as mock_tc,
+        patch("airweave.domains.temporal.service.get_temporal_client") as mock_tc,
     ):
         mock_settings.TEMPORAL_ENABLED = case.setting_enabled
         if case.client_raises:
-            mock_tc.get_client = AsyncMock(side_effect=Exception("unreachable"))
+            mock_tc.side_effect = Exception("unreachable")
         else:
-            mock_tc.get_client = AsyncMock(return_value=MagicMock())
+            mock_tc.return_value = MagicMock()
 
         result = await svc.is_temporal_enabled()
         assert result == case.expected

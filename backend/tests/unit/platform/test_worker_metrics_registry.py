@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.platform.temporal.worker_metrics import WorkerMetricsRegistry
+from airweave.domains.temporal.metrics import WorkerMetricsRegistry
 
 
 class MockAsyncWorkerPool:
@@ -374,10 +374,9 @@ async def test_duplicate_pool_registration_same_instance(registry):
     registry.register_worker_pool(pool_id, pool)
 
     # Second registration with same instance should log warning but succeed
-    with patch("logging.warning") as mock_warning:
+    with patch("airweave.domains.temporal.metrics.registry._logger") as mock_logger:
         registry.register_worker_pool(pool_id, pool)
-        # Warning should be logged about duplicate registration
-        assert mock_warning.called
+        assert mock_logger.warning.called
 
 
 @pytest.mark.asyncio
@@ -529,4 +528,3 @@ async def test_empty_registry_state(registry):
     assert summary["active_activities_count"] == 0
     assert summary["active_sync_jobs"] == []
     assert summary["active_activities"] == []
-

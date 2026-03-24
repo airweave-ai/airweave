@@ -16,8 +16,8 @@ from uuid import uuid4
 import pytest
 
 from airweave.adapters.metrics import FakeMetricsRenderer, FakeWorkerMetrics
-from airweave.platform.temporal.worker import WorkerControlServer, WorkerState
-from airweave.platform.temporal.worker.config import WorkerConfig
+from airweave.domains.temporal.worker import WorkerControlServer, WorkerState
+from airweave.domains.temporal.worker.config import WorkerConfig
 
 
 class MockAsyncWorkerPool:
@@ -125,7 +125,7 @@ def test_worker_config():
 @pytest.fixture
 def mock_settings():
     """Create mock settings."""
-    with patch("airweave.platform.temporal.worker.control_server.settings") as mock:
+    with patch("airweave.domains.temporal.worker.control_server.settings") as mock:
         mock.TEMPORAL_TASK_QUEUE = "test-queue"
         mock.SYNC_MAX_WORKERS = 20
         mock.SYNC_THREAD_POOL_SIZE = 100
@@ -160,7 +160,7 @@ async def test_prometheus_metrics_endpoint_running_state(
 ):
     """Test /metrics endpoint returns Prometheus format when worker is running."""
     with patch(
-        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        "airweave.domains.temporal.worker.control_server.get_active_thread_count",
         return_value=25,
     ):
         server, state, fake_wm, _ = create_control_server(
@@ -198,7 +198,7 @@ async def test_prometheus_metrics_endpoint_draining_state(
 ):
     """Test /metrics endpoint shows draining status when worker is draining."""
     with patch(
-        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        "airweave.domains.temporal.worker.control_server.get_active_thread_count",
         return_value=10,
     ):
         server, state, fake_wm, _ = create_control_server(
@@ -241,7 +241,7 @@ async def test_json_status_endpoint_complete_response(
     mock_psutil.Process.return_value = mock_process
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        "airweave.domains.temporal.worker.control_server.get_active_thread_count",
         return_value=42,
     ):
         with patch.dict("sys.modules", {"psutil": mock_psutil}):
@@ -295,7 +295,7 @@ async def test_json_status_endpoint_psutil_fallback(
     mock_psutil.Process.side_effect = ImportError("psutil not available")
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        "airweave.domains.temporal.worker.control_server.get_active_thread_count",
         return_value=10,
     ):
         with patch.dict("sys.modules", {"psutil": mock_psutil}):
@@ -351,7 +351,7 @@ async def test_json_status_endpoint_handles_missing_sync_id(
     mock_psutil.Process.return_value = mock_process
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        "airweave.domains.temporal.worker.control_server.get_active_thread_count",
         return_value=0,
     ):
         with patch.dict("sys.modules", {"psutil": mock_psutil}):
@@ -415,7 +415,7 @@ async def test_connector_metrics_aggregation(mock_registry, mock_settings, test_
     )
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        "airweave.domains.temporal.worker.control_server.get_active_thread_count",
         return_value=0,
     ):
         server, state, fake_wm, _ = create_control_server(
@@ -439,7 +439,7 @@ async def test_thread_pool_metrics_integration(mock_registry, mock_settings, tes
     """Test thread pool metrics are correctly tracked and reported."""
     for thread_count in [0, 25, 50, 100]:
         with patch(
-            "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+            "airweave.domains.temporal.worker.control_server.get_active_thread_count",
             return_value=thread_count,
         ):
             server, state, fake_wm, _ = create_control_server(
@@ -457,7 +457,7 @@ async def test_thread_pool_metrics_integration(mock_registry, mock_settings, tes
 @pytest.mark.asyncio
 async def test_pod_ordinal_extraction_for_low_cardinality():
     """Test worker_id uses pod ordinal for low-cardinality metrics (commit 9527bc63)."""
-    from airweave.platform.temporal.worker_metrics import WorkerMetricsRegistry
+    from airweave.domains.temporal.metrics import WorkerMetricsRegistry
 
     with patch.dict(
         "os.environ",
@@ -493,7 +493,7 @@ async def test_metrics_endpoint_uses_pod_ordinal(mock_registry, mock_settings, t
     mock_registry.get_pod_ordinal.return_value = "3"
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        "airweave.domains.temporal.worker.control_server.get_active_thread_count",
         return_value=0,
     ):
         server, state, fake_wm, _ = create_control_server(
@@ -530,7 +530,7 @@ async def test_zero_active_syncs_scenario(mock_registry, mock_settings, test_wor
     mock_psutil.Process.return_value = mock_process
 
     with patch(
-        "airweave.platform.temporal.worker.control_server.get_active_thread_count",
+        "airweave.domains.temporal.worker.control_server.get_active_thread_count",
         return_value=0,
     ):
         with patch.dict("sys.modules", {"psutil": mock_psutil}):

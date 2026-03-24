@@ -30,10 +30,10 @@ def build_worker_command() -> list[str]:
         if wait_for_client:
             cmd.append("--wait-for-client")
 
-        cmd.extend(["-m", "airweave.platform.temporal.worker"])
+        cmd.extend(["-m", "airweave.domains.temporal.worker"])
     else:
         # Run directly without debugpy
-        cmd = [sys.executable, "-m", "airweave.platform.temporal.worker"]
+        cmd = [sys.executable, "-m", "airweave.domains.temporal.worker"]
 
     return cmd
 

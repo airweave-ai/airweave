@@ -39,7 +39,7 @@ def _patches():
         patch("airweave.db.session.health_check_engine", engine),
         patch("airweave.core.redis_client.redis_client", redis_mod),
         patch(
-            "airweave.platform.temporal.client.TemporalClient",
+            "airweave.domains.temporal.client.TemporalClient",
             temporal_cls,
         ),
         engine,
