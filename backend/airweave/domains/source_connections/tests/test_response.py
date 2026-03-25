@@ -1610,3 +1610,61 @@ def test_build_list_item_needs_reauth():
     object.__setattr__(stats.last_job, "error_category", "api_key_invalid")
     item = f.builder.build_list_item(stats)
     assert item.status == SourceConnectionStatus.NEEDS_REAUTH
+
+
+# ===========================================================================
+# _fetch_sync_status — detail view sync status lookup
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_sync_status_returns_status():
+    """_fetch_sync_status returns SyncStatus when db query succeeds."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    f = _fixture()
+    sync_id = uuid4()
+    sc = _make_source_conn(sync_id=sync_id)
+
+    mock_row = SimpleNamespace(status="paused")
+    mock_result = MagicMock()
+    mock_result.first.return_value = mock_row
+    mock_db = AsyncMock()
+    mock_db.execute.return_value = mock_result
+
+    result = await f.builder._fetch_sync_status(mock_db, sc)
+    assert result == SyncStatus.PAUSED
+
+
+@pytest.mark.asyncio
+async def test_fetch_sync_status_returns_none_when_no_row():
+    """_fetch_sync_status returns None when no Sync row is found."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    f = _fixture()
+    sync_id = uuid4()
+    sc = _make_source_conn(sync_id=sync_id)
+
+    mock_result = MagicMock()
+    mock_result.first.return_value = None
+    mock_db = AsyncMock()
+    mock_db.execute.return_value = mock_result
+
+    result = await f.builder._fetch_sync_status(mock_db, sc)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_sync_status_returns_none_on_exception():
+    """_fetch_sync_status returns None when db.execute raises."""
+    from unittest.mock import AsyncMock
+
+    f = _fixture()
+    sync_id = uuid4()
+    sc = _make_source_conn(sync_id=sync_id)
+
+    mock_db = AsyncMock()
+    mock_db.execute.side_effect = RuntimeError("db error")
+
+    result = await f.builder._fetch_sync_status(mock_db, sc)
+    assert result is None
