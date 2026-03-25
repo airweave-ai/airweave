@@ -50,6 +50,7 @@ class SyncStatus(str, Enum):
     """Sync status enum."""
 
     ACTIVE = "active"
+    PAUSED = "paused"
     INACTIVE = "inactive"
     ERROR = "error"
 
