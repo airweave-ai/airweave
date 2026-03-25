@@ -95,7 +95,7 @@ async def test_run(case: RunCase):
     svc = SyncService(
         state_machine=fake_state_machine,
         sync_factory=fake_factory,
-        temporal_schedule_service=MagicMock(),
+        sync_state_machine=MagicMock(),
     )
 
     sync = _mock_sync()
@@ -162,7 +162,7 @@ async def test_run_forwards_optional_kwargs():
     svc = SyncService(
         state_machine=fake_state_machine,
         sync_factory=fake_factory,
-        temporal_schedule_service=MagicMock(),
+        sync_state_machine=MagicMock(),
     )
 
     mock_db = AsyncMock()
@@ -217,7 +217,7 @@ async def test_credential_error_propagates_error_category():
     svc = SyncService(
         state_machine=fake_sm,
         sync_factory=fake_factory,
-        temporal_schedule_service=MagicMock(),
+        sync_state_machine=MagicMock(),
     )
 
     with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
@@ -254,7 +254,7 @@ async def test_non_credential_error_has_no_error_category():
     svc = SyncService(
         state_machine=fake_sm,
         sync_factory=fake_factory,
-        temporal_schedule_service=MagicMock(),
+        sync_state_machine=MagicMock(),
     )
 
     with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
@@ -280,7 +280,7 @@ def test_stores_injected_deps():
     svc = SyncService(
         state_machine=fake_sm,
         sync_factory=fake_factory,
-        temporal_schedule_service=MagicMock(),
+        sync_state_machine=MagicMock(),
     )
     assert svc._state_machine is fake_sm
     assert svc._sync_factory is fake_factory

@@ -27,10 +27,11 @@ def _mock_ctx() -> MagicMock:
     return ctx
 
 
-def _mock_sync_model(sync_id: UUID = SYNC_ID) -> MagicMock:
+def _mock_sync_model(sync_id: UUID = SYNC_ID, status: str = "active") -> MagicMock:
     sync = MagicMock()
     sync.id = sync_id
     sync.name = "test-sync"
+    sync.status = status
     return sync
 
 

@@ -7,13 +7,16 @@ from typing import Optional
 
 from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SyncJobStatus, SyncStatus
 from airweave.db.session import get_db_context
 from airweave.domains.sources.exceptions.classifier import classify_error
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
-from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol, SyncServiceProtocol
-from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
+from airweave.domains.syncs.protocols import (
+    SyncJobStateMachineProtocol,
+    SyncServiceProtocol,
+    SyncStateMachineProtocol,
+)
 
 
 class SyncService(SyncServiceProtocol):
@@ -26,12 +29,12 @@ class SyncService(SyncServiceProtocol):
         self,
         state_machine: SyncJobStateMachineProtocol,
         sync_factory: SyncFactoryProtocol,
-        temporal_schedule_service: TemporalScheduleServiceProtocol,
+        sync_state_machine: SyncStateMachineProtocol,
     ) -> None:
         """Initialize with state machine and factory dependencies."""
         self._state_machine = state_machine
         self._sync_factory = sync_factory
-        self._temporal_schedule_service = temporal_schedule_service
+        self._sync_state_machine = sync_state_machine
 
     async def run(
         self,
@@ -73,13 +76,15 @@ class SyncService(SyncServiceProtocol):
 
             if classification.category is not None and sync:
                 try:
-                    await self._temporal_schedule_service.pause_schedules_for_sync(
-                        sync.id,
+                    await self._sync_state_machine.transition(
+                        sync_id=sync.id,
+                        target=SyncStatus.PAUSED,
+                        ctx=ctx,
                         reason=f"Credential error: {classification.category.value}",
                     )
                 except Exception:
                     ctx.logger.warning(
-                        "Failed to pause schedules after credential error", exc_info=True
+                        "Failed to pause sync after credential error", exc_info=True
                     )
 
             raise e

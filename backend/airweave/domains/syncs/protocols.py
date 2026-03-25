@@ -11,12 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.context import BaseContext
-from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus, SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.types import LifecycleData, SyncProvisionResult, TransitionResult
+from airweave.domains.syncs.types import (
+    LifecycleData,
+    SyncProvisionResult,
+    SyncTransitionResult,
+    TransitionResult,
+)
 from airweave.models.sync import Sync
 from airweave.models.sync_cursor import SyncCursor
 from airweave.models.sync_job import SyncJob
@@ -197,6 +202,24 @@ class SyncJobStateMachineProtocol(Protocol):
         error_category: Optional[SourceConnectionErrorCategory] = None,
     ) -> TransitionResult:
         """Execute a validated, idempotent status transition."""
+        ...
+
+
+class SyncStateMachineProtocol(Protocol):
+    """Validated, idempotent sync status transitions with schedule side effects."""
+
+    async def transition(
+        self,
+        sync_id: UUID,
+        target: SyncStatus,
+        ctx: BaseContext,
+        *,
+        reason: str = "",
+    ) -> SyncTransitionResult:
+        """Execute a validated, idempotent sync status transition.
+
+        Side effects (schedule pause/unpause) run after the DB commit.
+        """
         ...
 
 
