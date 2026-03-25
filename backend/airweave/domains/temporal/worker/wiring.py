@@ -85,14 +85,14 @@ def create_activities() -> list:
             temporal_schedule_service=temporal_schedule_service,
             arf_service=arf_service,
         ).run,
-        # Notifications
+        # API key lifecycle
         CheckAndNotifyExpiringKeysActivity(
             email_service=email_service,
+            api_key_repo=crud.api_key,
         ).run,
-        # API key cleanup (no dependencies — uses crud directly)
-        CleanupRevokedKeysActivity().run,
-        ExpirePastDueKeysActivity().run,
-        PruneUsageLogActivity().run,
+        CleanupRevokedKeysActivity(api_key_repo=crud.api_key).run,
+        ExpirePastDueKeysActivity(api_key_repo=crud.api_key).run,
+        PruneUsageLogActivity(api_key_repo=crud.api_key).run,
     ]
 
 
