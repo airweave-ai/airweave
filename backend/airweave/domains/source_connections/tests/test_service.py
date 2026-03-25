@@ -19,7 +19,7 @@ from airweave.core.exceptions import NotFoundException
 
 from airweave.api.context import ApiContext
 from airweave.core.logging import logger
-from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, SyncJobStatus, SyncStatus
+from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, SyncJobStatus
 from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
