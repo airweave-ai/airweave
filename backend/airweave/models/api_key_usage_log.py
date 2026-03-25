@@ -29,4 +29,5 @@ class APIKeyUsageLog(Base):
     __table_args__ = (
         Index("ix_api_key_usage_log_key_ts", "api_key_id", "timestamp"),
         Index("ix_api_key_usage_log_org_ts", "organization_id", "timestamp"),
+        Index("ix_api_key_usage_log_timestamp", "timestamp"),
     )

@@ -139,10 +139,10 @@ class ContextResolver:
     ) -> AuthResult:
         if not settings.AUTH_ENABLED:
             return await self._authenticate_system(db)
-        if auth0_user:
-            return await self._authenticate_auth0(db, auth0_user)
         if x_api_key:
             return await self._authenticate_api_key(db, x_api_key, request)
+        if auth0_user:
+            return await self._authenticate_auth0(db, auth0_user)
         raise HTTPException(status_code=401, detail="No valid authentication provided")
 
     async def _authenticate_system(self, db: AsyncSession) -> AuthResult:
@@ -180,6 +180,15 @@ class ContextResolver:
                     await self._cache.invalidate_api_key(api_key)
                     raise ValueError("Cached API key is expired or revoked")
 
+                client_ip = _extract_client_ip(request)
+                self._api_keys.record_usage_by_id(
+                    api_key_id=uuid.UUID(cached["key_id"]),
+                    organization_id=uuid.UUID(cached["org_id"]),
+                    ip_address=client_ip,
+                    endpoint=request.url.path,
+                    user_agent=request.headers.get("user-agent"),
+                )
+
                 return AuthResult(
                     method=AuthMethod.API_KEY,
                     metadata={
@@ -195,8 +204,12 @@ class ContextResolver:
             client_ip = _extract_client_ip(request)
             audit_logger = logger.with_context(event_type="api_key_usage")
             audit_logger.info(
-                f"API key usage: key={api_key_obj.id} org={org_id} ip={client_ip} "
-                f"endpoint={request.url.path} created_by={api_key_obj.created_by_email}"
+                "API key usage",
+                api_key_id=str(api_key_obj.id),
+                org_id=str(org_id),
+                ip=client_ip,
+                endpoint=request.url.path,
+                created_by=api_key_obj.created_by_email,
             )
 
             # Cache rich auth metadata
@@ -208,9 +221,8 @@ class ContextResolver:
             }
             await self._cache.set_api_key_auth(api_key, auth_data)
 
-            # Record usage (inline UPDATE + fire-and-forget log INSERT)
-            await self._api_keys.record_usage(
-                db,
+            # Record usage (enqueued for batch flush)
+            self._api_keys.record_usage(
                 api_key_obj=api_key_obj,
                 ip_address=client_ip,
                 endpoint=request.url.path,
@@ -228,9 +240,9 @@ class ContextResolver:
             )
 
         except (ValueError, NotFoundException, PermissionException) as e:
-            logger.error(f"API key validation failed: {e}")
-            if "expired" in str(e):
-                raise HTTPException(status_code=403, detail="API key has expired") from e
+            logger.error("API key validation failed", error=str(e))
+            if "not active" in str(e):
+                raise HTTPException(status_code=403, detail="API key is not active") from e
             raise HTTPException(status_code=403, detail="Invalid or expired API key") from e
 
     @staticmethod

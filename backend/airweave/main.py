@@ -90,12 +90,19 @@ async def lifespan(app: FastAPI):
             f"Failed to initialize system schedules (Temporal may not be available): {e}"
         )
 
+    # Start the API key usage buffer (batched writes)
+    from airweave.crud.crud_api_key import usage_buffer
+
+    await usage_buffer.start()
+
     # Start metrics sidecar + DB pool sampler; wire app.state.http_metrics
     from airweave.core.metrics_service import metrics_lifespan
     from airweave.db.session import async_engine
 
     async with metrics_lifespan(app, container_mod.container.metrics, async_engine.pool):
         yield
+        # Flush remaining usage events while DB is still available
+        await usage_buffer.stop()
 
     container_mod.container.health.shutting_down = True
 

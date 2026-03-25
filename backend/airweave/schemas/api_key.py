@@ -16,6 +16,11 @@ class APIKeyBase(BaseModel):
 class APIKeyCreate(BaseModel):
     """Schema for creating an APIKey object."""
 
+    description: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="Optional human-readable description for this key",
+    )
     expiration_days: Optional[int] = Field(
         default=90,
         description="Number of days until the API key expires (default: 90, max: 180)",
@@ -53,6 +58,7 @@ class APIKeyCreate(BaseModel):
 class APIKeyUpdate(BaseModel):
     """Schema for updating an APIKey object."""
 
+    description: Optional[str] = Field(default=None, max_length=255)
     expiration_date: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -71,6 +77,7 @@ class APIKeyInDBBase(APIKeyBase):
     status: str = "active"
     revoked_at: Optional[datetime] = None
     key_prefix: Optional[str] = None
+    description: Optional[str] = None
     created_by_email: Optional[EmailStr] = None
     modified_by_email: Optional[EmailStr] = None
 

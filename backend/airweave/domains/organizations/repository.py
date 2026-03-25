@@ -266,3 +266,37 @@ class ApiKeyRepository(ApiKeyRepositoryProtocol):
     async def get_by_key(self, db: AsyncSession, *, key: str) -> Any:
         """Validate and return the API key via delegated CRUD."""
         return await crud.api_key.get_by_key(db, key=key)
+
+    def record_usage(
+        self,
+        *,
+        api_key_obj: Any,
+        ip_address: str,
+        endpoint: str,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Record API key usage via delegated CRUD."""
+        crud.api_key.record_usage(
+            api_key_obj=api_key_obj,
+            ip_address=ip_address,
+            endpoint=endpoint,
+            user_agent=user_agent,
+        )
+
+    def record_usage_by_id(
+        self,
+        *,
+        api_key_id: UUID,
+        organization_id: UUID,
+        ip_address: str,
+        endpoint: str,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Record usage from cached auth metadata via delegated CRUD."""
+        crud.api_key.record_usage_by_id(
+            api_key_id=api_key_id,
+            organization_id=organization_id,
+            ip_address=ip_address,
+            endpoint=endpoint,
+            user_agent=user_agent,
+        )

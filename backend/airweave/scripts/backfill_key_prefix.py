@@ -10,24 +10,21 @@ Usage:
 """
 
 import asyncio
-import hashlib
 
 from cryptography.fernet import InvalidToken
-from sqlalchemy import or_, select, update
+from sqlalchemy import select, update
 
 from airweave.core import credentials
 from airweave.core.logging import logger
+from airweave.crud.crud_api_key import _hash_key
 from airweave.db.session import get_db_context
 from airweave.models.api_key import APIKey
 
 
 async def backfill() -> None:
-    """Decrypt each key and populate key_prefix/key_hash where NULL."""
+    """Decrypt each key and populate key_prefix / re-hash key_hash with HMAC."""
     async with get_db_context() as db:
-        query = select(APIKey).where(
-            or_(APIKey.key_prefix.is_(None), APIKey.key_hash.is_(None))
-        )
-        result = await db.execute(query)
+        result = await db.execute(select(APIKey))
         keys = result.scalars().all()
 
         if not keys:
@@ -45,20 +42,17 @@ async def backfill() -> None:
                     logger.warning(f"Key {api_key.id}: could not extract plaintext key")
                     continue
 
-                values = {}
+                values: dict[str, str] = {"key_hash": _hash_key(plain_key)}
                 if api_key.key_prefix is None:
                     values["key_prefix"] = plain_key[:8]
-                if api_key.key_hash is None:
-                    values["key_hash"] = hashlib.sha256(plain_key.encode()).hexdigest()
 
-                if values:
-                    stmt = (
-                        update(APIKey)
-                        .where(APIKey.id == api_key.id)
-                        .values(**values)
-                    )
-                    await db.execute(stmt)
-                    updated += 1
+                stmt = (
+                    update(APIKey)
+                    .where(APIKey.id == api_key.id)
+                    .values(**values)
+                )
+                await db.execute(stmt)
+                updated += 1
             except (InvalidToken, ValueError) as e:
                 logger.error(f"Key {api_key.id}: decryption failed: {e}")
 

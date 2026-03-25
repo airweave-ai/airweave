@@ -14,6 +14,16 @@ from airweave.platform.temporal.activities.api_key_cleanup import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _patch_logger():
+    """Replace structlog logger with a plain mock to avoid kwarg errors."""
+    with patch(
+        "airweave.platform.temporal.activities.api_key_cleanup.logger",
+        MagicMock(),
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_db():
     """An AsyncMock DB session usable as an async context manager."""
