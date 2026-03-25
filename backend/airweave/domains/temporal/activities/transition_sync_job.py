@@ -14,8 +14,8 @@ from temporalio import activity
 
 from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
-from airweave.domains.syncs.types import LifecycleData
+from airweave.domains.syncs.jobs.protocols import SyncJobStateMachineProtocol
+from airweave.domains.syncs.jobs.types import LifecycleData
 from airweave.domains.temporal.activities.context import build_activity_context
 
 _STATUS_MAP: dict[str, SyncJobStatus] = {

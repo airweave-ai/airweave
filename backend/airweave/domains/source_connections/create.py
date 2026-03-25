@@ -33,8 +33,8 @@ from airweave.domains.sources.protocols import (
     SourceRegistryProtocol,
     SourceValidationServiceProtocol,
 )
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
 from airweave.domains.syncs.protocols import (
-    SyncJobRepositoryProtocol,
     SyncLifecycleServiceProtocol,
     SyncRecordServiceProtocol,
 )

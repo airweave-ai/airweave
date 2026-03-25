@@ -12,8 +12,8 @@ from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
 from airweave.core.shared_models import SyncJobStatus, SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
 from airweave.domains.syncs.protocols import (
-    SyncJobRepositoryProtocol,
     SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
 )

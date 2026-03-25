@@ -20,10 +20,8 @@ from airweave.db.session import get_db_context
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
-from airweave.domains.syncs.protocols import (
-    SyncJobRepositoryProtocol,
-    SyncRepositoryProtocol,
-)
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.protocols import SyncRepositoryProtocol
 from airweave.domains.temporal.activities.context import build_activity_context
 from airweave.domains.temporal.activity_results import CreateSyncJobResult
 from airweave.models.sync_job import SyncJob

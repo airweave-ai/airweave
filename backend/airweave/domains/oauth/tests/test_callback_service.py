@@ -25,7 +25,7 @@ from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.sources.exceptions import SourceNotFoundError, SourceValidationError
-from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
+from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
 from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.organization import Organization

@@ -22,8 +22,9 @@ from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, Syn
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.service import SyncCursorService
-from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol, SyncStateMachineProtocol
-from airweave.domains.syncs.types import LifecycleData
+from airweave.domains.syncs.jobs.protocols import SyncJobStateMachineProtocol
+from airweave.domains.syncs.jobs.types import LifecycleData
+from airweave.domains.syncs.protocols import SyncStateMachineProtocol
 from airweave.domains.temporal.metrics import worker_metrics
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,

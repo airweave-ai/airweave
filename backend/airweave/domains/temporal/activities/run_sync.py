@@ -22,8 +22,8 @@ from airweave.core.exceptions import NotFoundException
 from airweave.db.session import get_db_context
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.sync_pipeline.config import SyncConfig
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
 from airweave.domains.syncs.protocols import (
-    SyncJobRepositoryProtocol,
     SyncRepositoryProtocol,
     SyncServiceProtocol,
 )

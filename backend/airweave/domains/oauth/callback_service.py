@@ -44,8 +44,8 @@ from airweave.domains.sources.protocols import (
     SourceRegistryProtocol,
 )
 from airweave.domains.sources.types import SourceRegistryEntry
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
 from airweave.domains.syncs.protocols import (
-    SyncJobRepositoryProtocol,
     SyncLifecycleServiceProtocol,
     SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
