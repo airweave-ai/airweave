@@ -11,6 +11,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from airweave.core.shared_models import SourceConnectionErrorCategory
 from airweave.domains.sync_pipeline.config.base import SyncConfig
 from airweave.models.sync_job import SyncJobStatus
 
@@ -31,6 +32,7 @@ class SyncJobBase(BaseModel):
     completed_at: Optional[datetime] = None
     failed_at: Optional[datetime] = None
     error: Optional[str] = None
+    error_category: Optional[SourceConnectionErrorCategory] = None
     access_token: Optional[str] = None
     sync_config: Optional[SyncConfig] = None
     sync_metadata: Optional[dict] = None
@@ -59,6 +61,7 @@ class SyncJobUpdate(BaseModel):
     completed_at: Optional[datetime] = None
     failed_at: Optional[datetime] = None
     error: Optional[str] = None
+    error_category: Optional[SourceConnectionErrorCategory] = None
     sync_metadata: Optional[dict] = None
 
 

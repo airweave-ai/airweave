@@ -1,6 +1,6 @@
 """Configuration classes for platform components."""
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import Field, field_validator
 
@@ -914,6 +914,87 @@ class FileStubConfig(SourceConfig):
         description=(
             "Optional string to embed in all generated files. "
             "Useful as a tracking token for search assertions."
+        ),
+    )
+
+
+ExceptionType = Literal[
+    "runtime_error",
+    "source_auth_error",
+    "source_token_refresh_error",
+    "source_server_error",
+    "source_rate_limit_error",
+    "source_entity_not_found",
+    "source_entity_forbidden",
+    "token_expired",
+    "token_credentials_invalid",
+    "token_provider_config_error",
+    "token_provider_server_error",
+    "timeout",
+    "cancelled",
+]
+
+AuthProviderKindType = Literal[
+    "oauth",
+    "static",
+    "auth_provider",
+    "credential",
+]
+
+
+class ExceptionStubConfig(SourceConfig):
+    """Exception stub source configuration for testing error handling.
+
+    Configures which exception to raise and when, so you can test
+    how the UI responds to different error scenarios during sync.
+    """
+
+    entity_count: int = Field(
+        default=10,
+        title="Entity Count",
+        description="Total number of entities to generate before/instead of failing",
+        ge=1,
+        le=1000,
+    )
+    seed: int = Field(
+        default=42,
+        title="Random Seed",
+        description="Random seed for reproducible content generation",
+    )
+    exception_type: ExceptionType = Field(
+        default="runtime_error",
+        title="Exception Type",
+        description="Which exception to raise during entity generation",
+    )
+    auth_provider_kind: AuthProviderKindType = Field(
+        default="oauth",
+        title="Auth Provider Kind",
+        description=(
+            "Provider kind for auth-related exceptions "
+            "(source_auth_error, source_token_refresh_error, token_* errors)"
+        ),
+    )
+    trigger_after: int = Field(
+        default=5,
+        title="Trigger After N Entities",
+        description=(
+            "Raise exception after yielding this many entities. "
+            "0 = immediately after container. "
+            "-1 = after the last entity. "
+            "If >= entity_count, no exception is raised (baseline test)."
+        ),
+        ge=-1,
+    )
+    error_message: Optional[str] = Field(
+        default=None,
+        title="Custom Error Message",
+        description="Custom error message. If empty, a descriptive default is generated.",
+    )
+    fail_on_validate: bool = Field(
+        default=False,
+        title="Fail on Validate",
+        description=(
+            "If true, validate() raises the configured exception_type before sync starts."
         ),
     )
 

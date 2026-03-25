@@ -301,6 +301,7 @@ def create_container(settings: Settings) -> Container:
         sync_repo=source_deps["sync_repo"],
         sync_cursor_repo=source_deps["sync_cursor_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
+        auth_provider_registry=source_deps["auth_provider_registry"],
     )
 
     # SourceConnectionService is built here (not in _create_source_services)
@@ -363,6 +364,7 @@ def create_container(settings: Settings) -> Container:
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         event_bus=event_bus,
         auth_provider_service=auth_provider_service,
+        sync_job_repo=source_deps["sync_job_repo"],
     )
     source_connection_service = SourceConnectionService(
         sc_repo=source_deps["sc_repo"],
@@ -436,6 +438,7 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
         # Services
         source_lifecycle_service=source_deps["source_lifecycle_service"],
+        temporal_schedule_service=sync_deps["temporal_schedule_service"],
         sync_cursor_service=source_deps["sync_cursor_service"],
         processor=chunk_embed_processor,
         arf_service=arf_service,
@@ -450,6 +453,7 @@ def create_container(settings: Settings) -> Container:
     sync_service = SyncService(
         state_machine=sync_deps["sync_job_state_machine"],
         sync_factory=sync_factory,
+        temporal_schedule_service=sync_deps["temporal_schedule_service"],
     )
 
     # -----------------------------------------------------------------
@@ -493,6 +497,7 @@ def create_container(settings: Settings) -> Container:
         sync_lifecycle=sync_deps["sync_lifecycle"],
         sync_record_service=sync_deps["sync_record_service"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
+        temporal_schedule_service=sync_deps["temporal_schedule_service"],
         event_bus=event_bus,
         organization_repo=OrgRepo(),
         sc_repo=source_deps["sc_repo"],
@@ -967,6 +972,7 @@ def _create_sync_services(
     sync_repo: SyncRepository,
     sync_cursor_repo: SyncCursorRepository,
     sync_job_repo: SyncJobRepository,
+    auth_provider_registry: AuthProviderRegistry | None = None,
 ) -> dict:
     """Create sync-domain services and orchestrator.
 
@@ -1002,6 +1008,7 @@ def _create_sync_services(
         source_registry=source_registry,
         entity_count_repo=entity_count_repo,
         sync_job_repo=sync_job_repo,
+        auth_provider_registry=auth_provider_registry,
     )
 
     temporal_schedule_service = TemporalScheduleService(

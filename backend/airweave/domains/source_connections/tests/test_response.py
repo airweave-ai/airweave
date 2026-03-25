@@ -102,6 +102,7 @@ def _make_sync_job(
     entities_deleted=2,
     entities_skipped=1,
     error=None,
+    error_category=None,
 ):
     """Build a lightweight sync job ORM stand-in."""
     return SimpleNamespace(
@@ -114,6 +115,7 @@ def _make_sync_job(
         entities_deleted=entities_deleted,
         entities_skipped=entities_skipped,
         error=error,
+        error_category=error_category,
     )
 
 
@@ -908,6 +910,7 @@ async def test_sync_details_null_entity_counts_default_to_zero():
         entities_deleted=None,
         entities_skipped=None,
         error=None,
+        error_category=None,
     )
     f.sync_job_repo.seed_last_job(sync_id, job)
 
@@ -1233,6 +1236,7 @@ def test_map_sync_job(case: MapJobCase):
         entities_deleted=case.entities_deleted,
         entities_skipped=case.entities_skipped,
         error=case.error,
+        error_category=None,
     )
 
     result = _fixture().builder.map_sync_job(job, sc_id)
@@ -1259,6 +1263,7 @@ def test_map_sync_job_preserves_all_fields():
         entities_deleted=25,
         entities_skipped=10,
         error="Connection refused",
+        error_category=None,
     )
     result = _fixture().builder.map_sync_job(job, sc_id)
 
@@ -1393,3 +1398,188 @@ def test_stats_from_dict_last_job_missing_status_raises():
     raw = _full_raw_dict(last_job={"completed_at": NOW})
     with pytest.raises(KeyError):
         SourceConnectionStats.from_dict(raw)
+
+
+# ===========================================================================
+# error_category in build_response
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "category, expected_message_fragment",
+    [
+        ("oauth_credentials_expired", "OAuth authorization has expired"),
+        ("api_key_invalid", "API key for this connection"),
+        ("auth_provider_account_gone", "auth provider has been deleted"),
+        ("auth_provider_credentials_invalid", "credentials on the auth provider"),
+    ],
+    ids=[
+        "oauth_expired",
+        "api_key",
+        "account_gone",
+        "provider_creds",
+    ],
+)
+async def test_build_response_error_category_surfaces_from_last_job(
+    category, expected_message_fragment
+):
+    """Each error category surfaces correct error_message and NEEDS_REAUTH status."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    sync_id = uuid4()
+    sc = _make_source_conn(is_authenticated=True, sync_id=sync_id)
+
+    job = _make_sync_job(status=SyncJobStatus.FAILED, error="bad creds")
+    job.error_category = category
+    f.sync_job_repo.seed_last_job(sync_id, job)
+
+    result = await f.builder.build_response(None, sc, _make_ctx())
+    assert result.error_category == category
+    assert expected_message_fragment in result.error_message
+    assert result.status == SourceConnectionStatus.NEEDS_REAUTH
+
+
+@pytest.mark.asyncio
+async def test_build_response_no_error_category_when_none():
+    """When last job has no error_category, fields are None."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    sync_id = uuid4()
+    sc = _make_source_conn(is_authenticated=True, sync_id=sync_id)
+
+    job = _make_sync_job(status=SyncJobStatus.FAILED, error="random error")
+    job.error_category = None
+    f.sync_job_repo.seed_last_job(sync_id, job)
+
+    result = await f.builder.build_response(None, sc, _make_ctx())
+    assert result.error_category is None
+    assert result.error_message is None
+    assert result.status == SourceConnectionStatus.ERROR
+
+
+# ===========================================================================
+# _resolve_provider_settings_url
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_resolve_provider_info_no_registry():
+    """Returns empty ProviderInfo when no auth_provider_registry is injected."""
+    f = _fixture()
+    sc = _make_source_conn(readable_auth_provider_id="my-composio")
+    result = await f.builder._resolve_provider_info(None, sc, _make_ctx())
+    assert result.settings_url is None
+    assert result.short_name is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_provider_info_no_readable_id():
+    """Returns empty ProviderInfo when source_conn has no readable_auth_provider_id."""
+    from unittest.mock import MagicMock
+
+    registry = MagicMock()
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=FakeSourceRegistry(),
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=FakeSyncJobRepository(),
+        auth_provider_registry=registry,
+    )
+    sc = _make_source_conn(readable_auth_provider_id=None)
+    result = await builder._resolve_provider_info(None, sc, _make_ctx())
+    assert result.settings_url is None
+    assert result.short_name is None
+    registry.get_settings_url.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resolve_provider_info_returns_url_and_short_name():
+    """Returns ProviderInfo with url and short_name when connection lookup resolves."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    registry = MagicMock()
+    registry.get_settings_url.return_value = "https://platform.composio.dev/"
+
+    conn = SimpleNamespace(short_name="composio")
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed_readable("my-composio", conn)
+
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=conn_repo,
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=FakeSourceRegistry(),
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=FakeSyncJobRepository(),
+        auth_provider_registry=registry,
+    )
+    sc = _make_source_conn(readable_auth_provider_id="my-composio")
+    result = await builder._resolve_provider_info(AsyncMock(), sc, _make_ctx())
+    assert result.settings_url == "https://platform.composio.dev/"
+    assert result.short_name == "composio"
+    registry.get_settings_url.assert_called_once_with("composio")
+
+
+@pytest.mark.asyncio
+async def test_resolve_provider_info_exception_returns_empty():
+    """Returns empty ProviderInfo when registry raises."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    registry = MagicMock()
+    registry.get_settings_url.side_effect = RuntimeError("boom")
+
+    conn = SimpleNamespace(short_name="composio")
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed_readable("my-composio", conn)
+
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=conn_repo,
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=FakeSourceRegistry(),
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=FakeSyncJobRepository(),
+        auth_provider_registry=registry,
+    )
+    sc = _make_source_conn(readable_auth_provider_id="my-composio")
+    result = await builder._resolve_provider_info(AsyncMock(), sc, _make_ctx())
+    assert result.settings_url is None
+    assert result.short_name is None
+
+
+# ===========================================================================
+# map_sync_job includes error_category
+# ===========================================================================
+
+
+def test_map_sync_job_includes_error_category():
+    """map_sync_job passes through error_category from ORM object."""
+    f = _fixture()
+    job = _make_sync_job(status=SyncJobStatus.FAILED, error="bad key")
+    job.error_category = "api_key_invalid"
+    sc_id = uuid4()
+    result = f.builder.map_sync_job(job, sc_id)
+    assert result.error_category == "api_key_invalid"
+
+
+# ===========================================================================
+# build_list_item with error_category
+# ===========================================================================
+
+
+def test_build_list_item_needs_reauth():
+    """List item status is NEEDS_REAUTH when last_job has error_category."""
+    f = _fixture()
+    stats = _make_stats(
+        is_authenticated=True,
+        last_job_status=SyncJobStatus.FAILED,
+    )
+    # Patch in error_category
+    object.__setattr__(stats.last_job, "error_category", "api_key_invalid")
+    item = f.builder.build_list_item(stats)
+    assert item.status == SourceConnectionStatus.NEEDS_REAUTH

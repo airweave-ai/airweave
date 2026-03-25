@@ -21,6 +21,19 @@ class SearchTier(str, Enum):
 class InstantSearchRequest(BaseModel):
     """Instant search request — embed query, fire at Vespa, return results."""
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "query": "How do I reset my password?",
+                    "retrieval_strategy": "hybrid",
+                    "limit": 10,
+                },
+                {"query": "quarterly revenue report"},
+            ]
+        }
+    }
+
     query: str = Field(..., description="Search query text.")
     retrieval_strategy: RetrievalStrategy = Field(
         default=RetrievalStrategy.HYBRID,
@@ -44,6 +57,15 @@ class InstantSearchRequest(BaseModel):
 class ClassicSearchRequest(BaseModel):
     """Classic search request — LLM generates a search plan, execute against Vespa."""
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"query": "quarterly revenue report", "limit": 10},
+                {"query": "find the onboarding documentation"},
+            ]
+        }
+    }
+
     query: str = Field(..., description="Search query text.")
     filter: Optional[list[FilterGroup]] = Field(
         default=None, description="Filter groups (combined with OR)."
@@ -62,6 +84,15 @@ class ClassicSearchRequest(BaseModel):
 
 class AgenticSearchRequest(BaseModel):
     """Agentic search request — full agent loop with tool calling."""
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"query": "find all deployment-related docs from last month", "thinking": True},
+                {"query": "what authentication methods do we support?"},
+            ]
+        }
+    }
 
     query: str = Field(..., description="Search query text.")
     thinking: bool = Field(

@@ -128,6 +128,7 @@ setTokenProvider({
 - State preserved in sessionStorage during redirect
 - Handles both standard and SemanticMcp flows
 - Error recovery with detailed user feedback
+- **Redirect validation**: Always use `safeRedirectPath()` from `lib/utils/url-validation.ts` when assigning `window.location.href` after an OAuth callback — never use raw query-string values
 
 #### Browser OAuth Claim-Token Contract
 All browser OAuth flows use a two-step handoff to trigger the initial sync:
@@ -355,7 +356,18 @@ try {
 - Token cache location is conditional: custom Auth0 domains use `memory` (no localStorage exposure), standard `*.auth0.com` tenants use `localstorage` (necessary due to third-party cookie restrictions)
 - Secure OAuth state management
 
-### 4. **Randomness**
+### 4. **Redirect Safety**
+- Never assign `window.location.href` (or similar navigation) to a URL derived from query parameters, `sessionStorage`, or any external input without validation
+- Use `safeRedirectPath()` from `lib/utils/url-validation.ts` — it rejects absolute URLs, protocol-relative paths, and other open-redirect vectors, returning a safe fallback
+- Use `isSafeRedirectPath()` from the same module when you need a boolean check without a fallback
+- This applies everywhere, but is especially critical in OAuth callback handlers (`AuthCallback.tsx`, `SemanticMcpCallback.tsx`)
+
+### 5. **Randomness**
 - Never use `Math.random()` — it is banned by ESLint
 - Use `crypto.getRandomValues()` for random bytes/integers
 - Use `crypto.randomUUID()` for UUIDs
+
+### 5. **XSS Prevention**
+- Never assign to `innerHTML` — it is banned by ESLint (CASA-41)
+- Never use `dangerouslySetInnerHTML` — it is banned by ESLint (CASA-41)
+- Use React state-driven rendering and `textContent` instead

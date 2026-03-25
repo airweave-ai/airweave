@@ -14,6 +14,7 @@ from .ctti import CTTISource
 from .document360 import Document360Source
 from .dropbox import DropboxSource
 from .enron import EnronSource
+from .exception_stub import ExceptionStubSource
 from .file_stub import FileStubSource
 from .fireflies import FirefliesSource
 from .freshdesk import FreshdeskSource
@@ -81,6 +82,7 @@ ALL_SOURCES: list[type] = [
     Document360Source,
     DropboxSource,
     EnronSource,
+    ExceptionStubSource,
     FileStubSource,
     FirefliesSource,
     FreshdeskSource,

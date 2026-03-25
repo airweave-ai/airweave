@@ -142,6 +142,7 @@ def _make_orchestrator(state_machine=None) -> tuple[SyncOrchestrator, FakeStateM
         sync_cursor_service=sync_cursor_service,
         state_machine=sm,
         lifecycle_data=MagicMock(),
+        temporal_schedule_service=MagicMock(),
     )
     return orch, sm
 

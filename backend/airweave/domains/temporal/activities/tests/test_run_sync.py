@@ -244,6 +244,7 @@ async def test_run_sync_happy_path():
     activity = RunSyncActivity(
         sync_service=sync_service,
         sync_repo=sync_repo,
+        sync_job_repo=MagicMock(),
         collection_repo=collection_repo,
     )
 
@@ -274,6 +275,7 @@ async def test_resolve_from_db_sync_not_found():
     activity = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=sync_repo,
+        sync_job_repo=MagicMock(),
         collection_repo=collection_repo,
     )
 
@@ -295,6 +297,7 @@ async def test_resolve_from_db_collection_not_found():
     activity = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=sync_repo,
+        sync_job_repo=MagicMock(),
         collection_repo=collection_repo,
     )
 
@@ -316,9 +319,12 @@ async def test_run_sync_orphaned_sync_error():
     sync_service = FakeSyncService(
         raise_error=NotFoundException("Source connection record not found")
     )
+    sync_job_repo = MagicMock()
+    sync_job_repo.get = AsyncMock(return_value=None)
     activity = RunSyncActivity(
         sync_service=sync_service,
         sync_repo=MagicMock(),
+        sync_job_repo=sync_job_repo,
         collection_repo=MagicMock(),
     )
 
@@ -327,10 +333,8 @@ async def test_run_sync_orphaned_sync_error():
 
     with (
         patch(f"{MODULE}.get_db_context", _fake_db),
-        patch(f"{MODULE}.crud") as mock_crud,
         pytest.raises(ApplicationError) as exc_info,
     ):
-        mock_crud.sync_job.get.return_value = None
         await activity._run_sync(
             _make_sync(),
             sync_job,
@@ -347,9 +351,12 @@ async def test_run_sync_non_orphan_not_found_error_propagates():
     sync_service = FakeSyncService(
         raise_error=NotFoundException("Some other not found error")
     )
+    sync_job_repo = MagicMock()
+    sync_job_repo.get = AsyncMock(return_value=None)
     activity = RunSyncActivity(
         sync_service=sync_service,
         sync_repo=MagicMock(),
+        sync_job_repo=sync_job_repo,
         collection_repo=MagicMock(),
     )
 
@@ -357,10 +364,8 @@ async def test_run_sync_non_orphan_not_found_error_propagates():
 
     with (
         patch(f"{MODULE}.get_db_context", _fake_db),
-        patch(f"{MODULE}.crud") as mock_crud,
         pytest.raises(NotFoundException, match="Some other not found"),
     ):
-        mock_crud.sync_job.get.return_value = None
         await activity._run_sync(
             _make_sync(),
             _make_sync_job(),
@@ -375,24 +380,21 @@ async def test_run_sync_non_orphan_not_found_error_propagates():
 
 @pytest.mark.unit
 async def test_load_execution_config_with_config():
+    mock_model = MagicMock()
+    mock_model.sync_config = {"handlers": {"enable_postgres_handler": True}}
+    sync_job_repo = MagicMock()
+    sync_job_repo.get = AsyncMock(return_value=mock_model)
     activity = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=MagicMock(),
+        sync_job_repo=sync_job_repo,
         collection_repo=MagicMock(),
     )
 
     ctx = BaseContext(organization=_make_org())
     sync_job = _make_sync_job()
 
-    mock_model = MagicMock()
-    mock_model.sync_config = {"handlers": {"enable_postgres_handler": True}}
-    mock_crud = MagicMock()
-    mock_crud.sync_job.get = AsyncMock(return_value=mock_model)
-
-    with (
-        patch(f"{MODULE}.get_db_context", _fake_db),
-        patch(f"{MODULE}.crud", mock_crud),
-    ):
+    with patch(f"{MODULE}.get_db_context", _fake_db):
         result = await activity._load_execution_config(sync_job, ctx)
 
     assert result is not None
@@ -403,6 +405,7 @@ async def test_load_execution_config_failure_returns_none():
     activity = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=MagicMock(),
+        sync_job_repo=MagicMock(),
         collection_repo=MagicMock(),
     )
 
@@ -419,22 +422,19 @@ async def test_load_execution_config_failure_returns_none():
 
 @pytest.mark.unit
 async def test_load_execution_config_no_model():
+    sync_job_repo = MagicMock()
+    sync_job_repo.get = AsyncMock(return_value=None)
     activity = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=MagicMock(),
+        sync_job_repo=sync_job_repo,
         collection_repo=MagicMock(),
     )
 
     ctx = BaseContext(organization=_make_org())
     sync_job = _make_sync_job()
 
-    mock_crud = MagicMock()
-    mock_crud.sync_job.get = AsyncMock(return_value=None)
-
-    with (
-        patch(f"{MODULE}.get_db_context", _fake_db),
-        patch(f"{MODULE}.crud", mock_crud),
-    ):
+    with patch(f"{MODULE}.get_db_context", _fake_db):
         result = await activity._load_execution_config(sync_job, ctx)
 
     assert result is None
@@ -448,6 +448,7 @@ async def test_execute_with_heartbeat_cancellation_drains_task():
     act = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=MagicMock(),
+        sync_job_repo=MagicMock(),
         collection_repo=MagicMock(),
     )
 
@@ -478,6 +479,7 @@ async def test_drain_task_cancels_and_heartbeats():
     act = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=MagicMock(),
+        sync_job_repo=MagicMock(),
         collection_repo=MagicMock(),
     )
 
@@ -509,6 +511,7 @@ async def test_drain_task_heartbeats_on_timeout():
     act = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=MagicMock(),
+        sync_job_repo=MagicMock(),
         collection_repo=MagicMock(),
     )
 

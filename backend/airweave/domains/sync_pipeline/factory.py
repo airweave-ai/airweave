@@ -58,6 +58,7 @@ from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
+from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.domains.usage.protocols import UsageLedgerProtocol, UsageLimitCheckerProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.sources._base import BaseSource
@@ -96,6 +97,7 @@ class SyncFactory(SyncFactoryProtocol):
         source_registry: SourceRegistryProtocol,
         # Services
         source_lifecycle_service: SourceLifecycleService,
+        temporal_schedule_service: TemporalScheduleServiceProtocol,
         sync_cursor_service: SyncCursorService,
         processor: ChunkEmbedProcessorProtocol,
         arf_service: ArfServiceProtocol,
@@ -120,6 +122,7 @@ class SyncFactory(SyncFactoryProtocol):
 
         # Services
         self._source_lifecycle_service = source_lifecycle_service
+        self._temporal_schedule_service = temporal_schedule_service
         self._sync_cursor_service = sync_cursor_service
         self._processor = processor
         self._arf_service = arf_service
@@ -239,6 +242,7 @@ class SyncFactory(SyncFactoryProtocol):
             sync_cursor_service=self._sync_cursor_service,
             state_machine=self._state_machine,
             lifecycle_data=sync_context.lifecycle_data,
+            temporal_schedule_service=self._temporal_schedule_service,
         )
 
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")

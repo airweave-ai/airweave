@@ -93,6 +93,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         for stats in connections_with_stats:
             last_job = stats.last_job
             last_job_status = last_job.status if last_job else None
+            last_job_error_category = last_job.error_category if last_job else None
 
             result.append(
                 SourceConnectionListItem(
@@ -108,6 +109,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
                     federated_search=stats.federated_search,
                     is_active=stats.is_active,
                     last_job_status=last_job_status,
+                    last_job_error_category=last_job_error_category,
                 )
             )
 
@@ -126,7 +128,11 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         return await self._update_service.update(db, id=id, obj_in=obj_in, ctx=ctx)
 
     async def reinitiate_oauth(
-        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
     ) -> SourceConnectionSchema:
         """Create a fresh OAuth session for an un-authenticated connection."""
         return await self._create_service.reinitiate_oauth(db, id=id, ctx=ctx)

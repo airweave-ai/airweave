@@ -220,6 +220,11 @@ class CollectionMetadataBuilder:
             "A video conferencing and communications platform for virtual meetings, "
             "webinars, and team collaboration."
         ),
+        # Clinical trials
+        "ctti": (
+            "The CTTI AACT database — clinical trial records from ClinicalTrials.gov, "
+            "including study metadata and trial identifiers."
+        ),
         # Enron email corpus
         "enron": (
             "The Enron Email Dataset (CMU corpus) — over 500,000 real corporate emails "

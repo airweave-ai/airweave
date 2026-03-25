@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from airweave.api.context import ApiContext
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
 
 
@@ -31,6 +31,7 @@ class FakeSyncJobService:
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
         failed_at: Optional[datetime] = None,
+        error_category: Optional[SourceConnectionErrorCategory] = None,
     ) -> None:
         """Record call."""
         self._calls.append(
@@ -44,6 +45,7 @@ class FakeSyncJobService:
                 started_at,
                 completed_at,
                 failed_at,
+                error_category,
             )
         )
         if self._should_raise:

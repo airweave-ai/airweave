@@ -148,7 +148,11 @@ class FakeSourceConnectionService:
         return {"sync_id": str(obj.sync_id)}
 
     async def reinitiate_oauth(
-        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
     ) -> SourceConnectionSchema:
         self._calls.append(("reinitiate_oauth", db, id, ctx))
         if self._create_service:

@@ -12,7 +12,9 @@ from airweave.platform.configs._base import ConfigValues
 class AuthProviderRegistryProtocol(RegistryProtocol[AuthProviderRegistryEntry], Protocol):
     """Auth provider registry protocol."""
 
-    pass
+    def get_settings_url(self, short_name: str) -> str | None:
+        """Get settings dashboard URL for an auth provider."""
+        ...
 
 
 class AuthProviderServiceProtocol(Protocol):

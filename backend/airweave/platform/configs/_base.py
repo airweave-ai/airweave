@@ -1,6 +1,6 @@
 """Base config class."""
 
-from typing import Optional, get_args, get_origin
+from typing import Literal, Optional, get_args, get_origin
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_core import PydanticUndefined
@@ -125,6 +125,7 @@ class ConfigField(BaseModel):
     items_type: Optional[str] = None  # For array types, the type of items
     feature_flag: Optional[str] = None  # Feature flag required to show this field
     is_secret: bool = False  # Whether this field should be treated as a secret
+    enum_values: Optional[list[str]] = None  # For Literal types, the allowed values
 
 
 _type_map = {str: "string", int: "number", float: "number", bool: "boolean"}
@@ -152,16 +153,22 @@ class Fields(BaseModel):
                 annotation = get_args(annotation)[0]
                 is_optional = True
 
-            # Check if it's a list type
-            items_type = None
+            # Check if it's a Literal type (renders as dropdown in frontend)
+            enum_values = None
             origin = get_origin(annotation)
-            if origin is list:
-                # Get the type of list items
+            if origin is Literal:
+                enum_values = [str(v) for v in get_args(annotation)]
+                type_str = "string"
+                items_type = None
+            elif origin is list:
+                # Check if it's a list type
+                items_type = None
                 list_args = get_args(annotation)
                 if list_args:
                     items_type = _type_map.get(list_args[0], "string")
                 type_str = "array"
             else:
+                items_type = None
                 # Map the type to string representation
                 type_str = _type_map.get(
                     annotation, "string"
@@ -187,6 +194,7 @@ class Fields(BaseModel):
                     items_type=items_type,
                     feature_flag=feature_flag,
                     is_secret=is_secret,
+                    enum_values=enum_values,
                 )
             )
         return Fields(fields=fields)

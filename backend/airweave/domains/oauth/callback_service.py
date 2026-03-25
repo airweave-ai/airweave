@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.service import RPCError
 
 from airweave import schemas
 from airweave.api.context import ApiContext, ConnectContext
@@ -50,7 +51,10 @@ from airweave.domains.syncs.protocols import (
     SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
 )
-from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.domains.temporal.protocols import (
+    TemporalScheduleServiceProtocol,
+    TemporalWorkflowServiceProtocol,
+)
 from airweave.models.collection import Collection
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.integration_credential import IntegrationType
@@ -88,6 +92,7 @@ class OAuthCallbackService:
         sync_lifecycle: SyncLifecycleServiceProtocol,
         sync_record_service: SyncRecordServiceProtocol,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
+        temporal_schedule_service: TemporalScheduleServiceProtocol,
         event_bus: EventBus,
         organization_repo: OrganizationRepositoryProtocol,
         sc_repo: SourceConnectionRepositoryProtocol,
@@ -107,6 +112,7 @@ class OAuthCallbackService:
         self._sync_lifecycle = sync_lifecycle
         self._sync_record_service = sync_record_service
         self._temporal_workflow_service = temporal_workflow_service
+        self._temporal_schedule_service = temporal_schedule_service
         self._event_bus = event_bus
         self._organization_repo = organization_repo
         self._sc_repo = sc_repo
@@ -568,6 +574,14 @@ class OAuthCallbackService:
 
             await uow.commit()
             await uow.session.refresh(source_conn)
+
+            # Unpause schedules — OAuth re-auth may fix a NEEDS_REAUTH state
+            try:
+                await self._temporal_schedule_service.unpause_schedules_for_sync(
+                    source_conn.sync_id,
+                )
+            except (RPCError, OSError):
+                logger.warning("Failed to unpause schedules after OAuth re-auth", exc_info=True)
 
         return source_conn
 

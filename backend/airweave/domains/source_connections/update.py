@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.service import RPCError
 
 from airweave import schemas
 from airweave.api.context import ApiContext
@@ -126,6 +127,16 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                     uow.session, source_conn, update_data["credentials"], ctx, uow
                 )
                 del update_data["credentials"]
+
+                # Unpause schedules — credential update may fix a NEEDS_REAUTH state
+                try:
+                    await self._temporal_schedule_service.unpause_schedules_for_sync(
+                        source_conn.sync_id,
+                    )
+                except (RPCError, OSError):
+                    ctx.logger.warning(
+                        "Failed to unpause schedules after credential update", exc_info=True
+                    )
 
             # Update source connection
             if update_data:

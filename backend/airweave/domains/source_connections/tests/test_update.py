@@ -468,3 +468,91 @@ def test_cron_validation(case: CronCase):
         assert exc_info.value.status_code == 400
     else:
         svc._validate_cron_schedule_for_source(case.cron, source, _make_ctx())
+
+
+# ---------------------------------------------------------------------------
+# Credential update triggers unpause
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_credential_update_triggers_unpause():
+    """Successful direct auth credential update calls unpause_schedules."""
+    conn_id = uuid4()
+    cred_id = uuid4()
+    sc = _make_sc(connection_id=conn_id, is_authenticated=True)
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+
+    conn = MagicMock(spec=Connection)
+    conn.id = conn_id
+    conn.integration_credential_id = cred_id
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed(conn_id, conn)
+
+    cred = MagicMock(spec=IntegrationCredential)
+    cred.id = cred_id
+    cred_repo = FakeIntegrationCredentialRepository()
+    cred_repo.seed(cred_id, cred)
+
+    validation = FakeSourceValidationService()
+    validation.seed_auth_result("github", _AuthPayload(token="secret"))
+
+    temporal = FakeTemporalScheduleService()
+
+    svc = _build_service(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        cred_repo=cred_repo,
+        source_validation=validation,
+        credential_encryptor=FakeCredentialEncryptor(),
+        temporal_schedule_service=temporal,
+    )
+
+    obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
+    await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+
+    assert any(c[0] == "unpause_schedules" for c in temporal._calls)
+
+
+@pytest.mark.asyncio
+async def test_credential_update_unpause_failure_is_nonfatal():
+    """If unpause raises, the update still succeeds."""
+    conn_id = uuid4()
+    cred_id = uuid4()
+    sc = _make_sc(connection_id=conn_id, is_authenticated=True)
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+
+    conn = MagicMock(spec=Connection)
+    conn.id = conn_id
+    conn.integration_credential_id = cred_id
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed(conn_id, conn)
+
+    cred = MagicMock(spec=IntegrationCredential)
+    cred.id = cred_id
+    cred_repo = FakeIntegrationCredentialRepository()
+    cred_repo.seed(cred_id, cred)
+
+    validation = FakeSourceValidationService()
+    validation.seed_auth_result("github", _AuthPayload(token="secret"))
+
+    temporal = FakeTemporalScheduleService()
+    temporal.set_error(OSError("temporal down"))
+
+    svc = _build_service(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        cred_repo=cred_repo,
+        source_validation=validation,
+        credential_encryptor=FakeCredentialEncryptor(),
+        temporal_schedule_service=temporal,
+    )
+
+    obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
+    # Should not raise despite temporal failure
+    result = await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+    assert result.id == sc.id

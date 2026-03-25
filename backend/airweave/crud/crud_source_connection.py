@@ -250,6 +250,7 @@ class CRUDSourceConnection(
                 SyncJob.sync_id,
                 SyncJob.status,
                 SyncJob.completed_at,
+                SyncJob.error_category,
                 func.row_number()
                 .over(partition_by=SyncJob.sync_id, order_by=SyncJob.created_at.desc())
                 .label("rn"),
@@ -264,7 +265,11 @@ class CRUDSourceConnection(
         # Map to source connection IDs
         sync_to_sc = {sc.sync_id: sc.id for sc in source_conns if sc.sync_id}
         return {
-            sync_to_sc[row.sync_id]: {"status": row.status, "completed_at": row.completed_at}
+            sync_to_sc[row.sync_id]: {
+                "status": row.status,
+                "completed_at": row.completed_at,
+                "error_category": row.error_category,
+            }
             for row in result
             if row.sync_id in sync_to_sc
         }

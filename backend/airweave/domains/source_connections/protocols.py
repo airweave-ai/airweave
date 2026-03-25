@@ -189,7 +189,11 @@ class SourceConnectionCreateServiceProtocol(Protocol):
         ...
 
     async def reinitiate_oauth(
-        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
     ) -> SourceConnectionSchema:
         """Create a fresh OAuth session for an un-authenticated connection."""
         ...
@@ -268,7 +272,11 @@ class SourceConnectionServiceProtocol(Protocol):
         ...
 
     async def reinitiate_oauth(
-        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
     ) -> SourceConnectionSchema:
         """Create a fresh OAuth session for an un-authenticated connection."""
         ...

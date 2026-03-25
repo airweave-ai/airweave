@@ -34,6 +34,7 @@ from airweave.domains.sources.protocols import (
     SourceValidationServiceProtocol,
 )
 from airweave.domains.syncs.protocols import (
+    SyncJobRepositoryProtocol,
     SyncLifecycleServiceProtocol,
     SyncRecordServiceProtocol,
 )
@@ -75,6 +76,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
         event_bus: EventBus,
         auth_provider_service: AuthProviderServiceProtocol,
+        sync_job_repo: SyncJobRepositoryProtocol,
     ) -> None:
         """Initialize with injected repositories, validators, and orchestration services."""
         self._sc_repo = sc_repo
@@ -91,6 +93,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         self._temporal_workflow_service = temporal_workflow_service
         self._event_bus = event_bus
         self._auth_provider_service = auth_provider_service
+        self._sync_job_repo = sync_job_repo
 
     async def create(
         self, db: AsyncSession, *, obj_in: SourceConnectionCreate, ctx: ApiContext
@@ -160,13 +163,21 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         return result
 
     async def reinitiate_oauth(
-        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
     ) -> SourceConnectionSchema:
-        """Create a fresh OAuth session for an un-authenticated connection."""
+        """Create a fresh OAuth session for an un-authenticated connection.
+
+        If the connection has a credential error (NEEDS_REAUTH), re-initiation
+        is allowed even though ``is_authenticated`` is still True.
+        """
         source_conn = await self._sc_repo.get(db, id=id, ctx=ctx)
         if not source_conn:
             raise NotFoundException("Source connection not found")
-        if source_conn.is_authenticated:
+        if source_conn.is_authenticated and not await self._has_credential_error(db, source_conn):
             raise HTTPException(
                 status_code=400,
                 detail="Connection is already authenticated",
@@ -180,7 +191,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         byoc_consumer_key: Optional[str] = None
         byoc_consumer_secret: Optional[str] = None
         template_configs: Optional[dict[str, Any]] = None
-        redirect_url: Optional[str] = None
+        resolved_redirect_url: Optional[str] = None
         payload: Optional[dict[str, Any]] = None
         old_init = None
 
@@ -195,7 +206,8 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 byoc_consumer_key = overrides.get("consumer_key")
                 byoc_consumer_secret = overrides.get("consumer_secret")
                 template_configs = overrides.get("template_configs")
-                redirect_url = overrides.get("redirect_url")
+                if not resolved_redirect_url:
+                    resolved_redirect_url = overrides.get("redirect_url")
                 payload = old_init.payload
 
         # Fall back: reconstruct payload from source_conn fields
@@ -264,7 +276,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 client_id=initiation_result.client_id,
                 client_secret=initiation_result.client_secret,
                 oauth_client_mode=initiation_result.oauth_client_mode,
-                redirect_url=redirect_url,
+                redirect_url=resolved_redirect_url,
                 template_configs=template_configs,
                 additional_overrides=initiation_result.additional_overrides,
                 initiator_user_id=initiator_user_id,
@@ -282,6 +294,13 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         return await self._response_builder.build_response(
             db, source_conn, ctx, claim_token=claim_token
         )
+
+    async def _has_credential_error(self, db: AsyncSession, source_conn) -> bool:
+        """Check if the last sync job for this connection has a credential error."""
+        if not source_conn.sync_id:
+            return False
+        job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=source_conn.sync_id)
+        return job is not None and job.error_category is not None
 
     async def _create_with_direct_auth(
         self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext

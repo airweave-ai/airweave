@@ -6,18 +6,11 @@ from airweave.domains.temporal.metrics.registry import WorkerMetricsRegistry
 
 
 class BadPool:
-    """Pool whose active_and_pending_count succeeds on first access (isinstance)
-    but raises on the second (actual usage inside try block)."""
-
-    def __init__(self):
-        self._access_count = 0
+    """Pool whose active_and_pending_count always raises."""
 
     @property
     def active_and_pending_count(self) -> int:
-        self._access_count += 1
-        if self._access_count > 1:
-            raise RuntimeError("pool broken")
-        return 0
+        raise RuntimeError("pool broken")
 
 
 @pytest.mark.unit

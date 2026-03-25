@@ -21,6 +21,9 @@ class AuthProviderRegistryEntry(BaseRegistryEntry):
     field_name_mapping: dict[str, str]
     slug_name_mapping: dict[str, str]
 
+    # Settings dashboard URL
+    settings_url: str = ""
+
 
 class AuthProviderMetadata(BaseRegistryEntry):
     """Public auth provider metadata returned by API endpoints."""
@@ -29,3 +32,4 @@ class AuthProviderMetadata(BaseRegistryEntry):
     config_class: str
     auth_fields: Fields | None = None
     config_fields: Fields | None = None
+    settings_url: str = ""

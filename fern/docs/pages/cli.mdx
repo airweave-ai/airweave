@@ -87,7 +87,12 @@ airweave search "quarterly revenue figures" --collection finance-data
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--collection` | `-c` | Collection readable ID to search |
+| `--mode` | `-m` | Search mode: `instant`, `classic`, or `agentic` (default: `classic`) |
 | `--top-k` | `-k` | Number of results to return (default: 10) |
+| `--offset` | | Number of results to skip, for pagination (instant/classic only) |
+| `--strategy` | `-s` | Retrieval strategy for instant mode: `hybrid`, `neural`, `keyword` |
+| `--thinking` | `-t` | Enable extended reasoning (agentic mode only) |
+| `--filter` | `-f` | JSON filter groups for narrowing results (all modes) |
 
 If you've set a default collection (via login or environment variable), you can omit `--collection`:
 
@@ -95,12 +100,68 @@ If you've set a default collection (via login or environment variable), you can 
 airweave search "how does authentication work?"
 ```
 
+### Search modes
+
+The CLI supports three search modes:
+
+| Mode | Description |
+|------|-------------|
+| `instant` | Direct vector search. Fastest, best for simple lookups. |
+| `classic` | AI-optimized search with LLM-generated search plans. **(default)** |
+| `agentic` | Full agent loop that iteratively searches and reasons over your data. |
+
+```bash
+# Fast vector search
+airweave search "error logs" --mode instant
+
+# Keyword search for exact terms
+airweave search "ERR-4032" --mode instant --strategy keyword
+
+# AI-planned search (default)
+airweave search "how does authentication work?"
+
+# Agentic search — the agent reasons over your data
+airweave search "summarize Q4 decisions" --mode agentic
+
+# Agentic with extended thinking
+airweave search "compare our auth design with the RFC" --mode agentic --thinking
+```
+
+Agentic search uses a streaming connection and shows real-time progress as the agent works:
+
+```
+  ▶ Search started
+  ◆ Thinking (iter 1) (2340ms): Analyzing query...
+  ⚡ Tool: search (iter 1) (890ms)
+  ◆ Thinking (iter 2) (1560ms): Evaluating results...
+  ⇅ Reranking: 25 → 10 results (320ms)
+  ✔ Done — 10 results (8432ms)
+```
+
+### Filtering
+
+Use `--filter` to narrow results by source, entity type, date, or other fields:
+
+```bash
+# Filter to a specific source
+airweave search "bugs" --filter '{"conditions": [
+  {"field": "airweave_system_metadata.source_name", "operator": "equals", "value": "jira"}
+]}'
+
+# Filter by date
+airweave search "updates" --filter '{"conditions": [
+  {"field": "created_at", "operator": "greater_than", "value": "2026-01-01T00:00:00Z"}
+]}'
+```
+
+Filterable fields include `entity_id`, `name`, `created_at`, `updated_at`, `breadcrumbs.name`, `airweave_system_metadata.source_name`, `airweave_system_metadata.entity_type`, and more. Operators: `equals`, `not_equals`, `contains`, `in`, `not_in`, `greater_than`, `less_than`, etc. Conditions within a group are AND'd; multiple groups are OR'd.
+
 ### Piping results
 
 When stdout is not a TTY (e.g. piped to another command), the CLI automatically outputs JSON:
 
 ```bash
-airweave search "refund policy" | jq -r '.results[0].md_content'
+airweave search "refund policy" | jq -r '.results[0].textual_representation'
 ```
 
 You can also force JSON output in interactive mode:
@@ -266,7 +327,7 @@ Exit codes: `0` for success, `1` for failure.
 airweave [--version] [--json] [--quiet] <command>
 
 Commands:
-  search          Search a collection
+  search          Search a collection (instant, classic, or agentic)
   auth            Authentication management
     login         Authenticate (browser or API key)
     status        Print current auth state

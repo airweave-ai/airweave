@@ -13,6 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import { SourceConnectionSettings } from './SourceConnectionSettings';
 import { EntityStateList } from './EntityStateList';
 import { SyncErrorCard } from './SyncErrorCard';
+import { CredentialErrorView } from './CredentialErrorView';
 import { SourceAuthenticationView } from '@/components/shared/SourceAuthenticationView';
 import {
   Tooltip,
@@ -22,81 +23,16 @@ import {
 } from '@/components/ui/tooltip';
 import { DESIGN_SYSTEM } from '@/lib/design-system';
 import { useCollectionCreationStore } from '@/stores/collectionCreationStore';
-import type { SingleActionCheckResponse } from '@/types';
+import type {
+  SingleActionCheckResponse,
+  SourceConnection,
+  SourceConnectionAuth as AuthenticationInfo,
+  SourceConnectionLastSyncJob as LastSyncJob,
+  SourceConnectionSchedule as Schedule,
+  SourceConnectionEntitySummary as EntitySummary,
+} from '@/types';
 import { useUsageStore } from '@/lib/stores/usage';
 import { parseCronExpression, formatTimeUntil } from '@/utils/cronParser';
-
-// Source Connection interface - matches backend schema
-interface LastSyncJob {
-  id?: string;
-  status?: string;
-  started_at?: string;
-  completed_at?: string;
-  duration_seconds?: number;
-  entities_inserted?: number;
-  entities_updated?: number;
-  entities_deleted?: number;
-  entities_failed?: number;
-  error?: string;
-  error_details?: Record<string, any>;
-}
-
-interface Schedule {
-  cron?: string;  // Backend uses 'cron', not 'cron_expression'
-  next_run?: string;  // Backend uses 'next_run', not 'next_run_at'
-  continuous?: boolean;  // Backend uses 'continuous', not 'is_continuous'
-  cursor_field?: string;
-  cursor_value?: any;
-}
-
-interface AuthenticationInfo {
-  method?: string;
-  authenticated?: boolean;  // Backend uses 'authenticated', not 'is_authenticated'
-  authenticated_at?: string;
-  expires_at?: string;
-  auth_url?: string;  // Backend uses 'auth_url', not 'authentication_url'
-  auth_url_expires?: string;  // Backend uses 'auth_url_expires'
-  provider_id?: string;  // Backend uses 'provider_id'
-  provider_readable_id?: string;  // Backend uses 'provider_readable_id'
-  redirect_url?: string;
-}
-
-interface EntityTypeStats {
-  count: number;
-  last_updated?: string;
-  sync_status: string;
-}
-
-interface EntitySummary {
-  total_entities: number;
-  by_type: Record<string, EntityTypeStats>;
-  last_updated?: string;
-}
-
-interface SourceConnection {
-  id: string;
-  name: string;
-  description?: string;
-  short_name: string;
-  readable_collection_id: string;
-  status?: string;
-  created_at: string;
-  modified_at: string;
-  // Authentication is now in the auth object
-  auth?: AuthenticationInfo;  // Contains authenticated, method, etc.
-  config?: Record<string, any>;  // Changed from config_fields
-  schedule?: Schedule;
-  last_sync_job?: LastSyncJob;
-  entities?: EntitySummary;  // Changed from entity_states array to entities object
-  // Source configuration
-  federated_search?: boolean;  // Whether this source uses federated search
-  // Legacy fields that may still exist
-  sync_id?: string;
-  organization_id?: string;
-  connection_id?: string;
-  created_by_email?: string;
-  modified_by_email?: string;
-}
 
 interface Props {
   sourceConnectionId: string;
@@ -225,9 +161,9 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
 
   // Fetch source connection details (only when not provided as prop)
-  const fetchSourceConnection = useCallback(async () => {
-    // If data is provided as prop, use it instead of fetching
-    if (sourceConnectionData) {
+  const fetchSourceConnection = useCallback(async (forceRefresh = false) => {
+    // If data is provided as prop and not forcing a refresh, use it
+    if (sourceConnectionData && !forceRefresh) {
       setSourceConnection(sourceConnectionData);
       return;
     }
@@ -247,8 +183,9 @@ const SourceConnectionStateView: React.FC<Props> = ({
   const handleRefreshAuthUrl = useCallback(async () => {
     setIsRefreshingAuth(true);
     try {
+      const isNeedsReauth = sourceConnection?.status === 'needs_reauth';
       const response = await apiClient.post(
-        `/source-connections/${sourceConnectionId}/reinitiate-oauth`
+        `/source-connections/${sourceConnectionId}/reinitiate-oauth`,
       );
       if (response.ok) {
         const data = await response.json();
@@ -259,6 +196,13 @@ const SourceConnectionStateView: React.FC<Props> = ({
           );
         }
         setSourceConnection(data);
+
+        // For NEEDS_REAUTH: redirect to OAuth provider immediately
+        if (isNeedsReauth && data.auth?.auth_url) {
+          window.location.href = data.auth.auth_url;
+          return;
+        }
+
         toast({
           title: "Ready",
           description: "Click 'Connect now' to authorize.",
@@ -284,7 +228,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
     } finally {
       setIsRefreshingAuth(false);
     }
-  }, [sourceConnectionId]);
+  }, [sourceConnectionId, sourceConnection?.status]);
 
   useEffect(() => {
     const isNotAuthorized = sourceConnectionData?.status === 'pending_auth' || !sourceConnectionData?.auth?.authenticated;
@@ -413,8 +357,8 @@ const SourceConnectionStateView: React.FC<Props> = ({
     const syncStatus = storeConnection?.last_sync_job?.status;
     const error = storeConnection?.last_sync_job?.error;
     if (syncStatus === 'failed' || error) {
-      // Refetch to get the last_sync_job.error from backend
-      fetchSourceConnection();
+      // Force refetch from API to get error_category and updated status
+      fetchSourceConnection(true);
     }
   }, [storeConnection?.last_sync_job?.status, storeConnection?.last_sync_job?.error, fetchSourceConnection]);
 
@@ -422,7 +366,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
   useEffect(() => {
     const syncStatus = storeConnection?.last_sync_job?.status;
     if (syncStatus === 'completed' || syncStatus === 'cancelled' || syncStatus === 'failed') {
-      fetchSourceConnection();
+      fetchSourceConnection(true);
     }
   }, [storeConnection?.last_sync_job?.status, fetchSourceConnection]);
 
@@ -881,7 +825,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
                   title="Settings"
                 >
                   <SourceConnectionSettings
-                    sourceConnection={sourceConnection as any}
+                    sourceConnection={sourceConnection}
                     onUpdate={handleConnectionUpdate as any}
                     onDelete={onConnectionDeleted}
                     isDark={isDark}
@@ -902,10 +846,25 @@ const SourceConnectionStateView: React.FC<Props> = ({
       {/* Only show sync-related UI when authenticated */}
       {!isNotAuthorized && (
         <>
-          {/* Show error card if sync failed or there's an error - Only for non-federated sources */}
-          {!isFederatedSource && (currentSyncJob?.status === 'failed') && (
+          {/* Show credential error view for needs_reauth status */}
+          {!isFederatedSource && sourceConnection?.status === 'needs_reauth' && sourceConnection?.error_category && (
+            <CredentialErrorView
+              sourceConnection={sourceConnection}
+              onRefreshAuthUrl={handleRefreshAuthUrl}
+              isRefreshing={isRefreshingAuth}
+              onDelete={undefined}
+              onCredentialsUpdated={async () => {
+                await fetchSourceConnection(true);
+                onConnectionUpdated?.();
+                handleRunSync();
+              }}
+            />
+          )}
+
+          {/* Show error card only when API confirms error status (not needs_reauth) */}
+          {!isFederatedSource && sourceConnection?.status === 'error' && (
             <SyncErrorCard
-              error={currentSyncJob?.error || sourceConnection?.last_sync_job?.error || "The last sync failed. Check the logs for more details."}
+              error={sourceConnection?.sync?.last_job?.error || currentSyncJob?.error || "The last sync failed. Check the logs for more details."}
               isDark={isDark}
             />
           )}

@@ -61,8 +61,18 @@ class SourceConnectionStatus(str, Enum):
     PENDING_AUTH = "pending_auth"  # Awaiting authentication (OAuth flow, etc.)
     SYNCING = "syncing"  # Currently running a sync job
     ERROR = "error"  # Last sync failed or auth error
+    NEEDS_REAUTH = "needs_reauth"  # Credentials expired or revoked
     INACTIVE = "inactive"  # Manually disabled
     PENDING_SYNC = "pending_sync"  # Awaiting a sync job to start
+
+
+class SourceConnectionErrorCategory(str, Enum):
+    """Error categories for credential/auth failures on source connections."""
+
+    OAUTH_CREDENTIALS_EXPIRED = "oauth_credentials_expired"
+    API_KEY_INVALID = "api_key_invalid"
+    AUTH_PROVIDER_ACCOUNT_GONE = "auth_provider_account_gone"
+    AUTH_PROVIDER_CREDENTIALS_INVALID = "auth_provider_credentials_invalid"
 
 
 class CollectionStatus(str, Enum):

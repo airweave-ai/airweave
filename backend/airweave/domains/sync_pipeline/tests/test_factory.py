@@ -23,6 +23,7 @@ def _build_factory(**overrides):
         "source_registry": MagicMock(),
         # Services
         "source_lifecycle_service": MagicMock(),
+        "temporal_schedule_service": MagicMock(),
         "sync_cursor_service": MagicMock(),
         "processor": MagicMock(),
         "arf_service": MagicMock(),
@@ -56,6 +57,7 @@ def test_constructor_stores_all_deps():
         "source_registry": MagicMock(),
         # Services
         "source_lifecycle_service": MagicMock(),
+        "temporal_schedule_service": MagicMock(),
         "sync_cursor_service": MagicMock(),
         "processor": MagicMock(),
         "arf_service": MagicMock(),
@@ -75,6 +77,7 @@ def test_constructor_stores_all_deps():
     assert f._entity_definition_registry is deps["entity_definition_registry"]
     assert f._source_registry is deps["source_registry"]
     assert f._source_lifecycle_service is deps["source_lifecycle_service"]
+    assert f._temporal_schedule_service is deps["temporal_schedule_service"]
     assert f._sync_cursor_service is deps["sync_cursor_service"]
     assert f._processor is deps["processor"]
     assert f._arf_service is deps["arf_service"]

@@ -150,33 +150,22 @@ You can now search your collection and get the most relevant results from all co
 
     <CodeBlocks>
 ```Python title="Python"
-import httpx
-
-response = httpx.post(
-    f"https://api.airweave.ai/collections/{collection.readable_id}/search/instant",
-    headers={"x-api-key": "YOUR_API_KEY"},
-    json={"query": "Find returned payments from user John Doe?"},
+response = airweave.collections.search.instant(
+    readable_id=collection.readable_id,
+    query="Find returned payments from user John Doe?",
 )
 
-for result in response.json()["results"]:
-    print(result)
+for result in response.results:
+    print(result.name, result.relevance_score)
 ```
 
 ```javascript title="Node.js"
-const response = await fetch(
-  `https://api.airweave.ai/collections/${collection.readable_id}/search/instant`,
-  {
-    method: "POST",
-    headers: {
-      "x-api-key": "YOUR_API_KEY",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query: "Find returned payments from user John Doe?" }),
-  }
+const response = await airweave.collections.search.instant(
+  collection.readableId,
+  { query: "Find returned payments from user John Doe?" }
 );
 
-const { results } = await response.json();
-results.forEach(result => console.log(result));
+response.results.forEach(result => console.log(result.name, result.relevanceScore));
 ```
 
 ```bash title="cURL"

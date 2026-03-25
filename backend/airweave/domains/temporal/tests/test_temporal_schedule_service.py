@@ -823,3 +823,84 @@ async def test_ensure_system_schedules_calls_both():
     assert "cleanup-stuck-sync-jobs" in call_ids
     assert "api-key-expiration-notifications" in call_ids
     assert len(call_ids) == 2
+
+
+# ===========================================================================
+# pause/unpause schedules
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_pause_schedules_pauses_all_prefixes():
+    """pause_schedules calls pause on sync-, minute-sync-, daily-cleanup- handles."""
+    sync_id = uuid4()
+    svc = _build_svc()
+
+    handle = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.get_schedule_handle.return_value = handle
+    svc._get_client = AsyncMock(return_value=mock_client)
+
+    await svc.pause_schedules_for_sync(sync_id, reason="test")
+
+    assert handle.pause.call_count == 3
+    expected_ids = {
+        f"sync-{sync_id}",
+        f"minute-sync-{sync_id}",
+        f"daily-cleanup-{sync_id}",
+    }
+    actual_ids = {
+        call.args[0]
+        for call in mock_client.get_schedule_handle.call_args_list
+    }
+    assert actual_ids == expected_ids
+
+
+@pytest.mark.asyncio
+async def test_pause_schedules_swallows_not_found():
+    """pause_schedules swallows RPCError NOT_FOUND gracefully."""
+    sync_id = uuid4()
+    svc = _build_svc()
+
+    handle = AsyncMock()
+    handle.pause.side_effect = _rpc_error(
+        "not found", RPCStatusCode.NOT_FOUND
+    )
+    mock_client = MagicMock()
+    mock_client.get_schedule_handle.return_value = handle
+    svc._get_client = AsyncMock(return_value=mock_client)
+
+    await svc.pause_schedules_for_sync(sync_id)
+
+
+@pytest.mark.asyncio
+async def test_unpause_schedules_unpauses_all_prefixes():
+    """unpause_schedules calls unpause on all schedule handles."""
+    sync_id = uuid4()
+    svc = _build_svc()
+
+    handle = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.get_schedule_handle.return_value = handle
+    svc._get_client = AsyncMock(return_value=mock_client)
+
+    await svc.unpause_schedules_for_sync(sync_id)
+
+    assert handle.unpause.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_unpause_schedules_swallows_not_found():
+    """unpause_schedules swallows RPCError NOT_FOUND gracefully."""
+    sync_id = uuid4()
+    svc = _build_svc()
+
+    handle = AsyncMock()
+    handle.unpause.side_effect = _rpc_error(
+        "not found", RPCStatusCode.NOT_FOUND
+    )
+    mock_client = MagicMock()
+    mock_client.get_schedule_handle.return_value = handle
+    svc._get_client = AsyncMock(return_value=mock_client)
+
+    await svc.unpause_schedules_for_sync(sync_id)

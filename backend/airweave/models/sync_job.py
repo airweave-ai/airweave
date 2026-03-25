@@ -34,6 +34,7 @@ class SyncJob(OrganizationBase, UserMixin):
     entities_kept: Mapped[int] = mapped_column(Integer, default=0)
     entities_skipped: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    error_category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     entities_encountered: Mapped[Optional[dict]] = mapped_column(JSON, default={})
     scheduled: Mapped[bool] = mapped_column(Boolean, default=False)
     sync_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)

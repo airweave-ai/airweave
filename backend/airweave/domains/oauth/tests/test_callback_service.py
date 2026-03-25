@@ -123,6 +123,7 @@ def _service(
     sync_lifecycle=None,
     sync_record_service=None,
     temporal_workflow_service=None,
+    temporal_schedule_service=None,
     event_bus=None,
 ) -> OAuthCallbackService:
     return OAuthCallbackService(
@@ -134,6 +135,7 @@ def _service(
         sync_lifecycle=sync_lifecycle or AsyncMock(),
         sync_record_service=sync_record_service or AsyncMock(),
         temporal_workflow_service=temporal_workflow_service or AsyncMock(),
+        temporal_schedule_service=temporal_schedule_service or AsyncMock(),
         event_bus=event_bus or AsyncMock(),
         organization_repo=organization_repo or FakeOrganizationRepository(),
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
@@ -861,7 +863,7 @@ class TestCompleteConnectionCommon:
         )
         sc_id = uuid4()
         svc._sc_repo.update = AsyncMock(
-            return_value=SimpleNamespace(id=sc_id, connection_id=uuid4())
+            return_value=SimpleNamespace(id=sc_id, connection_id=uuid4(), sync_id=None)
         )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._source_registry.get = MagicMock(
@@ -926,7 +928,7 @@ class TestCompleteConnectionCommon:
         )
         sc_id = uuid4()
         svc._sc_repo.update = AsyncMock(
-            return_value=SimpleNamespace(id=sc_id, connection_id=conn_id)
+            return_value=SimpleNamespace(id=sc_id, connection_id=conn_id, sync_id=None)
         )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
@@ -992,7 +994,7 @@ class TestCompleteConnectionCommon:
         )
         sc_id = uuid4()
         svc._sc_repo.update = AsyncMock(
-            return_value=SimpleNamespace(id=sc_id, connection_id=conn_id)
+            return_value=SimpleNamespace(id=sc_id, connection_id=conn_id, sync_id=None)
         )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._source_registry.get = MagicMock(
@@ -2212,3 +2214,57 @@ class TestVerifyOAuthFlow:
             )
         assert exc.value.status_code == 400
         assert "completed" in exc.value.detail.lower()
+
+    async def test_complete_connection_common_unpauses_schedules(self):
+        """_complete_connection_common calls unpause_schedules after commit."""
+        from unittest.mock import patch
+
+        temporal_schedule_service = AsyncMock()
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell()
+        shell.connection_id = uuid4()
+        sc_repo.seed(shell.id, shell)
+
+        svc = _service(
+            sc_repo=sc_repo,
+            temporal_schedule_service=temporal_schedule_service,
+        )
+        svc._validate_config = MagicMock(return_value={})
+        collection = MagicMock()
+        collection.id = uuid4()
+        collection.readable_id = "col-abc"
+        svc._get_collection = AsyncMock(return_value=collection)
+
+        source_entry = MagicMock()
+        source_entry.short_name = "github"
+        source_entry.name = "GitHub"
+        source_entry.auth_config_ref = None
+        source_entry.oauth_type = "access_only"
+        source_entry.source_class_ref = type("S", (), {"federated_search": False})
+
+        db = AsyncMock()
+        ctx = _ctx()
+
+        with patch(
+            "airweave.domains.oauth.callback_service.UnitOfWork"
+        ) as mock_uow_cls:
+            mock_uow = AsyncMock()
+            mock_uow.session = AsyncMock()
+            mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+            mock_uow.__aexit__ = AsyncMock(return_value=False)
+            mock_uow_cls.return_value = mock_uow
+
+            await svc._complete_connection_common(
+                db,
+                source_entry,
+                shell,
+                shell.id,
+                {"name": "My Source"},
+                {"access_token": "tok"},
+                AuthenticationMethod.OAUTH_BROWSER,
+                is_oauth1=False,
+                ctx=ctx,
+                has_claim_token=True,
+            )
+
+        temporal_schedule_service.unpause_schedules_for_sync.assert_awaited_once()

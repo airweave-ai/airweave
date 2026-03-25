@@ -29,6 +29,8 @@ from airweave.platform.decorators import auth_provider
 class ComposioAuthProvider(BaseAuthProvider):
     """Composio authentication provider."""
 
+    SETTINGS_URL = "https://platform.composio.dev/"
+
     # Sources that Composio does not support
     BLOCKED_SOURCES = [
         "postgresql",

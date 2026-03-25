@@ -916,8 +916,155 @@ async def test_fake_lifecycle_service():
     with pytest.raises(SourceValidationError):
         await fake.validate("bad", "tok")
 
-    fake.clear()
-    assert len(fake.create_calls) == 0
 
-    with pytest.raises(KeyError):
-        await fake.create(MagicMock(), uuid4(), MagicMock())
+# ===========================================================================
+# create() — validate() exception narrowing
+#
+# Only auth-related exceptions should be wrapped as SourceValidationError.
+# Transient errors (server 5xx, rate limits, connection errors) must
+# propagate unwrapped so they don't incorrectly trigger NEEDS_REAUTH.
+# ===========================================================================
+
+
+def _make_validate_stub(exc: Exception) -> type:
+    """Build a stub source class whose validate() raises *exc*."""
+
+    class _Stub:
+        @classmethod
+        async def create(cls, *, auth, logger, http_client, config=None):
+            inst = cls()
+            inst._auth = auth
+            inst._logger = logger
+            inst._http_client = http_client
+            return inst
+
+        async def validate(self):
+            raise exc
+
+    return _Stub
+
+
+def _create_service_for_validate_test(source_class: type):
+    """Wire up a service with minimal fakes for calling create()."""
+    entry = _entry_with_class("src", source_class)
+    sc = _mock_source_connection(short_name="src")
+    conn = _mock_connection()
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed(sc.connection_id, conn)
+
+    cred_svc = FakeIntegrationCredentialService()
+    dc = DecryptedCredential(
+        credential_id=conn.integration_credential_id,
+        integration_short_name="src",
+        raw={"access_token": "tok"},
+    )
+    record = MagicMock()
+    record.id = conn.integration_credential_id
+    cred_svc.seed(dc, record)
+
+    service = _make_service(
+        source_entries=[entry], sc_repo=sc_repo,
+        conn_repo=conn_repo, credential_service=cred_svc,
+    )
+    return service, sc.id
+
+
+@pytest.mark.asyncio
+async def test_create_wraps_source_auth_error():
+    """SourceAuthError from validate() is wrapped as SourceValidationError."""
+    from airweave.domains.sources.exceptions import SourceAuthError
+    from airweave.domains.sources.token_providers.protocol import AuthProviderKind
+
+    exc = SourceAuthError(
+        "Unauthorized", source_short_name="src",
+        status_code=401, token_provider_kind=AuthProviderKind.CREDENTIAL,
+    )
+    service, sc_id = _create_service_for_validate_test(_make_validate_stub(exc))
+
+    with pytest.raises(SourceValidationError) as exc_info:
+        await service.create(db=MagicMock(), source_connection_id=sc_id, ctx=_make_ctx())
+    assert exc_info.value.__cause__ is exc
+    assert "credential validation failed" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_create_wraps_token_expired_error():
+    """TokenExpiredError from validate() is wrapped as SourceValidationError."""
+    from airweave.domains.sources.token_providers.exceptions import TokenExpiredError
+    from airweave.domains.sources.token_providers.protocol import AuthProviderKind
+
+    exc = TokenExpiredError(
+        "JWT expired", source_short_name="src",
+        provider_kind=AuthProviderKind.OAUTH,
+    )
+    service, sc_id = _create_service_for_validate_test(_make_validate_stub(exc))
+
+    with pytest.raises(SourceValidationError) as exc_info:
+        await service.create(db=MagicMock(), source_connection_id=sc_id, ctx=_make_ctx())
+    assert exc_info.value.__cause__ is exc
+
+
+@pytest.mark.asyncio
+async def test_create_wraps_auth_provider_auth_error():
+    """AuthProviderAuthError from validate() is wrapped as SourceValidationError."""
+    from airweave.domains.auth_provider.exceptions import AuthProviderAuthError
+
+    exc = AuthProviderAuthError("API key revoked", provider_name="composio")
+    service, sc_id = _create_service_for_validate_test(_make_validate_stub(exc))
+
+    with pytest.raises(SourceValidationError) as exc_info:
+        await service.create(db=MagicMock(), source_connection_id=sc_id, ctx=_make_ctx())
+    assert exc_info.value.__cause__ is exc
+
+
+@pytest.mark.asyncio
+async def test_create_does_not_wrap_server_error():
+    """SourceServerError from validate() propagates unwrapped."""
+    from airweave.domains.sources.exceptions import SourceServerError
+
+    exc = SourceServerError("Internal Server Error", source_short_name="src", status_code=500)
+    service, sc_id = _create_service_for_validate_test(_make_validate_stub(exc))
+
+    with pytest.raises(SourceServerError):
+        await service.create(db=MagicMock(), source_connection_id=sc_id, ctx=_make_ctx())
+
+
+@pytest.mark.asyncio
+async def test_create_does_not_wrap_rate_limit_error():
+    """SourceRateLimitError from validate() propagates unwrapped."""
+    from airweave.domains.sources.exceptions import SourceRateLimitError
+
+    exc = SourceRateLimitError(retry_after=30.0, source_short_name="src")
+    service, sc_id = _create_service_for_validate_test(_make_validate_stub(exc))
+
+    with pytest.raises(SourceRateLimitError):
+        await service.create(db=MagicMock(), source_connection_id=sc_id, ctx=_make_ctx())
+
+
+@pytest.mark.asyncio
+async def test_create_does_not_wrap_connection_error():
+    """Raw ConnectionError from validate() propagates unwrapped."""
+    exc = ConnectionError("DNS resolution failed")
+    service, sc_id = _create_service_for_validate_test(_make_validate_stub(exc))
+
+    with pytest.raises(ConnectionError):
+        await service.create(db=MagicMock(), source_connection_id=sc_id, ctx=_make_ctx())
+
+
+@pytest.mark.asyncio
+async def test_create_does_not_wrap_token_provider_server_error():
+    """TokenProviderServerError from validate() propagates unwrapped."""
+    from airweave.domains.sources.token_providers.exceptions import TokenProviderServerError
+    from airweave.domains.sources.token_providers.protocol import AuthProviderKind
+
+    exc = TokenProviderServerError(
+        "upstream 500", source_short_name="src",
+        provider_kind=AuthProviderKind.AUTH_PROVIDER, status_code=500,
+    )
+    service, sc_id = _create_service_for_validate_test(_make_validate_stub(exc))
+
+    with pytest.raises(TokenProviderServerError):
+        await service.create(db=MagicMock(), source_connection_id=sc_id, ctx=_make_ctx())

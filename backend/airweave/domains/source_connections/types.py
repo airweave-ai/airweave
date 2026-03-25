@@ -7,7 +7,15 @@ from datetime import datetime
 from typing import Any, Dict, Optional, TypedDict
 from uuid import UUID
 
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
+
+
+@dataclass(frozen=True, slots=True)
+class ErrorClassification:
+    """Result of classify_error(): category and human-readable message."""
+
+    category: Optional[SourceConnectionErrorCategory] = None
+    message: Optional[str] = None
 
 
 class ScheduleInfo(TypedDict):
@@ -25,6 +33,7 @@ class LastJobInfo:
 
     status: SyncJobStatus
     completed_at: Optional[datetime]
+    error_category: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +67,11 @@ class SourceConnectionStats:
         """
         raw_job = data["last_job"]
         last_job = (
-            LastJobInfo(status=raw_job["status"], completed_at=raw_job.get("completed_at"))
+            LastJobInfo(
+                status=raw_job["status"],
+                completed_at=raw_job.get("completed_at"),
+                error_category=raw_job.get("error_category"),
+            )
             if raw_job
             else None
         )

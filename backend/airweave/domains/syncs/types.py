@@ -6,7 +6,7 @@ from typing import Optional
 from uuid import UUID
 
 from airweave import schemas
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 
 CONTINUOUS_SOURCE_DEFAULT_CRON = "*/5 * * * *"
 DAILY_CRON_TEMPLATE = "{minute} {hour} * * *"
@@ -87,3 +87,4 @@ class TimestampUpdate:
     completed_at: Optional[datetime] = None
     failed_at: Optional[datetime] = None
     error: Optional[str] = None
+    error_category: Optional[SourceConnectionErrorCategory] = None

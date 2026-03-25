@@ -17,7 +17,7 @@ from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.logging import logger
 from airweave.core.protocols.event_bus import EventBus
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
 from airweave.domains.syncs.protocols import (
@@ -93,6 +93,7 @@ class SyncJobStateMachine(SyncJobStateMachineProtocol):
         lifecycle_data: Optional[LifecycleData] = None,
         error: Optional[str] = None,
         stats: Optional[SyncStats] = None,
+        error_category: Optional[SourceConnectionErrorCategory] = None,
     ) -> TransitionResult:
         """Execute a validated, idempotent status transition.
 
@@ -103,6 +104,7 @@ class SyncJobStateMachine(SyncJobStateMachineProtocol):
             lifecycle_data: If provided, publish a SyncLifecycleEvent.
             error: Error message (valid for FAILED and CANCELLED).
             stats: Sync statistics (valid for any terminal state).
+            error_category: Credential error category (written to DB for NEEDS_REAUTH UI).
 
         Returns:
             TransitionResult indicating whether the write was applied.
@@ -124,7 +126,9 @@ class SyncJobStateMachine(SyncJobStateMachineProtocol):
 
             self._validate_transition(current, target, sync_job_id)
 
-            update = self._build_update(target, error=error, stats=stats)
+            update = self._build_update(
+                target, error=error, stats=stats, error_category=error_category
+            )
             await self.sync_job_repo.update(db=db, db_obj=db_job, obj_in=update, ctx=ctx)
             await db.commit()
 
@@ -158,6 +162,7 @@ class SyncJobStateMachine(SyncJobStateMachineProtocol):
         *,
         error: Optional[str] = None,
         stats: Optional[SyncStats] = None,
+        error_category: Optional[SourceConnectionErrorCategory] = None,
     ) -> SyncJobUpdate:
         """Derive the SyncJobUpdate from target status."""
         data: dict = {"status": target}
@@ -174,6 +179,9 @@ class SyncJobStateMachine(SyncJobStateMachineProtocol):
 
         if error is not None and target in (SyncJobStatus.FAILED, SyncJobStatus.CANCELLED):
             data["error"] = error
+
+        if error_category is not None and target == SyncJobStatus.FAILED:
+            data["error_category"] = error_category
 
         if stats is not None:
             data["entities_inserted"] = stats.inserted

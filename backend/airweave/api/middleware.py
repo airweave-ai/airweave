@@ -109,7 +109,7 @@ async def exception_logging_middleware(request: Request, call_next: callable) ->
 
 # Paths that are exempt from the request timeout (long-running operations)
 TIMEOUT_EXEMPT_PATHS = [
-    "/agentic-search",  # Agentic search involves multiple LLM calls
+    "/search/agentic",  # Agentic search (streaming and non-streaming)
 ]
 
 
