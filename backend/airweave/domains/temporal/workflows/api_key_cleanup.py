@@ -36,26 +36,27 @@ class APIKeyCleanupWorkflow:
             backoff_coefficient=2.0,
         )
 
-        expired = await workflow.execute_activity(
+        expired_result = await workflow.execute_activity(
             expire_past_due_keys_activity,
             start_to_close_timeout=timedelta(minutes=5),
             retry_policy=retry_policy,
         )
 
-        revoked_cleaned = await workflow.execute_activity(
+        revoked_result = await workflow.execute_activity(
             cleanup_revoked_keys_activity,
             start_to_close_timeout=timedelta(minutes=5),
             retry_policy=retry_policy,
         )
 
-        pruned = await workflow.execute_activity(
+        pruned_result = await workflow.execute_activity(
             prune_usage_log_activity,
             start_to_close_timeout=timedelta(minutes=10),
             retry_policy=retry_policy,
         )
 
         return {
-            "expired": expired,
-            "revoked_cleaned": revoked_cleaned,
-            "usage_log_pruned": pruned,
+            "expired": expired_result["expired"],
+            "deleted": revoked_result["deleted"],
+            "delete_errors": revoked_result["errors"],
+            "usage_log_pruned": pruned_result["pruned"],
         }
