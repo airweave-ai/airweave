@@ -40,10 +40,12 @@ import { toast } from 'sonner';
 import { SyncConfig, SyncPreset, SYNC_PRESETS, getPresetConfig } from '@/types/sync-config';
 
 interface ScheduleInfo {
-    schedule_type: string;
     schedule_id: string;
+    schedule_type: string;
     paused: boolean;
     note: string;
+    next_action_at: string | null;
+    num_recent_actions: number;
 }
 
 interface SyncInfo {
