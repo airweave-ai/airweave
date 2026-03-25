@@ -967,7 +967,7 @@ async def test_get_schedules_for_sync_returns_metadata():
     svc = _build_svc()
     mock_client = MagicMock()
     mock_client.list_schedules = AsyncMock(return_value=_FakeAsyncIterator(entries))
-    svc._client = mock_client
+    svc._get_client = AsyncMock(return_value=mock_client)
 
     result = await svc.get_schedules_for_sync(sync_id)
 
@@ -992,7 +992,7 @@ async def test_get_schedules_for_sync_empty():
     svc = _build_svc()
     mock_client = MagicMock()
     mock_client.list_schedules = AsyncMock(return_value=_FakeAsyncIterator([]))
-    svc._client = mock_client
+    svc._get_client = AsyncMock(return_value=mock_client)
 
     result = await svc.get_schedules_for_sync(uuid4())
 
