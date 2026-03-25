@@ -5,6 +5,9 @@ Requires:
 - AUTH_ENABLED=false
 - STRIPE_SECRET_KEY set
 - STRIPE_PRO_MONTHLY set
+- POSTGRES_PASSWORD set (via environment)
+- FIRST_SUPERUSER_PASSWORD set (via environment)
+- ENCRYPTION_KEY set (via environment)
 
 1. POST /organizations: org, stripe customer, api key
 2. POST /billing/checkout-session: get checkout url (don't visit)
@@ -51,6 +54,17 @@ def log_error(message: str) -> None:
 
 API_BASE = os.environ.get("AIRWEAVE_API_URL", "http://localhost:8001")
 STRIPE_CLI = os.environ.get("STRIPE_CLI_BIN", "stripe")
+
+
+def _require_env(name: str) -> str:
+    """Return the value of an environment variable or raise with a clear message."""
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(
+            f"Environment variable {name} is required but not set. "
+            f"Export it before running this script."
+        )
+    return value
 
 
 @dataclass
@@ -222,12 +236,12 @@ async def db_snapshot(org_id: str, at_iso: Optional[str] = None) -> Dict[str, An
     os.environ.setdefault("POSTGRES_HOST", "localhost")
     os.environ.setdefault("POSTGRES_PORT", "5432")
     os.environ.setdefault("POSTGRES_USER", "airweave")
-    os.environ.setdefault("POSTGRES_PASSWORD", "airweave1234!")
+    _require_env("POSTGRES_PASSWORD")
     os.environ.setdefault("POSTGRES_DB", "airweave")
     # App bootstrap requirements for settings
     os.environ.setdefault("FIRST_SUPERUSER", "admin@example.com")
-    os.environ.setdefault("FIRST_SUPERUSER_PASSWORD", "admin")
-    os.environ.setdefault("ENCRYPTION_KEY", "44OLJ/s4OjYSyzVk9FtOk6033GrFS4Q4KWBdEstPrgU=")
+    _require_env("FIRST_SUPERUSER_PASSWORD")
+    _require_env("ENCRYPTION_KEY")
 
     # Ensure backend/ is on sys.path so `airweave` package resolves when running from repo root
     backend_dir = Path(__file__).resolve().parents[1]
