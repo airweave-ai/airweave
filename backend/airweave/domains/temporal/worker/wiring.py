@@ -103,8 +103,7 @@ def get_workflows() -> list:
         List of workflow classes.
     """
     from airweave.domains.temporal.workflows import (
-        APIKeyCleanupWorkflow,
-        APIKeyExpirationCheckWorkflow,
+        APIKeyMaintenanceWorkflow,
         CleanupStuckSyncJobsWorkflow,
         CleanupSyncDataWorkflow,
         RunSourceConnectionWorkflow,
@@ -114,6 +113,5 @@ def get_workflows() -> list:
         RunSourceConnectionWorkflow,
         CleanupStuckSyncJobsWorkflow,
         CleanupSyncDataWorkflow,
-        APIKeyExpirationCheckWorkflow,
-        APIKeyCleanupWorkflow,
+        APIKeyMaintenanceWorkflow,
     ]

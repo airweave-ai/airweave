@@ -1,10 +1,7 @@
 """Temporal workflows for Airweave."""
 
-from airweave.domains.temporal.workflows.api_key_cleanup import (
-    APIKeyCleanupWorkflow,
-)
-from airweave.domains.temporal.workflows.api_key_notifications import (
-    APIKeyExpirationCheckWorkflow,
+from airweave.domains.temporal.workflows.api_key_maintenance import (
+    APIKeyMaintenanceWorkflow,
 )
 from airweave.domains.temporal.workflows.cleanup_stuck_sync_jobs import (
     CleanupStuckSyncJobsWorkflow,
@@ -22,6 +19,5 @@ __all__ = [
     "CleanupStuckSyncJobsWorkflow",
     "CleanupSyncDataWorkflow",
     # API key workflows
-    "APIKeyExpirationCheckWorkflow",
-    "APIKeyCleanupWorkflow",
+    "APIKeyMaintenanceWorkflow",
 ]
