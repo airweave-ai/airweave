@@ -83,9 +83,7 @@ class SyncService(SyncServiceProtocol):
                         reason=f"Credential error: {classification.category.value}",
                     )
                 except Exception:
-                    ctx.logger.warning(
-                        "Failed to pause sync after credential error", exc_info=True
-                    )
+                    ctx.logger.warning("Failed to pause sync after credential error", exc_info=True)
 
             raise e
 

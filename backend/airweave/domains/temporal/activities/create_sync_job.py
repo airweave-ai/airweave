@@ -87,10 +87,12 @@ class CreateSyncJobActivity:
                     orphaned=True, sync_id=sync_id, reason=f"Sync lookup error: {e}"
                 )
 
+            if sync is None:
+                ctx.logger.info(f"Sync {sync_id} not found, marking as orphaned.")
+                return CreateSyncJobResult(orphaned=True, sync_id=sync_id, reason="Sync not found")
+
             if SyncStatus(sync.status) != SyncStatus.ACTIVE:
-                ctx.logger.info(
-                    f"Sync {sync_id} is {sync.status}, skipping job creation."
-                )
+                ctx.logger.info(f"Sync {sync_id} is {sync.status}, skipping job creation.")
                 return CreateSyncJobResult(
                     skipped=True,
                     sync_id=sync_id,
