@@ -22,17 +22,18 @@ class CleanupRevokedKeysActivity:
     api_key_repo: ApiKeyMaintenanceProtocol
 
     @activity.defn(name="cleanup_revoked_keys_activity")
-    async def run(self) -> int:
+    async def run(self) -> dict[str, int]:
         """Remove revoked keys past their retention period.
 
         Usage log entries survive via SET NULL on the FK.
 
         Returns:
-            Number of keys deleted.
+            Counts of deleted and errored keys.
         """
         logger.info("Starting revoked API key cleanup")
 
         deleted = 0
+        errors = 0
         try:
             async with get_db_context() as db:
                 keys = await self.api_key_repo.get_revoked_keys_older_than(
@@ -41,6 +42,7 @@ class CleanupRevokedKeysActivity:
                 for key in keys:
                     try:
                         await db.delete(key)
+                        await db.flush()
                         deleted += 1
                     except Exception as e:
                         logger.error(
@@ -49,13 +51,14 @@ class CleanupRevokedKeysActivity:
                             error=str(e),
                             exc_info=True,
                         )
+                        errors += 1
                 await db.commit()
         except Exception as e:
             logger.error("Revoked key cleanup failed", error=str(e), exc_info=True)
             raise
 
-        logger.info("Revoked API key cleanup complete", deleted_count=deleted)
-        return deleted
+        logger.info("Revoked API key cleanup complete", deleted_count=deleted, error_count=errors)
+        return {"deleted": deleted, "errors": errors}
 
 
 @dataclass
@@ -65,11 +68,11 @@ class ExpirePastDueKeysActivity:
     api_key_repo: ApiKeyMaintenanceProtocol
 
     @activity.defn(name="expire_past_due_keys_activity")
-    async def run(self) -> int:
+    async def run(self) -> dict[str, int]:
         """Expire active keys past their expiration date.
 
         Returns:
-            Number of keys transitioned to expired.
+            Count of keys transitioned to expired.
         """
         logger.info("Starting past-due API key expiration")
 
@@ -82,7 +85,7 @@ class ExpirePastDueKeysActivity:
             raise
 
         logger.info("Past-due API key expiration complete", expired_count=count)
-        return count
+        return {"expired": count}
 
 
 @dataclass
@@ -92,11 +95,11 @@ class PruneUsageLogActivity:
     api_key_repo: ApiKeyMaintenanceProtocol
 
     @activity.defn(name="prune_usage_log_activity")
-    async def run(self) -> int:
+    async def run(self) -> dict[str, int]:
         """Prune old usage log entries.
 
         Returns:
-            Number of log entries deleted.
+            Count of log entries deleted.
         """
         logger.info("Starting usage log pruning")
 
@@ -109,4 +112,4 @@ class PruneUsageLogActivity:
             raise
 
         logger.info("Usage log pruning complete", deleted_count=count)
-        return count
+        return {"pruned": count}
