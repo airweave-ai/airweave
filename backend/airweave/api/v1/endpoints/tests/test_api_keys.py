@@ -56,6 +56,7 @@ def _make_api_key_model(
     stub.revoked_at = None
     stub.key_prefix = key_prefix
     stub.key_hash = "fakehash"
+    stub.description = None
     stub.created_by_email = "creator@example.com"
     stub.modified_by_email = "creator@example.com"
     stub.encrypted_key = encrypted_key
@@ -158,10 +159,10 @@ async def test_rotate_revokes_old_returns_new(mock_crud, mock_creds):
     )
 
     assert result.decrypted_key == "new-secret-key"
-    mock_crud.api_key.revoke.assert_awaited_once_with(
-        db=db,
-        api_key_id=old_model.id,
-    )
+    mock_crud.api_key.revoke.assert_awaited_once()
+    call_kwargs = mock_crud.api_key.revoke.call_args.kwargs
+    assert call_kwargs["db"] is db
+    assert call_kwargs["api_key_id"] == old_model.id
 
 
 # -----------------------------------------------------------------------

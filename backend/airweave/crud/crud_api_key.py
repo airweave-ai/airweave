@@ -4,15 +4,18 @@ import asyncio
 import hashlib
 import hmac
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
 from cryptography.fernet import InvalidToken
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, func, insert, select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core import credentials
+from airweave.core.config import settings
 from airweave.core.context import BaseContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.exceptions import ConflictException, NotFoundException, PermissionException
@@ -26,7 +29,171 @@ from airweave.models.api_key_usage_log import APIKeyUsageLog
 from airweave.schemas import APIKeyCreate, APIKeyUpdate
 from airweave.schemas.api_key import APIKeyUsageStats
 
-_background_tasks: set[asyncio.Task] = set()
+
+def _hash_key(key: str) -> str:
+    """HMAC-SHA256 hash of an API key, keyed by ENCRYPTION_KEY.
+
+    Keys are 256-bit entropy (secrets.token_urlsafe(32)); the 8-char
+    key_prefix leaks ~48 bits, leaving ~208 bits — brute-force is
+    infeasible through any hash.  HMAC keying adds defense-in-depth
+    so stored hashes are useless without ENCRYPTION_KEY.
+    """
+    return hmac.new(
+        settings.ENCRYPTION_KEY.encode(),
+        key.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class UsageEvent:
+    """A single API key usage event buffered for batch insertion."""
+
+    key_id: UUID
+    organization_id: UUID
+    ip_address: str
+    endpoint: str
+    user_agent: Optional[str]
+    timestamp: datetime
+
+
+class UsageBuffer:
+    """Buffers API key usage events and flushes them in batches.
+
+    Events are enqueued without touching the database. A background
+    task drains the queue every ``flush_interval`` seconds or when
+    ``batch_size`` events accumulate, whichever comes first. Each
+    flush opens a single DB session, bulk-inserts log rows, and
+    issues one deduplicated UPDATE per key for ``last_used_date``
+    and ``last_used_ip``.
+    """
+
+    def __init__(self, flush_interval: int = 5, batch_size: int = 500) -> None:
+        """Create a buffer that flushes every *flush_interval* seconds or *batch_size* events."""
+        self._queue: asyncio.Queue[UsageEvent] = asyncio.Queue()
+        self._flush_interval = flush_interval
+        self._batch_size = batch_size
+        self._task: Optional[asyncio.Task[None]] = None
+        self._batch_ready = asyncio.Event()
+        self._started = False
+        self._warned = False
+
+    def enqueue(self, event: UsageEvent) -> None:
+        """Add a usage event to the buffer (non-blocking, no DB)."""
+        if not self._started:
+            if not self._warned:
+                logger.warning("UsageBuffer.enqueue() called before start()")
+                self._warned = True
+        self._queue.put_nowait(event)
+        if self._queue.qsize() >= self._batch_size:
+            self._batch_ready.set()
+
+    async def start(self) -> None:
+        """Start the background flush loop."""
+        self._started = True
+        self._task = asyncio.create_task(self._run())
+
+    async def stop(self) -> None:
+        """Flush remaining events and cancel the background task."""
+        self._started = False
+        if self._task is not None:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+        await self._flush()
+
+    async def _run(self) -> None:
+        """Drain the queue on interval or batch-size threshold."""
+        try:
+            while True:
+                try:
+                    await asyncio.wait_for(
+                        self._wait_for_batch(),
+                        timeout=self._flush_interval,
+                    )
+                except asyncio.TimeoutError:
+                    pass  # Expected: timeout triggers periodic flush
+                await self._flush()
+        except asyncio.CancelledError:
+            return  # Graceful shutdown; remaining events flushed in stop()
+
+    async def _wait_for_batch(self) -> None:
+        """Block until the queue reaches batch_size."""
+        await self._batch_ready.wait()
+        self._batch_ready.clear()
+
+    async def _flush(self) -> None:
+        """Drain the queue and write all buffered events in one session."""
+        events: list[UsageEvent] = []
+        while not self._queue.empty():
+            try:
+                events.append(self._queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        if not events:
+            return
+
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                await self._write_events(events)
+                return
+            except OperationalError:
+                if attempt < max_attempts:
+                    await asyncio.sleep(0.5 * attempt)
+                else:
+                    logger.error(
+                        "API key usage events dropped after retries",
+                        dropped_count=len(events),
+                        max_attempts=max_attempts,
+                    )
+            except Exception as exc:
+                logger.error(
+                    "API key usage events dropped during flush",
+                    dropped_count=len(events),
+                    error=str(exc),
+                )
+                return
+
+    async def _write_events(self, events: list[UsageEvent]) -> None:
+        """Bulk-insert log rows and update last-used metadata."""
+        async with get_db_context() as db:
+            await db.execute(
+                insert(APIKeyUsageLog),
+                [
+                    {
+                        "api_key_id": e.key_id,
+                        "organization_id": e.organization_id,
+                        "timestamp": e.timestamp,
+                        "ip_address": e.ip_address,
+                        "endpoint": e.endpoint,
+                        "user_agent": e.user_agent,
+                    }
+                    for e in events
+                ],
+            )
+
+            # Deduplicated UPDATE: keep only latest event per key
+            latest: dict[UUID, UsageEvent] = {}
+            for e in events:
+                prev = latest.get(e.key_id)
+                if prev is None or e.timestamp > prev.timestamp:
+                    latest[e.key_id] = e
+
+            for e in latest.values():
+                await db.execute(
+                    update(APIKey)
+                    .where(APIKey.id == e.key_id)
+                    .values(
+                        last_used_date=e.timestamp,
+                        last_used_ip=e.ip_address,
+                    )
+                )
+
+            await db.commit()
 
 
 class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
@@ -57,7 +224,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         """
         key = secrets.token_urlsafe(32)
         encrypted_key = credentials.encrypt({"key": key})
-        key_hash = hashlib.sha256(key.encode()).hexdigest()
+        key_hash = _hash_key(key)
 
         expiration_days = obj_in.expiration_days if obj_in.expiration_days is not None else 90
         expiration_date = utc_now_naive() + timedelta(days=expiration_days)
@@ -68,6 +235,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
             "status": ApiKeyStatus.ACTIVE.value,
             "key_prefix": key[:8],
             "key_hash": key_hash,
+            "description": obj_in.description,
         }
 
         return await super().create(
@@ -108,7 +276,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         )
 
     async def get_by_key(self, db: AsyncSession, *, key: str) -> Optional[APIKey]:
-        """Look up an API key by its SHA-256 hash (O(1) indexed lookup).
+        """Look up an API key by its HMAC-SHA256 hash (O(1) indexed lookup).
 
         Rejects expired or revoked keys immediately. Uses the indexed
         ``key_hash`` column for constant-time lookup, then verifies
@@ -129,7 +297,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
             PermissionException: If the key has expired or been revoked.
 
         """
-        key_hash = hashlib.sha256(key.encode()).hexdigest()
+        key_hash = _hash_key(key)
         query = select(self.model).where(self.model.key_hash == key_hash)
         result = await db.execute(query)
         api_key = result.scalar_one_or_none()
@@ -148,14 +316,11 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
 
         now = utc_now_naive()
 
-        if api_key.status == ApiKeyStatus.EXPIRED.value:
-            raise PermissionException("API key has expired")
+        if api_key.status in (ApiKeyStatus.EXPIRED.value, ApiKeyStatus.REVOKED.value):
+            raise PermissionException("API key is not active")
 
         if api_key.expiration_date < now:
-            raise PermissionException("API key has expired")
-
-        if api_key.status == ApiKeyStatus.REVOKED.value:
-            raise PermissionException("API key has been revoked")
+            raise PermissionException("API key is not active")
 
         return api_key
 
@@ -164,6 +329,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         db: AsyncSession,
         *,
         api_key_id: UUID,
+        uow: Optional[UnitOfWork] = None,
     ) -> APIKey:
         """Revoke an active key immediately.
 
@@ -174,6 +340,8 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         ----
             db (AsyncSession): The database session.
             api_key_id (UUID): The ID of the key to revoke.
+            uow (Optional[UnitOfWork]): Unit of work; when provided,
+                the caller is responsible for committing.
 
         Returns:
         -------
@@ -202,7 +370,10 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         if result.rowcount == 0:
             raise ConflictException("API key is not active (already revoked or expired)")
 
-        await db.flush()
+        if uow:
+            await db.flush()
+        else:
+            await db.commit()
 
         refreshed = await db.get(self.model, api_key_id)
         if refreshed is None:
@@ -211,59 +382,63 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
             )
         return refreshed
 
-    async def record_usage(
+    def record_usage(
         self,
-        db: AsyncSession,
         *,
         api_key_obj: APIKey,
         ip_address: str,
         endpoint: str,
         user_agent: Optional[str] = None,
     ) -> None:
-        """Update last_used_date/ip inline; fire-and-forget usage log INSERT.
+        """Enqueue a usage event for batch insertion.
 
-        The usage log INSERT runs as a background task in a separate DB
-        session to avoid adding write latency to the auth hot path. If
-        it fails, the inline UPDATE on the key itself still succeeds.
+        The event is buffered in-memory and flushed periodically by
+        the ``UsageBuffer`` background task — no DB work happens here.
 
         Args:
         ----
-            db (AsyncSession): The database session (for the inline
-                UPDATE).
             api_key_obj (APIKey): The API key being used.
             ip_address (str): The client IP address.
             endpoint (str): The endpoint path being accessed.
             user_agent (Optional[str]): The client User-Agent header.
 
         """
-        now = utc_now_naive()
-
-        stmt = (
-            update(self.model)
-            .where(self.model.id == api_key_obj.id)
-            .values(last_used_date=now, last_used_ip=ip_address)
+        usage_buffer.enqueue(
+            UsageEvent(
+                key_id=api_key_obj.id,
+                organization_id=api_key_obj.organization_id,
+                ip_address=ip_address,
+                endpoint=endpoint,
+                user_agent=user_agent,
+                timestamp=utc_now_naive(),
+            )
         )
-        await db.execute(stmt)
 
-        async def _insert_log() -> None:
-            try:
-                async with get_db_context() as log_db:
-                    log_entry = APIKeyUsageLog(
-                        api_key_id=api_key_obj.id,
-                        organization_id=api_key_obj.organization_id,
-                        timestamp=now,
-                        ip_address=ip_address,
-                        endpoint=endpoint,
-                        user_agent=user_agent,
-                    )
-                    log_db.add(log_entry)
-                    await log_db.commit()
-            except Exception as e:
-                logger.warning("Failed to insert usage log entry: %s", e)
+    def record_usage_by_id(
+        self,
+        *,
+        api_key_id: UUID,
+        organization_id: UUID,
+        ip_address: str,
+        endpoint: str,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Enqueue a usage event from cached auth metadata.
 
-        task = asyncio.create_task(_insert_log())
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
+        Same as record_usage but accepts raw IDs instead of an ORM
+        object, so it can be called on the cache-hit path without a
+        database lookup.
+        """
+        usage_buffer.enqueue(
+            UsageEvent(
+                key_id=api_key_id,
+                organization_id=organization_id,
+                ip_address=ip_address,
+                endpoint=endpoint,
+                user_agent=user_agent,
+                timestamp=utc_now_naive(),
+            )
+        )
 
     async def get_usage_log(
         self,
@@ -389,8 +564,10 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         result = await db.execute(stmt)
         return result.rowcount
 
-    async def prune_usage_log(self, db: AsyncSession, *, max_age_days: int = 90) -> int:
-        """Delete usage log entries older than max_age_days.
+    async def prune_usage_log(
+        self, db: AsyncSession, *, max_age_days: int = 90, batch_size: int = 10_000,
+    ) -> int:
+        """Delete usage log entries older than max_age_days in batches.
 
         Caller is responsible for committing the transaction.
 
@@ -398,16 +575,32 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         ----
             db (AsyncSession): The database session.
             max_age_days (int): Retention period in days (default 90).
+            batch_size (int): Maximum rows deleted per iteration
+                (default 10 000).
 
         Returns:
         -------
-            int: The number of log entries deleted.
+            int: The total number of log entries deleted.
 
         """
         cutoff = utc_now_naive() - timedelta(days=max_age_days)
-        stmt = delete(APIKeyUsageLog).where(APIKeyUsageLog.timestamp < cutoff)
-        result = await db.execute(stmt)
-        return result.rowcount
+        total_deleted = 0
+
+        while True:
+            # Sub-select a batch of IDs to delete
+            ids_subq = (
+                select(APIKeyUsageLog.id)
+                .where(APIKeyUsageLog.timestamp < cutoff)
+                .limit(batch_size)
+            ).scalar_subquery()
+
+            stmt = delete(APIKeyUsageLog).where(APIKeyUsageLog.id.in_(ids_subq))
+            result = await db.execute(stmt)
+            total_deleted += result.rowcount
+            if result.rowcount < batch_size:
+                break
+
+        return total_deleted
 
     async def get_keys_expiring_in_range(
         self,
@@ -430,6 +623,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         """
         query = select(self.model).where(
             and_(
+                self.model.status == ApiKeyStatus.ACTIVE.value,
                 self.model.expiration_date >= start_date,
                 self.model.expiration_date < end_date,
             )
@@ -440,3 +634,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
 
 
 api_key = CRUDAPIKey(APIKey)
+usage_buffer = UsageBuffer(
+    flush_interval=settings.API_KEY_USAGE_FLUSH_INTERVAL_SECONDS,
+    batch_size=settings.API_KEY_USAGE_FLUSH_BATCH_SIZE,
+)

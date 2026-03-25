@@ -7,17 +7,39 @@ export interface APIKey {
   created_at: string;
   modified_at: string;
   last_used_date: string | null;
+  last_used_ip: string | null;
   expiration_date: string;
   status: "active" | "expired" | "revoked";
   revoked_at: string | null;
   key_prefix: string | null;
+  description: string | null;
   created_by_email: string | null;
   modified_by_email: string | null;
   decrypted_key: string | null;
 }
 
+export interface APIKeyUsageLogEntry {
+  id: string;
+  api_key_id: string | null;
+  organization_id: string;
+  timestamp: string;
+  ip_address: string;
+  endpoint: string;
+  user_agent: string | null;
+}
+
+export interface APIKeyUsageStats {
+  api_key_id: string;
+  total_requests: number;
+  first_used: string | null;
+  last_used: string | null;
+  unique_ips: number;
+  unique_endpoints: number;
+}
+
 interface CreateAPIKeyRequest {
-  expiration_days?: number; // Number of days until expiration (default: 90)
+  expiration_days?: number;
+  description?: string;
 }
 
 interface APIKeysState {
@@ -25,6 +47,9 @@ interface APIKeysState {
   apiKeys: APIKey[];
   isLoading: boolean;
   error: string | null;
+  usageStats: Record<string, APIKeyUsageStats>;
+  usageLogs: Record<string, APIKeyUsageLogEntry[]>;
+  usageLogsHasMore: Record<string, boolean>;
 
   // Actions
   setAPIKeys: (keys: APIKey[]) => void;
@@ -35,9 +60,11 @@ interface APIKeysState {
 
   // API actions
   fetchAPIKeys: (forceRefresh?: boolean) => Promise<APIKey[]>;
-  createAPIKey: (expirationDays?: number) => Promise<APIKey>;
+  createAPIKey: (expirationDays?: number, description?: string) => Promise<APIKey>;
   rotateAPIKey: (keyId: string) => Promise<APIKey>;
   deleteAPIKey: (keyId: string) => Promise<void>;
+  fetchUsageStats: (keyId: string) => Promise<APIKeyUsageStats>;
+  fetchUsageLogs: (keyId: string, skip?: number, limit?: number) => Promise<APIKeyUsageLogEntry[]>;
 
   // Utility actions
   clearAPIKeys: () => void;
@@ -48,6 +75,9 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
   apiKeys: [],
   isLoading: false,
   error: null,
+  usageStats: {},
+  usageLogs: {},
+  usageLogsHasMore: {},
 
   // Basic setters
   setAPIKeys: (apiKeys) => set({ apiKeys }),
@@ -67,19 +97,14 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
   fetchAPIKeys: async (forceRefresh = false) => {
     const { apiKeys, isLoading } = get();
 
-    // If we already have data and no force refresh, return cached data
     if (apiKeys.length > 0 && !forceRefresh) {
-      console.log("🔍 [APIKeysStore] Using cached API keys, skipping API call");
       return apiKeys;
     }
 
-    // If already loading, don't start another request
     if (isLoading && !forceRefresh) {
-      console.log("🔍 [APIKeysStore] API keys already loading, skipping duplicate request");
       return apiKeys;
     }
 
-    console.log("🔍 [APIKeysStore] Fetching API keys from API");
     set({ isLoading: true, error: null });
 
     try {
@@ -97,16 +122,17 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch API keys';
       set({ error: errorMessage, isLoading: false });
-      console.error("❌ [APIKeysStore]", errorMessage);
       return get().apiKeys;
     }
   },
 
-  createAPIKey: async (expirationDays?: number) => {
-    set({ isLoading: true, error: null });
+  createAPIKey: async (expirationDays?: number, description?: string) => {
+    set({ error: null });
 
     try {
-      const body: CreateAPIKeyRequest = expirationDays ? { expiration_days: expirationDays } : {};
+      const body: CreateAPIKeyRequest = {};
+      if (expirationDays) body.expiration_days = expirationDays;
+      if (description) body.description = description;
       const response = await apiClient.post('/api-keys', body);
 
       if (!response.ok) {
@@ -115,22 +141,20 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
 
       const newKey = await response.json();
 
-      // Add to the beginning of the array
       set((state) => ({
         apiKeys: [newKey, ...state.apiKeys],
-        isLoading: false
       }));
 
       return newKey;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create API key';
-      set({ error: errorMessage, isLoading: false });
+      set({ error: errorMessage });
       throw new Error(errorMessage);
     }
   },
 
   rotateAPIKey: async (keyId: string) => {
-    set({ isLoading: true, error: null });
+    set({ error: null });
 
     try {
       const response = await apiClient.post(`/api-keys/${keyId}/rotate`, {});
@@ -143,18 +167,17 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
 
       // Refresh the full list to reflect revoked status on old key
       await get().fetchAPIKeys(true);
-      set({ isLoading: false });
 
       return newKey;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to rotate API key';
-      set({ error: errorMessage, isLoading: false });
+      set({ error: errorMessage });
       throw new Error(errorMessage);
     }
   },
 
   deleteAPIKey: async (keyId: string) => {
-    set({ isLoading: true, error: null });
+    set({ error: null });
 
     try {
       const response = await apiClient.delete('/api-keys', { id: keyId });
@@ -163,25 +186,71 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
         throw new Error(`Failed to delete API key: ${response.status}`);
       }
 
-      // Remove from state
       set((state) => ({
         apiKeys: state.apiKeys.filter(key => key.id !== keyId),
-        isLoading: false
       }));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete API key';
-      set({ error: errorMessage, isLoading: false });
+      set({ error: errorMessage });
       throw new Error(errorMessage);
     }
   },
 
-  // Utility action for clearing state (useful when switching organizations)
+  fetchUsageStats: async (keyId: string) => {
+    try {
+      const response = await apiClient.get(`/api-keys/${keyId}/usage/stats`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch usage stats: ${response.status}`);
+      }
+
+      const stats: APIKeyUsageStats = await response.json();
+      set((state) => ({
+        usageStats: { ...state.usageStats, [keyId]: stats }
+      }));
+      return stats;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch usage stats';
+      throw new Error(errorMessage);
+    }
+  },
+
+  fetchUsageLogs: async (keyId: string, skip = 0, limit = 20) => {
+    try {
+      const response = await apiClient.get(
+        `/api-keys/${keyId}/usage?skip=${skip}&limit=${limit}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch usage logs: ${response.status}`);
+      }
+
+      const entries: APIKeyUsageLogEntry[] = await response.json();
+      set((state) => ({
+        usageLogs: {
+          ...state.usageLogs,
+          [keyId]: skip === 0 ? entries : [...(state.usageLogs[keyId] || []), ...entries],
+        },
+        usageLogsHasMore: {
+          ...state.usageLogsHasMore,
+          [keyId]: entries.length === limit,
+        },
+      }));
+      return entries;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch usage logs';
+      throw new Error(errorMessage);
+    }
+  },
+
   clearAPIKeys: () => {
-    console.log("🧹 [APIKeysStore] Clearing API keys state");
     set({
       apiKeys: [],
       isLoading: false,
-      error: null
+      error: null,
+      usageStats: {},
+      usageLogs: {},
+      usageLogsHasMore: {},
     });
   }
 }));

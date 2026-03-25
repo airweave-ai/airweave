@@ -84,20 +84,31 @@ class ApiKeyRepositoryProtocol(Protocol):
 
         Raises:
             NotFoundException: If no matching key is found.
-            ValueError: If the key has expired.
+            PermissionException: If the key has expired or been revoked.
         """
         ...
 
-    async def record_usage(
+    def record_usage(
         self,
-        db: AsyncSession,
         *,
         api_key_obj: Any,
         ip_address: str,
         endpoint: str,
         user_agent: Optional[str] = None,
     ) -> None:
-        """Record API key usage (inline UPDATE + background log INSERT)."""
+        """Enqueue API key usage event for batch insertion."""
+        ...
+
+    def record_usage_by_id(
+        self,
+        *,
+        api_key_id: UUID,
+        organization_id: UUID,
+        ip_address: str,
+        endpoint: str,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Record usage from cached auth metadata (no ORM object needed)."""
         ...
 
 

@@ -42,15 +42,17 @@ class CleanupRevokedKeysActivity:
                         deleted += 1
                     except Exception as e:
                         logger.error(
-                            f"Failed to delete revoked key {key.id}: {e}",
+                            "Failed to delete revoked key",
+                            key_id=str(key.id),
+                            error=str(e),
                             exc_info=True,
                         )
                 await db.commit()
         except Exception as e:
-            logger.error(f"Revoked key cleanup failed: {e}", exc_info=True)
+            logger.error("Revoked key cleanup failed", error=str(e), exc_info=True)
             raise
 
-        logger.info(f"Revoked API key cleanup complete: {deleted} keys deleted")
+        logger.info("Revoked API key cleanup complete", deleted_count=deleted)
         return deleted
 
 
@@ -72,10 +74,10 @@ class ExpirePastDueKeysActivity:
                 count = await crud.api_key.expire_past_due_keys(db)
                 await db.commit()
         except Exception as e:
-            logger.error(f"Past-due key expiration failed: {e}", exc_info=True)
+            logger.error("Past-due key expiration failed", error=str(e), exc_info=True)
             raise
 
-        logger.info(f"Past-due API key expiration complete: {count} keys expired")
+        logger.info("Past-due API key expiration complete", expired_count=count)
         return count
 
 
@@ -97,8 +99,8 @@ class PruneUsageLogActivity:
                 count = await crud.api_key.prune_usage_log(db, max_age_days=90)
                 await db.commit()
         except Exception as e:
-            logger.error(f"Usage log pruning failed: {e}", exc_info=True)
+            logger.error("Usage log pruning failed", error=str(e), exc_info=True)
             raise
 
-        logger.info(f"Usage log pruning complete: {count} entries deleted")
+        logger.info("Usage log pruning complete", deleted_count=count)
         return count

@@ -258,6 +258,11 @@ class Settings(BaseSettings):
     API_REQUEST_BODY_SIZE_LIMIT: int = 10 * 1024 * 1024  # 10MB default
     API_REQUEST_TIMEOUT_SECONDS: int = 60
 
+    # API key usage batching — controls how often buffered usage events
+    # are flushed to the database.
+    API_KEY_USAGE_FLUSH_INTERVAL_SECONDS: int = 5
+    API_KEY_USAGE_FLUSH_BATCH_SIZE: int = 500
+
     # Custom deployment URLs - these are used to override the default URLs to allow
     # for custom domains in custom deployments
     API_FULL_URL: Optional[str] = None

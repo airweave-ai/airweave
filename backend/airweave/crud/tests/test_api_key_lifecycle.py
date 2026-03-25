@@ -5,6 +5,7 @@ and create -> rotate -> old key rejected, new key works.
 """
 
 import hashlib
+import hmac
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -20,7 +21,7 @@ TEST_KEY = "the-secret"
 
 
 def _key_hash(key: str = TEST_KEY) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
+    return hmac.new(b"test-encryption-key", key.encode(), hashlib.sha256).hexdigest()
 
 
 def _make_api_key(
@@ -42,6 +43,7 @@ def _make_api_key(
     stub.created_by_email = "test@example.com"
     stub.key_prefix = "abcd1234"
     stub.key_hash = key_hash or _key_hash()
+    stub.description = None
     stub.last_used_date = None
     stub.last_used_ip = None
     return stub
@@ -56,6 +58,13 @@ def _mock_db_scalar(api_key):
 
 
 NOW = datetime(2025, 6, 15, 12, 0, 0)
+
+
+@pytest.fixture(autouse=True)
+def _patch_encryption_key():
+    with patch("airweave.crud.crud_api_key.settings") as mock_settings:
+        mock_settings.ENCRYPTION_KEY = "test-encryption-key"
+        yield
 
 
 # -----------------------------------------------------------------------
@@ -98,7 +107,7 @@ async def test_lifecycle_create_auth_revoke_reject(mock_creds):
 
     with patch("airweave.crud.crud_api_key.utc_now_naive", return_value=NOW):
         db = _mock_db_scalar(revoked_key)
-        with pytest.raises(PermissionException, match="revoked"):
+        with pytest.raises(PermissionException, match="not active"):
             await crud.get_by_key(db, key=TEST_KEY)
 
 
@@ -117,7 +126,9 @@ async def test_lifecycle_rotate_old_rejected_new_works(mock_creds):
     new_key_id = uuid4()
 
     new_key_secret = "new-secret"
-    new_key_hash = hashlib.sha256(new_key_secret.encode()).hexdigest()
+    new_key_hash = hmac.new(
+        b"test-encryption-key", new_key_secret.encode(), hashlib.sha256,
+    ).hexdigest()
 
     # Old key is now revoked
     old_key = _make_api_key(
@@ -130,7 +141,7 @@ async def test_lifecycle_rotate_old_rejected_new_works(mock_creds):
 
     with patch("airweave.crud.crud_api_key.utc_now_naive", return_value=NOW):
         db = _mock_db_scalar(old_key)
-        with pytest.raises(PermissionException, match="revoked"):
+        with pytest.raises(PermissionException, match="not active"):
             await crud.get_by_key(db, key=TEST_KEY)
 
     # New key works

@@ -14,6 +14,7 @@ class APIKey(OrganizationBase, UserMixin):
 
     __tablename__ = "api_key"
 
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     encrypted_key: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     expiration_date: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default="active")
