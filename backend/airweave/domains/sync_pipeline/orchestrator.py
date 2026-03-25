@@ -4,8 +4,6 @@ import asyncio
 import time
 from typing import Optional
 
-from temporalio.service import RPCError
-
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
@@ -13,7 +11,7 @@ from airweave.core.events.sync import (
     AccessControlMembershipBatchProcessedEvent,
 )
 from airweave.core.protocols.event_bus import EventBus
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SyncJobStatus, SyncStatus
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.pipeline import AccessControlPipeline
 from airweave.domains.sources.exceptions.classifier import classify_error
@@ -24,10 +22,9 @@ from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, Syn
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.service import SyncCursorService
-from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
+from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol, SyncStateMachineProtocol
 from airweave.domains.syncs.types import LifecycleData
 from airweave.domains.temporal.metrics import worker_metrics
-from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
@@ -62,7 +59,7 @@ class SyncOrchestrator:
         sync_cursor_service: SyncCursorService,
         state_machine: SyncJobStateMachineProtocol,
         lifecycle_data: LifecycleData,
-        temporal_schedule_service: TemporalScheduleServiceProtocol,
+        sync_state_machine: SyncStateMachineProtocol,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
@@ -77,7 +74,7 @@ class SyncOrchestrator:
         self._sync_cursor_service = sync_cursor_service
         self._state_machine = state_machine
         self._lifecycle_data = lifecycle_data
-        self._temporal_schedule_service = temporal_schedule_service
+        self._sync_state_machine = sync_state_machine
 
         # Batch config from context
         self.should_batch = sync_context.should_batch
@@ -678,16 +675,17 @@ class SyncOrchestrator:
             error_category=classification.category,
         )
 
-        # Pause schedules on credential errors to avoid repeated failures
         if classification.category is not None:
             try:
-                await self._temporal_schedule_service.pause_schedules_for_sync(
-                    self.sync_context.sync.id,
+                await self._sync_state_machine.transition(
+                    sync_id=self.sync_context.sync.id,
+                    target=SyncStatus.PAUSED,
+                    ctx=self.sync_context,
                     reason=f"Credential error: {classification.category.value}",
                 )
-            except (RPCError, OSError) as pause_err:
+            except Exception as pause_err:
                 self.sync_context.logger.warning(
-                    f"Failed to pause schedules after credential error: {pause_err}",
+                    f"Failed to pause sync after credential error: {pause_err}",
                     exc_info=True,
                 )
 
