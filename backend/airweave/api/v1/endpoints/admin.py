@@ -7,13 +7,15 @@ org filtering. Consider adding a `skip_org_filter=True` parameter to CRUD method
 or a dedicated `crud_admin` module for cross-org operations.
 """
 
+import asyncio
+from dataclasses import asdict
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Body, Depends, HTTPException, Path, Query
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -47,7 +49,10 @@ from airweave.domains.organizations.logic import generate_org_name
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol
-from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.domains.temporal.protocols import (
+    TemporalScheduleServiceProtocol,
+    TemporalWorkflowServiceProtocol,
+)
 from airweave.domains.usage.repository import UsageRepository
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
@@ -1275,6 +1280,17 @@ async def resync_with_execution_config(
 # =============================================================================
 
 
+class AdminScheduleInfo(BaseModel):
+    """Temporal schedule state for a sync."""
+
+    schedule_id: str
+    schedule_type: str
+    paused: bool
+    note: str = ""
+    next_action_at: Optional[str] = None
+    num_recent_actions: int = 0
+
+
 class AdminSyncInfo(schemas.Sync):
     """Extended sync info for admin listing with entity counts and status."""
 
@@ -1291,6 +1307,7 @@ class AdminSyncInfo(schemas.Sync):
     source_short_name: Optional[str] = None
     source_is_authenticated: Optional[bool] = None
     readable_collection_id: Optional[str] = None
+    schedules: List[AdminScheduleInfo] = []
 
 
 class AdminSearchDestination(str, Enum):
@@ -1595,6 +1612,7 @@ async def admin_list_all_syncs(
         None,
         description="Comma-separated tags to exclude from results",
     ),
+    schedule_svc: TemporalScheduleServiceProtocol = Inject(TemporalScheduleServiceProtocol),
 ) -> List[AdminSyncInfo]:
     """Admin-only: List all syncs across organizations with entity counts.
 
@@ -1630,6 +1648,7 @@ async def admin_list_all_syncs(
         exclude_tags: Optional comma-separated list of tags to exclude
         include_destination_counts: Whether to fetch Vespa counts (slower)
         include_arf_counts: Whether to fetch ARF entity counts (slower)
+        schedule_svc: Temporal schedule service (injected)
 
     Returns:
         List of syncs with extended information including entity counts
@@ -1676,6 +1695,17 @@ async def admin_list_all_syncs(
     if not sync_data_list:
         ctx.logger.info("Admin syncs query returned 0 results")
         return []
+
+    # Enrich with Temporal schedule states
+    schedule_results = await asyncio.gather(
+        *[schedule_svc.get_schedules_for_sync(sd["id"]) for sd in sync_data_list],
+        return_exceptions=True,
+    )
+    for sync_data, schedules in zip(sync_data_list, schedule_results, strict=True):
+        if isinstance(schedules, Exception):
+            sync_data["schedules"] = []
+        else:
+            sync_data["schedules"] = [asdict(s) for s in schedules]
 
     # Convert to Pydantic models
     admin_syncs = [AdminSyncInfo.model_validate(sync_dict) for sync_dict in sync_data_list]
