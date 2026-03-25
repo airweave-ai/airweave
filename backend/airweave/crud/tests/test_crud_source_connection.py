@@ -30,7 +30,7 @@ async def test_fetch_sync_statuses_returns_mapping():
     mock_db = AsyncMock()
     mock_db.execute.return_value = [SimpleNamespace(id=sync_id, status="paused")]
 
-    result = await crud._fetch_sync_statuses(mock_db, [sc])
+    result = await crud._fetch_sync_statuses(mock_db, [sc])  # type: ignore[list-item]
 
     assert result == {sc_id: SyncStatus.PAUSED}
 
@@ -42,7 +42,7 @@ async def test_fetch_sync_statuses_empty_when_no_sync_ids():
     sc = SimpleNamespace(id=uuid4(), sync_id=None)
 
     mock_db = AsyncMock()
-    result = await crud._fetch_sync_statuses(mock_db, [sc])
+    result = await crud._fetch_sync_statuses(mock_db, [sc])  # type: ignore[list-item]
 
     assert result == {}
     mock_db.execute.assert_not_called()
@@ -62,7 +62,7 @@ async def test_fetch_sync_statuses_skips_unknown_sync_ids():
         SimpleNamespace(id=unknown_sync_id, status="paused"),
     ]
 
-    result = await crud._fetch_sync_statuses(mock_db, [sc])
+    result = await crud._fetch_sync_statuses(mock_db, [sc])  # type: ignore[list-item]
 
     assert result == {sc_id: SyncStatus.ACTIVE}
 

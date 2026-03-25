@@ -312,9 +312,7 @@ class CRUDSourceConnection(
         result = await db.execute(query)
 
         sync_to_sc: Dict[UUID, UUID] = {
-            cast(UUID, sc.sync_id): cast(UUID, sc.id)
-            for sc in source_conns
-            if sc.sync_id
+            cast(UUID, sc.sync_id): cast(UUID, sc.id) for sc in source_conns if sc.sync_id
         }
         return {
             sync_to_sc[row.id]: SyncStatus(row.status) for row in result if row.id in sync_to_sc
