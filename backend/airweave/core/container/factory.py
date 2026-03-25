@@ -126,11 +126,11 @@ from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProc
 from airweave.domains.sync_pipeline.subscribers.progress_relay import SyncProgressRelay
 from airweave.domains.syncs.cursors.repository import SyncCursorRepository
 from airweave.domains.syncs.cursors.service import SyncCursorService
+from airweave.domains.syncs.jobs.repository import SyncJobRepository
+from airweave.domains.syncs.jobs.service import SyncJobService
+from airweave.domains.syncs.jobs.state_machine import SyncJobStateMachine
 from airweave.domains.syncs.service import SyncService
-from airweave.domains.syncs.state_machine import SyncJobStateMachine
 from airweave.domains.syncs.sync_state_machine import SyncStateMachine
-from airweave.domains.syncs.sync_job_repository import SyncJobRepository
-from airweave.domains.syncs.sync_job_service import SyncJobService
 from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
 from airweave.domains.syncs.sync_record_service import SyncRecordService
 from airweave.domains.syncs.sync_repository import SyncRepository

@@ -20,11 +20,11 @@ from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.protocols import (
+from airweave.domains.syncs.jobs.protocols import (
     SyncJobRepositoryProtocol,
     SyncJobStateMachineProtocol,
 )
-from airweave.domains.syncs.types import (
+from airweave.domains.syncs.jobs.types import (
     InvalidTransitionError,
     LifecycleData,
     TransitionResult,

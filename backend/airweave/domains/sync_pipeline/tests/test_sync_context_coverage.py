@@ -8,7 +8,7 @@ import pytest
 from airweave import schemas
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.domains.sync_pipeline.contexts.sync import SyncContext
-from airweave.domains.syncs.types import LifecycleData
+from airweave.domains.syncs.jobs.types import LifecycleData
 
 ORG_ID = UUID("00000000-0000-0000-0000-000000000001")
 SYNC_ID = UUID("00000000-0000-0000-0000-000000000010")

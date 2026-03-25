@@ -92,11 +92,13 @@ from airweave.domains.sources.protocols import (
 from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
 from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
 from airweave.domains.syncs.cursors.service import SyncCursorService
-from airweave.domains.syncs.protocols import (
-    SyncCursorRepositoryProtocol,
+from airweave.domains.syncs.jobs.protocols import (
     SyncJobRepositoryProtocol,
     SyncJobServiceProtocol,
     SyncJobStateMachineProtocol,
+)
+from airweave.domains.syncs.protocols import (
+    SyncCursorRepositoryProtocol,
     SyncLifecycleServiceProtocol,
     SyncRecordServiceProtocol,
     SyncRepositoryProtocol,

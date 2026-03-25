@@ -14,7 +14,8 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionDeletionServiceProtocol,
     SourceConnectionRepositoryProtocol,
 )
-from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncLifecycleServiceProtocol
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.schemas.source_connection import SourceConnection as SourceConnectionSchema
 
