@@ -47,7 +47,10 @@ from airweave.domains.organizations.logic import generate_org_name
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol
-from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.domains.temporal.protocols import (
+    TemporalScheduleServiceProtocol,
+    TemporalWorkflowServiceProtocol,
+)
 from airweave.domains.usage.repository import UsageRepository
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
@@ -1605,6 +1608,7 @@ async def admin_list_all_syncs(
         None,
         description="Comma-separated tags to exclude from results",
     ),
+    schedule_svc: TemporalScheduleServiceProtocol = Inject(TemporalScheduleServiceProtocol),
 ) -> List[AdminSyncInfo]:
     """Admin-only: List all syncs across organizations with entity counts.
 
@@ -1640,6 +1644,7 @@ async def admin_list_all_syncs(
         exclude_tags: Optional comma-separated list of tags to exclude
         include_destination_counts: Whether to fetch Vespa counts (slower)
         include_arf_counts: Whether to fetch ARF entity counts (slower)
+        schedule_svc: Temporal schedule service (injected)
 
     Returns:
         List of syncs with extended information including entity counts
@@ -1689,9 +1694,6 @@ async def admin_list_all_syncs(
 
     # Enrich with Temporal schedule states
     try:
-        from airweave.core import container as container_mod
-
-        schedule_svc = container_mod.container.temporal_schedule_service
         schedule_states = await schedule_svc.get_schedule_states()
     except Exception:
         schedule_states = {}
