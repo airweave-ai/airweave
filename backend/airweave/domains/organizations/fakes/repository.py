@@ -1,5 +1,6 @@
 """Fake organization repositories for testing."""
 
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Optional
 from uuid import UUID, uuid4
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.core.exceptions import NotFoundException
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.models.api_key import APIKey
 from airweave.models.organization import Organization
 from airweave.models.user import User
 from airweave.models.user_organization import UserOrganization
@@ -259,3 +261,81 @@ class FakeApiKeyRepository:
 
     def call_count(self, method: str) -> int:
         return sum(1 for name, *_ in self._calls if name == method)
+
+
+class FakeApiKeyMaintenanceRepository:
+    """In-memory fake for ApiKeyMaintenanceProtocol.
+
+    Stores canned return values and records calls for assertion.
+    Supports ``set_error()`` to simulate failures.
+    """
+
+    def __init__(self) -> None:
+        self._calls: list[tuple] = []
+        self._should_raise: Optional[Exception] = None
+        self._revoked_keys: list[APIKey] = []
+        self._expired_count: int = 0
+        self._pruned_count: int = 0
+        self._expiring_keys: list[APIKey] = []
+
+    def set_error(self, error: Exception) -> None:
+        """Make all subsequent calls raise this error."""
+        self._should_raise = error
+
+    def set_revoked_keys(self, keys: list[APIKey]) -> None:
+        self._revoked_keys = keys
+
+    def set_expired_count(self, count: int) -> None:
+        self._expired_count = count
+
+    def set_pruned_count(self, count: int) -> None:
+        self._pruned_count = count
+
+    def set_expiring_keys(self, keys: list[APIKey]) -> None:
+        self._expiring_keys = keys
+
+    def called(self, method: str) -> bool:
+        return any(name == method for name, *_ in self._calls)
+
+    def call_count(self, method: str) -> int:
+        return sum(1 for name, *_ in self._calls if name == method)
+
+    async def get_revoked_keys_older_than(
+        self,
+        db: AsyncSession,
+        *,
+        max_age_days: int = 90,
+    ) -> list[APIKey]:
+        self._calls.append(("get_revoked_keys_older_than", max_age_days))
+        if self._should_raise:
+            raise self._should_raise
+        return self._revoked_keys
+
+    async def expire_past_due_keys(self, db: AsyncSession) -> int:
+        self._calls.append(("expire_past_due_keys",))
+        if self._should_raise:
+            raise self._should_raise
+        return self._expired_count
+
+    async def prune_usage_log(
+        self,
+        db: AsyncSession,
+        *,
+        max_age_days: int = 90,
+        batch_size: int = 10_000,
+    ) -> int:
+        self._calls.append(("prune_usage_log", max_age_days, batch_size))
+        if self._should_raise:
+            raise self._should_raise
+        return self._pruned_count
+
+    async def get_keys_expiring_in_range(
+        self,
+        db: AsyncSession,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[APIKey]:
+        self._calls.append(("get_keys_expiring_in_range", start_date, end_date))
+        if self._should_raise:
+            raise self._should_raise
+        return self._expiring_keys

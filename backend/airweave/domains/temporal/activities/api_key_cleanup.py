@@ -10,14 +10,16 @@ from dataclasses import dataclass
 
 from temporalio import activity
 
-from airweave import crud
 from airweave.core.logging import logger
 from airweave.db.session import get_db_context
+from airweave.domains.organizations.protocols import ApiKeyMaintenanceProtocol
 
 
 @dataclass
 class CleanupRevokedKeysActivity:
     """Delete revoked API keys past the 90-day retention period."""
+
+    api_key_repo: ApiKeyMaintenanceProtocol
 
     @activity.defn(name="cleanup_revoked_keys_activity")
     async def run(self) -> int:
@@ -33,7 +35,7 @@ class CleanupRevokedKeysActivity:
         deleted = 0
         try:
             async with get_db_context() as db:
-                keys = await crud.api_key.get_revoked_keys_older_than(
+                keys = await self.api_key_repo.get_revoked_keys_older_than(
                     db, max_age_days=90,
                 )
                 for key in keys:
@@ -60,6 +62,8 @@ class CleanupRevokedKeysActivity:
 class ExpirePastDueKeysActivity:
     """Transition active keys past their expiration date to expired status."""
 
+    api_key_repo: ApiKeyMaintenanceProtocol
+
     @activity.defn(name="expire_past_due_keys_activity")
     async def run(self) -> int:
         """Expire active keys past their expiration date.
@@ -71,7 +75,7 @@ class ExpirePastDueKeysActivity:
 
         try:
             async with get_db_context() as db:
-                count = await crud.api_key.expire_past_due_keys(db)
+                count = await self.api_key_repo.expire_past_due_keys(db)
                 await db.commit()
         except Exception as e:
             logger.error("Past-due key expiration failed", error=str(e), exc_info=True)
@@ -85,6 +89,8 @@ class ExpirePastDueKeysActivity:
 class PruneUsageLogActivity:
     """Delete usage log entries older than 90 days."""
 
+    api_key_repo: ApiKeyMaintenanceProtocol
+
     @activity.defn(name="prune_usage_log_activity")
     async def run(self) -> int:
         """Prune old usage log entries.
@@ -96,7 +102,7 @@ class PruneUsageLogActivity:
 
         try:
             async with get_db_context() as db:
-                count = await crud.api_key.prune_usage_log(db, max_age_days=90)
+                count = await self.api_key_repo.prune_usage_log(db, max_age_days=90)
                 await db.commit()
         except Exception as e:
             logger.error("Usage log pruning failed", error=str(e), exc_info=True)
