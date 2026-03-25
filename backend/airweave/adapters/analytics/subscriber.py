@@ -296,6 +296,7 @@ class AnalyticsEventSubscriber(EventSubscriber):
                 "plan": event.plan,
                 "message": event.message,
                 "duration_ms": event.duration_ms,
+                "error_category": event.error_category,
                 "diagnostics": (event.diagnostics.model_dump() if event.diagnostics else None),
             },
             groups={"organization": str(event.organization_id)},

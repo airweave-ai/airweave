@@ -91,17 +91,17 @@ async def exception_logging_middleware(request: Request, call_next: callable) ->
         response = await call_next(request)
         return response
     except Exception as exc:
-        # Always log the full exception details
+        # Always log the full exception details server-side
         logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
 
-        # Create error message with actual exception details
-        error_message = f"Internal Server Error: {exc.__class__.__name__}: {str(exc)}"
+        # Generic message for production — don't leak internal details
+        response_content: dict = {"detail": "An internal error occurred."}
 
-        # Build response content
-        response_content = {"detail": error_message}
-
-        # Include stack trace only in development mode
+        # Include exception details only in development mode
         if settings.LOCAL_CURSOR_DEVELOPMENT or settings.DEBUG:
+            response_content["detail"] = (
+                f"Internal Server Error: {exc.__class__.__name__}: {str(exc)}"
+            )
             response_content["trace"] = traceback.format_exc()
 
         return JSONResponse(status_code=500, content=response_content)
@@ -435,16 +435,21 @@ async def airweave_exception_handler(request: Request, exc: AirweaveException) -
     # Map — any domain exception inheriting from a mapped base class gets
     # the right status code automatically, no per-exception registration needed.
     # Add new base classes here as they're introduced (BadRequestError, etc.).
+    from airweave.domains.sources.exceptions import SourceAuthError, SourceCreationError
+
     status_map = {
         TokenRefreshError: 401,
+        SourceAuthError: 422,
+        SourceCreationError: 422,
     }
 
     for exc_type, code in status_map.items():
         if isinstance(exc, exc_type):
             return JSONResponse(status_code=code, content={"detail": str(exc)})
 
-    # Default for unmapped AirweaveException subclasses
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
+    # Default for unmapped AirweaveException subclasses — don't leak internals
+    logger.error(f"Unmapped AirweaveException: {exc.__class__.__name__}: {exc}")
+    return JSONResponse(status_code=500, content={"detail": "An internal error occurred."})
 
 
 async def invalid_state_exception_handler(request: Request, exc: InvalidStateError) -> JSONResponse:

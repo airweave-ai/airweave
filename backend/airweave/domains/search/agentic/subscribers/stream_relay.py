@@ -105,6 +105,7 @@ class SearchStreamRelay(EventSubscriber):
 
         elif isinstance(event, SearchFailedEvent):
             payload["message"] = event.message
+            payload["error_category"] = event.error_category
             payload["duration_ms"] = event.duration_ms
             if event.diagnostics:
                 payload["diagnostics"] = event.diagnostics.model_dump()

@@ -292,16 +292,15 @@ class TestAgentErrorPaths:
         assert results.results == []
 
     @pytest.mark.asyncio
-    async def test_collection_not_found_raises_404(self) -> None:
-        """Unknown readable_id → HTTPException 404."""
-        from fastapi import HTTPException
+    async def test_collection_not_found_raises_exception(self) -> None:
+        """Unknown readable_id → CollectionNotFoundException, no SearchFailedEvent."""
+        from airweave.core.exceptions import CollectionNotFoundException
 
         empty_repo = FakeCollectionRepository()
         agent = _build_agent(collection_repo=empty_repo)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(CollectionNotFoundException):
             await agent.run(AsyncMock(), _make_ctx(), "nonexistent", _make_request())
-        assert exc_info.value.status_code == 404
 
 
 # ── Event emission tests ──────────────────────────────────────────────

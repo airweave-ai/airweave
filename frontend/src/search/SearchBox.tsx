@@ -354,24 +354,33 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                         }
                     } catch { /* use default detail */ }
 
+                    let errorCategory: string | undefined;
+                    try {
+                        const p = JSON.parse(errorText);
+                        errorCategory = p.error_category;
+                    } catch { /* ignore */ }
+
                     const endTime = performance.now();
-                    onSearch({ error: detail, errorIsTransient: false, status: 422 }, currentResponseType, Math.round(endTime - startTime));
+                    onSearch({ error: detail, errorIsTransient: false, status: 422, errorCategory }, currentResponseType, Math.round(endTime - startTime));
                     setIsSearching(false);
                     onSearchEnd?.();
                     return;
                 }
 
-                // Try to extract a meaningful error message from the response
+                // Try to extract a meaningful error message and category from the response
                 let errorMessage = `Request failed: ${response.status} ${response.statusText}`;
+                let errorCategory: string | undefined;
                 try {
                     const parsed = JSON.parse(errorText);
                     if (parsed.detail) errorMessage = String(parsed.detail);
                     else if (parsed.message) errorMessage = String(parsed.message);
+                    errorCategory = parsed.error_category;
                 } catch {
                     if (errorText) errorMessage = errorText;
                 }
+                const isTransient = response.status >= 500;
                 const endTime = performance.now();
-                onSearch({ error: errorMessage, errorIsTransient: false, status: response.status }, currentResponseType, Math.round(endTime - startTime));
+                onSearch({ error: errorMessage, errorIsTransient: isTransient, errorCategory, status: response.status }, currentResponseType, Math.round(endTime - startTime));
                 return;
             }
 
@@ -437,8 +446,9 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                             const endTime = performance.now();
                             const responseTime = Math.round(endTime - startTime);
                             const errorMessage = event.message || 'Search failed';
+                            const errorCategory = event.error_category;
                             setTransientIssue(null);
-                            onSearch({ error: errorMessage, errorIsTransient: false }, currentResponseType, responseTime);
+                            onSearch({ error: errorMessage, errorIsTransient: false, errorCategory }, currentResponseType, responseTime);
                             // Don't throw — the error is already set on searchResponse.
                             // Breaking out of the read loop is handled by the reader finishing.
                             return;

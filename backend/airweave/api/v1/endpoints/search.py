@@ -23,6 +23,8 @@ from airweave.api.v1.endpoints.admin import _require_admin
 from airweave.core.events.search import SearchStartedEvent, SearchTier
 from airweave.core.protocols import EventBus, PubSub
 from airweave.core.protocols.pubsub import PubSubSubscription
+from airweave.db.session import AsyncSessionLocal
+from airweave.domains.errors.search_error_classifier import classify_search_error
 from airweave.domains.search.protocols import (
     AgenticSearchServiceProtocol,
     ClassicSearchServiceProtocol,
@@ -166,8 +168,6 @@ async def _run_agentic_search_v2(
 ) -> None:
     """Run agentic search in background. All exceptions caught to guarantee error event."""
     try:
-        from airweave.db.session import AsyncSessionLocal
-
         async with AsyncSessionLocal() as search_db:
             await service.search(search_db, ctx, readable_id, request)
     except Exception as e:
@@ -175,13 +175,15 @@ async def _run_agentic_search_v2(
         # Safety net: if the service crashed before publishing a failed event,
         # publish error directly to PubSub so the SSE stream can terminate.
         try:
+            classification = classify_search_error(e)
             await pubsub.publish(
                 "agentic_search_v2",
                 ctx.request_id,
                 json.dumps(
                     {
                         "type": "error",
-                        "message": "An internal error occurred during search.",
+                        "message": classification.user_message,
+                        "error_category": classification.category.value,
                         "request_id": ctx.request_id,
                     }
                 ),
