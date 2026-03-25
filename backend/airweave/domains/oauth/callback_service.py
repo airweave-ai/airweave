@@ -581,9 +581,7 @@ class OAuthCallbackService:
                         reason="OAuth re-auth completed",
                     )
                 except Exception:
-                    logger.warning(
-                        "Failed to activate sync after OAuth re-auth", exc_info=True
-                    )
+                    logger.warning("Failed to activate sync after OAuth re-auth", exc_info=True)
 
         return source_conn
 

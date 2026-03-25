@@ -415,6 +415,14 @@ def fake_sync_lifecycle():
 
 
 @pytest.fixture
+def fake_sync_state_machine():
+    """Fake SyncStateMachine."""
+    from airweave.domains.syncs.fakes.sync_state_machine import FakeSyncStateMachine
+
+    return FakeSyncStateMachine()
+
+
+@pytest.fixture
 def fake_sync_factory():
     """Fake SyncFactory."""
     from airweave.domains.sync_pipeline.fakes.factory import FakeSyncFactory
@@ -712,6 +720,7 @@ def test_container(
     fake_sync_record_service,
     fake_sync_job_service,
     fake_sync_job_state_machine,
+    fake_sync_state_machine,
     fake_sync_service,
     fake_sync_lifecycle,
     fake_billing_service,
@@ -803,6 +812,7 @@ def test_container(
         sync_record_service=fake_sync_record_service,
         sync_job_service=fake_sync_job_service,
         sync_job_state_machine=fake_sync_job_state_machine,
+        sync_state_machine=fake_sync_state_machine,
         sync_service=fake_sync_service,
         sync_lifecycle=fake_sync_lifecycle,
         billing_service=fake_billing_service,
