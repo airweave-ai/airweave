@@ -21,6 +21,7 @@ from temporalio.client import (
     ScheduleUpdate,
     ScheduleUpdateInput,
 )
+from temporalio.common import SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
 from temporalio.service import RPCError, RPCStatusCode
 
 from airweave import schemas
@@ -38,6 +39,7 @@ from airweave.domains.temporal import schedule_ids as sched_ids
 from airweave.domains.temporal.client import get_client as get_temporal_client
 from airweave.domains.temporal.exceptions import InvalidCronExpressionError
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
+from airweave.domains.temporal.types import ScheduleInfo
 from airweave.domains.temporal.workflows import (
     CleanupStuckSyncJobsWorkflow,
     RunSourceConnectionWorkflow,
@@ -48,6 +50,9 @@ from airweave.domains.temporal.workflows.api_key_notifications import (
 
 # Schedule ID prefixes for the three schedule types per sync.
 SCHEDULE_PREFIXES = ("sync-", "minute-sync-", "daily-cleanup-")
+
+# Custom Temporal search attribute for linking schedules to syncs.
+SYNC_ID_SEARCH_ATTRIBUTE = SearchAttributeKey.for_keyword("SyncId")
 
 _MINUTE_LEVEL_RE = re.compile(r"^(\*/([1-5]?\d)|([0-5]?\d)) \* \* \* \*$")
 
@@ -179,6 +184,11 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
                     jitter=jitter,
                 ),
                 state=ScheduleState(note=note, paused=False),
+            ),
+            search_attributes=TypedSearchAttributes(
+                [
+                    SearchAttributePair(SYNC_ID_SEARCH_ATTRIBUTE, str(sync_id)),
+                ]
             ),
         )
 
@@ -490,6 +500,31 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
                     logger.warning(f"Failed to unpause schedule {schedule_id}: {e}")
             except Exception as e:
                 logger.warning(f"Failed to unpause schedule {schedule_id}: {e}")
+
+    async def get_schedules_for_sync(self, sync_id: UUID) -> list[ScheduleInfo]:
+        """Return schedule metadata for a sync via the SyncId search attribute."""
+        client = await self._get_client()
+        query = f'{SYNC_ID_SEARCH_ATTRIBUTE.name} = "{sync_id}"'
+        schedules: list[ScheduleInfo] = []
+        async for s in await client.list_schedules(query=query):
+            schedule_type = "unknown"
+            for prefix in SCHEDULE_PREFIXES:
+                if s.id.startswith(prefix):
+                    schedule_type = prefix.rstrip("-")
+                    break
+
+            next_times = s.info.next_action_times if s.info else []
+            schedules.append(
+                ScheduleInfo(
+                    schedule_id=s.id,
+                    schedule_type=schedule_type,
+                    paused=s.schedule.state.paused,
+                    note=s.schedule.state.note or "",
+                    next_action_at=next_times[0].isoformat() if next_times else None,
+                    num_recent_actions=len(s.info.recent_actions) if s.info else 0,
+                )
+            )
+        return schedules
 
     async def ensure_system_schedules(self) -> None:
         """Create system-level singleton schedules if they don't already exist.

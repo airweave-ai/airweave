@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
+from airweave.domains.temporal.types import ScheduleInfo
 
 
 class FakeTemporalScheduleService(TemporalScheduleServiceProtocol):
@@ -76,6 +77,13 @@ class FakeTemporalScheduleService(TemporalScheduleServiceProtocol):
         self._calls.append(("ensure_system_schedules",))
         if self._should_raise:
             raise self._should_raise
+
+    async def get_schedules_for_sync(self, sync_id: UUID) -> list[ScheduleInfo]:
+        """Record call and return empty list."""
+        self._calls.append(("get_schedules_for_sync", sync_id))
+        if self._should_raise:
+            raise self._should_raise
+        return []
 
     async def pause_schedules_for_sync(
         self,

@@ -276,6 +276,13 @@ async def test_create_schedule(case: CreateScheduleCase):
         mock_client.create_schedule.assert_not_called()
     else:
         mock_client.create_schedule.assert_called_once()
+        call_kwargs = mock_client.create_schedule.call_args
+        search_attrs = call_kwargs.kwargs.get("search_attributes")
+        assert search_attrs is not None, "search_attributes should be passed"
+        pairs = search_attrs.search_attributes
+        assert len(pairs) == 1
+        assert pairs[0].key.name == "SyncId"
+        assert pairs[0].value == str(SYNC_ID)
 
     assert isinstance(result, str)
 
@@ -904,3 +911,89 @@ async def test_unpause_schedules_swallows_not_found():
     svc._get_client = AsyncMock(return_value=mock_client)
 
     await svc.unpause_schedules_for_sync(sync_id)
+
+
+# ---------------------------------------------------------------------------
+# get_schedules_for_sync
+# ---------------------------------------------------------------------------
+
+
+def _mock_list_entry(schedule_id, paused=False, note="", next_times=None, recent_count=0):
+    """Create a mock ScheduleListDescription."""
+    entry = MagicMock()
+    entry.id = schedule_id
+    entry.schedule.state.paused = paused
+    entry.schedule.state.note = note
+    entry.info.next_action_times = next_times or []
+    entry.info.recent_actions = [MagicMock()] * recent_count
+    return entry
+
+
+class _FakeAsyncIterator:
+    def __init__(self, items):
+        self._items = iter(items)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._items)
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+@pytest.mark.asyncio
+async def test_get_schedules_for_sync_returns_metadata():
+    """get_schedules_for_sync returns structured schedule metadata."""
+    from datetime import datetime, timezone
+
+    sync_id = uuid4()
+    next_time = datetime(2026, 3, 25, 13, 0, 0, tzinfo=timezone.utc)
+
+    entries = [
+        _mock_list_entry(
+            f"minute-sync-{sync_id}", paused=True,
+            note="Credential error: api_key_invalid",
+            next_times=[next_time], recent_count=3,
+        ),
+        _mock_list_entry(
+            f"daily-cleanup-{sync_id}", paused=True,
+            note="Credential error: api_key_invalid",
+            next_times=[], recent_count=1,
+        ),
+    ]
+
+    svc = _build_svc()
+    mock_client = MagicMock()
+    mock_client.list_schedules = AsyncMock(return_value=_FakeAsyncIterator(entries))
+    svc._client = mock_client
+
+    result = await svc.get_schedules_for_sync(sync_id)
+
+    mock_client.list_schedules.assert_called_once_with(query=f'SyncId = "{sync_id}"')
+    assert len(result) == 2
+
+    minute = result[0]
+    assert minute.schedule_type == "minute-sync"
+    assert minute.paused is True
+    assert minute.note == "Credential error: api_key_invalid"
+    assert minute.next_action_at == next_time.isoformat()
+    assert minute.num_recent_actions == 3
+
+    cleanup = result[1]
+    assert cleanup.schedule_type == "daily-cleanup"
+    assert cleanup.next_action_at is None
+
+
+@pytest.mark.asyncio
+async def test_get_schedules_for_sync_empty():
+    """get_schedules_for_sync returns empty list when no schedules exist."""
+    svc = _build_svc()
+    mock_client = MagicMock()
+    mock_client.list_schedules = AsyncMock(return_value=_FakeAsyncIterator([]))
+    svc._client = mock_client
+
+    result = await svc.get_schedules_for_sync(uuid4())
+
+    assert result == []

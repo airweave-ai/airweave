@@ -1096,3 +1096,60 @@ class TestTemporalSchedules:
         finally:
             # Cleanup
             await api_client.delete(f"/source-connections/{conn_id}")
+
+    async def test_search_attribute_set_on_schedule_creation(
+        self, api_client: httpx.AsyncClient, source_connection_fast: dict, config
+    ):
+        """Test that SyncId search attribute is set when a schedule is created."""
+        if not config.is_local:
+            pytest.skip("Temporal tests only run locally")
+
+        conn_id = source_connection_fast["id"]
+
+        try:
+            # Set a schedule so Temporal creates schedule(s)
+            update_payload = {"schedule": {"cron": "0 * * * *"}}
+            response = await api_client.patch(
+                f"/source-connections/{conn_id}", json=update_payload
+            )
+            assert response.status_code == 200
+
+            # Get the sync_id
+            sync_id = await self._get_sync_id(api_client, conn_id)
+            assert sync_id is not None, "Expected a sync_id after setting schedule"
+
+            # Wait briefly for Temporal to index the search attribute
+            await asyncio.sleep(2)
+
+            # Query Temporal REST API using the SyncId search attribute
+            temporal_url = "http://localhost:8088/api/v1/namespaces/default/schedules"
+            query = f'SyncId = "{sync_id}"'
+
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(temporal_url, params={"query": query})
+                resp.raise_for_status()
+                data = resp.json()
+
+            all_schedules = data.get("schedules", [])
+
+            # Filter to schedules belonging to this sync
+            matching = [
+                s for s in all_schedules
+                if sync_id in s.get("scheduleId", "")
+            ]
+            assert len(matching) > 0, (
+                f"Expected at least one schedule containing sync_id={sync_id}, got 0. "
+                "SyncId search attribute may not be registered or set on creation."
+            )
+
+            # Verify the SyncId search attribute is present on each matching schedule
+            for s in matching:
+                sa = s.get("searchAttributes", {}).get("indexedFields", {})
+                assert "SyncId" in sa, (
+                    f"Schedule {s['scheduleId']} missing SyncId search attribute. "
+                    f"Found attributes: {list(sa.keys())}"
+                )
+
+        finally:
+            # Cleanup
+            await api_client.delete(f"/source-connections/{conn_id}")
