@@ -13,7 +13,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Body, Depends, HTTPException, Path, Query
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1275,6 +1275,15 @@ async def resync_with_execution_config(
 # =============================================================================
 
 
+class ScheduleInfo(BaseModel):
+    """Temporal schedule state for a sync."""
+
+    schedule_type: str
+    schedule_id: str
+    paused: bool
+    note: str = ""
+
+
 class AdminSyncInfo(schemas.Sync):
     """Extended sync info for admin listing with entity counts and status."""
 
@@ -1291,6 +1300,7 @@ class AdminSyncInfo(schemas.Sync):
     source_short_name: Optional[str] = None
     source_is_authenticated: Optional[bool] = None
     readable_collection_id: Optional[str] = None
+    schedules: List[ScheduleInfo] = []
 
 
 class AdminSearchDestination(str, Enum):
@@ -1676,6 +1686,18 @@ async def admin_list_all_syncs(
     if not sync_data_list:
         ctx.logger.info("Admin syncs query returned 0 results")
         return []
+
+    # Enrich with Temporal schedule states
+    try:
+        from airweave.core import container as container_mod
+
+        schedule_svc = container_mod.container.temporal_schedule_service
+        schedule_states = await schedule_svc.get_schedule_states()
+    except Exception:
+        schedule_states = {}
+
+    for sync_data in sync_data_list:
+        sync_data["schedules"] = schedule_states.get(sync_data["id"], [])
 
     # Convert to Pydantic models
     admin_syncs = [AdminSyncInfo.model_validate(sync_dict) for sync_dict in sync_data_list]

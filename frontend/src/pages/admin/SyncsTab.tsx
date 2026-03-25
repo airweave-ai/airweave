@@ -39,6 +39,13 @@ import {
 import { toast } from 'sonner';
 import { SyncConfig, SyncPreset, SYNC_PRESETS, getPresetConfig } from '@/types/sync-config';
 
+interface ScheduleInfo {
+    schedule_type: string;
+    schedule_id: string;
+    paused: boolean;
+    note: string;
+}
+
 interface SyncInfo {
     id: string;
     name: string;
@@ -54,6 +61,7 @@ interface SyncInfo {
     last_job_at?: string;
     last_job_error?: string;
     all_tags?: string[];
+    schedules?: ScheduleInfo[];
     created_at: string;
 }
 
@@ -761,6 +769,18 @@ export function SyncsTab() {
                             </div>
                         </CardContent>
                     </Card>
+                    <Card>
+                        <CardHeader className="pb-2 pt-3">
+                            <CardTitle className="text-xs font-medium text-muted-foreground">
+                                Schedules Paused
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pb-3">
+                            <div className="text-2xl font-bold text-amber-500">
+                                {syncs.filter(s => s.schedules?.some(sch => sch.paused)).length}
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             )}
 
@@ -829,6 +849,7 @@ export function SyncsTab() {
                                         <TableHead>Auth</TableHead>
                                         <TableHead className="text-right">Entity Counts</TableHead>
                                         <TableHead>Last Job</TableHead>
+                                        <TableHead>Schedules</TableHead>
                                         <TableHead>Tags</TableHead>
                                         <TableHead>Actions</TableHead>
                                     </TableRow>
@@ -969,6 +990,40 @@ export function SyncsTab() {
                                                                 </span>
                                                             )}
                                                         </div>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {sync.schedules && sync.schedules.length > 0 ? (
+                                                        <div className="space-y-1">
+                                                            {sync.schedules.map((s) => (
+                                                                <div key={s.schedule_id} className="flex items-center gap-1.5 text-xs">
+                                                                    <span
+                                                                        className={`h-1.5 w-1.5 rounded-full ${
+                                                                            s.paused ? 'bg-amber-500' : 'bg-emerald-500'
+                                                                        }`}
+                                                                    />
+                                                                    {s.paused && s.note ? (
+                                                                        <TooltipProvider>
+                                                                            <Tooltip delayDuration={100}>
+                                                                                <TooltipTrigger asChild>
+                                                                                    <span className="text-muted-foreground cursor-default">{s.schedule_type}</span>
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent
+                                                                                    className="max-w-sm p-2 bg-amber-950/90 border-amber-500/30"
+                                                                                    side="left"
+                                                                                >
+                                                                                    <p className="text-xs text-amber-200">{s.note}</p>
+                                                                                </TooltipContent>
+                                                                            </Tooltip>
+                                                                        </TooltipProvider>
+                                                                    ) : (
+                                                                        <span className="text-muted-foreground">{s.schedule_type}</span>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">—</span>
                                                     )}
                                                 </TableCell>
                                                 <TableCell>
