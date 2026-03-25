@@ -445,7 +445,7 @@ async def test_load_execution_config_no_model():
 
 @pytest.mark.unit
 async def test_execute_with_heartbeat_cancellation_drains_task():
-    activity = RunSyncActivity(
+    act = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=MagicMock(),
         collection_repo=MagicMock(),
@@ -456,20 +456,16 @@ async def test_execute_with_heartbeat_cancellation_drains_task():
     ctx = BaseContext(organization=_make_org())
 
     with (
-        patch.object(
-            activity,
-            "_run_sync",
-            new_callable=AsyncMock,
-            side_effect=asyncio.CancelledError,
-        ),
+        patch.object(act, "_run_sync", new_callable=AsyncMock),
         patch(f"{MODULE}.HeartbeatMonitor") as mock_monitor_cls,
+        patch.object(act, "_drain_task", new_callable=AsyncMock),
         pytest.raises(asyncio.CancelledError),
     ):
         mock_monitor = AsyncMock()
         mock_monitor.run.side_effect = asyncio.CancelledError()
         mock_monitor_cls.return_value = mock_monitor
 
-        await activity._execute_with_heartbeat(
+        await act._execute_with_heartbeat(
             sync, sync_job, _make_collection(), _make_connection(), ctx, None, False
         )
 
@@ -479,7 +475,7 @@ async def test_execute_with_heartbeat_cancellation_drains_task():
 
 @pytest.mark.unit
 async def test_drain_task_cancels_and_heartbeats():
-    activity = RunSyncActivity(
+    act = RunSyncActivity(
         sync_service=MagicMock(),
         sync_repo=MagicMock(),
         collection_repo=MagicMock(),
@@ -501,7 +497,48 @@ async def test_drain_task_cancels_and_heartbeats():
 
     with patch(f"{MODULE}.activity") as mock_activity:
         with suppress(asyncio.CancelledError):
-            await activity._drain_task(ctx, task)
+            await act._drain_task(ctx, task)
 
     assert completed
     assert task.done()
+
+
+@pytest.mark.unit
+async def test_drain_task_heartbeats_on_timeout():
+    """_drain_task emits heartbeats when waiting for a slow task cancellation."""
+    act = RunSyncActivity(
+        sync_service=MagicMock(),
+        sync_repo=MagicMock(),
+        collection_repo=MagicMock(),
+    )
+
+    ctx = BaseContext(organization=_make_org())
+    finish = asyncio.Event()
+
+    async def stubborn():
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            await finish.wait()
+
+    task = asyncio.create_task(stubborn())
+    await asyncio.sleep(0)
+
+    call_count = 0
+
+    async def mock_wait_for(aw, *, timeout=None):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise asyncio.TimeoutError()
+        finish.set()
+        await asyncio.sleep(0)
+
+    with (
+        patch.object(asyncio, "wait_for", mock_wait_for),
+        patch(f"{MODULE}.activity") as mock_act,
+    ):
+        await act._drain_task(ctx, task)
+
+    assert mock_act.heartbeat.call_count == 1
+    mock_act.heartbeat.assert_called_with({"phase": "cancelling"})

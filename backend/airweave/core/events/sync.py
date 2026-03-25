@@ -102,6 +102,7 @@ class SyncLifecycleEvent(DomainEvent):
     Published when a sync job transitions to:
     - PENDING (job created)
     - RUNNING (execution started)
+    - CANCELLING (cancellation acknowledged, winding down)
     - COMPLETED (success)
     - FAILED (error)
     - CANCELLED (user cancelled)
@@ -175,6 +176,31 @@ class SyncLifecycleEvent(DomainEvent):
         """Create a RUNNING event (execution started)."""
         return cls(
             event_type=SyncEventType.RUNNING,
+            organization_id=organization_id,
+            sync_id=sync_id,
+            sync_job_id=sync_job_id,
+            collection_id=collection_id,
+            source_connection_id=source_connection_id,
+            source_type=source_type,
+            collection_name=collection_name,
+            collection_readable_id=collection_readable_id,
+        )
+
+    @classmethod
+    def cancelling(
+        cls,
+        organization_id: UUID,
+        sync_id: UUID,
+        sync_job_id: UUID,
+        collection_id: UUID,
+        source_connection_id: UUID,
+        source_type: str,
+        collection_name: str,
+        collection_readable_id: str,
+    ) -> "SyncLifecycleEvent":
+        """Create a CANCELLING event (cancellation acknowledged, winding down)."""
+        return cls(
+            event_type=SyncEventType.CANCELLING,
             organization_id=organization_id,
             sync_id=sync_id,
             sync_job_id=sync_job_id,

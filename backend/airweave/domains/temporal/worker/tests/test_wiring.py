@@ -1,29 +1,32 @@
 """Tests for activity and workflow wiring."""
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-CONTAINER_MODULE = "airweave.core.container"
+_FACTORY_KEY = "airweave.core.container.factory"
+
+
+@pytest.fixture(autouse=True)
+def _mock_factory_import():
+    """Prevent cohere import chain via factory.py."""
+    original = sys.modules.get(_FACTORY_KEY)
+    already_present = _FACTORY_KEY in sys.modules
+    if not already_present:
+        sys.modules[_FACTORY_KEY] = MagicMock(create_container=MagicMock())
+    yield
+    if not already_present:
+        sys.modules.pop(_FACTORY_KEY, None)
+    elif original is not None:
+        sys.modules[_FACTORY_KEY] = original
 
 
 @pytest.mark.unit
 def test_create_activities_returns_list():
     mock_container = MagicMock()
-    mock_container.email_service = MagicMock()
-    mock_container.event_bus = MagicMock()
-    mock_container.sync_service = MagicMock()
-    mock_container.sync_job_state_machine = MagicMock()
-    mock_container.sync_repo = MagicMock()
-    mock_container.sync_job_repo = MagicMock()
-    mock_container.sc_repo = MagicMock()
-    mock_container.conn_repo = MagicMock()
-    mock_container.collection_repo = MagicMock()
-    mock_container.temporal_workflow_service = MagicMock()
-    mock_container.temporal_schedule_service = MagicMock()
-    mock_container.arf_service = MagicMock()
 
-    with patch(f"{CONTAINER_MODULE}.container", mock_container):
+    with patch("airweave.core.container.container", mock_container):
         from airweave.domains.temporal.worker.wiring import create_activities
 
         result = create_activities()
@@ -34,7 +37,7 @@ def test_create_activities_returns_list():
 
 @pytest.mark.unit
 def test_create_activities_raises_when_container_none():
-    with patch(f"{CONTAINER_MODULE}.container", None):
+    with patch("airweave.core.container.container", None):
         from airweave.domains.temporal.worker.wiring import create_activities
 
         with pytest.raises(RuntimeError, match="Container not initialized"):

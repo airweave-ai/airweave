@@ -1,6 +1,7 @@
 """Protocols for the entities domain."""
 
-from typing import Dict, List, Protocol, Tuple
+from datetime import datetime
+from typing import Dict, List, Optional, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,4 +85,12 @@ class EntityRepositoryProtocol(Protocol):
         entity_ids: List[str],
     ) -> Dict[str, Entity]:
         """Bulk-fetch entities by entity_id within a sync."""
+        ...
+
+    async def get_latest_entity_time_for_job(
+        self,
+        db: AsyncSession,
+        sync_job_id: UUID,
+    ) -> Optional[datetime]:
+        """Get the most recent entity created_at timestamp for a sync job."""
         ...

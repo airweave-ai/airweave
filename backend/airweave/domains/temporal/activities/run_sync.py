@@ -16,13 +16,17 @@ from uuid import UUID
 from temporalio import activity
 from temporalio.exceptions import ApplicationError, ApplicationErrorCategory
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException
 from airweave.db.session import get_db_context
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.sync_pipeline.config import SyncConfig
-from airweave.domains.syncs.protocols import SyncRepositoryProtocol, SyncServiceProtocol
+from airweave.domains.syncs.protocols import (
+    SyncJobRepositoryProtocol,
+    SyncRepositoryProtocol,
+    SyncServiceProtocol,
+)
 from airweave.domains.temporal.activities.context import build_activity_context
 from airweave.domains.temporal.activities.heartbeat import HeartbeatMonitor
 from airweave.domains.temporal.exceptions import ORPHANED_SYNC_ERROR_TYPE, OrphanedSyncError
@@ -82,6 +86,7 @@ class RunSyncActivity:
 
     sync_service: SyncServiceProtocol
     sync_repo: SyncRepositoryProtocol
+    sync_job_repo: SyncJobRepositoryProtocol
     collection_repo: CollectionRepositoryProtocol
 
     @activity.defn(name="run_sync_activity")
@@ -220,7 +225,7 @@ class RunSyncActivity:
         """Load execution config from DB, or None on failure."""
         try:
             async with get_db_context() as db:
-                model = await crud.sync_job.get(db, id=sync_job.id, ctx=ctx)
+                model = await self.sync_job_repo.get(db=db, id=sync_job.id, ctx=ctx)
                 if model and model.sync_config:
                     return SyncConfig(**model.sync_config)
         except Exception as e:

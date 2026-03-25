@@ -186,11 +186,6 @@ async def test_force_full_sync_timeout_raises(activity, sync_job_repo):
         patch(f"{MODULE}.get_db_context", _fake_db),
         patch(f"{MODULE}.activity") as mock_activity,
         patch(f"{MODULE}.asyncio.sleep", new_callable=AsyncMock),
-        patch.object(
-            activity,
-            "_wait_for_running_jobs",
-            side_effect=Exception("Timeout waiting for running jobs"),
-        ),
         pytest.raises(Exception, match="Timeout"),
     ):
         await activity.run(

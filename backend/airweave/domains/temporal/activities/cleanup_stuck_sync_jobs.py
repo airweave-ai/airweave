@@ -9,17 +9,18 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio import activity
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import LoggerConfigurator
 from airweave.core.redis_client import redis_client
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
-from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
+from airweave.domains.entities.protocols import EntityRepositoryProtocol
+from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
+from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncJobStateMachineProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.sync_job import SyncJob
 
@@ -37,7 +38,10 @@ class CleanupStuckSyncJobsActivity:
 
     Dependencies:
         temporal_workflow_service: Cancel stuck workflows via Temporal
-        sync_job_service: Update sync job status
+        state_machine: Validated sync job state transitions
+        sync_job_repo: Query stuck jobs
+        entity_repo: Fallback entity timestamp checks
+        org_repo: Fetch organization for context building
 
     Detects and cancels:
     - CANCELLING/PENDING jobs stuck for > 3 minutes
@@ -46,6 +50,9 @@ class CleanupStuckSyncJobsActivity:
 
     temporal_workflow_service: TemporalWorkflowServiceProtocol
     state_machine: SyncJobStateMachineProtocol
+    sync_job_repo: SyncJobRepositoryProtocol
+    entity_repo: EntityRepositoryProtocol
+    org_repo: OrganizationRepositoryProtocol
 
     @activity.defn(name="cleanup_stuck_sync_jobs_activity")
     async def run(self) -> None:
@@ -62,65 +69,81 @@ class CleanupStuckSyncJobsActivity:
         running_cutoff = now - _RUNNING_CUTOFF
 
         try:
-            async with get_db_context() as db:
-                cancelling_pending_jobs = await crud.sync_job.get_stuck_jobs_by_status(
-                    db=db,
-                    status=[SyncJobStatus.CANCELLING.value, SyncJobStatus.PENDING.value],
-                    modified_before=cancelling_pending_cutoff,
-                )
-                logger.info(
-                    f"Found {len(cancelling_pending_jobs)} CANCELLING/PENDING jobs "
-                    f"stuck for > {_CANCELLING_PENDING_CUTOFF}"
-                )
+            all_stuck_jobs = await self._find_stuck_jobs(
+                cancelling_pending_cutoff, running_cutoff, logger
+            )
 
-                running_jobs = await crud.sync_job.get_stuck_jobs_by_status(
-                    db=db,
-                    status=[SyncJobStatus.RUNNING.value],
-                    started_before=running_cutoff,
-                )
-                logger.info(
-                    f"Found {len(running_jobs)} RUNNING jobs started >{_RUNNING_CUTOFF} ago "
-                    f"(will check activity)"
-                )
+            if not all_stuck_jobs:
+                logger.info("No stuck jobs found. Cleanup complete.")
+                return
 
-                stuck_running_jobs = [
-                    job
-                    for job in running_jobs
-                    if await self._is_running_job_stuck(job, running_cutoff, db, logger)
-                ]
-                logger.info(
-                    f"Found {len(stuck_running_jobs)} RUNNING jobs "
-                    f"with no activity in last {_RUNNING_CUTOFF}"
-                )
+            logger.info(f"Processing {len(all_stuck_jobs)} stuck sync jobs...")
 
-                all_stuck_jobs = cancelling_pending_jobs + stuck_running_jobs
-                if not all_stuck_jobs:
-                    logger.info("No stuck jobs found. Cleanup complete.")
-                    return
+            cancelled_count = 0
+            failed_count = 0
+            for job in all_stuck_jobs:
+                if await self._cancel_stuck_job(job, logger):
+                    cancelled_count += 1
+                else:
+                    failed_count += 1
 
-                logger.info(f"Processing {len(all_stuck_jobs)} stuck sync jobs...")
-
-                cancelled_count = 0
-                failed_count = 0
-                for job in all_stuck_jobs:
-                    if await self._cancel_stuck_job(job, now, db, logger):
-                        cancelled_count += 1
-                    else:
-                        failed_count += 1
-
-                logger.info(
-                    f"Cleanup complete. Processed {len(all_stuck_jobs)} stuck jobs: "
-                    f"{cancelled_count} cancelled, {failed_count} failed"
-                )
+            logger.info(
+                f"Cleanup complete. Processed {len(all_stuck_jobs)} stuck jobs: "
+                f"{cancelled_count} cancelled, {failed_count} failed"
+            )
 
         except Exception as e:
             logger.error(f"Error during cleanup activity: {e}", exc_info=True)
             raise
 
+    async def _find_stuck_jobs(
+        self,
+        cancelling_pending_cutoff: datetime,
+        running_cutoff: datetime,
+        logger: Any,
+    ) -> list[SyncJob]:
+        """Query DB for stuck jobs. Session is scoped to read-only discovery."""
+        async with get_db_context() as db:
+            cancelling_pending_jobs = await self.sync_job_repo.get_stuck_jobs_by_status(
+                db=db,
+                status=[SyncJobStatus.CANCELLING.value, SyncJobStatus.PENDING.value],
+                modified_before=cancelling_pending_cutoff,
+            )
+            logger.info(
+                f"Found {len(cancelling_pending_jobs)} CANCELLING/PENDING jobs "
+                f"stuck for > {_CANCELLING_PENDING_CUTOFF}"
+            )
+
+            running_jobs = await self.sync_job_repo.get_stuck_jobs_by_status(
+                db=db,
+                status=[SyncJobStatus.RUNNING.value],
+                started_before=running_cutoff,
+            )
+            logger.info(
+                f"Found {len(running_jobs)} RUNNING jobs started >{_RUNNING_CUTOFF} ago "
+                f"(will check activity)"
+            )
+
+            stuck_running_jobs = [
+                job
+                for job in running_jobs
+                if await self._is_running_job_stuck(job, running_cutoff, db, logger)
+            ]
+            logger.info(
+                f"Found {len(stuck_running_jobs)} RUNNING jobs "
+                f"with no activity in last {_RUNNING_CUTOFF}"
+            )
+
+        return cancelling_pending_jobs + stuck_running_jobs
+
     async def _is_running_job_stuck(
-        self, job: SyncJob, running_cutoff: datetime, db: AsyncSession, logger: Any
+        self, job: SyncJob, running_cutoff: datetime, db: Any, logger: Any
     ) -> bool:
-        """Check if a running job is stuck (no recent activity)."""
+        """Check if a running job is stuck (no recent activity).
+
+        Uses the caller's DB session for entity timestamp fallback since this
+        runs inside the discovery session scope.
+        """
         if job.sync_config:
             handlers = job.sync_config.get("handlers", {})
             is_arf_only = not handlers.get("enable_postgres_handler", True)
@@ -142,7 +165,7 @@ class CleanupStuckSyncJobsActivity:
             last_update_str = snapshot.get("last_update_timestamp")
 
             if not last_update_str:
-                latest_entity_time = await crud.entity.get_latest_entity_time_for_job(
+                latest_entity_time = await self.entity_repo.get_latest_entity_time_for_job(
                     db=db, sync_job_id=UUID(str(job.id))
                 )
                 return latest_entity_time is None or latest_entity_time < running_cutoff
@@ -167,17 +190,19 @@ class CleanupStuckSyncJobsActivity:
 
         except Exception as e:
             logger.warning(f"Error checking job {job_id_str}: {e}, falling back to DB check")
-            latest_entity_time = await crud.entity.get_latest_entity_time_for_job(
+            latest_entity_time = await self.entity_repo.get_latest_entity_time_for_job(
                 db=db, sync_job_id=UUID(str(job.id))
             )
             return latest_entity_time is None or latest_entity_time < running_cutoff
 
-    async def _cancel_stuck_job(
-        self, job: SyncJob, now: datetime, db: AsyncSession, logger: Any
-    ) -> bool:
+    async def _cancel_stuck_job(self, job: SyncJob, logger: Any) -> bool:
         """Cancel a single stuck job via Temporal and update database.
 
-        RUNNING jobs transition to FAILED (RUNNING → CANCELLED is invalid).
+        Opens its own DB session for the org lookup so no session is held
+        across the Temporal gRPC call, asyncio.sleep, or state machine
+        transition (which opens its own session internally).
+
+        RUNNING jobs transition to FAILED (RUNNING -> CANCELLED is invalid).
         CANCELLING/PENDING jobs transition to CANCELLED (valid transitions).
         """
         job_id = str(job.id)
@@ -191,11 +216,12 @@ class CleanupStuckSyncJobsActivity:
         )
 
         try:
-            organization = await crud.organization.get(
-                db=db,
-                id=job.organization_id,
-                skip_access_validation=True,
-            )
+            async with get_db_context() as db:
+                organization = await self.org_repo.get(
+                    db=db,
+                    id=job.organization_id,
+                    skip_access_validation=True,
+                )
         except Exception as e:
             logger.error(f"Failed to fetch organization {org_id} for job {job_id}: {e}")
             return False

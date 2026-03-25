@@ -442,3 +442,27 @@ async def test_run_mixed_stuck_jobs_counts(act, state_machine):
         await act.run()
 
     assert len(state_machine.calls) == 2
+
+
+@pytest.mark.unit
+async def test_run_failed_count_incremented(act, state_machine):
+    """When _cancel_stuck_job returns False, failed_count is incremented."""
+    job = _make_job(status="cancelling")
+
+    mock_crud = MagicMock()
+    mock_crud.sync_job.get_stuck_jobs_by_status = AsyncMock(
+        side_effect=[
+            [job],  # cancelling/pending query
+            [],  # running query
+        ]
+    )
+    mock_crud.organization.get = AsyncMock(side_effect=RuntimeError("org not found"))
+
+    with (
+        patch(f"{MODULE}.get_db_context", _fake_db),
+        patch(f"{MODULE}.crud", mock_crud),
+        patch(f"{MODULE}.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await act.run()
+
+    assert len(state_machine.calls) == 0

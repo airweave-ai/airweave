@@ -18,6 +18,7 @@ def create_activities() -> list:
 
     Future: This will evolve as we add more protocols to the container.
     """
+    from airweave import crud
     from airweave.core.container import container
     from airweave.domains.temporal.activities import (
         CheckAndNotifyExpiringKeysActivity,
@@ -38,6 +39,7 @@ def create_activities() -> list:
     state_machine = container.sync_job_state_machine
     sync_repo = container.sync_repo
     sync_job_repo = container.sync_job_repo
+    entity_repo = container.entity_repo
     sc_repo = container.sc_repo
     conn_repo = container.conn_repo
     collection_repo = container.collection_repo
@@ -51,6 +53,7 @@ def create_activities() -> list:
         RunSyncActivity(
             sync_service=sync_service,
             sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
             collection_repo=collection_repo,
         ).run,
         CreateSyncJobActivity(
@@ -67,6 +70,9 @@ def create_activities() -> list:
         CleanupStuckSyncJobsActivity(
             temporal_workflow_service=temporal_workflow_service,
             state_machine=state_machine,
+            sync_job_repo=sync_job_repo,
+            entity_repo=entity_repo,
+            org_repo=crud.organization,
         ).run,
         # Cleanup
         SelfDestructOrphanedSyncActivity(

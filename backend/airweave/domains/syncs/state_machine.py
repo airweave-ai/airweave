@@ -57,6 +57,7 @@ _VALID_TRANSITIONS: dict[SyncJobStatus, set[SyncJobStatus]] = {
 _LIFECYCLE_EVENT_FACTORY: dict[SyncJobStatus, Callable[..., SyncLifecycleEvent]] = {
     SyncJobStatus.PENDING: SyncLifecycleEvent.pending,
     SyncJobStatus.RUNNING: SyncLifecycleEvent.running,
+    SyncJobStatus.CANCELLING: SyncLifecycleEvent.cancelling,
     SyncJobStatus.COMPLETED: SyncLifecycleEvent.completed,
     SyncJobStatus.FAILED: SyncLifecycleEvent.failed,
     SyncJobStatus.CANCELLED: SyncLifecycleEvent.cancelled,

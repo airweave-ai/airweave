@@ -79,7 +79,7 @@ class RunSourceConnectionWorkflow:
         if sync_job_dict is None:
             return
 
-        lifecycle = self._lifecycle_data(
+        lifecycle = self._build_lifecycle_data(
             sync_dict, sync_job_dict, collection_dict, connection_dict, ctx_dict
         )
 
@@ -265,22 +265,27 @@ class RunSourceConnectionWorkflow:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _lifecycle_data(
+    def _build_lifecycle_data(
         sync_dict: Dict[str, Any],
         sync_job_dict: Dict[str, Any],
         collection_dict: Dict[str, Any],
         connection_dict: Dict[str, Any],
         ctx_dict: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Extract lifecycle event fields from input dicts (built once, reused)."""
+        """Build a serialized LifecycleData dict from workflow input dicts.
+
+        The returned dict mirrors ``syncs.types.LifecycleData`` fields exactly.
+        TransitionSyncJobActivity reconstructs the typed LifecycleData on the
+        activity side (where UUID conversion is safe outside the workflow sandbox).
+        """
         org_data = ctx_dict.get("organization")
         org_id = org_data["id"] if org_data else ctx_dict.get("organization_id", "")
         return {
-            "organization_id": org_id,
-            "sync_id": sync_dict["id"],
-            "sync_job_id": sync_job_dict["id"],
-            "collection_id": collection_dict["id"],
-            "source_connection_id": sync_dict.get("source_connection_id", ""),
+            "organization_id": str(org_id),
+            "sync_id": str(sync_dict["id"]),
+            "sync_job_id": str(sync_job_dict["id"]),
+            "collection_id": str(collection_dict["id"]),
+            "source_connection_id": str(sync_dict.get("source_connection_id", "")),
             "source_type": connection_dict.get("short_name", ""),
             "collection_name": collection_dict.get("name", ""),
             "collection_readable_id": collection_dict.get("readable_id", ""),

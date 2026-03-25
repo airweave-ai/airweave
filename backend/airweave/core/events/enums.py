@@ -17,6 +17,7 @@ class SyncEventType(str, Enum):
 
     PENDING = "sync.pending"
     RUNNING = "sync.running"
+    CANCELLING = "sync.cancelling"
     COMPLETED = "sync.completed"
     FAILED = "sync.failed"
     CANCELLED = "sync.cancelled"
