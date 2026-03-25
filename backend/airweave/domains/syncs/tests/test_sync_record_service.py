@@ -56,6 +56,7 @@ class TriggerCase:
     name: str
     active_jobs: list
     sync_exists: bool = True
+    sync_status: str = "active"
     expect_error: Optional[type] = None
     error_status: Optional[int] = None
 
@@ -78,6 +79,14 @@ TRIGGER_CASES = [
         sync_exists=False,
         expect_error=ValueError,
     ),
+    TriggerCase(
+        name="non_active_sync_rejected",
+        active_jobs=[],
+        sync_exists=True,
+        sync_status="paused",
+        expect_error=HTTPException,
+        error_status=409,
+    ),
 ]
 
 
@@ -90,7 +99,9 @@ async def test_trigger_sync_run(case: TriggerCase) -> None:
     connection_repo = AsyncMock()
 
     sync_job_repo.get_active_for_sync = AsyncMock(return_value=case.active_jobs)
-    sync_repo.get = AsyncMock(return_value=_mock_sync_model() if case.sync_exists else None)
+    sync_repo.get = AsyncMock(
+        return_value=_mock_sync_model(status=case.sync_status) if case.sync_exists else None
+    )
 
     created_job = _mock_sync_job_model()
     sync_job_repo.create = AsyncMock(return_value=created_job)

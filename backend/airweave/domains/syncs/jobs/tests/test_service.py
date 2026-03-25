@@ -262,3 +262,25 @@ async def test_update_status_exception_swallowed():
             status=SyncJobStatus.RUNNING,
             ctx=MagicMock(),
         )
+
+
+# ---------------------------------------------------------------------------
+# _build_timestamp_update — error_category branch
+# ---------------------------------------------------------------------------
+
+
+def test_build_timestamp_update_failed_with_error_category():
+    """FAILED status with error_category sets the field on the update."""
+    from airweave.core.shared_models import SourceConnectionErrorCategory
+
+    result = SyncJobService._build_timestamp_update(
+        SyncJobStatus.FAILED,
+        started_at=None,
+        completed_at=None,
+        failed_at=NOW,
+        error="cred expired",
+        error_category=SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,
+    )
+    assert result.failed_at == NOW
+    assert result.error == "cred expired"
+    assert result.error_category == SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED
