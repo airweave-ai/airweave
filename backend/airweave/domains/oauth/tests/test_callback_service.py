@@ -123,7 +123,7 @@ def _service(
     sync_lifecycle=None,
     sync_record_service=None,
     temporal_workflow_service=None,
-    sync_state_machine=None,
+    temporal_schedule_service=None,
     event_bus=None,
 ) -> OAuthCallbackService:
     return OAuthCallbackService(
@@ -135,7 +135,7 @@ def _service(
         sync_lifecycle=sync_lifecycle or AsyncMock(),
         sync_record_service=sync_record_service or AsyncMock(),
         temporal_workflow_service=temporal_workflow_service or AsyncMock(),
-        sync_state_machine=sync_state_machine or AsyncMock(),
+        temporal_schedule_service=temporal_schedule_service or AsyncMock(),
         event_bus=event_bus or AsyncMock(),
         organization_repo=organization_repo or FakeOrganizationRepository(),
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
@@ -2215,11 +2215,11 @@ class TestVerifyOAuthFlow:
         assert exc.value.status_code == 400
         assert "completed" in exc.value.detail.lower()
 
-    async def test_complete_connection_common_activates_sync(self):
-        """_complete_connection_common transitions sync to ACTIVE after commit."""
+    async def test_complete_connection_common_unpauses_schedules(self):
+        """_complete_connection_common calls unpause_schedules after commit."""
         from unittest.mock import patch
 
-        sync_state_machine = AsyncMock()
+        temporal_schedule_service = AsyncMock()
         sc_repo = FakeSourceConnectionRepository()
         shell = _source_conn_shell()
         shell.connection_id = uuid4()
@@ -2227,7 +2227,7 @@ class TestVerifyOAuthFlow:
 
         svc = _service(
             sc_repo=sc_repo,
-            sync_state_machine=sync_state_machine,
+            temporal_schedule_service=temporal_schedule_service,
         )
         svc._validate_config = MagicMock(return_value={})
         collection = MagicMock()
@@ -2267,4 +2267,4 @@ class TestVerifyOAuthFlow:
                 has_claim_token=True,
             )
 
-        sync_state_machine.transition.assert_awaited_once()
+        temporal_schedule_service.unpause_schedules_for_sync.assert_awaited_once()

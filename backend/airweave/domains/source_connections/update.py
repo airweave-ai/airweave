@@ -6,12 +6,12 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.service import RPCError
 
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols.encryption import CredentialEncryptor
-from airweave.core.shared_models import SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -29,7 +29,6 @@ from airweave.domains.sources.protocols import (
 from airweave.domains.syncs.protocols import (
     SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
-    SyncStateMachineProtocol,
 )
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.models.source_connection import SourceConnection
@@ -64,7 +63,6 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
         credential_encryptor: CredentialEncryptor,
         response_builder: ResponseBuilderProtocol,
         temporal_schedule_service: TemporalScheduleServiceProtocol,
-        sync_state_machine: SyncStateMachineProtocol,
     ) -> None:
         """Initialize with repositories and collaborator services."""
         self._sc_repo = sc_repo
@@ -78,7 +76,6 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
         self._credential_encryptor = credential_encryptor
         self._response_builder = response_builder
         self._temporal_schedule_service = temporal_schedule_service
-        self._sync_state_machine = sync_state_machine
 
     async def update(
         self,
@@ -131,18 +128,15 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                 )
                 del update_data["credentials"]
 
-                if source_conn.sync_id:
-                    try:
-                        await self._sync_state_machine.transition(
-                            sync_id=source_conn.sync_id,
-                            target=SyncStatus.ACTIVE,
-                            ctx=ctx,
-                            reason="Credential update completed",
-                        )
-                    except Exception:
-                        ctx.logger.warning(
-                            "Failed to activate sync after credential update", exc_info=True
-                        )
+                # Unpause schedules — credential update may fix a NEEDS_REAUTH state
+                try:
+                    await self._temporal_schedule_service.unpause_schedules_for_sync(
+                        source_conn.sync_id,
+                    )
+                except (RPCError, OSError):
+                    ctx.logger.warning(
+                        "Failed to unpause schedules after credential update", exc_info=True
+                    )
 
             # Update source connection
             if update_data:

@@ -6,7 +6,7 @@ from typing import Optional
 from uuid import UUID
 
 from airweave import schemas
-from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus, SyncStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 
 CONTINUOUS_SOURCE_DEFAULT_CRON = "*/5 * * * *"
 DAILY_CRON_TEMPLATE = "{minute} {hour} * * *"
@@ -41,7 +41,7 @@ class TransitionResult:
 
 
 class InvalidTransitionError(Exception):
-    """Raised when a sync job status transition violates the state machine graph."""
+    """Raised when a status transition violates the state machine graph."""
 
     def __init__(
         self,
@@ -55,32 +55,6 @@ class InvalidTransitionError(Exception):
         self.sync_job_id = sync_job_id
         job = f" for job {sync_job_id}" if sync_job_id else ""
         super().__init__(f"Invalid transition {current.value} → {target.value}{job}")
-
-
-class InvalidSyncTransitionError(Exception):
-    """Raised when a sync status transition violates the state machine graph."""
-
-    def __init__(
-        self,
-        current: SyncStatus,
-        target: SyncStatus,
-        sync_id: UUID | str | None = None,
-    ) -> None:
-        """Initialize with current/target status and optional sync ID."""
-        self.current = current
-        self.target = target
-        self.sync_id = sync_id
-        suffix = f" for sync {sync_id}" if sync_id else ""
-        super().__init__(f"Invalid sync transition {current.value} → {target.value}{suffix}")
-
-
-@dataclass(frozen=True)
-class SyncTransitionResult:
-    """Outcome of a sync-level transition attempt."""
-
-    applied: bool
-    previous: SyncStatus
-    current: SyncStatus
 
 
 @dataclass(frozen=True)

@@ -50,7 +50,6 @@ class SyncStatus(str, Enum):
     """Sync status enum."""
 
     ACTIVE = "active"
-    PAUSED = "paused"
     INACTIVE = "inactive"
     ERROR = "error"
 
@@ -63,7 +62,6 @@ class SourceConnectionStatus(str, Enum):
     SYNCING = "syncing"  # Currently running a sync job
     ERROR = "error"  # Last sync failed or auth error
     NEEDS_REAUTH = "needs_reauth"  # Credentials expired or revoked
-    PAUSED = "paused"  # Sync is paused (credential error, manual, etc.)
     INACTIVE = "inactive"  # Manually disabled
     PENDING_SYNC = "pending_sync"  # Awaiting a sync job to start
 

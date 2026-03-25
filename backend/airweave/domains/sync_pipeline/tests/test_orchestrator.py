@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.core.shared_models import SyncJobStatus, SyncStatus
+from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
 
 
@@ -50,7 +50,7 @@ def _make_orchestrator(**overrides):
         sync_cursor_service=overrides.pop("sync_cursor_service", MagicMock()),
         state_machine=overrides.pop("state_machine", MagicMock()),
         lifecycle_data=overrides.pop("lifecycle_data", MagicMock()),
-        sync_state_machine=overrides.pop("sync_state_machine", MagicMock()),
+        temporal_schedule_service=overrides.pop("temporal_schedule_service", MagicMock()),
     )
 
 
@@ -132,13 +132,13 @@ class TestPublishAclHeartbeat:
 class TestHandleSyncFailure:
     @pytest.mark.asyncio
     async def test_credential_error_writes_error_category_and_pauses(self):
-        """Auth error -> error_category on transition + sync paused via state machine."""
-        from airweave.core.shared_models import SourceConnectionErrorCategory, SyncStatus
+        """Auth error -> error_category on transition + pause_schedules called."""
+        from airweave.core.shared_models import SourceConnectionErrorCategory
         from airweave.domains.sources.exceptions import SourceAuthError
         from airweave.domains.sources.token_providers.protocol import AuthProviderKind
 
         state_machine = AsyncMock()
-        sync_state_machine = AsyncMock()
+        temporal_schedule_service = AsyncMock()
 
         ctx = _make_sync_context()
         ctx.sync_job.started_at = None
@@ -146,7 +146,7 @@ class TestHandleSyncFailure:
         orc = _make_orchestrator(
             sync_context=ctx,
             state_machine=state_machine,
-            sync_state_machine=sync_state_machine,
+            temporal_schedule_service=temporal_schedule_service,
         )
 
         exc = SourceAuthError(
@@ -169,15 +169,17 @@ class TestHandleSyncFailure:
         )
         assert call_kwargs["target"] == SyncJobStatus.FAILED
 
-        sync_state_machine.transition.assert_awaited_once()
-        pause_kwargs = sync_state_machine.transition.call_args.kwargs
-        assert pause_kwargs["target"] == SyncStatus.PAUSED
+        temporal_schedule_service.pause_schedules_for_sync.assert_awaited_once()
+        pause_args = (
+            temporal_schedule_service.pause_schedules_for_sync.call_args
+        )
+        assert pause_args[0][0] == ctx.sync.id
 
     @pytest.mark.asyncio
     async def test_non_credential_error_no_category_no_pause(self):
         """Non-auth error -> error_category=None, no pause."""
         state_machine = AsyncMock()
-        sync_state_machine = AsyncMock()
+        temporal_schedule_service = AsyncMock()
 
         ctx = _make_sync_context()
         ctx.sync_job.started_at = None
@@ -185,7 +187,7 @@ class TestHandleSyncFailure:
         orc = _make_orchestrator(
             sync_context=ctx,
             state_machine=state_machine,
-            sync_state_machine=sync_state_machine,
+            temporal_schedule_service=temporal_schedule_service,
         )
 
         with patch(
@@ -196,19 +198,18 @@ class TestHandleSyncFailure:
         call_kwargs = state_machine.transition.call_args.kwargs
         assert call_kwargs["error_category"] is None
 
-        sync_state_machine.transition.assert_not_awaited()
+        temporal_schedule_service.pause_schedules_for_sync.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_pause_failure_is_nonfatal(self):
-        """If sync state machine raises, failure handler still completes."""
+        """If pause_schedules raises OSError, failure handler still completes."""
         from airweave.domains.sources.exceptions import SourceAuthError
         from airweave.domains.sources.token_providers.protocol import AuthProviderKind
-        from airweave.domains.syncs.types import InvalidSyncTransitionError
 
         state_machine = AsyncMock()
-        sync_state_machine = AsyncMock()
-        sync_state_machine.transition.side_effect = InvalidSyncTransitionError(
-            SyncStatus.PAUSED, SyncStatus.PAUSED
+        temporal_schedule_service = AsyncMock()
+        temporal_schedule_service.pause_schedules_for_sync.side_effect = (
+            OSError("connection refused")
         )
 
         ctx = _make_sync_context()
@@ -217,7 +218,7 @@ class TestHandleSyncFailure:
         orc = _make_orchestrator(
             sync_context=ctx,
             state_machine=state_machine,
-            sync_state_machine=sync_state_machine,
+            temporal_schedule_service=temporal_schedule_service,
         )
 
         exc = SourceAuthError(
