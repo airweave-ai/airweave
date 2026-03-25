@@ -19,7 +19,7 @@ import pytest
 
 from airweave.api.context import ApiContext
 from airweave.core.logging import logger
-from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, SyncJobStatus
+from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, SyncJobStatus, SyncStatus
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
 from airweave.domains.entities.fakes.entity_count_repository import FakeEntityCountRepository
@@ -174,6 +174,7 @@ def _make_stats(
     entity_count: int = 0,
     authentication_method: Optional[str] = None,
     federated_search: bool = False,
+    sync_status: Optional[SyncStatus] = None,
 ) -> SourceConnectionStats:
     """Build a SourceConnectionStats with sensible defaults."""
     last_job = (
@@ -196,6 +197,7 @@ def _make_stats(
         last_job=last_job,
         entity_count=entity_count,
         federated_search=federated_search,
+        sync_status=sync_status,
     )
 
 
@@ -1066,6 +1068,7 @@ class ListItemCase:
     authentication_method: Optional[str]
     federated_search: bool
     expect_status: SourceConnectionStatus
+    sync_status: Optional[SyncStatus] = None
 
 
 LIST_ITEM_CASES = [
@@ -1135,6 +1138,28 @@ LIST_ITEM_CASES = [
         True,
         SourceConnectionStatus.ACTIVE,
     ),
+    ListItemCase(
+        "sync paused → PAUSED",
+        True,
+        True,
+        SyncJobStatus.COMPLETED,
+        10,
+        "direct",
+        False,
+        SourceConnectionStatus.PAUSED,
+        sync_status=SyncStatus.PAUSED,
+    ),
+    ListItemCase(
+        "sync paused trumps inactive",
+        True,
+        False,
+        None,
+        0,
+        None,
+        False,
+        SourceConnectionStatus.PAUSED,
+        sync_status=SyncStatus.PAUSED,
+    ),
 ]
 
 
@@ -1147,6 +1172,7 @@ def test_build_list_item(case: ListItemCase):
         entity_count=case.entity_count,
         authentication_method=case.authentication_method,
         federated_search=case.federated_search,
+        sync_status=case.sync_status,
     )
     item = _fixture().builder.build_list_item(stats)
 
@@ -1301,6 +1327,7 @@ def _full_raw_dict(**overrides) -> Dict[str, Any]:
         "last_job": None,
         "entity_count": 0,
         "federated_search": False,
+        "sync_status": None,
     }
     base.update(overrides)
     return base

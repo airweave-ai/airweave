@@ -84,6 +84,7 @@ def _make_stats(
         last_job=last_job,
         entity_count=entity_count,
         federated_search=federated_search,
+        sync_status=None,
     )
 
 

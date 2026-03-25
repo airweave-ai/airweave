@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings as core_settings
-from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus, SyncStatus
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.entities.protocols import EntityCountRepositoryProtocol
@@ -111,6 +111,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
     ) -> SourceConnectionSchema:
         """Build complete SourceConnection response from an ORM object."""
         sync_details = await self._build_sync_details(db, source_conn, ctx)
+        sync_status = await self._fetch_sync_status(db, source_conn)
 
         last_job_status = None
         last_job_error_category = None
@@ -142,7 +143,9 @@ class ResponseBuilder(ResponseBuilderProtocol):
             description=source_conn.description,
             short_name=source_conn.short_name,
             readable_collection_id=source_conn.readable_collection_id,
-            status=compute_status(source_conn, last_job_status, last_job_error_category),
+            status=compute_status(
+                source_conn, last_job_status, last_job_error_category, sync_status
+            ),
             created_at=source_conn.created_at,
             modified_at=source_conn.modified_at,
             auth=auth,
@@ -179,6 +182,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
             last_job_status=last_job_status,
             last_job_error_category=last_job_error_category,
             federated_search=stats.federated_search,
+            sync_status=stats.sync_status,
         )
 
     def map_sync_job(self, job: SyncJob, source_connection_id: UUID) -> SourceConnectionJob:
@@ -444,6 +448,25 @@ class ResponseBuilder(ResponseBuilderProtocol):
             return _EMPTY_PROVIDER_INFO
         except Exception:
             return _EMPTY_PROVIDER_INFO
+
+    async def _fetch_sync_status(
+        self, db: Optional[AsyncSession], source_conn: SourceConnection
+    ) -> Optional[SyncStatus]:
+        """Fetch the sync.status for a source connection's linked sync."""
+        if not source_conn.sync_id or db is None:
+            return None
+        try:
+            from sqlalchemy import select
+
+            from airweave.models.sync import Sync
+
+            result = await db.execute(
+                select(Sync.status).where(Sync.id == source_conn.sync_id)
+            )
+            row = result.scalar_one_or_none()
+            return SyncStatus(row) if row else None
+        except Exception:
+            return None
 
     def _get_federated_search(self, source_conn: SourceConnection) -> bool:
         """Get federated_search flag from the source registry."""

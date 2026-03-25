@@ -102,6 +102,16 @@ class SyncRecordService(SyncRecordServiceProtocol):
             HTTPException 400: if a job is already active.
             ValueError: if the sync is not found.
         """
+        sync = await self._sync_repo.get(db, sync_id, ctx)
+        if not sync:
+            raise ValueError(f"Sync {sync_id} not found")
+
+        if SyncStatus(sync.status) != SyncStatus.ACTIVE:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot trigger sync: sync is {sync.status}",
+            )
+
         active_jobs = await self._sync_job_repo.get_active_for_sync(db, sync_id, ctx)
         if active_jobs:
             job_status = active_jobs[0].status.lower()
@@ -109,10 +119,6 @@ class SyncRecordService(SyncRecordServiceProtocol):
                 status_code=400,
                 detail=f"Cannot start new sync: a sync job is already {job_status}",
             )
-
-        sync = await self._sync_repo.get(db, sync_id, ctx)
-        if not sync:
-            raise ValueError(f"Sync {sync_id} not found")
 
         sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
 

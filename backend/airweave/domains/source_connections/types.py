@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional, TypedDict
 from uuid import UUID
 
-from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus, SyncStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +58,7 @@ class SourceConnectionStats:
     last_job: Optional[LastJobInfo]
     entity_count: int
     federated_search: bool
+    sync_status: Optional[SyncStatus]
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> SourceConnectionStats:
@@ -76,6 +77,9 @@ class SourceConnectionStats:
             else None
         )
 
+        raw_sync_status = data.get("sync_status")
+        sync_status = SyncStatus(raw_sync_status) if raw_sync_status else None
+
         return cls(
             id=data["id"],
             name=data["name"],
@@ -91,4 +95,5 @@ class SourceConnectionStats:
             last_job=last_job,
             entity_count=data["entity_count"],
             federated_search=data["federated_search"],
+            sync_status=sync_status,
         )

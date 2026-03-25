@@ -128,6 +128,7 @@ from airweave.domains.syncs.cursors.repository import SyncCursorRepository
 from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.state_machine import SyncJobStateMachine
+from airweave.domains.syncs.sync_state_machine import SyncStateMachine
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
 from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
@@ -348,6 +349,7 @@ def create_container(settings: Settings) -> Container:
         credential_encryptor=encryptor,
         response_builder=sync_deps["response_builder"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
+        sync_state_machine=sync_deps["sync_state_machine"],
     )
     create_service = SourceConnectionCreationService(
         sc_repo=source_deps["sc_repo"],
@@ -438,7 +440,7 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
         # Services
         source_lifecycle_service=source_deps["source_lifecycle_service"],
-        temporal_schedule_service=sync_deps["temporal_schedule_service"],
+        sync_state_machine=sync_deps["sync_state_machine"],
         sync_cursor_service=source_deps["sync_cursor_service"],
         processor=chunk_embed_processor,
         arf_service=arf_service,
@@ -453,7 +455,7 @@ def create_container(settings: Settings) -> Container:
     sync_service = SyncService(
         state_machine=sync_deps["sync_job_state_machine"],
         sync_factory=sync_factory,
-        temporal_schedule_service=sync_deps["temporal_schedule_service"],
+        sync_state_machine=sync_deps["sync_state_machine"],
     )
 
     # -----------------------------------------------------------------
@@ -497,7 +499,7 @@ def create_container(settings: Settings) -> Container:
         sync_lifecycle=sync_deps["sync_lifecycle"],
         sync_record_service=sync_deps["sync_record_service"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
-        temporal_schedule_service=sync_deps["temporal_schedule_service"],
+        sync_state_machine=sync_deps["sync_state_machine"],
         event_bus=event_bus,
         organization_repo=OrgRepo(),
         sc_repo=source_deps["sc_repo"],
@@ -1018,6 +1020,11 @@ def _create_sync_services(
         connection_repo=conn_repo,
     )
 
+    sync_state_machine = SyncStateMachine(
+        sync_repo=sync_repo,
+        temporal_schedule_service=temporal_schedule_service,
+    )
+
     sync_lifecycle = SyncLifecycleService(
         sc_repo=sc_repo,
         collection_repo=collection_repo,
@@ -1036,6 +1043,7 @@ def _create_sync_services(
         "sync_record_service": sync_record_service,
         "sync_job_service": sync_job_service,
         "sync_job_state_machine": sync_job_state_machine,
+        "sync_state_machine": sync_state_machine,
         "sync_lifecycle": sync_lifecycle,
         "temporal_workflow_service": temporal_workflow_service,
         "temporal_schedule_service": temporal_schedule_service,

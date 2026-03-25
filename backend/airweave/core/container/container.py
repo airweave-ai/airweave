@@ -101,6 +101,7 @@ from airweave.domains.syncs.protocols import (
     SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
     SyncServiceProtocol,
+    SyncStateMachineProtocol,
 )
 from airweave.domains.temporal.protocols import (
     TemporalScheduleServiceProtocol,
@@ -206,6 +207,7 @@ class Container:
     sync_record_service: SyncRecordServiceProtocol
     sync_job_service: SyncJobServiceProtocol
     sync_job_state_machine: SyncJobStateMachineProtocol
+    sync_state_machine: SyncStateMachineProtocol
     sync_service: SyncServiceProtocol
     sync_lifecycle: SyncLifecycleServiceProtocol
     sync_factory: SyncFactoryProtocol
