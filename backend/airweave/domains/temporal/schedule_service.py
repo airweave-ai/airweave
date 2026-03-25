@@ -41,12 +41,9 @@ from airweave.domains.temporal.exceptions import InvalidCronExpressionError
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.domains.temporal.types import ScheduleInfo
 from airweave.domains.temporal.workflows import (
-    APIKeyCleanupWorkflow,
+    APIKeyMaintenanceWorkflow,
     CleanupStuckSyncJobsWorkflow,
     RunSourceConnectionWorkflow,
-)
-from airweave.domains.temporal.workflows.api_key_notifications import (
-    APIKeyExpirationCheckWorkflow,
 )
 
 # Schedule ID prefixes for the three schedule types per sync.
@@ -546,20 +543,11 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
 
         await self._ensure_singleton_schedule(
             client=client,
-            schedule_id="api-key-expiration-notifications",
-            workflow_cls=APIKeyExpirationCheckWorkflow,
-            workflow_id="api-key-notification-workflow",
+            schedule_id="api-key-maintenance",
+            workflow_cls=APIKeyMaintenanceWorkflow,
+            workflow_id="api-key-maintenance-workflow",
             interval=timedelta(days=1),
-            note="API key expiration notifications (runs every day)",
-        )
-
-        await self._ensure_singleton_schedule(
-            client=client,
-            schedule_id="api-key-cleanup",
-            workflow_cls=APIKeyCleanupWorkflow,
-            workflow_id="api-key-cleanup-workflow",
-            interval=timedelta(days=1),
-            note="Revoked key deletion, expired status transitions, usage log pruning",
+            note="Daily API key lifecycle: notify, expire, cleanup, prune",
         )
 
     async def _ensure_singleton_schedule(

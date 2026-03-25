@@ -1,4 +1,9 @@
-"""Temporal workflow for API key cleanup and maintenance."""
+"""Temporal workflow for daily API key lifecycle maintenance.
+
+A single deterministically-ordered workflow ensures notifications
+run while keys are still ACTIVE, before expire transitions them
+to EXPIRED.
+"""
 
 from datetime import timedelta
 
@@ -7,6 +12,7 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from airweave.domains.temporal.activities import (
+        check_and_notify_expiring_keys_activity,
         cleanup_revoked_keys_activity,
         expire_past_due_keys_activity,
         prune_usage_log_activity,
@@ -14,26 +20,34 @@ with workflow.unsafe.imports_passed_through():
 
 
 @workflow.defn
-class APIKeyCleanupWorkflow:
-    """Workflow that runs all API key maintenance activities sequentially.
+class APIKeyMaintenanceWorkflow:
+    """Daily API key lifecycle: notify, expire, cleanup, prune.
 
-    1. Expire active keys past their expiration date
-    2. Delete revoked keys past the 90-day retention period
-    3. Prune usage log entries older than 90 days
+    Activity ordering is deliberate:
+    1. Notify — while keys are still ACTIVE
+    2. Expire — transition past-due ACTIVE → EXPIRED
+    3. Cleanup — delete revoked keys past retention
+    4. Prune — delete old usage log rows
     """
 
     @workflow.run
     async def run(self) -> dict[str, int]:
-        """Execute all cleanup activities.
+        """Execute all API key maintenance activities in order.
 
         Returns:
-            Counts of affected records per activity.
+            Merged counts from all four activities.
         """
         retry_policy = RetryPolicy(
             maximum_attempts=3,
             initial_interval=timedelta(seconds=10),
             maximum_interval=timedelta(minutes=1),
             backoff_coefficient=2.0,
+        )
+
+        notify_result = await workflow.execute_activity(
+            check_and_notify_expiring_keys_activity,
+            start_to_close_timeout=timedelta(minutes=10),
+            retry_policy=retry_policy,
         )
 
         expired_result = await workflow.execute_activity(
@@ -55,6 +69,7 @@ class APIKeyCleanupWorkflow:
         )
 
         return {
+            **notify_result,
             "expired": expired_result["expired"],
             "deleted": revoked_result["deleted"],
             "delete_errors": revoked_result["errors"],
