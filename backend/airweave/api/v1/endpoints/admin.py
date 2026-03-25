@@ -46,7 +46,7 @@ from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEm
 from airweave.domains.organizations.logic import generate_org_name
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.domains.sync_pipeline.config import SyncConfig
-from airweave.domains.syncs.protocols import SyncJobServiceProtocol
+from airweave.domains.syncs.jobs.protocols import SyncJobServiceProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.domains.usage.repository import UsageRepository
 from airweave.models.organization import Organization

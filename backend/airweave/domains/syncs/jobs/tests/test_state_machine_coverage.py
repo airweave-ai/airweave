@@ -7,9 +7,9 @@ import pytest
 
 from airweave.adapters.event_bus.fake import FakeEventBus
 from airweave.core.shared_models import SyncJobStatus
-from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
-from airweave.domains.syncs.state_machine import SyncJobStateMachine
-from airweave.domains.syncs.types import LifecycleData
+from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
+from airweave.domains.syncs.jobs.state_machine import SyncJobStateMachine
+from airweave.domains.syncs.jobs.types import LifecycleData
 
 ORG_ID = UUID("00000000-0000-0000-0000-000000000001")
 SYNC_ID = UUID("00000000-0000-0000-0000-000000000010")

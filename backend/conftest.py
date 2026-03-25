@@ -348,7 +348,7 @@ def fake_sync_cursor_service():
 @pytest.fixture
 def fake_sync_job_repo():
     """Fake SyncJobRepository."""
-    from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
+    from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
 
     return FakeSyncJobRepository()
 
@@ -385,7 +385,7 @@ def fake_sync_record_service():
 @pytest.fixture
 def fake_sync_job_service():
     """Fake SyncJobService."""
-    from airweave.domains.syncs.fakes.sync_job_service import FakeSyncJobService
+    from airweave.domains.syncs.jobs.fakes.service import FakeSyncJobService
 
     return FakeSyncJobService()
 

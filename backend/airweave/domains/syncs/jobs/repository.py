@@ -9,7 +9,7 @@ from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
 from airweave.models.sync_job import SyncJob
 from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
 

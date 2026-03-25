@@ -12,8 +12,8 @@ from airweave.db.session import get_db_context
 from airweave.domains.sources.exceptions.classifier import classify_error
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
+from airweave.domains.syncs.jobs.protocols import SyncJobStateMachineProtocol
 from airweave.domains.syncs.protocols import (
-    SyncJobStateMachineProtocol,
     SyncServiceProtocol,
     SyncStateMachineProtocol,
 )

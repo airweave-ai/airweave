@@ -27,7 +27,7 @@ from airweave.domains.source_connections.protocols import (
 )
 from airweave.domains.source_connections.types import SourceConnectionStats
 from airweave.domains.sources.protocols import SourceRegistryProtocol
-from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.models.sync_job import SyncJob
 from airweave.schemas.source_connection import (
