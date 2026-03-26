@@ -10,14 +10,6 @@ from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-with workflow.unsafe.imports_passed_through():
-    from airweave.domains.temporal.activities import (
-        check_and_notify_expiring_keys_activity,
-        cleanup_revoked_keys_activity,
-        expire_past_due_keys_activity,
-        prune_usage_log_activity,
-    )
-
 
 @workflow.defn
 class APIKeyMaintenanceWorkflow:
@@ -44,26 +36,26 @@ class APIKeyMaintenanceWorkflow:
             backoff_coefficient=2.0,
         )
 
-        notify_result = await workflow.execute_activity(
-            check_and_notify_expiring_keys_activity,
+        notify_result: dict[str, int] = await workflow.execute_activity(
+            "check_and_notify_expiring_keys_activity",
             start_to_close_timeout=timedelta(minutes=10),
             retry_policy=retry_policy,
         )
 
-        expired_result = await workflow.execute_activity(
-            expire_past_due_keys_activity,
+        expired_result: dict[str, int] = await workflow.execute_activity(
+            "expire_past_due_keys_activity",
             start_to_close_timeout=timedelta(minutes=5),
             retry_policy=retry_policy,
         )
 
-        revoked_result = await workflow.execute_activity(
-            cleanup_revoked_keys_activity,
+        revoked_result: dict[str, int] = await workflow.execute_activity(
+            "cleanup_revoked_keys_activity",
             start_to_close_timeout=timedelta(minutes=5),
             retry_policy=retry_policy,
         )
 
-        pruned_result = await workflow.execute_activity(
-            prune_usage_log_activity,
+        pruned_result: dict[str, int] = await workflow.execute_activity(
+            "prune_usage_log_activity",
             start_to_close_timeout=timedelta(minutes=10),
             retry_policy=retry_policy,
         )
