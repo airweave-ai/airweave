@@ -1,7 +1,6 @@
 """Tests for BillingUnpauseSubscriber."""
 
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -33,38 +32,41 @@ def _make_sync(pause_reason: str, sync_id=None):
     return s
 
 
+def _make_subscriber(
+    paused_syncs=None,
+    org_schema=None,
+):
+    sync_state_machine = AsyncMock()
+    sync_repo = AsyncMock()
+    sync_repo.get_paused_by_reason = AsyncMock(return_value=paused_syncs or [])
+    org_repo = AsyncMock()
+    org_repo.get = AsyncMock(return_value=org_schema or MagicMock())
+
+    subscriber = BillingUnpauseSubscriber(
+        sync_state_machine=sync_state_machine,
+        sync_repo=sync_repo,
+        org_repo=org_repo,
+    )
+    return subscriber, sync_state_machine, sync_repo, org_repo
+
+
 @pytest.mark.asyncio
-async def test_unpauses_usage_exhausted_syncs_only():
-    """Only syncs paused for USAGE_EXHAUSTED are unpaused."""
+async def test_unpauses_usage_exhausted_syncs():
+    """Usage-exhausted syncs are unpaused."""
     usage_sync_1 = _make_sync(SyncPauseReason.USAGE_EXHAUSTED.value)
     usage_sync_2 = _make_sync(SyncPauseReason.USAGE_EXHAUSTED.value)
-    cred_sync = _make_sync(SyncPauseReason.CREDENTIAL_ERROR.value)
 
-    sync_state_machine = AsyncMock()
-    subscriber = BillingUnpauseSubscriber(sync_state_machine=sync_state_machine)
+    subscriber, sync_state_machine, sync_repo, _ = _make_subscriber(
+        paused_syncs=[usage_sync_1, usage_sync_2],
+    )
 
-    mock_org = MagicMock()
-    mock_org.id = ORG_ID
+    await subscriber.handle(_make_event())
 
-    mock_db = AsyncMock()
-    mock_db.get = AsyncMock(return_value=mock_org)
-
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [usage_sync_1, usage_sync_2]
-    mock_db.execute = AsyncMock(return_value=mock_result)
-
-    with (
-        patch(
-            "airweave.domains.syncs.subscribers.billing_unpause.get_db_context"
-        ) as mock_ctx,
-        patch("airweave.domains.syncs.subscribers.billing_unpause.schemas") as mock_schemas,
-    ):
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_schemas.Organization.model_validate.return_value = MagicMock()
-
-        await subscriber.handle(_make_event())
-
+    sync_repo.get_paused_by_reason.assert_awaited_once_with(
+        sync_repo.get_paused_by_reason.call_args[0][0],  # db session
+        organization_id=ORG_ID,
+        pause_reason=SyncPauseReason.USAGE_EXHAUSTED.value,
+    )
     assert sync_state_machine.transition.await_count == 2
     transitioned_ids = {
         call.kwargs["sync_id"] for call in sync_state_machine.transition.call_args_list
@@ -75,38 +77,20 @@ async def test_unpauses_usage_exhausted_syncs_only():
 @pytest.mark.asyncio
 async def test_grace_period_does_not_unpause():
     """Events with GRACE status do not trigger unpause."""
-    sync_state_machine = AsyncMock()
-    subscriber = BillingUnpauseSubscriber(sync_state_machine=sync_state_machine)
+    subscriber, sync_state_machine, sync_repo, _ = _make_subscriber()
 
     await subscriber.handle(_make_event(status=BillingPeriodStatus.GRACE.value))
 
+    sync_repo.get_paused_by_reason.assert_not_awaited()
     sync_state_machine.transition.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_no_paused_syncs_is_noop():
     """No paused syncs means no transitions attempted."""
-    sync_state_machine = AsyncMock()
-    subscriber = BillingUnpauseSubscriber(sync_state_machine=sync_state_machine)
+    subscriber, sync_state_machine, _, _ = _make_subscriber(paused_syncs=[])
 
-    mock_org = MagicMock()
-    mock_db = AsyncMock()
-    mock_db.get = AsyncMock(return_value=mock_org)
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = []
-    mock_db.execute = AsyncMock(return_value=mock_result)
-
-    with (
-        patch(
-            "airweave.domains.syncs.subscribers.billing_unpause.get_db_context"
-        ) as mock_ctx,
-        patch("airweave.domains.syncs.subscribers.billing_unpause.schemas") as mock_schemas,
-    ):
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_schemas.Organization.model_validate.return_value = MagicMock()
-
-        await subscriber.handle(_make_event())
+    await subscriber.handle(_make_event())
 
     sync_state_machine.transition.assert_not_awaited()
 
@@ -117,30 +101,26 @@ async def test_unpause_failure_is_nonfatal():
     sync_1 = _make_sync(SyncPauseReason.USAGE_EXHAUSTED.value)
     sync_2 = _make_sync(SyncPauseReason.USAGE_EXHAUSTED.value)
 
-    sync_state_machine = AsyncMock()
+    subscriber, sync_state_machine, _, _ = _make_subscriber(
+        paused_syncs=[sync_1, sync_2],
+    )
     sync_state_machine.transition.side_effect = [
         Exception("temporal down"),
-        AsyncMock(),  # second call succeeds
+        AsyncMock(),
     ]
-    subscriber = BillingUnpauseSubscriber(sync_state_machine=sync_state_machine)
 
-    mock_org = MagicMock()
-    mock_db = AsyncMock()
-    mock_db.get = AsyncMock(return_value=mock_org)
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [sync_1, sync_2]
-    mock_db.execute = AsyncMock(return_value=mock_result)
-
-    with (
-        patch(
-            "airweave.domains.syncs.subscribers.billing_unpause.get_db_context"
-        ) as mock_ctx,
-        patch("airweave.domains.syncs.subscribers.billing_unpause.schemas") as mock_schemas,
-    ):
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_schemas.Organization.model_validate.return_value = MagicMock()
-
-        await subscriber.handle(_make_event())
+    await subscriber.handle(_make_event())
 
     assert sync_state_machine.transition.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_org_not_found_returns_early():
+    """If org not found, no syncs are queried or unpaused."""
+    subscriber, sync_state_machine, sync_repo, org_repo = _make_subscriber()
+    org_repo.get = AsyncMock(return_value=None)
+
+    await subscriber.handle(_make_event())
+
+    sync_repo.get_paused_by_reason.assert_not_awaited()
+    sync_state_machine.transition.assert_not_awaited()
