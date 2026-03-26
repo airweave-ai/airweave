@@ -828,7 +828,7 @@ async def test_ensure_system_schedules_calls_both():
         await svc.ensure_system_schedules()
 
     assert "cleanup-stuck-sync-jobs" in call_ids
-    assert "api-key-expiration-notifications" in call_ids
+    assert "api-key-maintenance" in call_ids
     assert len(call_ids) == 2
 
 
