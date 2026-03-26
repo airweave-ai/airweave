@@ -11,13 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
-
-
-def _default_redirect_url(readable_collection_id: str) -> str:
-    """Return the default post-OAuth redirect URL for a collection."""
-    return f"{settings.app_url}/collections/{readable_collection_id}"
-
-
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
@@ -60,6 +53,11 @@ from airweave.schemas.source_connection import (
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
+
+
+def _default_redirect_url(readable_collection_id: str) -> str:
+    """Return the default post-OAuth redirect URL for a collection."""
+    return f"{settings.app_url}/collections/{readable_collection_id}"
 
 
 class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
@@ -447,9 +445,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
             await uow.session.flush()
             connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
-            destination_ids = await self._sync_service.resolve_destination_ids(
-                uow.session, ctx
-            )
+            destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
             sync_result = await self._sync_service.create(
                 uow.session,
                 name=obj_in.name,
@@ -655,9 +651,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
             await uow.session.flush()
             connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
-            destination_ids = await self._sync_service.resolve_destination_ids(
-                uow.session, ctx
-            )
+            destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
             sync_result = await self._sync_service.create(
                 uow.session,
                 name=obj_in.name,
