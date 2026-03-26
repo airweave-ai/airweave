@@ -519,9 +519,7 @@ class OAuthCallbackService:
                 if raw_cron:
                     schedule_config = ScheduleConfig(cron=raw_cron)
 
-                destination_ids = await self._sync_service.resolve_destination_ids(
-                    uow.session, ctx
-                )
+                destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
 
                 sync_result = await self._sync_service.create(
                     uow.session,

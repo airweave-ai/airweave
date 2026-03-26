@@ -226,9 +226,7 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                 status=SyncStatus.ACTIVE,
                 run_immediately=False,
             )
-            sync = await self._sync_repo.create(
-                uow.session, obj_in=sync_create, ctx=ctx, uow=uow
-            )
+            sync = await self._sync_repo.create(uow.session, obj_in=sync_create, ctx=ctx, uow=uow)
             await uow.session.flush()
 
             # Apply the sync_id update to the source connection now
