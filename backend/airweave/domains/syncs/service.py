@@ -63,7 +63,7 @@ class SyncService(SyncServiceProtocol):
     raw state transitions. The state machine is an internal implementation detail.
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         sync_repo: SyncRepositoryProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,

@@ -1,5 +1,6 @@
 """Source connection deletion service."""
 
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +25,7 @@ class SourceConnectionDeletionService(SourceConnectionDeletionServiceProtocol):
     2. CASCADE-delete the DB records (source connection, sync, jobs, entities).
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         sc_repo: SourceConnectionRepositoryProtocol,
         collection_repo: CollectionRepositoryProtocol,
@@ -61,8 +62,8 @@ class SourceConnectionDeletionService(SourceConnectionDeletionServiceProtocol):
             await self._sync_service.delete(
                 db,
                 sync_ids=[sync_id],
-                collection_id=collection.id,
-                organization_id=collection.organization_id,
+                collection_id=cast(UUID, collection.id),
+                organization_id=cast(UUID, collection.organization_id),
                 ctx=ctx,
                 cancel_timeout_seconds=15,
             )

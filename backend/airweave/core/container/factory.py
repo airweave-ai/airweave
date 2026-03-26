@@ -456,6 +456,8 @@ def create_container(settings: Settings) -> Container:
         auth_provider_registry=source_deps["auth_provider_registry"],
         response_builder=sync_deps["response_builder"],
         sync_service=sync_service,
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
+        event_bus=event_bus,
         create_service=create_service,
         update_service=update_service,
         deletion_service=deletion_service,
