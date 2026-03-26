@@ -26,8 +26,7 @@ from airweave.domains.sources.fakes.lifecycle import FakeSourceLifecycleService
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.fakes.validation import FakeSourceValidationService
 from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
-from airweave.domains.syncs.fakes.lifecycle_service import FakeSyncLifecycleService
-from airweave.domains.syncs.fakes.record_service import FakeSyncRecordService
+from airweave.domains.syncs.fakes.sync_service import FakeSyncService
 from airweave.domains.temporal.fakes.service import FakeTemporalWorkflowService
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import (
@@ -86,8 +85,7 @@ def _service(entry) -> SourceConnectionCreationService:
         source_registry=registry,
         source_validation=FakeSourceValidationService(),
         source_lifecycle=FakeSourceLifecycleService(),
-        sync_lifecycle=FakeSyncLifecycleService(),
-        sync_record_service=FakeSyncRecordService(),
+        sync_service=FakeSyncService(),
         response_builder=FakeResponseBuilder(),
         oauth_flow_service=FakeOAuthFlowService(),
         temporal_workflow_service=FakeTemporalWorkflowService(),

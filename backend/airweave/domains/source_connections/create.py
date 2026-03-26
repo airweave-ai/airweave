@@ -35,10 +35,7 @@ from airweave.domains.sources.protocols import (
     SourceValidationServiceProtocol,
 )
 from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
-from airweave.domains.syncs.protocols import (
-    SyncLifecycleServiceProtocol,
-    SyncRecordServiceProtocol,
-)
+from airweave.domains.syncs.protocols import SyncServiceProtocol
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.connection_init_session import ConnectionInitStatus
 from airweave.schemas.connection import ConnectionCreate
@@ -75,8 +72,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         source_registry: SourceRegistryProtocol,
         source_validation: SourceValidationServiceProtocol,
         source_lifecycle: SourceLifecycleServiceProtocol,
-        sync_lifecycle: SyncLifecycleServiceProtocol,
-        sync_record_service: SyncRecordServiceProtocol,
+        sync_service: SyncServiceProtocol,
         response_builder: ResponseBuilderProtocol,
         oauth_flow_service: OAuthFlowServiceProtocol,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
@@ -92,8 +88,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         self._source_registry = source_registry
         self._source_validation = source_validation
         self._source_lifecycle = source_lifecycle
-        self._sync_lifecycle = sync_lifecycle
-        self._sync_record_service = sync_record_service
+        self._sync_service = sync_service
         self._response_builder = response_builder
         self._oauth_flow_service = oauth_flow_service
         self._temporal_workflow_service = temporal_workflow_service
@@ -450,10 +445,8 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
             await uow.session.flush()
             connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
-            destination_ids = await self._sync_record_service.resolve_destination_ids(
-                uow.session, ctx
-            )
-            sync_result = await self._sync_lifecycle.provision_sync(
+            destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
+            sync_result = await self._sync_service.create(
                 uow.session,
                 name=obj_in.name,
                 source_connection_id=connection.id,
@@ -658,10 +651,8 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
             await uow.session.flush()
             connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
-            destination_ids = await self._sync_record_service.resolve_destination_ids(
-                uow.session, ctx
-            )
-            sync_result = await self._sync_lifecycle.provision_sync(
+            destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
+            sync_result = await self._sync_service.create(
                 uow.session,
                 name=obj_in.name,
                 source_connection_id=connection.id,

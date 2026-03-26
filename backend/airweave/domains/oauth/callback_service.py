@@ -22,7 +22,7 @@ from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.logging import logger
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import EventBus
-from airweave.core.shared_models import AuthMethod, ConnectionStatus, SyncJobStatus, SyncStatus
+from airweave.core.shared_models import AuthMethod, ConnectionStatus, SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -45,12 +45,7 @@ from airweave.domains.sources.protocols import (
 )
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
-from airweave.domains.syncs.protocols import (
-    SyncLifecycleServiceProtocol,
-    SyncRecordServiceProtocol,
-    SyncRepositoryProtocol,
-    SyncStateMachineProtocol,
-)
+from airweave.domains.syncs.protocols import SyncRepositoryProtocol, SyncServiceProtocol
 from airweave.domains.syncs.types import InvalidSyncTransitionError, OptimisticLockError
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.collection import Collection
@@ -87,10 +82,8 @@ class OAuthCallbackService:
         response_builder: ResponseBuilderProtocol,
         source_registry: SourceRegistryProtocol,
         source_lifecycle: SourceLifecycleServiceProtocol,
-        sync_lifecycle: SyncLifecycleServiceProtocol,
-        sync_record_service: SyncRecordServiceProtocol,
+        sync_service: SyncServiceProtocol,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
-        sync_state_machine: SyncStateMachineProtocol,
         event_bus: EventBus,
         organization_repo: OrganizationRepositoryProtocol,
         sc_repo: SourceConnectionRepositoryProtocol,
@@ -107,10 +100,8 @@ class OAuthCallbackService:
         self._response_builder = response_builder
         self._source_registry = source_registry
         self._source_lifecycle = source_lifecycle
-        self._sync_lifecycle = sync_lifecycle
-        self._sync_record_service = sync_record_service
+        self._sync_service = sync_service
         self._temporal_workflow_service = temporal_workflow_service
-        self._sync_state_machine = sync_state_machine
         self._event_bus = event_bus
         self._organization_repo = organization_repo
         self._sc_repo = sc_repo
@@ -529,11 +520,9 @@ class OAuthCallbackService:
                 if raw_cron:
                     schedule_config = ScheduleConfig(cron=raw_cron)
 
-                destination_ids = await self._sync_record_service.resolve_destination_ids(
-                    uow.session, ctx
-                )
+                destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
 
-                sync_result = await self._sync_lifecycle.provision_sync(
+                sync_result = await self._sync_service.create(
                     uow.session,
                     name=payload.get("name") or source_entry.name,
                     source_connection_id=connection.id,
@@ -575,11 +564,10 @@ class OAuthCallbackService:
 
             if source_conn.sync_id:
                 try:
-                    await self._sync_state_machine.transition(
-                        sync_id=source_conn.sync_id,
-                        target=SyncStatus.ACTIVE,
-                        ctx=ctx,
-                        reason="OAuth completed",
+                    await self._sync_service.resume(
+                        source_conn.sync_id,
+                        ctx,
+                        reason="OAuth re-auth completed",
                     )
                 except (InvalidSyncTransitionError, OptimisticLockError, ValueError):
                     logger.warning("Failed to activate sync after OAuth re-auth", exc_info=True)

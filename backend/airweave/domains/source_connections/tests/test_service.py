@@ -34,7 +34,7 @@ from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.source_connections.fakes.delete import FakeSourceConnectionDeletionService
 from airweave.domains.source_connections.fakes.create import FakeSourceConnectionCreateService
 from airweave.domains.source_connections.fakes.update import FakeSourceConnectionUpdateService
-from airweave.domains.syncs.fakes.lifecycle_service import FakeSyncLifecycleService
+from airweave.domains.syncs.fakes.sync_service import FakeSyncService
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import AuthenticationMethod, SourceConnectionListItem
 
@@ -99,7 +99,7 @@ def _build_service(
         source_registry=FakeSourceRegistry(),
         auth_provider_registry=FakeAuthProviderRegistry(),
         response_builder=FakeResponseBuilder(),
-        sync_lifecycle=FakeSyncLifecycleService(),
+        sync_service=FakeSyncService(),
         create_service=FakeSourceConnectionCreateService(),
         update_service=FakeSourceConnectionUpdateService(),
         deletion_service=FakeSourceConnectionDeletionService(),

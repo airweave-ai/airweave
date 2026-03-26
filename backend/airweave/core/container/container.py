@@ -99,11 +99,8 @@ from airweave.domains.syncs.jobs.protocols import (
 )
 from airweave.domains.syncs.protocols import (
     SyncCursorRepositoryProtocol,
-    SyncLifecycleServiceProtocol,
-    SyncRecordServiceProtocol,
     SyncRepositoryProtocol,
     SyncServiceProtocol,
-    SyncStateMachineProtocol,
 )
 from airweave.domains.temporal.protocols import (
     TemporalScheduleServiceProtocol,
@@ -203,15 +200,11 @@ class Container:
     # Sync domain
     sync_repo: SyncRepositoryProtocol
     sync_cursor_repo: SyncCursorRepositoryProtocol
-    # Sync cursor service — cursor CRUD operations
     sync_cursor_service: SyncCursorService
     sync_job_repo: SyncJobRepositoryProtocol
-    sync_record_service: SyncRecordServiceProtocol
     sync_job_service: SyncJobServiceProtocol
     sync_job_state_machine: SyncJobStateMachineProtocol
-    sync_state_machine: SyncStateMachineProtocol
     sync_service: SyncServiceProtocol
-    sync_lifecycle: SyncLifecycleServiceProtocol
     sync_factory: SyncFactoryProtocol
 
     entity_repo: EntityRepositoryProtocol
