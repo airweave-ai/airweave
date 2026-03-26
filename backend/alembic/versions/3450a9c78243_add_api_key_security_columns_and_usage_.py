@@ -1,8 +1,8 @@
-"""add api key status, usage tracking, and key prefix
+"""add api key security columns and usage log
 
-Revision ID: 779ea3740ec4
+Revision ID: 3450a9c78243
 Revises: f05f1fd46daa
-Create Date: 2026-03-23 16:02:41.815331
+Create Date: 2026-03-26 12:48:54.037661
 
 """
 
@@ -11,7 +11,7 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision = "779ea3740ec4"
+revision = "3450a9c78243"
 down_revision = "f05f1fd46daa"
 branch_labels = None
 depends_on = None
@@ -19,6 +19,10 @@ depends_on = None
 
 def upgrade() -> None:
     # --- api_key: new columns ---
+    op.add_column(
+        "api_key",
+        sa.Column("description", sa.String(255), nullable=True),
+    )
     op.add_column(
         "api_key",
         sa.Column("status", sa.String(), nullable=False, server_default="active"),
@@ -78,9 +82,15 @@ def upgrade() -> None:
         "api_key_usage_log",
         ["organization_id", "timestamp"],
     )
+    op.create_index(
+        "ix_api_key_usage_log_timestamp",
+        "api_key_usage_log",
+        ["timestamp"],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("ix_api_key_usage_log_timestamp", table_name="api_key_usage_log")
     op.drop_index("ix_api_key_usage_log_org_ts", table_name="api_key_usage_log")
     op.drop_index("ix_api_key_usage_log_key_ts", table_name="api_key_usage_log")
     op.drop_table("api_key_usage_log")
@@ -92,3 +102,4 @@ def downgrade() -> None:
     op.drop_column("api_key", "last_used_ip")
     op.drop_column("api_key", "last_used_date")
     op.drop_column("api_key", "status")
+    op.drop_column("api_key", "description")
