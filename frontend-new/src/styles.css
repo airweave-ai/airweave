@@ -132,3 +132,7 @@
     color-scheme: dark;
   }
 }
+
+@utility bg-cta {
+  background: url('/cta-bg.png') lightgray 50% / cover no-repeat;
+}
