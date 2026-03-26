@@ -1,6 +1,3 @@
-import type { ReactNode } from 'react';
-
-import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
   ChevronDown,
@@ -16,6 +13,7 @@ import {
   Webhook,
 } from 'lucide-react';
 
+import { Link, useMatchRoute } from '@tanstack/react-router';
 import {
   Sidebar,
   SidebarContent,
@@ -28,7 +26,17 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
 } from './ui/sidebar';
-import { Link, useMatchRoute } from '@tanstack/react-router';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import { Button } from './ui/button';
+import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 type NavigationItem = {
   label: string;
@@ -37,7 +45,7 @@ type NavigationItem = {
   fuzzy?: boolean;
 };
 
-const navigationItems: NavigationItem[] = [
+const navigationItems: Array<NavigationItem> = [
   { label: 'Home', icon: Home, to: '/' },
   { label: 'Overview', icon: LayoutDashboard, to: '/overview' },
   { label: 'Collections', icon: Folder, to: '/collections', fuzzy: true },
@@ -77,20 +85,39 @@ function UserAvatar() {
   );
 }
 
+const mockOrganizations = [
+  { id: 'tonik', name: 'Tonik Org' },
+  { id: 'admin', name: 'Admin Org' },
+];
+
 export function AppSidebar() {
   const matchRoute = useMatchRoute();
   return (
-    <Sidebar>
+    <Sidebar variant="inset">
       <SidebarHeader>
         <div className="flex items-center justify-between gap-2">
-          <SidebarMenuButton
-            className="w-auto flex-none gap-2 px-1.5 font-semibold"
-            type="button"
-          >
-            <LogoMark />
-            <span>Tonik Org</span>
-            <ChevronDown className="size-4 text-sidebar-foreground/50" />
-          </SidebarMenuButton>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <SidebarMenuButton
+                className="w-auto flex-none gap-2 font-semibold data-open:[&_svg]:rotate-180"
+                type="button"
+              >
+                <LogoMark />
+                <span>Tonik Org</span>
+                <ChevronDown className="size-4 text-sidebar-foreground/50 transition-[rotate]" />
+              </SidebarMenuButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="min-w-79 rounded-sm">
+              <DropdownMenuLabel className="px-2 py-1.5 font-mono uppercase">
+                Organizations
+              </DropdownMenuLabel>
+              {mockOrganizations.map((org) => (
+                <DropdownMenuItem key={org.id} className="rounded-xs p-2">
+                  {org.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <div className="flex items-center gap-1">
             <SidebarMenuButton
@@ -105,13 +132,10 @@ export function AppSidebar() {
           </div>
         </div>
 
-        <SidebarMenuButton
-          className="justify-center bg-sidebar-accent font-medium text-sidebar-accent-foreground hover:bg-sidebar-accent/80"
-          type="button"
-        >
-          <Plus className="size-4" />
-          <span>Create Collection</span>
-        </SidebarMenuButton>
+        <Button variant="secondary" data-icon="inline-start">
+          <Plus />
+          Create Collection
+        </Button>
       </SidebarHeader>
 
       <SidebarContent>
@@ -134,7 +158,7 @@ export function AppSidebar() {
                     >
                       <Link to={item.to}>
                         <SidebarIconFrame>
-                          <Icon className="size-3.5" />
+                          <Icon className="!size-3.5" />
                         </SidebarIconFrame>
                         <span>{item.label}</span>
                       </Link>
