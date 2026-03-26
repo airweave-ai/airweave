@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "api:spec:download": "node ./scripts/download-openapi.mjs",
+    "api:generate": "openapi-ts",
+    "api:check": "npm run api:spec:download && npm run api:generate && git diff --exit-code -- openapi/internal-openapi.json src/lib/api/generated",
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint",
@@ -12,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.16.0",
     "@fontsource-variable/geist": "^5.2.8",
     "@tabler/icons-react": "^3.40.0",
     "@tailwindcss/vite": "^4.2.1",
@@ -31,9 +35,11 @@
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
     "tw-animate-css": "^1.4.0",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "^0.94.5",
     "@tanstack/devtools-vite": "^0.6.0",
     "@tanstack/eslint-config": "^0.4.0",
     "@testing-library/dom": "^10.4.1",
