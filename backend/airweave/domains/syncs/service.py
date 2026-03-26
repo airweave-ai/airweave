@@ -45,11 +45,11 @@ from airweave.domains.syncs.types import (
     SyncProvisionResult,
     SyncTransitionResult,
 )
-from airweave.schemas.source_connection import ScheduleConfig
 from airweave.domains.temporal.protocols import (
     TemporalScheduleServiceProtocol,
     TemporalWorkflowServiceProtocol,
 )
+from airweave.schemas.source_connection import ScheduleConfig
 from airweave.schemas.sync import SyncCreate
 from airweave.schemas.sync_job import SyncJobCreate
 
@@ -63,7 +63,7 @@ class SyncService(SyncServiceProtocol):
     raw state transitions. The state machine is an internal implementation detail.
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         sync_repo: SyncRepositoryProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,
@@ -384,9 +384,7 @@ class SyncService(SyncServiceProtocol):
                         reason=f"Credential error: {classification.category.value}",
                     )
                 except Exception:
-                    ctx.logger.warning(
-                        "Failed to pause sync after credential error", exc_info=True
-                    )
+                    ctx.logger.warning("Failed to pause sync after credential error", exc_info=True)
 
             raise e
 

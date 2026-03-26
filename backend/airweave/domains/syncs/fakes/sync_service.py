@@ -92,7 +92,9 @@ class FakeSyncService:
         self._calls.append(("pause", sync_id, reason))
         if self._should_raise:
             raise self._should_raise
-        return SyncTransitionResult(applied=True, previous=SyncStatus.ACTIVE, current=SyncStatus.PAUSED)
+        return SyncTransitionResult(
+            applied=True, previous=SyncStatus.ACTIVE, current=SyncStatus.PAUSED
+        )
 
     async def resume(
         self, sync_id: UUID, ctx: BaseContext, *, reason: str = ""
@@ -100,7 +102,9 @@ class FakeSyncService:
         self._calls.append(("resume", sync_id, reason))
         if self._should_raise:
             raise self._should_raise
-        return SyncTransitionResult(applied=True, previous=SyncStatus.PAUSED, current=SyncStatus.ACTIVE)
+        return SyncTransitionResult(
+            applied=True, previous=SyncStatus.PAUSED, current=SyncStatus.ACTIVE
+        )
 
     async def delete(
         self,
