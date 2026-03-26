@@ -93,9 +93,14 @@ async def test_run(case: RunCase):
         )
 
     svc = SyncService(
-        state_machine=fake_state_machine,
+        sync_repo=MagicMock(),
+        sync_job_repo=MagicMock(),
+        sync_cursor_repo=MagicMock(),
+        state_machine=MagicMock(),
+        job_state_machine=fake_state_machine,
+        temporal_workflow_service=MagicMock(),
+        temporal_schedule_service=MagicMock(),
         sync_factory=fake_factory,
-        sync_state_machine=MagicMock(),
     )
 
     sync = _mock_sync()
@@ -160,9 +165,14 @@ async def test_run_forwards_optional_kwargs():
     )
 
     svc = SyncService(
-        state_machine=fake_state_machine,
+        sync_repo=MagicMock(),
+        sync_job_repo=MagicMock(),
+        sync_cursor_repo=MagicMock(),
+        state_machine=MagicMock(),
+        job_state_machine=fake_state_machine,
+        temporal_workflow_service=MagicMock(),
+        temporal_schedule_service=MagicMock(),
         sync_factory=fake_factory,
-        sync_state_machine=MagicMock(),
     )
 
     mock_db = AsyncMock()
@@ -215,9 +225,14 @@ async def test_credential_error_propagates_error_category():
     fake_factory.create_orchestrator = AsyncMock(side_effect=wrapper)
 
     svc = SyncService(
-        state_machine=fake_sm,
+        sync_repo=MagicMock(),
+        sync_job_repo=MagicMock(),
+        sync_cursor_repo=MagicMock(),
+        state_machine=AsyncMock(),
+        job_state_machine=fake_sm,
+        temporal_workflow_service=MagicMock(),
+        temporal_schedule_service=MagicMock(),
         sync_factory=fake_factory,
-        sync_state_machine=MagicMock(),
     )
 
     with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
@@ -252,9 +267,14 @@ async def test_non_credential_error_has_no_error_category():
     )
 
     svc = SyncService(
-        state_machine=fake_sm,
+        sync_repo=MagicMock(),
+        sync_job_repo=MagicMock(),
+        sync_cursor_repo=MagicMock(),
+        state_machine=AsyncMock(),
+        job_state_machine=fake_sm,
+        temporal_workflow_service=MagicMock(),
+        temporal_schedule_service=MagicMock(),
         sync_factory=fake_factory,
-        sync_state_machine=MagicMock(),
     )
 
     with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
@@ -278,9 +298,14 @@ def test_stores_injected_deps():
     fake_sm = MagicMock()
     fake_factory = MagicMock()
     svc = SyncService(
+        sync_repo=MagicMock(),
+        sync_job_repo=MagicMock(),
+        sync_cursor_repo=MagicMock(),
         state_machine=fake_sm,
+        job_state_machine=MagicMock(),
+        temporal_workflow_service=MagicMock(),
+        temporal_schedule_service=MagicMock(),
         sync_factory=fake_factory,
-        sync_state_machine=MagicMock(),
     )
     assert svc._state_machine is fake_sm
     assert svc._sync_factory is fake_factory

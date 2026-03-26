@@ -210,11 +210,11 @@ def fake_health_service() -> FakeHealthService:
 
 
 @pytest.fixture
-def fake_source_connection_service(fake_sync_lifecycle):
+def fake_source_connection_service(fake_sync_service):
     """Fake SourceConnectionService."""
     from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
 
-    return FakeSourceConnectionService(sync_lifecycle=fake_sync_lifecycle)
+    return FakeSourceConnectionService(sync_service=fake_sync_service)
 
 
 @pytest.fixture
@@ -375,11 +375,9 @@ def fake_billing_service():
 
 
 @pytest.fixture
-def fake_sync_record_service():
-    """Fake SyncRecordService."""
-    from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
-
-    return FakeSyncRecordService()
+def fake_sync_record_service(fake_sync_service):
+    """Legacy fixture — returns the unified FakeSyncService for backward compatibility."""
+    return fake_sync_service
 
 
 @pytest.fixture
@@ -407,11 +405,9 @@ def fake_sync_service():
 
 
 @pytest.fixture
-def fake_sync_lifecycle():
-    """Fake SyncLifecycleService."""
-    from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
-
-    return FakeSyncLifecycleService()
+def fake_sync_lifecycle(fake_sync_service):
+    """Legacy fixture — returns the unified FakeSyncService for backward compatibility."""
+    return fake_sync_service
 
 
 @pytest.fixture
@@ -717,12 +713,9 @@ def test_container(
     fake_sync_cursor_repo,
     fake_sync_cursor_service,
     fake_sync_job_repo,
-    fake_sync_record_service,
     fake_sync_job_service,
     fake_sync_job_state_machine,
-    fake_sync_state_machine,
     fake_sync_service,
-    fake_sync_lifecycle,
     fake_billing_service,
     fake_billing_webhook,
     fake_payment_gateway,
@@ -809,12 +802,9 @@ def test_container(
         sync_cursor_repo=fake_sync_cursor_repo,
         sync_cursor_service=fake_sync_cursor_service,
         sync_job_repo=fake_sync_job_repo,
-        sync_record_service=fake_sync_record_service,
         sync_job_service=fake_sync_job_service,
         sync_job_state_machine=fake_sync_job_state_machine,
-        sync_state_machine=fake_sync_state_machine,
         sync_service=fake_sync_service,
-        sync_lifecycle=fake_sync_lifecycle,
         billing_service=fake_billing_service,
         billing_webhook=fake_billing_webhook,
         payment_gateway=fake_payment_gateway,

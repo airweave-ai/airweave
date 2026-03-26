@@ -12,7 +12,7 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionDeletionServiceProtocol,
     SourceConnectionUpdateServiceProtocol,
 )
-from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
+from airweave.domains.syncs.protocols import SyncServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
@@ -30,7 +30,7 @@ class FakeSourceConnectionService:
 
     def __init__(
         self,
-        sync_lifecycle: SyncLifecycleServiceProtocol,
+        sync_service: SyncServiceProtocol,
         create_service: Optional[SourceConnectionCreateServiceProtocol] = None,
         update_service: Optional[SourceConnectionUpdateServiceProtocol] = None,
         deletion_service: Optional[SourceConnectionDeletionServiceProtocol] = None,
@@ -39,7 +39,7 @@ class FakeSourceConnectionService:
         self._list_items: List[SourceConnectionListItem] = []
         self._redirect_urls: dict[str, str] = {}
         self._calls: list[tuple[Any, ...]] = []
-        self._sync_lifecycle = sync_lifecycle
+        self._sync_service = sync_service
         self._create_service = create_service
         self._update_service = update_service
         self._deletion_service = deletion_service
@@ -112,7 +112,7 @@ class FakeSourceConnectionService:
         force_full_sync: bool = False,
     ) -> SourceConnectionJob:
         self._calls.append(("run", db, id, ctx, force_full_sync))
-        return await self._sync_lifecycle.run(db, id=id, ctx=ctx, force_full_sync=force_full_sync)
+        raise NotImplementedError("FakeSourceConnectionService.run not wired")
 
     async def get_jobs(
         self,
@@ -123,7 +123,7 @@ class FakeSourceConnectionService:
         limit: int = 100,
     ) -> List[SourceConnectionJob]:
         self._calls.append(("get_jobs", db, id, ctx, limit))
-        return await self._sync_lifecycle.get_jobs(db, id=id, ctx=ctx, limit=limit)
+        return []
 
     async def cancel_job(
         self,
@@ -134,9 +134,7 @@ class FakeSourceConnectionService:
         ctx: ApiContext,
     ) -> SourceConnectionJob:
         self._calls.append(("cancel_job", db, source_connection_id, job_id, ctx))
-        return await self._sync_lifecycle.cancel_job(
-            db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
-        )
+        raise NotImplementedError("FakeSourceConnectionService.cancel_job not wired")
 
     async def get_sync_id(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> dict:
         self._calls.append(("get_sync_id", db, id, ctx))

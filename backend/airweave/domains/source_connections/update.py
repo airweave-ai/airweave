@@ -26,11 +26,7 @@ from airweave.domains.sources.protocols import (
     SourceServiceProtocol,
     SourceValidationServiceProtocol,
 )
-from airweave.domains.syncs.protocols import (
-    SyncRecordServiceProtocol,
-    SyncRepositoryProtocol,
-    SyncStateMachineProtocol,
-)
+from airweave.domains.syncs.protocols import SyncRepositoryProtocol, SyncServiceProtocol
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
@@ -58,13 +54,12 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
         connection_repo: ConnectionRepositoryProtocol,
         cred_repo: IntegrationCredentialRepositoryProtocol,
         sync_repo: SyncRepositoryProtocol,
-        sync_record_service: SyncRecordServiceProtocol,
+        sync_service: SyncServiceProtocol,
         source_service: SourceServiceProtocol,
         source_validation: SourceValidationServiceProtocol,
         credential_encryptor: CredentialEncryptor,
         response_builder: ResponseBuilderProtocol,
         temporal_schedule_service: TemporalScheduleServiceProtocol,
-        sync_state_machine: SyncStateMachineProtocol,
     ) -> None:
         """Initialize with repositories and collaborator services."""
         self._sc_repo = sc_repo
@@ -72,13 +67,12 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
         self._connection_repo = connection_repo
         self._cred_repo = cred_repo
         self._sync_repo = sync_repo
-        self._sync_record_service = sync_record_service
+        self._sync_service = sync_service
         self._source_service = source_service
         self._source_validation = source_validation
         self._credential_encryptor = credential_encryptor
         self._response_builder = response_builder
         self._temporal_schedule_service = temporal_schedule_service
-        self._sync_state_machine = sync_state_machine
 
     async def update(
         self,
@@ -133,10 +127,9 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
 
                 if source_conn.sync_id:
                     try:
-                        await self._sync_state_machine.transition(
-                            sync_id=source_conn.sync_id,
-                            target=SyncStatus.ACTIVE,
-                            ctx=ctx,
+                        await self._sync_service.resume(
+                            source_conn.sync_id,
+                            ctx,
                             reason="Credential update completed",
                         )
                     except Exception:
@@ -223,20 +216,20 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
             if not collection:
                 raise NotFoundException("Collection not found")
 
-            # Resolve destination IDs
-            dest_ids = await self._sync_record_service.resolve_destination_ids(uow.session, ctx)
+            dest_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
 
-            # Create a new sync with the schedule
-            sync, _ = await self._sync_record_service.create_sync(
-                uow.session,
+            sync_create = schemas.SyncCreate(
                 name=f"Sync for {source_conn.name}",
                 source_connection_id=source_conn.connection_id,
                 destination_connection_ids=dest_ids,
                 cron_schedule=new_cron,
+                status=SyncStatus.ACTIVE,
                 run_immediately=False,
-                ctx=ctx,
-                uow=uow,
             )
+            sync = await self._sync_repo.create(
+                uow.session, obj_in=sync_create, ctx=ctx, uow=uow
+            )
+            await uow.session.flush()
 
             # Apply the sync_id update to the source connection now
             # so that temporal_schedule_service can find it

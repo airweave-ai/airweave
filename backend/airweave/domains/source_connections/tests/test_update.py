@@ -31,7 +31,7 @@ from airweave.domains.source_connections.fakes.response import FakeResponseBuild
 from airweave.domains.source_connections.update import SourceConnectionUpdateService
 from airweave.domains.sources.fakes.service import FakeSourceService
 from airweave.domains.sources.fakes.validation import FakeSourceValidationService
-from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
+from airweave.domains.syncs.fakes.sync_service import FakeSyncService
 from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
 from airweave.domains.temporal.fakes.schedule_service import FakeTemporalScheduleService
 from airweave.models.collection import Collection
@@ -104,13 +104,12 @@ def _build_service(
     connection_repo=None,
     cred_repo=None,
     sync_repo=None,
-    sync_record_service=None,
+    sync_service=None,
     source_service=None,
     source_validation=None,
     credential_encryptor=None,
     response_builder=None,
     temporal_schedule_service=None,
-    sync_state_machine=None,
 ):
     return SourceConnectionUpdateService(
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
@@ -118,13 +117,12 @@ def _build_service(
         connection_repo=connection_repo or FakeConnectionRepository(),
         cred_repo=cred_repo or FakeIntegrationCredentialRepository(),
         sync_repo=sync_repo or FakeSyncRepository(),
-        sync_record_service=sync_record_service or FakeSyncRecordService(),
+        sync_service=sync_service or FakeSyncService(),
         source_service=source_service or FakeSourceService(),
         source_validation=source_validation or FakeSourceValidationService(),
         credential_encryptor=credential_encryptor or FakeCredentialEncryptor(),
         response_builder=response_builder or FakeResponseBuilder(),
         temporal_schedule_service=temporal_schedule_service or FakeTemporalScheduleService(),
-        sync_state_machine=sync_state_machine or AsyncMock(),
     )
 
 
@@ -235,11 +233,10 @@ async def test_schedule_update(case: ScheduleCase):
 
     temporal = FakeTemporalScheduleService()
 
-    sync_record_svc = FakeSyncRecordService()
     if case.expect_sync_record_create:
         mock_sync = MagicMock(spec=schemas.Sync)
         mock_sync.id = uuid4()
-        sync_record_svc.set_create_result(mock_sync)
+        sync_repo.set_create_result(mock_sync)
 
         col = MagicMock(spec=Collection)
         col.id = uuid4()
@@ -258,7 +255,6 @@ async def test_schedule_update(case: ScheduleCase):
         sync_repo=sync_repo,
         source_service=source_svc,
         temporal_schedule_service=temporal,
-        sync_record_service=sync_record_svc,
         collection_repo=col_repo,
     )
 
@@ -270,7 +266,7 @@ async def test_schedule_update(case: ScheduleCase):
     if case.expect_temporal_delete:
         assert any(c[0] == "delete_all_schedules_for_sync" for c in temporal._calls)
     if case.expect_sync_record_create:
-        assert any(c[0] == "create_sync" for c in sync_record_svc._calls)
+        assert any(c[0] == "create" for c in sync_repo._calls)
 
 
 async def test_schedule_add_collection_not_found():
@@ -479,7 +475,7 @@ def test_cron_validation(case: CronCase):
 
 @pytest.mark.asyncio
 async def test_credential_update_triggers_unpause():
-    """Successful direct auth credential update calls sync_state_machine.transition → ACTIVE."""
+    """Successful direct auth credential update calls sync_service.resume."""
     conn_id = uuid4()
     cred_id = uuid4()
     sync_id = uuid4()
@@ -502,7 +498,7 @@ async def test_credential_update_triggers_unpause():
     validation = FakeSourceValidationService()
     validation.seed_auth_result("github", _AuthPayload(token="secret"))
 
-    state_machine = AsyncMock()
+    sync_svc = FakeSyncService()
 
     svc = _build_service(
         sc_repo=sc_repo,
@@ -510,24 +506,18 @@ async def test_credential_update_triggers_unpause():
         cred_repo=cred_repo,
         source_validation=validation,
         credential_encryptor=FakeCredentialEncryptor(),
-        sync_state_machine=state_machine,
+        sync_service=sync_svc,
     )
 
     obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
     await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
 
-    state_machine.transition.assert_called_once()
-    call_kwargs = state_machine.transition.call_args
-    from airweave.core.shared_models import SyncStatus
-
-    assert call_kwargs.kwargs.get("target") == SyncStatus.ACTIVE or (
-        len(call_kwargs.args) >= 2 and call_kwargs.args[1] == SyncStatus.ACTIVE
-    )
+    assert any(c[0] == "resume" for c in sync_svc._calls)
 
 
 @pytest.mark.asyncio
 async def test_credential_update_unpause_failure_is_nonfatal():
-    """If sync_state_machine.transition raises, the update still succeeds."""
+    """If sync_service.resume raises, the update still succeeds."""
     conn_id = uuid4()
     cred_id = uuid4()
     sync_id = uuid4()
@@ -550,8 +540,8 @@ async def test_credential_update_unpause_failure_is_nonfatal():
     validation = FakeSourceValidationService()
     validation.seed_auth_result("github", _AuthPayload(token="secret"))
 
-    state_machine = AsyncMock()
-    state_machine.transition.side_effect = OSError("temporal down")
+    sync_svc = FakeSyncService()
+    sync_svc.set_error(OSError("temporal down"))
 
     svc = _build_service(
         sc_repo=sc_repo,
@@ -559,7 +549,7 @@ async def test_credential_update_unpause_failure_is_nonfatal():
         cred_repo=cred_repo,
         source_validation=validation,
         credential_encryptor=FakeCredentialEncryptor(),
-        sync_state_machine=state_machine,
+        sync_service=sync_svc,
     )
 
     obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
