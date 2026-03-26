@@ -16,6 +16,7 @@ from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.pipeline import AccessControlPipeline
+from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.exceptions.classifier import classify_error
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
@@ -144,6 +145,9 @@ class SyncOrchestrator:
             self.sync_context.logger.info("Cancellation requested, handling gracefully...")
             await self._handle_cancellation()
             raise
+        except (UsageLimitExceededError, PaymentRequiredError, SourceAuthError) as e:
+            await self._handle_expected_sync_exit_and_pause(e)
+            raise
         except Exception as e:
             await self._handle_sync_failure(e)
             raise
@@ -227,7 +231,7 @@ class SyncOrchestrator:
                         UsageLimitExceededError,
                         PaymentRequiredError,
                     ) as guard_error:
-                        self.sync_context.logger.error(
+                        self.sync_context.logger.info(
                             "Guard rail check failed: {type}: {error}".format(
                                 type=type(guard_error).__name__,
                                 error=str(guard_error),
@@ -657,15 +661,27 @@ class SyncOrchestrator:
                 exc_info=True,
             )
 
+    async def _handle_expected_sync_exit_and_pause(self, error: Exception) -> None:
+        """Handle expected operational failure: log, fail job, pause schedule."""
+        error_message = get_error_message(error)
+        self.sync_context.logger.warning(
+            f"Sync job {self.sync_context.sync_job.id} stopped: {error_message}"
+        )
+        await self._fail_sync_job(error, error_message)
+        await self._pause_schedules(reason=f"{type(error).__name__}: {error_message}")
+
     async def _handle_sync_failure(self, error: Exception) -> None:
-        """Handle sync failure by updating job status with error details."""
+        """Handle unexpected system failures."""
         error_message = get_error_message(error)
         self.sync_context.logger.error(
-            f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
+            f"Sync job {self.sync_context.sync_job.id} failed: {error_message}",
+            exc_info=True,
         )
+        await self._fail_sync_job(error, error_message)
 
+    async def _fail_sync_job(self, error: Exception, error_message: str) -> None:
+        """Shared: transition to FAILED and track analytics."""
         classification = classify_error(error)
-
         stats = self.runtime.entity_tracker.get_stats()
 
         await self._state_machine.transition(
@@ -678,23 +694,7 @@ class SyncOrchestrator:
             error_category=classification.category,
         )
 
-        # Pause schedules on credential errors to avoid repeated failures
-        if classification.category is not None:
-            try:
-                await self._temporal_schedule_service.pause_schedules_for_sync(
-                    self.sync_context.sync.id,
-                    reason=f"Credential error: {classification.category.value}",
-                )
-            except (RPCError, OSError) as pause_err:
-                self.sync_context.logger.warning(
-                    f"Failed to pause schedules after credential error: {pause_err}",
-                    exc_info=True,
-                )
-
-        # Calculate duration from start to failure
         if not self.sync_context.sync_job.started_at:
-            # This can happen if failure occurs during _start_sync before
-            # the job status is updated with started_at
             self.sync_context.logger.warning(
                 "sync_job.started_at is None - failure occurred very early"
             )
@@ -710,6 +710,19 @@ class SyncOrchestrator:
             error=error_message,
             duration_ms=duration_ms,
         )
+
+    async def _pause_schedules(self, reason: str) -> None:
+        """Pause all schedules for this sync."""
+        try:
+            await self._temporal_schedule_service.pause_schedules_for_sync(
+                self.sync_context.sync.id,
+                reason=reason,
+            )
+        except (RPCError, OSError) as pause_err:
+            self.sync_context.logger.warning(
+                f"Failed to pause schedules: {pause_err}",
+                exc_info=True,
+            )
 
     async def _handle_cancellation(self) -> None:
         """Centralized cancellation handler - explicit and immediate."""
