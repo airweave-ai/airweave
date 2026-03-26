@@ -77,7 +77,7 @@ class SyncStateMachine(SyncStateMachineProtocol):
 
             self._validate_transition(current, target, sync_id)
 
-            sync_obj.status = target
+            sync_obj.status = target.value
             await db.commit()
 
         logger.info(f"Sync {sync_id}: {current.value} → {target.value}")
