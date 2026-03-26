@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.core.exceptions import NotFoundException
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.organizations.protocols import ApiKeyMaintenanceProtocol
 from airweave.models.api_key import APIKey
 from airweave.models.organization import Organization
 from airweave.models.user import User
@@ -263,7 +264,7 @@ class FakeApiKeyRepository:
         return sum(1 for name, *_ in self._calls if name == method)
 
 
-class FakeApiKeyMaintenanceRepository:
+class FakeApiKeyMaintenanceRepository(ApiKeyMaintenanceProtocol):
     """In-memory fake for ApiKeyMaintenanceProtocol.
 
     Stores canned return values and records calls for assertion.

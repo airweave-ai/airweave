@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 from contextlib import asynccontextmanager
+from typing import cast
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -94,15 +95,20 @@ async def lifespan(app: FastAPI):
     from airweave.crud.crud_api_key import usage_buffer
 
     await usage_buffer.start()
+    try:
+        # Start metrics sidecar + DB pool sampler; wire app.state.http_metrics
+        from airweave.core.metrics_service import metrics_lifespan
+        from airweave.core.protocols.metrics import DbPool
+        from airweave.db.session import async_engine
 
-    # Start metrics sidecar + DB pool sampler; wire app.state.http_metrics
-    from airweave.core.metrics_service import metrics_lifespan
-    from airweave.db.session import async_engine
-
-    async with metrics_lifespan(app, container_mod.container.metrics, async_engine.pool):
-        yield
-        # Flush remaining usage events while DB is still available
+        assert container_mod.container is not None
+        pool = cast(DbPool, async_engine.pool)
+        async with metrics_lifespan(app, container_mod.container.metrics, pool):
+            yield
+            await usage_buffer.stop()
+    except BaseException:
         await usage_buffer.stop()
+        raise
 
     container_mod.container.health.shutting_down = True
 
