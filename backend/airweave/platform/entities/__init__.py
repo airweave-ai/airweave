@@ -143,9 +143,11 @@ from .google_calendar import (
 )
 from .google_docs import GoogleDocsDocumentEntity
 from .google_drive import (
+    GoogleDriveCommentEntity,
     GoogleDriveDriveEntity,
     GoogleDriveFileDeletionEntity,
     GoogleDriveFileEntity,
+    GoogleDriveReplyEntity,
 )
 from .google_slides import (
     GoogleSlidesPresentationEntity,
@@ -516,9 +518,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         GoogleDocsDocumentEntity,
     ],
     "google_drive": [
+        GoogleDriveCommentEntity,
         GoogleDriveDriveEntity,
         GoogleDriveFileDeletionEntity,
         GoogleDriveFileEntity,
+        GoogleDriveReplyEntity,
     ],
     "google_slides": [
         GoogleSlidesPresentationEntity,
