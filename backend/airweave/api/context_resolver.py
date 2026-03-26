@@ -202,15 +202,15 @@ class ContextResolver:
             org_id = api_key_obj.organization_id
 
             client_ip = _extract_client_ip(request)
-            audit_logger = logger.with_context(event_type="api_key_usage")
-            audit_logger.info(
-                "API key usage",
+            audit_logger = logger.with_context(
+                event_type="api_key_usage",
                 api_key_id=str(api_key_obj.id),
                 org_id=str(org_id),
                 ip=client_ip,
                 endpoint=request.url.path,
                 created_by=api_key_obj.created_by_email,
             )
+            audit_logger.info("API key usage")
 
             # Cache rich auth metadata
             auth_data = {
@@ -240,7 +240,7 @@ class ContextResolver:
             )
 
         except (ValueError, NotFoundException, PermissionException) as e:
-            logger.error("API key validation failed", error=str(e))
+            logger.with_context(error=str(e)).error("API key validation failed")
             if "not active" in str(e):
                 raise HTTPException(status_code=403, detail="API key is not active") from e
             raise HTTPException(status_code=403, detail="Invalid or expired API key") from e
