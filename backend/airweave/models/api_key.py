@@ -22,13 +22,9 @@ class APIKey(OrganizationBase, UserMixin):
         DateTime(timezone=False), nullable=True
     )
     last_used_ip: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=False), nullable=True
-    )
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
     key_prefix: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
     # Nullable during transition; make NOT NULL after backfill is verified
     key_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
-    __table_args__ = (
-        Index("ix_api_key_key_hash", "key_hash", unique=True),
-    )
+    __table_args__ = (Index("ix_api_key_key_hash", "key_hash", unique=True),)

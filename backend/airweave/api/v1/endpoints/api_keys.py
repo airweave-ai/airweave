@@ -175,10 +175,15 @@ async def rotate_api_key(
 
     async with UnitOfWork(db) as uow:
         new_key_obj = await crud.api_key.create(
-            db=db, obj_in=new_key_create, ctx=ctx, uow=uow,
+            db=db,
+            obj_in=new_key_create,
+            ctx=ctx,
+            uow=uow,
         )
         await crud.api_key.revoke(
-            db=db, api_key_id=old_key_id, uow=uow,
+            db=db,
+            api_key_id=old_key_id,
+            uow=uow,
         )
 
     # UoW commit expires ORM instances — refresh before access
@@ -255,8 +260,7 @@ async def revoke_api_key(
 
     audit_logger = ctx.logger.with_context(event_type="api_key_revoked")
     audit_logger.info(
-        f"API key revoked: {api_key_id} by {ctx.tracking_email} "
-        f"for org {ctx.organization.id}"
+        f"API key revoked: {api_key_id} by {ctx.tracking_email} for org {ctx.organization.id}"
     )
 
     result = schemas.APIKey.model_validate(revoked, from_attributes=True)
@@ -345,9 +349,7 @@ async def read_api_key_usage(
     """
     await crud.api_key.get(db=db, id=id, ctx=ctx)
 
-    log_entries = await crud.api_key.get_usage_log(
-        db, api_key_id=id, skip=skip, limit=limit
-    )
+    log_entries = await crud.api_key.get_usage_log(db, api_key_id=id, skip=skip, limit=limit)
     return [
         schemas.APIKeyUsageLogEntry.model_validate(entry, from_attributes=True)
         for entry in log_entries

@@ -37,7 +37,8 @@ class CleanupRevokedKeysActivity:
         try:
             async with get_db_context() as db:
                 keys = await self.api_key_repo.get_revoked_keys_older_than(
-                    db, max_age_days=90,
+                    db,
+                    max_age_days=90,
                 )
                 for key in keys:
                     try:

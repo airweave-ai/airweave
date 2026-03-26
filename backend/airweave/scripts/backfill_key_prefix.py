@@ -46,11 +46,7 @@ async def backfill() -> None:
                 if api_key.key_prefix is None:
                     values["key_prefix"] = plain_key[:8]
 
-                stmt = (
-                    update(APIKey)
-                    .where(APIKey.id == api_key.id)
-                    .values(**values)
-                )
+                stmt = update(APIKey).where(APIKey.id == api_key.id).values(**values)
                 await db.execute(stmt)
                 updated += 1
             except (InvalidToken, ValueError) as e:
