@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_app/')({
@@ -5,5 +6,9 @@ export const Route = createFileRoute('/_app/')({
 });
 
 function RouteComponent() {
-  return <div>Hello "/_app/"!</div>;
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-neutral-950 px-6 py-16 text-white">
+      <Button className="w-full">Button</Button>
+    </main>
+  );
 }
