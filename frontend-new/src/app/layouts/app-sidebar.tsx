@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   ChevronDown,
   EllipsisVertical,
@@ -6,14 +7,17 @@ import {
   Settings,
 } from 'lucide-react';
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { useAppSession } from '@/features/app-session';
 import { Button } from '@/shared/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu';
 import {
@@ -40,11 +44,6 @@ const navigationItems: Array<NavigationItem> = [
   { label: 'Dashboard', icon: Home, to: '/' },
 ];
 
-const mockOrganizations = [
-  { id: 'tonik', name: 'Tonik Org' },
-  { id: 'admin', name: 'Admin Org' },
-];
-
 function LogoMark() {
   return (
     <span className="relative flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-[0.35rem] bg-linear-to-br from-white to-zinc-300">
@@ -67,15 +66,34 @@ function SidebarIconFrame({ children }: { children: ReactNode }) {
 }
 
 function UserAvatar() {
+  const { viewer } = useAppSession();
+  const initials = useMemo(() => {
+    const label = viewer.name ?? viewer.email;
+
+    return label
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join('');
+  }, [viewer.email, viewer.name]);
+
   return (
     <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-stone-200 via-stone-400 to-stone-700 text-[11px] font-semibold text-white">
-      AU
+      {initials || 'AU'}
     </span>
   );
 }
 
 export function AppSidebar() {
   const matchRoute = useMatchRoute();
+  const {
+    currentOrganization,
+    currentOrganizationId,
+    organizations,
+    setCurrentOrganizationId,
+    viewer,
+  } = useAppSession();
 
   return (
     <Sidebar variant="inset">
@@ -88,7 +106,7 @@ export function AppSidebar() {
                 type="button"
               >
                 <LogoMark />
-                <span>Tonik Org</span>
+                <span>{currentOrganization.name}</span>
                 <ChevronDown className="size-4 text-sidebar-foreground/50 transition-[rotate]" />
               </SidebarMenuButton>
             </DropdownMenuTrigger>
@@ -96,11 +114,29 @@ export function AppSidebar() {
               <DropdownMenuLabel className="px-2 py-1.5 font-mono uppercase">
                 Organizations
               </DropdownMenuLabel>
-              {mockOrganizations.map((org) => (
-                <DropdownMenuItem key={org.id} className="rounded-xs p-2">
-                  {org.name}
+              {organizations.length > 0 ? (
+                <DropdownMenuRadioGroup
+                  onValueChange={setCurrentOrganizationId}
+                  value={currentOrganizationId}
+                >
+                  {organizations.map((organization) => (
+                    <DropdownMenuRadioItem
+                      key={organization.id}
+                      className="rounded-xs p-2"
+                      value={organization.id}
+                    >
+                      {organization.name}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              ) : (
+                <DropdownMenuItem
+                  className="rounded-xs p-2 text-muted-foreground"
+                  disabled
+                >
+                  No organizations yet
                 </DropdownMenuItem>
-              ))}
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -161,7 +197,9 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton className="gap-3" size="lg" type="button">
               <UserAvatar />
-              <span className="truncate font-semibold">Admin User</span>
+              <span className="truncate font-semibold">
+                {viewer.name ?? viewer.email}
+              </span>
               <EllipsisVertical className="ml-auto size-4 text-sidebar-foreground/70" />
             </SidebarMenuButton>
           </SidebarMenuItem>

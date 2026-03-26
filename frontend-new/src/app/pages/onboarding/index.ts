@@ -1,0 +1,1 @@
+export { OnboardingPage } from './page';
