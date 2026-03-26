@@ -3,6 +3,7 @@
 Uses FakeApiKeyMaintenanceRepository instead of mocking crud.
 """
 
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,20 +11,30 @@ import pytest
 from airweave.domains.organizations.fakes.repository import (
     FakeApiKeyMaintenanceRepository,
 )
-from airweave.domains.temporal.activities.api_key_cleanup import (
+from airweave.domains.temporal.activities.cleanup_revoked_keys import (
     CleanupRevokedKeysActivity,
+)
+from airweave.domains.temporal.activities.expire_past_due_keys import (
     ExpirePastDueKeysActivity,
+)
+from airweave.domains.temporal.activities.prune_usage_log import (
     PruneUsageLogActivity,
 )
+
+
+_LOGGER_TARGETS = [
+    "airweave.domains.temporal.activities.cleanup_revoked_keys.logger",
+    "airweave.domains.temporal.activities.expire_past_due_keys.logger",
+    "airweave.domains.temporal.activities.prune_usage_log.logger",
+]
 
 
 @pytest.fixture(autouse=True)
 def _patch_logger():
     """Replace structlog logger with a plain mock to avoid kwarg errors."""
-    with patch(
-        "airweave.domains.temporal.activities.api_key_cleanup.logger",
-        MagicMock(),
-    ):
+    with ExitStack() as stack:
+        for target in _LOGGER_TARGETS:
+            stack.enter_context(patch(target, MagicMock()))
         yield
 
 
@@ -56,14 +67,22 @@ def mock_db():
     db.commit = _noop
     db.delete = _noop
     db.flush = _noop
+    db.rollback = _noop
     return db
 
 
+_DB_TARGETS = [
+    "airweave.domains.temporal.activities.cleanup_revoked_keys.get_db_context",
+    "airweave.domains.temporal.activities.expire_past_due_keys.get_db_context",
+    "airweave.domains.temporal.activities.prune_usage_log.get_db_context",
+]
+
+
 def _patch_db(mock_db):
-    return patch(
-        "airweave.domains.temporal.activities.api_key_cleanup.get_db_context",
-        return_value=_FakeDbCtx(mock_db),
-    )
+    stack = ExitStack()
+    for target in _DB_TARGETS:
+        stack.enter_context(patch(target, return_value=_FakeDbCtx(mock_db)))
+    return stack
 
 
 # -----------------------------------------------------------------------

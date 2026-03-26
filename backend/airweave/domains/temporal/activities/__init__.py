@@ -10,13 +10,11 @@ For workflow compatibility, we also export the activity method references.
 These are used by workflows when calling execute_activity() with a function reference.
 """
 
-from airweave.domains.temporal.activities.api_key_cleanup import (
-    CleanupRevokedKeysActivity,
-    ExpirePastDueKeysActivity,
-    PruneUsageLogActivity,
-)
 from airweave.domains.temporal.activities.api_key_notifications import (
     CheckAndNotifyExpiringKeysActivity,
+)
+from airweave.domains.temporal.activities.cleanup_revoked_keys import (
+    CleanupRevokedKeysActivity,
 )
 from airweave.domains.temporal.activities.cleanup_stuck_sync_jobs import (
     CleanupStuckSyncJobsActivity,
@@ -26,6 +24,12 @@ from airweave.domains.temporal.activities.cleanup_sync_data import (
 )
 from airweave.domains.temporal.activities.create_sync_job import (
     CreateSyncJobActivity,
+)
+from airweave.domains.temporal.activities.expire_past_due_keys import (
+    ExpirePastDueKeysActivity,
+)
+from airweave.domains.temporal.activities.prune_usage_log import (
+    PruneUsageLogActivity,
 )
 from airweave.domains.temporal.activities.run_sync import (
     RunSyncActivity,

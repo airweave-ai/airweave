@@ -355,6 +355,9 @@ Each activity is a `@dataclass` with explicit DI, one class per file:
 | `self_destruct_orphaned_sync.py` | `SelfDestructOrphanedSyncActivity` | Clean up schedules for orphaned syncs |
 | `cleanup_sync_data.py` | `CleanupSyncDataActivity` | Remove Vespa + ARF data for deleted syncs |
 | `api_key_notifications.py` | `CheckAndNotifyExpiringKeysActivity` | Email notifications for expiring API keys |
+| `cleanup_revoked_keys.py` | `CleanupRevokedKeysActivity` | Delete revoked keys past 90-day retention |
+| `expire_past_due_keys.py` | `ExpirePastDueKeysActivity` | Transition active keys past expiration to expired |
+| `prune_usage_log.py` | `PruneUsageLogActivity` | Delete usage log entries older than 90 days |
 
 `activities/__init__.py` re-exports both class names and `.run` method references (used by workflows).
 
