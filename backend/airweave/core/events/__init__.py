@@ -1,9 +1,11 @@
 """Domain events for the event bus."""
 
 from airweave.core.events.base import DomainEvent
+from airweave.core.events.billing import BillingPeriodCreatedEvent
 from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.events.enums import (
     AccessControlEventType,
+    BillingEventType,
     CollectionEventType,
     EntityEventType,
     EventType,
@@ -30,6 +32,8 @@ from airweave.core.events.sync import (
 __all__ = [
     "AccessControlEventType",
     "AccessControlMembershipBatchProcessedEvent",
+    "BillingEventType",
+    "BillingPeriodCreatedEvent",
     "CollectionEventType",
     "CollectionLifecycleEvent",
     "DomainEvent",
