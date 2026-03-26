@@ -1,5 +1,6 @@
 """Service for source connections."""
 
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -36,6 +37,14 @@ from airweave.schemas.source_connection import (
     SourceConnectionListItem,
     SourceConnectionUpdate,
 )
+
+
+def _duration_seconds(
+    started_at: Optional[datetime], completed_at: Optional[datetime]
+) -> Optional[float]:
+    if started_at and completed_at:
+        return (completed_at - started_at).total_seconds()
+    return None
 
 
 class SourceConnectionService(SourceConnectionServiceProtocol):
@@ -206,7 +215,13 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
             status=sync_job.status,
             started_at=sync_job.started_at,
             completed_at=sync_job.completed_at,
+            duration_seconds=_duration_seconds(sync_job.started_at, sync_job.completed_at),
+            entities_inserted=sync_job.entities_inserted or 0,
+            entities_updated=sync_job.entities_updated or 0,
+            entities_deleted=sync_job.entities_deleted or 0,
+            entities_failed=sync_job.entities_skipped or 0,
             error=sync_job.error,
+            error_category=sync_job.error_category,
         )
 
     async def get_jobs(
@@ -231,10 +246,13 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
                 status=j.status,
                 started_at=j.started_at,
                 completed_at=j.completed_at,
-                error=j.error,
+                duration_seconds=_duration_seconds(j.started_at, j.completed_at),
                 entities_inserted=j.entities_inserted or 0,
                 entities_updated=j.entities_updated or 0,
                 entities_deleted=j.entities_deleted or 0,
+                entities_failed=j.entities_skipped or 0,
+                error=j.error,
+                error_category=j.error_category,
             )
             for j in jobs
         ]
@@ -263,10 +281,13 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
             status=sync_job.status,
             started_at=sync_job.started_at,
             completed_at=sync_job.completed_at,
-            error=sync_job.error,
+            duration_seconds=_duration_seconds(sync_job.started_at, sync_job.completed_at),
             entities_inserted=sync_job.entities_inserted or 0,
             entities_updated=sync_job.entities_updated or 0,
             entities_deleted=sync_job.entities_deleted or 0,
+            entities_failed=sync_job.entities_skipped or 0,
+            error=sync_job.error,
+            error_category=sync_job.error_category,
         )
 
     async def get_sync_id(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> dict:
