@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from airweave.core.context import BaseContext
-from airweave.core.shared_models import SyncStatus
+from airweave.core.shared_models import SyncPauseReason, SyncStatus
 from airweave.domains.syncs.protocols import SyncStateMachineProtocol
 from airweave.domains.syncs.types import SyncTransitionResult
 
@@ -32,9 +32,10 @@ class FakeSyncStateMachine(SyncStateMachineProtocol):
         ctx: BaseContext,
         *,
         reason: str = "",
+        pause_reason: SyncPauseReason | None = None,
     ) -> SyncTransitionResult:
         """Record call and return canned result."""
-        self._calls.append(("transition", sync_id, target, ctx, reason))
+        self._calls.append(("transition", sync_id, target, ctx, reason, pause_reason))
         if self._should_raise:
             raise self._should_raise
         if self._result is not None:

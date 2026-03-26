@@ -22,7 +22,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
 from airweave.core.context import BaseContext
-from airweave.core.shared_models import SyncJobStatus, SyncStatus
+from airweave.core.shared_models import SyncJobStatus, SyncPauseReason, SyncStatus
 from airweave.db.session import get_db_context
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.sources.exceptions.classifier import classify_error
@@ -407,6 +407,7 @@ class SyncService(SyncServiceProtocol):
                         target=SyncStatus.PAUSED,
                         ctx=ctx,
                         reason=f"Credential error: {classification.category.value}",
+                        pause_reason=SyncPauseReason.CREDENTIAL_ERROR,
                     )
                 except Exception:
                     ctx.logger.warning("Failed to pause sync after credential error", exc_info=True)

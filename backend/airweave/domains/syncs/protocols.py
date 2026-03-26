@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.context import BaseContext
-from airweave.core.shared_models import SyncStatus
+from airweave.core.shared_models import SyncPauseReason, SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.sync_pipeline.config import SyncConfig
@@ -89,6 +89,7 @@ class SyncStateMachineProtocol(Protocol):
         ctx: BaseContext,
         *,
         reason: str = "",
+        pause_reason: SyncPauseReason | None = None,
     ) -> SyncTransitionResult:
         """Execute a validated, idempotent sync status transition.
 

@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.core.context import BaseContext
+from airweave.core.events.billing import BillingPeriodCreatedEvent
 from airweave.core.logging import logger
+from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.exceptions import BillingStateError
@@ -87,12 +89,14 @@ class BillingOperations(BillingOperationsProtocol):
         period_repo: BillingPeriodRepositoryProtocol,
         usage_repo: UsageRepositoryProtocol,
         payment_gateway: PaymentGatewayProtocol,
+        event_bus: EventBus,
     ) -> None:
         """Initialize with required repository and payment dependencies."""
         self._billing_repo = billing_repo
         self._period_repo = period_repo
         self._usage_repo = usage_repo
         self._payment_gateway = payment_gateway
+        self._event_bus = event_bus
 
     async def create_billing_record(
         self,
@@ -274,5 +278,15 @@ class BillingOperations(BillingOperationsProtocol):
         created_period = await self._period_repo.get(db, id=period_id, ctx=ctx)
         if not created_period:
             raise BillingStateError("Failed to create billing period")
+
+        await self._event_bus.publish(
+            BillingPeriodCreatedEvent(
+                organization_id=organization_id,
+                billing_period_id=period_id,
+                plan=plan.value,
+                status=status.value,
+                transition=transition.value,
+            )
+        )
 
         return schemas.BillingPeriod.model_validate(created_period, from_attributes=True)

@@ -16,7 +16,7 @@ from temporalio.service import RPCError
 
 from airweave.core.context import BaseContext
 from airweave.core.logging import logger
-from airweave.core.shared_models import SyncStatus
+from airweave.core.shared_models import SyncPauseReason, SyncStatus
 from airweave.db.session import get_db_context
 from airweave.domains.syncs.protocols import SyncRepositoryProtocol, SyncStateMachineProtocol
 from airweave.domains.syncs.types import (
@@ -67,6 +67,7 @@ class SyncStateMachine(SyncStateMachineProtocol):
         ctx: BaseContext,
         *,
         reason: str = "",
+        pause_reason: SyncPauseReason | None = None,
     ) -> SyncTransitionResult:
         """Execute a validated, idempotent sync status transition.
 
@@ -88,6 +89,10 @@ class SyncStateMachine(SyncStateMachineProtocol):
             self._validate_transition(current, target, sync_id)
 
             await self.sync_repo.transition_status(db, sync_id, current, target)
+            if target == SyncStatus.PAUSED:
+                sync_obj.pause_reason = pause_reason.value if pause_reason else None
+            elif target == SyncStatus.ACTIVE:
+                sync_obj.pause_reason = None
             await db.commit()
 
         logger.info(f"Sync {sync_id}: {current.value} → {target.value}")

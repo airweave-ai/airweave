@@ -11,9 +11,10 @@ from airweave.core.events.sync import (
     AccessControlMembershipBatchProcessedEvent,
 )
 from airweave.core.protocols.event_bus import EventBus
-from airweave.core.shared_models import SyncJobStatus, SyncStatus
+from airweave.core.shared_models import SyncJobStatus, SyncPauseReason, SyncStatus
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.pipeline import AccessControlPipeline
+from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.exceptions.classifier import classify_error
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
@@ -676,17 +677,20 @@ class SyncOrchestrator:
             error_category=classification.category,
         )
 
-        if classification.category is not None:
+        # Pause sync for errors that won't resolve without user action
+        pause_reason = self._get_pause_reason(error)
+        if pause_reason is not None:
             try:
                 await self._sync_state_machine.transition(
                     sync_id=self.sync_context.sync.id,
                     target=SyncStatus.PAUSED,
                     ctx=self.sync_context,
-                    reason=f"Credential error: {classification.category.value}",
+                    reason=f"{pause_reason.value}: {error_message}",
+                    pause_reason=pause_reason,
                 )
             except Exception as pause_err:
                 self.sync_context.logger.warning(
-                    f"Failed to pause sync after credential error: {pause_err}",
+                    f"Failed to pause sync: {pause_err}",
                     exc_info=True,
                 )
 
@@ -709,6 +713,17 @@ class SyncOrchestrator:
             error=error_message,
             duration_ms=duration_ms,
         )
+
+    @staticmethod
+    def _get_pause_reason(error: Exception) -> SyncPauseReason | None:
+        """Determine if an error warrants pausing the sync."""
+        if isinstance(error, SourceAuthError):
+            return SyncPauseReason.CREDENTIAL_ERROR
+        if isinstance(error, UsageLimitExceededError):
+            return SyncPauseReason.USAGE_EXHAUSTED
+        if isinstance(error, PaymentRequiredError):
+            return SyncPauseReason.PAYMENT_REQUIRED
+        return None
 
     async def _handle_cancellation(self) -> None:
         """Centralized cancellation handler - explicit and immediate."""

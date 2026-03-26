@@ -55,6 +55,15 @@ class SyncStatus(str, Enum):
     ERROR = "error"
 
 
+class SyncPauseReason(str, Enum):
+    """Why a sync was paused."""
+
+    CREDENTIAL_ERROR = "credential_error"
+    USAGE_EXHAUSTED = "usage_exhausted"
+    PAYMENT_REQUIRED = "payment_required"
+    MANUAL = "manual"
+
+
 class SourceConnectionStatus(str, Enum):
     """Source connection status enum - represents overall connection state."""
 
