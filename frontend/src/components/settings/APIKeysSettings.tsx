@@ -9,17 +9,13 @@ import { toast } from "sonner";
 import { differenceInDays } from "date-fns";
 import { formatBackendTimestamp } from "@/utils/dateTime";
 import { cn } from "@/lib/utils";
-<<<<<<< HEAD
-import { useAPIKeysStore, type APIKey } from "@/lib/stores/apiKeys";
-import { useOrganizationContext } from "@/hooks/use-organization-context";
-=======
 import {
   useAPIKeysStore,
   type APIKey,
   type APIKeyUsageLogEntry,
   type APIKeyUsageStats,
 } from "@/lib/stores/apiKeys";
->>>>>>> aa09ec766 (feat(api-keys): batch usage, descriptions, UI)
+import { useOrganizationContext } from "@/hooks/use-organization-context";
 import {
   Dialog,
   DialogContent,
@@ -198,7 +194,6 @@ export function APIKeysSettings() {
     return "text-green-600 dark:text-green-400";
   };
 
-<<<<<<< HEAD
   if (!canManage) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -212,12 +207,11 @@ export function APIKeysSettings() {
       </div>
     );
   }
-=======
+
   const truncate = (str: string | null, len: number) => {
     if (!str) return "-";
     return str.length > len ? str.slice(0, len) + "..." : str;
   };
->>>>>>> aa09ec766 (feat(api-keys): batch usage, descriptions, UI)
 
   if (isLoading && apiKeys.length === 0) {
     return (

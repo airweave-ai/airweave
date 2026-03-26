@@ -378,9 +378,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
 
         refreshed = await db.get(self.model, api_key_id)
         if refreshed is None:
-            raise NotFoundException(
-                f"API key {api_key_id} not found after revocation"
-            )
+            raise NotFoundException(f"API key {api_key_id} not found after revocation")
         return refreshed
 
     def record_usage(
@@ -566,7 +564,11 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         return result.rowcount
 
     async def prune_usage_log(
-        self, db: AsyncSession, *, max_age_days: int = 90, batch_size: int = 10_000,
+        self,
+        db: AsyncSession,
+        *,
+        max_age_days: int = 90,
+        batch_size: int = 10_000,
     ) -> int:
         """Delete usage log entries older than max_age_days in batches.
 
@@ -590,9 +592,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         while True:
             # Sub-select a batch of IDs to delete
             ids_subq = (
-                select(APIKeyUsageLog.id)
-                .where(APIKeyUsageLog.timestamp < cutoff)
-                .limit(batch_size)
+                select(APIKeyUsageLog.id).where(APIKeyUsageLog.timestamp < cutoff).limit(batch_size)
             ).scalar_subquery()
 
             stmt = delete(APIKeyUsageLog).where(APIKeyUsageLog.id.in_(ids_subq))
