@@ -24,6 +24,7 @@ import httpx
 
 from airweave.domains.sources.exceptions import (
     SourceAuthError,
+    SourceCursorInvalidError,
     SourceEntityForbiddenError,
     SourceEntityNotFoundError,
     SourceError,
@@ -86,6 +87,16 @@ def _handle_404(
     raise SourceEntityNotFoundError(f"Not found (404){ctx}: {detail}", source_short_name=sn)
 
 
+def _handle_410(
+    _r: httpx.Response, _s: int, detail: str, ctx: str, sn: str, _tpk: AuthProviderKind
+) -> None:
+    raise SourceCursorInvalidError(
+        f"Cursor invalid (410){ctx}: {detail}",
+        source_short_name=sn,
+        status_code=410,
+    )
+
+
 def _handle_429(
     resp: httpx.Response, _s: int, _detail: str, ctx: str, sn: str, _tpk: AuthProviderKind
 ) -> None:
@@ -127,6 +138,7 @@ _STATUS_HANDLERS = {
     401: _handle_401,
     403: _handle_403,
     404: _handle_404,
+    410: _handle_410,
     429: _handle_429,
     301: _handle_redirect,
     302: _handle_redirect,
