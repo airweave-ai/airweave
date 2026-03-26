@@ -1,6 +1,6 @@
 """Add pause_reason column to sync table.
 
-Revision ID: b2c3d4e5f6g7
+Revision ID: 0001
 Revises: 0000
 Create Date: 2026-03-26
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "b2c3d4e5f6g7"
+revision = "0001"
 down_revision = "0000"
 branch_labels = None
 depends_on = None

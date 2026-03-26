@@ -68,6 +68,15 @@ class SyncRepositoryProtocol(Protocol):
         """Update an existing sync."""
         ...
 
+    async def get_paused_by_reason(
+        self,
+        db: AsyncSession,
+        organization_id: UUID,
+        pause_reason: str,
+    ) -> List[Sync]:
+        """Get all paused syncs for an org with a specific pause_reason."""
+        ...
+
 
 class SyncCursorRepositoryProtocol(Protocol):
     """Data access for sync cursor records."""

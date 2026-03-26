@@ -2,18 +2,14 @@
 
 from typing import List
 
-from sqlalchemy import select
-
-from airweave import schemas
 from airweave.core.context import SystemContext
 from airweave.core.events.base import DomainEvent
 from airweave.core.events.billing import BillingPeriodCreatedEvent
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncPauseReason, SyncStatus
 from airweave.db.session import get_db_context
-from airweave.domains.syncs.protocols import SyncStateMachineProtocol
-from airweave.models.organization import Organization
-from airweave.models.sync import Sync
+from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
+from airweave.domains.syncs.protocols import SyncRepositoryProtocol, SyncStateMachineProtocol
 from airweave.schemas.billing_period import BillingPeriodStatus
 
 
@@ -22,10 +18,19 @@ class BillingUnpauseSubscriber:
 
     EVENT_PATTERNS: List[str] = ["billing.period_created"]
 
-    def __init__(self, sync_state_machine: SyncStateMachineProtocol) -> None:
+    def __init__(
+        self,
+        sync_state_machine: SyncStateMachineProtocol,
+        sync_repo: SyncRepositoryProtocol,
+        org_repo: OrganizationRepositoryProtocol,
+    ) -> None:
+        """Initialize with sync and org dependencies."""
         self._sync_state_machine = sync_state_machine
+        self._sync_repo = sync_repo
+        self._org_repo = org_repo
 
     async def handle(self, event: DomainEvent) -> None:
+        """Handle billing period created events by unpausing usage-exhausted syncs."""
         if not isinstance(event, BillingPeriodCreatedEvent):
             return
 
@@ -33,21 +38,18 @@ class BillingUnpauseSubscriber:
             return
 
         async with get_db_context() as db:
-            # Fetch org for SystemContext
-            org = await db.get(Organization, event.organization_id)
-            if not org:
+            org_schema = await self._org_repo.get(
+                db, id=event.organization_id, skip_access_validation=True
+            )
+            if not org_schema:
                 logger.warning(f"Org {event.organization_id} not found for billing unpause")
                 return
-            org_schema = schemas.Organization.model_validate(org, from_attributes=True)
 
-            # Find paused syncs with usage_exhausted reason
-            stmt = select(Sync).where(
-                Sync.organization_id == event.organization_id,
-                Sync.status == SyncStatus.PAUSED.value,
-                Sync.pause_reason == SyncPauseReason.USAGE_EXHAUSTED.value,
+            paused_syncs = await self._sync_repo.get_paused_by_reason(
+                db,
+                organization_id=event.organization_id,
+                pause_reason=SyncPauseReason.USAGE_EXHAUSTED.value,
             )
-            result = await db.execute(stmt)
-            paused_syncs = result.scalars().all()
 
         if not paused_syncs:
             return

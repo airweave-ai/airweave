@@ -313,6 +313,8 @@ def create_container(settings: Settings) -> Container:
 
     billing_unpause = BillingUnpauseSubscriber(
         sync_state_machine=sync_deps["sync_state_machine"],
+        sync_repo=source_deps["sync_repo"],
+        org_repo=billing_repos["org_repo"],
     )
     for pattern in billing_unpause.EVENT_PATTERNS:
         event_bus.subscribe(pattern, billing_unpause.handle)
