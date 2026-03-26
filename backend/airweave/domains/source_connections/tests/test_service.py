@@ -457,6 +457,9 @@ def _make_sync_job_schema(*, sync_id: UUID = SYNC_ID, job_id: UUID = JOB_ID):
     job.started_at = None
     job.completed_at = None
     job.error = None
+    job.entities_inserted = 0
+    job.entities_updated = 0
+    job.entities_deleted = 0
     return job
 
 
@@ -556,6 +559,8 @@ async def test_get_jobs_returns_mapped_jobs():
 
     sync_svc = FakeSyncService()
     j1 = _make_sync_job_schema(job_id=uuid4())
+    j1.entities_inserted = 42
+    j1.entities_updated = 3
     j2 = _make_sync_job_schema(job_id=uuid4())
     sync_svc.seed_jobs(SYNC_ID, [j1, j2])
 
@@ -564,7 +569,10 @@ async def test_get_jobs_returns_mapped_jobs():
 
     assert len(jobs) == 2
     assert jobs[0].source_connection_id == SC_ID
+    assert jobs[0].entities_inserted == 42
+    assert jobs[0].entities_updated == 3
     assert jobs[1].source_connection_id == SC_ID
+    assert jobs[1].entities_inserted == 0
 
 
 async def test_get_jobs_not_found_raises():
