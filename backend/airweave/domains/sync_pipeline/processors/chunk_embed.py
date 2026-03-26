@@ -15,6 +15,7 @@ import json
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from airweave.domains.converters.protocols import ConverterRegistryProtocol
+from airweave.domains.embedders.exceptions import EmbedderProviderError
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
 from airweave.domains.sync_pipeline.pipeline.text_builder import TextualRepresentationBuilder
@@ -68,8 +69,8 @@ class ChunkEmbedProcessor:
         for entity in processed:
             entity.textual_representation = None
 
-        # Step 5: Embed chunks
-        await self._embed_entities(chunk_entities, sync_context)
+        # Step 5: Embed chunks (may remove entities that fail embedding)
+        chunk_entities = await self._embed_entities(chunk_entities, sync_context)
 
         sync_context.logger.debug(
             f"[ChunkEmbedProcessor] {len(entities)} entities -> {len(chunk_entities)} chunks"
@@ -213,54 +214,34 @@ class ChunkEmbedProcessor:
         self,
         chunk_entities: List[BaseEntity],
         sync_context: "SyncContext",
-    ) -> None:
+    ) -> List[BaseEntity]:
         """Compute dense and sparse embeddings for all destinations.
 
         Both Qdrant and Vespa use:
         - Dense embeddings (provider-specific dim) for neural/semantic search
         - Sparse embeddings (FastEmbed Qdrant/bm25) for keyword search scoring
+
+        If a batch embedding fails with a non-retryable provider error (e.g. OpenAI 400),
+        falls back to embedding entities one-by-one and removes entities that cannot be
+        embedded. This prevents a single bad entity from crashing the entire sync.
+
+        Returns:
+            The list of chunk entities that were successfully embedded (may be smaller
+            than the input if some entities were skipped).
         """
         if not chunk_entities:
-            return
+            return chunk_entities
 
-        expected_dims = self._dense_embedder.dimensions
-
-        # Dense embeddings (provider-specific dimensions for neural search)
-        dense_texts: list[str] = []
-        for e in chunk_entities:
-            if e.textual_representation is None:
-                raise EntityProcessingError(
-                    f"[ChunkEmbedProcessor] ChunkEntity {e.entity_id} has no textual_representation"
-                )
-            dense_texts.append(e.textual_representation)
-        entity_ids = [e.entity_id for e in chunk_entities]
-        sync_context.logger.info(
-            "[ChunkEmbedProcessor] Embedding %d chunk entities. Entity IDs: %s",
-            len(chunk_entities),
-            entity_ids,
+        # Dense embeddings with fallback (may remove entities that fail)
+        dense_results, chunk_entities = await self._dense_embed_with_fallback(
+            chunk_entities, sync_context
         )
-        try:
-            dense_results = await self._dense_embedder.embed_many(dense_texts)
-        except Exception:
-            sync_context.logger.error(
-                "[ChunkEmbedProcessor] Dense embedding failed for entity IDs: %s",
-                entity_ids,
-            )
-            raise
-        dense_embeddings = [r.vector for r in dense_results]
-        if (
-            dense_embeddings
-            and dense_embeddings[0] is not None
-            and len(dense_embeddings[0]) != expected_dims
-        ):
-            raise SyncFailureError(
-                "[ChunkEmbedProcessor] Dense embedding dimensions mismatch: "
-                f"got {len(dense_embeddings[0])}, "
-                f"expected {expected_dims}."
-            )
+        if not chunk_entities:
+            return []
+
+        self._validate_dense_dimensions(dense_results)
 
         # Sparse embeddings (FastEmbed Qdrant/bm25 for keyword search scoring)
-        # Uses full entity JSON (minus system metadata) to capture all searchable content
         sparse_texts = [
             json.dumps(
                 e.model_dump(mode="json", exclude={"airweave_system_metadata"}),
@@ -270,14 +251,110 @@ class ChunkEmbedProcessor:
         ]
         sparse_embeddings = await self._sparse_embedder.embed_many(sparse_texts)
 
-        # Assign embeddings to entities
+        # Assign and validate embeddings
         for i, entity in enumerate(chunk_entities):
-            entity.airweave_system_metadata.dense_embedding = dense_embeddings[i]
+            entity.airweave_system_metadata.dense_embedding = dense_results[i].vector
             entity.airweave_system_metadata.sparse_embedding = sparse_embeddings[i]
 
-        # Validate
         for entity in chunk_entities:
             if entity.airweave_system_metadata.dense_embedding is None:
                 raise SyncFailureError(f"Entity {entity.entity_id} has no dense embedding")
             if entity.airweave_system_metadata.sparse_embedding is None:
                 raise SyncFailureError(f"Entity {entity.entity_id} has no sparse embedding")
+
+        return chunk_entities
+
+    def _validate_dense_dimensions(self, dense_results: List[Any]) -> None:
+        """Raise if dense embedding dimensions don't match the expected size."""
+        if not dense_results:
+            return
+        expected = self._dense_embedder.dimensions
+        actual_vec = dense_results[0].vector
+        if actual_vec is not None and len(actual_vec) != expected:
+            raise SyncFailureError(
+                f"[ChunkEmbedProcessor] Dense embedding dimensions mismatch: "
+                f"got {len(actual_vec)}, expected {expected}."
+            )
+
+    async def _dense_embed_with_fallback(
+        self,
+        chunk_entities: List[BaseEntity],
+        sync_context: "SyncContext",
+    ) -> Tuple[List[Any], List[BaseEntity]]:
+        """Run dense embedding with fallback to individual embedding on failure.
+
+        Returns:
+            Tuple of (dense embedding results, surviving entities). The entity list may be
+            smaller than the input if some entities were skipped during fallback.
+        """
+        dense_texts: list[str] = []
+        for e in chunk_entities:
+            if e.textual_representation is None:
+                raise EntityProcessingError(
+                    f"[ChunkEmbedProcessor] ChunkEntity {e.entity_id} has no textual_representation"
+                )
+            dense_texts.append(e.textual_representation)
+
+        entity_ids = [e.entity_id for e in chunk_entities]
+        sync_context.logger.info(
+            "[ChunkEmbedProcessor] Embedding %d chunk entities. Entity IDs: %s",
+            len(chunk_entities),
+            entity_ids,
+        )
+
+        try:
+            results = await self._dense_embedder.embed_many(dense_texts)
+            return results, chunk_entities
+        except EmbedderProviderError as e:
+            if e.retryable:
+                raise
+            sync_context.logger.warning(
+                "[ChunkEmbedProcessor] Batch dense embedding failed (non-retryable), "
+                "falling back to individual embedding for %d entities: %s",
+                len(chunk_entities),
+                e.message,
+            )
+            return await self._embed_individually(chunk_entities, sync_context)
+        except Exception:
+            sync_context.logger.error(
+                "[ChunkEmbedProcessor] Dense embedding failed for entity IDs: %s",
+                entity_ids,
+            )
+            raise
+
+    async def _embed_individually(
+        self,
+        chunk_entities: List[BaseEntity],
+        sync_context: "SyncContext",
+    ) -> Tuple[List[Any], List[BaseEntity]]:
+        """Embed entities one-by-one, skipping any that fail.
+
+        Returns:
+            Tuple of (successful dense results, corresponding entities with failures removed).
+        """
+        successful_results: List[Any] = []
+        successful_entities: List[BaseEntity] = []
+
+        for entity in chunk_entities:
+            try:
+                results = await self._dense_embedder.embed_many(
+                    [entity.textual_representation]  # type: ignore[list-item]
+                )
+                successful_results.append(results[0])
+                successful_entities.append(entity)
+            except Exception as exc:
+                sync_context.logger.warning(
+                    "[ChunkEmbedProcessor] Skipping entity %s — dense embedding failed: %s",
+                    entity.entity_id,
+                    str(exc)[:200],
+                )
+
+        skipped = len(chunk_entities) - len(successful_entities)
+        if skipped:
+            sync_context.logger.warning(
+                "[ChunkEmbedProcessor] Skipped %d/%d entities due to embedding failures",
+                skipped,
+                len(chunk_entities),
+            )
+
+        return successful_results, successful_entities

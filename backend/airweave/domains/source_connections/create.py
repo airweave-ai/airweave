@@ -10,6 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
+from airweave.core.config import settings
+
+
+def _default_redirect_url(readable_collection_id: str) -> str:
+    """Return the default post-OAuth redirect URL for a collection."""
+    return f"{settings.app_url}/collections/{readable_collection_id}"
+
+
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
@@ -186,7 +194,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         byoc_consumer_key: Optional[str] = None
         byoc_consumer_secret: Optional[str] = None
         template_configs: Optional[dict[str, Any]] = None
-        resolved_redirect_url: Optional[str] = None
+        redirect_url: Optional[str] = None
         payload: Optional[dict[str, Any]] = None
         old_init = None
 
@@ -201,9 +209,12 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 byoc_consumer_key = overrides.get("consumer_key")
                 byoc_consumer_secret = overrides.get("consumer_secret")
                 template_configs = overrides.get("template_configs")
-                if not resolved_redirect_url:
-                    resolved_redirect_url = overrides.get("redirect_url")
+                redirect_url = overrides.get("redirect_url")
                 payload = old_init.payload
+
+        # Use stored redirect_url (Connect integrators) or default to collection page
+        if not redirect_url:
+            redirect_url = _default_redirect_url(source_conn.readable_collection_id)
 
         # Fall back: reconstruct payload from source_conn fields
         if payload is None:
@@ -271,7 +282,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 client_id=initiation_result.client_id,
                 client_secret=initiation_result.client_secret,
                 oauth_client_mode=initiation_result.oauth_client_mode,
-                redirect_url=resolved_redirect_url,
+                redirect_url=redirect_url,
                 template_configs=template_configs,
                 additional_overrides=initiation_result.additional_overrides,
                 initiator_user_id=initiator_user_id,
@@ -573,7 +584,8 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 client_id=initiation_result.client_id,
                 client_secret=initiation_result.client_secret,
                 oauth_client_mode=initiation_result.oauth_client_mode,
-                redirect_url=obj_in.redirect_url,
+                redirect_url=obj_in.redirect_url
+                or _default_redirect_url(obj_in.readable_collection_id),
                 template_configs=template_configs,
                 additional_overrides=initiation_result.additional_overrides,
                 initiator_user_id=initiator_user_id,

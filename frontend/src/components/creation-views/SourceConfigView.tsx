@@ -112,13 +112,6 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
     setCustomRedirectUrl(value);
   };
 
-  // Generate default redirect URL
-  const getDefaultRedirectUrl = () => {
-    const origin = window.location.origin;
-    // Use the current protocol (don't force HTTPS for local dev)
-    return `${origin}?oauth_return=true`;
-  };
-
   // Update store when connection name changes
   useEffect(() => {
     // Only update if the value actually changed
@@ -357,7 +350,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
       } else if (authMode === 'oauth2') {
         // OAuth flow (OAuth1 or OAuth2)
         authentication = {
-          redirect_uri: customRedirectUrl.trim() || getDefaultRedirectUrl()
+          ...(customRedirectUrl.trim() ? { redirect_uri: customRedirectUrl.trim() } : {}),
         };
 
         // Add credentials if BYOC or user chose to use own credentials
@@ -402,8 +395,6 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
         // For external provider, sync immediately since we're using existing auth
         // For browse-tree sources, don't sync immediately — user selects nodes first
         sync_immediately: (authMode === 'direct_auth' || authMode === 'external_provider') && !supportsBrowseTree,
-        // Set redirect URL for OAuth flows
-        redirect_url: getDefaultRedirectUrl(),
       };
 
       // Add config fields if any - filter out empty values
@@ -446,7 +437,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
 
         setOAuthData(
           result.id,
-          payload.redirect_url || getDefaultRedirectUrl(),
+          result.auth?.redirect_url || '',
           authUrl
         );
 
@@ -1097,7 +1088,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                       type="text"
                       value={customRedirectUrl}
                       onChange={handleRedirectUrlChange}
-                      placeholder={getDefaultRedirectUrl()}
+                      placeholder="https://your-app.com/callback"
                       validation={redirectUrlValidation}
                       className={cn(
                         "text-xs",
@@ -1130,7 +1121,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                       ? "bg-gray-900/50 text-gray-500 border border-gray-800"
                       : "bg-gray-50 text-gray-400 border border-gray-100"
                   )}>
-                    {getDefaultRedirectUrl()}
+                    Default (managed by Airweave)
                   </div>
                 )}
               </div>

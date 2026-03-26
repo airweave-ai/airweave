@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { useCollectionCreationStore } from '@/stores/collectionCreationStore';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { generateReadableId } from '@/lib/readable-id';
 import { useTheme } from '@/lib/theme-provider';
@@ -20,8 +19,6 @@ import { CollectionVisualization } from './creation-views/CollectionVisualizatio
 export const CollectionCreationModal: React.FC = () => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [humanReadableId, setHumanReadableId] = useState<string>('');
 
   const {
@@ -49,47 +46,6 @@ export const CollectionCreationModal: React.FC = () => {
       setHumanReadableId('');
     }
   }, [collectionName, isAddingToExistingCollection]);
-
-  // Handle OAuth callback
-  useEffect(() => {
-    const isOAuthReturn = searchParams.get('oauth_return') === 'true';
-    const status = searchParams.get('status');
-    const connectionId = searchParams.get('source_connection_id');
-
-    if (isOAuthReturn) {
-      if (status === 'success' || status === 'sync_started') {
-        // OAuth successful
-        if (connectionId) {
-          useCollectionCreationStore.getState().setConnectionId(connectionId);
-        }
-
-        // Get store data to navigate to collection
-        const store = useCollectionCreationStore.getState();
-        const collectionId = store.collectionId || store.existingCollectionId;
-
-        if (collectionId) {
-          // Close modal and navigate directly to collection detail view
-          store.closeModal();
-
-          // Navigate to collection with success params
-          navigate(`/collections/${collectionId}?status=success&source_connection_id=${connectionId}`);
-
-          // Reset store state after navigation
-          setTimeout(() => {
-            store.reset();
-          }, 100);
-
-        }
-      } else if (status === 'error') {
-        // Handle error
-        console.error('OAuth error');
-      }
-
-      // Clean up URL
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, '', newUrl);
-    }
-  }, [searchParams, navigate]);
 
   const handleClose = () => {
     // Don't close during OAuth redirect

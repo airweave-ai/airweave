@@ -675,8 +675,8 @@ class TestOAuthCallbackRedirect:
     async def test_oauth_callback_without_redirect_url(
         self, api_client: httpx.AsyncClient, collection: Dict, config
     ):
-        """Test OAuth callback falls back to app URL when redirect_url is not provided."""
-        # Don't provide redirect_url, should default to None
+        """Test OAuth callback falls back to collection page when redirect_url is not provided."""
+        # Don't provide redirect_url, backend should default to the collection page
         payload = {
             "name": "Test OAuth No Redirect",
             "short_name": "notion",
@@ -689,9 +689,10 @@ class TestOAuthCallbackRedirect:
         response.raise_for_status()
         connection = response.json()
 
-        # When redirect_url is not provided, it should be None
-        # The callback endpoint will fall back to settings.app_url
-        assert connection["auth"]["redirect_url"] is None
+        # When redirect_url is not provided, backend computes a default pointing to the collection page
+        redirect_url = connection["auth"]["redirect_url"]
+        assert redirect_url is not None
+        assert redirect_url.endswith(f"/collections/{collection['readable_id']}")
 
         # Cleanup
         await api_client.delete(f"/source-connections/{connection['id']}")

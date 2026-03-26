@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from airweave.domains.converters.fakes.registry import FakeConverterRegistry
+from airweave.domains.embedders.exceptions import EmbedderProviderError
 from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProcessor
 
 _TEXT_BUILDER_CLS = (
@@ -415,3 +416,146 @@ class TestChunkEmbedProcessor:
             result = await processor.process([mock_entity], mock_sync_context, mock_runtime)
 
             assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# Dense embedding fallback tests
+# ---------------------------------------------------------------------------
+
+
+def _make_entity(entity_id: str, text: str = "Test content") -> MagicMock:
+    """Create a mock entity with the minimum fields for embedding tests."""
+    entity = MagicMock()
+    entity.entity_id = entity_id
+    entity.textual_representation = text
+    entity.airweave_system_metadata = MagicMock()
+    entity.airweave_system_metadata.dense_embedding = None
+    entity.airweave_system_metadata.sparse_embedding = None
+    entity.model_dump = MagicMock(return_value={"entity_id": entity_id})
+    return entity
+
+
+def _dense_result(dims: int = 3072) -> MagicMock:
+    """Create a mock dense embedding result."""
+    result = MagicMock()
+    result.vector = [0.1] * dims
+    return result
+
+
+class TestDenseEmbedFallback:
+    """Tests for the fallback-to-individual-embedding behavior."""
+
+    @pytest.mark.asyncio
+    async def test_non_retryable_error_falls_back_to_individual(
+        self, processor, mock_sync_context, mock_dense_embedder, mock_sparse_embedder
+    ):
+        """When batch embed raises a non-retryable EmbedderProviderError,
+        fall back to embedding one-by-one."""
+        e1 = _make_entity("good-1")
+        e2 = _make_entity("bad-1")
+
+        # First call (batch) fails, individual calls: good-1 succeeds, bad-1 fails
+        mock_dense_embedder.embed_many = AsyncMock(
+            side_effect=[
+                EmbedderProviderError("bad JSON", provider="openai", retryable=False),
+                [_dense_result()],  # good-1 individually
+                EmbedderProviderError("bad JSON", provider="openai", retryable=False),
+            ]
+        )
+        mock_sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
+
+        result = await processor._embed_entities([e1, e2], mock_sync_context)
+
+        assert len(result) == 1
+        assert result[0].entity_id == "good-1"
+        mock_sync_context.logger.warning.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_retryable_error_still_raises(
+        self, processor, mock_sync_context, mock_dense_embedder
+    ):
+        """Retryable errors (e.g. 500s) should NOT trigger fallback."""
+        e1 = _make_entity("test-1")
+        mock_dense_embedder.embed_many = AsyncMock(
+            side_effect=EmbedderProviderError("server error", provider="openai", retryable=True)
+        )
+
+        with pytest.raises(EmbedderProviderError, match="server error"):
+            await processor._embed_entities([e1], mock_sync_context)
+
+    @pytest.mark.asyncio
+    async def test_non_provider_error_still_raises(
+        self, processor, mock_sync_context, mock_dense_embedder
+    ):
+        """Non-EmbedderProviderError exceptions should NOT trigger fallback."""
+        e1 = _make_entity("test-1")
+        mock_dense_embedder.embed_many = AsyncMock(
+            side_effect=RuntimeError("unexpected")
+        )
+
+        with pytest.raises(RuntimeError, match="unexpected"):
+            await processor._embed_entities([e1], mock_sync_context)
+
+    @pytest.mark.asyncio
+    async def test_all_entities_fail_individually_returns_empty(
+        self, processor, mock_sync_context, mock_dense_embedder
+    ):
+        """When every entity fails during individual fallback, return empty list."""
+        e1 = _make_entity("bad-1")
+        e2 = _make_entity("bad-2")
+
+        mock_dense_embedder.embed_many = AsyncMock(
+            side_effect=EmbedderProviderError("bad JSON", provider="openai", retryable=False)
+        )
+
+        result = await processor._embed_entities([e1, e2], mock_sync_context)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_fallback_logs_skipped_entity_ids(
+        self, processor, mock_sync_context, mock_dense_embedder, mock_sparse_embedder
+    ):
+        """Skipped entities should be logged with their entity IDs."""
+        e1 = _make_entity("good-1")
+        e2 = _make_entity("bad-1")
+
+        mock_dense_embedder.embed_many = AsyncMock(
+            side_effect=[
+                EmbedderProviderError("bad JSON", provider="openai", retryable=False),
+                [_dense_result()],  # good-1
+                EmbedderProviderError("bad JSON", provider="openai", retryable=False),
+            ]
+        )
+        mock_sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
+
+        await processor._embed_entities([e1, e2], mock_sync_context)
+
+        # Check that warning logs mention the bad entity ID
+        warning_calls = mock_sync_context.logger.warning.call_args_list
+        all_warning_text = " ".join(
+            " ".join(str(a) for a in call.args) for call in warning_calls
+        )
+        assert "bad-1" in all_warning_text
+        assert "Skipping entity" in all_warning_text
+
+    @pytest.mark.asyncio
+    async def test_batch_success_does_not_trigger_fallback(
+        self, processor, mock_sync_context, mock_dense_embedder, mock_sparse_embedder
+    ):
+        """Happy path: batch embed succeeds, no fallback needed."""
+        e1 = _make_entity("ok-1")
+        e2 = _make_entity("ok-2")
+
+        mock_dense_embedder.embed_many = AsyncMock(
+            return_value=[_dense_result(), _dense_result()]
+        )
+        mock_sparse_embedder.embed_many = AsyncMock(
+            return_value=[MagicMock(), MagicMock()]
+        )
+
+        result = await processor._embed_entities([e1, e2], mock_sync_context)
+
+        assert len(result) == 2
+        # embed_many called exactly once (batch), not per-entity
+        assert mock_dense_embedder.embed_many.call_count == 1
