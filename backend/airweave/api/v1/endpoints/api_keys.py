@@ -1,5 +1,6 @@
 """API endpoints for managing API keys."""
 
+from typing import cast
 from uuid import UUID
 
 from fastapi import Body, Depends, Query
@@ -162,7 +163,7 @@ async def rotate_api_key(
     old_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
 
     # Capture attributes before create() expires the ORM instance
-    old_key_id = old_key.id
+    old_key_id = cast(UUID, old_key.id)
     old_key_encrypted = old_key.encrypted_key
     old_key_description = old_key.description
     original_days = (old_key.expiration_date - old_key.created_at).days
@@ -239,7 +240,7 @@ async def revoke_api_key(
     api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
 
     # Capture before revoke() commits and expires the ORM instance
-    api_key_id = api_key.id
+    api_key_id = cast(UUID, api_key.id)
     api_key_encrypted = api_key.encrypted_key
 
     revoked = await crud.api_key.revoke(db=db, api_key_id=api_key_id)
