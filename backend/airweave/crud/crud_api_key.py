@@ -6,11 +6,12 @@ import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional, cast
 from uuid import UUID
 
 from cryptography.fernet import InvalidToken
 from sqlalchemy import and_, delete, func, insert, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -365,7 +366,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
                 modified_at=now,
             )
         )
-        result = await db.execute(stmt)
+        result = cast(CursorResult[Any], await db.execute(stmt))
 
         if result.rowcount == 0:
             raise ConflictException("API key is not active (already revoked or expired)")
@@ -405,7 +406,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         """
         usage_buffer.enqueue(
             UsageEvent(
-                key_id=api_key_obj.id,
+                key_id=cast(UUID, api_key_obj.id),
                 organization_id=api_key_obj.organization_id,
                 ip_address=ip_address,
                 endpoint=endpoint,
@@ -561,7 +562,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
             )
             .values(status=ApiKeyStatus.EXPIRED.value, modified_at=now)
         )
-        result = await db.execute(stmt)
+        result = cast(CursorResult[Any], await db.execute(stmt))
         return result.rowcount
 
     async def prune_usage_log(
@@ -595,7 +596,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
             ).scalar_subquery()
 
             stmt = delete(APIKeyUsageLog).where(APIKeyUsageLog.id.in_(ids_subq))
-            result = await db.execute(stmt)
+            result = cast(CursorResult[Any], await db.execute(stmt))
             total_deleted += result.rowcount
             if result.rowcount < batch_size:
                 break
