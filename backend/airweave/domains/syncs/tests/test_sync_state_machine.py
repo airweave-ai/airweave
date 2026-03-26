@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from airweave.core.shared_models import SyncStatus
+from airweave.core.shared_models import SyncPauseReason, SyncStatus
 from airweave.domains.syncs.sync_state_machine import SyncStateMachine
 from airweave.domains.syncs.types import InvalidSyncTransitionError, SyncTransitionResult
 
@@ -321,3 +321,78 @@ async def test_transition_to_inactive_no_schedule_side_effects():
     assert result.applied is True
     schedule_svc.pause_schedules_for_sync.assert_not_awaited()
     schedule_svc.unpause_schedules_for_sync.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# pause_reason persistence
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pause_sets_pause_reason():
+    """Transitioning to PAUSED with pause_reason persists it on the sync object."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+
+    sm = _build_sm(sync_repo=sync_repo)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.sync_state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await sm.transition(
+            SYNC_ID,
+            SyncStatus.PAUSED,
+            _make_ctx(),
+            reason="usage limit",
+            pause_reason=SyncPauseReason.USAGE_EXHAUSTED,
+        )
+
+    assert sync_obj.pause_reason == SyncPauseReason.USAGE_EXHAUSTED.value
+
+
+@pytest.mark.asyncio
+async def test_unpause_clears_pause_reason():
+    """Transitioning to ACTIVE clears pause_reason."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.PAUSED)
+    sync_obj.pause_reason = SyncPauseReason.USAGE_EXHAUSTED.value
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+
+    sm = _build_sm(sync_repo=sync_repo)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.sync_state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await sm.transition(SYNC_ID, SyncStatus.ACTIVE, _make_ctx())
+
+    assert sync_obj.pause_reason is None
+
+
+@pytest.mark.asyncio
+async def test_pause_without_reason_sets_none():
+    """Transitioning to PAUSED without pause_reason sets None (backwards compat)."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+
+    sm = _build_sm(sync_repo=sync_repo)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.sync_state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await sm.transition(SYNC_ID, SyncStatus.PAUSED, _make_ctx(), reason="manual")
+
+    assert sync_obj.pause_reason is None

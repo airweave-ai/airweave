@@ -1,12 +1,14 @@
 """Sync repository wrapping crud.sync."""
 
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
+from airweave.core.shared_models import SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.syncs.protocols import SyncRepositoryProtocol
 from airweave.models.sync import Sync
@@ -46,3 +48,19 @@ class SyncRepository(SyncRepositoryProtocol):
     ) -> Sync:
         """Update an existing sync."""
         return await crud.sync.update(db=db, db_obj=db_obj, obj_in=obj_in, ctx=ctx, uow=uow)
+
+    async def get_paused_by_reason(
+        self,
+        db: AsyncSession,
+        organization_id: UUID,
+        pause_reason: str,
+    ) -> List[Sync]:
+        """Get all paused syncs for an org with a specific pause_reason."""
+        result = await db.execute(
+            select(Sync).where(
+                Sync.organization_id == organization_id,
+                Sync.status == SyncStatus.PAUSED.value,
+                Sync.pause_reason == pause_reason,
+            )
+        )
+        return list(result.scalars().all())

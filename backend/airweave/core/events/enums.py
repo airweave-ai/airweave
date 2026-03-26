@@ -66,6 +66,12 @@ class OrganizationEventType(str, Enum):
     MEMBER_REMOVED = "organization.member_removed"
 
 
+class BillingEventType(str, Enum):
+    """Billing lifecycle event types."""
+
+    PERIOD_CREATED = "billing.period_created"
+
+
 class SearchEventType(str, Enum):
     """Search event types (all tiers: instant, classic, agentic)."""
 
@@ -84,6 +90,7 @@ EventType = (
     | EntityEventType
     | QueryEventType
     | AccessControlEventType
+    | BillingEventType
     | CollectionEventType
     | SourceConnectionEventType
     | OrganizationEventType
@@ -97,6 +104,7 @@ ALL_EVENT_TYPE_ENUMS: tuple[type[Enum], ...] = (
     EntityEventType,
     QueryEventType,
     AccessControlEventType,
+    BillingEventType,
     CollectionEventType,
     SourceConnectionEventType,
     OrganizationEventType,
