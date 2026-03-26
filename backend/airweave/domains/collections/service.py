@@ -21,7 +21,7 @@ from airweave.domains.collections.protocols import (
 )
 from airweave.domains.embedders.protocols import DenseEmbedderRegistryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
-from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
+from airweave.domains.syncs.protocols import SyncServiceProtocol
 from airweave.models.collection import Collection
 from airweave.schemas.collection import SourceConnectionSummary
 
@@ -33,7 +33,7 @@ class CollectionService(CollectionServiceProtocol):
         self,
         collection_repo: CollectionRepositoryProtocol,
         sc_repo: SourceConnectionRepositoryProtocol,
-        sync_lifecycle: SyncLifecycleServiceProtocol,
+        sync_service: SyncServiceProtocol,
         event_bus: EventBus,
         settings: Settings,
         deployment_metadata_repo: VectorDbDeploymentMetadataRepositoryProtocol,
@@ -42,7 +42,7 @@ class CollectionService(CollectionServiceProtocol):
         """Initialize with injected dependencies."""
         self._collection_repo = collection_repo
         self._sc_repo = sc_repo
-        self._sync_lifecycle = sync_lifecycle
+        self._sync_service = sync_service
         self._event_bus = event_bus
         self._settings = settings
         self._deployment_metadata_repo = deployment_metadata_repo
@@ -191,7 +191,7 @@ class CollectionService(CollectionServiceProtocol):
         )
 
         # Cancel running workflows and wait for workers to stop
-        await self._sync_lifecycle.teardown_syncs_for_collection(
+        await self._sync_service.delete(
             db,
             sync_ids=sync_ids,
             collection_id=collection_id,

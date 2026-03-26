@@ -1,5 +1,6 @@
 """Sync job repository wrapping crud.sync_job."""
 
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -9,7 +10,7 @@ from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
 from airweave.models.sync_job import SyncJob
 from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
 
@@ -64,3 +65,18 @@ class SyncJobRepository(SyncJobRepositoryProtocol):
     ) -> SyncJob:
         """Update an existing sync job."""
         return await crud.sync_job.update(db=db, db_obj=db_obj, obj_in=obj_in, ctx=ctx)
+
+    async def get_stuck_jobs_by_status(
+        self,
+        db: AsyncSession,
+        status: List[str],
+        modified_before: Optional[datetime] = None,
+        started_before: Optional[datetime] = None,
+    ) -> List[SyncJob]:
+        """Get sync jobs stuck in specific statuses based on timestamps."""
+        return await crud.sync_job.get_stuck_jobs_by_status(
+            db=db,
+            status=status,
+            modified_before=modified_before,
+            started_before=started_before,
+        )

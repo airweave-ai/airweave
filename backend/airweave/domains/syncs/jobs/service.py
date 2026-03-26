@@ -14,8 +14,8 @@ from airweave.core.logging import logger
 from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncJobServiceProtocol
-from airweave.domains.syncs.types import StatsUpdate, TimestampUpdate
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol, SyncJobServiceProtocol
+from airweave.domains.syncs.jobs.types import StatsUpdate, TimestampUpdate
 
 
 class SyncJobService(SyncJobServiceProtocol):

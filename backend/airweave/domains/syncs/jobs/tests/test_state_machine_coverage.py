@@ -1,15 +1,14 @@
 """Coverage tests for SyncJobStateMachine — publish lifecycle edge cases."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
 
 from airweave.adapters.event_bus.fake import FakeEventBus
-from airweave.core.shared_models import SyncJobStatus
-from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
-from airweave.domains.syncs.state_machine import SyncJobStateMachine
-from airweave.domains.syncs.types import LifecycleData
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
+from airweave.domains.syncs.jobs.state_machine import SyncJobStateMachine
+from airweave.domains.syncs.jobs.types import LifecycleData
 
 ORG_ID = UUID("00000000-0000-0000-0000-000000000001")
 SYNC_ID = UUID("00000000-0000-0000-0000-000000000010")
@@ -33,14 +32,14 @@ def _make_lifecycle():
 
 @pytest.mark.unit
 async def test_publish_lifecycle_event_unknown_target():
-    """CANCELLING has no lifecycle event factory → returns immediately."""
+    """CREATED has no lifecycle event factory → returns immediately."""
     sm = SyncJobStateMachine(
         sync_job_repo=MagicMock(),
         event_bus=FakeEventBus(),
     )
 
     await sm._publish_lifecycle_event(
-        SyncJobStatus.CANCELLING, _make_lifecycle()
+        SyncJobStatus.CREATED, _make_lifecycle()
     )
 
 
@@ -76,3 +75,39 @@ async def test_publish_lifecycle_event_failed_with_error():
     )
 
     assert len(event_bus.events) == 1
+
+
+@pytest.mark.asyncio
+async def test_transition_failed_with_error_category():
+    """RUNNING → FAILED with error_category writes it to the update object."""
+    repo = MagicMock()
+    db_job = MagicMock()
+    db_job.id = SYNC_JOB_ID
+    db_job.status = SyncJobStatus.RUNNING.value
+    repo.get = AsyncMock(return_value=db_job)
+    repo.update = AsyncMock()
+
+    event_bus = FakeEventBus()
+    sm = SyncJobStateMachine(sync_job_repo=repo, event_bus=event_bus)
+    ctx = MagicMock()
+    ctx.organization = MagicMock()
+    ctx.organization.id = ORG_ID
+
+    with patch("airweave.domains.syncs.jobs.state_machine.get_db_context") as mock_ctx:
+        mock_db = AsyncMock()
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await sm.transition(
+            sync_job_id=SYNC_JOB_ID,
+            target=SyncJobStatus.FAILED,
+            ctx=ctx,
+            lifecycle_data=_make_lifecycle(),
+            error="cred expired",
+            error_category=SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,
+        )
+
+    assert result.applied is True
+    update_call = repo.update.call_args
+    update_obj = update_call.kwargs.get("obj_in") or update_call[0][2]
+    assert update_obj.error_category == SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED

@@ -92,13 +92,13 @@ from airweave.domains.sources.protocols import (
 from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
 from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
 from airweave.domains.syncs.cursors.service import SyncCursorService
-from airweave.domains.syncs.protocols import (
-    SyncCursorRepositoryProtocol,
+from airweave.domains.syncs.jobs.protocols import (
     SyncJobRepositoryProtocol,
     SyncJobServiceProtocol,
     SyncJobStateMachineProtocol,
-    SyncLifecycleServiceProtocol,
-    SyncRecordServiceProtocol,
+)
+from airweave.domains.syncs.protocols import (
+    SyncCursorRepositoryProtocol,
     SyncRepositoryProtocol,
     SyncServiceProtocol,
 )
@@ -200,14 +200,11 @@ class Container:
     # Sync domain
     sync_repo: SyncRepositoryProtocol
     sync_cursor_repo: SyncCursorRepositoryProtocol
-    # Sync cursor service — cursor CRUD operations
     sync_cursor_service: SyncCursorService
     sync_job_repo: SyncJobRepositoryProtocol
-    sync_record_service: SyncRecordServiceProtocol
     sync_job_service: SyncJobServiceProtocol
     sync_job_state_machine: SyncJobStateMachineProtocol
     sync_service: SyncServiceProtocol
-    sync_lifecycle: SyncLifecycleServiceProtocol
     sync_factory: SyncFactoryProtocol
 
     entity_repo: EntityRepositoryProtocol

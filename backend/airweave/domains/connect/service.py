@@ -22,7 +22,7 @@ from airweave.domains.oauth.protocols import OAuthCallbackServiceProtocol
 from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.domains.sources.protocols import SourceServiceProtocol
-from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
 from airweave.platform.auth.state import make_state
 from airweave.schemas.connect_session import (
     ConnectSessionContext,

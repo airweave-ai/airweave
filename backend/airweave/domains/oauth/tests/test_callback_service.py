@@ -25,7 +25,7 @@ from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.sources.exceptions import SourceNotFoundError, SourceValidationError
-from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
+from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
 from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.organization import Organization
@@ -120,10 +120,8 @@ def _service(
     response_builder=None,
     source_registry=None,
     source_lifecycle=None,
-    sync_lifecycle=None,
-    sync_record_service=None,
+    sync_service=None,
     temporal_workflow_service=None,
-    temporal_schedule_service=None,
     event_bus=None,
 ) -> OAuthCallbackService:
     return OAuthCallbackService(
@@ -132,10 +130,8 @@ def _service(
         response_builder=response_builder or AsyncMock(),
         source_registry=source_registry or MagicMock(),
         source_lifecycle=source_lifecycle or AsyncMock(),
-        sync_lifecycle=sync_lifecycle or AsyncMock(),
-        sync_record_service=sync_record_service or AsyncMock(),
+        sync_service=sync_service or AsyncMock(),
         temporal_workflow_service=temporal_workflow_service or AsyncMock(),
-        temporal_schedule_service=temporal_schedule_service or AsyncMock(),
         event_bus=event_bus or AsyncMock(),
         organization_repo=organization_repo or FakeOrganizationRepository(),
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
@@ -869,8 +865,8 @@ class TestCompleteConnectionCommon:
         svc._source_registry.get = MagicMock(
             return_value=SimpleNamespace(source_class_ref=SimpleNamespace(federated_search=True))
         )
-        svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
-        svc._sync_lifecycle.provision_sync = AsyncMock()
+        svc._sync_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
+        svc._sync_service.create = AsyncMock()
 
         from airweave.domains.oauth import callback_service as callback_module
 
@@ -916,7 +912,7 @@ class TestCompleteConnectionCommon:
         finally:
             monkeypatch.undo()
 
-        svc._sync_lifecycle.provision_sync.assert_not_awaited()
+        svc._sync_service.create.assert_not_awaited()
 
     async def test_claim_token_session_skips_mark_completed(self):
         svc = _service()
@@ -931,9 +927,9 @@ class TestCompleteConnectionCommon:
             return_value=SimpleNamespace(id=sc_id, connection_id=conn_id, sync_id=None)
         )
         svc._init_session_repo.mark_completed = AsyncMock()
-        svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
+        svc._sync_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
         sync_id = uuid4()
-        svc._sync_lifecycle.provision_sync = AsyncMock(
+        svc._sync_service.create = AsyncMock(
             return_value=SimpleNamespace(sync_id=sync_id)
         )
 
@@ -1000,9 +996,9 @@ class TestCompleteConnectionCommon:
         svc._source_registry.get = MagicMock(
             return_value=SimpleNamespace(source_class_ref=SimpleNamespace(federated_search=False))
         )
-        svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
+        svc._sync_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
         sync_id = uuid4()
-        svc._sync_lifecycle.provision_sync = AsyncMock(
+        svc._sync_service.create = AsyncMock(
             return_value=SimpleNamespace(sync_id=sync_id)
         )
 
@@ -1050,7 +1046,7 @@ class TestCompleteConnectionCommon:
         finally:
             monkeypatch.undo()
 
-        svc._sync_lifecycle.provision_sync.assert_awaited_once()
+        svc._sync_service.create.assert_awaited_once()
         svc._init_session_repo.mark_completed.assert_awaited_once()
 
 
@@ -2215,11 +2211,11 @@ class TestVerifyOAuthFlow:
         assert exc.value.status_code == 400
         assert "completed" in exc.value.detail.lower()
 
-    async def test_complete_connection_common_unpauses_schedules(self):
-        """_complete_connection_common calls unpause_schedules after commit."""
+    async def test_complete_connection_common_activates_sync(self):
+        """_complete_connection_common transitions sync to ACTIVE after commit."""
         from unittest.mock import patch
 
-        temporal_schedule_service = AsyncMock()
+        sync_service = AsyncMock()
         sc_repo = FakeSourceConnectionRepository()
         shell = _source_conn_shell()
         shell.connection_id = uuid4()
@@ -2227,7 +2223,7 @@ class TestVerifyOAuthFlow:
 
         svc = _service(
             sc_repo=sc_repo,
-            temporal_schedule_service=temporal_schedule_service,
+            sync_service=sync_service,
         )
         svc._validate_config = MagicMock(return_value={})
         collection = MagicMock()
@@ -2267,4 +2263,4 @@ class TestVerifyOAuthFlow:
                 has_claim_token=True,
             )
 
-        temporal_schedule_service.unpause_schedules_for_sync.assert_awaited_once()
+        sync_service.resume.assert_awaited_once()

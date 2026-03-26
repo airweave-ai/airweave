@@ -14,8 +14,8 @@ import pytest
 
 from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.sync_job_service import SyncJobService
-from airweave.domains.syncs.types import StatsUpdate, TimestampUpdate
+from airweave.domains.syncs.jobs.service import SyncJobService
+from airweave.domains.syncs.jobs.types import StatsUpdate, TimestampUpdate
 
 NOW = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -216,7 +216,7 @@ async def test_update_status(case: UpdateStatusCase):
     mock_ctx.organization = MagicMock()
     mock_ctx.organization.id = uuid4()
 
-    with patch("airweave.domains.syncs.sync_job_service.get_db_context") as mock_ctx_mgr:
+    with patch("airweave.domains.syncs.jobs.service.get_db_context") as mock_ctx_mgr:
         mock_ctx_mgr.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx_mgr.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -254,7 +254,7 @@ async def test_update_status_exception_swallowed():
     svc = SyncJobService(sync_job_repo=mock_repo)
 
     with patch(
-        "airweave.domains.syncs.sync_job_service.get_db_context",
+        "airweave.domains.syncs.jobs.service.get_db_context",
         side_effect=RuntimeError("DB down"),
     ):
         await svc.update_status(
@@ -262,3 +262,25 @@ async def test_update_status_exception_swallowed():
             status=SyncJobStatus.RUNNING,
             ctx=MagicMock(),
         )
+
+
+# ---------------------------------------------------------------------------
+# _build_timestamp_update — error_category branch
+# ---------------------------------------------------------------------------
+
+
+def test_build_timestamp_update_failed_with_error_category():
+    """FAILED status with error_category sets the field on the update."""
+    from airweave.core.shared_models import SourceConnectionErrorCategory
+
+    result = SyncJobService._build_timestamp_update(
+        SyncJobStatus.FAILED,
+        started_at=None,
+        completed_at=None,
+        failed_at=NOW,
+        error="cred expired",
+        error_category=SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,
+    )
+    assert result.failed_at == NOW
+    assert result.error == "cred expired"
+    assert result.error_category == SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED

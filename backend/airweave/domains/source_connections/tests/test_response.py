@@ -28,7 +28,7 @@ from airweave.domains.source_connections.response import ResponseBuilder
 from airweave.domains.source_connections.types import LastJobInfo, SourceConnectionStats
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.types import SourceRegistryEntry
-from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
+from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
 from airweave.platform.configs._base import Fields
 from airweave.schemas.entity_count import EntityCountWithDefinition
 from airweave.schemas.organization import Organization

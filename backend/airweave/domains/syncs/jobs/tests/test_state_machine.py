@@ -10,8 +10,8 @@ import pytest
 
 from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.state_machine import SyncJobStateMachine
-from airweave.domains.syncs.types import InvalidTransitionError, LifecycleData
+from airweave.domains.syncs.jobs.state_machine import SyncJobStateMachine
+from airweave.domains.syncs.jobs.types import InvalidTransitionError, LifecycleData
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -127,7 +127,7 @@ def sm() -> tuple[SyncJobStateMachine, MagicMock, AsyncMock]:
 
 
 @pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
+@patch("airweave.domains.syncs.jobs.state_machine.get_db_context")
 async def test_transition_happy_path(mock_db_ctx, sm):
     machine, repo, event_bus = sm
     db = AsyncMock()
@@ -154,7 +154,7 @@ async def test_transition_happy_path(mock_db_ctx, sm):
 
 
 @pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
+@patch("airweave.domains.syncs.jobs.state_machine.get_db_context")
 async def test_transition_idempotent(mock_db_ctx, sm):
     machine, repo, event_bus = sm
     db = AsyncMock()
@@ -179,7 +179,7 @@ async def test_transition_idempotent(mock_db_ctx, sm):
 
 
 @pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
+@patch("airweave.domains.syncs.jobs.state_machine.get_db_context")
 async def test_transition_invalid_raises(mock_db_ctx, sm):
     machine, repo, event_bus = sm
     db = AsyncMock()
@@ -199,7 +199,7 @@ async def test_transition_invalid_raises(mock_db_ctx, sm):
 
 
 @pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
+@patch("airweave.domains.syncs.jobs.state_machine.get_db_context")
 async def test_transition_not_found_raises(mock_db_ctx, sm):
     machine, repo, event_bus = sm
     db = AsyncMock()
@@ -220,7 +220,7 @@ async def test_transition_not_found_raises(mock_db_ctx, sm):
 
 
 @pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
+@patch("airweave.domains.syncs.jobs.state_machine.get_db_context")
 async def test_transition_no_event_without_lifecycle_data(mock_db_ctx, sm):
     machine, repo, event_bus = sm
     db = AsyncMock()
@@ -243,7 +243,7 @@ async def test_transition_no_event_without_lifecycle_data(mock_db_ctx, sm):
 
 
 @pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
+@patch("airweave.domains.syncs.jobs.state_machine.get_db_context")
 async def test_transition_failed_includes_error(mock_db_ctx, sm):
     machine, repo, event_bus = sm
     db = AsyncMock()
