@@ -37,7 +37,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         db: AsyncSession,
         id: UUID,
         ctx: BaseContext,
-    ) -> Optional[ModelType]:
+    ) -> ModelType:
         """Get organization resource.
 
         Args:
@@ -48,7 +48,11 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
 
         Returns:
         -------
-            Optional[ModelType]: The object with the given ID.
+            ModelType: The object with the given ID.
+
+        Raises:
+        ------
+            NotFoundException: If no matching object is found.
         """
         # Validate auth context has org access
 

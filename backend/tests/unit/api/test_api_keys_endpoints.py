@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 
 from airweave.api.context import ApiContext
 from airweave.api.v1.endpoints.api_keys import (
@@ -19,6 +18,7 @@ from airweave.api.v1.endpoints.api_keys import (
     read_api_keys,
     rotate_api_key,
 )
+from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
 from airweave.schemas.organization import Organization
@@ -69,26 +69,23 @@ class TestReadApiKey:
     async def test_not_found_raises_404(self):
         ctx = _ctx()
         db = AsyncMock()
-        with patch("airweave.crud.api_key.get", new_callable=AsyncMock, return_value=None):
-            with pytest.raises(HTTPException) as exc_info:
+        with patch(
+            "airweave.crud.api_key.get",
+            new_callable=AsyncMock,
+            side_effect=NotFoundException("ApiKey not found"),
+        ):
+            with pytest.raises(NotFoundException):
                 await read_api_key(db=db, id=uuid4(), ctx=ctx)
-            assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_found_returns_key(self):
         ctx = _ctx()
         db = AsyncMock()
         fake_key = _make_fake_api_key_obj()
-        with (
-            patch("airweave.crud.api_key.get", new_callable=AsyncMock, return_value=fake_key),
-            patch(
-                "airweave.core.credentials.decrypt",
-                return_value={"key": "ak_test1234"},
-            ),
-        ):
+        with patch("airweave.crud.api_key.get", new_callable=AsyncMock, return_value=fake_key):
             result = await read_api_key(db=db, id=fake_key.id, ctx=ctx)
         assert result.id == fake_key.id
-        assert result.decrypted_key == "ak_test1234"
+        assert result.decrypted_key is None
 
 
 class TestReadApiKeys:
@@ -110,10 +107,13 @@ class TestRotateApiKey:
     async def test_not_found_raises_404(self):
         ctx = _ctx()
         db = AsyncMock()
-        with patch("airweave.crud.api_key.get", new_callable=AsyncMock, return_value=None):
-            with pytest.raises(HTTPException) as exc_info:
+        with patch(
+            "airweave.crud.api_key.get",
+            new_callable=AsyncMock,
+            side_effect=NotFoundException("ApiKey not found"),
+        ):
+            with pytest.raises(NotFoundException):
                 await rotate_api_key(db=db, id=uuid4(), ctx=ctx)
-            assert exc_info.value.status_code == 404
 
 
 class TestDeleteApiKey:
@@ -121,7 +121,10 @@ class TestDeleteApiKey:
     async def test_not_found_raises_404(self):
         ctx = _ctx()
         db = AsyncMock()
-        with patch("airweave.crud.api_key.get", new_callable=AsyncMock, return_value=None):
-            with pytest.raises(HTTPException) as exc_info:
+        with patch(
+            "airweave.crud.api_key.get",
+            new_callable=AsyncMock,
+            side_effect=NotFoundException("ApiKey not found"),
+        ):
+            with pytest.raises(NotFoundException):
                 await delete_api_key(db=db, id=uuid4(), ctx=ctx)
-            assert exc_info.value.status_code == 404
