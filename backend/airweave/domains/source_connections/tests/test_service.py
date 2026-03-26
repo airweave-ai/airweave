@@ -605,6 +605,65 @@ async def test_cancel_job_wrong_sync_raises():
         )
 
 
+async def test_run_with_force_full_sync():
+    sc = _make_source_conn()
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(SC_ID, sc)
+
+    sync_svc = FakeSyncService()
+    sync_svc.set_trigger_run_result(_make_sync_schema(), _make_sync_job_schema())
+
+    svc = _build_run_service(sc_repo=sc_repo, sync_service=sync_svc)
+    svc._resolve_collection = AsyncMock(
+        return_value=MagicMock(id=uuid4(), name="Col", readable_id="col-x")
+    )
+    svc._resolve_connection = AsyncMock(return_value=MagicMock(short_name="github"))
+
+    result = await svc.run(AsyncMock(), id=SC_ID, ctx=_make_ctx(), force_full_sync=True)
+    assert result.id == JOB_ID
+    assert ("validate_force_full_sync", SYNC_ID) in sync_svc._calls
+
+
+async def test_resolve_collection_not_found():
+    sc = _make_source_conn()
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(SC_ID, sc)
+
+    col_repo = FakeCollectionRepository()
+    svc = _build_run_service(sc_repo=sc_repo, collection_repo=col_repo)
+
+    with pytest.raises(NotFoundException, match="Collection not found"):
+        await svc._resolve_collection(AsyncMock(), sc, _make_ctx())
+
+
+async def test_resolve_collection_no_readable_id():
+    sc = _make_source_conn(readable_collection_id=None)
+    svc = _build_run_service()
+
+    with pytest.raises(ValueError, match="has no readable_collection_id"):
+        await svc._resolve_collection(AsyncMock(), sc, _make_ctx())
+
+
+async def test_resolve_connection_not_found():
+    sc = _make_source_conn()
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(SC_ID, sc)
+
+    conn_repo = FakeConnectionRepository()
+    svc = _build_run_service(sc_repo=sc_repo, connection_repo=conn_repo)
+
+    with pytest.raises(ValueError, match="not found"):
+        await svc._resolve_connection(AsyncMock(), sc, _make_ctx())
+
+
+async def test_resolve_connection_no_connection_id():
+    sc = _make_source_conn(connection_id=None)
+    svc = _build_run_service()
+
+    with pytest.raises(ValueError, match="has no connection_id"):
+        await svc._resolve_connection(AsyncMock(), sc, _make_ctx())
+
+
 async def test_count_by_organization():
     sc_repo = FakeSourceConnectionRepository()
     svc = _build_run_service(sc_repo=sc_repo)
