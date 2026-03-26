@@ -8,7 +8,7 @@ const config = {
   singleQuote: true,
   trailingComma: 'all',
   plugins: ['prettier-plugin-tailwindcss'],
-  tailwindStylesheet: 'src/styles.css',
+  tailwindStylesheet: 'src/app/styles/index.css',
   tailwindFunctions: ['cn', 'cva'],
 };
 

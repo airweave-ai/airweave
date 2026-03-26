@@ -1,18 +1,46 @@
 import * as React from 'react';
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
-import { resetAuthBridgeSnapshot, setAuthBridgeSnapshot } from './auth-bridge';
-import type { AppState, User } from '@auth0/auth0-react';
+import { resetAuthStoreSnapshot, setAuthStoreSnapshot } from './auth-store';
+import type { AppState, User as AuthUser } from '@auth0/auth0-react';
 import { env } from '@/shared/config/env';
 
-export interface AuthState {
+interface AuthStateSharedFields {
   error: Error | null;
   getAccessToken: () => Promise<string | null>;
-  isAuthenticated: boolean;
-  isLoading: boolean;
   login: (returnTo?: string) => Promise<void>;
   logout: () => void;
-  user: User | null;
 }
+
+export type AuthLoadingState = AuthStateSharedFields & {
+  isAuthenticated: false;
+  isLoading: true;
+  status: 'loading';
+  user: null;
+};
+
+export type AuthUnauthenticatedState = AuthStateSharedFields & {
+  isAuthenticated: false;
+  isLoading: false;
+  status: 'unauthenticated';
+  user: null;
+};
+
+export type AuthAuthenticatedState = AuthStateSharedFields & {
+  isAuthenticated: true;
+  isLoading: false;
+  status: 'authenticated';
+  user: AuthUser;
+};
+
+export type AuthState =
+  | AuthLoadingState
+  | AuthUnauthenticatedState
+  | AuthAuthenticatedState;
+export type AuthResolvedState =
+  | AuthUnauthenticatedState
+  | AuthAuthenticatedState;
+
+export type { AuthUser };
 
 const AuthContext = React.createContext<AuthState | undefined>(undefined);
 
@@ -36,23 +64,94 @@ const disabledAuthState: AuthState = {
   isLoading: false,
   login: () => Promise.resolve(),
   logout: () => {},
+  status: 'authenticated',
   user: devUser,
 };
 
-function AuthBridgeSync({ value }: { value: AuthState }) {
-  React.useEffect(() => {
-    setAuthBridgeSnapshot({
-      getAccessToken: value.getAccessToken,
-      isAuthenticated: value.isAuthenticated,
-      isLoading: value.isLoading,
-    });
+function createAuthState({
+  error,
+  getAccessToken,
+  isAuthenticated,
+  isLoading,
+  login,
+  logout,
+  user,
+}: {
+  error: Error | null;
+  getAccessToken: () => Promise<string | null>;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (returnTo?: string) => Promise<void>;
+  logout: () => void;
+  user: AuthUser | undefined;
+}): AuthState {
+  const sharedFields: AuthStateSharedFields = {
+    error,
+    getAccessToken,
+    login,
+    logout,
+  };
+
+  if (isLoading) {
+    return {
+      ...sharedFields,
+      isAuthenticated: false,
+      isLoading: true,
+      status: 'loading',
+      user: null,
+    };
+  }
+
+  if (!isAuthenticated) {
+    return {
+      ...sharedFields,
+      isAuthenticated: false,
+      isLoading: false,
+      status: 'unauthenticated',
+      user: null,
+    };
+  }
+
+  if (!user) {
+    return {
+      ...sharedFields,
+      isAuthenticated: false,
+      isLoading: true,
+      status: 'loading',
+      user: null,
+    };
+  }
+
+  return {
+    ...sharedFields,
+    isAuthenticated: true,
+    isLoading: false,
+    status: 'authenticated',
+    user,
+  };
+}
+
+function AuthSnapshotReadyBoundary({
+  children,
+  value,
+}: React.PropsWithChildren<{ value: AuthState }>) {
+  const [isReady, setIsReady] = React.useState(false);
+
+  React.useLayoutEffect(() => {
+    setAuthStoreSnapshot(value);
+    setIsReady(true);
 
     return () => {
-      resetAuthBridgeSnapshot();
+      resetAuthStoreSnapshot();
+      setIsReady(false);
     };
   }, [value.getAccessToken, value.isAuthenticated, value.isLoading]);
 
-  return null;
+  if (!isReady) {
+    return null;
+  }
+
+  return children;
 }
 
 function StaticAuthProvider({
@@ -61,8 +160,9 @@ function StaticAuthProvider({
 }: React.PropsWithChildren<{ value: AuthState }>) {
   return (
     <AuthContext.Provider value={value}>
-      <AuthBridgeSync value={value} />
-      {children}
+      <AuthSnapshotReadyBoundary value={value}>
+        {children}
+      </AuthSnapshotReadyBoundary>
     </AuthContext.Provider>
   );
 }
@@ -77,6 +177,14 @@ function getReturnTo(returnTo?: string) {
   }
 
   return window.location.href;
+}
+
+function getAuthCallbackRedirectTarget(callbackPath: string, returnTo: string) {
+  const callbackUrl = new URL(callbackPath, window.location.origin);
+
+  callbackUrl.searchParams.set('redirect', returnTo);
+
+  return `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`;
 }
 
 function AuthStateProvider({ children }: React.PropsWithChildren) {
@@ -122,22 +230,24 @@ function AuthStateProvider({ children }: React.PropsWithChildren) {
   }, [auth0Logout]);
 
   const value = React.useMemo<AuthState>(
-    () => ({
-      error: error ?? null,
-      getAccessToken,
-      isAuthenticated,
-      isLoading,
-      login,
-      logout,
-      user: user ?? null,
-    }),
+    () =>
+      createAuthState({
+        error: error ?? null,
+        getAccessToken,
+        isAuthenticated,
+        isLoading,
+        login,
+        logout,
+        user: user ?? undefined,
+      }),
     [error, getAccessToken, isAuthenticated, isLoading, login, logout, user],
   );
 
   return (
     <AuthContext.Provider value={value}>
-      <AuthBridgeSync value={value} />
-      {children}
+      <AuthSnapshotReadyBoundary value={value}>
+        {children}
+      </AuthSnapshotReadyBoundary>
     </AuthContext.Provider>
   );
 }
@@ -164,9 +274,11 @@ export function AuthProvider({
 
   const onRedirectCallback = (appState?: AppState) => {
     const returnTo =
-      typeof appState?.returnTo === 'string' ? appState.returnTo : defaultReturnTo;
+      typeof appState?.returnTo === 'string'
+        ? appState.returnTo
+        : defaultReturnTo;
 
-    onRedirect(returnTo);
+    onRedirect(getAuthCallbackRedirectTarget(callbackPath, returnTo));
   };
 
   return (

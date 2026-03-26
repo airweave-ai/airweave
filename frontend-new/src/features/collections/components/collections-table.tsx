@@ -22,12 +22,17 @@ export function CollectionsTable() {
             <div>
               <p className="font-medium">{collection.name}</p>
               <p className="text-sm text-muted-foreground">
-                {collection.sourceCount} source{collection.sourceCount === 1 ? '' : 's'} connected
+                {collection.sourceCount} source
+                {collection.sourceCount === 1 ? '' : 's'} connected
               </p>
             </div>
             <div className="flex items-center gap-3 text-sm">
-              <span className="text-muted-foreground">{collection.updatedAt}</span>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusStyles[collection.status]}`}>
+              <span className="text-muted-foreground">
+                {collection.updatedAt}
+              </span>
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusStyles[collection.status]}`}
+              >
                 {collection.status}
               </span>
             </div>

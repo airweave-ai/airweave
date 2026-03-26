@@ -3,8 +3,13 @@ import { mockCollections } from '@/features/collections/model/mock-collections';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
 
 export function CollectionsSummaryCard() {
-  const syncedCollections = mockCollections.filter((collection) => collection.status === 'Synced');
-  const totalSources = mockCollections.reduce((sum, collection) => sum + collection.sourceCount, 0);
+  const syncedCollections = mockCollections.filter(
+    (collection) => collection.status === 'Synced',
+  );
+  const totalSources = mockCollections.reduce(
+    (sum, collection) => sum + collection.sourceCount,
+    0,
+  );
 
   return (
     <Card>
@@ -14,7 +19,9 @@ export function CollectionsSummaryCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <p className="text-3xl font-semibold tracking-tight">{mockCollections.length}</p>
+          <p className="text-3xl font-semibold tracking-tight">
+            {mockCollections.length}
+          </p>
           <p className="text-sm text-muted-foreground">
             {syncedCollections.length} synced and searchable now.
           </p>

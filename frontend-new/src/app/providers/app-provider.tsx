@@ -13,7 +13,7 @@ export function AppProvider({ children }: PropsWithChildren) {
     <TooltipProvider>
       <QueryClientProvider>
         <AuthProvider
-          callbackPath="/auth/callback"
+          callbackPath="/callback"
           defaultReturnTo="/"
           onRedirect={navigateAfterAuth}
         >
