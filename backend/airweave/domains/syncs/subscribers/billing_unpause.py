@@ -1,8 +1,6 @@
 """Unpause usage-exhausted syncs when a new billing period is created."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, List
+from typing import List
 
 from sqlalchemy import select
 
@@ -13,13 +11,10 @@ from airweave.core.events.billing import BillingPeriodCreatedEvent
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncPauseReason, SyncStatus
 from airweave.db.session import get_db_context
+from airweave.domains.syncs.protocols import SyncStateMachineProtocol
 from airweave.models.organization import Organization
 from airweave.models.sync import Sync
 from airweave.schemas.billing_period import BillingPeriodStatus
-
-if TYPE_CHECKING:
-    from airweave.core.protocols.event_bus import EventSubscriber
-    from airweave.domains.syncs.protocols import SyncStateMachineProtocol
 
 
 class BillingUnpauseSubscriber:
