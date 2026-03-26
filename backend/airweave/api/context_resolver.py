@@ -137,10 +137,10 @@ class ContextResolver:
         x_api_key: Optional[str],
         request: Request,
     ) -> AuthResult:
-        if not settings.AUTH_ENABLED:
-            return await self._authenticate_system(db)
         if x_api_key:
             return await self._authenticate_api_key(db, x_api_key, request)
+        if not settings.AUTH_ENABLED:
+            return await self._authenticate_system(db)
         if auth0_user:
             return await self._authenticate_auth0(db, auth0_user)
         raise HTTPException(status_code=401, detail="No valid authentication provided")
