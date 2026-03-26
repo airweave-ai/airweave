@@ -1,4 +1,4 @@
-"""Test authentication priority: system > API key > Auth0."""
+"""Test authentication priority: API key > system > Auth0."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,29 +28,29 @@ def _fake_request() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_system_auth_beats_api_key_when_auth_disabled():
-    """When AUTH_ENABLED=False, system auth wins even if an API key is present."""
+async def test_api_key_beats_system_auth_when_auth_disabled():
+    """When AUTH_ENABLED=False, API key auth wins if a key is present."""
     resolver = _make_resolver()
     db = AsyncMock()
     request = _fake_request()
 
-    system_result = AuthResult(method=AuthMethod.SYSTEM, metadata={"disabled_auth": True})
+    api_key_result = AuthResult(method=AuthMethod.API_KEY, api_key_org_id="org-1")
 
     with (
         patch("airweave.api.context_resolver.settings") as mock_settings,
         patch.object(
-            resolver, "_authenticate_system", new_callable=AsyncMock, return_value=system_result
+            resolver, "_authenticate_system", new_callable=AsyncMock
         ) as mock_system,
         patch.object(
-            resolver, "_authenticate_api_key", new_callable=AsyncMock
+            resolver, "_authenticate_api_key", new_callable=AsyncMock, return_value=api_key_result
         ) as mock_api_key,
     ):
         mock_settings.AUTH_ENABLED = False
         result = await resolver._authenticate(db, None, "ak_test_secret", request)
 
-    mock_system.assert_awaited_once_with(db)
-    mock_api_key.assert_not_awaited()
-    assert result.method == AuthMethod.SYSTEM
+    mock_api_key.assert_awaited_once_with(db, "ak_test_secret", request)
+    mock_system.assert_not_awaited()
+    assert result.method == AuthMethod.API_KEY
 
 
 @pytest.mark.asyncio
