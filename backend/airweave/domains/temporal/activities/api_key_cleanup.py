@@ -46,19 +46,19 @@ class CleanupRevokedKeysActivity:
                         await db.flush()
                         deleted += 1
                     except Exception as e:
-                        logger.error(
-                            "Failed to delete revoked key",
+                        logger.with_context(
                             key_id=str(key.id),
                             error=str(e),
-                            exc_info=True,
-                        )
+                        ).error("Failed to delete revoked key", exc_info=True)
                         errors += 1
                 await db.commit()
         except Exception as e:
-            logger.error("Revoked key cleanup failed", error=str(e), exc_info=True)
+            logger.with_context(error=str(e)).error("Revoked key cleanup failed", exc_info=True)
             raise
 
-        logger.info("Revoked API key cleanup complete", deleted_count=deleted, error_count=errors)
+        logger.with_context(deleted_count=deleted, error_count=errors).info(
+            "Revoked API key cleanup complete"
+        )
         return {"deleted": deleted, "errors": errors}
 
 
@@ -82,10 +82,10 @@ class ExpirePastDueKeysActivity:
                 count = await self.api_key_repo.expire_past_due_keys(db)
                 await db.commit()
         except Exception as e:
-            logger.error("Past-due key expiration failed", error=str(e), exc_info=True)
+            logger.with_context(error=str(e)).error("Past-due key expiration failed", exc_info=True)
             raise
 
-        logger.info("Past-due API key expiration complete", expired_count=count)
+        logger.with_context(expired_count=count).info("Past-due API key expiration complete")
         return {"expired": count}
 
 
@@ -109,8 +109,8 @@ class PruneUsageLogActivity:
                 count = await self.api_key_repo.prune_usage_log(db, max_age_days=90)
                 await db.commit()
         except Exception as e:
-            logger.error("Usage log pruning failed", error=str(e), exc_info=True)
+            logger.with_context(error=str(e)).error("Usage log pruning failed", exc_info=True)
             raise
 
-        logger.info("Usage log pruning complete", deleted_count=count)
+        logger.with_context(deleted_count=count).info("Usage log pruning complete")
         return {"pruned": count}
