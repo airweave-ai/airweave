@@ -1,0 +1,1 @@
+export { AuthCallbackPage } from './page';
