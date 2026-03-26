@@ -1,7 +1,17 @@
 import { Plus, Search } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/shared/ui/input-group';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/shared/ui/card';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/shared/ui/input-group';
 import { PageShell } from '@/shared/ui/page-shell';
 
 export function DashboardPage() {
@@ -13,7 +23,9 @@ export function DashboardPage() {
       <Card>
         <CardHeader>
           <CardTitle>Collections</CardTitle>
-          <CardDescription>Search your synced knowledge and create a new collection.</CardDescription>
+          <CardDescription>
+            Search your synced knowledge and create a new collection.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">
           <InputGroup className="md:max-w-md">

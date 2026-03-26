@@ -15,7 +15,14 @@ export default [
         {
           patterns: [
             {
-              group: ['@/app', '@/app/*', '@/features', '@/features/*', '@/routes', '@/routes/*'],
+              group: [
+                '@/app',
+                '@/app/*',
+                '@/features',
+                '@/features/*',
+                '@/routes',
+                '@/routes/*',
+              ],
               message: 'shared must not depend on app, features, or routes.',
             },
           ],

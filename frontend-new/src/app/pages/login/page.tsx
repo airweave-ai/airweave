@@ -1,7 +1,13 @@
 import { LogIn, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/shared/auth';
 import { Button } from '@/shared/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/shared/ui/card';
 
 type LoginPageProps = {
   redirect?: string;
@@ -20,7 +26,8 @@ export function LoginPage({ redirect }: LoginPageProps) {
           <div className="space-y-1">
             <CardTitle className="text-2xl">Sign in to Airweave</CardTitle>
             <CardDescription>
-              Keep TanStack file routes declarative and page UI inside `src/app/pages/login`.
+              Keep TanStack file routes declarative and page UI inside
+              `src/app/pages/login`.
             </CardDescription>
           </div>
         </CardHeader>

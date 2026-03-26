@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
-import type { AuthState } from '@/shared/auth';
+import type { AuthResolvedState } from '@/shared/auth';
 
 export interface RouterContext {
-  auth: AuthState;
+  auth: AuthResolvedState;
   queryClient: QueryClient;
 }

@@ -7,7 +7,11 @@ export function AppRouter() {
   const auth = useAuth();
 
   if (auth.isLoading) {
-    return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        Loading...
+      </div>
+    );
   }
 
   return <RouterProvider context={{ auth, queryClient }} router={router} />;
