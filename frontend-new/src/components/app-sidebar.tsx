@@ -72,7 +72,7 @@ function SidebarIconFrame({ children }: { children: ReactNode }) {
 function UserAvatar() {
   return (
     <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-stone-200 via-stone-400 to-stone-700 text-[11px] font-semibold text-white">
-      MJ
+      AU
     </span>
   );
 }
