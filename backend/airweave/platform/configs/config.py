@@ -368,7 +368,22 @@ class GoogleSlidesConfig(SourceConfig):
 class HubspotConfig(SourceConfig):
     """Hubspot configuration schema."""
 
-    pass
+    after_date: Optional[str] = Field(
+        default=None,
+        title="After Date",
+        description=(
+            "Only sync records created or modified after this date (format: YYYY-MM-DD). "
+            "Useful for large CRM instances where you only need recent data."
+        ),
+    )
+
+    @field_validator("after_date")
+    @classmethod
+    def validate_after_date(cls, value):
+        """Validate date format."""
+        if not value:
+            return value
+        return value.replace("/", "-")
 
 
 class SliteConfig(SourceConfig):

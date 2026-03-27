@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
@@ -22,6 +23,7 @@ from airweave.platform.entities.hubspot import (
     HubspotContactEntity,
     HubspotDealEntity,
     HubspotTicketEntity,
+    parse_hubspot_datetime,
 )
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
@@ -71,6 +73,10 @@ class HubspotSource(BaseSource):
         instance = cls(auth=auth, logger=logger, http_client=http_client)
         instance._property_cache: Dict[str, List[str]] = {}
         instance._portal_id: Optional[str] = None
+        instance._after_date: Optional[datetime] = None
+        if config.after_date:
+            instance._after_date = datetime.fromisoformat(config.after_date)
+            logger.info(f"HubSpot: filtering to records modified after {config.after_date}")
         return instance
 
     @retry(
@@ -251,6 +257,24 @@ class HubspotSource(BaseSource):
             self.logger.warning("Failed to fetch HubSpot portal ID: %s", exc)
         return self._portal_id
 
+    def _is_after_cutoff(self, data: Dict[str, Any]) -> bool:
+        """Check if a record's updatedAt is after the configured after_date cutoff.
+
+        Returns True if the record should be included (no cutoff or after cutoff).
+        """
+        if self._after_date is None:
+            return True
+        updated_at = data.get("updatedAt") or data.get("createdAt")
+        if not updated_at:
+            return True
+        parsed = parse_hubspot_datetime(updated_at)
+        if parsed is None:
+            return True
+        # Strip timezone for comparison (after_date is naive)
+        if parsed.tzinfo is not None:
+            parsed = parsed.replace(tzinfo=None)
+        return parsed >= self._after_date
+
     def _build_record_url(self, object_type: str, object_id: str) -> Optional[str]:
         """Build a HubSpot UI URL for the given object."""
         if not self._portal_id:
@@ -297,6 +321,8 @@ class HubspotSource(BaseSource):
             )
 
             for contact in data.get("results", []):
+                if not self._is_after_cutoff(contact):
+                    continue
                 raw_properties = contact.get("properties", {})
                 cleaned_properties = self._clean_properties(raw_properties)
                 yield HubspotContactEntity.from_api(
@@ -343,6 +369,8 @@ class HubspotSource(BaseSource):
             )
 
             for company in data.get("results", []):
+                if not self._is_after_cutoff(company):
+                    continue
                 raw_properties = company.get("properties", {})
                 cleaned_properties = self._clean_properties(raw_properties)
                 yield HubspotCompanyEntity.from_api(
@@ -382,6 +410,8 @@ class HubspotSource(BaseSource):
             )
 
             for deal in data.get("results", []):
+                if not self._is_after_cutoff(deal):
+                    continue
                 raw_properties = deal.get("properties", {})
                 cleaned_properties = self._clean_properties(raw_properties)
                 yield HubspotDealEntity.from_api(
@@ -428,6 +458,8 @@ class HubspotSource(BaseSource):
             )
 
             for ticket in data.get("results", []):
+                if not self._is_after_cutoff(ticket):
+                    continue
                 raw_properties = ticket.get("properties", {})
                 cleaned_properties = self._clean_properties(raw_properties)
                 yield HubspotTicketEntity.from_api(
