@@ -2121,7 +2121,16 @@
           "query"
         ],
         "title": "AgenticSearchRequest",
-        "description": "Agentic search request \u2014 full agent loop with tool calling."
+        "description": "Agentic search request \u2014 full agent loop with tool calling.",
+        "examples": [
+          {
+            "query": "find all deployment-related docs from last month",
+            "thinking": true
+          },
+          {
+            "query": "what authentication methods do we support?"
+          }
+        ]
       },
       "AuthProviderAuthentication": {
         "properties": {
@@ -2343,7 +2352,16 @@
           "query"
         ],
         "title": "ClassicSearchRequest",
-        "description": "Classic search request \u2014 LLM generates a search plan, execute against Vespa."
+        "description": "Classic search request \u2014 LLM generates a search plan, execute against Vespa.",
+        "examples": [
+          {
+            "limit": 10,
+            "query": "quarterly revenue report"
+          },
+          {
+            "query": "find the onboarding documentation"
+          }
+        ]
       },
       "Collection": {
         "properties": {
@@ -2662,6 +2680,20 @@
             "type": "boolean",
             "title": "Is Secret",
             "default": false
+          },
+          "enum_values": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enum Values"
           }
         },
         "type": "object",
@@ -2979,6 +3011,7 @@
         "enum": [
           "sync.pending",
           "sync.running",
+          "sync.cancelling",
           "sync.completed",
           "sync.failed",
           "sync.cancelled",
@@ -3220,7 +3253,17 @@
           "query"
         ],
         "title": "InstantSearchRequest",
-        "description": "Instant search request \u2014 embed query, fire at Vespa, return results."
+        "description": "Instant search request \u2014 embed query, fire at Vespa, return results.",
+        "examples": [
+          {
+            "limit": 10,
+            "query": "How do I reset my password?",
+            "retrieval_strategy": "hybrid"
+          },
+          {
+            "query": "quarterly revenue report"
+          }
+        ]
       },
       "NotFoundErrorResponse": {
         "properties": {
@@ -4290,6 +4333,53 @@
             ],
             "description": "Summary of synced entities by type"
           },
+          "error_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceConnectionErrorCategory"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Error category when status is needs_reauth (e.g. oauth_credentials_expired)"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Human-readable error message when status is needs_reauth"
+          },
+          "provider_settings_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Settings Url",
+            "description": "URL to the auth provider's settings dashboard (for auth_provider errors)"
+          },
+          "provider_short_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Short Name",
+            "description": "Auth provider short_name (e.g. 'composio', 'pipedream') for display"
+          },
           "federated_search": {
             "type": "boolean",
             "title": "Federated Search",
@@ -4525,6 +4615,17 @@
           }
         ]
       },
+      "SourceConnectionErrorCategory": {
+        "type": "string",
+        "enum": [
+          "oauth_credentials_expired",
+          "api_key_invalid",
+          "auth_provider_account_gone",
+          "auth_provider_credentials_invalid"
+        ],
+        "title": "SourceConnectionErrorCategory",
+        "description": "Error categories for credential/auth failures on source connections."
+      },
       "SourceConnectionJob": {
         "properties": {
           "id": {
@@ -4626,6 +4727,17 @@
             ],
             "title": "Error",
             "description": "Error message if the job failed"
+          },
+          "error_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceConnectionErrorCategory"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Error category for credential errors (e.g. oauth_credentials_expired)"
           },
           "error_details": {
             "anyOf": [
@@ -4769,6 +4881,7 @@
           "pending_auth",
           "syncing",
           "error",
+          "needs_reauth",
           "inactive",
           "pending_sync"
         ],
@@ -5030,6 +5143,16 @@
               }
             ],
             "title": "Error"
+          },
+          "error_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceConnectionErrorCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
