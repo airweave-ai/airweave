@@ -82,6 +82,14 @@ from .confluence import (
     ConfluenceTaskEntity,
     ConfluenceWhiteboardEntity,
 )
+from .creatio import (
+    CreatioAccountEntity,
+    CreatioCampaignEntity,
+    CreatioContactEntity,
+    CreatioLeadEntity,
+    CreatioOpportunityEntity,
+    CreatioOrderEntity,
+)
 from .ctti import CTTIWebEntity
 from .document360 import (
     Document360ArticleEntity,
@@ -428,6 +436,10 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ConfluenceSpaceEntity,
         ConfluenceTaskEntity,
         ConfluenceWhiteboardEntity,
+    ],
+    "creatio": [
+        CreatioAccountEntity,
+        CreatioContactEntity,
     ],
     "ctti": [
         CTTIWebEntity,
