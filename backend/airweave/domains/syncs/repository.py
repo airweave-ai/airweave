@@ -40,10 +40,10 @@ class SyncRepository(SyncRepositoryProtocol):
 
         Raises OptimisticLockError if the status changed since read.
         """
-        result = await db.execute(
+        cursor = await db.execute(
             update(Sync).where(Sync.id == sync_id, Sync.status == expected).values(status=target)
         )
-        if result.rowcount == 0:
+        if cursor.rowcount == 0:  # type: ignore[union-attr]
             raise OptimisticLockError(sync_id, expected)
 
     async def create(

@@ -129,6 +129,8 @@ from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.jobs.repository import SyncJobRepository
 from airweave.domains.syncs.jobs.service import SyncJobService
 from airweave.domains.syncs.jobs.state_machine import SyncJobStateMachine
+from airweave.domains.syncs.lifecycle_service import SyncLifecycleService
+from airweave.domains.syncs.record_service import SyncRecordService
 from airweave.domains.syncs.repository import SyncRepository
 from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.state_machine import SyncStateMachine
@@ -399,24 +401,41 @@ def create_container(settings: Settings) -> Container:
     )
 
     sync_service = SyncService(
+        state_machine=sync_deps["sync_job_state_machine"],
+        sync_factory=sync_factory,
+        sync_state_machine=sync_deps["sync_state_machine"],
+    )
+
+    sync_record_service = SyncRecordService(
         sync_repo=source_deps["sync_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
+        connection_repo=source_deps["conn_repo"],
+    )
+
+    sync_lifecycle = SyncLifecycleService(
+        sc_repo=source_deps["sc_repo"],
+        collection_repo=source_deps["collection_repo"],
+        connection_repo=source_deps["conn_repo"],
         sync_cursor_repo=sync_deps["sync_cursor_repo"],
-        state_machine=sync_deps["sync_state_machine"],
-        job_state_machine=sync_deps["sync_job_state_machine"],
+        sync_service=sync_record_service,
+        state_machine=sync_deps["sync_job_state_machine"],
+        sync_job_repo=source_deps["sync_job_repo"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
-        sync_factory=sync_factory,
+        response_builder=sync_deps["response_builder"],
+        event_bus=event_bus,
     )
 
     # -----------------------------------------------------------------
-    # Source connection sub-services (need sync_service)
+    # Source connection sub-services
     # -----------------------------------------------------------------
     deletion_service = SourceConnectionDeletionService(
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+        sync_lifecycle=sync_lifecycle,
         response_builder=sync_deps["response_builder"],
-        sync_service=sync_service,
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
     )
     update_service = SourceConnectionUpdateService(
         sc_repo=source_deps["sc_repo"],
@@ -424,12 +443,13 @@ def create_container(settings: Settings) -> Container:
         connection_repo=source_deps["conn_repo"],
         cred_repo=source_deps["cred_repo"],
         sync_repo=source_deps["sync_repo"],
-        sync_service=sync_service,
+        sync_record_service=sync_record_service,
         source_service=source_deps["source_service"],
         source_validation=source_validation,
         credential_encryptor=encryptor,
         response_builder=sync_deps["response_builder"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
+        sync_state_machine=sync_deps["sync_state_machine"],
     )
     create_service = SourceConnectionCreationService(
         sc_repo=source_deps["sc_repo"],
@@ -439,7 +459,8 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
         source_validation=source_validation,
         source_lifecycle=source_deps["source_lifecycle_service"],
-        sync_service=sync_service,
+        sync_lifecycle=sync_lifecycle,
+        sync_record_service=sync_record_service,
         response_builder=sync_deps["response_builder"],
         oauth_flow_service=oauth_flow_svc,
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
@@ -455,9 +476,7 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],
         response_builder=sync_deps["response_builder"],
-        sync_service=sync_service,
-        temporal_workflow_service=sync_deps["temporal_workflow_service"],
-        event_bus=event_bus,
+        sync_lifecycle=sync_lifecycle,
         create_service=create_service,
         update_service=update_service,
         deletion_service=deletion_service,
@@ -597,6 +616,8 @@ def create_container(settings: Settings) -> Container:
         sync_job_service=sync_deps["sync_job_service"],
         sync_job_state_machine=sync_deps["sync_job_state_machine"],
         sync_service=sync_service,
+        sync_record_service=sync_record_service,
+        sync_lifecycle=sync_lifecycle,
         sync_factory=sync_factory,
         entity_repo=sync_deps["entity_repo"],
         access_broker=access_broker,

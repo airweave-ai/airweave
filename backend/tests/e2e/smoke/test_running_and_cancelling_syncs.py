@@ -8,14 +8,17 @@ Uses the TimedSource (internal source with precise timing control) to
 eliminate external service dependencies and make timing deterministic.
 """
 
-import pytest
-import httpx
 import asyncio
 import time
 import uuid
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
 
-VALID_SYNC_JOB_STATUSES = {"created", "pending", "running", "completed", "failed", "cancelling", "cancelled"}
+import httpx
+import pytest
+
+VALID_SYNC_JOB_STATUSES = {
+    "created", "pending", "running", "completed", "failed", "cancelling", "cancelled",
+}
 VALID_SOURCE_CONNECTION_STATUSES = {
     "active", "pending_auth", "syncing", "error", "needs_reauth", "inactive", "pending_sync",
 }
@@ -158,7 +161,7 @@ class TestRunningAndCancellingSyncs:
         conn_id = timed_source_connection_medium["id"]
 
         # Start and wait for it to be running
-        job = await self._run_and_wait_for_running(api_client, conn_id)
+        await self._run_and_wait_for_running(api_client, conn_id)
 
         # Try to start second sync - should fail
         response = await api_client.post(f"/source-connections/{conn_id}/run")

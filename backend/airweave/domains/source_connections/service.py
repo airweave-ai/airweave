@@ -189,6 +189,10 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
             raise NotFoundException("No sync found for this source connection")
         return {"sync_id": str(source_connection.sync_id)}
 
+    async def count_by_organization(self, db: AsyncSession, organization_id: UUID) -> int:
+        """Count source connections belonging to an organization."""
+        return await self.sc_repo.count_by_organization(db, organization_id)
+
     async def get_redirect_url(self, db: AsyncSession, *, code: str) -> str:
         """Resolve a short redirect code to its final OAuth authorization URL.
 
