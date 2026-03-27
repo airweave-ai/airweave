@@ -457,9 +457,11 @@ def _make_sync_job_schema(*, sync_id: UUID = SYNC_ID, job_id: UUID = JOB_ID):
     job.started_at = None
     job.completed_at = None
     job.error = None
+    job.error_category = None
     job.entities_inserted = 0
     job.entities_updated = 0
     job.entities_deleted = 0
+    job.entities_skipped = 0
     return job
 
 
