@@ -6,6 +6,7 @@ from typing import Dict, Optional
 
 from airweave.domains.converters._base import BaseTextConverter, OcrConverterAdapter
 from airweave.domains.converters.code import CodeConverter
+from airweave.domains.converters.doc import DocConverter
 from airweave.domains.converters.docx import DocxConverter
 from airweave.domains.converters.html import HtmlConverter
 from airweave.domains.converters.pdf import PdfConverter
@@ -26,6 +27,7 @@ class ConverterRegistry(ConverterRegistryProtocol):
     def __init__(self, ocr_provider: Optional[OcrProvider] = None) -> None:
         """Build all converter instances and the extension mapping."""
         pdf = PdfConverter(ocr_provider=ocr_provider)
+        doc = DocConverter(ocr_provider=ocr_provider)
         docx = DocxConverter(ocr_provider=ocr_provider)
         pptx = PptxConverter(ocr_provider=ocr_provider)
         html = HtmlConverter()
@@ -37,6 +39,7 @@ class ConverterRegistry(ConverterRegistryProtocol):
         self._extension_map: Dict[str, BaseTextConverter] = {
             # Documents — text extraction + OCR fallback
             ".pdf": pdf,
+            ".doc": doc,
             ".docx": docx,
             ".pptx": pptx,
             # Spreadsheets

@@ -8,6 +8,7 @@ Single source of truth for supported file types across downloader and pipeline.
 SUPPORTED_FILE_EXTENSIONS = {
     # Documents (Mistral OCR)
     ".pdf",
+    ".doc",
     ".docx",
     ".pptx",
     # Images (Mistral OCR)

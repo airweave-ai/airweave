@@ -65,6 +65,22 @@ services:
       timeout: 10s
       retries: 5
     restart: on-failure
+  temporal-init:
+    container_name: airweave-temporal-init
+    image: temporalio/admin-tools:1.27.2-tctl-1.18.2-cli-1.3.0
+    depends_on:
+      temporal:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        temporal operator search-attribute create \
+          --name SyncId --type Keyword \
+          --namespace default \
+          --address temporal:7233 || true
+        echo "SyncId search attribute registered"
+    restart: "no"
+
   temporal-ui:
     container_name: airweave-temporal-ui
     image: temporalio/ui:2.26.2
