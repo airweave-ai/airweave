@@ -1,7 +1,8 @@
 """Sync state machine — validates transitions, writes DB, manages Temporal schedules.
 
 Single entry point for all sync status changes. Enforces the transition graph,
-updates the DB, and applies schedule side effects (pause/unpause) after commit.
+updates the DB with optimistic locking, and applies schedule side effects
+(pause/unpause/delete) after commit.
 
 Idempotent: re-writing the current status is a no-op (no DB write, no side effects).
 """
@@ -11,12 +12,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
+from temporalio.service import RPCError
+
 from airweave.core.context import BaseContext
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncStatus
 from airweave.db.session import get_db_context
 from airweave.domains.syncs.protocols import SyncRepositoryProtocol, SyncStateMachineProtocol
-from airweave.domains.syncs.types import InvalidSyncTransitionError, SyncTransitionResult
+from airweave.domains.syncs.types import (
+    InvalidSyncTransitionError,
+    SyncTransitionResult,
+)
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 
 # ---------------------------------------------------------------------------
@@ -43,6 +49,9 @@ class SyncStateMachine(SyncStateMachineProtocol):
     Idempotent: if the sync is already in the target state, returns
     ``SyncTransitionResult(applied=False)`` without touching DB or schedules.
 
+    Uses optimistic locking: the UPDATE only succeeds if the status hasn't
+    changed between the read and write.
+
     Dependencies:
         sync_repo: Read current status + persist updates
         temporal_schedule_service: Pause/unpause Temporal schedules after commit
@@ -61,8 +70,9 @@ class SyncStateMachine(SyncStateMachineProtocol):
     ) -> SyncTransitionResult:
         """Execute a validated, idempotent sync status transition.
 
-        1. Read + validate + write inside a single DB transaction.
-        2. Apply schedule side effects after the commit succeeds.
+        1. Read + validate inside a DB transaction.
+        2. Conditional UPDATE with optimistic lock (WHERE status = current).
+        3. Apply schedule side effects after the commit succeeds.
         """
         async with get_db_context() as db:
             sync_obj = await self.sync_repo.get_without_connections(db, sync_id, ctx)
@@ -77,7 +87,7 @@ class SyncStateMachine(SyncStateMachineProtocol):
 
             self._validate_transition(current, target, sync_id)
 
-            sync_obj.status = target
+            await self.sync_repo.transition_status(db, sync_id, current, target)
             await db.commit()
 
         logger.info(f"Sync {sync_id}: {current.value} → {target.value}")
@@ -107,7 +117,7 @@ class SyncStateMachine(SyncStateMachineProtocol):
         target: SyncStatus,
         reason: str,
     ) -> None:
-        """Pause or unpause Temporal schedules based on the target state."""
+        """Pause, unpause, or clean up Temporal schedules based on the target state."""
         try:
             if target == SyncStatus.PAUSED:
                 await self.temporal_schedule_service.pause_schedules_for_sync(
@@ -115,5 +125,9 @@ class SyncStateMachine(SyncStateMachineProtocol):
                 )
             elif target == SyncStatus.ACTIVE:
                 await self.temporal_schedule_service.unpause_schedules_for_sync(sync_id)
-        except Exception as e:
+            elif target == SyncStatus.INACTIVE:
+                await self.temporal_schedule_service.pause_schedules_for_sync(
+                    sync_id, reason=reason or "Sync deactivated"
+                )
+        except (RPCError, OSError) as e:
             logger.warning(f"Schedule side effect failed for sync {sync_id}: {e}")

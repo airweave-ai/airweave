@@ -5,13 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
+from temporalio.service import RPCError
 
 from airweave.core.shared_models import SyncStatus
 from airweave.domains.syncs.sync_state_machine import SyncStateMachine
-from airweave.domains.syncs.types import InvalidSyncTransitionError, SyncTransitionResult
+from airweave.domains.syncs.types import (
+    InvalidSyncTransitionError,
+    OptimisticLockError,
+    SyncTransitionResult,
+)
 
 ORG_ID = uuid4()
 SYNC_ID = uuid4()
@@ -34,8 +39,11 @@ def _build_sm(
     sync_repo: Optional[AsyncMock] = None,
     schedule_svc: Optional[AsyncMock] = None,
 ) -> SyncStateMachine:
+    repo = sync_repo or AsyncMock()
+    if sync_repo is None:
+        repo.transition_status = AsyncMock(return_value=None)
     return SyncStateMachine(
-        sync_repo=sync_repo or AsyncMock(),
+        sync_repo=repo,
         temporal_schedule_service=schedule_svc or AsyncMock(),
     )
 
@@ -96,10 +104,11 @@ def test_validate_transition_without_sync_id():
 
 @pytest.mark.asyncio
 async def test_transition_active_to_paused():
-    """Successful transition writes DB and pauses schedules."""
+    """Successful transition delegates to repo and pauses schedules."""
     sync_repo = AsyncMock()
     sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
     sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
 
     schedule_svc = AsyncMock()
 
@@ -117,7 +126,9 @@ async def test_transition_active_to_paused():
     assert result == SyncTransitionResult(
         applied=True, previous=SyncStatus.ACTIVE, current=SyncStatus.PAUSED
     )
-    assert sync_obj.status == SyncStatus.PAUSED
+    sync_repo.transition_status.assert_awaited_once_with(
+        mock_db, SYNC_ID, SyncStatus.ACTIVE, SyncStatus.PAUSED
+    )
     mock_db.commit.assert_awaited_once()
     schedule_svc.pause_schedules_for_sync.assert_awaited_once_with(
         SYNC_ID, reason="cred error"
@@ -126,10 +137,11 @@ async def test_transition_active_to_paused():
 
 @pytest.mark.asyncio
 async def test_transition_paused_to_active_unpauses():
-    """PAUSED → ACTIVE triggers unpause_schedules_for_sync."""
+    """PAUSED -> ACTIVE triggers unpause_schedules_for_sync."""
     sync_repo = AsyncMock()
     sync_obj = _make_sync_obj(SyncStatus.PAUSED)
     sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
 
     schedule_svc = AsyncMock()
 
@@ -178,6 +190,7 @@ async def test_transition_idempotent_skip():
     assert result == SyncTransitionResult(
         applied=False, previous=SyncStatus.ACTIVE, current=SyncStatus.ACTIVE
     )
+    sync_repo.transition_status.assert_not_awaited()
     mock_db.commit.assert_not_awaited()
     schedule_svc.pause_schedules_for_sync.assert_not_awaited()
     schedule_svc.unpause_schedules_for_sync.assert_not_awaited()
@@ -230,23 +243,27 @@ async def test_transition_invalid_raises():
         with pytest.raises(InvalidSyncTransitionError):
             await sm.transition(SYNC_ID, SyncStatus.INACTIVE, _make_ctx())
 
+    sync_repo.transition_status.assert_not_awaited()
     mock_db.commit.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
-# Side effect failure is non-fatal
+# Side effect failure (RPCError/OSError) is non-fatal
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_side_effect_failure_is_non_fatal():
-    """Schedule service failure is logged but doesn't raise."""
+async def test_side_effect_rpc_error_is_non_fatal():
+    """RPCError from Temporal is logged but doesn't raise."""
     sync_repo = AsyncMock()
     sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
     sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
 
     schedule_svc = AsyncMock()
-    schedule_svc.pause_schedules_for_sync = AsyncMock(side_effect=RuntimeError("RPC down"))
+    schedule_svc.pause_schedules_for_sync = AsyncMock(
+        side_effect=OSError("connection refused")
+    )
 
     sm = _build_sm(sync_repo=sync_repo, schedule_svc=schedule_svc)
 
@@ -263,6 +280,32 @@ async def test_side_effect_failure_is_non_fatal():
     mock_db.commit.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_side_effect_unexpected_error_propagates():
+    """Non-network errors from schedule service are NOT swallowed."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
+
+    schedule_svc = AsyncMock()
+    schedule_svc.pause_schedules_for_sync = AsyncMock(
+        side_effect=RuntimeError("programming bug")
+    )
+
+    sm = _build_sm(sync_repo=sync_repo, schedule_svc=schedule_svc)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.sync_state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(RuntimeError, match="programming bug"):
+            await sm.transition(SYNC_ID, SyncStatus.PAUSED, _make_ctx())
+
+
 # ---------------------------------------------------------------------------
 # _apply_side_effects — default reason
 # ---------------------------------------------------------------------------
@@ -274,6 +317,7 @@ async def test_pause_uses_default_reason():
     sync_repo = AsyncMock()
     sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
     sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
 
     schedule_svc = AsyncMock()
 
@@ -294,16 +338,17 @@ async def test_pause_uses_default_reason():
 
 
 # ---------------------------------------------------------------------------
-# Transitions to non-pause/active states have no schedule side effects
+# ACTIVE -> INACTIVE pauses schedules to prevent orphaned schedule accumulation
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_transition_to_inactive_no_schedule_side_effects():
-    """ACTIVE → INACTIVE doesn't pause or unpause schedules."""
+async def test_transition_to_inactive_pauses_schedules():
+    """ACTIVE -> INACTIVE pauses schedules with deactivation reason."""
     sync_repo = AsyncMock()
     sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
     sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
 
     schedule_svc = AsyncMock()
 
@@ -319,5 +364,82 @@ async def test_transition_to_inactive_no_schedule_side_effects():
         result = await sm.transition(SYNC_ID, SyncStatus.INACTIVE, _make_ctx())
 
     assert result.applied is True
-    schedule_svc.pause_schedules_for_sync.assert_not_awaited()
+    schedule_svc.pause_schedules_for_sync.assert_awaited_once_with(
+        SYNC_ID, reason="Sync deactivated"
+    )
     schedule_svc.unpause_schedules_for_sync.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Optimistic locking — concurrent modification detected
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transition_optimistic_lock_failure():
+    """OptimisticLockError raised when repo detects concurrent modification."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock(
+        side_effect=OptimisticLockError(SYNC_ID, SyncStatus.ACTIVE)
+    )
+
+    sm = _build_sm(sync_repo=sync_repo)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.sync_state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(OptimisticLockError) as exc_info:
+            await sm.transition(SYNC_ID, SyncStatus.PAUSED, _make_ctx())
+
+    assert exc_info.value.sync_id == SYNC_ID
+    assert exc_info.value.expected == SyncStatus.ACTIVE
+    mock_db.commit.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# SyncStatus enum deserialization — DB string → enum roundtrip
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("member", list(SyncStatus), ids=lambda m: m.value)
+def test_sync_status_from_string_value(member: SyncStatus):
+    """Every SyncStatus member roundtrips from its DB string representation."""
+    assert SyncStatus(member.value) is member
+
+
+@pytest.mark.parametrize("member", list(SyncStatus), ids=lambda m: m.value)
+def test_sync_status_string_equality(member: SyncStatus):
+    """SyncStatus members compare equal to their string value (str enum)."""
+    assert member == member.value
+    assert member.value == member
+
+
+def test_sync_status_rejects_unknown_value():
+    """Unknown string raises ValueError — guards against DB/enum drift."""
+    with pytest.raises(ValueError):
+        SyncStatus("deleted")
+
+
+@pytest.mark.parametrize("member", list(SyncStatus), ids=lambda m: m.value)
+def test_sync_status_pydantic_coercion(member: SyncStatus):
+    """Pydantic schema correctly coerces a raw string to SyncStatus."""
+    from airweave.schemas.sync import SyncWithoutConnections
+
+    data = SyncWithoutConnections.model_validate(
+        {
+            "name": "test",
+            "status": member.value,
+            "id": str(SYNC_ID),
+            "organization_id": str(ORG_ID),
+            "created_at": "2025-01-01T00:00:00",
+            "modified_at": "2025-01-01T00:00:00",
+        }
+    )
+    assert data.status is member
+    assert isinstance(data.status, SyncStatus)

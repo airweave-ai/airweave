@@ -4,10 +4,11 @@ from uuid import UUID
 
 from airweave.core.context import BaseContext
 from airweave.core.shared_models import SyncStatus
+from airweave.domains.syncs.protocols import SyncStateMachineProtocol
 from airweave.domains.syncs.types import SyncTransitionResult
 
 
-class FakeSyncStateMachine:
+class FakeSyncStateMachine(SyncStateMachineProtocol):
     """In-memory fake for SyncStateMachineProtocol."""
 
     def __init__(self) -> None:

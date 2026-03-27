@@ -51,6 +51,7 @@ from airweave.domains.syncs.protocols import (
     SyncRepositoryProtocol,
     SyncStateMachineProtocol,
 )
+from airweave.domains.syncs.types import InvalidSyncTransitionError, OptimisticLockError
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.collection import Collection
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
@@ -580,7 +581,7 @@ class OAuthCallbackService:
                         ctx=ctx,
                         reason="OAuth re-auth completed",
                     )
-                except Exception:
+                except (InvalidSyncTransitionError, OptimisticLockError, ValueError):
                     logger.warning("Failed to activate sync after OAuth re-auth", exc_info=True)
 
         return source_conn

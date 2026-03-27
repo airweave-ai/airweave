@@ -18,7 +18,8 @@ from airweave.adapters.encryption.fake import FakeCredentialEncryptor
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import logger
-from airweave.core.shared_models import AuthMethod
+from airweave.core.shared_models import AuthMethod, SyncStatus
+from airweave.domains.syncs.types import InvalidSyncTransitionError
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.credentials.fakes.repository import (
@@ -551,7 +552,9 @@ async def test_credential_update_unpause_failure_is_nonfatal():
     validation.seed_auth_result("github", _AuthPayload(token="secret"))
 
     state_machine = AsyncMock()
-    state_machine.transition.side_effect = OSError("temporal down")
+    state_machine.transition.side_effect = InvalidSyncTransitionError(
+        SyncStatus.ACTIVE, SyncStatus.ACTIVE
+    )
 
     svc = _build_service(
         sc_repo=sc_repo,

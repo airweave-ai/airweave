@@ -1,9 +1,8 @@
 """Value objects for the syncs domain."""
 
+from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
-
-from dataclasses import dataclass
 
 from airweave import schemas
 from airweave.core.shared_models import SyncStatus
@@ -27,6 +26,19 @@ class InvalidSyncTransitionError(Exception):
         self.sync_id = sync_id
         suffix = f" for sync {sync_id}" if sync_id else ""
         super().__init__(f"Invalid sync transition {current.value} → {target.value}{suffix}")
+
+
+class OptimisticLockError(RuntimeError):
+    """Raised when a concurrent transition changed the status between read and write."""
+
+    def __init__(self, sync_id: UUID, expected: SyncStatus) -> None:
+        """Initialize with the sync ID and the expected status that was stale."""
+        super().__init__(
+            f"Optimistic lock failed for sync {sync_id}: "
+            f"status changed from {expected.value} since read"
+        )
+        self.sync_id = sync_id
+        self.expected = expected
 
 
 @dataclass(frozen=True)

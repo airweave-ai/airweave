@@ -34,6 +34,19 @@ class SyncRepositoryProtocol(Protocol):
         """Get a sync by ID without connections."""
         ...
 
+    async def transition_status(
+        self,
+        db: AsyncSession,
+        sync_id: UUID,
+        expected: SyncStatus,
+        target: SyncStatus,
+    ) -> None:
+        """Optimistic status update: SET status=target WHERE id=sync_id AND status=expected.
+
+        Raises OptimisticLockError if the status changed since read.
+        """
+        ...
+
     async def create(
         self,
         db: AsyncSession,

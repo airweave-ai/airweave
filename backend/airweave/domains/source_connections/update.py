@@ -31,6 +31,7 @@ from airweave.domains.syncs.protocols import (
     SyncRepositoryProtocol,
     SyncStateMachineProtocol,
 )
+from airweave.domains.syncs.types import InvalidSyncTransitionError, OptimisticLockError
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
@@ -139,7 +140,7 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                             ctx=ctx,
                             reason="Credential update completed",
                         )
-                    except Exception:
+                    except (InvalidSyncTransitionError, OptimisticLockError, ValueError):
                         ctx.logger.warning(
                             "Failed to activate sync after credential update", exc_info=True
                         )
