@@ -12,7 +12,7 @@ from airweave.domains.collections.fakes.repository import FakeCollectionReposito
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
-from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
+from airweave.domains.syncs.fakes.repository import FakeSyncRepository
 from airweave.domains.temporal.activities.create_sync_job import CreateSyncJobActivity
 
 from .conftest import ORG_ID, SYNC_ID, make_ctx_dict

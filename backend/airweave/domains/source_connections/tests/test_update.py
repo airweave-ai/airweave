@@ -32,8 +32,8 @@ from airweave.domains.source_connections.fakes.response import FakeResponseBuild
 from airweave.domains.source_connections.update import SourceConnectionUpdateService
 from airweave.domains.sources.fakes.service import FakeSourceService
 from airweave.domains.sources.fakes.validation import FakeSourceValidationService
-from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
-from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
+from airweave.domains.syncs.fakes.record_service import FakeSyncRecordService
+from airweave.domains.syncs.fakes.repository import FakeSyncRepository
 from airweave.domains.temporal.fakes.schedule_service import FakeTemporalScheduleService
 from airweave.models.collection import Collection
 from airweave.models.connection import Connection

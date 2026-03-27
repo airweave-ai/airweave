@@ -25,7 +25,7 @@ from airweave.domains.source_connections.fakes.repository import (
 )
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
 from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
-from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
+from airweave.domains.syncs.fakes.lifecycle_service import FakeSyncLifecycleService
 from airweave.domains.temporal.fakes.service import FakeTemporalWorkflowService
 from airweave.models.collection import Collection
 from airweave.models.source_connection import SourceConnection

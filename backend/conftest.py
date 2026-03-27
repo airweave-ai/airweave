@@ -324,7 +324,7 @@ def fake_temporal_schedule_service():
 @pytest.fixture
 def fake_sync_repo():
     """Fake SyncRepository."""
-    from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
+    from airweave.domains.syncs.fakes.repository import FakeSyncRepository
 
     return FakeSyncRepository()
 
@@ -332,7 +332,7 @@ def fake_sync_repo():
 @pytest.fixture
 def fake_sync_cursor_repo():
     """Fake SyncCursorRepository."""
-    from airweave.domains.syncs.fakes.sync_cursor_repository import FakeSyncCursorRepository
+    from airweave.domains.syncs.fakes.cursor_repository import FakeSyncCursorRepository
 
     return FakeSyncCursorRepository()
 
@@ -377,7 +377,7 @@ def fake_billing_service():
 @pytest.fixture
 def fake_sync_record_service():
     """Fake SyncRecordService."""
-    from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
+    from airweave.domains.syncs.fakes.record_service import FakeSyncRecordService
 
     return FakeSyncRecordService()
 
@@ -401,7 +401,7 @@ def fake_sync_job_state_machine() -> MagicMock:
 @pytest.fixture
 def fake_sync_service():
     """Fake SyncService."""
-    from airweave.domains.syncs.fakes.sync_service import FakeSyncService
+    from airweave.domains.syncs.fakes.service import FakeSyncService
 
     return FakeSyncService()
 
@@ -409,7 +409,7 @@ def fake_sync_service():
 @pytest.fixture
 def fake_sync_lifecycle():
     """Fake SyncLifecycleService."""
-    from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
+    from airweave.domains.syncs.fakes.lifecycle_service import FakeSyncLifecycleService
 
     return FakeSyncLifecycleService()
 
@@ -417,7 +417,7 @@ def fake_sync_lifecycle():
 @pytest.fixture
 def fake_sync_state_machine():
     """Fake SyncStateMachine."""
-    from airweave.domains.syncs.fakes.sync_state_machine import FakeSyncStateMachine
+    from airweave.domains.syncs.fakes.state_machine import FakeSyncStateMachine
 
     return FakeSyncStateMachine()
 

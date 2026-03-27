@@ -11,7 +11,7 @@ import pytest
 from temporalio.service import RPCError
 
 from airweave.core.shared_models import SyncStatus
-from airweave.domains.syncs.sync_state_machine import SyncStateMachine
+from airweave.domains.syncs.state_machine import SyncStateMachine
 from airweave.domains.syncs.types import (
     InvalidSyncTransitionError,
     OptimisticLockError,
@@ -116,7 +116,7 @@ async def test_transition_active_to_paused():
 
     mock_db = AsyncMock()
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -149,7 +149,7 @@ async def test_transition_paused_to_active_unpauses():
 
     mock_db = AsyncMock()
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -180,7 +180,7 @@ async def test_transition_idempotent_skip():
 
     mock_db = AsyncMock()
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -210,7 +210,7 @@ async def test_transition_sync_not_found():
     sm = _build_sm(sync_repo=sync_repo)
 
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -235,7 +235,7 @@ async def test_transition_invalid_raises():
 
     mock_db = AsyncMock()
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -269,7 +269,7 @@ async def test_side_effect_rpc_error_is_non_fatal():
 
     mock_db = AsyncMock()
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -297,7 +297,7 @@ async def test_side_effect_unexpected_error_propagates():
 
     mock_db = AsyncMock()
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -325,7 +325,7 @@ async def test_pause_uses_default_reason():
 
     mock_db = AsyncMock()
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -356,7 +356,7 @@ async def test_transition_to_inactive_pauses_schedules():
 
     mock_db = AsyncMock()
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -389,7 +389,7 @@ async def test_transition_optimistic_lock_failure():
 
     mock_db = AsyncMock()
     with patch(
-        "airweave.domains.syncs.sync_state_machine.get_db_context"
+        "airweave.domains.syncs.state_machine.get_db_context"
     ) as mock_ctx:
         mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)

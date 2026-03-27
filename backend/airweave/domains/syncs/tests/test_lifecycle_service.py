@@ -24,10 +24,10 @@ from airweave.domains.source_connections.fakes.repository import (
 )
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
 from airweave.domains.sources.types import SourceRegistryEntry
-from airweave.domains.syncs.fakes.sync_cursor_repository import FakeSyncCursorRepository
+from airweave.domains.syncs.fakes.cursor_repository import FakeSyncCursorRepository
 from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
-from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
-from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
+from airweave.domains.syncs.fakes.record_service import FakeSyncRecordService
+from airweave.domains.syncs.lifecycle_service import SyncLifecycleService
 from airweave.domains.syncs.types import CONTINUOUS_SOURCE_DEFAULT_CRON, SyncProvisionResult
 from airweave.domains.temporal.fakes.schedule_service import FakeTemporalScheduleService
 from airweave.domains.temporal.fakes.service import FakeTemporalWorkflowService
@@ -367,7 +367,7 @@ async def test_run_force_full_sync_happy_path():
         event_bus=event_bus,
     )
 
-    _mod = "airweave.domains.syncs.sync_lifecycle_service.schemas"
+    _mod = "airweave.domains.syncs.lifecycle_service.schemas"
     with (
         patch(f"{_mod}.Collection.model_validate", return_value=mock_collection_schema),
         patch(f"{_mod}.Connection.model_validate", return_value=mock_connection_schema),
@@ -424,7 +424,7 @@ async def test_run_happy_path():
         event_bus=event_bus,
     )
 
-    _mod = "airweave.domains.syncs.sync_lifecycle_service.schemas"
+    _mod = "airweave.domains.syncs.lifecycle_service.schemas"
     with (
         patch(f"{_mod}.Collection.model_validate", return_value=mock_collection_schema),
         patch(f"{_mod}.Connection.model_validate", return_value=mock_connection_schema),
@@ -630,7 +630,7 @@ async def test_cancel_job_happy_path():
     expected_result = MagicMock()
     mock_sj_schema.to_source_connection_job.return_value = expected_result
 
-    _mod = "airweave.domains.syncs.sync_lifecycle_service.schemas"
+    _mod = "airweave.domains.syncs.lifecycle_service.schemas"
     with patch(f"{_mod}.SyncJob.model_validate", return_value=mock_sj_schema):
         result = await svc.cancel_job(
             db_mock, source_connection_id=SC_ID, job_id=JOB_ID, ctx=_ctx()
@@ -673,7 +673,7 @@ async def test_cancel_job_workflow_not_found():
     mock_sj_schema = MagicMock()
     mock_sj_schema.to_source_connection_job.return_value = MagicMock()
 
-    _mod = "airweave.domains.syncs.sync_lifecycle_service.schemas"
+    _mod = "airweave.domains.syncs.lifecycle_service.schemas"
     with patch(f"{_mod}.SyncJob.model_validate", return_value=mock_sj_schema):
         await svc.cancel_job(db_mock, source_connection_id=SC_ID, job_id=JOB_ID, ctx=_ctx())
 
