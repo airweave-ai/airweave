@@ -620,6 +620,7 @@ def create_container(settings: Settings) -> Container:
         sync_service=sync_service,
         sync_record_service=sync_record_service,
         sync_lifecycle=sync_lifecycle,
+        sync_state_machine=sync_deps["sync_state_machine"],
         sync_factory=sync_factory,
         entity_repo=sync_deps["entity_repo"],
         access_broker=access_broker,
