@@ -125,14 +125,14 @@ class TestPublishAclHeartbeat:
 
 
 # ===========================================================================
-# _handle_sync_failure — credential error classification + schedule pause
+# _handle_expected_sync_exit_and_pause — expected operational failures
 # ===========================================================================
 
 
-class TestHandleSyncFailure:
+class TestHandleExpectedSyncExitAndPause:
     @pytest.mark.asyncio
-    async def test_credential_error_writes_error_category_and_pauses(self):
-        """Auth error -> error_category on transition + pause_schedules called."""
+    async def test_auth_error_logs_warning_and_pauses(self):
+        """Auth error -> warning log, error_category on transition, schedule paused."""
         from airweave.core.shared_models import SourceConnectionErrorCategory
         from airweave.domains.sources.exceptions import SourceAuthError
         from airweave.domains.sources.token_providers.protocol import AuthProviderKind
@@ -159,8 +159,13 @@ class TestHandleSyncFailure:
         with patch(
             "airweave.domains.sync_pipeline.orchestrator.business_events"
         ):
-            await orc._handle_sync_failure(exc)
+            await orc._handle_expected_sync_exit_and_pause(exc)
 
+        # Logs at WARNING, not ERROR
+        ctx.logger.warning.assert_called()
+        ctx.logger.error.assert_not_called()
+
+        # Transitions to FAILED with error category
         state_machine.transition.assert_awaited_once()
         call_kwargs = state_machine.transition.call_args.kwargs
         assert (
@@ -169,6 +174,7 @@ class TestHandleSyncFailure:
         )
         assert call_kwargs["target"] == SyncJobStatus.FAILED
 
+        # Pauses schedules
         temporal_schedule_service.pause_schedules_for_sync.assert_awaited_once()
         pause_args = (
             temporal_schedule_service.pause_schedules_for_sync.call_args
@@ -176,8 +182,10 @@ class TestHandleSyncFailure:
         assert pause_args[0][0] == ctx.sync.id
 
     @pytest.mark.asyncio
-    async def test_non_credential_error_no_category_no_pause(self):
-        """Non-auth error -> error_category=None, no pause."""
+    async def test_usage_limit_logs_warning_and_pauses(self):
+        """Usage limit error -> warning log, schedule paused."""
+        from airweave.domains.usage.exceptions import UsageLimitExceededError
+
         state_machine = AsyncMock()
         temporal_schedule_service = AsyncMock()
 
@@ -190,19 +198,25 @@ class TestHandleSyncFailure:
             temporal_schedule_service=temporal_schedule_service,
         )
 
+        exc = UsageLimitExceededError(
+            action_type="entities",
+            limit=50000,
+            current_usage=50014,
+        )
+
         with patch(
             "airweave.domains.sync_pipeline.orchestrator.business_events"
         ):
-            await orc._handle_sync_failure(RuntimeError("network timeout"))
+            await orc._handle_expected_sync_exit_and_pause(exc)
 
-        call_kwargs = state_machine.transition.call_args.kwargs
-        assert call_kwargs["error_category"] is None
+        ctx.logger.warning.assert_called()
+        ctx.logger.error.assert_not_called()
 
-        temporal_schedule_service.pause_schedules_for_sync.assert_not_awaited()
+        temporal_schedule_service.pause_schedules_for_sync.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_pause_failure_is_nonfatal(self):
-        """If pause_schedules raises OSError, failure handler still completes."""
+        """If pause_schedules raises OSError, handler still completes."""
         from airweave.domains.sources.exceptions import SourceAuthError
         from airweave.domains.sources.token_providers.protocol import AuthProviderKind
 
@@ -231,7 +245,45 @@ class TestHandleSyncFailure:
         with patch(
             "airweave.domains.sync_pipeline.orchestrator.business_events"
         ):
-            await orc._handle_sync_failure(exc)
+            await orc._handle_expected_sync_exit_and_pause(exc)
 
         state_machine.transition.assert_awaited_once()
         ctx.logger.warning.assert_called()
+
+
+# ===========================================================================
+# _handle_sync_failure — unexpected system failures only
+# ===========================================================================
+
+
+class TestHandleSyncFailure:
+    @pytest.mark.asyncio
+    async def test_unexpected_failure_logs_error_no_pause(self):
+        """Unexpected error -> error log, no schedule pause."""
+        state_machine = AsyncMock()
+        temporal_schedule_service = AsyncMock()
+
+        ctx = _make_sync_context()
+        ctx.sync_job.started_at = None
+
+        orc = _make_orchestrator(
+            sync_context=ctx,
+            state_machine=state_machine,
+            temporal_schedule_service=temporal_schedule_service,
+        )
+
+        with patch(
+            "airweave.domains.sync_pipeline.orchestrator.business_events"
+        ):
+            await orc._handle_sync_failure(RuntimeError("network timeout"))
+
+        # Logs at ERROR
+        ctx.logger.error.assert_called()
+
+        # Transitions to FAILED with no error category
+        call_kwargs = state_machine.transition.call_args.kwargs
+        assert call_kwargs["error_category"] is None
+        assert call_kwargs["target"] == SyncJobStatus.FAILED
+
+        # Does NOT pause schedules
+        temporal_schedule_service.pause_schedules_for_sync.assert_not_awaited()
