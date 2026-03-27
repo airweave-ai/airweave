@@ -23,10 +23,10 @@ MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 # Character mapping for Word control codes
 _CHAR_MAP = {
-    0x0D: "\n",   # Paragraph mark
-    0x07: "\t",   # Cell/row mark (tables)
+    0x0D: "\n",  # Paragraph mark
+    0x07: "\t",  # Cell/row mark (tables)
     0x0C: "\n\n",  # Page break
-    0x0B: "\n",   # Vertical tab / soft return
+    0x0B: "\n",  # Vertical tab / soft return
 }
 
 
@@ -47,9 +47,7 @@ def _parse_fib(word_stream: bytes) -> Optional[Tuple[int, int, bool]]:
 
     wIdent = struct.unpack_from("<H", word_stream, 0)[0]
     if wIdent not in (0xA5DC, 0xA5EC):
-        logger.debug(
-            f"DOC: unexpected FIB wIdent=0x{wIdent:04X}, not a valid Word document"
-        )
+        logger.debug(f"DOC: unexpected FIB wIdent=0x{wIdent:04X}, not a valid Word document")
         return None
 
     flags_a = struct.unpack_from("<H", word_stream, 10)[0]
@@ -90,9 +88,7 @@ def _parse_fib(word_stream: bytes) -> Optional[Tuple[int, int, bool]]:
     return text_start, ccp_text, f_encrypted
 
 
-def _try_decode_text(
-    word_stream: bytes, text_start: int, ccp_text: int
-) -> Optional[str]:
+def _try_decode_text(word_stream: bytes, text_start: int, ccp_text: int) -> Optional[str]:
     """Try to decode text from the WordDocument stream in cp1252, then UTF-16LE."""
     # Try single-byte (cp1252) first — most common for .doc
     text_end_1byte = text_start + ccp_text
@@ -181,9 +177,7 @@ async def extract_doc_text(path: str) -> Optional[str]:
     try:
         import olefile
     except ImportError:
-        raise SyncFailureError(
-            "olefile required for .doc text extraction but not installed"
-        )
+        raise SyncFailureError("olefile required for .doc text extraction but not installed")
 
     def _extract() -> Optional[str]:
         return _extract_from_ole(path, olefile)

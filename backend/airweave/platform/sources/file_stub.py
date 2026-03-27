@@ -241,9 +241,7 @@ def _build_ole2_doc(text_bytes: bytes) -> bytes:
         return bytes(entry)
 
     # Root Entry — must point to its child (WordDocument, entry 1)
-    root_entry = _dir_entry(
-        "Root Entry", 5, child_id=1, stream_start=ENDOFCHAIN, stream_size=0
-    )
+    root_entry = _dir_entry("Root Entry", 5, child_id=1, stream_start=ENDOFCHAIN, stream_size=0)
     # WordDocument stream entry — red-black tree: no left, right = entry 2
     # Size must be >= 4096 to avoid OLE2 mini-stream (which we don't set up)
     wd_entry = _dir_entry(
