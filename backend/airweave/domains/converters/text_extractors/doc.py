@@ -33,9 +33,16 @@ _CHAR_MAP = {
 def _parse_fib(word_stream: bytes) -> Optional[Tuple[int, int, bool]]:
     """Parse the FIB header and return (text_start, ccp_text, f_encrypted).
 
+    The text starts immediately after the FIB structure. The FIB layout is:
+      FibBase (32 bytes)
+      + csw (2) + FibRgW (csw * 2)
+      + clw (2) + FibRgLw (clw * 4)
+      + cbRgFcLcb (2) + FibRgFcLcb (cbRgFcLcb * 8)
+      + cswNew (2) + FibRgCswNew (cswNew * 2)  [optional]
+
     Returns None if the stream is not a valid Word document.
     """
-    if len(word_stream) < 512:
+    if len(word_stream) < 68:
         return None
 
     wIdent = struct.unpack_from("<H", word_stream, 0)[0]
@@ -48,25 +55,37 @@ def _parse_fib(word_stream: bytes) -> Optional[Tuple[int, int, bool]]:
     flags_a = struct.unpack_from("<H", word_stream, 10)[0]
     f_encrypted = bool(flags_a & 0x0100)
 
-    if len(word_stream) < 34:
-        return None
-
+    # Walk the FIB to find ccpText and compute the FIB end (= text start)
     csw = struct.unpack_from("<H", word_stream, 32)[0]
     fibrg_w_end = 34 + csw * 2
 
     if len(word_stream) < fibrg_w_end + 2:
         return None
 
+    clw = struct.unpack_from("<H", word_stream, fibrg_w_end)[0]
     fibrg_lw_start = fibrg_w_end + 2
-    ccp_text_offset = fibrg_lw_start + 12
+    fibrg_lw_end = fibrg_lw_start + clw * 4
 
+    # ccpText is at offset 12 into FibRgLw97
+    ccp_text_offset = fibrg_lw_start + 12
     if len(word_stream) < ccp_text_offset + 4:
         return None
-
-    cb_mac = struct.unpack_from("<I", word_stream, fibrg_lw_start)[0]
     ccp_text = struct.unpack_from("<I", word_stream, ccp_text_offset)[0]
 
-    text_start = cb_mac if cb_mac >= 512 else 512
+    if len(word_stream) < fibrg_lw_end + 2:
+        return None
+
+    # FibRgFcLcb — variable-length array of fc/lcb pairs
+    cbRgFcLcb = struct.unpack_from("<H", word_stream, fibrg_lw_end)[0]
+    fibrg_fclcb_end = fibrg_lw_end + 2 + cbRgFcLcb * 8
+
+    # FibRgCswNew — optional trailing section
+    fib_end = fibrg_fclcb_end
+    if fibrg_fclcb_end + 2 <= len(word_stream):
+        cswNew = struct.unpack_from("<H", word_stream, fibrg_fclcb_end)[0]
+        fib_end = fibrg_fclcb_end + 2 + cswNew * 2
+
+    text_start = fib_end
 
     return text_start, ccp_text, f_encrypted
 

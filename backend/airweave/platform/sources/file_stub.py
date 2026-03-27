@@ -161,7 +161,7 @@ def _build_ole2_doc(text_bytes: bytes) -> bytes:
     fibrg_lw = bytearray(clw * 4)
     struct.pack_into("<I", fibrg_lw, 12, ccp_text)  # ccpText
 
-    # Use 0 FcLcb pairs to keep FIB small (< 512 bytes), so text starts at 512
+    # Use 0 FcLcb pairs to keep FIB small
     cbRgFcLcb = 0
 
     fib = (
@@ -171,10 +171,11 @@ def _build_ole2_doc(text_bytes: bytes) -> bytes:
         + struct.pack("<H", clw)
         + bytes(fibrg_lw)
         + struct.pack("<H", cbRgFcLcb)
+        + struct.pack("<H", 0)  # cswNew = 0
     )
 
-    # Pad FIB to 512 bytes, then append text
-    word_doc_data = fib.ljust(512, b"\x00") + text_bytes
+    # Text starts immediately after FIB
+    word_doc_data = fib + text_bytes
     # Pad to at least 4096 bytes (OLE2 mini-stream cutoff) and sector boundary
     min_size = max(4096, len(word_doc_data))
     wd_sectors = (min_size + SECTOR_SIZE - 1) // SECTOR_SIZE

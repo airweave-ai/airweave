@@ -27,7 +27,7 @@ class TestExtractTextFromWordStream:
     """Unit tests for the low-level FIB parser."""
 
     def _make_word_stream(self, text: str) -> bytes:
-        """Build a minimal WordDocument stream with the given text at offset 512."""
+        """Build a minimal WordDocument stream with the given text right after the FIB."""
         text_bytes = text.encode("cp1252", errors="replace")
         ccp_text = len(text_bytes)
 
@@ -48,9 +48,11 @@ class TestExtractTextFromWordStream:
             + bytes(fibrg_w)
             + struct.pack("<H", clw)
             + bytes(fibrg_lw)
-            + struct.pack("<H", 0)
+            + struct.pack("<H", 0)  # cbRgFcLcb = 0
+            + struct.pack("<H", 0)  # cswNew = 0
         )
-        return fib.ljust(512, b"\x00") + text_bytes
+        # Text starts immediately after FIB
+        return fib + text_bytes
 
     def test_extract_basic_text(self):
         text = "This is a test document with enough meaningful content to pass the threshold.\r"
