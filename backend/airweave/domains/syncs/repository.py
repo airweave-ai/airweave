@@ -43,7 +43,7 @@ class SyncRepository(SyncRepositoryProtocol):
         cursor = await db.execute(
             update(Sync).where(Sync.id == sync_id, Sync.status == expected).values(status=target)
         )
-        if cursor.rowcount == 0:  # type: ignore[union-attr]
+        if cursor.rowcount == 0:  # type: ignore[attr-defined]
             raise OptimisticLockError(sync_id, expected)
 
     async def create(
