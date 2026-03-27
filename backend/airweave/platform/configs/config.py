@@ -142,6 +142,19 @@ class FirefliesConfig(SourceConfig):
     """
 
 
+class FathomConfig(SourceConfig):
+    """Fathom configuration schema."""
+
+    meeting_type: str = Field(
+        default="all",
+        title="Meeting Type",
+        description=(
+            "Filter meetings by type. Options: 'external' (calls with non-team attendees), "
+            "'internal' (team-only calls), or 'all' (both). Default: 'all'."
+        ),
+    )
+
+
 class Document360Config(SourceConfig):
     """Document360 configuration schema."""
 
