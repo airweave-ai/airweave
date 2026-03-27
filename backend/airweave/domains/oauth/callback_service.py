@@ -579,7 +579,7 @@ class OAuthCallbackService:
                         sync_id=source_conn.sync_id,
                         target=SyncStatus.ACTIVE,
                         ctx=ctx,
-                        reason="OAuth re-auth completed",
+                        reason="OAuth completed",
                     )
                 except (InvalidSyncTransitionError, OptimisticLockError, ValueError):
                     logger.warning("Failed to activate sync after OAuth re-auth", exc_info=True)

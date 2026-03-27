@@ -129,8 +129,8 @@ from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.jobs.repository import SyncJobRepository
 from airweave.domains.syncs.jobs.service import SyncJobService
 from airweave.domains.syncs.jobs.state_machine import SyncJobStateMachine
-from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.repository import SyncRepository
+from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.state_machine import SyncStateMachine
 from airweave.domains.temporal.client import get_cached_client as get_cached_temporal_client
 from airweave.domains.temporal.schedule_service import TemporalScheduleService
@@ -447,7 +447,7 @@ def create_container(settings: Settings) -> Container:
         auth_provider_service=auth_provider_service,
         sync_job_repo=source_deps["sync_job_repo"],
     )
-    source_connection_service = ok SourceConnectionService(
+    source_connection_service = SourceConnectionService(
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
         connection_repo=source_deps["conn_repo"],
