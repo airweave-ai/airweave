@@ -9,7 +9,7 @@ that can be tested without a database:
 - Header extraction
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -25,6 +25,7 @@ from airweave.api.context_resolver import (
     _extract_client_ip,
     _extract_headers,
 )
+from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.shared_models import AuthMethod
 from airweave.schemas.organization import Organization
 
@@ -249,8 +250,7 @@ class TestValidateOrganizationAccess:
         auth = AuthResult(method=AuthMethod.AUTH0, user=None)
         with pytest.raises(HTTPException) as exc_info:
             await resolver._validate_organization_access(
-                db=MagicMock(), organization_id=str(ORG_ID), auth=auth, x_api_key=None
-            )
+                db=MagicMock(), organization_id=str(ORG_ID), auth=auth            )
         assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
@@ -260,8 +260,7 @@ class TestValidateOrganizationAccess:
         auth = AuthResult(method=AuthMethod.SYSTEM, user=None)
         with pytest.raises(HTTPException) as exc_info:
             await resolver._validate_organization_access(
-                db=MagicMock(), organization_id=str(ORG_ID), auth=auth, x_api_key=None
-            )
+                db=MagicMock(), organization_id=str(ORG_ID), auth=auth            )
         assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
@@ -270,8 +269,7 @@ class TestValidateOrganizationAccess:
         user = _make_user_with_orgs([ORG_ID])
         auth = AuthResult(method=AuthMethod.AUTH0, user=user)
         await resolver._validate_organization_access(
-            db=MagicMock(), organization_id=str(ORG_ID), auth=auth, x_api_key=None
-        )
+            db=MagicMock(), organization_id=str(ORG_ID), auth=auth        )
 
     @pytest.mark.asyncio
     async def test_auth0_user_with_wrong_org_raises_403(self):
@@ -281,8 +279,7 @@ class TestValidateOrganizationAccess:
         auth = AuthResult(method=AuthMethod.AUTH0, user=user)
         with pytest.raises(HTTPException) as exc_info:
             await resolver._validate_organization_access(
-                db=MagicMock(), organization_id=str(ORG_ID), auth=auth, x_api_key=None
-            )
+                db=MagicMock(), organization_id=str(ORG_ID), auth=auth            )
         assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
@@ -293,6 +290,76 @@ class TestValidateOrganizationAccess:
         auth = AuthResult(method=AuthMethod.AUTH0, user=None)
         with pytest.raises(HTTPException) as exc_info:
             await resolver._validate_organization_access(
-                db=MagicMock(), organization_id=str(target_org), auth=auth, x_api_key=None
-            )
+                db=MagicMock(), organization_id=str(target_org), auth=auth            )
         assert exc_info.value.status_code == 401
+
+
+
+# ---------------------------------------------------------------------------
+# _validate_cached_auth
+# ---------------------------------------------------------------------------
+
+
+class TestValidateCachedAuth:
+    """Verify _validate_cached_auth rejects expired, revoked, and malformed."""
+
+    def _future_exp(self) -> str:
+        return (utc_now_naive() + timedelta(days=30)).isoformat()
+
+    def _past_exp(self) -> str:
+        return (utc_now_naive() - timedelta(days=1)).isoformat()
+
+    def test_valid_active_key_accepted(self):
+        cached = {
+            "org_id": str(uuid4()),
+            "exp": self._future_exp(),
+            "status": "active",
+        }
+        assert ContextResolver._validate_cached_auth(cached) is True
+
+    def test_expired_key_rejected(self):
+        cached = {
+            "org_id": str(uuid4()),
+            "exp": self._past_exp(),
+            "status": "active",
+        }
+        assert ContextResolver._validate_cached_auth(cached) is False
+
+    def test_expired_status_rejected(self):
+        cached = {
+            "org_id": str(uuid4()),
+            "exp": self._future_exp(),
+            "status": "expired",
+        }
+        assert ContextResolver._validate_cached_auth(cached) is False
+
+    def test_missing_exp_field_rejected(self):
+        """Fail closed: no expiration means reject."""
+        cached = {"org_id": str(uuid4()), "status": "active"}
+        assert ContextResolver._validate_cached_auth(cached) is False
+
+    def test_empty_exp_field_rejected(self):
+        cached = {
+            "org_id": str(uuid4()),
+            "exp": "",
+            "status": "active",
+        }
+        assert ContextResolver._validate_cached_auth(cached) is False
+
+    def test_revoked_key_rejected_immediately(self):
+        """A revoked key is rejected regardless of expiration."""
+        cached = {
+            "org_id": str(uuid4()),
+            "exp": self._future_exp(),
+            "status": "revoked",
+        }
+        assert ContextResolver._validate_cached_auth(cached) is False
+
+    def test_malformed_exp_field_rejected(self):
+        """Fail closed: unparseable exp string returns False, not 500."""
+        cached = {
+            "org_id": str(uuid4()),
+            "exp": "not-a-date",
+            "status": "active",
+        }
+        assert ContextResolver._validate_cached_auth(cached) is False

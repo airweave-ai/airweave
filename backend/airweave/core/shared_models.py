@@ -110,6 +110,14 @@ class FeatureFlag(str, Enum):
     CONNECT = "connect"  # Enables the Connect playground and embeddable widget features
 
 
+class ApiKeyStatus(str, Enum):
+    """API key lifecycle status."""
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
 class AuthMethod(str, Enum):
     """Authentication methods used in API requests.
 

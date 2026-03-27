@@ -52,19 +52,21 @@ class TestAuthDispatch:
 
     @pytest.mark.asyncio
     @patch("airweave.api.context_resolver.settings")
-    async def test_auth0_user_takes_priority_over_api_key(self, mock_settings):
+    async def test_api_key_takes_priority_over_auth0(self, mock_settings):
         mock_settings.AUTH_ENABLED = True
         resolver = _make_resolver()
 
         auth0_user = MagicMock(email="user@test.com", id="auth0|123")
 
-        with patch.object(resolver, "_authenticate_auth0", new_callable=AsyncMock) as mock_auth0:
-            mock_auth0.return_value = AuthResult(method=AuthMethod.AUTH0)
+        with patch.object(resolver, "_authenticate_api_key", new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = AuthResult(
+                method=AuthMethod.API_KEY, api_key_org_id=str(ORG_ID),
+            )
             result = await resolver._authenticate(
                 db=AsyncMock(), auth0_user=auth0_user, x_api_key="some-key", request=MagicMock(),
             )
-            mock_auth0.assert_called_once()
-            assert result.method == AuthMethod.AUTH0
+            mock_api.assert_called_once()
+            assert result.method == AuthMethod.API_KEY
 
     @pytest.mark.asyncio
     @patch("airweave.api.context_resolver.settings")
@@ -157,7 +159,13 @@ class TestApiKeyCacheIntegration:
     @pytest.mark.asyncio
     async def test_cache_hit_returns_org_id(self):
         cache = FakeContextCache()
-        cache._api_keys["my-secret-key"] = ORG_ID
+        key_id = str(uuid4())
+        cache._api_key_auth["my-secret-key"] = {
+            "org_id": str(ORG_ID),
+            "key_id": key_id,
+            "exp": "2099-01-01T00:00:00",
+            "status": "active",
+        }
 
         resolver = _make_resolver(cache=cache)
         result = await resolver._authenticate_api_key(
@@ -166,4 +174,4 @@ class TestApiKeyCacheIntegration:
 
         assert result.method == AuthMethod.API_KEY
         assert result.api_key_org_id == str(ORG_ID)
-        assert result.metadata["api_key_id"] == "cached"
+        assert result.metadata["api_key_id"] == key_id

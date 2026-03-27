@@ -2,6 +2,7 @@
 
 from .access_control_membership import AccessControlMembership
 from .api_key import APIKey
+from .api_key_usage_log import APIKeyUsageLog
 from .auth_provider import AuthProvider
 from .billing_period import BillingPeriod
 from .collection import Collection
@@ -33,6 +34,7 @@ from .vector_db_deployment_metadata import VectorDbDeploymentMetadata
 __all__ = [
     "AccessControlMembership",
     "APIKey",
+    "APIKeyUsageLog",
     "AuthProvider",
     "BillingPeriod",
     "Collection",
