@@ -148,9 +148,9 @@ def _validate_credentials(
 def _validate_local_reachability(dense_spec: DenseEmbedderEntry) -> None:
     """Probe the text2vec inference service when using the local dense embedder.
 
-    Only runs for local_minilm. Performs a synchronous HTTP GET to the health
-    endpoint with a short timeout. Raises EmbeddingConfigError with actionable
-    instructions if the service is unreachable.
+    Only runs for local_minilm. Performs a synchronous HTTP POST to /vectors
+    with a short timeout. Raises EmbeddingConfigError with actionable instructions
+    if the service is unreachable.
     """
     from airweave.domains.embedders.dense.local import LocalDenseEmbedder
 
@@ -158,16 +158,16 @@ def _validate_local_reachability(dense_spec: DenseEmbedderEntry) -> None:
         return
 
     inference_url = settings.TEXT2VEC_INFERENCE_URL
-    health_url = f"{inference_url}/health"
+    probe_url = f"{inference_url}/vectors"
 
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0)) as client:
-            response = client.get(health_url)
+            response = client.post(probe_url, json={"text": "airweave-local-embedder-probe"})
             response.raise_for_status()
     except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
         raise EmbeddingConfigError(
             f"Text2vec inference service is not reachable at {inference_url}\n"
-            f"  Health check failed: {exc}\n\n"
+            f"  Probe failed: {exc}\n\n"
             f"  DENSE_EMBEDDER=local_minilm requires the text2vec-transformers container.\n\n"
             f"  If using Docker Compose, start with the local-embeddings profile:\n"
             f"    docker compose -f docker/docker-compose.yml --profile local-embeddings up -d\n\n"
