@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
+from airweave.core.shared_models import SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.syncs.types import OptimisticLockError
 from airweave.models.sync import Sync
 from airweave.schemas.sync import SyncCreate, SyncUpdate
 
@@ -21,6 +23,7 @@ class FakeSyncRepository:
         self._models: dict[UUID, Sync] = {}
         self._calls: list[tuple] = []
         self._create_result: Optional[schemas.Sync] = None
+        self._transition_status_raises: bool = False
 
     def seed(self, id: UUID, sync_schema: schemas.Sync) -> None:
         """Seed a sync by ID (with-connections variant)."""
@@ -45,6 +48,25 @@ class FakeSyncRepository:
         """Return seeded sync model or None."""
         self._calls.append(("get_without_connections", db, id, ctx))
         return self._models.get(id)
+
+    def set_transition_status_raises(self, raises: bool = True) -> None:
+        """Configure transition_status() to raise OptimisticLockError."""
+        self._transition_status_raises = raises
+
+    async def transition_status(
+        self,
+        db: AsyncSession,
+        sync_id: UUID,
+        expected: SyncStatus,
+        target: SyncStatus,
+    ) -> None:
+        """Record call; raise OptimisticLockError if configured to fail."""
+        self._calls.append(("transition_status", db, sync_id, expected, target))
+        if self._transition_status_raises:
+            raise OptimisticLockError(sync_id, expected)
+        model = self._models.get(sync_id)
+        if model is not None:
+            model.status = target
 
     async def create(
         self,

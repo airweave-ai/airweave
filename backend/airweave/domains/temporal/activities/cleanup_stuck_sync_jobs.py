@@ -20,7 +20,10 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
-from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncJobStateMachineProtocol
+from airweave.domains.syncs.jobs.protocols import (
+    SyncJobRepositoryProtocol,
+    SyncJobStateMachineProtocol,
+)
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.sync_job import SyncJob
 

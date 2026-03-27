@@ -28,7 +28,7 @@ from airweave.domains.embedders.types import DenseEmbedderEntry
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
-from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
+from airweave.domains.syncs.fakes.lifecycle_service import FakeSyncLifecycleService
 from airweave.models.collection import Collection
 from airweave.schemas.organization import Organization
 

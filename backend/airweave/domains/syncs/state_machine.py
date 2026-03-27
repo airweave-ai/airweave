@@ -1,66 +1,39 @@
-"""Sync job state machine — validates transitions, writes DB, publishes lifecycle events.
+"""Sync state machine — validates transitions, writes DB, manages Temporal schedules.
 
-Single entry point for all sync job status changes. Enforces the transition graph,
-derives timestamps from the target status, and publishes lifecycle events atomically.
+Single entry point for all sync status changes. Enforces the transition graph,
+updates the DB with optimistic locking, and applies schedule side effects
+(pause/unpause/delete) after commit.
 
-Idempotent: re-writing the current status is a no-op (no DB write, no event).
+Idempotent: re-writing the current status is a no-op (no DB write, no side effects).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Optional
 from uuid import UUID
 
+from temporalio.service import RPCError
+
 from airweave.core.context import BaseContext
-from airweave.core.datetime_utils import utc_now_naive
-from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.logging import logger
-from airweave.core.protocols.event_bus import EventBus
-from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
+from airweave.core.shared_models import SyncStatus
 from airweave.db.session import get_db_context
-from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.protocols import (
-    SyncJobRepositoryProtocol,
-    SyncJobStateMachineProtocol,
-)
+from airweave.domains.syncs.protocols import SyncRepositoryProtocol, SyncStateMachineProtocol
 from airweave.domains.syncs.types import (
-    InvalidTransitionError,
-    LifecycleData,
-    TransitionResult,
+    InvalidSyncTransitionError,
+    SyncTransitionResult,
 )
-from airweave.schemas.sync_job import SyncJobUpdate
+from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 
 # ---------------------------------------------------------------------------
 # Transition graph
 # ---------------------------------------------------------------------------
 
-_VALID_TRANSITIONS: dict[SyncJobStatus, set[SyncJobStatus]] = {
-    SyncJobStatus.PENDING: {
-        SyncJobStatus.RUNNING,
-        SyncJobStatus.CANCELLED,
-        SyncJobStatus.FAILED,
-    },
-    SyncJobStatus.RUNNING: {
-        SyncJobStatus.COMPLETED,
-        SyncJobStatus.FAILED,
-        SyncJobStatus.CANCELLING,
-    },
-    SyncJobStatus.CANCELLING: {
-        SyncJobStatus.CANCELLED,
-    },
-    SyncJobStatus.COMPLETED: set(),
-    SyncJobStatus.FAILED: set(),
-    SyncJobStatus.CANCELLED: set(),
-}
-
-_LIFECYCLE_EVENT_FACTORY: dict[SyncJobStatus, Callable[..., SyncLifecycleEvent]] = {
-    SyncJobStatus.PENDING: SyncLifecycleEvent.pending,
-    SyncJobStatus.RUNNING: SyncLifecycleEvent.running,
-    SyncJobStatus.CANCELLING: SyncLifecycleEvent.cancelling,
-    SyncJobStatus.COMPLETED: SyncLifecycleEvent.completed,
-    SyncJobStatus.FAILED: SyncLifecycleEvent.failed,
-    SyncJobStatus.CANCELLED: SyncLifecycleEvent.cancelled,
+_VALID_TRANSITIONS: dict[SyncStatus, set[SyncStatus]] = {
+    SyncStatus.ACTIVE: {SyncStatus.PAUSED, SyncStatus.INACTIVE},
+    SyncStatus.PAUSED: {SyncStatus.ACTIVE},
+    SyncStatus.INACTIVE: {SyncStatus.ACTIVE},
+    SyncStatus.ERROR: {SyncStatus.ACTIVE, SyncStatus.PAUSED},
 }
 
 
@@ -70,74 +43,58 @@ _LIFECYCLE_EVENT_FACTORY: dict[SyncJobStatus, Callable[..., SyncLifecycleEvent]]
 
 
 @dataclass
-class SyncJobStateMachine(SyncJobStateMachineProtocol):
-    """Validates transitions, writes to DB, and publishes lifecycle events.
+class SyncStateMachine(SyncStateMachineProtocol):
+    """Validates sync transitions, writes to DB, manages Temporal schedules.
 
-    Idempotent: if the job is already in the target state, returns
-    ``TransitionResult(applied=False)`` without touching DB or event bus.
+    Idempotent: if the sync is already in the target state, returns
+    ``SyncTransitionResult(applied=False)`` without touching DB or schedules.
+
+    Uses optimistic locking: the UPDATE only succeeds if the status hasn't
+    changed between the read and write.
 
     Dependencies:
-        sync_job_repo: Read current status + persist updates
-        event_bus: Publish SyncLifecycleEvent after successful DB write
+        sync_repo: Read current status + persist updates
+        temporal_schedule_service: Pause/unpause Temporal schedules after commit
     """
 
-    sync_job_repo: SyncJobRepositoryProtocol
-    event_bus: EventBus
+    sync_repo: SyncRepositoryProtocol
+    temporal_schedule_service: TemporalScheduleServiceProtocol
 
     async def transition(
         self,
-        sync_job_id: UUID,
-        target: SyncJobStatus,
+        sync_id: UUID,
+        target: SyncStatus,
         ctx: BaseContext,
         *,
-        lifecycle_data: Optional[LifecycleData] = None,
-        error: Optional[str] = None,
-        stats: Optional[SyncStats] = None,
-        error_category: Optional[SourceConnectionErrorCategory] = None,
-    ) -> TransitionResult:
-        """Execute a validated, idempotent status transition.
+        reason: str = "",
+    ) -> SyncTransitionResult:
+        """Execute a validated, idempotent sync status transition.
 
-        Args:
-            sync_job_id: The job to transition.
-            target: Desired status.
-            ctx: Context for DB scoping and logging.
-            lifecycle_data: If provided, publish a SyncLifecycleEvent.
-            error: Error message (valid for FAILED and CANCELLED).
-            stats: Sync statistics (valid for any terminal state).
-            error_category: Credential error category (written to DB for NEEDS_REAUTH UI).
-
-        Returns:
-            TransitionResult indicating whether the write was applied.
-
-        Raises:
-            InvalidTransitionError: If the transition is illegal.
-            ValueError: If the sync job is not found.
+        1. Read + validate inside a DB transaction.
+        2. Conditional UPDATE with optimistic lock (WHERE status = current).
+        3. Apply schedule side effects after the commit succeeds.
         """
         async with get_db_context() as db:
-            db_job = await self.sync_job_repo.get(db=db, id=sync_job_id, ctx=ctx)
-            if not db_job:
-                raise ValueError(f"Sync job {sync_job_id} not found")
+            sync_obj = await self.sync_repo.get_without_connections(db, sync_id, ctx)
+            if not sync_obj:
+                raise ValueError(f"Sync {sync_id} not found")
 
-            current = SyncJobStatus(db_job.status)
+            current = SyncStatus(sync_obj.status)
 
             if current == target:
-                logger.debug(f"Sync job {sync_job_id} already in {target.value} (idempotent skip)")
-                return TransitionResult(applied=False, previous=current, current=current)
+                logger.debug(f"Sync {sync_id} already in {target.value} (idempotent skip)")
+                return SyncTransitionResult(applied=False, previous=current, current=current)
 
-            self._validate_transition(current, target, sync_job_id)
+            self._validate_transition(current, target, sync_id)
 
-            update = self._build_update(
-                target, error=error, stats=stats, error_category=error_category
-            )
-            await self.sync_job_repo.update(db=db, db_obj=db_job, obj_in=update, ctx=ctx)
+            await self.sync_repo.transition_status(db, sync_id, current, target)
             await db.commit()
 
-        logger.info(f"Sync job {sync_job_id}: {current.value} → {target.value}")
+        logger.info(f"Sync {sync_id}: {current.value} → {target.value}")
 
-        if lifecycle_data is not None:
-            await self._publish_lifecycle_event(target, lifecycle_data, error=error)
+        await self._apply_side_effects(sync_id, target, reason)
 
-        return TransitionResult(applied=True, previous=current, current=target)
+        return SyncTransitionResult(applied=True, previous=current, current=target)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -145,81 +102,32 @@ class SyncJobStateMachine(SyncJobStateMachineProtocol):
 
     @staticmethod
     def _validate_transition(
-        current: SyncJobStatus,
-        target: SyncJobStatus,
-        sync_job_id: UUID | str | None = None,
+        current: SyncStatus,
+        target: SyncStatus,
+        sync_id: UUID | str | None = None,
     ) -> None:
-        """Raise InvalidTransitionError if the transition is not allowed."""
-        if target == current:
-            return
+        """Raise InvalidSyncTransitionError if the transition is not allowed."""
         allowed = _VALID_TRANSITIONS.get(current, set())
         if target not in allowed:
-            raise InvalidTransitionError(current, target, sync_job_id)
+            raise InvalidSyncTransitionError(current, target, sync_id)
 
-    @staticmethod
-    def _build_update(
-        target: SyncJobStatus,
-        *,
-        error: Optional[str] = None,
-        stats: Optional[SyncStats] = None,
-        error_category: Optional[SourceConnectionErrorCategory] = None,
-    ) -> SyncJobUpdate:
-        """Derive the SyncJobUpdate from target status."""
-        data: dict = {"status": target}
-        now = utc_now_naive()
-
-        if target == SyncJobStatus.RUNNING:
-            data["started_at"] = now
-        elif target == SyncJobStatus.COMPLETED:
-            data["completed_at"] = now
-        elif target == SyncJobStatus.FAILED:
-            data["failed_at"] = now
-        elif target == SyncJobStatus.CANCELLED:
-            data["completed_at"] = now
-
-        if error is not None and target in (SyncJobStatus.FAILED, SyncJobStatus.CANCELLED):
-            data["error"] = error
-
-        if error_category is not None and target == SyncJobStatus.FAILED:
-            data["error_category"] = error_category
-
-        if stats is not None:
-            data["entities_inserted"] = stats.inserted
-            data["entities_updated"] = stats.updated
-            data["entities_deleted"] = stats.deleted
-            data["entities_kept"] = stats.kept
-            data["entities_skipped"] = stats.skipped
-            data["entities_encountered"] = stats.entities_encountered
-
-        return SyncJobUpdate(**data)
-
-    async def _publish_lifecycle_event(
+    async def _apply_side_effects(
         self,
-        target: SyncJobStatus,
-        ld: LifecycleData,
-        *,
-        error: Optional[str] = None,
+        sync_id: UUID,
+        target: SyncStatus,
+        reason: str,
     ) -> None:
-        """Publish the appropriate SyncLifecycleEvent for the target status."""
-        factory = _LIFECYCLE_EVENT_FACTORY.get(target)
-        if factory is None:
-            return
-
-        kwargs: dict = {
-            "organization_id": ld.organization_id,
-            "sync_id": ld.sync_id,
-            "sync_job_id": ld.sync_job_id,
-            "collection_id": ld.collection_id,
-            "source_connection_id": ld.source_connection_id,
-            "source_type": ld.source_type,
-            "collection_name": ld.collection_name,
-            "collection_readable_id": ld.collection_readable_id,
-        }
-
-        if target == SyncJobStatus.FAILED and error is not None:
-            kwargs["error"] = error
-
+        """Pause, unpause, or clean up Temporal schedules based on the target state."""
         try:
-            await self.event_bus.publish(factory(**kwargs))
-        except Exception as e:
-            logger.warning(f"Failed to publish lifecycle event for {target.value}: {e}")
+            if target == SyncStatus.PAUSED:
+                await self.temporal_schedule_service.pause_schedules_for_sync(
+                    sync_id, reason=reason or "Sync paused"
+                )
+            elif target == SyncStatus.ACTIVE:
+                await self.temporal_schedule_service.unpause_schedules_for_sync(sync_id)
+            elif target == SyncStatus.INACTIVE:
+                await self.temporal_schedule_service.pause_schedules_for_sync(
+                    sync_id, reason=reason or "Sync deactivated"
+                )
+        except (RPCError, OSError) as e:
+            logger.warning(f"Schedule side effect failed for sync {sync_id}: {e}")

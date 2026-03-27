@@ -8,12 +8,20 @@ Uses the TimedSource (internal source with precise timing control) to
 eliminate external service dependencies and make timing deterministic.
 """
 
-import pytest
-import httpx
 import asyncio
 import time
 import uuid
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
+
+import httpx
+import pytest
+
+VALID_SYNC_JOB_STATUSES = {
+    "created", "pending", "running", "completed", "failed", "cancelling", "cancelled",
+}
+VALID_SOURCE_CONNECTION_STATUSES = {
+    "active", "pending_auth", "syncing", "error", "needs_reauth", "inactive", "pending_sync",
+}
 
 
 class TestRunningAndCancellingSyncs:
@@ -153,7 +161,7 @@ class TestRunningAndCancellingSyncs:
         conn_id = timed_source_connection_medium["id"]
 
         # Start and wait for it to be running
-        job = await self._run_and_wait_for_running(api_client, conn_id)
+        await self._run_and_wait_for_running(api_client, conn_id)
 
         # Try to start second sync - should fail
         response = await api_client.post(f"/source-connections/{conn_id}/run")
@@ -365,6 +373,57 @@ class TestRunningAndCancellingSyncs:
         assert completed["status"] == "completed"
         assert "started_at" in completed
         assert "completed_at" in completed
+
+    @pytest.mark.asyncio
+    async def test_status_enum_deserialization(
+        self, api_client: httpx.AsyncClient, timed_source_connection_fast: Dict
+    ):
+        """Verify job and connection status strings are valid enum members.
+
+        Guards against DB/enum drift: if someone adds a status to the DB
+        column but forgets the Python enum (or vice-versa), this catches it.
+        """
+        conn_id = timed_source_connection_fast["id"]
+
+        # Run a sync to completion so we observe pending -> running -> completed
+        response = await api_client.post(f"/source-connections/{conn_id}/run")
+        assert response.status_code == 200
+        job = response.json()
+        job_id = job["id"]
+
+        assert job["status"] in VALID_SYNC_JOB_STATUSES, (
+            f"Unexpected job status from POST /run: {job['status']}"
+        )
+
+        # Wait for completion
+        completed, _ = await self._wait_for_job_status(
+            api_client, conn_id, job_id, "completed", timeout=30
+        )
+        assert completed is not None
+
+        # Fetch all jobs and validate every status string
+        response = await api_client.get(f"/source-connections/{conn_id}/jobs")
+        assert response.status_code == 200
+        for j in response.json():
+            assert j["status"] in VALID_SYNC_JOB_STATUSES, (
+                f"Unexpected job status from GET /jobs: {j['status']}"
+            )
+
+        # Fetch the source connection detail and validate its status
+        response = await api_client.get(f"/source-connections/{conn_id}")
+        assert response.status_code == 200
+        connection = response.json()
+
+        assert connection["status"] in VALID_SOURCE_CONNECTION_STATUSES, (
+            f"Unexpected connection status: {connection['status']}"
+        )
+
+        # Validate the embedded sync.last_job.status
+        last_job = connection.get("sync", {}).get("last_job")
+        if last_job:
+            assert last_job["status"] in VALID_SYNC_JOB_STATUSES, (
+                f"Unexpected last_job status: {last_job['status']}"
+            )
 
     # ==================================================================
     # CONCURRENT OPERATIONS TESTS

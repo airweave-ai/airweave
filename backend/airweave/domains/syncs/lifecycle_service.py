@@ -22,10 +22,12 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
 )
 from airweave.domains.sources.types import SourceRegistryEntry
-from airweave.domains.syncs.protocols import (
-    SyncCursorRepositoryProtocol,
+from airweave.domains.syncs.jobs.protocols import (
     SyncJobRepositoryProtocol,
     SyncJobStateMachineProtocol,
+)
+from airweave.domains.syncs.protocols import (
+    SyncCursorRepositoryProtocol,
     SyncLifecycleServiceProtocol,
     SyncRecordServiceProtocol,
 )

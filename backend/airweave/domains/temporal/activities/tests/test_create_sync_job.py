@@ -11,8 +11,8 @@ from airweave.core.exceptions import NotFoundException
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
-from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
-from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
+from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
+from airweave.domains.syncs.fakes.repository import FakeSyncRepository
 from airweave.domains.temporal.activities.create_sync_job import CreateSyncJobActivity
 
 from .conftest import ORG_ID, SYNC_ID, make_ctx_dict
@@ -25,11 +25,12 @@ async def _fake_db():
     yield AsyncMock()
 
 
-def _make_sync_model():
+def _make_sync_model(status="active"):
     model = MagicMock()
     model.id = UUID(SYNC_ID)
     model.name = "test-sync"
     model.organization_id = UUID(ORG_ID)
+    model.status = status
     return model
 
 

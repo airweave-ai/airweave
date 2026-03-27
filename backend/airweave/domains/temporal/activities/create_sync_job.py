@@ -15,14 +15,13 @@ from airweave.core.context import BaseContext
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols import EventBus
+from airweave.core.shared_models import SyncStatus
 from airweave.db.session import get_db_context
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
-from airweave.domains.syncs.protocols import (
-    SyncJobRepositoryProtocol,
-    SyncRepositoryProtocol,
-)
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.protocols import SyncRepositoryProtocol
 from airweave.domains.temporal.activities.context import build_activity_context
 from airweave.domains.temporal.activity_results import CreateSyncJobResult
 from airweave.models.sync_job import SyncJob
@@ -74,7 +73,7 @@ class CreateSyncJobActivity:
 
         async with get_db_context() as db:
             try:
-                _ = await self.sync_repo.get_without_connections(
+                sync = await self.sync_repo.get_without_connections(
                     db=db,
                     id=UUID(sync_id),
                     ctx=ctx,
@@ -86,6 +85,18 @@ class CreateSyncJobActivity:
                 )
                 return CreateSyncJobResult(
                     orphaned=True, sync_id=sync_id, reason=f"Sync lookup error: {e}"
+                )
+
+            if sync is None:
+                ctx.logger.info(f"Sync {sync_id} not found, marking as orphaned.")
+                return CreateSyncJobResult(orphaned=True, sync_id=sync_id, reason="Sync not found")
+
+            if SyncStatus(sync.status) != SyncStatus.ACTIVE:
+                ctx.logger.info(f"Sync {sync_id} is {sync.status}, skipping job creation.")
+                return CreateSyncJobResult(
+                    skipped=True,
+                    sync_id=sync_id,
+                    reason=f"Sync status is {sync.status}",
                 )
 
             running_jobs = await self.sync_job_repo.get_active_for_sync(

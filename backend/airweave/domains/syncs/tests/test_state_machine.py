@@ -1,47 +1,31 @@
-"""Tests for SyncJobStateMachine — transition validation, DB updates, lifecycle events."""
+"""Tests for SyncStateMachine — transition validation, idempotency, side effects."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
+from temporalio.service import RPCError
 
-from airweave.core.shared_models import SyncJobStatus
-from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.state_machine import SyncJobStateMachine
-from airweave.domains.syncs.types import InvalidTransitionError, LifecycleData
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+from airweave.core.shared_models import SyncStatus
+from airweave.domains.syncs.state_machine import SyncStateMachine
+from airweave.domains.syncs.types import (
+    InvalidSyncTransitionError,
+    OptimisticLockError,
+    SyncTransitionResult,
+)
 
 ORG_ID = uuid4()
 SYNC_ID = uuid4()
-JOB_ID = uuid4()
-COLLECTION_ID = uuid4()
-SC_ID = uuid4()
 
 
-def _make_lifecycle_data() -> LifecycleData:
-    return LifecycleData(
-        organization_id=ORG_ID,
-        sync_id=SYNC_ID,
-        sync_job_id=JOB_ID,
-        collection_id=COLLECTION_ID,
-        source_connection_id=SC_ID,
-        source_type="test_source",
-        collection_name="test-collection",
-        collection_readable_id="test-collection",
-    )
-
-
-def _make_db_job(status: SyncJobStatus, job_id: UUID = JOB_ID) -> MagicMock:
-    job = MagicMock()
-    job.id = job_id
-    job.status = status.value
-    return job
+def _make_sync_obj(status: SyncStatus) -> MagicMock:
+    obj = MagicMock()
+    obj.status = status.value
+    return obj
 
 
 def _make_ctx() -> MagicMock:
@@ -51,267 +35,411 @@ def _make_ctx() -> MagicMock:
     return ctx
 
 
+def _build_sm(
+    sync_repo: Optional[AsyncMock] = None,
+    schedule_svc: Optional[AsyncMock] = None,
+) -> SyncStateMachine:
+    repo = sync_repo or AsyncMock()
+    if sync_repo is None:
+        repo.transition_status = AsyncMock(return_value=None)
+    return SyncStateMachine(
+        sync_repo=repo,
+        temporal_schedule_service=schedule_svc or AsyncMock(),
+    )
+
+
 # ---------------------------------------------------------------------------
-# Pure validation tests
+# Transition table tests
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class TransitionCase:
     name: str
-    current: SyncJobStatus
-    target: SyncJobStatus
-    should_raise: bool
+    current: SyncStatus
+    target: SyncStatus
+    valid: bool
 
 
-VALID_TRANSITIONS = [
-    TransitionCase("pending_to_running", SyncJobStatus.PENDING, SyncJobStatus.RUNNING, False),
-    TransitionCase("pending_to_cancelled", SyncJobStatus.PENDING, SyncJobStatus.CANCELLED, False),
-    TransitionCase("pending_to_failed", SyncJobStatus.PENDING, SyncJobStatus.FAILED, False),
-    TransitionCase("running_to_completed", SyncJobStatus.RUNNING, SyncJobStatus.COMPLETED, False),
-    TransitionCase("running_to_failed", SyncJobStatus.RUNNING, SyncJobStatus.FAILED, False),
-    TransitionCase(
-        "running_to_cancelling", SyncJobStatus.RUNNING, SyncJobStatus.CANCELLING, False
-    ),
-    TransitionCase(
-        "cancelling_to_cancelled", SyncJobStatus.CANCELLING, SyncJobStatus.CANCELLED, False
-    ),
-    TransitionCase("idempotent_same", SyncJobStatus.RUNNING, SyncJobStatus.RUNNING, False),
-]
-
-INVALID_TRANSITIONS = [
-    TransitionCase(
-        "completed_to_running", SyncJobStatus.COMPLETED, SyncJobStatus.RUNNING, True
-    ),
-    TransitionCase("failed_to_running", SyncJobStatus.FAILED, SyncJobStatus.RUNNING, True),
-    TransitionCase(
-        "cancelled_to_running", SyncJobStatus.CANCELLED, SyncJobStatus.RUNNING, True
-    ),
-    TransitionCase(
-        "pending_to_completed", SyncJobStatus.PENDING, SyncJobStatus.COMPLETED, True
-    ),
-    TransitionCase(
-        "cancelling_to_running", SyncJobStatus.CANCELLING, SyncJobStatus.RUNNING, True
-    ),
-    TransitionCase(
-        "cancelling_to_completed", SyncJobStatus.CANCELLING, SyncJobStatus.COMPLETED, True
-    ),
+TRANSITION_CASES = [
+    TransitionCase("active_to_paused", SyncStatus.ACTIVE, SyncStatus.PAUSED, True),
+    TransitionCase("active_to_inactive", SyncStatus.ACTIVE, SyncStatus.INACTIVE, True),
+    TransitionCase("paused_to_active", SyncStatus.PAUSED, SyncStatus.ACTIVE, True),
+    TransitionCase("inactive_to_active", SyncStatus.INACTIVE, SyncStatus.ACTIVE, True),
+    TransitionCase("error_to_active", SyncStatus.ERROR, SyncStatus.ACTIVE, True),
+    TransitionCase("error_to_paused", SyncStatus.ERROR, SyncStatus.PAUSED, True),
+    TransitionCase("paused_to_inactive", SyncStatus.PAUSED, SyncStatus.INACTIVE, False),
+    TransitionCase("inactive_to_paused", SyncStatus.INACTIVE, SyncStatus.PAUSED, False),
+    TransitionCase("active_to_error", SyncStatus.ACTIVE, SyncStatus.ERROR, False),
 ]
 
 
-@pytest.mark.parametrize(
-    "case", VALID_TRANSITIONS + INVALID_TRANSITIONS, ids=lambda c: c.name
-)
-def test_validate_transition(case: TransitionCase) -> None:
-    if case.should_raise:
-        with pytest.raises(InvalidTransitionError):
-            SyncJobStateMachine._validate_transition(case.current, case.target)
+@pytest.mark.parametrize("case", TRANSITION_CASES, ids=lambda c: c.name)
+def test_validate_transition(case: TransitionCase):
+    if case.valid:
+        SyncStateMachine._validate_transition(case.current, case.target, SYNC_ID)
     else:
-        SyncJobStateMachine._validate_transition(case.current, case.target)
+        with pytest.raises(InvalidSyncTransitionError) as exc_info:
+            SyncStateMachine._validate_transition(case.current, case.target, SYNC_ID)
+        assert exc_info.value.current == case.current
+        assert exc_info.value.target == case.target
+        assert exc_info.value.sync_id == SYNC_ID
 
 
-# ---------------------------------------------------------------------------
-# State machine integration tests (with mocked DB)
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def sm() -> tuple[SyncJobStateMachine, MagicMock, AsyncMock]:
-    repo = MagicMock()
-    repo.get = AsyncMock()
-    repo.update = AsyncMock()
-    event_bus = AsyncMock()
-    event_bus.publish = AsyncMock()
-    machine = SyncJobStateMachine(sync_job_repo=repo, event_bus=event_bus)
-    return machine, repo, event_bus
-
-
-@pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
-async def test_transition_happy_path(mock_db_ctx, sm):
-    machine, repo, event_bus = sm
-    db = AsyncMock()
-    db.commit = AsyncMock()
-    mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=db)
-    mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-    db_job = _make_db_job(SyncJobStatus.PENDING)
-    repo.get.return_value = db_job
-
-    ctx = _make_ctx()
-    result = await machine.transition(
-        sync_job_id=JOB_ID,
-        target=SyncJobStatus.RUNNING,
-        ctx=ctx,
-        lifecycle_data=_make_lifecycle_data(),
-    )
-
-    assert result.applied is True
-    assert result.previous == SyncJobStatus.PENDING
-    assert result.current == SyncJobStatus.RUNNING
-    repo.update.assert_called_once()
-    event_bus.publish.assert_called_once()
-
-
-@pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
-async def test_transition_idempotent(mock_db_ctx, sm):
-    machine, repo, event_bus = sm
-    db = AsyncMock()
-    mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=db)
-    mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-    db_job = _make_db_job(SyncJobStatus.RUNNING)
-    repo.get.return_value = db_job
-
-    ctx = _make_ctx()
-    result = await machine.transition(
-        sync_job_id=JOB_ID,
-        target=SyncJobStatus.RUNNING,
-        ctx=ctx,
-    )
-
-    assert result.applied is False
-    assert result.previous == SyncJobStatus.RUNNING
-    assert result.current == SyncJobStatus.RUNNING
-    repo.update.assert_not_called()
-    event_bus.publish.assert_not_called()
-
-
-@pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
-async def test_transition_invalid_raises(mock_db_ctx, sm):
-    machine, repo, event_bus = sm
-    db = AsyncMock()
-    mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=db)
-    mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-    db_job = _make_db_job(SyncJobStatus.COMPLETED)
-    repo.get.return_value = db_job
-
-    ctx = _make_ctx()
-    with pytest.raises(InvalidTransitionError):
-        await machine.transition(
-            sync_job_id=JOB_ID,
-            target=SyncJobStatus.RUNNING,
-            ctx=ctx,
+def test_validate_transition_without_sync_id():
+    """InvalidSyncTransitionError works without sync_id."""
+    with pytest.raises(InvalidSyncTransitionError) as exc_info:
+        SyncStateMachine._validate_transition(
+            SyncStatus.PAUSED, SyncStatus.INACTIVE
         )
-
-
-@pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
-async def test_transition_not_found_raises(mock_db_ctx, sm):
-    machine, repo, event_bus = sm
-    db = AsyncMock()
-    mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=db)
-    mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-    repo.get.return_value = None
-
-    ctx = _make_ctx()
-    with pytest.raises(ValueError, match="not found"):
-        await machine.transition(
-            sync_job_id=JOB_ID,
-            target=SyncJobStatus.RUNNING,
-            ctx=ctx,
-        )
-
-    repo.update.assert_not_called()
-
-
-@pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
-async def test_transition_no_event_without_lifecycle_data(mock_db_ctx, sm):
-    machine, repo, event_bus = sm
-    db = AsyncMock()
-    db.commit = AsyncMock()
-    mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=db)
-    mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-    db_job = _make_db_job(SyncJobStatus.RUNNING)
-    repo.get.return_value = db_job
-
-    ctx = _make_ctx()
-    result = await machine.transition(
-        sync_job_id=JOB_ID,
-        target=SyncJobStatus.COMPLETED,
-        ctx=ctx,
-    )
-
-    assert result.applied is True
-    event_bus.publish.assert_not_called()
-
-
-@pytest.mark.asyncio
-@patch("airweave.domains.syncs.state_machine.get_db_context")
-async def test_transition_failed_includes_error(mock_db_ctx, sm):
-    machine, repo, event_bus = sm
-    db = AsyncMock()
-    db.commit = AsyncMock()
-    mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=db)
-    mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-    db_job = _make_db_job(SyncJobStatus.RUNNING)
-    repo.get.return_value = db_job
-
-    ctx = _make_ctx()
-    result = await machine.transition(
-        sync_job_id=JOB_ID,
-        target=SyncJobStatus.FAILED,
-        ctx=ctx,
-        error="something broke",
-        lifecycle_data=_make_lifecycle_data(),
-    )
-
-    assert result.applied is True
-    assert result.current == SyncJobStatus.FAILED
-
-    update_call = repo.update.call_args
-    update_obj = update_call[1]["obj_in"] if "obj_in" in update_call[1] else update_call[0][2]
-    assert update_obj.status == SyncJobStatus.FAILED
-    assert update_obj.error == "something broke"
-    assert update_obj.failed_at is not None
+    assert exc_info.value.sync_id is None
+    assert "paused" in str(exc_info.value)
+    assert "inactive" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
-# _build_update tests
+# transition() — happy path
 # ---------------------------------------------------------------------------
 
 
-class TestBuildUpdate:
-    def test_running_sets_started_at(self):
-        update = SyncJobStateMachine._build_update(SyncJobStatus.RUNNING)
-        assert update.status == SyncJobStatus.RUNNING
-        assert update.started_at is not None
-        assert update.completed_at is None
-        assert update.failed_at is None
+@pytest.mark.asyncio
+async def test_transition_active_to_paused():
+    """Successful transition delegates to repo and pauses schedules."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
 
-    def test_completed_sets_completed_at(self):
-        update = SyncJobStateMachine._build_update(SyncJobStatus.COMPLETED)
-        assert update.completed_at is not None
-        assert update.failed_at is None
+    schedule_svc = AsyncMock()
 
-    def test_failed_sets_failed_at(self):
-        update = SyncJobStateMachine._build_update(SyncJobStatus.FAILED, error="oops")
-        assert update.failed_at is not None
-        assert update.error == "oops"
+    sm = _build_sm(sync_repo=sync_repo, schedule_svc=schedule_svc)
 
-    def test_cancelled_sets_completed_at(self):
-        update = SyncJobStateMachine._build_update(SyncJobStatus.CANCELLED)
-        assert update.completed_at is not None
-        assert update.failed_at is None
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    def test_cancelling_sets_no_timestamp(self):
-        update = SyncJobStateMachine._build_update(SyncJobStatus.CANCELLING)
-        assert update.started_at is None
-        assert update.completed_at is None
-        assert update.failed_at is None
+        result = await sm.transition(SYNC_ID, SyncStatus.PAUSED, _make_ctx(), reason="cred error")
 
-    def test_stats_are_included(self):
-        stats = SyncStats(inserted=10, updated=5, deleted=2, kept=3, skipped=1)
-        update = SyncJobStateMachine._build_update(SyncJobStatus.COMPLETED, stats=stats)
-        assert update.entities_inserted == 10
-        assert update.entities_updated == 5
-        assert update.entities_deleted == 2
-        assert update.entities_kept == 3
-        assert update.entities_skipped == 1
+    assert result == SyncTransitionResult(
+        applied=True, previous=SyncStatus.ACTIVE, current=SyncStatus.PAUSED
+    )
+    sync_repo.transition_status.assert_awaited_once_with(
+        mock_db, SYNC_ID, SyncStatus.ACTIVE, SyncStatus.PAUSED
+    )
+    mock_db.commit.assert_awaited_once()
+    schedule_svc.pause_schedules_for_sync.assert_awaited_once_with(
+        SYNC_ID, reason="cred error"
+    )
+
+
+@pytest.mark.asyncio
+async def test_transition_paused_to_active_unpauses():
+    """PAUSED -> ACTIVE triggers unpause_schedules_for_sync."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.PAUSED)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
+
+    schedule_svc = AsyncMock()
+
+    sm = _build_sm(sync_repo=sync_repo, schedule_svc=schedule_svc)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await sm.transition(SYNC_ID, SyncStatus.ACTIVE, _make_ctx())
+
+    assert result.applied is True
+    assert result.previous == SyncStatus.PAUSED
+    assert result.current == SyncStatus.ACTIVE
+    schedule_svc.unpause_schedules_for_sync.assert_awaited_once_with(SYNC_ID)
+
+
+# ---------------------------------------------------------------------------
+# transition() — idempotent skip
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transition_idempotent_skip():
+    """Re-writing the current status returns applied=False, no DB write."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+
+    schedule_svc = AsyncMock()
+
+    sm = _build_sm(sync_repo=sync_repo, schedule_svc=schedule_svc)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await sm.transition(SYNC_ID, SyncStatus.ACTIVE, _make_ctx())
+
+    assert result == SyncTransitionResult(
+        applied=False, previous=SyncStatus.ACTIVE, current=SyncStatus.ACTIVE
+    )
+    sync_repo.transition_status.assert_not_awaited()
+    mock_db.commit.assert_not_awaited()
+    schedule_svc.pause_schedules_for_sync.assert_not_awaited()
+    schedule_svc.unpause_schedules_for_sync.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# transition() — sync not found
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transition_sync_not_found():
+    """ValueError raised when sync doesn't exist."""
+    sync_repo = AsyncMock()
+    sync_repo.get_without_connections = AsyncMock(return_value=None)
+
+    sm = _build_sm(sync_repo=sync_repo)
+
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(ValueError, match="not found"):
+            await sm.transition(SYNC_ID, SyncStatus.PAUSED, _make_ctx())
+
+
+# ---------------------------------------------------------------------------
+# transition() — invalid transition
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transition_invalid_raises():
+    """Invalid transition raises InvalidSyncTransitionError."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.PAUSED)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+
+    sm = _build_sm(sync_repo=sync_repo)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(InvalidSyncTransitionError):
+            await sm.transition(SYNC_ID, SyncStatus.INACTIVE, _make_ctx())
+
+    sync_repo.transition_status.assert_not_awaited()
+    mock_db.commit.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Side effect failure (RPCError/OSError) is non-fatal
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_side_effect_rpc_error_is_non_fatal():
+    """RPCError from Temporal is logged but doesn't raise."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
+
+    schedule_svc = AsyncMock()
+    schedule_svc.pause_schedules_for_sync = AsyncMock(
+        side_effect=OSError("connection refused")
+    )
+
+    sm = _build_sm(sync_repo=sync_repo, schedule_svc=schedule_svc)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await sm.transition(SYNC_ID, SyncStatus.PAUSED, _make_ctx())
+
+    assert result.applied is True
+    mock_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_side_effect_unexpected_error_propagates():
+    """Non-network errors from schedule service are NOT swallowed."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
+
+    schedule_svc = AsyncMock()
+    schedule_svc.pause_schedules_for_sync = AsyncMock(
+        side_effect=RuntimeError("programming bug")
+    )
+
+    sm = _build_sm(sync_repo=sync_repo, schedule_svc=schedule_svc)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(RuntimeError, match="programming bug"):
+            await sm.transition(SYNC_ID, SyncStatus.PAUSED, _make_ctx())
+
+
+# ---------------------------------------------------------------------------
+# _apply_side_effects — default reason
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pause_uses_default_reason():
+    """When no reason given, default 'Sync paused' is used."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
+
+    schedule_svc = AsyncMock()
+
+    sm = _build_sm(sync_repo=sync_repo, schedule_svc=schedule_svc)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await sm.transition(SYNC_ID, SyncStatus.PAUSED, _make_ctx())
+
+    schedule_svc.pause_schedules_for_sync.assert_awaited_once_with(
+        SYNC_ID, reason="Sync paused"
+    )
+
+
+# ---------------------------------------------------------------------------
+# ACTIVE -> INACTIVE pauses schedules to prevent orphaned schedule accumulation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transition_to_inactive_pauses_schedules():
+    """ACTIVE -> INACTIVE pauses schedules with deactivation reason."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock()
+
+    schedule_svc = AsyncMock()
+
+    sm = _build_sm(sync_repo=sync_repo, schedule_svc=schedule_svc)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await sm.transition(SYNC_ID, SyncStatus.INACTIVE, _make_ctx())
+
+    assert result.applied is True
+    schedule_svc.pause_schedules_for_sync.assert_awaited_once_with(
+        SYNC_ID, reason="Sync deactivated"
+    )
+    schedule_svc.unpause_schedules_for_sync.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Optimistic locking — concurrent modification detected
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transition_optimistic_lock_failure():
+    """OptimisticLockError raised when repo detects concurrent modification."""
+    sync_repo = AsyncMock()
+    sync_obj = _make_sync_obj(SyncStatus.ACTIVE)
+    sync_repo.get_without_connections = AsyncMock(return_value=sync_obj)
+    sync_repo.transition_status = AsyncMock(
+        side_effect=OptimisticLockError(SYNC_ID, SyncStatus.ACTIVE)
+    )
+
+    sm = _build_sm(sync_repo=sync_repo)
+
+    mock_db = AsyncMock()
+    with patch(
+        "airweave.domains.syncs.state_machine.get_db_context"
+    ) as mock_ctx:
+        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(OptimisticLockError) as exc_info:
+            await sm.transition(SYNC_ID, SyncStatus.PAUSED, _make_ctx())
+
+    assert exc_info.value.sync_id == SYNC_ID
+    assert exc_info.value.expected == SyncStatus.ACTIVE
+    mock_db.commit.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# SyncStatus enum deserialization — DB string → enum roundtrip
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("member", list(SyncStatus), ids=lambda m: m.value)
+def test_sync_status_from_string_value(member: SyncStatus):
+    """Every SyncStatus member roundtrips from its DB string representation."""
+    assert SyncStatus(member.value) is member
+
+
+@pytest.mark.parametrize("member", list(SyncStatus), ids=lambda m: m.value)
+def test_sync_status_string_equality(member: SyncStatus):
+    """SyncStatus members compare equal to their string value (str enum)."""
+    assert member == member.value
+    assert member.value == member
+
+
+def test_sync_status_rejects_unknown_value():
+    """Unknown string raises ValueError — guards against DB/enum drift."""
+    with pytest.raises(ValueError):
+        SyncStatus("deleted")
+
+
+@pytest.mark.parametrize("member", list(SyncStatus), ids=lambda m: m.value)
+def test_sync_status_pydantic_coercion(member: SyncStatus):
+    """Pydantic schema correctly coerces a raw string to SyncStatus."""
+    from airweave.schemas.sync import SyncWithoutConnections
+
+    data = SyncWithoutConnections.model_validate(
+        {
+            "name": "test",
+            "status": member.value,
+            "id": str(SYNC_ID),
+            "organization_id": str(ORG_ID),
+            "created_at": "2025-01-01T00:00:00",
+            "modified_at": "2025-01-01T00:00:00",
+        }
+    )
+    assert data.status is member
+    assert isinstance(data.status, SyncStatus)

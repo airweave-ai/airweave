@@ -25,8 +25,8 @@ from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.sources.exceptions import SourceNotFoundError, SourceValidationError
-from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
-from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
+from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
+from airweave.domains.syncs.fakes.repository import FakeSyncRepository
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.organization import Organization
 from airweave.models.source_connection import SourceConnection
@@ -123,7 +123,7 @@ def _service(
     sync_lifecycle=None,
     sync_record_service=None,
     temporal_workflow_service=None,
-    temporal_schedule_service=None,
+    sync_state_machine=None,
     event_bus=None,
 ) -> OAuthCallbackService:
     return OAuthCallbackService(
@@ -135,7 +135,7 @@ def _service(
         sync_lifecycle=sync_lifecycle or AsyncMock(),
         sync_record_service=sync_record_service or AsyncMock(),
         temporal_workflow_service=temporal_workflow_service or AsyncMock(),
-        temporal_schedule_service=temporal_schedule_service or AsyncMock(),
+        sync_state_machine=sync_state_machine or AsyncMock(),
         event_bus=event_bus or AsyncMock(),
         organization_repo=organization_repo or FakeOrganizationRepository(),
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
@@ -2215,11 +2215,11 @@ class TestVerifyOAuthFlow:
         assert exc.value.status_code == 400
         assert "completed" in exc.value.detail.lower()
 
-    async def test_complete_connection_common_unpauses_schedules(self):
-        """_complete_connection_common calls unpause_schedules after commit."""
+    async def test_complete_connection_common_activates_sync(self):
+        """_complete_connection_common transitions sync to ACTIVE after commit."""
         from unittest.mock import patch
 
-        temporal_schedule_service = AsyncMock()
+        sync_state_machine = AsyncMock()
         sc_repo = FakeSourceConnectionRepository()
         shell = _source_conn_shell()
         shell.connection_id = uuid4()
@@ -2227,7 +2227,7 @@ class TestVerifyOAuthFlow:
 
         svc = _service(
             sc_repo=sc_repo,
-            temporal_schedule_service=temporal_schedule_service,
+            sync_state_machine=sync_state_machine,
         )
         svc._validate_config = MagicMock(return_value={})
         collection = MagicMock()
@@ -2267,4 +2267,4 @@ class TestVerifyOAuthFlow:
                 has_claim_token=True,
             )
 
-        temporal_schedule_service.unpause_schedules_for_sync.assert_awaited_once()
+        sync_state_machine.transition.assert_awaited_once()

@@ -7,7 +7,7 @@ from uuid import UUID
 from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.domains.sync_pipeline.config.base import SyncConfig
-from airweave.domains.syncs.types import LifecycleData
+from airweave.domains.syncs.jobs.types import LifecycleData
 
 
 @dataclass

@@ -12,7 +12,7 @@ import pytest
 from fastapi import HTTPException
 
 from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
-from airweave.domains.syncs.sync_record_service import SyncRecordService
+from airweave.domains.syncs.record_service import SyncRecordService
 
 ORG_ID = uuid4()
 SYNC_ID = uuid4()
@@ -27,10 +27,11 @@ def _mock_ctx() -> MagicMock:
     return ctx
 
 
-def _mock_sync_model(sync_id: UUID = SYNC_ID) -> MagicMock:
+def _mock_sync_model(sync_id: UUID = SYNC_ID, status: str = "active") -> MagicMock:
     sync = MagicMock()
     sync.id = sync_id
     sync.name = "test-sync"
+    sync.status = status
     return sync
 
 
@@ -55,6 +56,7 @@ class TriggerCase:
     name: str
     active_jobs: list
     sync_exists: bool = True
+    sync_status: str = "active"
     expect_error: Optional[type] = None
     error_status: Optional[int] = None
 
@@ -77,6 +79,14 @@ TRIGGER_CASES = [
         sync_exists=False,
         expect_error=ValueError,
     ),
+    TriggerCase(
+        name="non_active_sync_rejected",
+        active_jobs=[],
+        sync_exists=True,
+        sync_status="paused",
+        expect_error=HTTPException,
+        error_status=409,
+    ),
 ]
 
 
@@ -89,7 +99,9 @@ async def test_trigger_sync_run(case: TriggerCase) -> None:
     connection_repo = AsyncMock()
 
     sync_job_repo.get_active_for_sync = AsyncMock(return_value=case.active_jobs)
-    sync_repo.get = AsyncMock(return_value=_mock_sync_model() if case.sync_exists else None)
+    sync_repo.get = AsyncMock(
+        return_value=_mock_sync_model(status=case.sync_status) if case.sync_exists else None
+    )
 
     created_job = _mock_sync_job_model()
     sync_job_repo.create = AsyncMock(return_value=created_job)
@@ -104,7 +116,7 @@ async def test_trigger_sync_run(case: TriggerCase) -> None:
 
     if case.expect_error:
         with pytest.raises(case.expect_error) as exc_info:
-            with patch("airweave.domains.syncs.sync_record_service.UnitOfWork") as mock_uow_cls:
+            with patch("airweave.domains.syncs.record_service.UnitOfWork") as mock_uow_cls:
                 mock_uow = AsyncMock()
                 mock_uow.session = AsyncMock()
                 mock_uow.commit = AsyncMock()
@@ -115,7 +127,7 @@ async def test_trigger_sync_run(case: TriggerCase) -> None:
         if case.error_status and isinstance(exc_info.value, HTTPException):
             assert exc_info.value.status_code == case.error_status
     else:
-        with patch("airweave.domains.syncs.sync_record_service.UnitOfWork") as mock_uow_cls:
+        with patch("airweave.domains.syncs.record_service.UnitOfWork") as mock_uow_cls:
             mock_uow = AsyncMock()
             mock_uow.session = AsyncMock()
             mock_uow.commit = AsyncMock()
@@ -123,7 +135,7 @@ async def test_trigger_sync_run(case: TriggerCase) -> None:
             mock_uow_cls.return_value.__aenter__ = AsyncMock(return_value=mock_uow)
             mock_uow_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("airweave.domains.syncs.sync_record_service.schemas") as mock_schemas:
+            with patch("airweave.domains.syncs.record_service.schemas") as mock_schemas:
                 mock_sync_schema = MagicMock()
                 mock_job_schema = MagicMock()
                 mock_schemas.Sync.model_validate.return_value = mock_sync_schema
@@ -165,7 +177,7 @@ async def test_create_sync_flushes_and_refreshes_job_before_validation() -> None
     uow.session.refresh = AsyncMock()
     ctx = _mock_ctx()
 
-    with patch("airweave.domains.syncs.sync_record_service.schemas") as mock_schemas:
+    with patch("airweave.domains.syncs.record_service.schemas") as mock_schemas:
         validated_job_schema = MagicMock()
         mock_schemas.SyncJob.model_validate.return_value = validated_job_schema
         mock_schemas.SyncJobCreate = MagicMock()

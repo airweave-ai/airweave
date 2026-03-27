@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import List, Optional, Protocol, Tuple
 from uuid import UUID
 
@@ -11,72 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.context import BaseContext
-from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
+from airweave.core.shared_models import SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.sync_pipeline.config import SyncConfig
-from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
-from airweave.domains.syncs.types import LifecycleData, SyncProvisionResult, TransitionResult
+from airweave.domains.syncs.types import SyncProvisionResult, SyncTransitionResult
 from airweave.models.sync import Sync
 from airweave.models.sync_cursor import SyncCursor
-from airweave.models.sync_job import SyncJob
 from airweave.schemas.source_connection import ScheduleConfig, SourceConnectionJob
 from airweave.schemas.sync import SyncCreate, SyncUpdate
-from airweave.schemas.sync_job import SyncJobCreate, SyncJobUpdate
-
-
-class SyncJobRepositoryProtocol(Protocol):
-    """Data access for sync job records."""
-
-    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[SyncJob]:
-        """Get a sync job by ID within org scope."""
-        ...
-
-    async def get_latest_by_sync_id(self, db: AsyncSession, sync_id: UUID) -> Optional[SyncJob]:
-        """Get the most recent sync job for a sync."""
-        ...
-
-    async def get_active_for_sync(
-        self, db: AsyncSession, sync_id: UUID, ctx: BaseContext
-    ) -> List[SyncJob]:
-        """Get all active (PENDING, RUNNING, CANCELLING) jobs for a sync."""
-        ...
-
-    async def get_all_by_sync_id(
-        self, db: AsyncSession, sync_id: UUID, ctx: BaseContext
-    ) -> List[SyncJob]:
-        """Get all jobs for a specific sync."""
-        ...
-
-    async def create(
-        self,
-        db: AsyncSession,
-        obj_in: SyncJobCreate,
-        ctx: BaseContext,
-        uow: Optional[UnitOfWork] = None,
-    ) -> SyncJob:
-        """Create a new sync job."""
-        ...
-
-    async def update(
-        self,
-        db: AsyncSession,
-        db_obj: SyncJob,
-        obj_in: SyncJobUpdate,
-        ctx: BaseContext,
-    ) -> SyncJob:
-        """Update an existing sync job."""
-        ...
-
-    async def get_stuck_jobs_by_status(
-        self,
-        db: AsyncSession,
-        status: List[str],
-        modified_before: Optional[datetime] = None,
-        started_before: Optional[datetime] = None,
-    ) -> List[SyncJob]:
-        """Get sync jobs stuck in specific statuses based on timestamps."""
-        ...
 
 
 class SyncRepositoryProtocol(Protocol):
@@ -90,6 +32,19 @@ class SyncRepositoryProtocol(Protocol):
         self, db: AsyncSession, id: UUID, ctx: BaseContext
     ) -> Optional[Sync]:
         """Get a sync by ID without connections."""
+        ...
+
+    async def transition_status(
+        self,
+        db: AsyncSession,
+        sync_id: UUID,
+        expected: SyncStatus,
+        target: SyncStatus,
+    ) -> None:
+        """Optimistic status update: SET status=target WHERE id=sync_id AND status=expected.
+
+        Raises OptimisticLockError if the status changed since read.
+        """
         ...
 
     async def create(
@@ -163,40 +118,21 @@ class SyncRecordServiceProtocol(Protocol):
         ...
 
 
-class SyncJobServiceProtocol(Protocol):
-    """Sync job status management."""
-
-    async def update_status(
-        self,
-        sync_job_id: UUID,
-        status: SyncJobStatus,
-        ctx: ApiContext,
-        stats: Optional[SyncStats] = None,
-        error: Optional[str] = None,
-        started_at: Optional[datetime] = None,
-        completed_at: Optional[datetime] = None,
-        failed_at: Optional[datetime] = None,
-        error_category: Optional[SourceConnectionErrorCategory] = None,
-    ) -> None:
-        """Update sync job status with provided details."""
-        ...
-
-
-class SyncJobStateMachineProtocol(Protocol):
-    """Validated, idempotent sync job status transitions."""
+class SyncStateMachineProtocol(Protocol):
+    """Validated, idempotent sync status transitions with schedule side effects."""
 
     async def transition(
         self,
-        sync_job_id: UUID,
-        target: SyncJobStatus,
+        sync_id: UUID,
+        target: SyncStatus,
         ctx: BaseContext,
         *,
-        lifecycle_data: Optional[LifecycleData] = None,
-        error: Optional[str] = None,
-        stats: Optional[SyncStats] = None,
-        error_category: Optional[SourceConnectionErrorCategory] = None,
-    ) -> TransitionResult:
-        """Execute a validated, idempotent status transition."""
+        reason: str = "",
+    ) -> SyncTransitionResult:
+        """Execute a validated, idempotent sync status transition.
+
+        Side effects (schedule pause/unpause) run after the DB commit.
+        """
         ...
 
 

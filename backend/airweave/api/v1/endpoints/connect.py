@@ -34,7 +34,7 @@ from airweave.core.protocols import PubSub
 from airweave.db.session import get_db
 from airweave.domains.connect.protocols import ConnectServiceProtocol
 from airweave.domains.connect.types import SSE_HEARTBEAT_INTERVAL_SECONDS
-from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
 from airweave.schemas.connect_session import (
     ConnectSessionContext,
     ConnectSessionCreate,

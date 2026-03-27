@@ -13,7 +13,7 @@ from airweave.domains.connect.service import ConnectService
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
 from airweave.domains.sources.fakes.service import FakeSourceService
-from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
+from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
 from airweave.schemas.connect_session import ConnectSessionContext, ConnectSessionMode
 from airweave.schemas.organization import Organization
 
