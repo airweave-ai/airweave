@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 
 from airweave.adapters.event_bus.fake import FakeEventBus
 from airweave.api.context import ApiContext
 from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent
+from airweave.core.exceptions import CollectionNotFoundException, InvalidInputError
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
@@ -25,7 +25,9 @@ from airweave.domains.search.types.filters import (
     FilterOperator,
     FilterableField,
 )
+from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.models.collection import Collection
+from airweave.models.source_connection import SourceConnection
 from airweave.schemas.search_v2 import InstantSearchRequest
 
 # ── Constants ────────────────────────────────────────────────────────
@@ -79,23 +81,44 @@ def _make_request(query: str = "test query", **kwargs) -> InstantSearchRequest:
     return InstantSearchRequest(query=query, **kwargs)
 
 
+def _make_source_connection(readable_collection_id: str = DEFAULT_READABLE_ID) -> SourceConnection:
+    """Build a minimal SourceConnection model."""
+    sc = SourceConnection(
+        id=uuid4(),
+        organization_id=DEFAULT_ORG_ID,
+        name="Test Source",
+        short_name="stub",
+        readable_collection_id=readable_collection_id,
+    )
+    return sc
+
+
 def _make_service(
     *,
     executor: FakeSearchPlanExecutor | None = None,
     collection_repo: FakeCollectionRepository | None = None,
+    sc_repo: FakeSourceConnectionRepository | None = None,
     event_bus: FakeEventBus | None = None,
-) -> tuple[InstantSearchService, FakeSearchPlanExecutor, FakeCollectionRepository, FakeEventBus]:
+) -> tuple[
+    InstantSearchService,
+    FakeSearchPlanExecutor,
+    FakeCollectionRepository,
+    FakeSourceConnectionRepository,
+    FakeEventBus,
+]:
     """Build an InstantSearchService with fakes, returning the service and key fakes."""
     executor = executor or FakeSearchPlanExecutor()
     collection_repo = collection_repo or FakeCollectionRepository()
+    sc_repo = sc_repo or FakeSourceConnectionRepository()
     event_bus = event_bus or FakeEventBus()
 
     svc = InstantSearchService(
         executor=executor,
         collection_repo=collection_repo,
+        sc_repo=sc_repo,
         event_bus=event_bus,
     )
-    return svc, executor, collection_repo, event_bus
+    return svc, executor, collection_repo, sc_repo, event_bus
 
 
 # ── Tests ────────────────────────────────────────────────────────────
@@ -107,11 +130,13 @@ class TestInstantSearchService:
     @pytest.mark.asyncio
     async def test_happy_path_emits_completed_event(self) -> None:
         """Executor returns results -> SearchCompletedEvent published."""
-        svc, executor, repo, bus = _make_service()
+        svc, executor, repo, sc_repo, bus = _make_service()
 
-        # Seed collection
+        # Seed collection + source connection
         col = _make_collection()
         repo.seed_readable(DEFAULT_READABLE_ID, col)
+        sc = _make_source_connection()
+        sc_repo.seed(sc.id, sc)
 
         # Seed executor with results
         result = make_result(entity_id="ent-1", name="Result 1")
@@ -130,11 +155,13 @@ class TestInstantSearchService:
     @pytest.mark.asyncio
     async def test_executor_error_emits_failed_event(self) -> None:
         """Executor raises -> SearchFailedEvent published, exception raised."""
-        svc, executor, repo, bus = _make_service()
+        svc, executor, repo, sc_repo, bus = _make_service()
 
-        # Seed collection
+        # Seed collection + source connection
         col = _make_collection()
         repo.seed_readable(DEFAULT_READABLE_ID, col)
+        sc = _make_source_connection()
+        sc_repo.seed(sc.id, sc)
 
         # Seed executor with error
         executor.seed_error(RuntimeError("db down"))
@@ -150,24 +177,42 @@ class TestInstantSearchService:
 
     @pytest.mark.asyncio
     async def test_collection_not_found_raises_404(self) -> None:
-        """Collection repo returns None -> HTTPException with 404."""
-        svc, executor, repo, bus = _make_service()
+        """Collection repo returns None -> CollectionNotFoundException."""
+        svc, executor, repo, sc_repo, bus = _make_service()
 
         # Do not seed any collection — repo returns None
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(CollectionNotFoundException):
             await svc.search(AsyncMock(), _make_ctx(), "nonexistent", _make_request())
 
-        assert exc_info.value.status_code == 404
+        # No SearchFailedEvent should be emitted for user errors
+        assert len(bus.events) == 0
+
+    @pytest.mark.asyncio
+    async def test_collection_no_sources_raises_422(self) -> None:
+        """Collection exists but has no sources -> InvalidInputError."""
+        svc, executor, repo, sc_repo, bus = _make_service()
+
+        # Seed collection but NO source connections
+        col = _make_collection()
+        repo.seed_readable(DEFAULT_READABLE_ID, col)
+
+        with pytest.raises(InvalidInputError, match="has no sources"):
+            await svc.search(AsyncMock(), _make_ctx(), DEFAULT_READABLE_ID, _make_request())
+
+        # No SearchFailedEvent should be emitted for user errors
+        assert len(bus.events) == 0
 
     @pytest.mark.asyncio
     async def test_filters_passed_to_executor(self) -> None:
         """Request with filters -> executor _calls shows filters were passed."""
-        svc, executor, repo, bus = _make_service()
+        svc, executor, repo, sc_repo, bus = _make_service()
 
-        # Seed collection
+        # Seed collection + source connection
         col = _make_collection()
         repo.seed_readable(DEFAULT_READABLE_ID, col)
+        sc = _make_source_connection()
+        sc_repo.seed(sc.id, sc)
 
         # Seed executor with empty results
         executor.seed_result(SearchResults(results=[]))

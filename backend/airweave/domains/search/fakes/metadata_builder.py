@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.api.context import ApiContext
 from airweave.domains.search.protocols import CollectionMetadataBuilderProtocol
 from airweave.domains.search.types import CollectionMetadata
+from airweave.domains.search.types.metadata import SourceMetadata
 
 
 class FakeCollectionMetadataBuilder(CollectionMetadataBuilderProtocol):
@@ -31,5 +32,12 @@ class FakeCollectionMetadataBuilder(CollectionMetadataBuilderProtocol):
         return CollectionMetadata(
             collection_id="fake-id",
             collection_readable_id=collection_readable_id,
-            sources=[],
+            sources=[
+                SourceMetadata(
+                    short_name="stub",
+                    description="Test source",
+                    entity_types=[],
+                    federated=False,
+                )
+            ],
         )
