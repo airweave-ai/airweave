@@ -19,7 +19,7 @@ import pytest
 
 from airweave.api.context import ApiContext
 from airweave.core.logging import logger
-from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, SyncJobStatus
+from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, SyncJobStatus, SyncStatus
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
 from airweave.domains.entities.fakes.entity_count_repository import FakeEntityCountRepository
@@ -174,6 +174,7 @@ def _make_stats(
     entity_count: int = 0,
     authentication_method: Optional[str] = None,
     federated_search: bool = False,
+    sync_status: Optional[SyncStatus] = None,
 ) -> SourceConnectionStats:
     """Build a SourceConnectionStats with sensible defaults."""
     last_job = (
@@ -196,6 +197,7 @@ def _make_stats(
         last_job=last_job,
         entity_count=entity_count,
         federated_search=federated_search,
+        sync_status=sync_status,
     )
 
 
@@ -1066,6 +1068,7 @@ class ListItemCase:
     authentication_method: Optional[str]
     federated_search: bool
     expect_status: SourceConnectionStatus
+    sync_status: Optional[SyncStatus] = None
 
 
 LIST_ITEM_CASES = [
@@ -1135,6 +1138,28 @@ LIST_ITEM_CASES = [
         True,
         SourceConnectionStatus.ACTIVE,
     ),
+    ListItemCase(
+        "sync paused → PAUSED",
+        True,
+        True,
+        None,
+        0,
+        None,
+        False,
+        SourceConnectionStatus.PAUSED,
+        sync_status=SyncStatus.PAUSED,
+    ),
+    ListItemCase(
+        "sync paused overrides running job",
+        True,
+        True,
+        SyncJobStatus.RUNNING,
+        0,
+        None,
+        False,
+        SourceConnectionStatus.PAUSED,
+        sync_status=SyncStatus.PAUSED,
+    ),
 ]
 
 
@@ -1147,6 +1172,7 @@ def test_build_list_item(case: ListItemCase):
         entity_count=case.entity_count,
         authentication_method=case.authentication_method,
         federated_search=case.federated_search,
+        sync_status=case.sync_status,
     )
     item = _fixture().builder.build_list_item(stats)
 
@@ -1301,6 +1327,7 @@ def _full_raw_dict(**overrides) -> Dict[str, Any]:
         "last_job": None,
         "entity_count": 0,
         "federated_search": False,
+        "sync_status": None,
     }
     base.update(overrides)
     return base
@@ -1583,3 +1610,61 @@ def test_build_list_item_needs_reauth():
     object.__setattr__(stats.last_job, "error_category", "api_key_invalid")
     item = f.builder.build_list_item(stats)
     assert item.status == SourceConnectionStatus.NEEDS_REAUTH
+
+
+# ===========================================================================
+# _fetch_sync_status — detail view sync status lookup
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_sync_status_returns_status():
+    """_fetch_sync_status returns SyncStatus when db query succeeds."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    f = _fixture()
+    sync_id = uuid4()
+    sc = _make_source_conn(sync_id=sync_id)
+
+    mock_row = SimpleNamespace(status="paused")
+    mock_result = MagicMock()
+    mock_result.first.return_value = mock_row
+    mock_db = AsyncMock()
+    mock_db.execute.return_value = mock_result
+
+    result = await f.builder._fetch_sync_status(mock_db, sc)
+    assert result == SyncStatus.PAUSED
+
+
+@pytest.mark.asyncio
+async def test_fetch_sync_status_returns_none_when_no_row():
+    """_fetch_sync_status returns None when no Sync row is found."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    f = _fixture()
+    sync_id = uuid4()
+    sc = _make_source_conn(sync_id=sync_id)
+
+    mock_result = MagicMock()
+    mock_result.first.return_value = None
+    mock_db = AsyncMock()
+    mock_db.execute.return_value = mock_result
+
+    result = await f.builder._fetch_sync_status(mock_db, sc)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_sync_status_returns_none_on_exception():
+    """_fetch_sync_status returns None when db.execute raises."""
+    from unittest.mock import AsyncMock
+
+    f = _fixture()
+    sync_id = uuid4()
+    sc = _make_source_conn(sync_id=sync_id)
+
+    mock_db = AsyncMock()
+    mock_db.execute.side_effect = RuntimeError("db error")
+
+    result = await f.builder._fetch_sync_status(mock_db, sc)
+    assert result is None
