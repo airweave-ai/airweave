@@ -117,7 +117,7 @@ def _try_decode_text(word_stream: bytes, text_start: int, ccp_text: int) -> Opti
             if len(text.strip()) >= MIN_TOTAL_CHARS:
                 return text
         except Exception:
-            pass
+            pass  # Decoding failed — fall through to try UTF-16LE
 
     # Try UTF-16LE (2 bytes per char)
     text_end_2byte = text_start + ccp_text * 2
@@ -128,7 +128,7 @@ def _try_decode_text(word_stream: bytes, text_start: int, ccp_text: int) -> Opti
             if len(text.strip()) >= MIN_TOTAL_CHARS:
                 return text
         except Exception:
-            pass
+            pass  # Both encodings failed — caller returns None
 
     return None
 
