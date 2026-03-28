@@ -3,11 +3,11 @@
 import os
 import struct
 import tempfile
+from unittest.mock import patch
 
 import pytest
 
 from airweave.domains.converters.text_extractors.doc import (
-    MAX_FILE_SIZE_BYTES,
     _clean_text,
     _extract_text_from_word_stream,
     extract_doc_text,
@@ -185,21 +185,12 @@ class TestExtractDocText:
     async def test_extract_oversized_file(self, tmp_path):
         """Files exceeding MAX_FILE_SIZE_BYTES should be skipped without parsing."""
         large_file = tmp_path / "huge.doc"
-        # Create a sparse file that reports > 50MB
-        large_file.write_bytes(b"\x00")
-        original_max = MAX_FILE_SIZE_BYTES
-
-        # Temporarily set a tiny cap to test the guard without creating a 50MB file
-        import airweave.domains.converters.text_extractors.doc as doc_module
-
-        doc_module.MAX_FILE_SIZE_BYTES = 10
-        try:
-            # Write a small but > 10 byte file
-            large_file.write_bytes(b"\x00" * 20)
+        large_file.write_bytes(b"\x00" * 20)
+        with patch(
+            "airweave.domains.converters.text_extractors.doc.MAX_FILE_SIZE_BYTES", 10
+        ):
             result = await extract_doc_text(str(large_file))
             assert result is None
-        finally:
-            doc_module.MAX_FILE_SIZE_BYTES = original_max
 
     @pytest.mark.asyncio
     async def test_extract_nonexistent_file(self):

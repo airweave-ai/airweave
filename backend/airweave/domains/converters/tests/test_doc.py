@@ -40,7 +40,7 @@ class TestDocConverter:
 
     @pytest.mark.asyncio
     async def test_try_extract_empty_string(self, converter):
-        """Empty string from extractor → None (falsy)."""
+        """Empty string from extractor is returned as-is (treated as falsy by convert_batch)."""
         with patch(
             "airweave.domains.converters.doc.extract_doc_text",
             new_callable=AsyncMock,
@@ -48,4 +48,4 @@ class TestDocConverter:
         ):
             result = await converter._try_extract("/fake/doc.doc")
 
-        assert result is None or result == ""
+        assert result == ""

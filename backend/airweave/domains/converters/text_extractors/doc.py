@@ -5,6 +5,12 @@ reads the ``WordDocument`` stream, parses the FIB (File Information Block) to
 locate the raw text, and extracts it — handling both single-byte (cp1252) and
 double-byte (UTF-16LE) encodings.
 
+A text-offset heuristic is used: text is assumed to start immediately after the
+FIB. This works for simple, non-complex documents but may produce garbage for
+fast-saved or complex-format files. In those cases the extracted text falls
+below the 50-character threshold, returning ``None`` so the converter layer
+falls back to OCR.
+
 A 50 MB file-size cap is enforced to keep memory bounded (~1.5x file size).
 """
 
@@ -33,7 +39,19 @@ _CHAR_MAP = {
 def _parse_fib(word_stream: bytes) -> Optional[Tuple[int, int, bool]]:
     """Parse the FIB header and return (text_start, ccp_text, f_encrypted).
 
-    The text starts immediately after the FIB structure. The FIB layout is:
+    **Text-offset heuristic:** this function assumes text starts immediately
+    after the FIB structure ends. Per the Word Binary Format spec ([MS-DOC]
+    §2.5.1), text is located at the file offset given by ``fcClx`` in
+    ``FibRgFcLcb97``, which points to the piece table. For simple (non-complex)
+    documents created by standard Word versions the text does reside right
+    after the FIB, so this heuristic works in practice.
+
+    For complex documents, fast-saved files, or unusual structures, text may
+    be at a different offset. In those cases extraction produces garbage or
+    too few characters, and the caller returns ``None`` (triggering OCR
+    fallback via the <50-character threshold).
+
+    The FIB layout is:
       FibBase (32 bytes)
       + csw (2) + FibRgW (csw * 2)
       + clw (2) + FibRgLw (clw * 4)
@@ -137,7 +155,7 @@ def _extract_text_from_word_stream(word_stream: bytes) -> Optional[str]:  # noqa
 def _replace_char(ch: str) -> Optional[str]:
     """Map a single character through Word control code rules."""
     code = ord(ch)
-    if ch in ("\n", "\r", "\t"):
+    if ch in ("\n", "\t"):
         return ch
     if code in _CHAR_MAP:
         return _CHAR_MAP[code]
