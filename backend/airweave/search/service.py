@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.api.context import ApiContext
-from airweave.core.exceptions import NotFoundException
+from airweave.core.exceptions import NotFoundException, PermissionException
 from airweave.core.protocols.pubsub import PubSub
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.models.source_connection import SourceConnection
@@ -29,6 +29,35 @@ SearchDestination = Literal["qdrant", "vespa"]
 
 class SearchService:
     """Search service."""
+
+    @staticmethod
+    def _validate_admin_cross_org_access(ctx: ApiContext, collection_org_id: UUID) -> None:
+        """Validate that the caller is authorized to access cross-org resources.
+
+        Admin users (is_admin or is_superuser) may access any organization's data.
+        API-key callers are restricted to collections within their own organization,
+        even when the admin permission feature flag is enabled.
+
+        Args:
+            ctx: API context with auth info
+            collection_org_id: The organization ID that owns the target collection
+
+        Raises:
+            PermissionException: If an API key attempts to access another org's collection
+        """
+        # User-based admin/superuser: allow cross-org access
+        if ctx.has_user_context and (ctx.user.is_admin or ctx.user.is_superuser):
+            return
+
+        # API key: restrict to own organization
+        if ctx.organization.id != collection_org_id:
+            ctx.logger.warning(
+                f"API key from org {ctx.organization.id} attempted cross-org access "
+                f"to collection in org {collection_org_id}"
+            )
+            raise PermissionException(
+                "API key does not have access to collections outside its organization"
+            )
 
     async def search(
         self,
@@ -188,6 +217,9 @@ class SearchService:
         if not collection:
             raise NotFoundException(message=f"Collection '{readable_collection_id}' not found")
 
+        # Validate cross-org access: API keys are restricted to their own org
+        self._validate_admin_cross_org_access(ctx, collection.organization_id)
+
         ctx.logger.info(
             f"Admin searching collection {readable_collection_id} "
             f"(org: {collection.organization_id}) using destination: {destination}"
@@ -272,6 +304,9 @@ class SearchService:
 
         if not collection:
             raise NotFoundException(message=f"Collection '{readable_collection_id}' not found")
+
+        # Validate cross-org access: API keys are restricted to their own org
+        self._validate_admin_cross_org_access(ctx, collection.organization_id)
 
         ctx.logger.info(
             f"Searching collection {readable_collection_id} as user '{user_principal}' "
