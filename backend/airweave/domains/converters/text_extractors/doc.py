@@ -21,8 +21,9 @@ import os
 import struct
 from typing import Optional, Tuple
 
+import olefile  # type: ignore[import-untyped]
+
 from airweave.core.logging import logger
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
 MIN_TOTAL_CHARS = 50
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -192,66 +193,48 @@ async def extract_doc_text(path: str) -> Optional[str]:
     Returns None if extraction fails or yields fewer than MIN_TOTAL_CHARS
     characters, signalling the caller to fall back to OCR.
     """
-    try:
-        import olefile
-    except ImportError:
-        raise SyncFailureError("olefile required for .doc text extraction but not installed")
-
-    def _extract() -> Optional[str]:
-        return _extract_from_ole(path, olefile)
-
-    return await asyncio.to_thread(_extract)
+    return await asyncio.to_thread(_extract_from_ole, path)
 
 
-def _extract_from_ole(path: str, olefile) -> Optional[str]:  # type: ignore[no-untyped-def]
+def _extract_from_ole(path: str) -> Optional[str]:
     """Synchronous OLE2 extraction logic, called via asyncio.to_thread."""
     name = os.path.basename(path)
-
-    try:
-        file_size = os.path.getsize(path)
-    except OSError as exc:
-        logger.warning(f"DOC {name}: cannot stat file: {exc}")
-        return None
+    file_size = os.path.getsize(path)
 
     if file_size > MAX_FILE_SIZE_BYTES:
         logger.warning(
-            f"DOC {name}: file size {file_size / 1024 / 1024:.1f} MB exceeds "
-            f"{MAX_FILE_SIZE_BYTES / 1024 / 1024:.0f} MB cap, skipping"
+            "DOC %s: file size %.1f MB exceeds %d MB cap, skipping",
+            name,
+            file_size / 1024 / 1024,
+            MAX_FILE_SIZE_BYTES // (1024 * 1024),
         )
         return None
 
     if file_size == 0:
-        logger.debug(f"DOC {name}: empty file")
+        logger.debug("DOC %s: empty file", name)
         return None
 
     if not olefile.isOleFile(path):
-        logger.debug(f"DOC {name}: not a valid OLE2 file")
+        logger.debug("DOC %s: not a valid OLE2 file", name)
         return None
 
     try:
-        ole = olefile.OleFileIO(path)
-    except Exception as exc:
-        logger.warning(f"DOC {name}: failed to open OLE2 container: {exc}")
-        return None
+        with olefile.OleFileIO(path) as ole:
+            if not ole.exists("WordDocument"):
+                logger.debug("DOC %s: no WordDocument stream found", name)
+                return None
 
-    try:
-        if not ole.exists("WordDocument"):
-            logger.debug(f"DOC {name}: no WordDocument stream found")
-            return None
+            word_stream = ole.openstream("WordDocument").read()
+            text = _extract_text_from_word_stream(word_stream)
 
-        word_stream = ole.openstream("WordDocument").read()
-        text = _extract_text_from_word_stream(word_stream)
+            if not text or len(text.strip()) < MIN_TOTAL_CHARS:
+                chars = len(text.strip()) if text else 0
+                logger.debug("DOC %s: extracted %d chars, insufficient", name, chars)
+                return None
 
-        if not text or len(text.strip()) < MIN_TOTAL_CHARS:
-            chars = len(text.strip()) if text else 0
-            logger.debug(f"DOC {name}: extracted {chars} chars, insufficient")
-            return None
-
-        logger.debug(f"DOC {name}: extracted {len(text.strip())} chars")
-        return text
+            logger.debug("DOC %s: extracted %d chars", name, len(text.strip()))
+            return text
 
     except Exception as exc:
-        logger.warning(f"DOC {name}: extraction error: {exc}")
+        logger.warning("DOC %s: extraction error: %s", name, exc)
         return None
-    finally:
-        ole.close()

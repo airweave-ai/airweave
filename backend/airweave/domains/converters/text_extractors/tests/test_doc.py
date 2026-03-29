@@ -186,13 +186,11 @@ class TestExtractDocText:
         """Files exceeding MAX_FILE_SIZE_BYTES should be skipped without parsing."""
         large_file = tmp_path / "huge.doc"
         large_file.write_bytes(b"\x00" * 20)
-        with patch(
-            "airweave.domains.converters.text_extractors.doc.MAX_FILE_SIZE_BYTES", 10
-        ):
+        with patch("airweave.domains.converters.text_extractors.doc.MAX_FILE_SIZE_BYTES", 10):
             result = await extract_doc_text(str(large_file))
             assert result is None
 
     @pytest.mark.asyncio
     async def test_extract_nonexistent_file(self):
-        result = await extract_doc_text("/nonexistent/path/fake.doc")
-        assert result is None
+        with pytest.raises(OSError):
+            await extract_doc_text("/nonexistent/path/fake.doc")
