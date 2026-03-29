@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 from airweave.domains.converters._base import BaseTextConverter, OcrConverterAdapter
 from airweave.domains.converters.code import CodeConverter
+from airweave.domains.converters.doc import DocConverter
 from airweave.domains.converters.html import HtmlConverter
 from airweave.domains.converters.pdf import PdfConverter
 from airweave.domains.converters.registry import ConverterRegistry
@@ -20,6 +21,7 @@ class TestConverterRegistry:
 
     def test_extension_mapping(self):
         registry = ConverterRegistry(ocr_provider=None)
+        assert isinstance(registry.for_extension(".doc"), DocConverter)
         assert isinstance(registry.for_extension(".html"), HtmlConverter)
         assert isinstance(registry.for_extension(".txt"), TxtConverter)
         assert isinstance(registry.for_extension(".xlsx"), XlsxConverter)

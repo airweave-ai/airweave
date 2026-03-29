@@ -95,6 +95,7 @@ from .dropbox import (
 )
 from .enron import EnronEmailEntity
 from .file_stub import (
+    DocFileStubEntity,
     DocxFileStubEntity,
     FileStubContainerEntity,
     PdfFileStubEntity,
@@ -446,6 +447,7 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         EnronEmailEntity,
     ],
     "file_stub": [
+        DocFileStubEntity,
         DocxFileStubEntity,
         FileStubContainerEntity,
         PdfFileStubEntity,

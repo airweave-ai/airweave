@@ -72,6 +72,7 @@ aiohttp = "^3.9.0"
 html-to-markdown = "^2.4.1"
 python-docx = "^1.2.0"
 python-pptx = "^1.0.2"
+olefile = "^0.47"
 openpyxl = "^3.1.5"
 pillow = "^11.0.0"
 chonkie = {extras = ["code", "semantic"], version = "^1.4.0"}
