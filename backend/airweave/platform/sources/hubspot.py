@@ -60,6 +60,10 @@ class HubspotSource(BaseSource):
     HUBSPOT_API_LIMIT = 100
     HUBSPOT_BATCH_SIZE = 100
 
+    _property_cache: Dict[str, List[str]]
+    _portal_id: Optional[str]
+    _after_date: Optional[datetime]
+
     @classmethod
     async def create(
         cls,
@@ -71,9 +75,9 @@ class HubspotSource(BaseSource):
     ) -> HubspotSource:
         """Create a new HubSpot source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        instance._property_cache: Dict[str, List[str]] = {}
-        instance._portal_id: Optional[str] = None
-        instance._after_date: Optional[datetime] = None
+        instance._property_cache = {}
+        instance._portal_id = None
+        instance._after_date = None
         if config.after_date:
             instance._after_date = datetime.fromisoformat(config.after_date).replace(
                 tzinfo=timezone.utc

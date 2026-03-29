@@ -381,7 +381,7 @@ class HubspotConfig(SourceConfig):
 
     @field_validator("after_date")
     @classmethod
-    def validate_after_date(cls, value):
+    def validate_after_date(cls, value: Optional[str]) -> Optional[str]:
         """Validate and normalize date format."""
         if not value:
             return value
