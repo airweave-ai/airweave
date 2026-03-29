@@ -15,6 +15,7 @@ NONINTERACTIVE="${NONINTERACTIVE:-}"
 SKIP_LOCAL_EMBEDDINGS="${SKIP_LOCAL_EMBEDDINGS:-}"
 SKIP_FRONTEND="${SKIP_FRONTEND:-}"
 SKIP_CONNECT="${SKIP_CONNECT:-}"
+ENABLE_DOCLING="${ENABLE_DOCLING:-}"
 VERBOSE="${VERBOSE:-}"
 QUIET="${QUIET:-}"
 
@@ -241,6 +242,7 @@ ${BOLD}Options:${RESET}
   --skip-local-embeddings   Don't start local embeddings service
   --skip-frontend           Don't start frontend UI
   --skip-connect            Don't start connect widget
+  --enable-docling          Start docling-serve for local OCR
 
 ${BOLD}Actions:${RESET}
   --restart                 Restart existing containers (preserves data)
@@ -252,6 +254,7 @@ ${BOLD}Environment variables:${RESET}
   SKIP_LOCAL_EMBEDDINGS=1   Same as --skip-local-embeddings
   SKIP_FRONTEND=1           Same as --skip-frontend
   SKIP_CONNECT=1            Same as --skip-connect
+  ENABLE_DOCLING=1          Same as --enable-docling
   VERBOSE=1                 Same as --verbose
   QUIET=1                   Same as --quiet
   NO_COLOR=1                Disable colored output
@@ -284,6 +287,7 @@ while [[ $# -gt 0 ]]; do
         --skip-local-embeddings) SKIP_LOCAL_EMBEDDINGS=1; shift ;;
         --skip-frontend) SKIP_FRONTEND=1; shift ;;
         --skip-connect) SKIP_CONNECT=1; shift ;;
+        --enable-docling) ENABLE_DOCLING=1; shift ;;
         --restart) ACTION_RESTART=1; shift ;;
         --recreate) ACTION_RECREATE=1; shift ;;
         --destroy) ACTION_DESTROY=1; shift ;;
@@ -519,6 +523,7 @@ USE_LOCAL_EMBEDDINGS=true
 USE_FRONTEND=true
 USE_VESPA=true  # Always enabled
 USE_CONNECT=true
+USE_DOCLING=false
 
 # Detect available API keys
 openai_key=$(get_env_value "OPENAI_API_KEY")
@@ -592,6 +597,11 @@ if [[ -z $SKIP_CONTAINER_CREATION ]]; then
         log_note "Skipping connect widget (flag set)"
         USE_CONNECT=false
     fi
+
+    if [[ -n $ENABLE_DOCLING ]]; then
+        log_note "Enabling docling-serve for local OCR"
+        USE_DOCLING=true
+    fi
 else
     # When reusing existing containers, just set flags based on skip settings
     if [[ -n $openai_key && $openai_key != "your-api-key-here" ]] || [[ -n $SKIP_LOCAL_EMBEDDINGS ]]; then
@@ -608,6 +618,9 @@ else
     if [[ -n $SKIP_CONNECT ]]; then
         USE_CONNECT=false
     fi
+    if [[ -n $ENABLE_DOCLING ]]; then
+        USE_DOCLING=true
+    fi
 fi
 
 # -----------------------------------------------------------------------------
@@ -620,6 +633,7 @@ if [[ -z $SKIP_CONTAINER_CREATION ]]; then
     [[ $USE_FRONTEND == true ]] && compose_args+=(--profile frontend)
     [[ $USE_CONNECT == true ]] && compose_args+=(--profile connect)
     [[ $USE_VESPA == true ]] && compose_args+=(--profile vespa)
+    [[ $USE_DOCLING == true ]] && compose_args+=(--profile docling)
 
     if ! $COMPOSE_CMD "${compose_args[@]}" up -d; then
         log_error "Failed to start Docker services"

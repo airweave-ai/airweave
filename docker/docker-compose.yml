@@ -81,6 +81,8 @@ services:
       - SVIX_URL=http://svix:8071
       - SVIX_JWT_SECRET=${SVIX_JWT_SECRET}
       - SVIX_AUTH_TOKEN=${SVIX_AUTH_TOKEN:-}
+      # Docling OCR (only active when DOCLING_BASE_URL is set in .env)
+      - DOCLING_BASE_URL=${DOCLING_BASE_URL:+http://docling:5001}
     depends_on:
       postgres:
         condition: service_healthy
@@ -241,6 +243,8 @@ services:
       - SVIX_URL=http://svix:8071
       - SVIX_JWT_SECRET=${SVIX_JWT_SECRET}
       - SVIX_AUTH_TOKEN=${SVIX_AUTH_TOKEN:-}
+      # Docling OCR (only active when DOCLING_BASE_URL is set in .env)
+      - DOCLING_BASE_URL=${DOCLING_BASE_URL:+http://docling:5001}
     volumes:
       - ../backend:/app
     entrypoint: [ "python", "-m", "airweave.domains.temporal.worker" ]
@@ -289,6 +293,21 @@ services:
       vespa:
         condition: service_healthy
     restart: "no"
+
+  docling:
+    container_name: airweave-docling
+    image: ghcr.io/docling-project/docling-serve
+    profiles:
+      - docling
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://localhost:5001/health" ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    restart: on-failure
 
   svix:
     container_name: airweave-svix
