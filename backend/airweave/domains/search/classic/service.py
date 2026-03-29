@@ -24,6 +24,7 @@ from airweave.core.protocols.reranker import RerankerProtocol
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.search.classic.types import ClassicSearchStrategy
 from airweave.domains.search.messages import _load_overview, build_system_prompt
+from airweave.domains.search.persistence import persist_v2_search_query
 from airweave.domains.search.protocols import (
     ClassicSearchServiceProtocol,
     CollectionMetadataBuilderProtocol,
@@ -181,6 +182,23 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
                 duration_ms=duration_ms,
                 collection_id=UUID(str(collection.id)),
             )
+        )
+
+        await persist_v2_search_query(
+            db,
+            ctx,
+            collection_id=UUID(str(collection.id)),
+            query_text=request.query,
+            retrieval_strategy="classic",
+            is_streaming=False,
+            limit=request.limit,
+            offset=request.offset,
+            duration_ms=duration_ms,
+            results_count=len(results.results),
+            filter_groups=[f.model_dump() for f in request.filter] if request.filter else None,
+            expand_query=True,
+            interpret_filters=True,
+            rerank=self._reranker is not None,
         )
 
         return results
