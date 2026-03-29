@@ -71,6 +71,15 @@ class FallbackOcrProvider:
 
             try:
                 results = await provider.convert_batch(file_paths)
+
+                if results and all(v is None for v in results.values()):
+                    await self._circuit_breaker.record_failure(provider_key)
+                    logger.warning(
+                        f"[FallbackOCR] '{provider_key}' returned all-None results "
+                        f"({len(results)} files), trying next provider"
+                    )
+                    continue
+
                 await self._circuit_breaker.record_success(provider_key)
                 return results
             except Exception as exc:

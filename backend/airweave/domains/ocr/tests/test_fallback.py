@@ -74,6 +74,25 @@ CASES = [
         expect_circuit_breaker_successes=["third"],
     ),
     Case(
+        desc="falls back when primary returns all-None results",
+        providers=[
+            ("primary", FakeOcrProvider(default_markdown=None)),
+            ("secondary", FakeOcrProvider(default_markdown="# Secondary")),
+        ],
+        expect_result="# Secondary",
+        expect_circuit_breaker_failures=["primary"],
+        expect_circuit_breaker_successes=["secondary"],
+    ),
+    Case(
+        desc="returns None when all providers return all-None",
+        providers=[
+            ("a", FakeOcrProvider(default_markdown=None)),
+            ("b", FakeOcrProvider(default_markdown=None)),
+        ],
+        expect_result=None,
+        expect_circuit_breaker_failures=["a", "b"],
+    ),
+    Case(
         desc="returns None when all providers fail",
         providers=[
             ("a", FakeOcrProvider(should_raise=RuntimeError("down"))),
@@ -115,6 +134,29 @@ async def test_fallback_ocr(case: Case):
     assert result.get("/tmp/doc.pdf") == case.expect_result
     assert circuit_breaker.successes == case.expect_circuit_breaker_successes
     assert circuit_breaker.failures == case.expect_circuit_breaker_failures
+
+
+@pytest.mark.asyncio
+async def test_partial_none_does_not_trigger_fallback():
+    """When a provider returns some None and some real results, don't fall back."""
+    primary = FakeOcrProvider(
+        overrides={"/tmp/a.pdf": "# A", "/tmp/b.pdf": None},
+        default_markdown=None,
+    )
+    secondary = FakeOcrProvider(default_markdown="# Secondary")
+    cb = FakeCircuitBreaker()
+
+    fallback = FallbackOcrProvider(
+        providers=[("primary", primary), ("secondary", secondary)],
+        circuit_breaker=cb,
+    )
+    result = await fallback.convert_batch(["/tmp/a.pdf", "/tmp/b.pdf"])
+
+    assert result["/tmp/a.pdf"] == "# A"
+    assert result["/tmp/b.pdf"] is None
+    assert cb.successes == ["primary"]
+    assert cb.failures == []
+    assert secondary.call_count == 0
 
 
 def test_rejects_empty_providers():
