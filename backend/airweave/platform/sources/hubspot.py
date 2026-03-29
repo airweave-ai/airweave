@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
@@ -75,8 +75,10 @@ class HubspotSource(BaseSource):
         instance._portal_id: Optional[str] = None
         instance._after_date: Optional[datetime] = None
         if config.after_date:
-            instance._after_date = datetime.fromisoformat(config.after_date)
-            logger.info(f"HubSpot: filtering to records modified after {config.after_date}")
+            instance._after_date = datetime.fromisoformat(config.after_date).replace(
+                tzinfo=timezone.utc
+            )
+            logger.info("HubSpot: filtering to records modified after %s (UTC)", config.after_date)
         return instance
 
     @retry(
@@ -270,9 +272,8 @@ class HubspotSource(BaseSource):
         parsed = parse_hubspot_datetime(updated_at)
         if parsed is None:
             return True
-        # Strip timezone for comparison (after_date is naive)
-        if parsed.tzinfo is not None:
-            parsed = parsed.replace(tzinfo=None)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed >= self._after_date
 
     def _build_record_url(self, object_type: str, object_id: str) -> Optional[str]:
@@ -306,9 +307,9 @@ class HubspotSource(BaseSource):
             url = next_link if next_link else None
 
         fetch_duration = time.time() - fetch_start
-        self.logger.info(f"Fetched {len(contact_ids)} contact IDs in {fetch_duration:.2f}s")
+        self.logger.info("Fetched %d contact IDs in %.2fs", len(contact_ids), fetch_duration)
 
-        self.logger.info(f"Batch reading {len(contact_ids)} contacts with properties...")
+        self.logger.info("Batch reading %d contacts with properties...", len(contact_ids))
         batch_url = "https://api.hubapi.com/crm/v3/objects/contacts/batch/read"
         for i in range(0, len(contact_ids), self.HUBSPOT_BATCH_SIZE):
             chunk = contact_ids[i : i + self.HUBSPOT_BATCH_SIZE]
@@ -354,9 +355,9 @@ class HubspotSource(BaseSource):
             url = next_link if next_link else None
 
         fetch_duration = time.time() - fetch_start
-        self.logger.info(f"Fetched {len(company_ids)} company IDs in {fetch_duration:.2f}s")
+        self.logger.info("Fetched %d company IDs in %.2fs", len(company_ids), fetch_duration)
 
-        self.logger.info(f"Batch reading {len(company_ids)} companies with properties...")
+        self.logger.info("Batch reading %d companies with properties...", len(company_ids))
         batch_url = "https://api.hubapi.com/crm/v3/objects/companies/batch/read"
         for i in range(0, len(company_ids), self.HUBSPOT_BATCH_SIZE):
             chunk = company_ids[i : i + self.HUBSPOT_BATCH_SIZE]
@@ -443,9 +444,9 @@ class HubspotSource(BaseSource):
             url = next_link if next_link else None
 
         fetch_duration = time.time() - fetch_start
-        self.logger.info(f"Fetched {len(ticket_ids)} ticket IDs in {fetch_duration:.2f}s")
+        self.logger.info("Fetched %d ticket IDs in %.2fs", len(ticket_ids), fetch_duration)
 
-        self.logger.info(f"Batch reading {len(ticket_ids)} tickets with properties...")
+        self.logger.info("Batch reading %d tickets with properties...", len(ticket_ids))
         batch_url = "https://api.hubapi.com/crm/v3/objects/tickets/batch/read"
         for i in range(0, len(ticket_ids), self.HUBSPOT_BATCH_SIZE):
             chunk = ticket_ids[i : i + self.HUBSPOT_BATCH_SIZE]

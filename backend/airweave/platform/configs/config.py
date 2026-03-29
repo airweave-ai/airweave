@@ -1,5 +1,6 @@
 """Configuration classes for platform components."""
 
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import Field, field_validator
@@ -372,7 +373,8 @@ class HubspotConfig(SourceConfig):
         default=None,
         title="After Date",
         description=(
-            "Only sync records created or modified after this date (format: YYYY-MM-DD). "
+            "Only sync records created or modified after this date in UTC "
+            "(format: YYYY-MM-DD). "
             "Useful for large CRM instances where you only need recent data."
         ),
     )
@@ -380,10 +382,12 @@ class HubspotConfig(SourceConfig):
     @field_validator("after_date")
     @classmethod
     def validate_after_date(cls, value):
-        """Validate date format."""
+        """Validate and normalize date format."""
         if not value:
             return value
-        return value.replace("/", "-")
+        value = value.replace("/", "-")
+        datetime.fromisoformat(value)
+        return value
 
 
 class SliteConfig(SourceConfig):
