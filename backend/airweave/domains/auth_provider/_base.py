@@ -26,6 +26,7 @@ class BaseAuthProvider(ABC):
     auth_config_class: ClassVar[Optional[type[BaseModel]]] = None
     config_class: ClassVar[Optional[type[BaseModel]]] = None
     SETTINGS_URL: ClassVar[str] = ""
+    feature_flag: ClassVar[Optional[str]] = None
 
     def __init__(self):
         """Initialize the base auth provider."""

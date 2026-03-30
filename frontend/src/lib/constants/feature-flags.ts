@@ -18,6 +18,9 @@ export const FeatureFlags = {
 
   // Connect
   CONNECT: 'connect',
+
+  // Auth Providers
+  CUSTOM_AUTH_PROVIDER: 'custom_auth_provider',
 } as const;
 
 export type FeatureFlag = typeof FeatureFlags[keyof typeof FeatureFlags];
