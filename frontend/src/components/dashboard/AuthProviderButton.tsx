@@ -32,12 +32,6 @@ export const AuthProviderButton = ({
         // Don't handle clicks for coming soon providers
         if (isComingSoon) return;
 
-        console.log('🔘 [AuthProviderButton] Button clicked:', {
-            id,
-            name,
-            shortName,
-            isConnected
-        });
         if (onClick) {
             onClick();
         }
