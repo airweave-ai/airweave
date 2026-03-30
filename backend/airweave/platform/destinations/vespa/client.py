@@ -228,51 +228,38 @@ class VespaClient:
     async def delete_by_sync_id(self, sync_id: UUID, collection_id: UUID) -> List[DeleteResult]:
         """Delete all documents for a sync ID across all schemas.
 
-        Uses indexed YQL query to resolve doc IDs, then parallel direct DELETEs.
-        Falls back to visitor-based selection delete on query failure.
-
         Args:
             sync_id: The sync ID to delete documents for
             collection_id: The collection ID to scope deletion
 
         Returns:
-            List of DeleteResult for all operations
+            List of DeleteResult for each schema
         """
-        yql_filter = (
-            f"airweave_system_metadata_sync_id contains '{sync_id}' and "
-            f"airweave_system_metadata_collection_id contains '{collection_id}'"
-        )
-
-        def _build_selection(schema: str) -> str:
-            return (
+        results = []
+        for schema in ALL_VESPA_SCHEMAS:
+            selection = (
                 f"{schema}.airweave_system_metadata_sync_id=='{sync_id}' and "
                 f"{schema}.airweave_system_metadata_collection_id=='{collection_id}'"
             )
-
-        return await self._fast_delete_with_fallback(
-            yql_filter, _build_selection, f"sync_id={sync_id}"
-        )
+            result = await self.delete_by_selection(schema, selection)
+            results.append(result)
+        return results
 
     async def delete_by_collection_id(self, collection_id: UUID) -> List[DeleteResult]:
         """Delete all documents for a collection across all schemas.
-
-        Uses indexed YQL query to resolve doc IDs, then parallel direct DELETEs.
-        Falls back to visitor-based selection delete on query failure.
 
         Args:
             collection_id: The collection ID to delete documents for
 
         Returns:
-            List of DeleteResult for all operations
+            List of DeleteResult for each schema
         """
-        yql_filter = f"airweave_system_metadata_collection_id contains '{collection_id}'"
-
-        def _build_selection(schema: str) -> str:
-            return f"{schema}.airweave_system_metadata_collection_id=='{collection_id}'"
-
-        return await self._fast_delete_with_fallback(
-            yql_filter, _build_selection, f"collection_id={collection_id}"
-        )
+        results = []
+        for schema in ALL_VESPA_SCHEMAS:
+            selection = f"{schema}.airweave_system_metadata_collection_id=='{collection_id}'"
+            result = await self.delete_by_selection(schema, selection)
+            results.append(result)
+        return results
 
     async def delete_by_original_entity_ids(
         self,
@@ -303,15 +290,8 @@ class VespaClient:
         async with httpx.AsyncClient(timeout=settings.VESPA_TIMEOUT) as http_client:
             for i in range(0, len(original_entity_ids), batch_size):
                 batch = original_entity_ids[i : i + batch_size]
-                escaped_ids = ", ".join(
-                    f"'{eid.replace(chr(39), chr(92) + chr(39))}'" for eid in batch
-                )
-                yql_filter = (
-                    f"airweave_system_metadata_original_entity_id in ({escaped_ids}) and "
-                    f"airweave_system_metadata_collection_id contains '{collection_id}'"
-                )
                 try:
-                    doc_ids = await self._query_doc_ids_by_filter(yql_filter)
+                    doc_ids = await self._query_doc_ids_by_original_entity_ids(batch, collection_id)
                     if doc_ids:
                         count = await self._delete_by_doc_ids(doc_ids, http_client=http_client)
                         total_deleted += count
@@ -326,61 +306,32 @@ class VespaClient:
 
         return [DeleteResult(deleted_count=total_deleted, schema=None)]
 
-    # -------------------------------------------------------------------------
-    # Fast Delete Infrastructure
-    # -------------------------------------------------------------------------
-
-    async def _fast_delete_with_fallback(
+    async def _query_doc_ids_by_original_entity_ids(
         self,
-        yql_filter: str,
-        build_selection: Callable[[str], str],
-        description: str,
-    ) -> List[DeleteResult]:
-        """Delete documents using indexed YQL query with visitor-scan fallback.
+        original_entity_ids: List[str],
+        collection_id: UUID,
+    ) -> List[Tuple[str, str]]:
+        """Query Vespa for all chunk document IDs belonging to the given original entity IDs.
+
+        Uses indexed fields (both fast-search) for an efficient B-tree lookup
+        instead of a visitor scan.
 
         Args:
-            yql_filter: YQL WHERE clause (uses 'contains' for string fields)
-            build_selection: Callable that takes a schema name and returns
-                a document selection expression for the visitor fallback
-            description: Human-readable description for logging
-
-        Returns:
-            List of DeleteResult for all operations
-        """
-        try:
-            doc_ids = await self._query_doc_ids_by_filter(yql_filter)
-            if not doc_ids:
-                return [DeleteResult(deleted_count=0, schema=None)]
-            async with httpx.AsyncClient(timeout=settings.VESPA_TIMEOUT) as http_client:
-                count = await self._delete_by_doc_ids(doc_ids, http_client=http_client)
-            return [DeleteResult(deleted_count=count, schema=None)]
-        except Exception as e:
-            self._logger.warning(
-                f"[VespaClient] Fast delete failed for {description}, "
-                f"falling back to selection-based delete: {e}"
-            )
-            results = []
-            for schema in ALL_VESPA_SCHEMAS:
-                selection = build_selection(schema)
-                result = await self.delete_by_selection(schema, selection)
-                results.append(result)
-            return results
-
-    async def _query_doc_ids_by_filter(self, yql_filter: str) -> List[Tuple[str, str]]:
-        """Query Vespa for document IDs matching a YQL filter.
-
-        Uses indexed fields (fast-search attributes) for efficient B-tree lookups
-        instead of a visitor scan. All string field comparisons in yql_filter must
-        use 'contains' (not '=' which is the numeric equality operator in YQL).
-
-        Args:
-            yql_filter: YQL WHERE clause conditions
+            original_entity_ids: Batch of original entity IDs to resolve
+            collection_id: Collection ID to scope the query
 
         Returns:
             List of (schema_name, doc_id) tuples for direct deletion
         """
+        escaped_ids = ", ".join(
+            f"'{eid.replace(chr(39), chr(92) + chr(39))}'" for eid in original_entity_ids
+        )
         source_list = ", ".join(ALL_VESPA_SCHEMAS)
-        yql = f"select documentid, sddocname() from sources {source_list} where {yql_filter}"
+        yql = (
+            f"select documentid, sddocname() from sources {source_list} where "
+            f"airweave_system_metadata_original_entity_id in ({escaped_ids}) and "
+            f"airweave_system_metadata_collection_id = '{collection_id}'"
+        )
         query_params = {
             "yql": yql,
             "hits": DELETE_QUERY_HITS_LIMIT,
@@ -406,8 +357,8 @@ class VespaClient:
             )
 
         self._logger.debug(
-            f"[VespaClient] Resolved {len(hits)} doc IDs in {elapsed_ms:.1f}ms "
-            f"for filter: {yql_filter[:120]}"
+            f"[VespaClient] Resolved {len(hits)} doc IDs for "
+            f"{len(original_entity_ids)} original entity IDs in {elapsed_ms:.1f}ms"
         )
 
         results: List[Tuple[str, str]] = []

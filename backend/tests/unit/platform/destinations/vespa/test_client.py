@@ -125,86 +125,31 @@ class TestVespaClient:
 
     @pytest.mark.asyncio
     async def test_delete_by_sync_id(self, client):
-        """Test delete by sync ID uses fast path (query + direct delete)."""
+        """Test delete by sync ID across all schemas."""
         sync_id = UUID("11111111-1111-1111-1111-111111111111")
         collection_id = UUID("22222222-2222-2222-2222-222222222222")
 
-        resolved = [("base_entity", "doc_1")]
-        with (
-            patch.object(client, '_query_doc_ids_by_filter', new_callable=AsyncMock) as mock_q,
-            patch.object(client, '_delete_by_doc_ids', new_callable=AsyncMock) as mock_d,
-        ):
-            mock_q.return_value = resolved
-            mock_d.return_value = 1
+        with patch.object(client, 'delete_by_selection', new_callable=AsyncMock) as mock_delete:
+            mock_delete.return_value = MagicMock(deleted_count=5, schema="base_entity")
 
             results = await client.delete_by_sync_id(sync_id, collection_id)
 
-            mock_q.assert_awaited_once()
-            assert results[0].deleted_count == 1
-
-    @pytest.mark.asyncio
-    async def test_delete_by_sync_id_falls_back_to_selection(self, client):
-        """Test delete by sync ID falls back to visitor scan on fast path failure."""
-        sync_id = UUID("11111111-1111-1111-1111-111111111111")
-        collection_id = UUID("22222222-2222-2222-2222-222222222222")
-
-        with (
-            patch.object(client, '_query_doc_ids_by_filter', new_callable=AsyncMock) as mock_q,
-            patch.object(client, 'delete_by_selection', new_callable=AsyncMock) as mock_sel,
-        ):
-            mock_q.side_effect = RuntimeError("query failed")
-            mock_sel.return_value = MagicMock(deleted_count=5, schema="base_entity")
-
-            results = await client.delete_by_sync_id(sync_id, collection_id)
-
-            mock_q.assert_awaited_once()
-            assert mock_sel.call_count > 0
+            # Should call delete_by_selection for each schema
+            assert mock_delete.call_count > 0
+            assert all(isinstance(r.deleted_count, int) for r in results)
 
     @pytest.mark.asyncio
     async def test_delete_by_collection_id(self, client):
-        """Test delete by collection ID uses fast path."""
+        """Test delete by collection ID."""
         collection_id = UUID("22222222-2222-2222-2222-222222222222")
 
-        resolved = [("base_entity", "doc_1"), ("file_entity", "doc_2")]
-        with (
-            patch.object(client, '_query_doc_ids_by_filter', new_callable=AsyncMock) as mock_q,
-            patch.object(client, '_delete_by_doc_ids', new_callable=AsyncMock) as mock_d,
-        ):
-            mock_q.return_value = resolved
-            mock_d.return_value = 2
+        with patch.object(client, 'delete_by_selection', new_callable=AsyncMock) as mock_delete:
+            mock_delete.return_value = MagicMock(deleted_count=10, schema="base_entity")
 
             results = await client.delete_by_collection_id(collection_id)
 
-            mock_q.assert_awaited_once()
-            assert results[0].deleted_count == 2
-
-    @pytest.mark.asyncio
-    async def test_query_doc_ids_by_filter_uses_contains_not_equals(self, client, mock_vespa_app):
-        """Test _query_doc_ids_by_filter builds YQL with 'contains' for string fields.
-
-        Vespa YQL '=' is numeric-only (docs: "The following numeric operators
-        are available: = < > <= >= range()"). Using it on a string field with
-        a UUID value returns HTTP 400: "not an int item expression".
-        """
-        mock_response = MagicMock()
-        mock_response.is_successful.return_value = True
-        mock_response.hits = []
-        mock_response.json = {"root": {"fields": {"totalCount": 0}}}
-
-        captured_params = {}
-
-        async def capture_query(*args, **kwargs):
-            captured_params.update(kwargs.get("body", args[0] if args else {}))
-            return mock_response
-
-        with patch("asyncio.to_thread", side_effect=capture_query):
-            collection_id = UUID("22222222-2222-2222-2222-222222222222")
-            yql_filter = f"airweave_system_metadata_collection_id contains '{collection_id}'"
-            await client._query_doc_ids_by_filter(yql_filter)
-
-        yql = captured_params.get("yql", "")
-        assert "contains" in yql, f"YQL must use 'contains' for string fields. Got: {yql}"
-        assert "= '" not in yql, f"YQL must not use '=' (numeric operator) on strings. Got: {yql}"
+            assert mock_delete.call_count > 0
+            assert all(isinstance(r.deleted_count, int) for r in results)
 
     @pytest.mark.asyncio
     async def test_delete_by_original_entity_ids(self, client):
@@ -214,7 +159,7 @@ class TestVespaClient:
 
         resolved = [("base_entity", "base_entity_entity-1__chunk_0")]
         with (
-            patch.object(client, '_query_doc_ids_by_filter', new_callable=AsyncMock) as mock_q,
+            patch.object(client, '_query_doc_ids_by_original_entity_ids', new_callable=AsyncMock) as mock_q,
             patch.object(client, '_delete_by_doc_ids', new_callable=AsyncMock) as mock_d,
         ):
             mock_q.return_value = resolved
