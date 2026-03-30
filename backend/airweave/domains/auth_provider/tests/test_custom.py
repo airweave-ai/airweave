@@ -309,3 +309,47 @@ class TestValidate:
 
         with pytest.raises(AuthProviderConfigError, match="SSRF"):
             await provider.validate()
+
+
+class TestFollowRedirectsDisabled:
+    """Verify httpx.AsyncClient is created with follow_redirects=False."""
+
+    @pytest.mark.unit
+    async def test_get_creds_no_follow_redirects(self, provider):
+        with patch(
+            "airweave.domains.auth_provider.providers.custom.httpx.AsyncClient"
+        ) as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.get.return_value = httpx.Response(
+                200,
+                json={"access_token": "tok"},
+                request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
+            )
+            mock_client_cls.return_value = mock_client
+
+            await provider.get_creds_for_source(
+                "slack", ["access_token"], source_connection_id=TEST_SC_ID,
+            )
+
+            mock_client_cls.assert_called_once_with(timeout=30.0, follow_redirects=False)
+
+    @pytest.mark.unit
+    async def test_validate_no_follow_redirects(self, provider):
+        with patch(
+            "airweave.domains.auth_provider.providers.custom.httpx.AsyncClient"
+        ) as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.get.return_value = httpx.Response(
+                200,
+                json={"status": "ok"},
+                request=httpx.Request("GET", "https://api.example.com/tokens"),
+            )
+            mock_client_cls.return_value = mock_client
+
+            await provider.validate()
+
+            mock_client_cls.assert_called_once_with(timeout=30.0, follow_redirects=False)

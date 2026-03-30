@@ -9,6 +9,12 @@ from pydantic import BaseModel
 from airweave.core.logging import logger
 from airweave.domains.auth_provider.auth_result import AuthResult
 
+# OAuth lifecycle fields that auth providers handle internally —
+# always optional when fetching credentials from a provider.
+AUTH_PROVIDER_OPTIONAL_FIELDS: frozenset[str] = frozenset(
+    {"refresh_token", "client_id", "client_secret"}
+)
+
 
 class BaseAuthProvider(ABC):
     """Base class for all auth providers."""

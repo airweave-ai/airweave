@@ -22,7 +22,7 @@ from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger, LoggerConfigurator
 from airweave.core.shared_models import FeatureFlag
-from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider._base import AUTH_PROVIDER_OPTIONAL_FIELDS, BaseAuthProvider
 from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderAuthError,
@@ -41,11 +41,6 @@ from airweave.domains.sources.exceptions import (
     SourceNotFoundError,
     SourceValidationError,
 )
-from airweave.domains.sources.token_providers.exceptions import (
-    TokenCredentialsInvalidError,
-    TokenExpiredError,
-    TokenProviderAccountGoneError,
-)
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
@@ -53,6 +48,11 @@ from airweave.domains.sources.protocols import (
 from airweave.domains.sources.rate_limiting.service import SourceRateLimiter
 from airweave.domains.sources.token_providers.auth_provider import AuthProviderTokenProvider
 from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
+from airweave.domains.sources.token_providers.exceptions import (
+    TokenCredentialsInvalidError,
+    TokenExpiredError,
+    TokenProviderAccountGoneError,
+)
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData, SourceRegistryEntry
@@ -378,9 +378,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         # (refresh_token, client_id, client_secret) are always optional.
         short_name = source_connection_data.short_name
         entry = self._source_registry.get(short_name)
-        _AUTH_PROVIDER_OPTIONAL = {"refresh_token", "client_id", "client_secret"}
         auth_fields_all = entry.runtime_auth_all_fields
-        auth_fields_optional = entry.runtime_auth_optional_fields | _AUTH_PROVIDER_OPTIONAL
+        auth_fields_optional = entry.runtime_auth_optional_fields | AUTH_PROVIDER_OPTIONAL_FIELDS
 
         source_config_field_mappings = self._build_source_config_field_mappings(
             source_connection_data
