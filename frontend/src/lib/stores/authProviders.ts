@@ -116,7 +116,6 @@ export const useAuthProvidersStore = create<AuthProvidersStore>((set, get) => ({
     },
 
     clearAuthProviderConnections: () => {
-        console.log("🧹 [AuthProvidersStore] Clearing auth provider connections");
         set({ authProviderConnections: [] });
     }
 }));

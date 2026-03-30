@@ -28,8 +28,8 @@ from airweave.platform.utils.ssrf import SSRFViolation, validate_url
 class CustomAuthProvider(BaseAuthProvider):
     """Custom authentication provider.
 
-    Calls GET {base_url}/{source_short_name} on a customer-hosted endpoint
-    to fetch fresh access tokens. The customer is responsible for returning
+    Calls GET {base_url}/{source_connection_id} on a customer-hosted endpoint
+    to fetch fresh credentials. The customer is responsible for returning
     the freshest credentials as JSON.
     """
 
@@ -90,7 +90,7 @@ class CustomAuthProvider(BaseAuthProvider):
         self._check_ssrf(url)
         self.logger.info(f"[Custom] Fetching credentials for source '{source_short_name}'")
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
             try:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
@@ -181,7 +181,7 @@ class CustomAuthProvider(BaseAuthProvider):
         self.logger.info("[Custom] Validating endpoint")
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
 

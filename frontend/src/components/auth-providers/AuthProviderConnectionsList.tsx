@@ -4,12 +4,12 @@ import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getAuthProviderIconUrl } from "@/lib/utils/icons";
-import { useAuthProvidersStore } from "@/lib/stores/authProviders";
+import { AuthProvider, AuthProviderConnection, useAuthProvidersStore } from "@/lib/stores/authProviders";
 import { format } from "date-fns";
 
 interface AuthProviderConnectionsListProps {
-    authProvider: any;
-    onSelectConnection: (connection: any) => void;
+    authProvider: AuthProvider;
+    onSelectConnection: (connection: AuthProviderConnection) => void;
     onAddNew: () => void;
     onCancel: () => void;
 }

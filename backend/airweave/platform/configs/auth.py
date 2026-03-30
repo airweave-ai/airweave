@@ -978,8 +978,8 @@ class CustomAuthConfig(AuthConfig):
     """Custom Auth Provider authentication credentials schema.
 
     Stores a base URL and API key for a customer-hosted token endpoint.
-    Airweave calls GET {base_url}/{source_short_name} to fetch credentials
-    for each source. The customer is responsible for returning fresh tokens.
+    Airweave calls GET {base_url}/{source_connection_id} to fetch credentials
+    for each source connection. The customer is responsible for returning fresh tokens.
 
     Contract:
     - GET {base_url} must return 2xx (used for validation)

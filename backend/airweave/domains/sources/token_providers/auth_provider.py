@@ -9,7 +9,7 @@ from uuid import UUID
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.core.logging import ContextualLogger
-from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider._base import AUTH_PROVIDER_OPTIONAL_FIELDS, BaseAuthProvider
 from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderAuthError,
@@ -43,10 +43,6 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
     """
 
     _CACHE_TTL_SECONDS = 300  # 5 minutes — well within typical OAuth token lifetimes
-
-    # OAuth lifecycle fields the auth provider handles — always optional when
-    # fetching credentials since the provider manages token refresh.
-    _AUTH_PROVIDER_OPTIONAL = frozenset({"refresh_token", "client_id", "client_secret"})
 
     def __init__(
         self,
@@ -174,7 +170,7 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
         return await self._provider.get_creds_for_source(
             source_short_name=self._source_short_name,
             source_auth_config_fields=entry.runtime_auth_all_fields,
-            optional_fields=entry.runtime_auth_optional_fields | self._AUTH_PROVIDER_OPTIONAL,
+            optional_fields=entry.runtime_auth_optional_fields | AUTH_PROVIDER_OPTIONAL_FIELDS,
             source_connection_id=self._source_connection_id,
         )
 
