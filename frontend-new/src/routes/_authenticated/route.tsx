@@ -1,4 +1,4 @@
-import { Outlet, createFileRoute } from '@tanstack/react-router';
+import { Outlet, createFileRoute, redirect } from '@tanstack/react-router';
 import { ensureCurrentUser } from '@/features/app-session';
 
 export const Route = createFileRoute('/_authenticated')({
@@ -6,8 +6,12 @@ export const Route = createFileRoute('/_authenticated')({
     const { auth } = context;
 
     if (!auth.isAuthenticated) {
-      await context.auth.login(location.href);
-      return;
+      throw redirect({
+        search: {
+          redirect: location.href,
+        },
+        to: '/login',
+      });
     }
 
     await ensureCurrentUser({

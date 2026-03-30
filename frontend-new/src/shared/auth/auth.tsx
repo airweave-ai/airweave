@@ -1,13 +1,21 @@
 import * as React from 'react';
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
+import { getAuthCallbackRedirectTarget } from './auth-redirects';
 import { resetAuthStoreSnapshot, setAuthStoreSnapshot } from './auth-store';
 import type { AppState, User as AuthUser } from '@auth0/auth0-react';
 import { env } from '@/shared/config/env';
 
+export interface AuthLoginOptions {
+  invitation?: string;
+  organizationName?: string;
+  organization?: string;
+  returnTo?: string;
+}
+
 interface AuthStateSharedFields {
   error: Error | null;
   getAccessToken: () => Promise<string | null>;
-  login: (returnTo?: string) => Promise<void>;
+  login: (options?: AuthLoginOptions) => Promise<void>;
   logout: () => void;
 }
 
@@ -81,7 +89,7 @@ function createAuthState({
   getAccessToken: () => Promise<string | null>;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (returnTo?: string) => Promise<void>;
+  login: (options?: AuthLoginOptions) => Promise<void>;
   logout: () => void;
   user: AuthUser | undefined;
 }): AuthState {
@@ -179,14 +187,6 @@ function getReturnTo(returnTo?: string) {
   return window.location.href;
 }
 
-function getAuthCallbackRedirectTarget(callbackPath: string, returnTo: string) {
-  const callbackUrl = new URL(callbackPath, window.location.origin);
-
-  callbackUrl.searchParams.set('redirect', returnTo);
-
-  return `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`;
-}
-
 function AuthStateProvider({ children }: React.PropsWithChildren) {
   const {
     error,
@@ -211,11 +211,21 @@ function AuthStateProvider({ children }: React.PropsWithChildren) {
   }, [getAccessTokenSilently, isAuthenticated]);
 
   const login = React.useCallback(
-    async (returnTo?: string) => {
+    async (options?: AuthLoginOptions) => {
+      const returnTo = getReturnTo(options?.returnTo);
+
       await loginWithRedirect({
         appState: {
-          returnTo: getReturnTo(returnTo),
+          organizationName: options?.organizationName,
+          returnTo,
         },
+        authorizationParams:
+          options?.invitation && options.organization
+            ? {
+                invitation: options.invitation,
+                organization: options.organization,
+              }
+            : undefined,
       });
     },
     [loginWithRedirect],
@@ -256,6 +266,8 @@ type AuthProviderProps = React.PropsWithChildren<{
   callbackPath: string;
   defaultReturnTo: string;
   onRedirect: (returnTo: string) => void;
+  organizationNameSearchParam: string;
+  redirectSearchParam: string;
 }>;
 
 export function AuthProvider({
@@ -263,6 +275,8 @@ export function AuthProvider({
   children,
   defaultReturnTo,
   onRedirect,
+  organizationNameSearchParam,
+  redirectSearchParam,
 }: AuthProviderProps) {
   if (!authConfig.authEnabled) {
     return (
@@ -273,12 +287,24 @@ export function AuthProvider({
   }
 
   const onRedirectCallback = (appState?: AppState) => {
+    const organizationName =
+      typeof appState?.organizationName === 'string'
+        ? appState.organizationName
+        : undefined;
     const returnTo =
       typeof appState?.returnTo === 'string'
         ? appState.returnTo
         : defaultReturnTo;
 
-    onRedirect(getAuthCallbackRedirectTarget(callbackPath, returnTo));
+    onRedirect(
+      getAuthCallbackRedirectTarget({
+        callbackPath,
+        searchParams: {
+          [organizationNameSearchParam]: organizationName,
+          [redirectSearchParam]: returnTo,
+        },
+      }),
+    );
   };
 
   return (

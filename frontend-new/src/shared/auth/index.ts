@@ -1,2 +1,8 @@
 export { AuthProvider, useAuth } from './auth';
-export type { AuthResolvedState, AuthState, AuthUser } from './auth';
+export { getSafeRedirectTarget } from './auth-redirects';
+export type {
+  AuthLoginOptions,
+  AuthResolvedState,
+  AuthState,
+  AuthUser,
+} from './auth';
