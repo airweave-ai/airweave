@@ -16,6 +16,8 @@ export function AppProvider({ children }: PropsWithChildren) {
           callbackPath="/callback"
           defaultReturnTo="/"
           onRedirect={navigateAfterAuth}
+          redirectSearchParam="redirect"
+          organizationNameSearchParam="organization_name"
         >
           {children}
         </AuthProvider>
