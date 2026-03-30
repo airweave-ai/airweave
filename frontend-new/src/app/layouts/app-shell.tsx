@@ -1,4 +1,5 @@
 import type { PropsWithChildren } from 'react';
+import { AppHeader } from '@/app/layouts/app-header';
 import { AppSidebar } from '@/app/layouts/app-sidebar';
 import { SidebarInset, SidebarProvider } from '@/shared/ui/sidebar';
 
@@ -6,7 +7,10 @@ export function AppShell({ children }: PropsWithChildren) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="p-3">{children}</SidebarInset>
+      <SidebarInset className="overflow-hidden">
+        <AppHeader />
+        <div className="flex-1 overflow-auto p-3">{children}</div>
+      </SidebarInset>
     </SidebarProvider>
   );
 }
