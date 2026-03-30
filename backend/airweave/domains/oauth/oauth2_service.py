@@ -422,17 +422,24 @@ class OAuth2Service(OAuth2ServiceProtocol):
             OAuthRefreshRateLimitError: If rate-limited after exhausting retries.
             OAuthRefreshServerError: If the token endpoint returns 5xx or times out.
         """
-        connection = await self.conn_repo.get(db=db, id=connection_id, ctx=ctx)
-        if not connection or not connection.integration_credential_id:
+        try:
+            connection = await self.conn_repo.get(db=db, id=connection_id, ctx=ctx)
+        except NotFoundException:
             raise OAuthRefreshCredentialMissingError(
-                f"Connection {connection_id} not found or has no credential",
+                f"Connection {connection_id} not found",
+                integration_short_name=integration_short_name,
+            )
+        if not connection.integration_credential_id:
+            raise OAuthRefreshCredentialMissingError(
+                f"Connection {connection_id} has no credential",
                 integration_short_name=integration_short_name,
             )
 
-        credential = await self.cred_repo.get(
-            db=db, id=connection.integration_credential_id, ctx=ctx
-        )
-        if not credential:
+        try:
+            credential = await self.cred_repo.get(
+                db=db, id=connection.integration_credential_id, ctx=ctx
+            )
+        except NotFoundException:
             raise OAuthRefreshCredentialMissingError(
                 "Integration credential not found",
                 integration_short_name=integration_short_name,

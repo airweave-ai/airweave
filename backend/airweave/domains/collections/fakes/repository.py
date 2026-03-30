@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
+from airweave.core.exceptions import NotFoundException
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionListResult
 from airweave.models.collection import Collection
@@ -29,10 +30,13 @@ class FakeCollectionRepository:
         """Seed a collection by readable ID."""
         self._readable_store[readable_id] = obj
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Collection]:
-        """Return seeded collection by ID."""
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Collection:
+        """Return seeded collection by ID or raise NotFoundException."""
         self._calls.append(("get", db, id, ctx))
-        return self._store.get(id)
+        result = self._store.get(id)
+        if result is None:
+            raise NotFoundException("Collection not found")
+        return result
 
     async def get_by_readable_id(
         self, db: AsyncSession, readable_id: str, ctx: ApiContext
@@ -136,8 +140,8 @@ class FakeCollectionRepository:
             setattr(db_obj, k, v)
         return db_obj
 
-    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Collection]:
-        """Remove a collection from the fake store."""
+    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Collection:
+        """Remove a collection from the fake store or raise NotFoundException."""
         self._calls.append(("remove", db, id, ctx))
         obj = self._store.pop(id, None)
         if obj is None:
@@ -146,9 +150,9 @@ class FakeCollectionRepository:
                 if getattr(c, "id", None) == id:
                     del self._readable_store[rid]
                     return c
-        else:
-            # Also remove from readable store
-            rid = getattr(obj, "readable_id", None)
-            if rid and rid in self._readable_store:
-                del self._readable_store[rid]
+            raise NotFoundException("Collection not found")
+        # Also remove from readable store
+        rid = getattr(obj, "readable_id", None)
+        if rid and rid in self._readable_store:
+            del self._readable_store[rid]
         return obj

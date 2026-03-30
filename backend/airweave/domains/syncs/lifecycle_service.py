@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.events.sync import SyncLifecycleEvent
+from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
@@ -177,8 +178,9 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
             ctx: API context.
             force_full_sync: Only valid for continuous syncs.
         """
-        source_conn = await self._sc_repo.get(db, id, ctx)
-        if not source_conn:
+        try:
+            source_conn = await self._sc_repo.get(db, id, ctx)
+        except NotFoundException:
             raise HTTPException(status_code=404, detail="Source connection not found")
         if not source_conn.sync_id:
             raise HTTPException(status_code=400, detail="Source connection has no associated sync")
@@ -234,8 +236,9 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
         limit: int = 100,
     ) -> List[SourceConnectionJob]:
         """Get sync jobs for a source connection."""
-        source_conn = await self._sc_repo.get(db, id, ctx)
-        if not source_conn:
+        try:
+            source_conn = await self._sc_repo.get(db, id, ctx)
+        except NotFoundException:
             raise HTTPException(status_code=404, detail="Source connection not found")
         if not source_conn.sync_id:
             return []
@@ -256,8 +259,9 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
         Sets CANCELLING, sends cancel to Temporal, and handles
         edge cases (workflow not found, Temporal failure).
         """
-        source_conn = await self._sc_repo.get(db, source_connection_id, ctx)
-        if not source_conn:
+        try:
+            source_conn = await self._sc_repo.get(db, source_connection_id, ctx)
+        except NotFoundException:
             raise HTTPException(status_code=404, detail="Source connection not found")
         if not source_conn.sync_id:
             raise HTTPException(status_code=400, detail="Source connection has no associated sync")

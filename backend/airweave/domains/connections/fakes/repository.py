@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.exceptions import NotFoundException
 from airweave.core.shared_models import IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.connection import Connection
@@ -29,10 +30,13 @@ class FakeConnectionRepository:
         """Pre-populate a connection by readable ID."""
         self._readable_store[readable_id] = obj
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Connection]:
-        """Get a connection by ID."""
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Connection:
+        """Get a connection by ID or raise NotFoundException."""
         self._calls.append(("get", db, id, ctx))
-        return self._store.get(id)
+        result = self._store.get(id)
+        if result is None:
+            raise NotFoundException("Connection not found")
+        return result
 
     async def get_by_readable_id(
         self, db: AsyncSession, readable_id: str, ctx: ApiContext
@@ -98,10 +102,12 @@ class FakeConnectionRepository:
             self._readable_store[db_obj.readable_id] = db_obj
         return db_obj
 
-    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Connection]:
-        """Delete a connection by ID."""
+    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Connection:
+        """Delete a connection by ID or raise NotFoundException."""
         self._calls.append(("remove", db, id, ctx))
         connection = self._store.pop(id, None)
-        if connection and connection.readable_id in self._readable_store:
+        if connection is None:
+            raise NotFoundException("Connection not found")
+        if connection.readable_id in self._readable_store:
             self._readable_store.pop(connection.readable_id, None)
         return connection

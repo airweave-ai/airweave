@@ -11,10 +11,10 @@ from airweave.core.shared_models import CollectionStatus
 from airweave.domains.collections.protocols import CollectionListResult
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
-from airweave.schemas.collection import SourceConnectionSummary
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.platform.configs._base import Fields
+from airweave.schemas.collection import SourceConnectionSummary
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -290,15 +290,16 @@ class TestAttachEphemeralStatus:
 
 @pytest.mark.asyncio
 class TestDelegatingMethods:
-    async def test_get_returns_none_when_not_found(self):
+    async def test_get_raises_when_not_found(self):
         repo = _repo()
 
         with patch("airweave.domains.collections.repository.crud") as mock_crud:
-            mock_crud.collection.get = AsyncMock(return_value=None)
+            from airweave.core.exceptions import NotFoundException
 
-            result = await repo.get(MagicMock(), id=uuid4(), ctx=MagicMock())
+            mock_crud.collection.get = AsyncMock(side_effect=NotFoundException("not found"))
 
-        assert result is None
+            with pytest.raises(NotFoundException):
+                await repo.get(MagicMock(), id=uuid4(), ctx=MagicMock())
 
     async def test_get_attaches_status(self):
         repo = _repo()
