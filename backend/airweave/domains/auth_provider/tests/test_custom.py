@@ -171,6 +171,13 @@ class TestGetCredsForSource:
                 await provider.get_creds_for_source("slack", ["access_token"])
             assert "access_token" in exc_info.value.missing_fields
 
+    @pytest.mark.unit
+    async def test_ssrf_blocked(self, provider):
+        provider.endpoint_url = "http://169.254.169.254/latest/meta-data"
+
+        with pytest.raises(AuthProviderConfigError, match="SSRF"):
+            await provider.get_creds_for_source("slack", ["access_token"])
+
 
 class TestValidate:
     """Tests for validate()."""
@@ -179,8 +186,8 @@ class TestValidate:
     async def test_validate_success(self, provider):
         mock_response = httpx.Response(
             200,
-            json={"access_token": "test-token"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/__validate__"),
+            json={"status": "ok"},
+            request=httpx.Request("GET", "https://api.example.com/tokens"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
@@ -189,23 +196,11 @@ class TestValidate:
         assert result is True
 
     @pytest.mark.unit
-    async def test_validate_missing_access_token(self, provider):
-        mock_response = httpx.Response(
-            200,
-            json={"token": "test-token"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/__validate__"),
-        )
-
-        with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
-            with pytest.raises(AuthProviderConfigError, match="access_token"):
-                await provider.validate()
-
-    @pytest.mark.unit
     async def test_validate_auth_error(self, provider):
         mock_response = httpx.Response(
             401,
             json={"error": "unauthorized"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/__validate__"),
+            request=httpx.Request("GET", "https://api.example.com/tokens"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
@@ -217,7 +212,7 @@ class TestValidate:
         mock_response = httpx.Response(
             503,
             json={"error": "unavailable"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/__validate__"),
+            request=httpx.Request("GET", "https://api.example.com/tokens"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
@@ -233,3 +228,10 @@ class TestValidate:
         ):
             with pytest.raises(AuthProviderTemporaryError, match="unreachable"):
                 await provider.validate()
+
+    @pytest.mark.unit
+    async def test_validate_ssrf_blocked(self, provider):
+        provider.endpoint_url = "http://169.254.169.254/latest/meta-data"
+
+        with pytest.raises(AuthProviderConfigError, match="SSRF"):
+            await provider.validate()
