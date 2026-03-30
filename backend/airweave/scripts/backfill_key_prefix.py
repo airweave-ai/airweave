@@ -15,8 +15,8 @@ from cryptography.fernet import InvalidToken
 from sqlalchemy import select, update
 
 from airweave.core import credentials
+from airweave.core.hashing import hash_api_key
 from airweave.core.logging import logger
-from airweave.crud.crud_api_key import _hash_key
 from airweave.db.session import get_db_context
 from airweave.models.api_key import APIKey
 
@@ -42,7 +42,7 @@ async def backfill() -> None:
                     logger.warning(f"Key {api_key.id}: could not extract plaintext key")
                     continue
 
-                values: dict[str, str] = {"key_hash": _hash_key(plain_key)}
+                values: dict[str, str] = {"key_hash": hash_api_key(plain_key)}
                 if api_key.key_prefix is None:
                     values["key_prefix"] = plain_key[:8]
 

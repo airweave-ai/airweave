@@ -10,8 +10,8 @@ from typing import Optional
 from uuid import UUID
 
 from airweave import schemas
+from airweave.core.hashing import hash_api_key
 from airweave.core.protocols.cache import ContextCache
-from airweave.crud.crud_api_key import _hash_key
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class RedisContextCache(ContextCache):
 
     @staticmethod
     def _hash_api_key(api_key: str) -> str:
-        return _hash_key(api_key)
+        return hash_api_key(api_key)
 
     # --- Read ---
 

@@ -1,7 +1,6 @@
 """CRUD operations for the APIKey model."""
 
 import asyncio
-import hashlib
 import hmac
 import secrets
 from dataclasses import dataclass
@@ -20,6 +19,7 @@ from airweave.core.config import settings
 from airweave.core.context import BaseContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.exceptions import ConflictException, NotFoundException, PermissionException
+from airweave.core.hashing import hash_api_key
 from airweave.core.logging import logger
 from airweave.core.shared_models import ApiKeyStatus
 from airweave.crud._base_organization import CRUDBaseOrganization
@@ -29,21 +29,6 @@ from airweave.models.api_key import APIKey
 from airweave.models.api_key_usage_log import APIKeyUsageLog
 from airweave.schemas import APIKeyCreate, APIKeyUpdate
 from airweave.schemas.api_key import APIKeyUsageStats
-
-
-def _hash_key(key: str) -> str:
-    """HMAC-SHA256 hash of an API key, keyed by ENCRYPTION_KEY.
-
-    Keys are 256-bit entropy (secrets.token_urlsafe(32)); the 8-char
-    key_prefix leaks ~48 bits, leaving ~208 bits — brute-force is
-    infeasible through any hash.  HMAC keying adds defense-in-depth
-    so stored hashes are useless without ENCRYPTION_KEY.
-    """
-    return hmac.new(
-        settings.ENCRYPTION_KEY.encode(),
-        key.encode(),
-        hashlib.sha256,
-    ).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,7 +210,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         """
         key = secrets.token_urlsafe(32)
         encrypted_key = credentials.encrypt({"key": key})
-        key_hash = _hash_key(key)
+        key_hash = hash_api_key(key)
 
         expiration_days = obj_in.expiration_days if obj_in.expiration_days is not None else 90
         expiration_date = utc_now_naive() + timedelta(days=expiration_days)
@@ -298,7 +283,7 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
             PermissionException: If the key has expired or been revoked.
 
         """
-        key_hash = _hash_key(key)
+        key_hash = hash_api_key(key)
         query = select(self.model).where(self.model.key_hash == key_hash)
         result = await db.execute(query)
         api_key = result.scalar_one_or_none()
