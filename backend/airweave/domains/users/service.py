@@ -6,16 +6,14 @@ and org-membership queries to ``UserOrganizationRepositoryProtocol``.
 """
 
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.analytics import business_events
-from airweave.api.context import ApiContext
 from airweave.core.logging import logger
 from airweave.core.protocols.email import EmailService
-from airweave.core.shared_models import AuthMethod
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.organizations.protocols import (
     OrganizationServiceProtocol,
@@ -189,17 +187,6 @@ class UserService(UserServiceProtocol):
         async with UnitOfWork(db) as uow:
             user, organization = await crud.user.create_with_organization(
                 db, obj_in=user_data, uow=uow
-            )
-            _ = await crud.api_key.create(
-                db,
-                obj_in=schemas.APIKeyCreate(),
-                ctx=ApiContext(
-                    request_id=str(uuid4()),
-                    user=user,
-                    organization=organization,
-                    auth_method=AuthMethod.AUTH0,
-                ),
-                uow=uow,
             )
         logger.info(f"Created user {user.email} with fallback method")
         return CreateOrUpdateResult(user=user, is_new=True)
