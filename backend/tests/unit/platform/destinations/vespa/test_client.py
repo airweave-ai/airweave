@@ -173,6 +173,38 @@ class TestVespaClient:
             mock_d.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_query_doc_ids_yql_uses_contains_for_collection_id(self, client, mock_vespa_app):
+        """Test that the fast-delete YQL query uses 'contains' (not '=') for collection_id.
+
+        Vespa YQL '=' is the numeric equality operator. Using it on a string
+        field with a UUID value causes HTTP 400: "not an int item expression".
+        """
+        collection_id = UUID("22222222-2222-2222-2222-222222222222")
+        entity_ids = ["entity-1"]
+
+        mock_response = MagicMock()
+        mock_response.is_successful.return_value = True
+        mock_response.hits = []
+        mock_response.json = {"root": {"fields": {"totalCount": 0}}}
+
+        captured_params = {}
+
+        async def capture_query(*args, **kwargs):
+            captured_params.update(kwargs.get("body", args[0] if args else {}))
+            return mock_response
+
+        with patch("asyncio.to_thread", side_effect=capture_query):
+            await client._query_doc_ids_by_original_entity_ids(entity_ids, collection_id)
+
+        yql = captured_params.get("yql", "")
+        assert "contains" in yql, (
+            f"YQL must use 'contains' for string fields, not '='. Got: {yql}"
+        )
+        assert f"collection_id = '{collection_id}'" not in yql, (
+            "YQL must not use '=' for collection_id (numeric operator on string field)"
+        )
+
+    @pytest.mark.asyncio
     async def test_execute_query_success(self, client, mock_vespa_app):
         """Test query execution with successful response."""
         query_params = {"yql": "select * from base_entity", "hits": 10}
