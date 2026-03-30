@@ -26,6 +26,7 @@ from airweave.domains.auth_provider._base import BaseAuthProvider
 from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderAuthError,
+    AuthProviderError,
 )
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -128,13 +129,19 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         )
 
         # 2. Get auth configuration (credentials + proxy setup)
-        auth_config = await self._get_auth_configuration(
-            db=db,
-            source_connection_data=source_connection_data,
-            ctx=ctx,
-            logger=logger,
-            access_token=access_token,
-        )
+        try:
+            auth_config = await self._get_auth_configuration(
+                db=db,
+                source_connection_data=source_connection_data,
+                ctx=ctx,
+                logger=logger,
+                access_token=access_token,
+            )
+        except AuthProviderError as exc:
+            raise SourceValidationError(
+                short_name=source_connection_data.short_name,
+                reason=f"auth provider error: {exc}",
+            ) from exc
 
         # 3. Resolve auth provider
         token_provider = await self._resolve_token_provider(

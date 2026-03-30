@@ -172,6 +172,18 @@ class TestGetCredsForSource:
             assert "access_token" in exc_info.value.missing_fields
 
     @pytest.mark.unit
+    async def test_error_404(self, provider):
+        mock_response = httpx.Response(
+            404,
+            json={"error": "not found"},
+            request=httpx.Request("GET", "https://api.example.com/tokens/slack"),
+        )
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
+            with pytest.raises(AuthProviderMissingFieldsError, match="404"):
+                await provider.get_creds_for_source("slack", ["access_token"])
+
+    @pytest.mark.unit
     async def test_ssrf_blocked(self, provider):
         provider.endpoint_url = "http://169.254.169.254/latest/meta-data"
 
