@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
@@ -22,6 +23,7 @@ from airweave.platform.entities.hubspot import (
     HubspotContactEntity,
     HubspotDealEntity,
     HubspotTicketEntity,
+    parse_hubspot_datetime,
 )
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
@@ -58,6 +60,10 @@ class HubspotSource(BaseSource):
     HUBSPOT_API_LIMIT = 100
     HUBSPOT_BATCH_SIZE = 100
 
+    _property_cache: Dict[str, List[str]]
+    _portal_id: Optional[str]
+    _after_date: Optional[datetime]
+
     @classmethod
     async def create(
         cls,
@@ -69,8 +75,14 @@ class HubspotSource(BaseSource):
     ) -> HubspotSource:
         """Create a new HubSpot source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        instance._property_cache: Dict[str, List[str]] = {}
-        instance._portal_id: Optional[str] = None
+        instance._property_cache = {}
+        instance._portal_id = None
+        instance._after_date = None
+        if config.after_date:
+            instance._after_date = datetime.fromisoformat(config.after_date).replace(
+                tzinfo=timezone.utc
+            )
+            logger.info("HubSpot: filtering to records modified after %s (UTC)", config.after_date)
         return instance
 
     @retry(
@@ -251,6 +263,23 @@ class HubspotSource(BaseSource):
             self.logger.warning("Failed to fetch HubSpot portal ID: %s", exc)
         return self._portal_id
 
+    def _is_after_cutoff(self, data: Dict[str, Any]) -> bool:
+        """Check if a record's updatedAt is after the configured after_date cutoff.
+
+        Returns True if the record should be included (no cutoff or after cutoff).
+        """
+        if self._after_date is None:
+            return True
+        updated_at = data.get("updatedAt") or data.get("createdAt")
+        if not updated_at:
+            return True
+        parsed = parse_hubspot_datetime(updated_at)
+        if parsed is None:
+            return True
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed >= self._after_date
+
     def _build_record_url(self, object_type: str, object_id: str) -> Optional[str]:
         """Build a HubSpot UI URL for the given object."""
         if not self._portal_id:
@@ -282,9 +311,9 @@ class HubspotSource(BaseSource):
             url = next_link if next_link else None
 
         fetch_duration = time.time() - fetch_start
-        self.logger.info(f"Fetched {len(contact_ids)} contact IDs in {fetch_duration:.2f}s")
+        self.logger.info("Fetched %d contact IDs in %.2fs", len(contact_ids), fetch_duration)
 
-        self.logger.info(f"Batch reading {len(contact_ids)} contacts with properties...")
+        self.logger.info("Batch reading %d contacts with properties...", len(contact_ids))
         batch_url = "https://api.hubapi.com/crm/v3/objects/contacts/batch/read"
         for i in range(0, len(contact_ids), self.HUBSPOT_BATCH_SIZE):
             chunk = contact_ids[i : i + self.HUBSPOT_BATCH_SIZE]
@@ -297,6 +326,8 @@ class HubspotSource(BaseSource):
             )
 
             for contact in data.get("results", []):
+                if not self._is_after_cutoff(contact):
+                    continue
                 raw_properties = contact.get("properties", {})
                 cleaned_properties = self._clean_properties(raw_properties)
                 yield HubspotContactEntity.from_api(
@@ -328,9 +359,9 @@ class HubspotSource(BaseSource):
             url = next_link if next_link else None
 
         fetch_duration = time.time() - fetch_start
-        self.logger.info(f"Fetched {len(company_ids)} company IDs in {fetch_duration:.2f}s")
+        self.logger.info("Fetched %d company IDs in %.2fs", len(company_ids), fetch_duration)
 
-        self.logger.info(f"Batch reading {len(company_ids)} companies with properties...")
+        self.logger.info("Batch reading %d companies with properties...", len(company_ids))
         batch_url = "https://api.hubapi.com/crm/v3/objects/companies/batch/read"
         for i in range(0, len(company_ids), self.HUBSPOT_BATCH_SIZE):
             chunk = company_ids[i : i + self.HUBSPOT_BATCH_SIZE]
@@ -343,6 +374,8 @@ class HubspotSource(BaseSource):
             )
 
             for company in data.get("results", []):
+                if not self._is_after_cutoff(company):
+                    continue
                 raw_properties = company.get("properties", {})
                 cleaned_properties = self._clean_properties(raw_properties)
                 yield HubspotCompanyEntity.from_api(
@@ -382,6 +415,8 @@ class HubspotSource(BaseSource):
             )
 
             for deal in data.get("results", []):
+                if not self._is_after_cutoff(deal):
+                    continue
                 raw_properties = deal.get("properties", {})
                 cleaned_properties = self._clean_properties(raw_properties)
                 yield HubspotDealEntity.from_api(
@@ -413,9 +448,9 @@ class HubspotSource(BaseSource):
             url = next_link if next_link else None
 
         fetch_duration = time.time() - fetch_start
-        self.logger.info(f"Fetched {len(ticket_ids)} ticket IDs in {fetch_duration:.2f}s")
+        self.logger.info("Fetched %d ticket IDs in %.2fs", len(ticket_ids), fetch_duration)
 
-        self.logger.info(f"Batch reading {len(ticket_ids)} tickets with properties...")
+        self.logger.info("Batch reading %d tickets with properties...", len(ticket_ids))
         batch_url = "https://api.hubapi.com/crm/v3/objects/tickets/batch/read"
         for i in range(0, len(ticket_ids), self.HUBSPOT_BATCH_SIZE):
             chunk = ticket_ids[i : i + self.HUBSPOT_BATCH_SIZE]
@@ -428,6 +463,8 @@ class HubspotSource(BaseSource):
             )
 
             for ticket in data.get("results", []):
+                if not self._is_after_cutoff(ticket):
+                    continue
                 raw_properties = ticket.get("properties", {})
                 cleaned_properties = self._clean_properties(raw_properties)
                 yield HubspotTicketEntity.from_api(

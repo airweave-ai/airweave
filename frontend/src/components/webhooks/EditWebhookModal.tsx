@@ -290,10 +290,12 @@ export function EditWebhookModal({
   subscriptionId,
   open,
   onOpenChange,
+  canManage,
 }: {
   subscriptionId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  canManage: boolean;
 }) {
   const { data, isLoading } = useSubscription(subscriptionId);
   const updateMutation = useUpdateSubscription();
@@ -468,6 +470,7 @@ export function EditWebhookModal({
                     type="url"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
+                    readOnly={!canManage}
                     className="w-full h-6 px-2 text-[11px] font-mono bg-muted/50 border border-border/50 rounded text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
                     placeholder="https://..."
                   />
@@ -491,7 +494,7 @@ export function EditWebhookModal({
                   <Button
                     variant="ghost"
                     onClick={handleDelete}
-                    disabled={isPending}
+                    disabled={isPending || !canManage}
                     size="sm"
                     className="h-8 px-3 text-[12px] text-red-600 hover:text-red-700 hover:bg-red-500/10 dark:text-red-400 dark:hover:text-red-300"
                   >
@@ -501,7 +504,7 @@ export function EditWebhookModal({
                   <Button
                     variant="ghost"
                     onClick={handleToggleStatus}
-                    disabled={isToggling}
+                    disabled={isToggling || !canManage}
                     size="sm"
                     className="h-8 px-3 text-[12px] text-muted-foreground hover:text-foreground"
                   >
@@ -520,7 +523,7 @@ export function EditWebhookModal({
                   </Button>
                   <Button
                     onClick={handleUpdate}
-                    disabled={!isValid || isPending}
+                    disabled={!isValid || isPending || !canManage}
                     size="sm"
                     className="h-8 px-5 text-[12px]"
                   >

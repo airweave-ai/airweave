@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/lib/theme-provider';
+import { useOrganizationContext } from '@/hooks/use-organization-context';
 import {
     Tooltip,
     TooltipContent,
@@ -29,6 +30,8 @@ export const SourceRateLimits = () => {
     const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
+    const { canManageOrganization } = useOrganizationContext();
+    const canManage = canManageOrganization();
 
     useEffect(() => {
         fetchLimits();
@@ -157,6 +160,11 @@ export const SourceRateLimits = () => {
                     <p className="text-xs text-muted-foreground">
                         Configure rate limits to prevent exhausting API quotas across your organization
                     </p>
+                    {!canManage && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                            Only admins and owners can manage rate limits.
+                        </p>
+                    )}
                 </div>
 
                 {/* Source Limits - Minimal, list-based design */}
@@ -236,6 +244,7 @@ export const SourceRateLimits = () => {
                                                         className="h-7 w-20 text-xs"
                                                         min="1"
                                                         disabled={isSaving}
+                                                        readOnly={!canManage}
                                                     />
                                                     <span className="text-[11px] text-muted-foreground">req</span>
                                                 </div>
@@ -251,6 +260,7 @@ export const SourceRateLimits = () => {
                                                         className="h-7 w-16 text-xs"
                                                         min="1"
                                                         disabled={isSaving}
+                                                        readOnly={!canManage}
                                                     />
                                                     <span className="text-[11px] text-muted-foreground">sec</span>
                                                 </div>
@@ -259,10 +269,10 @@ export const SourceRateLimits = () => {
                                                         <TooltipTrigger asChild>
                                                             <button
                                                                 onClick={() => handleSaveRow(row.source_short_name)}
-                                                                disabled={isSaving || !isEditing || !hasChanges}
+                                                                disabled={!canManage || isSaving || !isEditing || !hasChanges}
                                                                 className={cn(
                                                                     "h-7 w-7 rounded-md flex items-center justify-center transition-all duration-200",
-                                                                    isSaving || !isEditing || !hasChanges
+                                                                    !canManage || isSaving || !isEditing || !hasChanges
                                                                         ? "opacity-40 cursor-not-allowed"
                                                                         : isDark
                                                                             ? "bg-primary/90 hover:bg-primary text-white"
@@ -282,10 +292,10 @@ export const SourceRateLimits = () => {
                                                         <TooltipTrigger asChild>
                                                             <button
                                                                 onClick={() => handleDeleteRow(row.source_short_name)}
-                                                                disabled={isSaving || !row.id}
+                                                                disabled={!canManage || isSaving || !row.id}
                                                                 className={cn(
                                                                     "h-7 w-7 rounded-md flex items-center justify-center transition-all duration-200",
-                                                                    isSaving || !row.id
+                                                                    !canManage || isSaving || !row.id
                                                                         ? "opacity-40 cursor-not-allowed"
                                                                         : isDark
                                                                             ? "hover:bg-red-500/10 text-red-400"

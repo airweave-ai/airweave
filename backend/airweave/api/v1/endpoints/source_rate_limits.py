@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.domains.organizations import logic
 from airweave.api.inject import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.shared_models import FeatureFlag
@@ -76,7 +77,7 @@ async def set_source_rate_limit(
     source_short_name: str,
     request: schemas.SourceRateLimitUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_rate_limits),
 ) -> schemas.SourceRateLimit:
     """Set or update rate limit for a source.
 
@@ -103,7 +104,7 @@ async def delete_source_rate_limit(
     *,
     source_short_name: str,
     db: AsyncSession = Depends(get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_rate_limits),
 ) -> None:
     """Remove rate limit configuration for a source.
 

@@ -197,7 +197,6 @@ const DashboardLayout = () => {
   const { resolvedTheme, setTheme } = useTheme();
   const { fetchSources } = useSourcesStore();
   const { currentOrganization } = useOrganizationStore();
-  const hasConnectFeature = useOrganizationStore((state) => state.hasFeature('connect'));
   const { openPanel } = useSidePanelStore(); // Get the function to open the panel
 
   // Usage check from store
@@ -366,8 +365,7 @@ const DashboardLayout = () => {
             </NavItem>
           </div>
 
-          {/* Connect Playground (feature-flagged) */}
-          {hasConnectFeature && (
+          {/* Connect Playground */}
           <div>
             <NavItem
               to="/connect/playground"
@@ -378,7 +376,6 @@ const DashboardLayout = () => {
               <span className="ml-1.5 text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wide">new</span>
             </NavItem>
           </div>
-          )}
 
         </div>
       </ScrollArea>
@@ -388,7 +385,7 @@ const DashboardLayout = () => {
         <UserProfileDropdown />
       </div>
     </div>
-  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, isWebhooksActive, isConnectPlaygroundActive, hasConnectFeature, currentOrganization?.id, sourceConnectionsAllowed, entitiesAllowed, isCheckingUsage, usageCheckDetails]);
+  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, isWebhooksActive, isConnectPlaygroundActive, currentOrganization?.id, sourceConnectionsAllowed, entitiesAllowed, isCheckingUsage, usageCheckDetails]);
 
   // Main component render
   return (

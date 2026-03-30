@@ -21,12 +21,16 @@ This guide walks you through setting up webhook subscriptions, handling incoming
 
 ## Creating a Subscription
 
+<Warning>
+**Mutation endpoints (create, update, delete, recover) require admin or owner role and Bearer token authentication.** API key auth is supported for read-only operations (listing subscriptions, retrieving messages, viewing delivery attempts).
+</Warning>
+
 Register your endpoint to start receiving events. You can subscribe to any combination of [event types](/webhooks/types-and-formats) across sync, source connection, and collection lifecycles:
 
 <CodeBlocks>
 ```bash title="cURL"
 curl -X POST 'https://api.airweave.ai/webhooks/subscriptions' \
-  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
     "url": "https://your-server.com/webhooks/airweave",
@@ -39,7 +43,7 @@ import requests
 
 response = requests.post(
     "https://api.airweave.ai/webhooks/subscriptions",
-    headers={"x-api-key": "YOUR_API_KEY"},
+    headers={"Authorization": "Bearer <token>"},
     json={
         "url": "https://your-server.com/webhooks/airweave",
         "event_types": ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"]
@@ -53,7 +57,7 @@ print(f"Subscription ID: {subscription['id']}")
 const response = await fetch("https://api.airweave.ai/webhooks/subscriptions", {
   method: "POST",
   headers: {
-    "x-api-key": "YOUR_API_KEY",
+    "Authorization": "Bearer <token>",
     "Content-Type": "application/json"
   },
   body: JSON.stringify({
@@ -310,7 +314,7 @@ Change the URL, event types, or disable/enable delivery:
 <CodeBlocks>
 ```bash title="cURL"
 curl -X PATCH 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}' \
-  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
     "event_types": ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"],
@@ -321,7 +325,7 @@ curl -X PATCH 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}'
 ```python title="Python"
 response = requests.patch(
     f"https://api.airweave.ai/webhooks/subscriptions/{subscription_id}",
-    headers={"x-api-key": "YOUR_API_KEY"},
+    headers={"Authorization": "Bearer <token>"},
     json={
         "event_types": ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"],
         "disabled": False
@@ -336,7 +340,7 @@ Temporarily pause delivery without deleting:
 
 ```bash
 curl -X PATCH 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}' \
-  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{"disabled": true}'
 ```
@@ -347,7 +351,7 @@ Re-enable a disabled subscription, optionally recovering missed messages:
 
 ```bash
 curl -X PATCH 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}' \
-  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
     "disabled": false,
@@ -363,7 +367,7 @@ Permanently remove a subscription:
 
 ```bash
 curl -X DELETE 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}' \
-  -H 'x-api-key: YOUR_API_KEY'
+  -H 'Authorization: Bearer <token>'
 ```
 
 <Warning>
@@ -371,6 +375,10 @@ This action cannot be undone. Pending deliveries will be cancelled.
 </Warning>
 
 ## Retrieving Message History
+
+<Note>
+Read-only operations (listing subscriptions, retrieving messages, viewing delivery attempts) support both API key and Bearer token authentication.
+</Note>
 
 ### Get All Messages
 
@@ -410,7 +418,7 @@ If your endpoint was down or had issues, you can replay failed messages:
 
 ```bash
 curl -X POST 'https://api.airweave.ai/webhooks/subscriptions/{subscription_id}/recover' \
-  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
     "since": "2025-01-15T00:00:00Z",

@@ -75,7 +75,7 @@ function HealthBadge({ status }: { status: HealthStatus }) {
 
 // ============ Empty State ============
 
-function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
+function EmptyState({ onCreateClick, canManage }: { onCreateClick: () => void; canManage: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-16">
       <div className="rounded-full bg-muted p-4 mb-4">
@@ -85,7 +85,7 @@ function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
       <p className="text-sm text-muted-foreground text-center mb-4 max-w-xs">
         Create a subscription to receive webhook notifications.
       </p>
-      <Button onClick={onCreateClick} size="sm">
+      <Button onClick={onCreateClick} size="sm" disabled={!canManage} title={!canManage ? "Only admins can manage webhooks" : undefined}>
         <Plus className="mr-1.5 size-3.5" />
         Add subscription
       </Button>
@@ -99,10 +99,12 @@ export function WebhooksTab({
   subscriptions,
   onEdit,
   onCreateClick,
+  canManage,
 }: {
   subscriptions: Subscription[];
   onEdit: (subscription: Subscription) => void;
   onCreateClick: () => void;
+  canManage: boolean;
 }) {
   const deleteMutation = useDeleteSubscriptions();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -133,7 +135,7 @@ export function WebhooksTab({
   };
 
   if (subscriptions.length === 0) {
-    return <EmptyState onCreateClick={onCreateClick} />;
+    return <EmptyState onCreateClick={onCreateClick} canManage={canManage} />;
   }
 
   const allSelected = selectedIds.size === subscriptions.length;
@@ -148,7 +150,8 @@ export function WebhooksTab({
             variant="destructive"
             size="sm"
             onClick={handleBulkDelete}
-            disabled={deleteMutation.isPending}
+            disabled={deleteMutation.isPending || !canManage}
+            title={!canManage ? "Only admins can manage webhooks" : undefined}
             className="h-7 text-xs"
           >
             {deleteMutation.isPending ? (

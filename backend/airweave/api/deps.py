@@ -5,7 +5,7 @@ logic lives in ``context_resolver.py``. This module just wires FastAPI
 ``Depends()`` to the resolver.
 """
 
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi_auth0 import Auth0User
@@ -22,6 +22,7 @@ from airweave.core.container import Container
 from airweave.core.logging import ContextualLogger
 from airweave.core.protocols.cache import ContextCache
 from airweave.core.protocols.rate_limiter import RateLimiter
+from airweave.core.shared_models import AuthMethod
 from airweave.db.session import get_db
 from airweave.domains.organizations.repository import ApiKeyRepository, OrganizationRepository
 from airweave.domains.users.repository import UserRepository
@@ -37,6 +38,52 @@ def get_container() -> Container:
     if c is None:
         raise RuntimeError("Container not initialized. Call initialize_container() first.")
     return c
+
+
+def require_org_role(
+    check: Callable[[str], bool],
+    *,
+    block_api_key_auth: bool = False,
+) -> Any:
+    """Dependency factory enforcing organization-level role checks.
+
+    Args:
+        check: Pure predicate (e.g. ``logic.can_manage_api_keys``) that
+            receives the user's org role string and returns True if allowed.
+        block_api_key_auth: When True, reject API-key-authenticated requests
+            immediately (prevents privilege escalation for self-referential
+            resources like API keys managing API keys).
+    """
+
+    async def _enforce(ctx: ApiContext = Depends(get_context)) -> ApiContext:
+        # Checked before system bypass — these auth methods are mutually
+        # exclusive (API_KEY vs SYSTEM/INTERNAL_SYSTEM), so ordering is
+        # safe.  Keeping this first gives a precise error message.
+        if block_api_key_auth and ctx.is_api_key_auth:
+            raise HTTPException(
+                status_code=403,
+                detail="API key authentication is not permitted for this operation",
+            )
+
+        if ctx.auth_method in (AuthMethod.SYSTEM, AuthMethod.INTERNAL_SYSTEM):
+            return ctx
+
+        if ctx.user is None:
+            raise HTTPException(
+                status_code=403,
+                detail="This operation requires user authentication",
+            )
+
+        role = ctx.user.organization_roles.get(ctx.organization.id)
+        if role is None or not check(role):
+            raise HTTPException(
+                status_code=403,
+                detail="Insufficient permissions for this operation",
+            )
+
+        return ctx
+
+    return Depends(_enforce)
 
 
 async def get_context(

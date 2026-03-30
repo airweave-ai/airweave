@@ -183,6 +183,15 @@ class VespaDestination(VectorDBDestination):
             f"{result.success_count} success, {len(result.failed_docs)} failed"
         )
 
+        accounted = result.success_count + len(result.failed_docs)
+        if accounted < total_docs:
+            ghost_count = total_docs - accounted
+            raise RuntimeError(
+                f"Vespa feed silently dropped {ghost_count}/{total_docs} documents "
+                f"(success={result.success_count}, failed={len(result.failed_docs)}, "
+                f"expected={total_docs})"
+            )
+
         if result.failed_docs:
             self._handle_feed_failures(result.failed_docs, total_docs)
 

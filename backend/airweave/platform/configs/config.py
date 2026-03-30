@@ -1,5 +1,6 @@
 """Configuration classes for platform components."""
 
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import Field, field_validator
@@ -368,7 +369,25 @@ class GoogleSlidesConfig(SourceConfig):
 class HubspotConfig(SourceConfig):
     """Hubspot configuration schema."""
 
-    pass
+    after_date: Optional[str] = Field(
+        default=None,
+        title="After Date",
+        description=(
+            "Only sync records created or modified after this date in UTC "
+            "(format: YYYY-MM-DD). "
+            "Useful for large CRM instances where you only need recent data."
+        ),
+    )
+
+    @field_validator("after_date")
+    @classmethod
+    def validate_after_date(cls, value: Optional[str]) -> Optional[str]:
+        """Validate and normalize date format."""
+        if not value:
+            return value
+        value = value.replace("/", "-")
+        datetime.fromisoformat(value)
+        return value
 
 
 class SliteConfig(SourceConfig):

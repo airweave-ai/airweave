@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import Body, Depends
+from fastapi import Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -11,6 +11,7 @@ from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
 from airweave.core import credentials
 from airweave.core.datetime_utils import utc_now_naive
+from airweave.domains.organizations import logic
 
 router = TrailingSlashRouter()
 
@@ -20,7 +21,7 @@ async def create_api_key(
     *,
     db: AsyncSession = Depends(deps.get_db),
     api_key_in: schemas.APIKeyCreate = Body(default_factory=lambda: schemas.APIKeyCreate()),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
 ) -> schemas.APIKey:
     """Create a new API key for the current user.
 
@@ -73,7 +74,7 @@ async def read_api_key(
     *,
     db: AsyncSession = Depends(deps.get_db),
     id: UUID,
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
 ) -> schemas.APIKey:
     """Retrieve an API key by ID.
 
@@ -92,6 +93,14 @@ async def read_api_key(
         HTTPException: If the API key is not found.
     """
     api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
+    if api_key is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Audit log: API key read (flows to Azure LAW)
+    audit_logger = ctx.logger.with_context(event_type="api_key_read")
+    audit_logger.info(
+        f"API key read: {api_key.id} by {ctx.tracking_email} for org {ctx.organization.id}"
+    )
     # Decrypt the key for the response
     decrypted_data = credentials.decrypt(api_key.encrypted_key)
     decrypted_key = decrypted_data["key"]
@@ -117,7 +126,7 @@ async def read_api_keys(
     db: AsyncSession = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
 ) -> list[schemas.APIKey]:
     """Retrieve all API keys for the current user.
 
@@ -133,6 +142,12 @@ async def read_api_keys(
         List[schemas.APIKey]: A list of API keys with decrypted keys.
     """
     api_keys = await crud.api_key.get_multi(db=db, skip=skip, limit=limit, ctx=ctx)
+    # Audit log: API keys listed (flows to Azure LAW)
+    audit_logger = ctx.logger.with_context(event_type="api_keys_listed")
+    audit_logger.info(
+        f"API keys listed ({len(api_keys)} keys) by {ctx.tracking_email} "
+        f"for org {ctx.organization.id}"
+    )
 
     result = []
     for api_key in api_keys:
@@ -163,7 +178,7 @@ async def rotate_api_key(
     *,
     db: AsyncSession = Depends(deps.get_db),
     id: UUID,
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
 ) -> schemas.APIKey:
     """Rotate an API key by creating a new one.
 
@@ -188,6 +203,8 @@ async def rotate_api_key(
     """
     # Verify old key exists and user has access
     old_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
+    if old_key is None:
+        raise HTTPException(status_code=404, detail="Not found")
     old_key_schema = schemas.APIKey.model_validate(old_key, from_attributes=True)
 
     # Create new key with default 90-day expiration
@@ -220,7 +237,7 @@ async def delete_api_key(
     *,
     db: AsyncSession = Depends(deps.get_db),
     id: UUID,
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
 ) -> schemas.APIKey:
     """Delete an API key.
 
@@ -240,6 +257,8 @@ async def delete_api_key(
 
     """
     api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
+    if api_key is None:
+        raise HTTPException(status_code=404, detail="Not found")
 
     # Decrypt the key for the response
     decrypted_data = credentials.decrypt(api_key.encrypted_key)

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { getAuthProviderIconUrl } from "@/lib/utils/icons";
 import { format } from "date-fns";
 import { useAuthProvidersStore } from "@/lib/stores/authProviders";
+import { useOrganizationContext } from "@/hooks/use-organization-context";
 import { clearStoredErrorDetails } from "@/lib/error-utils";
 import '@/styles/connection-animation.css';
 import {
@@ -206,6 +207,8 @@ export const AuthProviderDetailView: React.FC<AuthProviderDetailViewProps> = ({
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
     const { fetchAuthProviderConnections } = useAuthProvidersStore();
+    const { canManageOrganization } = useOrganizationContext();
+    const canManage = canManageOrganization();
 
     const awLogoSrc = isDark ? "/airweave-logo-svg-white-darkbg.svg" : "/airweave-logo-svg-lightbg-blacklogo.svg";
     const { error: awLogoError, onError: onAwLogoError } = useImageFallback(awLogoSrc);
@@ -391,6 +394,7 @@ export const AuthProviderDetailView: React.FC<AuthProviderDetailViewProps> = ({
                     </h2>
 
                     {/* Action buttons - more subtle */}
+                    {canManage && (
                     <div className="flex gap-1">
                         <button
                             onClick={() => {
@@ -427,6 +431,7 @@ export const AuthProviderDetailView: React.FC<AuthProviderDetailViewProps> = ({
                             <Trash className="h-4 w-4" />
                         </button>
                     </div>
+                    )}
                 </div>
                 <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                     View and manage your {authProviderName} connection details

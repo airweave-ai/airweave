@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -6,6 +6,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { AlertCircle, ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCreateSubscription, type CreateSubscriptionRequest } from "@/hooks/use-webhooks";
+import { toast } from "sonner";
 import { EVENT_TYPES_CONFIG, type EventTypeGroup } from "./shared";
 
 // ============ Secret Validation ============
@@ -143,15 +144,26 @@ function EventTypeSelector({
 export function CreateWebhookModal({
   open,
   onOpenChange,
+  canManage,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  canManage: boolean;
 }) {
   const createMutation = useCreateSubscription();
   const [url, setUrl] = useState("");
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [secret, setSecret] = useState("");
   const [endpointError, setEndpointError] = useState<string | null>(null);
+
+  // Close modal and show toast if non-admin somehow opens it
+  useEffect(() => {
+    if (open && !canManage) {
+      toast.info("Only admins can manage webhooks");
+      resetForm();
+      onOpenChange(false);
+    }
+  }, [open, canManage, onOpenChange]);
 
   const secretError = validateWebhookSecret(secret);
   const isValid = url && selectedEventTypes.length > 0 && !secretError;
@@ -275,7 +287,7 @@ export function CreateWebhookModal({
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={!isValid || createMutation.isPending}
+            disabled={!isValid || createMutation.isPending || !canManage}
             size="sm"
             className="h-8 px-5 text-[12px]"
           >

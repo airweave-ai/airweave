@@ -12,6 +12,7 @@ from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.domains.auth_provider.protocols import AuthProviderServiceProtocol
 from airweave.domains.auth_provider.types import AuthProviderMetadata
+from airweave.domains.organizations import logic
 
 router = TrailingSlashRouter()
 
@@ -74,7 +75,7 @@ async def connect_auth_provider(
     *,
     db: AsyncSession = Depends(deps.get_db),
     auth_provider_connection_in: schemas.AuthProviderConnectionCreate,
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_auth_providers),
     auth_provider_service: AuthProviderServiceProtocol = Inject(AuthProviderServiceProtocol),
 ) -> schemas.AuthProviderConnection:
     """Create a new auth provider connection with credentials."""
@@ -88,7 +89,7 @@ async def delete_auth_provider_connection(
     *,
     db: AsyncSession = Depends(deps.get_db),
     readable_id: str,
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_auth_providers),
     auth_provider_service: AuthProviderServiceProtocol = Inject(AuthProviderServiceProtocol),
 ) -> schemas.AuthProviderConnection:
     """Delete an auth provider connection."""
@@ -101,7 +102,7 @@ async def update_auth_provider_connection(
     db: AsyncSession = Depends(deps.get_db),
     readable_id: str,
     auth_provider_connection_update: schemas.AuthProviderConnectionUpdate,
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_auth_providers),
     auth_provider_service: AuthProviderServiceProtocol = Inject(AuthProviderServiceProtocol),
 ) -> schemas.AuthProviderConnection:
     """Update an existing auth provider connection."""

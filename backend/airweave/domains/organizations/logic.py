@@ -101,9 +101,41 @@ def can_user_leave_org(
     return True, None
 
 
+_PRIVILEGED_ROLES = frozenset({"owner", "admin"})
+
+
+def _is_privileged(role: str) -> bool:
+    return role in _PRIVILEGED_ROLES
+
+
 def can_manage_members(role: str) -> bool:
     """Return whether a user with this role may invite / remove members."""
-    return role in ("owner", "admin")
+    return _is_privileged(role)
+
+
+def can_manage_api_keys(role: str) -> bool:
+    """Return whether a user with this role may create/read/rotate/delete API keys."""
+    return _is_privileged(role)
+
+
+def can_manage_auth_providers(role: str) -> bool:
+    """Return whether a user with this role may create/modify/delete auth provider connections."""
+    return _is_privileged(role)
+
+
+def can_manage_webhooks(role: str) -> bool:
+    """Return whether a user with this role may manage webhook subscriptions."""
+    return _is_privileged(role)
+
+
+def can_manage_billing(role: str) -> bool:
+    """Return whether a user with this role may manage billing and subscriptions."""
+    return _is_privileged(role)
+
+
+def can_manage_rate_limits(role: str) -> bool:
+    """Return whether a user with this role may configure source rate limits."""
+    return _is_privileged(role)
 
 
 # ---------------------------------------------------------------------------

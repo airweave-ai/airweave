@@ -186,3 +186,40 @@ class DocxFileStubEntity(FileEntity):
     def web_url(self) -> str:
         """Return placeholder URL for this DOCX entity."""
         return f"file-stub://docx/{self.stub_id}"
+
+
+class DocFileStubEntity(FileEntity):
+    """Legacy .doc file entity with extractable text.
+
+    Generated using olefile to create a minimal OLE2 compound document
+    with embedded text content.
+    """
+
+    stub_id: str = AirweaveField(..., description="Unique identifier", is_entity_id=True)
+    file_name: str = AirweaveField(
+        ..., description="Legacy DOC file name", is_name=True, embeddable=True
+    )
+    description: str = AirweaveField(
+        default="", description="Description of the document", embeddable=True
+    )
+    file_extension: str = AirweaveField(
+        default=".doc", description="File extension", embeddable=True
+    )
+    author: str = AirweaveField(default="", description="Document author", embeddable=True)
+    page_count: int = AirweaveField(
+        default=1, description="Approximate page count", embeddable=False
+    )
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="When the file was created", is_created_at=True
+    )
+    modified_at: Optional[datetime] = AirweaveField(
+        None, description="When the file was last modified", is_updated_at=True
+    )
+    sequence_number: int = AirweaveField(
+        default=0, description="Sequence number for ordering", embeddable=False
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return placeholder URL for this legacy DOC entity."""
+        return f"file-stub://doc/{self.stub_id}"

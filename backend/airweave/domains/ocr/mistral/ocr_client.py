@@ -15,8 +15,8 @@ import os
 from typing import Any, Callable, Optional
 
 import aiofiles
-from httpx import HTTPStatusError, ReadTimeout, TimeoutException
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from httpx import HTTPStatusError
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from airweave.core.config import settings
 from airweave.core.logging import logger
@@ -38,6 +38,17 @@ RETRY_MULTIPLIER = 2
 
 # Concurrent OCR calls cap (can be higher than batch uploads since OCR is the bottleneck)
 DEFAULT_OCR_CONCURRENCY = 10
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Return True for transient errors worth retrying (5xx, timeouts, rate limits).
+
+    4xx client errors (401 Unauthorized, 403 Forbidden, 404, etc.) are
+    permanent and will never succeed on retry — fail fast instead.
+    """
+    if isinstance(exc, HTTPStatusError):
+        return exc.response.status_code >= 500 or exc.response.status_code == 429
+    return True
 
 
 class MistralOcrClient:
@@ -97,9 +108,7 @@ class MistralOcrClient:
         """
 
         @retry(
-            retry=retry_if_exception_type(
-                (TimeoutException, ReadTimeout, HTTPStatusError, Exception)
-            ),
+            retry=retry_if_exception(_is_retryable),
             stop=stop_after_attempt(MAX_RETRIES),
             wait=wait_exponential(
                 multiplier=RETRY_MULTIPLIER, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT

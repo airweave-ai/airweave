@@ -16,6 +16,7 @@ import {
   CreateWebhookModal,
   EditWebhookModal,
 } from "@/components/webhooks";
+import { useOrganizationContext } from "@/hooks/use-organization-context";
 
 /**
  * Logs Tab - Split pane view showing webhook message logs
@@ -82,6 +83,9 @@ function LogsTab() {
  * Webhooks Page - Main page for webhooks and message logs
  */
 const WebhooksPage = () => {
+  const { canManageOrganization } = useOrganizationContext();
+  const canManage = canManageOrganization();
+
   const {
     data: subscriptions = [],
     isLoading: isLoadingSubscriptions,
@@ -124,7 +128,7 @@ const WebhooksPage = () => {
           Webhooks
           <span className="ml-2 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide align-middle">beta</span>
         </h1>
-        <Button onClick={() => setCreateModalOpen(true)} size="sm" className="h-8">
+        <Button onClick={() => setCreateModalOpen(true)} size="sm" className="h-8" disabled={!canManage} title={!canManage ? "Only admins can manage webhooks" : undefined}>
           <Plus className="mr-1.5 size-3.5" />
           Add subscription
         </Button>
@@ -163,6 +167,7 @@ const WebhooksPage = () => {
             subscriptions={subscriptions}
             onEdit={handleSubscriptionClick}
             onCreateClick={() => setCreateModalOpen(true)}
+            canManage={canManage}
           />
         </TabsContent>
 
@@ -172,11 +177,12 @@ const WebhooksPage = () => {
       </Tabs>
 
       {/* Modals */}
-      <CreateWebhookModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
+      <CreateWebhookModal open={createModalOpen} onOpenChange={setCreateModalOpen} canManage={canManage} />
       <EditWebhookModal
         subscriptionId={selectedSubscriptionId}
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
+        canManage={canManage}
       />
     </div>
   );

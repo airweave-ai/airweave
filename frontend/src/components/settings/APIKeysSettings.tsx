@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { format, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAPIKeysStore, type APIKey } from "@/lib/stores/apiKeys";
+import { useOrganizationContext } from "@/hooks/use-organization-context";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,8 @@ const EXPIRATION_PRESETS = [
 ];
 
 export function APIKeysSettings() {
+  const { canManageOrganization } = useOrganizationContext();
+  const canManage = canManageOrganization();
   const {
     apiKeys,
     isLoading,
@@ -126,6 +129,20 @@ export function APIKeysSettings() {
     if (daysRemaining <= 7) return "text-amber-500";
     return "text-slate-500 dark:text-slate-400";
   };
+
+  if (!canManage) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="rounded-full bg-slate-100 dark:bg-slate-800 p-4 mb-4">
+          <Key className="h-6 w-6 text-slate-400" />
+        </div>
+        <p className="text-sm font-medium mb-1">API key management</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Only admins and owners can manage API keys
+        </p>
+      </div>
+    );
+  }
 
   if (isLoading && apiKeys.length === 0) {
     return (

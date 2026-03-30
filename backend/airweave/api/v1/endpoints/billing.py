@@ -15,6 +15,7 @@ from airweave import schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
+from airweave.domains.organizations import logic
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.exceptions import PermissionException
 from airweave.core.logging import logger
@@ -32,7 +33,7 @@ router = TrailingSlashRouter()
 async def create_checkout_session(
     request: schemas.CheckoutSessionRequest,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.CheckoutSessionResponse:
     """Create a Stripe checkout session for subscription.
@@ -63,7 +64,7 @@ async def create_checkout_session(
 async def create_yearly_prepay_checkout_session(
     request: schemas.CheckoutSessionRequest,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.CheckoutSessionResponse:
     """Create a Stripe checkout session for yearly prepay (no existing subscription).
@@ -87,7 +88,7 @@ async def create_yearly_prepay_checkout_session(
 async def create_portal_session(
     request: schemas.CustomerPortalRequest,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.CustomerPortalResponse:
     """Create a Stripe customer portal session.
@@ -144,7 +145,7 @@ async def get_subscription(
 async def update_subscription_plan(
     request: schemas.UpdatePlanRequest,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.MessageResponse:
     """Update subscription to a different plan.
@@ -174,7 +175,7 @@ async def update_subscription_plan(
 @router.post("/cancel", response_model=schemas.MessageResponse)
 async def cancel_subscription(
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.MessageResponse:
     """Cancel the current subscription.
@@ -198,7 +199,7 @@ async def cancel_subscription(
 @router.post("/reactivate", response_model=schemas.MessageResponse)
 async def reactivate_subscription(
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.MessageResponse:
     """Reactivate a subscription that's set to cancel.
@@ -222,7 +223,7 @@ async def reactivate_subscription(
 @router.post("/cancel-plan-change", response_model=schemas.MessageResponse)
 async def cancel_pending_plan_change(
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.MessageResponse:
     """Cancel a scheduled plan change (downgrade).

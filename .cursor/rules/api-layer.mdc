@@ -193,9 +193,37 @@ collection = await collection_service.create(
 
 ## Security
 - Organization access validated via ApiContext
+- Role-based mutation guards via `require_org_role()` (see below)
 - API keys encrypted at rest
 - Auth fields hidden by default
 - Request ID tracking for audit trails
+
+### Role-Based Access Control (`require_org_role`)
+Read-only endpoints use `Depends(deps.get_context)`. Mutation endpoints use `deps.require_org_role(logic.can_manage_*)` to enforce admin/owner role checks before the handler runs.
+
+```python
+# Read endpoint — any authenticated user
+@router.get("/")
+async def list_resources(
+    ctx: ApiContext = Depends(deps.get_context),
+): ...
+
+# Mutation endpoint — admin/owner only
+@router.post("/")
+async def create_resource(
+    resource_in: schemas.ResourceCreate,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = deps.require_org_role(logic.can_manage_resources),
+): ...
+```
+
+Use `block_api_key_auth=True` for self-referential resources (e.g. API keys managing API keys) to prevent privilege escalation:
+
+```python
+ctx: ApiContext = deps.require_org_role(
+    logic.can_manage_api_keys, block_api_key_auth=True
+),
+```
 
 ## Best Practices
 1. Always use Pydantic schemas for request/response
