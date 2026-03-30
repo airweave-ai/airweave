@@ -588,10 +588,8 @@ async def add_self_to_organization(
     if role not in ["owner", "admin", "member"]:
         raise HTTPException(status_code=400, detail="Invalid role. Must be owner, admin, or member")
 
-    # Check if organization exists
+    # Check if organization exists (raises NotFoundException if missing)
     org = await crud.organization.get(db, organization_id, ctx)
-    if not org:
-        raise NotFoundException(f"Organization {organization_id} not found")
 
     # Capture org values before any commits to avoid detached instance issues
     org_data = {
@@ -689,9 +687,6 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
 
     # Get organization as ORM model (enrich=False) to allow mutations and db.refresh()
     org = await crud.organization.get(db, organization_id, ctx, enrich=False)
-    if not org:
-        raise NotFoundException(f"Organization {organization_id} not found")
-
     org_schema = schemas.Organization.model_validate(org, from_attributes=True)
 
     # Check if billing record exists
@@ -952,10 +947,8 @@ async def enable_feature_flag(
     """
     _require_admin(ctx)
 
-    # Verify organization exists
-    org = await crud.organization.get(db, organization_id, ctx, skip_access_validation=True)
-    if not org:
-        raise NotFoundException(f"Organization {organization_id} not found")
+    # Verify organization exists (raises NotFoundException if missing)
+    await crud.organization.get(db, organization_id, ctx, skip_access_validation=True)
 
     # Validate flag exists
     try:
@@ -997,10 +990,8 @@ async def disable_feature_flag(
     """
     _require_admin(ctx)
 
-    # Verify organization exists
-    org = await crud.organization.get(db, organization_id, ctx, skip_access_validation=True)
-    if not org:
-        raise NotFoundException(f"Organization {organization_id} not found")
+    # Verify organization exists (raises NotFoundException if missing)
+    await crud.organization.get(db, organization_id, ctx, skip_access_validation=True)
 
     # Validate flag exists
     try:

@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, models, schemas
 from airweave.core.context import BaseContext
 from airweave.core.datetime_utils import utc_now_naive
-from airweave.core.exceptions import NotFoundException
 from airweave.core.shared_models import IntegrationType, SyncStatus
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.db.unit_of_work import UnitOfWork
@@ -45,11 +44,8 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         Returns:
             models.Sync: The sync without any connections
         """
-        # Get the sync without any connections
+        # Get the sync without any connections (raises NotFoundException if missing)
         sync = await super().get(db, id=id, ctx=ctx)
-
-        if not sync:
-            raise NotFoundException("Sync not found")
 
         if with_connections:
             # Enrich the sync with all its connections
@@ -447,8 +443,6 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         """
         # Validate the source connection and that it is a source
         source_connection = await crud.connection.get(db, id=source_connection_id, ctx=ctx)
-        if not source_connection:
-            raise NotFoundException("Source connection not found")
         if source_connection.integration_type != IntegrationType.SOURCE:
             raise ValueError("Source connection is not a source")
 
@@ -457,9 +451,6 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
             destination_connection = await crud.connection.get(
                 db, id=destination_connection_id, ctx=ctx
             )
-            if not destination_connection:
-                raise NotFoundException("Destination connection not found")
-
             if destination_connection.integration_type != IntegrationType.DESTINATION:
                 raise ValueError("Destination connection is not a destination")
 

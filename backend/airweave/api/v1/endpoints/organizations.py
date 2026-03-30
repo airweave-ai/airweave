@@ -259,9 +259,6 @@ async def set_primary_organization(
     )
     organization = await crud.organization.get(db=db, id=organization_id, ctx=ctx)
 
-    if not organization or not user_org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
     return schemas.OrganizationWithRole(
         id=organization.id,
         name=organization.name,
