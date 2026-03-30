@@ -35,6 +35,13 @@ class CustomAuthProvider(BaseAuthProvider):
 
     BLOCKED_SOURCES: list[str] = []
 
+    # Map Airweave-internal field names to the simple names customers return.
+    # Customers always return {"access_token": "..."} or {"api_key": "..."}.
+    FIELD_NAME_MAPPING: Dict[str, str] = {
+        "personal_access_token": "access_token",  # GitHub
+        "api_token": "access_token",  # Document360, Pipedrive
+    }
+
     @classmethod
     async def create(
         cls, credentials: Optional[Any] = None, config: Optional[Dict[str, Any]] = None
@@ -135,10 +142,15 @@ class CustomAuthProvider(BaseAuthProvider):
         found_credentials: Dict[str, Any] = {}
 
         for field in source_auth_config_fields:
-            if field in data:
+            # Check the response using the mapped name (e.g. access_token for
+            # personal_access_token), then store under the Airweave-internal name.
+            mapped = self.FIELD_NAME_MAPPING.get(field, field)
+            if mapped in data:
+                found_credentials[field] = data[mapped]
+            elif field in data:
                 found_credentials[field] = data[field]
             elif field not in _optional_fields:
-                missing_fields.append(field)
+                missing_fields.append(mapped)
 
         if missing_fields:
             available = list(data.keys())

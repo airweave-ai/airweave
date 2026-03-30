@@ -84,6 +84,42 @@ class TestGetCredsForSource:
         assert creds == {"access_token": "eyJ-gdrive-token"}
 
     @pytest.mark.unit
+    async def test_maps_access_token_to_personal_access_token(self, provider):
+        """Customer returns access_token, provider maps to personal_access_token for GitHub."""
+        mock_response = httpx.Response(
+            200,
+            json={"access_token": "ghp_test123"},
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
+        )
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
+            creds = await provider.get_creds_for_source(
+                "github",
+                ["personal_access_token"],
+                source_connection_id=TEST_SC_ID,
+            )
+
+        assert creds == {"personal_access_token": "ghp_test123"}
+
+    @pytest.mark.unit
+    async def test_maps_access_token_to_api_token(self, provider):
+        """Customer returns access_token, provider maps to api_token for Document360."""
+        mock_response = httpx.Response(
+            200,
+            json={"access_token": "doc360_token"},
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
+        )
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
+            creds = await provider.get_creds_for_source(
+                "document360",
+                ["api_token"],
+                source_connection_id=TEST_SC_ID,
+            )
+
+        assert creds == {"api_token": "doc360_token"}
+
+    @pytest.mark.unit
     async def test_calls_correct_url(self, provider):
         mock_response = httpx.Response(
             200,

@@ -373,11 +373,14 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             logger=logger,
         )
 
-        # Get runtime auth fields from the source registry (precomputed at startup)
+        # Get runtime auth fields from the source registry (precomputed at startup).
+        # Auth providers handle token refresh, so OAuth lifecycle fields
+        # (refresh_token, client_id, client_secret) are always optional.
         short_name = source_connection_data.short_name
         entry = self._source_registry.get(short_name)
+        _AUTH_PROVIDER_OPTIONAL = {"refresh_token", "client_id", "client_secret"}
         auth_fields_all = entry.runtime_auth_all_fields
-        auth_fields_optional = entry.runtime_auth_optional_fields
+        auth_fields_optional = entry.runtime_auth_optional_fields | _AUTH_PROVIDER_OPTIONAL
 
         source_config_field_mappings = self._build_source_config_field_mappings(
             source_connection_data
