@@ -98,13 +98,25 @@ class CustomAuthProvider(BaseAuthProvider):
                         provider_name="custom",
                         retry_after=retry_after,
                     ) from e
+                if status == 404:
+                    raise AuthProviderMissingFieldsError(
+                        f"Custom endpoint has no credentials configured for "
+                        f"source '{source_short_name}' (404)",
+                        provider_name="custom",
+                        missing_fields=[],
+                        available_fields=[],
+                    ) from e
                 if status >= 500:
                     raise AuthProviderTemporaryError(
                         f"Custom endpoint returned {status} for source '{source_short_name}'",
                         provider_name="custom",
                         status_code=status,
                     ) from e
-                raise
+                raise AuthProviderConfigError(
+                    f"Custom endpoint returned unexpected {status} for "
+                    f"source '{source_short_name}'",
+                    provider_name="custom",
+                ) from e
             except (httpx.ConnectError, httpx.TimeoutException) as e:
                 self.logger.error(f"[Custom] Network error reaching endpoint: {e}")
                 raise AuthProviderTemporaryError(

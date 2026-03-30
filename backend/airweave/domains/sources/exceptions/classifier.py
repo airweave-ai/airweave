@@ -66,6 +66,14 @@ def classify_error(exc: Exception) -> ErrorClassification:
             message=str(exc),
         )
 
+    # Catch-all for remaining AuthProviderError subtypes (e.g. MissingFieldsError,
+    # ConfigError) — these are auth provider issues the user needs to address.
+    if isinstance(exc, AuthProviderError):
+        return ErrorClassification(
+            category=SourceConnectionErrorCategory.AUTH_PROVIDER_CREDENTIALS_INVALID,
+            message=str(exc),
+        )
+
     # --- Legacy SourceTokenRefreshError ---
     if isinstance(exc, SourceTokenRefreshError):
         return ErrorClassification(
