@@ -218,8 +218,8 @@ class VespaClient:
 
                     async with client.stream("DELETE", url) as response:
                         if response.status_code == 200:
-                            batch_count, continuation = (
-                                await self._parse_bulk_delete_response(response)
+                            batch_count, continuation = await self._parse_bulk_delete_response(
+                                response
                             )
                             deleted_count += batch_count
                         else:
