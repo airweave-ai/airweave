@@ -28,7 +28,7 @@ class OrganizationRepositoryProtocol(Protocol):
         ctx: Any = None,
         skip_access_validation: bool = False,
         enrich: bool = False,
-    ) -> Optional[schemas.Organization]:
+    ) -> schemas.Organization:
         """Return organization (enriched with billing/features when enrich=True)."""
         ...
 
@@ -38,7 +38,7 @@ class OrganizationRepositoryProtocol(Protocol):
         *,
         organization_id: UUID,
         skip_access_validation: bool = False,
-    ) -> Optional[Organization]:
+    ) -> Organization:
         """Return organization ORM model by ID."""
         ...
 

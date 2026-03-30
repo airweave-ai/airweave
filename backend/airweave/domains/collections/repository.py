@@ -129,13 +129,11 @@ class CollectionRepository(CollectionRepositoryProtocol):
 
         return CollectionListResult(collections=collections, summaries_by_collection=summaries)
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Collection]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Collection:
         """Get a collection by ID with ephemeral status."""
         collection = await crud.collection.get(db, id, ctx)
-        if collection:
-            result = await self._attach_ephemeral_status(db, [collection], ctx)
-            collection = result.collections[0]
-        return collection
+        result = await self._attach_ephemeral_status(db, [collection], ctx)
+        return result.collections[0]
 
     async def get_by_readable_id(
         self, db: AsyncSession, readable_id: str, ctx: ApiContext
@@ -195,6 +193,6 @@ class CollectionRepository(CollectionRepositoryProtocol):
         """Update an existing collection."""
         return await crud.collection.update(db, db_obj=db_obj, obj_in=obj_in, ctx=ctx)
 
-    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Collection]:
+    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Collection:
         """Delete a collection by ID."""
         return await crud.collection.remove(db, id=id, ctx=ctx)

@@ -24,7 +24,7 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
         """Initialize with source registry for enriching results."""
         self._source_registry = source_registry
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnection:
         """Get a source connection by ID within org scope."""
         return await crud.source_connection.get(db, id, ctx)
 
@@ -153,7 +153,7 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
         *,
         id: UUID,
         ctx: ApiContext,
-    ) -> Optional[SourceConnection]:
+    ) -> SourceConnection:
         """Delete a source connection by ID."""
         return await crud.source_connection.remove(db, id=id, ctx=ctx)
 

@@ -21,7 +21,7 @@ class IntegrationCredentialRepositoryProtocol(Protocol):
 
     async def get(
         self, db: AsyncSession, id: UUID, ctx: ApiContext
-    ) -> Optional[IntegrationCredential]:
+    ) -> IntegrationCredential:
         """Get an integration credential by ID within an organization."""
         ...
 

@@ -24,7 +24,7 @@ from airweave.schemas.sync import SyncCreate, SyncUpdate
 class SyncRepositoryProtocol(Protocol):
     """Data access for sync records."""
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[schemas.Sync]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> schemas.Sync:
         """Get a sync by ID, including connections."""
         ...
 

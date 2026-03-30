@@ -23,7 +23,7 @@ class IntegrationCredentialRepository(IntegrationCredentialRepositoryProtocol):
 
     async def get(
         self, db: AsyncSession, id: UUID, ctx: ApiContext
-    ) -> Optional[IntegrationCredential]:
+    ) -> IntegrationCredential:
         """Get an integration credential by ID."""
         return await crud.integration_credential.get(db, id, ctx)
 

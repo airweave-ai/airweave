@@ -26,7 +26,7 @@ class CollectionListResult:
 class CollectionRepositoryProtocol(Protocol):
     """Data access for collection records."""
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[Collection]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Collection:
         """Get a collection by ID within an organization."""
         ...
 
@@ -76,7 +76,7 @@ class CollectionRepositoryProtocol(Protocol):
         """Update an existing collection."""
         ...
 
-    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Collection]:
+    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Collection:
         """Delete a collection by ID."""
         ...
 

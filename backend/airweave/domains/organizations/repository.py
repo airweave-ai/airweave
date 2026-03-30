@@ -32,7 +32,7 @@ class OrganizationRepository(OrganizationRepositoryProtocol):
         ctx: Any = None,
         skip_access_validation: bool = False,
         enrich: bool = False,
-    ) -> Optional[schemas.Organization]:
+    ) -> schemas.Organization:
         """Return organization via delegated CRUD."""
         return await crud.organization.get(  # type: ignore[return-value]
             db, id, ctx=ctx, skip_access_validation=skip_access_validation, enrich=enrich
@@ -44,7 +44,7 @@ class OrganizationRepository(OrganizationRepositoryProtocol):
         *,
         organization_id: UUID,
         skip_access_validation: bool = False,
-    ) -> Optional[Organization]:
+    ) -> Organization:
         """Return organization ORM model by ID via delegated CRUD."""
         return await crud.organization.get(  # type: ignore[return-value]
             db, organization_id, skip_access_validation=skip_access_validation, enrich=False
