@@ -169,6 +169,36 @@ class TestVespaDestination:
             assert "Vespa feed failed" in str(exc_info.value)
 
     @pytest.mark.asyncio
+    async def test_bulk_insert_raises_on_silently_dropped_docs(self, collection_id, mock_entity):
+        """Test bulk_insert() raises when feed drops documents without reporting failure."""
+        with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
+             patch('airweave.platform.destinations.vespa.destination.EntityTransformer') as MockTransformer, \
+             patch('airweave.platform.destinations.vespa.destination.QueryBuilder'):
+
+            mock_client = AsyncMock()
+            mock_connect.return_value = mock_client
+
+            mock_transformer = MockTransformer.return_value
+            mock_transformer.transform_batch.return_value = {
+                "base_entity": [
+                    VespaDocument(schema="base_entity", id="doc-1", fields={}),
+                    VespaDocument(schema="base_entity", id="doc-2", fields={}),
+                    VespaDocument(schema="base_entity", id="doc-3", fields={}),
+                ]
+            }
+
+            feed_result = FeedResult(success_count=1, failed_docs=[])
+            mock_client.feed_documents = AsyncMock(return_value=feed_result)
+
+            dest = await VespaDestination.create(collection_id=collection_id)
+
+            with pytest.raises(RuntimeError) as exc_info:
+                await dest.bulk_insert([mock_entity])
+
+            assert "silently dropped" in str(exc_info.value)
+            assert "2/3" in str(exc_info.value)
+
+    @pytest.mark.asyncio
     async def test_bulk_insert_skips_empty_transformation(self, collection_id, mock_entity):
         """Test bulk_insert() handles empty transformation result."""
         with patch('airweave.platform.destinations.vespa.destination.VespaClient.connect', new_callable=AsyncMock) as mock_connect, \
