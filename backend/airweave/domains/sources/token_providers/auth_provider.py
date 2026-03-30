@@ -134,15 +134,28 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
                 provider_kind=self.provider_kind,
             ) from e
 
-        if not isinstance(creds, dict) or "access_token" not in creds:
+        if not isinstance(creds, dict) or not creds:
             raise TokenProviderMissingCredsError(
-                f"No access_token in auth provider response for {self._source_short_name}",
+                f"Empty auth provider response for {self._source_short_name}",
                 source_short_name=self._source_short_name,
                 provider_kind=self.provider_kind,
-                missing_fields=["access_token"],
+                missing_fields=entry.runtime_auth_all_fields,
             )
 
-        return creds["access_token"]
+        # Extract the primary credential value. Prefer access_token if present,
+        # otherwise use the first runtime auth field (e.g. personal_access_token,
+        # api_key). This supports both OAuth and non-OAuth sources.
+        for field in ["access_token"] + entry.runtime_auth_all_fields:
+            if field in creds:
+                return creds[field]
+
+        raise TokenProviderMissingCredsError(
+            f"No usable credential in auth provider response for {self._source_short_name}. "
+            f"Expected one of: {entry.runtime_auth_all_fields}",
+            source_short_name=self._source_short_name,
+            provider_kind=self.provider_kind,
+            missing_fields=entry.runtime_auth_all_fields,
+        )
 
     @retry(
         retry=retry_if_exception_type((AuthProviderRateLimitError, AuthProviderServerError)),
