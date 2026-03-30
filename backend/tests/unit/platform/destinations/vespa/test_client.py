@@ -1,5 +1,9 @@
 """Unit tests for VespaClient (with mocked I/O)."""
 
+import json
+from contextlib import asynccontextmanager
+
+import httpx
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
@@ -122,6 +126,131 @@ class TestVespaClient:
 
         assert result.deleted_count == 5
         assert result.schema_name == schema
+
+    @pytest.mark.asyncio
+    async def test_delete_by_selection_follows_continuation_token(self, client):
+        """Test that delete_by_selection loops when Vespa returns a continuation token.
+
+        Vespa's visitor-based delete returns a continuation token for large result
+        sets. The client must re-issue the DELETE with the token until Vespa stops
+        returning one.
+        """
+        captured_urls: list[str] = []
+
+        def _make_stream_response(body_lines: list[str], status: int = 200):
+            """Build a fake async streaming response."""
+            @asynccontextmanager
+            async def _stream(method, url, **kwargs):
+                captured_urls.append(url)
+                resp = MagicMock()
+                resp.status_code = status
+
+                async def aiter_lines():
+                    for line in body_lines:
+                        yield line
+
+                resp.aiter_lines = aiter_lines
+                yield resp
+            return _stream
+
+        pass_1_body = [
+            json.dumps({"documentCount": 500, "continuation": "AAAABB=="}),
+        ]
+        pass_2_body = [
+            json.dumps({"documentCount": 300, "continuation": "CCCCDD=="}),
+        ]
+        pass_3_body = [
+            json.dumps({"documentCount": 200}),
+        ]
+
+        call_count = 0
+
+        @asynccontextmanager
+        async def mock_async_client(**kwargs):
+            class FakeClient:
+                def stream(self, method, url, **kw):
+                    nonlocal call_count
+                    call_count += 1
+                    if call_count == 1:
+                        return _make_stream_response(pass_1_body)(method, url)
+                    elif call_count == 2:
+                        return _make_stream_response(pass_2_body)(method, url)
+                    else:
+                        return _make_stream_response(pass_3_body)(method, url)
+            yield FakeClient()
+
+        with patch("httpx.AsyncClient", side_effect=lambda **kw: mock_async_client(**kw)):
+            result = await client.delete_by_selection("base_entity", "field=='value'")
+
+        assert result.deleted_count == 1000
+        assert call_count == 3
+        assert "continuation=" not in captured_urls[0]
+        assert "continuation=" in captured_urls[1]
+        assert "AAAABB" in captured_urls[1]
+        assert "continuation=" in captured_urls[2]
+        assert "CCCCDD" in captured_urls[2]
+
+    @pytest.mark.asyncio
+    async def test_delete_by_selection_no_continuation_single_pass(self, client):
+        """Test that delete_by_selection completes in one pass when no continuation token."""
+        call_count = 0
+
+        @asynccontextmanager
+        async def mock_async_client(**kwargs):
+            class FakeClient:
+                def stream(self, method, url, **kw):
+                    nonlocal call_count
+                    call_count += 1
+
+                    @asynccontextmanager
+                    async def _ctx(m, u):
+                        resp = MagicMock()
+                        resp.status_code = 200
+
+                        async def aiter_lines():
+                            yield json.dumps({"documentCount": 42})
+
+                        resp.aiter_lines = aiter_lines
+                        yield resp
+
+                    return _ctx(method, url)
+            yield FakeClient()
+
+        with patch("httpx.AsyncClient", side_effect=lambda **kw: mock_async_client(**kw)):
+            result = await client.delete_by_selection("base_entity", "field=='value'")
+
+        assert result.deleted_count == 42
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_parse_bulk_delete_response_extracts_continuation(self, client):
+        """Test _parse_bulk_delete_response returns the continuation token."""
+        response = MagicMock()
+
+        async def aiter_lines():
+            yield json.dumps({"documentCount": 150, "continuation": "TOKEN123"})
+
+        response.aiter_lines = aiter_lines
+
+        count, token = await client._parse_bulk_delete_response(response)
+
+        assert count == 150
+        assert token == "TOKEN123"
+
+    @pytest.mark.asyncio
+    async def test_parse_bulk_delete_response_none_when_no_continuation(self, client):
+        """Test _parse_bulk_delete_response returns None when no continuation."""
+        response = MagicMock()
+
+        async def aiter_lines():
+            yield json.dumps({"documentCount": 50})
+
+        response.aiter_lines = aiter_lines
+
+        count, token = await client._parse_bulk_delete_response(response)
+
+        assert count == 50
+        assert token is None
 
     @pytest.mark.asyncio
     async def test_delete_by_sync_id(self, client):
