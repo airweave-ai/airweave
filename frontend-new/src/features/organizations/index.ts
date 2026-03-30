@@ -1,1 +1,5 @@
-export { OrganizationSwitcher } from './components/organization-switcher';
+export {
+  OrganizationSwitcher,
+  OrganizationSwitcherMenu,
+  OrganizationSwitcherTrigger,
+} from './components/organization-switcher';

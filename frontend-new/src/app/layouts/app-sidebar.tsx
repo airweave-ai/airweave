@@ -1,10 +1,15 @@
-import { EllipsisVertical, Home, Plus, Settings } from 'lucide-react';
+import { ChevronDown, EllipsisVertical, Home, Plus, Settings } from 'lucide-react';
 import { Link, useMatchRoute } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppSession } from '@/features/app-session';
 import { UserAvatar } from '@/shared/components/user-avatar';
-import { OrganizationSwitcher } from '@/features/organizations';
+import {
+  OrganizationSwitcher,
+  OrganizationSwitcherMenu,
+  OrganizationSwitcherTrigger,
+} from '@/features/organizations';
+import { LogoMark } from '@/shared/ui/logo-mark';
 import { Button } from '@/shared/ui/button';
 import {
   Sidebar,
@@ -53,12 +58,29 @@ export function AppSidebar() {
       <SidebarHeader>
         <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0 flex-1">
-            <OrganizationSwitcher
-              currentOrganizationId={currentOrganizationId}
-              currentOrganizationName={currentOrganization.name}
-              onCurrentOrganizationChange={setCurrentOrganizationId}
-              organizations={organizations}
-            />
+            <OrganizationSwitcher>
+              <OrganizationSwitcherTrigger asChild>
+                <SidebarMenuButton
+                  className="w-full min-w-0 gap-2 font-semibold data-[state=open]:[&_svg[data-role=indicator]]:rotate-180"
+                  type="button"
+                >
+                  <LogoMark />
+                  <span className="min-w-0 flex-1 truncate">
+                    {currentOrganization.name}
+                  </span>
+                  <ChevronDown
+                    className="size-4 shrink-0 text-sidebar-foreground/50 transition-[rotate]"
+                    data-role="indicator"
+                  />
+                </SidebarMenuButton>
+              </OrganizationSwitcherTrigger>
+              <OrganizationSwitcherMenu
+                className="min-w-79"
+                currentOrganizationId={currentOrganizationId}
+                onCurrentOrganizationChange={setCurrentOrganizationId}
+                organizations={organizations}
+              />
+            </OrganizationSwitcher>
           </div>
 
           <div className="flex flex-none items-center gap-1">
