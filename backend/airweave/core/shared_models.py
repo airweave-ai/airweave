@@ -109,6 +109,7 @@ class FeatureFlag(str, Enum):
     # These allow specific admin operations via API key authentication
     API_KEY_ADMIN_SYNC = "api_key_admin_sync"  # Allows resync operations via API key
     CONNECT = "connect"  # Enables the Connect playground and embeddable widget features
+    CUSTOM_AUTH_PROVIDER = "custom_auth_provider"  # Enables the Custom auth provider
 
 
 class AuthMethod(str, Enum):

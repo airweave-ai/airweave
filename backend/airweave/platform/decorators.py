@@ -198,6 +198,7 @@ def auth_provider(
     short_name: str,
     auth_config_class: Type[BaseModel],
     config_class: Type[BaseModel],
+    feature_flag: Optional[str] = None,
 ) -> Callable[[type[_AuthProviderT]], type[_AuthProviderT]]:
     """Class decorator to mark a class as representing an Airweave auth provider.
 
@@ -207,6 +208,7 @@ def auth_provider(
         short_name (str): The short name of the auth provider.
         auth_config_class (Type[BaseModel]): The authentication config class.
         config_class (Type[BaseModel]): The configuration class.
+        feature_flag (Optional[str]): Optional feature flag required to access this provider.
 
     Returns:
     -------
@@ -220,6 +222,7 @@ def auth_provider(
         cls.short_name = short_name
         cls.auth_config_class = auth_config_class
         cls.config_class = config_class
+        cls.feature_flag = feature_flag
         return cls
 
     return decorator

@@ -93,6 +93,7 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
         field_name_mapping: dict[str, str] = getattr(provider_cls, "FIELD_NAME_MAPPING", {})
         slug_name_mapping: dict[str, str] = getattr(provider_cls, "SLUG_NAME_MAPPING", {})
         settings_url: str = getattr(provider_cls, "SETTINGS_URL", "")
+        feature_flag: str | None = getattr(provider_cls, "feature_flag", None)
 
         # ------------------------------------------------------------------
         # Precompute fields
@@ -120,4 +121,6 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
             slug_name_mapping=slug_name_mapping,
             # Settings URL
             settings_url=settings_url,
+            # Feature flag
+            feature_flag=feature_flag,
         )

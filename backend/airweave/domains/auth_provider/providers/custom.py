@@ -24,6 +24,7 @@ from airweave.platform.utils.ssrf import SSRFViolation, validate_url
     short_name="custom",
     auth_config_class=CustomAuthConfig,
     config_class=CustomConfig,
+    feature_flag="custom_auth_provider",
 )
 class CustomAuthProvider(BaseAuthProvider):
     """Custom authentication provider.
