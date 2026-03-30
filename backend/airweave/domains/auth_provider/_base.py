@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Dict, List, Optional, Set
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -58,6 +59,7 @@ class BaseAuthProvider(ABC):
         source_short_name: str,
         source_auth_config_fields: List[str],
         optional_fields: Optional[Set[str]] = None,
+        source_connection_id: Optional[UUID] = None,
     ) -> Dict[str, Any]:
         """Get credentials for a source.
 
@@ -65,6 +67,8 @@ class BaseAuthProvider(ABC):
             source_short_name: The short name of the source to get credentials for
             source_auth_config_fields: The fields required for the source auth config
             optional_fields: Fields that can be skipped if the provider doesn't have them
+            source_connection_id: UUID of the source connection (used by Custom provider
+                to scope credentials per connection)
         """
         pass
 
@@ -104,6 +108,7 @@ class BaseAuthProvider(ABC):
         source_auth_config_fields: List[str],
         optional_fields: Optional[Set[str]] = None,
         source_config_field_mappings: Optional[Dict[str, str]] = None,
+        source_connection_id: Optional[UUID] = None,
     ) -> AuthResult:
         """Get auth result with credentials for a source.
 
@@ -115,12 +120,16 @@ class BaseAuthProvider(ABC):
             source_auth_config_fields: The fields required for the source auth config
             optional_fields: Fields that can be skipped if the provider doesn't have them
             source_config_field_mappings: Mapping of config fields extractable from auth response
+            source_connection_id: UUID of the source connection
 
         Returns:
             AuthResult with credentials and optional source config
         """
         credentials = await self.get_creds_for_source(
-            source_short_name, source_auth_config_fields, optional_fields
+            source_short_name,
+            source_auth_config_fields,
+            optional_fields,
+            source_connection_id=source_connection_id,
         )
 
         source_config = {}

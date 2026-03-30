@@ -388,6 +388,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             source_auth_config_fields=auth_fields_all,
             optional_fields=auth_fields_optional,
             source_config_field_mappings=source_config_field_mappings or None,
+            source_connection_id=source_connection_data.source_connection_id,
         )
 
         if auth_result.source_config:
@@ -642,6 +643,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                 source_short_name=short_name,
                 source_registry=self._source_registry,
                 logger=logger,
+                source_connection_id=source_connection_data.source_connection_id,
             )
 
         entry = self._source_registry.get(short_name)
@@ -655,7 +657,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             return DirectCredentialProvider(source_credentials, source_short_name=short_name)
 
         try:
-
             # Sources that support both OAuth and API key auth (e.g. calcom, coda)
             # may have structured credentials without access_token when using
             # API key mode — route those to DirectCredentialProvider.
