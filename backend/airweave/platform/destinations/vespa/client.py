@@ -223,8 +223,11 @@ class VespaClient:
                             )
                             deleted_count += batch_count
                         else:
-                            await self._log_delete_error(response)
-                            break
+                            body = await response.aread()
+                            raise RuntimeError(
+                                f"Bulk delete failed on pass {pass_num} "
+                                f"({response.status_code}): {body.decode()}"
+                            )
 
                     if not continuation:
                         break
@@ -234,12 +237,10 @@ class VespaClient:
                         f"{deleted_count} deleted so far, continuing..."
                     )
         except httpx.TimeoutException:
-            self._logger.error(
-                f"[VespaClient] Bulk delete timed out after {settings.VESPA_TIMEOUT}s "
+            raise RuntimeError(
+                f"Bulk delete timed out after {settings.VESPA_TIMEOUT}s "
                 f"(pass {pass_num}, {deleted_count} deleted before timeout)"
-            )
-        except Exception as e:
-            self._logger.error(f"[VespaClient] Bulk delete error: {e}")
+            ) from None
 
         if deleted_count > 0:
             self._logger.info(
@@ -531,16 +532,6 @@ class VespaClient:
             except json.JSONDecodeError:
                 pass
         return count, continuation
-
-    async def _log_delete_error(self, response: httpx.Response) -> None:
-        """Log error from failed bulk delete response."""
-        body = await response.aread()
-        if response.status_code == 400:
-            self._logger.error(f"[VespaClient] Invalid selection expression: {body.decode()}")
-        else:
-            self._logger.error(
-                f"[VespaClient] Bulk delete failed ({response.status_code}): {body.decode()}"
-            )
 
     # -------------------------------------------------------------------------
     # Query Operations

@@ -302,6 +302,83 @@ class TestVespaClient:
             mock_d.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_delete_by_selection_raises_on_non_200(self, client):
+        """Non-200 responses during bulk delete must raise, not return partial results."""
+
+        @asynccontextmanager
+        async def mock_async_client(**kwargs):
+            class FakeClient:
+                def stream(self, method, url, **kw):
+                    @asynccontextmanager
+                    async def _ctx(m, u):
+                        resp = MagicMock()
+                        resp.status_code = 400
+                        resp.aread = AsyncMock(return_value=b"Bad selection")
+                        yield resp
+                    return _ctx(method, url)
+            yield FakeClient()
+
+        with patch("httpx.AsyncClient", side_effect=lambda **kw: mock_async_client(**kw)):
+            with pytest.raises(RuntimeError, match="Bulk delete failed on pass 1"):
+                await client.delete_by_selection("base_entity", "bad-selection")
+
+    @pytest.mark.asyncio
+    async def test_delete_by_selection_raises_on_mid_pagination_error(self, client):
+        """A non-200 on a continuation pass must raise, not return a partial count."""
+        call_count = 0
+
+        @asynccontextmanager
+        async def mock_async_client(**kwargs):
+            class FakeClient:
+                def stream(self, method, url, **kw):
+                    nonlocal call_count
+                    call_count += 1
+
+                    @asynccontextmanager
+                    async def _ok(m, u):
+                        resp = MagicMock()
+                        resp.status_code = 200
+                        async def aiter_lines():
+                            yield json.dumps({"documentCount": 100, "continuation": "TOK"})
+                        resp.aiter_lines = aiter_lines
+                        yield resp
+
+                    @asynccontextmanager
+                    async def _fail(m, u):
+                        resp = MagicMock()
+                        resp.status_code = 503
+                        resp.aread = AsyncMock(return_value=b"Service Unavailable")
+                        yield resp
+
+                    if call_count == 1:
+                        return _ok(method, url)
+                    return _fail(method, url)
+            yield FakeClient()
+
+        with patch("httpx.AsyncClient", side_effect=lambda **kw: mock_async_client(**kw)):
+            with pytest.raises(RuntimeError, match="Bulk delete failed on pass 2"):
+                await client.delete_by_selection("base_entity", "field=='value'")
+
+    @pytest.mark.asyncio
+    async def test_delete_by_selection_raises_on_timeout(self, client):
+        """Timeouts during bulk delete must raise, not return partial results."""
+
+        @asynccontextmanager
+        async def mock_async_client(**kwargs):
+            class FakeClient:
+                def stream(self, method, url, **kw):
+                    @asynccontextmanager
+                    async def _ctx(m, u):
+                        raise httpx.TimeoutException("timed out")
+                        yield  # noqa: unreachable — needed for asynccontextmanager
+                    return _ctx(method, url)
+            yield FakeClient()
+
+        with patch("httpx.AsyncClient", side_effect=lambda **kw: mock_async_client(**kw)):
+            with pytest.raises(RuntimeError, match="Bulk delete timed out"):
+                await client.delete_by_selection("base_entity", "field=='value'")
+
+    @pytest.mark.asyncio
     async def test_query_doc_ids_yql_uses_contains_for_collection_id(self, client, mock_vespa_app):
         """Test that the fast-delete YQL query uses 'contains' (not '=') for collection_id.
 
