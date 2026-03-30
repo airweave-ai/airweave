@@ -29,7 +29,7 @@ class CRUDBaseUser(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         """
         self.model = model
 
-    async def get(self, db: AsyncSession, id: UUID, current_user: User) -> Optional[ModelType]:
+    async def get(self, db: AsyncSession, id: UUID, current_user: User) -> ModelType:
         """Get user data - must be same user.
 
         Args:
@@ -40,11 +40,12 @@ class CRUDBaseUser(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         Returns:
         -------
-            Optional[ModelType]: The object with the given ID.
+            ModelType: The object with the given ID.
 
         Raises:
         ------
             PermissionException: If user tries to access another user's data.
+            NotFoundException: If the object does not exist.
         """
         if id != current_user.id:
             raise PermissionException("Cannot access other user's data")
@@ -137,6 +138,15 @@ class CRUDBaseUser(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             db (AsyncSession): The database session.
             id (UUID): The UUID of the object to remove.
             current_user (User): The current user.
+
+        Returns:
+        -------
+            ModelType: The deleted object.
+
+        Raises:
+        ------
+            PermissionException: If user tries to remove another user's data.
+            NotFoundException: If the object does not exist.
         """
         if id != current_user.id:
             raise PermissionException("Cannot remove other user's data")

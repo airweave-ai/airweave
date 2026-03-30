@@ -208,7 +208,7 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
         ctx: BaseContext,
         organization_id: Optional[UUID] = None,
         uow: Optional[UnitOfWork] = None,
-    ) -> Optional[ModelType]:
+    ) -> ModelType:
         """Delete organization resource with auth context.
 
         Args:
@@ -221,7 +221,11 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
 
         Returns:
         -------
-            Optional[ModelType]: The deleted object.
+            ModelType: The deleted object.
+
+        Raises:
+        ------
+            NotFoundException: If the object does not exist.
         """
         effective_org_id = organization_id or ctx.organization.id
 

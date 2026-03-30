@@ -28,7 +28,7 @@ class CRUDPublic(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         """
         self.model = model
 
-    async def get(self, db: AsyncSession, id: UUID) -> Optional[ModelType]:
+    async def get(self, db: AsyncSession, id: UUID) -> ModelType:
         """Get public resource - no access control.
 
         Args:
@@ -38,7 +38,11 @@ class CRUDPublic(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         Returns:
         -------
-            Optional[ModelType]: The object with the given ID.
+            ModelType: The object with the given ID.
+
+        Raises:
+        ------
+            NotFoundException: If the object does not exist.
         """
         result = await db.execute(select(self.model).where(self.model.id == id))
         db_obj = result.unique().scalar_one_or_none()
@@ -46,7 +50,7 @@ class CRUDPublic(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             raise NotFoundException(f"Object with ID {id} not found")
         return db_obj
 
-    async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[ModelType]:
+    async def get_by_short_name(self, db: AsyncSession, short_name: str) -> ModelType:
         """Get public resource by short name.
 
         Args:
@@ -56,7 +60,11 @@ class CRUDPublic(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         Returns:
         -------
-            Optional[ModelType]: The object with the given short name.
+            ModelType: The object with the given short name.
+
+        Raises:
+        ------
+            NotFoundException: If the object does not exist.
         """
         result = await db.execute(select(self.model).where(self.model.short_name == short_name))
         db_obj = result.unique().scalar_one_or_none()
@@ -173,7 +181,7 @@ class CRUDPublic(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         *,
         id: UUID,
         uow: Optional[UnitOfWork] = None,
-    ) -> Optional[ModelType]:
+    ) -> ModelType:
         """Delete public resource.
 
         Args:
@@ -184,7 +192,11 @@ class CRUDPublic(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         Returns:
         -------
-            Optional[ModelType]: The deleted object.
+            ModelType: The deleted object.
+
+        Raises:
+        ------
+            NotFoundException: If the object does not exist.
         """
         result = await db.execute(select(self.model).where(self.model.id == id))
         db_obj = result.unique().scalar_one_or_none()
