@@ -402,7 +402,7 @@ AUTH_CONFIG_ROUTING_TABLE = [
     AuthConfigRoutingCase(id="database-fallthrough", expected_route="database"),
     AuthConfigRoutingCase(id="auth-provider-id-but-no-config",
                           readable_auth_provider_id="pd-1",
-                          expected_route="database"),
+                          expected_route="auth_provider"),
 ]
 
 

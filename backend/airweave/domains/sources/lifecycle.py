@@ -328,15 +328,12 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             )
 
         # Case 2: Auth provider connection
-        if (
-            source_connection_data.readable_auth_provider_id
-            and source_connection_data.auth_provider_config
-        ):
+        if source_connection_data.readable_auth_provider_id:
             return await self._get_auth_provider_configuration(
                 db=db,
                 source_connection_data=source_connection_data,
                 readable_auth_provider_id=source_connection_data.readable_auth_provider_id,
-                auth_provider_config=source_connection_data.auth_provider_config,
+                auth_provider_config=source_connection_data.auth_provider_config or {},
                 ctx=ctx,
                 logger=logger,
             )
@@ -630,6 +627,16 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if access_token is not None:
             return StaticTokenProvider(access_token, source_short_name=short_name)
 
+        # Auth provider takes priority — ensures errors are classified correctly
+        # regardless of whether the source uses OAuth or direct auth.
+        if auth_provider_instance:
+            return AuthProviderTokenProvider(
+                auth_provider_instance=auth_provider_instance,
+                source_short_name=short_name,
+                source_registry=self._source_registry,
+                logger=logger,
+            )
+
         entry = self._source_registry.get(short_name)
         source_credentials = self._normalize_credentials(source_credentials, entry, logger)
 
@@ -641,13 +648,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             return DirectCredentialProvider(source_credentials, source_short_name=short_name)
 
         try:
-            if auth_provider_instance:
-                return AuthProviderTokenProvider(
-                    auth_provider_instance=auth_provider_instance,
-                    source_short_name=short_name,
-                    source_registry=self._source_registry,
-                    logger=logger,
-                )
 
             # Sources that support both OAuth and API key auth (e.g. calcom, coda)
             # may have structured credentials without access_token when using
