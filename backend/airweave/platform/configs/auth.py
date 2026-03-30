@@ -1024,23 +1024,36 @@ class CustomAuthConfig(AuthConfig):
     """Custom Auth Provider authentication credentials schema.
 
     Stores a base URL and API key for a customer-hosted token endpoint.
-    Airweave calls GET {base_url}/{source_short_name} to fetch the freshest
-    credentials for each source. The customer is responsible for returning
-    up-to-date tokens.
+    Airweave calls GET {base_url}/{source_short_name} to fetch credentials
+    for each source. The customer is responsible for returning fresh tokens.
+
+    Contract:
+    - GET {base_url} must return 2xx (used for validation)
+    - GET {base_url}/{source_short_name} must return JSON with the credential
+      field the source needs, e.g. {"access_token": "..."} for OAuth sources
+      or {"api_key": "..."} for API-key sources
+    - All requests include an X-API-Key header for authentication
+    - No refresh_token needed — Airweave re-fetches from your endpoint
+      on every token access (~5 min cache) and on 401
     """
 
     endpoint_url: str = Field(
         title="Endpoint Base URL",
         description=(
-            "Base URL of your token endpoint. Airweave will call "
-            "GET {base_url}/{source_short_name} for each source and expects "
-            "a JSON response with the current credentials. "
-            "You are responsible for returning the freshest token."
+            "Base URL of your token endpoint. "
+            "Airweave calls GET {base_url}/{source_short_name} for each source "
+            "and expects a JSON response with the credential the source needs "
+            '(e.g. {"access_token": "..."} for OAuth sources). '
+            "No refresh_token needed — Airweave re-fetches automatically. "
+            "GET {base_url} must return 2xx for validation."
         ),
     )
     api_key: str = Field(
         title="API Key",
-        description="API key sent as X-API-Key header to authenticate requests to your endpoint.",
+        description=(
+            "API key sent as X-API-Key header to authenticate "
+            "all requests to your endpoint."
+        ),
     )
 
     @field_validator("endpoint_url")

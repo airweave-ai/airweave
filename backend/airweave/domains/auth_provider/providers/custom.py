@@ -7,6 +7,7 @@ import httpx
 from airweave.domains.auth_provider._base import BaseAuthProvider
 from airweave.domains.auth_provider.exceptions import (
     AuthProviderAuthError,
+    AuthProviderConfigError,
     AuthProviderMissingFieldsError,
     AuthProviderRateLimitError,
     AuthProviderTemporaryError,
@@ -14,6 +15,7 @@ from airweave.domains.auth_provider.exceptions import (
 from airweave.platform.configs.auth import CustomAuthConfig
 from airweave.platform.configs.config import CustomConfig
 from airweave.platform.decorators import auth_provider
+from airweave.platform.utils.ssrf import SSRFViolation, validate_url
 
 
 @auth_provider(
@@ -49,6 +51,17 @@ class CustomAuthProvider(BaseAuthProvider):
             "X-API-Key": self.api_key,
         }
 
+    def _check_ssrf(self, url: str) -> None:
+        """Validate URL against SSRF blocklist before making a request."""
+        try:
+            validate_url(url)
+        except SSRFViolation as exc:
+            self.logger.warning(f"[Custom] SSRF blocked: {exc}")
+            raise AuthProviderConfigError(
+                f"Custom endpoint URL blocked by SSRF policy: {exc}",
+                provider_name="custom",
+            ) from exc
+
     async def get_creds_for_source(
         self,
         source_short_name: str,
@@ -60,6 +73,7 @@ class CustomAuthProvider(BaseAuthProvider):
         headers = self._build_headers()
         url = f"{self.endpoint_url}/{source_short_name}"
 
+        self._check_ssrf(url)
         self.logger.info(f"[Custom] Fetching credentials for source '{source_short_name}'")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -128,25 +142,17 @@ class CustomAuthProvider(BaseAuthProvider):
         return found_credentials
 
     async def validate(self) -> bool:
-        """Validate the custom endpoint by calling GET {base_url}/__validate__."""
-        from airweave.domains.auth_provider.exceptions import AuthProviderConfigError
-
+        """Validate the custom endpoint by calling GET {base_url}."""
         headers = self._build_headers()
-        url = f"{self.endpoint_url}/__validate__"
+        url = self.endpoint_url
 
+        self._check_ssrf(url)
         self.logger.info("[Custom] Validating endpoint")
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                data = response.json()
-
-                if "access_token" not in data:
-                    raise AuthProviderConfigError(
-                        "Custom endpoint validation failed: response missing 'access_token' field",
-                        provider_name="custom",
-                    )
 
                 self.logger.info("[Custom] Endpoint validated successfully")
                 return True
