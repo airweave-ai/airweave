@@ -1,6 +1,7 @@
 """Custom Auth Provider - fetches tokens from a customer-hosted HTTP endpoint."""
 
 from typing import Any, Dict, List, Optional, Set
+from uuid import UUID
 
 import httpx
 
@@ -67,11 +68,17 @@ class CustomAuthProvider(BaseAuthProvider):
         source_short_name: str,
         source_auth_config_fields: List[str],
         optional_fields: Optional[Set[str]] = None,
+        source_connection_id: Optional[UUID] = None,
     ) -> Dict[str, Any]:
-        """Get credentials for a source by calling GET {base_url}/{source_short_name}."""
+        """Get credentials for a source by calling GET {base_url}/{source_connection_id}."""
+        if not source_connection_id:
+            raise AuthProviderConfigError(
+                "Custom auth provider requires a source_connection_id",
+                provider_name="custom",
+            )
         _optional_fields = optional_fields or set()
         headers = self._build_headers()
-        url = f"{self.endpoint_url}/{source_short_name}"
+        url = f"{self.endpoint_url}/{source_connection_id}"
 
         self._check_ssrf(url)
         self.logger.info(f"[Custom] Fetching credentials for source '{source_short_name}'")

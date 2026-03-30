@@ -1,6 +1,7 @@
 """Tests for CustomAuthProvider."""
 
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
 import httpx
 import pytest
@@ -13,6 +14,8 @@ from airweave.domains.auth_provider.exceptions import (
     AuthProviderTemporaryError,
 )
 from airweave.domains.auth_provider.providers.custom import CustomAuthProvider
+
+TEST_SC_ID = UUID("d035439c-dc7d-4813-a207-c68e548cfe51")
 
 
 @pytest.fixture
@@ -59,17 +62,23 @@ class TestGetCredsForSource:
     """Tests for get_creds_for_source()."""
 
     @pytest.mark.unit
+    async def test_requires_source_connection_id(self, provider):
+        with pytest.raises(AuthProviderConfigError, match="source_connection_id"):
+            await provider.get_creds_for_source("slack", ["access_token"])
+
+    @pytest.mark.unit
     async def test_success(self, provider):
         mock_response = httpx.Response(
             200,
             json={"access_token": "eyJ-gdrive-token", "refresh_token": "rt-123"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/google_drive"),
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
             creds = await provider.get_creds_for_source(
                 "google_drive",
                 ["access_token"],
+                source_connection_id=TEST_SC_ID,
             )
 
         assert creds == {"access_token": "eyJ-gdrive-token"}
@@ -79,7 +88,7 @@ class TestGetCredsForSource:
         mock_response = httpx.Response(
             200,
             json={"access_token": "token"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/slack"),
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
         )
 
         with patch(
@@ -87,18 +96,20 @@ class TestGetCredsForSource:
             new_callable=AsyncMock,
             return_value=mock_response,
         ) as mock_get:
-            await provider.get_creds_for_source("slack", ["access_token"])
+            await provider.get_creds_for_source(
+                "slack", ["access_token"], source_connection_id=TEST_SC_ID,
+            )
 
         mock_get.assert_called_once()
         call_args = mock_get.call_args
-        assert call_args.args[0] == "https://api.example.com/tokens/slack"
+        assert call_args.args[0] == f"https://api.example.com/tokens/{TEST_SC_ID}"
 
     @pytest.mark.unit
     async def test_optional_fields_not_required(self, provider):
         mock_response = httpx.Response(
             200,
             json={"access_token": "token"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/google_drive"),
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
@@ -106,6 +117,7 @@ class TestGetCredsForSource:
                 "google_drive",
                 ["access_token", "refresh_token"],
                 optional_fields={"refresh_token"},
+                source_connection_id=TEST_SC_ID,
             )
 
         assert creds == {"access_token": "token"}
@@ -115,12 +127,14 @@ class TestGetCredsForSource:
         mock_response = httpx.Response(
             401,
             json={"error": "unauthorized"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/slack"),
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
             with pytest.raises(AuthProviderAuthError, match="401"):
-                await provider.get_creds_for_source("slack", ["access_token"])
+                await provider.get_creds_for_source(
+                    "slack", ["access_token"], source_connection_id=TEST_SC_ID,
+                )
 
     @pytest.mark.unit
     async def test_error_429(self, provider):
@@ -128,12 +142,14 @@ class TestGetCredsForSource:
             429,
             json={"error": "rate limited"},
             headers={"retry-after": "60"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/slack"),
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
             with pytest.raises(AuthProviderRateLimitError) as exc_info:
-                await provider.get_creds_for_source("slack", ["access_token"])
+                await provider.get_creds_for_source(
+                    "slack", ["access_token"], source_connection_id=TEST_SC_ID,
+                )
             assert exc_info.value.retry_after == 60.0
 
     @pytest.mark.unit
@@ -141,12 +157,14 @@ class TestGetCredsForSource:
         mock_response = httpx.Response(
             500,
             json={"error": "internal"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/slack"),
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
             with pytest.raises(AuthProviderTemporaryError, match="500"):
-                await provider.get_creds_for_source("slack", ["access_token"])
+                await provider.get_creds_for_source(
+                    "slack", ["access_token"], source_connection_id=TEST_SC_ID,
+                )
 
     @pytest.mark.unit
     async def test_error_timeout(self, provider):
@@ -156,19 +174,23 @@ class TestGetCredsForSource:
             side_effect=httpx.TimeoutException("timed out"),
         ):
             with pytest.raises(AuthProviderTemporaryError, match="unreachable"):
-                await provider.get_creds_for_source("slack", ["access_token"])
+                await provider.get_creds_for_source(
+                    "slack", ["access_token"], source_connection_id=TEST_SC_ID,
+                )
 
     @pytest.mark.unit
     async def test_error_missing_fields(self, provider):
         mock_response = httpx.Response(
             200,
             json={"some_other_field": "value"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/slack"),
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
             with pytest.raises(AuthProviderMissingFieldsError) as exc_info:
-                await provider.get_creds_for_source("slack", ["access_token"])
+                await provider.get_creds_for_source(
+                    "slack", ["access_token"], source_connection_id=TEST_SC_ID,
+                )
             assert "access_token" in exc_info.value.missing_fields
 
     @pytest.mark.unit
@@ -176,19 +198,23 @@ class TestGetCredsForSource:
         mock_response = httpx.Response(
             404,
             json={"error": "not found"},
-            request=httpx.Request("GET", "https://api.example.com/tokens/slack"),
+            request=httpx.Request("GET", f"https://api.example.com/tokens/{TEST_SC_ID}"),
         )
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response):
             with pytest.raises(AuthProviderMissingFieldsError, match="404"):
-                await provider.get_creds_for_source("slack", ["access_token"])
+                await provider.get_creds_for_source(
+                    "slack", ["access_token"], source_connection_id=TEST_SC_ID,
+                )
 
     @pytest.mark.unit
     async def test_ssrf_blocked(self, provider):
         provider.endpoint_url = "http://169.254.169.254/latest/meta-data"
 
         with pytest.raises(AuthProviderConfigError, match="SSRF"):
-            await provider.get_creds_for_source("slack", ["access_token"])
+            await provider.get_creds_for_source(
+                "slack", ["access_token"], source_connection_id=TEST_SC_ID,
+            )
 
 
 class TestValidate:

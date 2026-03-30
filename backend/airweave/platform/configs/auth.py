@@ -983,9 +983,11 @@ class CustomAuthConfig(AuthConfig):
 
     Contract:
     - GET {base_url} must return 2xx (used for validation)
-    - GET {base_url}/{source_short_name} must return JSON with the credential
+    - GET {base_url}/{source_connection_id} must return JSON with the credential
       field the source needs, e.g. {"access_token": "..."} for OAuth sources
       or {"api_key": "..."} for API-key sources
+    - source_connection_id is the UUID of the source connection in Airweave,
+      allowing you to return different credentials per connection
     - All requests include an X-API-Key header for authentication
     - No refresh_token needed — Airweave re-fetches from your endpoint
       on every token access (~5 min cache) and on 401
@@ -995,9 +997,9 @@ class CustomAuthConfig(AuthConfig):
         title="Endpoint Base URL",
         description=(
             "Base URL of your token endpoint. "
-            "Airweave calls GET {base_url}/{source_short_name} for each source "
-            "and expects a JSON response with the credential the source needs "
-            '(e.g. {"access_token": "..."} for OAuth sources). '
+            "Airweave calls GET {base_url}/{source_connection_id} for each "
+            "source connection and expects a JSON response with the credential "
+            'the source needs (e.g. {"access_token": "..."} for OAuth sources). '
             "No refresh_token needed — Airweave re-fetches automatically. "
             "GET {base_url} must return 2xx for validation."
         ),
@@ -1005,8 +1007,7 @@ class CustomAuthConfig(AuthConfig):
     api_key: str = Field(
         title="API Key",
         description=(
-            "API key sent as X-API-Key header to authenticate "
-            "all requests to your endpoint."
+            "API key sent as X-API-Key header to authenticate all requests to your endpoint."
         ),
     )
 

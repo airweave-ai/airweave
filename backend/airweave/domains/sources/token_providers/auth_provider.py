@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING, Optional
+from uuid import UUID
 
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -50,12 +51,14 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
         source_registry: SourceRegistryProtocol,
         *,
         logger: ContextualLogger,
+        source_connection_id: Optional[UUID] = None,
     ):
         """Initialize with an auth provider instance and source registry."""
         self._provider = auth_provider_instance
         self._source_short_name = source_short_name
         self._source_registry = source_registry
         self._logger = logger
+        self._source_connection_id = source_connection_id
         self._cached_token: Optional[str] = None
         self._cached_at: float = 0.0
 
@@ -168,6 +171,7 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
             source_short_name=self._source_short_name,
             source_auth_config_fields=entry.runtime_auth_all_fields,
             optional_fields=entry.runtime_auth_optional_fields,
+            source_connection_id=self._source_connection_id,
         )
 
     async def get_token(self) -> str:
