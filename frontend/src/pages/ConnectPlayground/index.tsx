@@ -1,9 +1,6 @@
 import { useEffect } from "react";
-import { Navigate } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
 import { posthog } from "@/lib/posthog-provider";
-import { useOrganizationStore } from "@/lib/stores/organizations";
-import { FeatureFlags } from "@/lib/constants/feature-flags";
 import { usePlaygroundState } from "./hooks/usePlaygroundState";
 import { PlaygroundConfig } from "./config/PlaygroundConfig";
 import { ExportDropdown } from "./config/ExportDropdown";
@@ -28,18 +25,11 @@ function getConnectUrl(): string {
 const CONNECT_URL = getConnectUrl();
 
 export default function ConnectPlayground() {
-  const hasConnectFeature = useOrganizationStore((state) => state.hasFeature(FeatureFlags.CONNECT));
   const state = usePlaygroundState();
 
   useEffect(() => {
-    if (hasConnectFeature) {
-      posthog.capture("connect_playground_opened");
-    }
-  }, [hasConnectFeature]);
-
-  if (!hasConnectFeature) {
-    return <Navigate to="/" replace />;
-  }
+    posthog.capture("connect_playground_opened");
+  }, []);
 
   return (
     <>
