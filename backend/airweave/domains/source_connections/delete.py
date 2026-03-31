@@ -55,9 +55,7 @@ class SourceConnectionDeletionService(SourceConnectionDeletionServiceProtocol):
         )
         if not collection_orm:
             raise NotFoundException("Collection not found")
-        collection = schemas.CollectionRecord.model_validate(
-            collection_orm, from_attributes=True
-        )
+        collection = schemas.CollectionRecord.model_validate(collection_orm, from_attributes=True)
 
         response = await self._response_builder.build_response(db, source_conn, ctx)
 

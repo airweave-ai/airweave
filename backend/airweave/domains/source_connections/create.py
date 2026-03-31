@@ -445,21 +445,29 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
             await uow.session.flush()
             connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
-            destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
-            sync_result = await self._sync_service.create(
-                uow.session,
-                name=obj_in.name,
-                source_connection_id=connection.id,
-                destination_connection_ids=destination_ids,
-                collection_id=collection.id,
-                collection_readable_id=collection.readable_id,
-                source_entry=entry,
-                schedule_config=obj_in.schedule,
-                run_immediately=bool(obj_in.sync_immediately),
-                ctx=ctx,
-                uow=uow,
+
+            has_schedule = obj_in.schedule is None or (
+                obj_in.schedule and obj_in.schedule.cron is not None
             )
-            await uow.session.flush()
+            sync_result = None
+            if bool(obj_in.sync_immediately) or has_schedule:
+                destination_ids = await self._sync_service.resolve_destination_ids(
+                    uow.session, ctx
+                )
+                sync_result = await self._sync_service.create(
+                    uow.session,
+                    name=obj_in.name,
+                    source_connection_id=connection.id,
+                    destination_connection_ids=destination_ids,
+                    collection_id=collection.id,
+                    collection_readable_id=collection.readable_id,
+                    source_entry=entry,
+                    schedule_config=obj_in.schedule,
+                    run_immediately=bool(obj_in.sync_immediately),
+                    ctx=ctx,
+                    uow=uow,
+                )
+                await uow.session.flush()
 
             source_conn = await self._sc_repo.create(
                 uow.session,
@@ -651,21 +659,30 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
             await uow.session.flush()
             connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
-            destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
-            sync_result = await self._sync_service.create(
-                uow.session,
-                name=obj_in.name,
-                source_connection_id=connection.id,
-                destination_connection_ids=destination_ids,
-                collection_id=collection.id,
-                collection_readable_id=collection.readable_id,
-                source_entry=entry,
-                schedule_config=obj_in.schedule,
-                run_immediately=bool(obj_in.sync_immediately),
-                ctx=ctx,
-                uow=uow,
+
+            has_schedule = obj_in.schedule is None or (
+                obj_in.schedule and obj_in.schedule.cron is not None
             )
-            await uow.session.flush()
+            sync_result = None
+            if bool(obj_in.sync_immediately) or has_schedule:
+                destination_ids = await self._sync_service.resolve_destination_ids(
+                    uow.session, ctx
+                )
+                sync_result = await self._sync_service.create(
+                    uow.session,
+                    name=obj_in.name,
+                    source_connection_id=connection.id,
+                    destination_connection_ids=destination_ids,
+                    collection_id=collection.id,
+                    collection_readable_id=collection.readable_id,
+                    source_entry=entry,
+                    schedule_config=obj_in.schedule,
+                    run_immediately=bool(obj_in.sync_immediately),
+                    ctx=ctx,
+                    uow=uow,
+                )
+                await uow.session.flush()
+
             source_conn = await self._sc_repo.create(
                 uow.session,
                 obj_in={

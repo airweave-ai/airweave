@@ -61,7 +61,14 @@ def _make_collection(*, id=None, readable_id="test-col"):
     col = MagicMock(spec=Collection)
     col.id = id or COLLECTION_ID
     col.readable_id = readable_id
+    col.name = "Test Collection"
     col.organization_id = ORG_ID
+    col.vector_db_deployment_metadata_id = uuid4()
+    col.sync_config = None
+    col.created_at = NOW
+    col.modified_at = NOW
+    col.created_by_email = None
+    col.modified_by_email = None
     return col
 
 

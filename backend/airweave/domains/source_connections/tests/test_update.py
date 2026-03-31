@@ -262,7 +262,14 @@ async def test_schedule_update(case: ScheduleCase):
         col = MagicMock(spec=Collection)
         col.id = uuid4()
         col.readable_id = "test-col"
+        col.name = "Test Collection"
         col.organization_id = ORG_ID
+        col.vector_db_deployment_metadata_id = uuid4()
+        col.sync_config = None
+        col.created_at = NOW
+        col.modified_at = NOW
+        col.created_by_email = None
+        col.modified_by_email = None
         col_repo = FakeCollectionRepository()
         col_repo.seed_readable("test-col", col)
     else:
@@ -316,7 +323,14 @@ async def test_schedule_add_rejects_federated_source():
     col = MagicMock(spec=Collection)
     col.id = uuid4()
     col.readable_id = "test-col"
+    col.name = "Test Collection"
     col.organization_id = ORG_ID
+    col.vector_db_deployment_metadata_id = uuid4()
+    col.sync_config = None
+    col.created_at = NOW
+    col.modified_at = NOW
+    col.created_by_email = None
+    col.modified_by_email = None
     col_repo = FakeCollectionRepository()
     col_repo.seed_readable("test-col", col)
 
