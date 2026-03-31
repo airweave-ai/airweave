@@ -1,67 +1,62 @@
 """Alembic environment file."""
 
-from __future__ import with_statement
+from __future__ import annotations
 
-import os
+import re
 import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
 fileConfig(config.config_file_name)
 
-# Get the absolute path of the current directory
 current_dir = Path(__file__).parent.parent.absolute()
-
-# Add the current directory to sys.path
 if str(current_dir) not in sys.path:
     sys.path.append(str(current_dir))
 
-from airweave.core.config import settings  # Import settings
-from airweave.models._base import Base  # noqa
+from airweave.core.config import settings  # noqa: E402
+from airweave.models._base import Base  # noqa: E402
 
 target_metadata = Base.metadata
 
+VERSIONS_DIR = Path(__file__).parent / "versions"
+
+
+def _next_revision_id() -> str:
+    """Return the next zero-padded revision ID (e.g. '0001') based on existing files."""
+    highest = -1
+    for path in VERSIONS_DIR.glob("*.py"):
+        match = re.match(r"^(\d+)_", path.name)
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return f"{highest + 1:04d}"
+
+
+def _set_incremental_rev_id(context, revision, directives):  # noqa: ARG001
+    """Alembic process_revision_directives callback.
+
+    Replaces the random hex revision ID with an incremental counter
+    (0001, 0002, ...) derived from existing files in versions/.
+    """
+    if directives:
+        script = directives[0]
+        script.rev_id = _next_revision_id()
+
 
 def get_url() -> str:
-    """Get the database URL from the environment variables.
-
-    Returns:
-    -------
-        str: The database URL.
-
-    """
-    # Remove load_dotenv since config.py handles this
-    # Convert the async URL to sync URL for alembic
+    """Get the sync database URL for Alembic (strips +asyncpg from the async URI)."""
     url = str(settings.SQLALCHEMY_ASYNC_DATABASE_URI)
     return url.replace("+asyncpg", "")
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
+    """Run migrations in 'offline' mode."""
     url = get_url()
-
-    print(url)
     context.configure(
         url=url, target_metadata=target_metadata, literal_binds=True, compare_type=True
     )
@@ -71,16 +66,9 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    The config file is used to dress it with the right address; in particular the port
-    for parallel testing purposes.
-    """
+    """Run migrations in 'online' mode."""
     configuration = config.get_section(config.config_ini_section)
-    if "sqlalchemy.url" not in configuration:  # if the url is not in the configuration
+    if "sqlalchemy.url" not in configuration:
         configuration["sqlalchemy.url"] = get_url()
 
     connectable = engine_from_config(
@@ -90,7 +78,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            process_revision_directives=_set_incremental_rev_id,
+        )
 
         with context.begin_transaction():
             context.run_migrations()

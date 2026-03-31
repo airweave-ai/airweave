@@ -90,7 +90,7 @@ class Connection(Base):
     __table_args__ = (
         CheckConstraint(
             """
-            (short_name IN ('qdrant_native', 'neo4j_native', 'local_text2vec'))
+            (short_name IN ('qdrant_native', 'neo4j_native', 'vespa_native', 'local_text2vec'))
             OR
             (organization_id IS NOT NULL
              AND created_by_email IS NOT NULL
