@@ -76,14 +76,10 @@ class CustomAuthProvider(BaseAuthProvider):
                 provider_name="custom",
             ) from exc
 
-    def _raise_for_http_status(
-        self, e: httpx.HTTPStatusError, source_short_name: str
-    ) -> None:
+    def _raise_for_http_status(self, e: httpx.HTTPStatusError, source_short_name: str) -> None:
         """Classify an HTTP error status into the appropriate auth provider exception."""
         status = e.response.status_code
-        self.logger.error(
-            f"[Custom] HTTP {status} from endpoint for source '{source_short_name}'"
-        )
+        self.logger.error(f"[Custom] HTTP {status} from endpoint for source '{source_short_name}'")
         if status in (401, 403):
             raise AuthProviderAuthError(
                 f"Custom endpoint returned {status} for source '{source_short_name}'",
@@ -111,8 +107,7 @@ class CustomAuthProvider(BaseAuthProvider):
                 status_code=status,
             ) from e
         raise AuthProviderConfigError(
-            f"Custom endpoint returned unexpected {status} for "
-            f"source '{source_short_name}'",
+            f"Custom endpoint returned unexpected {status} for source '{source_short_name}'",
             provider_name="custom",
         ) from e
 
