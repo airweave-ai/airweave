@@ -34,7 +34,7 @@ class CustomAuthProvider(BaseAuthProvider):
     the freshest credentials as JSON.
     """
 
-    BLOCKED_SOURCES: list[str] = []
+    BLOCKED_SOURCES: list[str] = ["ctti"]
 
     # Map Airweave-internal field names to the simple names customers return.
     # Customers always return {"access_token": "..."} or {"api_key": "..."}.
