@@ -19,7 +19,7 @@ export function CollectionSourceConnections({
 
   return (
     <Tooltip>
-      <TooltipTrigger className="flex items-center gap-1.5 pl-3">
+      <TooltipTrigger className="flex w-28 items-center gap-1.5">
         {sourceConnections
           .slice(0, MAX_SOURCE_CONNECTIONS_ICONS)
           .map((source, index) => {

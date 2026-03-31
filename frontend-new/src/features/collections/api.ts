@@ -13,7 +13,7 @@ type CollectionListParams = NonNullable<
 type SearchParams = { search?: string };
 
 export function listCollectionsQueryOptions(
-  { search }: SearchParams,
+  { search }: SearchParams = {},
   requestContext: RequestContext,
 ) {
   const params: CollectionListParams = {
@@ -26,7 +26,7 @@ export function listCollectionsQueryOptions(
   return listCollectionsGetOptions(withRequestContext(params, requestContext));
 }
 
-export function useListCollectionsQueryOptions(searchParams: SearchParams) {
+export function useListCollectionsQueryOptions(searchParams?: SearchParams) {
   const requestContext = useCurrentRequestContext();
 
   return listCollectionsQueryOptions(searchParams, requestContext);
@@ -36,7 +36,7 @@ type CollectionCountParams = NonNullable<
   Parameters<typeof countCollectionsCountGetOptions>[0]
 >;
 
-export function useCollectionCountQueryOptions({ search }: SearchParams) {
+export function useCollectionCountQueryOptions({ search }: SearchParams = {}) {
   const requestContext = useCurrentRequestContext();
   const collectionCountParams: CollectionCountParams = {
     query: {

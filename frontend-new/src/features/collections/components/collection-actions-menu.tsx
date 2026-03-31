@@ -1,4 +1,10 @@
-import { MoreVertical, Trash } from 'lucide-react';
+import { MoreVertical } from 'lucide-react';
+import {
+  IconPencilMinus,
+  IconPlayerPause,
+  IconRefresh,
+  IconTrash,
+} from '@tabler/icons-react';
 import { Button } from '@/shared/ui/button';
 import {
   DropdownMenu,
@@ -6,12 +12,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu';
-import {
-  IconPencilMinus,
-  IconPlayerPause,
-  IconRefresh,
-  IconTrash,
-} from '@tabler/icons-react';
 
 type CollectionActionsMenuProps = {
   collectionId: string;
@@ -28,7 +28,7 @@ export function CollectionActionsMenu({
           <span className="sr-only">Open collection actions</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="min-w-47">
+      <DropdownMenuContent side="bottom" align="end" className="min-w-47">
         <DropdownMenuItem>
           <IconRefresh />
           Resync
