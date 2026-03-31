@@ -115,8 +115,29 @@ export function CollectionsTable({
     },
   });
 
+  const selectedCollectionsCount = table.getSelectedRowModel().rows.length;
+  const hasSelectedCollections = selectedCollectionsCount > 0;
+
   return (
-    <div className={cn('', className)}>
+    <div className={cn('relative', className)}>
+      {hasSelectedCollections ? (
+        <div className="absolute inset-x-0 top-1 z-10 flex h-10 items-center justify-between gap-4 text-xs font-medium tracking-wide">
+          <span className="text-left">
+            {selectedCollectionsCount}{' '}
+            {selectedCollectionsCount === 1
+              ? 'Collection selected'
+              : 'Collections selected'}
+          </span>
+          <Button
+            onClick={() => table.resetRowSelection()}
+            size="xs"
+            type="button"
+            variant="ghost"
+          >
+            Clear selection
+          </Button>
+        </div>
+      ) : null}
       <Table className="border-separate border-spacing-x-0 border-spacing-y-1">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -125,10 +146,11 @@ export function CollectionsTable({
                 <TableHead
                   key={header.id}
                   className={cn(
-                    'h-11 px-4 text-xs font-medium tracking-wide text-muted-foreground',
+                    'h-10 px-4 text-xs font-medium tracking-wide text-muted-foreground',
                     header.id === 'select' && 'w-0 px-3',
                     header.id === 'status' && 'w-0 px-0',
                     header.id === 'actions' && 'w-0',
+                    hasSelectedCollections && 'pointer-events-none opacity-0',
                   )}
                 >
                   {header.isPlaceholder
