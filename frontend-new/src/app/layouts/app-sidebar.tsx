@@ -9,8 +9,8 @@ import {
 import { Link, useMatchRoute } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { useAppSession } from '@/features/app-session';
 import { UserAvatar } from '@/shared/components/user-avatar';
+import { useAppSession } from '@/shared/session';
 import {
   OrganizationSwitcher,
   OrganizationSwitcherMenu,

@@ -3,42 +3,16 @@ import { useSuspenseQueries } from '@tanstack/react-query';
 import {
   currentOrganizationsQueryOptions,
   currentUserQueryOptions,
-} from './api';
-import { resolveRequiredCurrentOrganization } from './selectors';
-import {
+  resolveRequiredCurrentOrganization,
   setPreferredOrganizationId,
   usePreferredOrganizationId,
-} from './store';
-import type { OrganizationWithRole, User } from '@/shared/api/generated';
-import {
-  resetCurrentRequestContext,
-  setCurrentRequestContext,
-} from '@/shared/api/request-context';
+} from '@/features/app-session';
 import { useAuth } from '@/shared/auth';
-
-interface AppSessionViewer {
-  auth0Id: string | null;
-  email: string;
-  id: string;
-  isAdmin: boolean;
-  isSuperuser: boolean;
-  name: string | null;
-  picture: string | null;
-  primaryOrganizationId: string | null;
-}
-
-interface AppSessionValue {
-  backendUser: User;
-  currentOrganization: OrganizationWithRole;
-  currentOrganizationId: string;
-  organizations: Array<OrganizationWithRole>;
-  setCurrentOrganizationId: (organizationId: string) => void;
-  viewer: AppSessionViewer;
-}
-
-const AppSessionContext = React.createContext<AppSessionValue | undefined>(
-  undefined,
-);
+import {
+  AppSessionContext,
+  type AppSessionValue,
+  type AppSessionViewer,
+} from '@/shared/session';
 
 export function AppSessionProvider({ children }: React.PropsWithChildren) {
   const auth = useAuth();
@@ -96,18 +70,6 @@ export function AppSessionProvider({ children }: React.PropsWithChildren) {
     ],
   );
 
-  React.useEffect(() => {
-    setCurrentRequestContext({
-      organizationId: currentOrganizationId,
-    });
-  }, [currentOrganizationId]);
-
-  React.useEffect(() => {
-    return () => {
-      resetCurrentRequestContext();
-    };
-  }, []);
-
   const setCurrentOrganizationId = React.useCallback(
     (organizationId: string) => {
       if (
@@ -119,9 +81,6 @@ export function AppSessionProvider({ children }: React.PropsWithChildren) {
       }
 
       setPreferredOrganizationId(organizationId);
-      setCurrentRequestContext({
-        organizationId,
-      });
     },
     [organizations],
   );
@@ -150,14 +109,4 @@ export function AppSessionProvider({ children }: React.PropsWithChildren) {
       {children}
     </AppSessionContext.Provider>
   );
-}
-
-export function useAppSession() {
-  const context = React.useContext(AppSessionContext);
-
-  if (!context) {
-    throw new Error('useAppSession must be used within AppSessionProvider');
-  }
-
-  return context;
 }
