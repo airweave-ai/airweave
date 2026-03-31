@@ -38,7 +38,9 @@ from airweave.schemas.source_connection import (
 )
 
 
-def _duration_seconds(started_at: Optional[datetime], completed_at: Optional[datetime]) -> Optional[float]:
+def _duration_seconds(
+    started_at: Optional[datetime], completed_at: Optional[datetime]
+) -> Optional[float]:
     if started_at and completed_at:
         return (completed_at - started_at).total_seconds()
     return None

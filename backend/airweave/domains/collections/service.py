@@ -1,6 +1,5 @@
 """Collection service — domain logic for collection lifecycle."""
 
-import asyncio
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -199,7 +198,6 @@ class CollectionService(CollectionServiceProtocol):
                 organization_id=organization_id,
                 ctx=ctx,
             )
-        )
 
         # CASCADE-delete the collection and all child objects
         await self._collection_repo.remove(db, id=collection_id, ctx=ctx)
