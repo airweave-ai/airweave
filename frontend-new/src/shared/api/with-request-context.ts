@@ -46,8 +46,8 @@ function normalizeHeaders(headers?: OptionsWithHeaders['headers']) {
 }
 
 export function withRequestContext<T extends OptionsWithHeaders>(
-  options: T | undefined,
   requestContext: RequestContext,
+  options: T | undefined = undefined,
 ) {
   const headers = {
     ...normalizeHeaders(options?.headers),
@@ -67,5 +67,5 @@ export function withRequestContext<T extends OptionsWithHeaders>(
 export function withCurrentRequestContext<T extends OptionsWithHeaders>(
   options?: T,
 ) {
-  return withRequestContext(options, getCurrentRequestContext());
+  return withRequestContext(getCurrentRequestContext(), options);
 }

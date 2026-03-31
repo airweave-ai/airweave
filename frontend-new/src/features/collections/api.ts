@@ -5,6 +5,8 @@ import {
   useCurrentRequestContext,
   withRequestContext,
 } from '@/shared/api';
+import { getCurrentRequestContext } from '@/shared/api/request-context';
+import type { QueryClient } from '@tanstack/react-query';
 
 type CollectionListParams = NonNullable<
   Parameters<typeof listCollectionsGetOptions>[0]
@@ -13,8 +15,8 @@ type CollectionListParams = NonNullable<
 type SearchParams = { search?: string };
 
 export function listCollectionsQueryOptions(
-  { search }: SearchParams = {},
   requestContext: RequestContext,
+  { search }: SearchParams = {},
 ) {
   const params: CollectionListParams = {
     query: {
@@ -23,27 +25,44 @@ export function listCollectionsQueryOptions(
       search,
     },
   };
-  return listCollectionsGetOptions(withRequestContext(params, requestContext));
+  return listCollectionsGetOptions(withRequestContext(requestContext, params));
 }
 
 export function useListCollectionsQueryOptions(searchParams?: SearchParams) {
   const requestContext = useCurrentRequestContext();
 
-  return listCollectionsQueryOptions(searchParams, requestContext);
+  return listCollectionsQueryOptions(requestContext, searchParams);
 }
 
 type CollectionCountParams = NonNullable<
   Parameters<typeof countCollectionsCountGetOptions>[0]
 >;
 
-export function useCollectionCountQueryOptions({ search }: SearchParams = {}) {
-  const requestContext = useCurrentRequestContext();
-  const collectionCountParams: CollectionCountParams = {
-    query: {
-      search,
-    },
+function collectionCountQueryOptions(
+  requestContext: RequestContext,
+  searchParams?: SearchParams,
+) {
+  const params: CollectionCountParams = {
+    query: searchParams,
   };
+
   return countCollectionsCountGetOptions(
-    withRequestContext(collectionCountParams, requestContext),
+    withRequestContext(requestContext, params),
+  );
+}
+
+export function useCollectionCountQueryOptions(searchParams?: SearchParams) {
+  const requestContext = useCurrentRequestContext();
+
+  return collectionCountQueryOptions(requestContext, searchParams);
+}
+
+export function ensureListCollections({
+  queryClient,
+}: {
+  queryClient: QueryClient;
+}) {
+  return queryClient.ensureQueryData(
+    listCollectionsQueryOptions(getCurrentRequestContext()),
   );
 }
