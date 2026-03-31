@@ -206,11 +206,14 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                 del update_data["schedule"]
                 return
 
-            collection = await self._collection_repo.get_by_readable_id(
+            collection_orm = await self._collection_repo.get_by_readable_id(
                 uow.session, readable_id=source_conn.readable_collection_id, ctx=ctx
             )
-            if not collection:
+            if not collection_orm:
                 raise NotFoundException("Collection not found")
+            collection = schemas.CollectionRecord.model_validate(
+                collection_orm, from_attributes=True
+            )
 
             source_entry = self._source_registry.get(source_conn.short_name)
             if source_entry.federated_search:

@@ -179,34 +179,31 @@ class CollectionService(CollectionServiceProtocol):
         if db_obj is None:
             raise CollectionNotFoundError(readable_id)
 
-        collection_id = db_obj.id
-        organization_id = ctx.organization.id
-
         # Snapshot while session is fresh (teardown expires all objects via db.expire_all)
         result = self._to_response(db_obj)
 
         # Collect sync IDs before CASCADE removes them
         sync_ids = await self._sc_repo.get_sync_ids_for_collection(
-            db, organization_id=organization_id, readable_collection_id=result.readable_id
+            db, organization_id=ctx.organization.id, readable_collection_id=result.readable_id
         )
 
         for sid in sync_ids:
             await self._sync_service.delete(
                 db,
                 sync_id=sid,
-                collection_id=collection_id,
-                organization_id=organization_id,
+                collection_id=result.id,
+                organization_id=ctx.organization.id,
                 ctx=ctx,
             )
 
         # CASCADE-delete the collection and all child objects
-        await self._collection_repo.remove(db, id=collection_id, ctx=ctx)
+        await self._collection_repo.remove(db, id=result.id, ctx=ctx)
 
         # Publish event
         try:
             await self._event_bus.publish(
                 CollectionLifecycleEvent.deleted(
-                    organization_id=organization_id,
+                    organization_id=ctx.organization.id,
                     collection_id=result.id,
                     collection_name=result.name,
                     collection_readable_id=result.readable_id,

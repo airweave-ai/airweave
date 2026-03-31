@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
@@ -44,7 +45,7 @@ class SyncJobRepository(SyncJobRepositoryProtocol):
         self,
         db: AsyncSession,
         sync_id: UUID,
-        ctx: ApiContext,
+        ctx: BaseContext,
         limit: Optional[int] = None,
     ) -> List[SyncJob]:
         """Get all jobs for a specific sync."""

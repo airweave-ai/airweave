@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
@@ -49,11 +50,14 @@ class SourceConnectionDeletionService(SourceConnectionDeletionServiceProtocol):
             raise NotFoundException("Source connection not found")
 
         sync_id = source_conn.sync_id
-        collection = await self._collection_repo.get_by_readable_id(
+        collection_orm = await self._collection_repo.get_by_readable_id(
             db, readable_id=source_conn.readable_collection_id, ctx=ctx
         )
-        if not collection:
+        if not collection_orm:
             raise NotFoundException("Collection not found")
+        collection = schemas.CollectionRecord.model_validate(
+            collection_orm, from_attributes=True
+        )
 
         response = await self._response_builder.build_response(db, source_conn, ctx)
 
