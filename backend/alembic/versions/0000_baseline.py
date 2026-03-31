@@ -308,7 +308,7 @@ def upgrade():
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('modified_at', sa.DateTime(), nullable=False),
-    sa.CheckConstraint("\n            (short_name IN ('qdrant_native', 'neo4j_native', 'vespa_native', 'local_text2vec'))\n            OR\n            (organization_id IS NOT NULL\n             AND created_by_email IS NOT NULL\n             AND modified_by_email IS NOT NULL)\n            ", name='ck_connection_native_or_complete'),
+    sa.CheckConstraint("\n            (short_name IN ('qdrant_native', 'neo4j_native', 'vespa_native', 'local_text2vec'))\n            OR\n            (organization_id IS NOT NULL)\n            ", name='ck_connection_native_or_complete'),
     sa.ForeignKeyConstraint(['integration_credential_id'], ['integration_credential.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['organization_id'], ['organization.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
