@@ -1,16 +1,18 @@
+import { CollectionTooltipContent } from './collection-tooltip-content';
 import type { SourceConnectionSummary } from '@/shared/api';
 import { getAppIconUrl } from '@/shared/icons/get-app-icon-url';
 import { cn } from '@/shared/tailwind/cn';
-import { Separator } from '@/shared/ui/separator';
 import { Skeleton } from '@/shared/ui/skeleton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip';
+import { Tooltip, TooltipTrigger } from '@/shared/ui/tooltip';
 
 const MAX_SOURCE_CONNECTIONS_ICONS = 3;
 
 export function CollectionSourceConnections({
   sourceConnections,
+  size = 'default',
 }: {
-  sourceConnections: SourceConnectionSummary[];
+  sourceConnections: Array<SourceConnectionSummary>;
+  size?: 'default' | 'lg';
 }) {
   const sourceConnectionCount = sourceConnections.length;
   if (!sourceConnectionCount) {
@@ -31,11 +33,16 @@ export function CollectionSourceConnections({
                 className={cn('relative', index > 0 && '-ml-3')}
                 style={{ zIndex: sourceConnectionCount - index }}
               >
-                <div className="flex size-8 items-center justify-center rounded-md border border-[#1f1f1f] bg-[#353535] p-1.5">
+                <div
+                  className={cn(
+                    'flex size-6 items-center justify-center rounded-md border border-[#1f1f1f] bg-[#353535] p-1',
+                    size === 'lg' && 'size-8 p-1.5',
+                  )}
+                >
                   <img
                     alt=""
                     aria-hidden="true"
-                    className="size-4.5"
+                    className={cn('size-3', size === 'lg' && 'size-4.5')}
                     src={sourceLogoSrc}
                   />
                 </div>
@@ -48,19 +55,16 @@ export function CollectionSourceConnections({
           </p>
         )}
       </TooltipTrigger>
-      <TooltipContent
+      <CollectionTooltipContent
         sideOffset={8}
-        className="flex max-w-50 flex-col border bg-secondary px-3 py-1.5 text-foreground [&_svg]:hidden!"
-      >
-        <p>
-          {sourceConnections.length} Connection
-          {sourceConnections.length > 1 && 's'}
-        </p>
-        <Separator className="w-full" />
-        <p className="text-center text-muted-foreground">
-          {sourceConnections.map((source) => source.name).join(', ')}
-        </p>
-      </TooltipContent>
+        description={sourceConnections.map((source) => source.name).join(', ')}
+        title={
+          <>
+            {sourceConnections.length} Connection
+            {sourceConnections.length > 1 && 's'}
+          </>
+        }
+      />
     </Tooltip>
   );
 }

@@ -7,6 +7,7 @@ import {
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 import { CollectionActionsMenu } from './collection-actions-menu';
 import { CollectionSourceConnections } from './collection-source-connections';
+import { CollectionTooltipContent } from './collection-tooltip-content';
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
 import type { Collection } from '@/shared/api';
 import { cn } from '@/shared/tailwind/cn';
@@ -20,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/shared/ui/table';
+import { Tooltip, TooltipTrigger } from '@/shared/ui/tooltip';
 
 export const collectionsTableColumns: Array<ColumnDef<Collection>> = [
   {
@@ -32,6 +34,13 @@ export const collectionsTableColumns: Array<ColumnDef<Collection>> = [
         onCheckedChange={(checked) => row.toggleSelected(!!checked)}
       />
     ),
+    enableSorting: false,
+    enableHiding: false,
+  },
+  {
+    id: 'status',
+    header: () => null,
+    cell: ({ row }) => <CollectionStatusIndicator collection={row.original} />,
     enableSorting: false,
     enableHiding: false,
   },
@@ -111,13 +120,14 @@ export function CollectionsTable({
       <Table className="border-separate border-spacing-x-0 border-spacing-y-1">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
+            <TableRow key={headerGroup.id} className="hover:bg-transparent">
               {headerGroup.headers.map((header) => (
                 <TableHead
                   key={header.id}
                   className={cn(
                     'h-11 px-4 text-xs font-medium tracking-wide text-muted-foreground',
                     header.id === 'select' && 'w-0 px-3',
+                    header.id === 'status' && 'w-0 px-0',
                     header.id === 'actions' && 'w-0',
                   )}
                 >
@@ -144,8 +154,9 @@ export function CollectionsTable({
                   <TableCell
                     key={cell.id}
                     className={cn(
-                      'bg-foreground/5 px-5 py-2 transition-colors group-hover:bg-foreground/10 group-data-[state=selected]:bg-foreground/10 first:rounded-l-sm last:rounded-r-sm',
+                      'bg-foreground/5 px-3 py-2 transition-colors group-hover:bg-foreground/10 group-data-[state=selected]:bg-foreground/10 first:rounded-l-sm last:rounded-r-sm',
                       cell.column.id === 'select' && 'w-0 pl-3',
+                      cell.column.id === 'status' && 'w-0 pr-0',
                       cell.column.id === 'actions' && 'w-0 pr-3',
                     )}
                   >
@@ -172,6 +183,57 @@ export function CollectionsTable({
 
 function PlaceholderCell({ children = '-' }: React.PropsWithChildren) {
   return <span className="text-muted-foreground">{children}</span>;
+}
+
+function CollectionStatusIndicator({ collection }: { collection: Collection }) {
+  const hasConnections =
+    (collection.source_connection_summaries?.length ?? 0) > 0;
+  const statusTitle = hasConnections ? 'Healthy' : 'No data';
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        aria-label={
+          hasConnections ? 'Collection healthy' : 'No collection data'
+        }
+        className="flex size-8 items-center justify-center"
+      >
+        <CollectionStatusDot healthy={hasConnections} />
+      </TooltipTrigger>
+      <CollectionTooltipContent
+        sideOffset={8}
+        description={
+          hasConnections
+            ? 'All connections are syncing successfully.'
+            : 'No connections added yet.'
+        }
+        title={
+          <span className="inline-flex items-center gap-1">
+            <CollectionStatusDot healthy={hasConnections} />
+            {statusTitle}
+          </span>
+        }
+      />
+    </Tooltip>
+  );
+}
+
+function CollectionStatusDot({
+  healthy,
+  className,
+}: {
+  healthy: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'size-2 shrink-0 rounded-full bg-current shadow-[0_0_4px_currentColor]',
+        healthy ? 'text-green-400' : 'text-foreground',
+        className,
+      )}
+    />
+  );
 }
 
 function CollectionNameCell({ collection }: { collection: Collection }) {

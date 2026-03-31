@@ -220,7 +220,10 @@ function CollectionListItem({
       </div>
 
       <div className="flex items-center justify-between gap-4 md:justify-start">
-        <CollectionSourceConnections sourceConnections={sourceConnections} />
+        <CollectionSourceConnections
+          size="lg"
+          sourceConnections={sourceConnections}
+        />
 
         <div className="flex items-center gap-2">
           {collection.status ? (
