@@ -71,6 +71,46 @@ class CustomAuthProvider(BaseAuthProvider):
                 provider_name="custom",
             ) from exc
 
+    def _raise_for_http_status(
+        self, e: httpx.HTTPStatusError, source_short_name: str
+    ) -> None:
+        """Classify an HTTP error status into the appropriate auth provider exception."""
+        status = e.response.status_code
+        self.logger.error(
+            f"[Custom] HTTP {status} from endpoint for source '{source_short_name}'"
+        )
+        if status in (401, 403):
+            raise AuthProviderAuthError(
+                f"Custom endpoint returned {status} for source '{source_short_name}'",
+                provider_name="custom",
+            ) from e
+        if status == 429:
+            retry_after = float(e.response.headers.get("retry-after", 30))
+            raise AuthProviderRateLimitError(
+                f"Custom endpoint rate-limited for source '{source_short_name}'",
+                provider_name="custom",
+                retry_after=retry_after,
+            ) from e
+        if status == 404:
+            raise AuthProviderMissingFieldsError(
+                f"Custom endpoint has no credentials configured for "
+                f"source '{source_short_name}' (404)",
+                provider_name="custom",
+                missing_fields=[],
+                available_fields=[],
+            ) from e
+        if status >= 500:
+            raise AuthProviderTemporaryError(
+                f"Custom endpoint returned {status} for source '{source_short_name}'",
+                provider_name="custom",
+                status_code=status,
+            ) from e
+        raise AuthProviderConfigError(
+            f"Custom endpoint returned unexpected {status} for "
+            f"source '{source_short_name}'",
+            provider_name="custom",
+        ) from e
+
     async def get_creds_for_source(
         self,
         source_short_name: str,
@@ -97,41 +137,7 @@ class CustomAuthProvider(BaseAuthProvider):
                 response.raise_for_status()
                 data = response.json()
             except httpx.HTTPStatusError as e:
-                status = e.response.status_code
-                self.logger.error(
-                    f"[Custom] HTTP {status} from endpoint for source '{source_short_name}'"
-                )
-                if status in (401, 403):
-                    raise AuthProviderAuthError(
-                        f"Custom endpoint returned {status} for source '{source_short_name}'",
-                        provider_name="custom",
-                    ) from e
-                if status == 429:
-                    retry_after = float(e.response.headers.get("retry-after", 30))
-                    raise AuthProviderRateLimitError(
-                        f"Custom endpoint rate-limited for source '{source_short_name}'",
-                        provider_name="custom",
-                        retry_after=retry_after,
-                    ) from e
-                if status == 404:
-                    raise AuthProviderMissingFieldsError(
-                        f"Custom endpoint has no credentials configured for "
-                        f"source '{source_short_name}' (404)",
-                        provider_name="custom",
-                        missing_fields=[],
-                        available_fields=[],
-                    ) from e
-                if status >= 500:
-                    raise AuthProviderTemporaryError(
-                        f"Custom endpoint returned {status} for source '{source_short_name}'",
-                        provider_name="custom",
-                        status_code=status,
-                    ) from e
-                raise AuthProviderConfigError(
-                    f"Custom endpoint returned unexpected {status} for "
-                    f"source '{source_short_name}'",
-                    provider_name="custom",
-                ) from e
+                self._raise_for_http_status(e, source_short_name)
             except (httpx.ConnectError, httpx.TimeoutException) as e:
                 self.logger.error(f"[Custom] Network error reaching endpoint: {e}")
                 raise AuthProviderTemporaryError(
