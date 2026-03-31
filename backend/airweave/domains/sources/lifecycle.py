@@ -7,7 +7,7 @@ credential services.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union, cast
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -133,7 +133,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             auth_config = await self._get_auth_configuration(
                 db=db,
                 source_connection_data=source_connection_data,
-                ctx=ctx,
+                ctx=cast(ApiContext, ctx),
                 logger=logger,
                 access_token=access_token,
             )
