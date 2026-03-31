@@ -1,6 +1,7 @@
 """Composio Test Auth Provider - provides authentication services for other integrations."""
 
 from typing import Any, Dict, List, Optional, Set
+from uuid import UUID
 
 import httpx
 
@@ -211,6 +212,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         source_short_name: str,
         source_auth_config_fields: List[str],
         optional_fields: Optional[Set[str]] = None,
+        source_connection_id: Optional[UUID] = None,
     ) -> Dict[str, Any]:
         """Get credentials for a specific source integration.
 
