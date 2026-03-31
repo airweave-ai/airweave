@@ -21,7 +21,12 @@ export function CollectionSourceConnections({
 
   return (
     <Tooltip>
-      <TooltipTrigger className="flex w-28 items-center gap-1.5">
+      <TooltipTrigger
+        className={cn(
+          'flex w-20 items-center gap-1.5',
+          size === 'lg' && 'w-26',
+        )}
+      >
         {sourceConnections
           .slice(0, MAX_SOURCE_CONNECTIONS_ICONS)
           .map((source, index) => {
@@ -29,8 +34,11 @@ export function CollectionSourceConnections({
 
             return (
               <div
-                key={source.short_name}
-                className={cn('relative', index > 0 && '-ml-3')}
+                key={`${source.name}:${index}`}
+                className={cn(
+                  'relative',
+                  index > 0 && (size === 'lg' ? '-ml-4.5' : '-ml-4'),
+                )}
                 style={{ zIndex: sourceConnectionCount - index }}
               >
                 <div

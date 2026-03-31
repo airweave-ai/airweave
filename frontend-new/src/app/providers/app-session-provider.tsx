@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useSuspenseQueries } from '@tanstack/react-query';
+import { router } from '@/app/router';
 import {
   currentOrganizationsQueryOptions,
   currentUserQueryOptions,
@@ -71,7 +72,11 @@ export function AppSessionProvider({ children }: React.PropsWithChildren) {
   );
 
   const setCurrentOrganizationId = React.useCallback(
-    (organizationId: string) => {
+    async (organizationId: string) => {
+      if (organizationId === currentOrganizationId) {
+        return;
+      }
+
       if (
         !organizations.some(
           (organization) => organization.id === organizationId,
@@ -81,8 +86,11 @@ export function AppSessionProvider({ children }: React.PropsWithChildren) {
       }
 
       setPreferredOrganizationId(organizationId);
+
+      await router.navigate({ to: '/' });
+      await router.invalidate({ sync: true });
     },
-    [organizations],
+    [currentOrganizationId, organizations],
   );
 
   const value = React.useMemo<AppSessionValue>(

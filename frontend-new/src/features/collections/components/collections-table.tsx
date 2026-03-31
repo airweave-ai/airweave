@@ -150,8 +150,8 @@ export function CollectionsTable({
                 <TableHead
                   key={header.id}
                   className={cn(
-                    'h-10 px-4 text-xs font-medium tracking-wide text-muted-foreground',
-                    header.id === 'select' && 'w-0 px-3',
+                    'h-10 px-3 text-xs font-medium tracking-wide text-muted-foreground',
+                    header.id === 'select' && 'w-0',
                     header.id === 'status' && 'w-0 px-0',
                     header.id === 'actions' && 'w-0',
                     hasSelectedCollections && 'pointer-events-none opacity-0',

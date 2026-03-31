@@ -57,6 +57,20 @@ export function useCollectionCountQueryOptions(searchParams?: SearchParams) {
   return collectionCountQueryOptions(currentOrganizationId, searchParams);
 }
 
+export function ensureCollectionCount({
+  queryClient,
+  organizationId,
+  search,
+}: {
+  queryClient: QueryClient;
+  organizationId: string;
+  search?: string;
+}) {
+  return queryClient.ensureQueryData(
+    collectionCountQueryOptions(organizationId, { search }),
+  );
+}
+
 export function ensureListCollections({
   queryClient,
   organizationId,
