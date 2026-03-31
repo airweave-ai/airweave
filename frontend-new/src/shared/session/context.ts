@@ -17,7 +17,7 @@ export interface AppSessionValue {
   currentOrganization: OrganizationWithRole;
   currentOrganizationId: string;
   organizations: Array<OrganizationWithRole>;
-  setCurrentOrganizationId: (organizationId: string) => void;
+  setCurrentOrganizationId: (organizationId: string) => Promise<void>;
   viewer: AppSessionViewer;
 }
 

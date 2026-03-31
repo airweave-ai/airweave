@@ -37,23 +37,12 @@ export function CollectionsSummaryCard() {
   const deferredSearch = React.useDeferredValue(search);
   const normalizedSearch = (deferredSearch ?? '').trim();
   const hasActiveSearch = normalizedSearch.length > 0;
-  const collectionCountQueryOptions = useCollectionCountQueryOptions({
-    search: deferredSearch,
-  });
-  const { data: collectionCount } = useQuery({
-    ...collectionCountQueryOptions,
-    placeholderData: keepPreviousData,
-  });
+  const collectionCountQueryOptions = useCollectionCountQueryOptions({});
+  const { data: collectionCount } = useSuspenseQuery(
+    collectionCountQueryOptions,
+  );
 
-  const hasCollections = (collectionCount ?? 0) > 0;
-  const displayedCollectionCount =
-    collectionCount === undefined
-      ? '...'
-      : hasCollections
-        ? collectionCount
-        : hasActiveSearch
-          ? 0
-          : 1;
+  const hasCollections = collectionCount > 0;
 
   return (
     <Card>
@@ -66,7 +55,7 @@ export function CollectionsSummaryCard() {
             variant="secondary"
             className="text-[0.625rem] text-muted-foreground"
           >
-            {displayedCollectionCount}
+            {collectionCount}
           </Badge>
         </div>
 
@@ -121,7 +110,9 @@ function NoCollectionsSearchResults({ search }: { search: string }) {
 
 function CollectionsSummaryCardListContent({ search }: { search?: string }) {
   const collectionsQueryOptions = useListCollectionsQueryOptions({ search });
-  const { data: collections } = useSuspenseQuery(collectionsQueryOptions);
+  const { data: collections } = useSuspenseQuery({
+    ...collectionsQueryOptions,
+  });
 
   if (search && collections.length === 0) {
     return <NoCollectionsSearchResults search={search} />;
