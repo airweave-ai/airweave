@@ -221,7 +221,7 @@ class TestAuthProviderTokenProvider:
         mock_registry = MagicMock()
         entry = MagicMock()
         entry.runtime_auth_all_fields = ["access_token"]
-        entry.runtime_auth_optional_fields = []
+        entry.runtime_auth_optional_fields = set()
         mock_registry.get.return_value = entry
 
         return AuthProviderTokenProvider(
