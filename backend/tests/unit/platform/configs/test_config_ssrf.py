@@ -217,21 +217,23 @@ class TestSharePoint2019V2Config:
 
 
 class TestSharePointOnlineConfig:
-    def test_rejects_loopback_in_csv(self):
+    def test_rejects_loopback(self):
         with pytest.raises(ValidationError, match="SSRF|blocked"):
-            SharePointOnlineConfig(
-                site_url="https://ok.sharepoint.com, http://127.0.0.1"
-            )
+            SharePointOnlineConfig(site_url="http://127.0.0.1")
 
-    def test_empty_site_url_passes(self):
-        cfg = SharePointOnlineConfig(site_url="")
-        assert cfg.site_url == ""
+    def test_empty_site_url_rejected(self):
+        with pytest.raises(ValidationError):
+            SharePointOnlineConfig(site_url="")
 
-    def test_accepts_valid_csv(self):
+    def test_missing_site_url_rejected(self):
+        with pytest.raises(ValidationError):
+            SharePointOnlineConfig()
+
+    def test_accepts_valid_site_url(self):
         cfg = SharePointOnlineConfig(
-            site_url="https://a.sharepoint.com, https://b.sharepoint.com"
+            site_url="https://contoso.sharepoint.com/sites/Marketing"
         )
-        assert cfg.site_url == "https://a.sharepoint.com, https://b.sharepoint.com"
+        assert cfg.site_url == "https://contoso.sharepoint.com/sites/Marketing"
 
 
 class TestSalesforceConfig:

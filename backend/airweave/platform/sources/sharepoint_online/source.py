@@ -597,6 +597,7 @@ class SharePointOnlineSource(BaseSource):
 
             try:
                 site_entity = await build_site_entity(site_data, [], access=site_access)
+                self._track_entity_groups(site_entity)
                 yield site_entity
                 entity_count += 1
 
@@ -629,6 +630,7 @@ class SharePointOnlineSource(BaseSource):
                     drive_entity = await build_drive_entity(
                         drive_data, site_id, site_breadcrumbs, access=drive_access
                     )
+                    self._track_entity_groups(drive_entity)
                     yield drive_entity
                     entity_count += 1
 
@@ -728,6 +730,7 @@ class SharePointOnlineSource(BaseSource):
                             page_entity = await build_page_entity(
                                 page_data, site_id, site_breadcrumbs, access=site_access
                             )
+                            self._track_entity_groups(page_entity)
                             yield page_entity
                             entity_count += 1
                         except EntityProcessingError as e:
@@ -890,6 +893,7 @@ class SharePointOnlineSource(BaseSource):
                     break
 
                 site_entity = await build_site_entity(site_data, [], access=targeted_site_access)
+                self._track_entity_groups(site_entity)
                 yield site_entity
                 entity_count += 1
             except SourceAuthError:
@@ -988,6 +992,7 @@ class SharePointOnlineSource(BaseSource):
             drive_entity = await build_drive_entity(
                 drive_data, site_id, site_breadcrumbs, access=drive_access
             )
+            self._track_entity_groups(drive_entity)
             yield drive_entity
 
             drive_breadcrumbs = site_breadcrumbs + [

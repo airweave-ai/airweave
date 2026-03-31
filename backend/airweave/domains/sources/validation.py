@@ -37,14 +37,12 @@ class SourceValidationService(SourceValidationServiceProtocol):
         """
         entry = self._get_entry_or_404(short_name)
 
-        if not config_fields:
-            return {}
-
-        payload = self._as_mapping(config_fields)
-
         config_class = entry.config_ref
         if config_class is None:
-            return payload
+            # Source has no config schema — anything goes
+            return self._as_mapping(config_fields) if config_fields else {}
+
+        payload = self._as_mapping(config_fields) if config_fields else {}
 
         self._enforce_feature_flags(short_name, payload, config_class, ctx)
 

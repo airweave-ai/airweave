@@ -1191,27 +1191,22 @@ class SharePointOnlineConfig(SourceConfig):
     """
 
     site_url: str = Field(
-        default="",
+        ...,
         title="SharePoint Site URL",
         description=(
-            "URL of the SharePoint site(s) to sync. Supports a single URL "
-            "(e.g., 'https://contoso.sharepoint.com/sites/Marketing'), "
-            "comma-separated URLs for multiple sites, or leave empty to "
-            "sync all accessible sites."
+            "URL of the SharePoint site to sync "
+            "(e.g., 'https://contoso.sharepoint.com/sites/Marketing'). "
+            "Create one source connection per site."
         ),
+        min_length=1,
     )
 
     @field_validator("site_url")
     @classmethod
     def validate_site_url_ssrf(cls, v: str) -> str:
-        """Validate each comma-separated site URL for SSRF safety."""
-        if not v:
-            return v
-        for url in v.split(","):
-            url = url.strip()
-            if url:
-                validate_url(url)
-        return v
+        """Validate site URL for SSRF safety."""
+        validate_url(v.strip())
+        return v.strip()
 
     include_personal_sites: bool = Field(
         default=False,
