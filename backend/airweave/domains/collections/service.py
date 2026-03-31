@@ -191,17 +191,14 @@ class CollectionService(CollectionServiceProtocol):
             db, organization_id=organization_id, readable_collection_id=result.readable_id
         )
 
-        await asyncio.gather(
-            *[
-                self._sync_service.delete(
-                    db,
-                    sync_id=sid,
-                    collection_id=collection_id,
-                    organization_id=organization_id,
-                    ctx=ctx,
-                )
-                for sid in sync_ids
-            ]
+        for sid in sync_ids:
+            await self._sync_service.delete(
+                db,
+                sync_id=sid,
+                collection_id=collection_id,
+                organization_id=organization_id,
+                ctx=ctx,
+            )
         )
 
         # CASCADE-delete the collection and all child objects
