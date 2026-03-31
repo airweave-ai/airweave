@@ -150,7 +150,7 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
         # api_key). This supports both OAuth and non-OAuth sources.
         for field in ["access_token"] + entry.runtime_auth_all_fields:
             if field in creds:
-                return creds[field]
+                return str(creds[field])
 
         raise TokenProviderMissingCredsError(
             f"No usable credential in auth provider response for {self._source_short_name}. "

@@ -43,11 +43,16 @@ class CustomAuthProvider(BaseAuthProvider):
         "api_token": "access_token",  # Document360, Pipedrive
     }
 
+    # Instance attributes set in create()
+    endpoint_url: str
+    api_key: str
+
     @classmethod
     async def create(
-        cls, credentials: Optional[Any] = None, config: Optional[Dict[str, Any]] = None
+        cls, credentials: Optional[Dict[str, Any]] = None, config: Optional[Dict[str, Any]] = None
     ) -> "CustomAuthProvider":
         """Create a new Custom auth provider instance."""
+        assert credentials is not None
         instance = cls()
         instance.endpoint_url = credentials["endpoint_url"].rstrip("/")
         instance.api_key = credentials["api_key"]

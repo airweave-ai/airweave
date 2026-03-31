@@ -410,7 +410,7 @@ async def test_to_schema_include_and_exclude_masked():
 # ---------------------------------------------------------------------------
 
 _UNFLAGGED = _entry(short_name="composio")
-_FLAGGED = _entry(short_name="custom")._replace_fields(feature_flag="custom_auth_provider") if hasattr(_entry(), "_replace_fields") else AuthProviderRegistryEntry(
+_FLAGGED = AuthProviderRegistryEntry(
     **{**_entry(short_name="custom").model_dump(), "name": "Custom", "feature_flag": "custom_auth_provider"}
 )
 
